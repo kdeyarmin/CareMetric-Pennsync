@@ -219,6 +219,29 @@ function toNonNegativeNumber(value) {
   return n < 0 ? 0 : Math.round(n * 100) / 100;
 }
 
+// Biweekly pay-period schedule: two weeks Sunday→Saturday, anchored to the known
+// cycle Sun 2026-06-14 → Sat 2026-06-27. Kept in step with the frontend's
+// payPeriodSchedule.js so submitted periods always match the payroll calendar.
+const PAY_ANCHOR_START = '2026-06-14';
+function utcMs(iso) {
+  const d = parseISODate(iso);
+  return d ? Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) : NaN;
+}
+function addDays(iso, n) {
+  const d = parseISODate(iso);
+  if (!d) return '';
+  d.setDate(d.getDate() + n);
+  return toISODate(d);
+}
+function isAlignedPayPeriod(start, end) {
+  const s = parseISODate(start);
+  const e = parseISODate(end);
+  if (!s || !e) return false;
+  const diff = Math.round((utcMs(start) - utcMs(PAY_ANCHOR_START)) / 86400000);
+  if (diff % 14 !== 0) return false;
+  return end === addDays(start, 13) && s.getDay() === 0;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -251,6 +274,12 @@ Deno.serve(async (req) => {
     if (end < start) {
       return Response.json({ error: 'The pay period end cannot be before the start.' }, { status: 400 });
     }
+    if (!isAlignedPayPeriod(pay_period_start, pay_period_end)) {
+      return Response.json(
+        { error: 'Pay period must be a scheduled two-week period (Sunday through Saturday).' },
+        { status: 400 }
+      );
+    }
 
     // Coerce the numeric buckets server-side (non-negative, 2dp).
     const numbers = {};
@@ -266,6 +295,20 @@ Deno.serve(async (req) => {
       auto_pto_hours = computePtoHours(approved, pay_period_start, pay_period_end);
     } catch (_ptoError) {
       auto_pto_hours = 0; // Never block submission on the PTO lookup.
+    }
+
+    // Standing phone reimbursement an admin configured for this employee — an
+    // expense reimbursement (not pay/wages) applied automatically each pay period
+    // so it never has to be re-entered. Server-authoritative: the client cannot set it.
+    let phone_reimbursement = 0;
+    try {
+      const profiles = await base44.asServiceRole.entities.EmployeePayrollProfile.filter({
+        employee_email: user.email,
+      });
+      const profile = (profiles || []).find((p) => p && p.active !== false) || (profiles || [])[0];
+      if (profile) phone_reimbursement = toNonNegativeNumber(profile.phone_reimbursement);
+    } catch (_profileError) {
+      phone_reimbursement = 0; // Never block submission on the profile lookup.
     }
 
     // Validate the chosen approver (admin or flagged manager, never the caller).
@@ -292,11 +335,31 @@ Deno.serve(async (req) => {
       pay_period_end,
       ...numbers,
       auto_pto_hours,
+      phone_reimbursement,
       notes: String(notes || '').slice(0, 2000),
       manager_email: resolvedManagerEmail,
       manager_name: resolvedManagerName,
       status,
       submitted_at: status === 'submitted' ? new Date().toISOString() : undefined,
+    };
+
+    // Clearing a prior review when a sheet is edited/resubmitted — set to empty
+    // (not undefined, which JSON-omits and would leave the stale values in place).
+    const clearedReview = { reviewed_by: '', reviewer_name: '', reviewed_at: '', review_notes: '' };
+
+    // One timesheet per (employee, service line, pay period): the caller's other
+    // sheets covering the SAME period+service line. Prevents a duplicate row from
+    // being double-counted in payroll.
+    const siblingsForPeriod = async (excludeId) => {
+      const matches = await base44.asServiceRole.entities.Timesheet
+        .filter({
+          employee_email: user.email,
+          service_type,
+          pay_period_start,
+          pay_period_end,
+        })
+        .catch(() => []);
+      return (matches || []).filter((m) => m && m.id !== excludeId);
     };
 
     let saved;
@@ -314,16 +377,27 @@ Deno.serve(async (req) => {
       if (existing.status === 'approved') {
         return Response.json({ error: 'This timesheet has already been approved and can no longer be edited.' }, { status: 409 });
       }
-      // Clear any prior review when the sheet is edited/resubmitted.
-      saved = await base44.asServiceRole.entities.Timesheet.update(timesheet_id, {
-        ...record,
-        reviewed_by: '',
-        reviewer_name: '',
-        reviewed_at: undefined,
-        review_notes: '',
-      });
+      // Don't let an edit move this sheet onto a period+service line that already
+      // has an approved timesheet for this employee.
+      const siblings = await siblingsForPeriod(timesheet_id);
+      if (siblings.some((s) => s.status === 'approved')) {
+        return Response.json({ error: 'You already have an approved timesheet for this pay period.' }, { status: 409 });
+      }
+      saved = await base44.asServiceRole.entities.Timesheet.update(timesheet_id, { ...record, ...clearedReview });
     } else {
-      saved = await base44.asServiceRole.entities.Timesheet.create(record);
+      // New submission: reuse the caller's existing (non-approved) sheet for this
+      // period+service line instead of creating a duplicate.
+      const siblings = await siblingsForPeriod(null);
+      if (siblings.some((s) => s.status === 'approved')) {
+        return Response.json(
+          { error: 'You already have an approved timesheet for this pay period. Ask your approver to reopen it to make changes.' },
+          { status: 409 }
+        );
+      }
+      const reusable = siblings[0];
+      saved = reusable
+        ? await base44.asServiceRole.entities.Timesheet.update(reusable.id, { ...record, ...clearedReview })
+        : await base44.asServiceRole.entities.Timesheet.create(record);
     }
 
     // Notify the approver(s) only when actually submitted (not for drafts).

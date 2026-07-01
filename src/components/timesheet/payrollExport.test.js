@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import {
   buildPayrollTable,
   buildPayrollCSV,
+  buildReportCSV,
   totalsRow,
   formatNum,
   payrollFilename,
 } from "./payrollExport.js";
+import { aggregateTimesheets } from "./timesheetUtils.js";
 
 const HH = [
   { employee_name: "Rebecca Contrael", service_type: "home_health", regular_hours: 80, reimbursement: 20 },
@@ -93,4 +95,28 @@ test("buildPayrollCSV: header, rows, totals, notes, and formula-injection guard"
 test("payrollFilename builds a dated, service-scoped name", () => {
   assert.equal(payrollFilename("home_health", "2026-06-29"), "home_health_payroll_2026-06-29.csv");
   assert.equal(payrollFilename("hospice", "2026-06-29", "pdf"), "hospice_payroll_2026-06-29.pdf");
+});
+
+test("payroll Reimb column includes the standing phone reimbursement", () => {
+  const table = buildPayrollTable(
+    [{ employee_name: "Reva Crusan", service_type: "hospice", regular_hours: 80, reimbursement: 20, phone_reimbursement: 25 }],
+    "hospice"
+  );
+  const reimb = table.columns.findIndex((c) => c.label === "Reimb.");
+  assert.equal(table.rows[0].cells[reimb].display, "45"); // 20 + 25
+  assert.equal(table.totals[reimb], 45);
+});
+
+test("buildReportCSV: header, totals row, and no pay-rate columns", () => {
+  const rows = aggregateTimesheets(
+    [
+      { employee_name: "A", service_type: "home_health", pay_period_start: "2026-06-16", pay_period_end: "2026-06-29", regular_hours: 80, regular_points: 10 },
+      { employee_name: "B", service_type: "home_health", pay_period_start: "2026-06-16", pay_period_end: "2026-06-29", regular_hours: 40 },
+    ],
+    "period"
+  );
+  const csv = buildReportCSV(rows, "Pay period");
+  assert.match(csv, /^Pay period,Timesheets,Regular,OT/);
+  assert.match(csv, /\nTotal,2,120/);
+  assert.doesNotMatch(csv, /rate|wage|gross|\$/i);
 });

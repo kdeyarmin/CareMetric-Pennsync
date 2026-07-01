@@ -197,3 +197,134 @@ export function defaultPayPeriod(today = new Date()) {
 export function payPeriodLabel(start, end) {
   return formatDateRange(start, end);
 }
+
+/**
+ * The reimbursement that lands on the payroll report: what the employee entered
+ * plus the admin-configured standing phone reimbursement auto-applied on submit.
+ * Both are expense reimbursements — the system holds no pay rates.
+ */
+export function effectiveReimbursement(ts) {
+  return toNumber(ts?.reimbursement) + toNumber(ts?.phone_reimbursement);
+}
+
+/** Rank a timesheet status so "most complete" wins when an employee has several. */
+function statusRank(status) {
+  return { approved: 3, submitted: 2, rejected: 1, draft: 0 }[status] ?? 0;
+}
+
+/**
+ * Per-service-line submission coverage for a pay period: which expected
+ * employees are approved, awaiting approval, or missing (no submitted/approved
+ * timesheet). Lets the payroll export flag anyone who'd be silently left off.
+ *
+ * @param {Array} employees  [{ email, name, service_type, is_active }]
+ * @param {Array} timesheets
+ * @param {{ serviceType?: string, periodStart?: string, periodEnd?: string }} opts
+ */
+export function submissionCoverage(employees = [], timesheets = [], { serviceType, periodStart, periodEnd } = {}) {
+  const expected = (Array.isArray(employees) ? employees : []).filter(
+    (e) => e && e.is_active !== false && e.service_type === serviceType
+  );
+  const inPeriod = (Array.isArray(timesheets) ? timesheets : []).filter(
+    (t) => t && t.service_type === serviceType && t.pay_period_start === periodStart && t.pay_period_end === periodEnd
+  );
+  const byEmail = new Map();
+  for (const t of inPeriod) {
+    const prev = byEmail.get(t.employee_email);
+    if (!prev || statusRank(t.status) > statusRank(prev.status)) byEmail.set(t.employee_email, t);
+  }
+  const approved = [];
+  const awaiting = [];
+  const missing = [];
+  for (const e of expected) {
+    const t = byEmail.get(e.email);
+    if (t && t.status === "approved") approved.push(e);
+    else if (t && t.status === "submitted") awaiting.push(e);
+    else missing.push(e);
+  }
+  return { expected, approved, awaiting, missing };
+}
+
+/**
+ * Metrics the payroll report tracks — hours, points, visits, miles, and the
+ * (already-tracked) reimbursement total. No pay rates or computed wages.
+ */
+export const REPORT_METRICS = [
+  { key: "regular_hours", label: "Regular" },
+  { key: "overtime_hours", label: "OT" },
+  { key: "vacation", label: "Vacation", value: effectiveVacationHours },
+  { key: "holiday_hours", label: "Holiday" },
+  { key: "on_call_hours", label: "On Call" },
+  { key: "regular_points", label: "Reg Pts" },
+  { key: "emergency_visit_points", label: "Emerg Pts" },
+  { key: "on_call_visits", label: "Visits" },
+  { key: "miles", label: "Miles" },
+  { key: "reimbursement", label: "Reimb", value: effectiveReimbursement },
+];
+
+export const REPORT_GROUPINGS = [
+  { value: "period", label: "Pay period" },
+  { value: "employee", label: "Employee" },
+  { value: "service_type", label: "Service line" },
+];
+
+function groupInfo(ts, groupBy) {
+  if (groupBy === "employee") {
+    const label = ts.employee_name || ts.employee_email || "—";
+    return { key: ts.employee_email || label, label, sort: label.toLowerCase() };
+  }
+  if (groupBy === "service_type") {
+    return { key: ts.service_type || "home_health", label: serviceTypeLabel(ts.service_type), sort: ts.service_type || "" };
+  }
+  // default: pay period
+  return {
+    key: `${ts.pay_period_start}__${ts.pay_period_end}`,
+    label: payPeriodLabel(ts.pay_period_start, ts.pay_period_end),
+    sort: ts.pay_period_start || "",
+  };
+}
+
+function zeroMetrics() {
+  const m = {};
+  for (const metric of REPORT_METRICS) m[metric.key] = 0;
+  return m;
+}
+
+/**
+ * Aggregate timesheets into report rows grouped by pay period, employee, or
+ * service line. Each row carries the summed metrics and a timesheet count.
+ * Rows sort newest/first descending by their group sort key.
+ */
+export function aggregateTimesheets(timesheets = [], groupBy = "period") {
+  const groups = new Map();
+  for (const t of Array.isArray(timesheets) ? timesheets : []) {
+    if (!t) continue;
+    const info = groupInfo(t, groupBy);
+    if (!groups.has(info.key)) {
+      groups.set(info.key, { key: info.key, label: info.label, sort: info.sort, count: 0, metrics: zeroMetrics() });
+    }
+    const g = groups.get(info.key);
+    g.count += 1;
+    for (const metric of REPORT_METRICS) {
+      g.metrics[metric.key] += toNumber(metric.value ? metric.value(t) : t[metric.key]);
+    }
+  }
+  const rows = [...groups.values()];
+  for (const r of rows) {
+    for (const metric of REPORT_METRICS) r.metrics[metric.key] = Math.round(r.metrics[metric.key] * 100) / 100;
+  }
+  const dir = groupBy === "employee" || groupBy === "service_type" ? 1 : -1;
+  return rows.sort((a, b) => dir * String(a.sort).localeCompare(String(b.sort)));
+}
+
+/** Column-wise totals across aggregated report rows. */
+export function aggregateTotals(rows = []) {
+  const totals = zeroMetrics();
+  let count = 0;
+  for (const r of Array.isArray(rows) ? rows : []) {
+    count += r.count || 0;
+    for (const metric of REPORT_METRICS) totals[metric.key] += toNumber(r.metrics?.[metric.key]);
+  }
+  for (const metric of REPORT_METRICS) totals[metric.key] = Math.round(totals[metric.key] * 100) / 100;
+  return { count, metrics: totals };
+}

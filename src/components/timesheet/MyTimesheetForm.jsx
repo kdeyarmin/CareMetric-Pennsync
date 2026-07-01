@@ -14,17 +14,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ClipboardList, Send, Info, Save, X } from "lucide-react";
+import { ClipboardList, Send, Info, Save, X, CalendarClock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   SERVICE_TYPES,
   paysByPoints,
   computePtoHoursForPeriod,
   getTimesheetValidationError,
-  defaultPayPeriod,
   toNumber,
   NUMERIC_FIELDS,
 } from "./timesheetUtils";
+import {
+  currentPayPeriod,
+  listPayPeriods,
+  payPeriodByIndex,
+  periodIndexForDate,
+  isPastDue,
+  dueLabel,
+  paydayLabel,
+} from "./payPeriodSchedule";
 
 const POINT_FIELDS = [
   { key: "regular_points", label: "Regular Points" },
@@ -40,11 +48,11 @@ const HOUR_FIELDS = [
 
 const REIMB_FIELDS = [
   { key: "miles", label: "Miles" },
-  { key: "reimbursement", label: "Reimbursement ($)" },
+  { key: "reimbursement", label: "Other Reimbursement ($)" },
 ];
 
 function blankForm(currentUser) {
-  const period = defaultPayPeriod();
+  const period = currentPayPeriod();
   const base = {
     service_type: currentUser?.service_type === "hospice" ? "hospice" : "home_health",
     pay_period_start: period.start,
@@ -54,6 +62,25 @@ function blankForm(currentUser) {
   };
   for (const f of NUMERIC_FIELDS) base[f] = "";
   return base;
+}
+
+/**
+ * Pay periods for the dropdown: the standard schedule window, plus the period of
+ * the sheet being edited if it happens to fall outside that window (so an older
+ * timesheet still shows its own period).
+ */
+function periodOptions(startISO, endISO) {
+  const options = listPayPeriods();
+  const key = `${startISO}__${endISO}`;
+  if (startISO && !options.some((p) => p.key === key)) {
+    const aligned = payPeriodByIndex(periodIndexForDate(startISO));
+    options.unshift(
+      aligned.key === key
+        ? aligned
+        : { key, start: startISO, end: endISO, label: `${startISO} → ${endISO}`, dueDate: "", payday: "" }
+    );
+  }
+  return options;
 }
 
 function fromExisting(ts) {
@@ -73,6 +100,7 @@ export default function MyTimesheetForm({
   approvers = [],
   defaultManagerEmail = "",
   approvedTimeOff = [],
+  phoneReimbursement = 0,
   editing = null,
   onCancelEdit,
 }) {
@@ -106,6 +134,16 @@ export default function MyTimesheetForm({
     () => computePtoHoursForPeriod(approvedTimeOff, form.pay_period_start, form.pay_period_end),
     [approvedTimeOff, form.pay_period_start, form.pay_period_end]
   );
+
+  // Scheduled pay periods (Sun→Sat biweekly). The selected one carries its due
+  // date (noon Monday after period end) and payday.
+  const periods = useMemo(
+    () => periodOptions(form.pay_period_start, form.pay_period_end),
+    [form.pay_period_start, form.pay_period_end]
+  );
+  const selectedKey = `${form.pay_period_start}__${form.pay_period_end}`;
+  const selectedPeriod = periods.find((p) => p.key === selectedKey) || null;
+  const pastDue = selectedPeriod ? isPastDue(selectedPeriod) : false;
 
   const save = useMutation({
     mutationFn: async (status) => {
@@ -193,7 +231,7 @@ export default function MyTimesheetForm({
             save.mutate("submitted");
           }}
         >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="ts-service">Service line</Label>
               <Select value={form.service_type} onValueChange={(v) => update({ service_type: v })}>
@@ -210,33 +248,49 @@ export default function MyTimesheetForm({
               </Select>
             </div>
             <div>
-              <Label htmlFor="ts-start">Pay period start</Label>
-              <Input
-                id="ts-start"
-                type="date"
-                className="mt-1"
-                value={form.pay_period_start}
-                onChange={(e) => {
-                  const start = e.target.value;
-                  update({
-                    pay_period_start: start,
-                    pay_period_end: form.pay_period_end && form.pay_period_end < start ? start : form.pay_period_end,
-                  });
+              <Label htmlFor="ts-period">Pay period</Label>
+              <Select
+                value={selectedKey}
+                onValueChange={(v) => {
+                  const p = periods.find((x) => x.key === v);
+                  if (p) update({ pay_period_start: p.start, pay_period_end: p.end });
                 }}
-              />
-            </div>
-            <div>
-              <Label htmlFor="ts-end">Pay period end</Label>
-              <Input
-                id="ts-end"
-                type="date"
-                className="mt-1"
-                min={form.pay_period_start || undefined}
-                value={form.pay_period_end}
-                onChange={(e) => update({ pay_period_end: e.target.value })}
-              />
+              >
+                <SelectTrigger id="ts-period" className="mt-1">
+                  <SelectValue placeholder="Select a pay period" />
+                </SelectTrigger>
+                <SelectContent>
+                  {periods.map((p) => (
+                    <SelectItem key={p.key} value={p.key}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
+
+          {selectedPeriod?.dueDate && (
+            <div
+              className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-sm rounded-lg border px-3 py-2 ${
+                pastDue ? "bg-red-50 border-red-200 text-red-700" : "bg-slate-50 border-slate-200 text-slate-600"
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarClock className="w-4 h-4" />
+                Due <span className="font-semibold">{dueLabel(selectedPeriod)}</span>
+              </span>
+              <span className="text-slate-300">·</span>
+              <span>
+                Payday <span className="font-semibold">{paydayLabel(selectedPeriod)}</span>
+              </span>
+              {pastDue && (
+                <span className="inline-flex items-center gap-1 font-semibold ml-auto">
+                  <AlertTriangle className="w-4 h-4" /> Past due
+                </span>
+              )}
+            </div>
+          )}
 
           <Alert className="bg-blue-50 border-blue-200">
             <Info className="h-4 w-4 text-blue-600" />
@@ -284,11 +338,21 @@ export default function MyTimesheetForm({
           </div>
 
           <div>
-            <p className="text-sm font-semibold text-slate-700 mb-2">Mileage &amp; reimbursement</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-slate-700">Mileage &amp; reimbursement</p>
+              {phoneReimbursement > 0 && (
+                <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5">
+                  +${phoneReimbursement} phone reimbursement (auto-added)
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {REIMB_FIELDS.map((f) => numberField(f))}
             </div>
             <p className="text-xs text-slate-400 mt-1">
+              {phoneReimbursement > 0
+                ? `Your $${phoneReimbursement}/pay phone reimbursement is added automatically — enter any other reimbursement or mileage here. `
+                : ""}
               {isHomeHealth
                 ? "Mileage is reimbursed at $0.45/mile."
                 : "On-call pay is $5.00/hour; on-call visits are $50.00/visit."}

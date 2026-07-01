@@ -18,8 +18,11 @@ import { escapeCsvField } from "../admin/csvExport.js";
 import {
   splitName,
   effectiveVacationHours,
+  effectiveReimbursement,
   toNumber,
   payPeriodLabel,
+  REPORT_METRICS,
+  aggregateTotals,
 } from "./timesheetUtils.js";
 
 /**
@@ -38,7 +41,7 @@ export const PAYROLL_COLUMNS = {
     { key: "holiday_hours", label: "Holiday", numeric: true },
     { key: "on_call_hours", label: "On Call", numeric: true },
     { key: "miles", label: "Miles", numeric: true },
-    { key: "reimbursement", label: "Reimb", numeric: true },
+    { key: "reimbursement", label: "Reimb", numeric: true, value: effectiveReimbursement },
   ],
   hospice: [
     { key: "employee", label: "Employee", numeric: false, value: (ts) => ts.employee_name || ts.employee_email || "" },
@@ -49,7 +52,7 @@ export const PAYROLL_COLUMNS = {
     { key: "on_call_hours", label: "On Call", numeric: true },
     { key: "on_call_visits", label: "Visits", numeric: true },
     { key: "miles", label: "Mileage", numeric: true },
-    { key: "reimbursement", label: "Reimb.", numeric: true },
+    { key: "reimbursement", label: "Reimb.", numeric: true, value: effectiveReimbursement },
   ],
 };
 
@@ -163,4 +166,28 @@ export function buildPayrollCSV(table) {
 export function payrollFilename(serviceType, periodEnd, ext = "csv") {
   const date = String(periodEnd || "").slice(0, 10) || "period";
   return `${serviceType}_payroll_${date}.${ext}`;
+}
+
+/**
+ * Serialize an aggregated timesheet report (rows from aggregateTimesheets) to a
+ * spreadsheet-safe CSV. `groupHeader` labels the first column (e.g. "Pay period",
+ * "Employee"). A totals row is appended. Values are hours/points/visits/miles and
+ * the tracked reimbursement total — no pay rates.
+ */
+export function buildReportCSV(rows, groupHeader = "Group") {
+  const header = [groupHeader, "Timesheets", ...REPORT_METRICS.map((m) => m.label)];
+  const body = (Array.isArray(rows) ? rows : []).map((r) => [
+    r.label,
+    r.count,
+    ...REPORT_METRICS.map((m) => formatNum(r.metrics?.[m.key], { blankZero: false })),
+  ]);
+  const totals = aggregateTotals(rows);
+  const totalRow = [
+    "Total",
+    totals.count,
+    ...REPORT_METRICS.map((m) => formatNum(totals.metrics?.[m.key], { blankZero: false })),
+  ];
+  return [header, ...body, totalRow]
+    .map((row) => row.map(escapeCsvField).join(","))
+    .join("\r\n");
 }

@@ -1,0 +1,50 @@
+{
+  "name": "EmployeePayrollProfile",
+  "type": "object",
+  "properties": {
+    "employee_email": {
+      "type": "string",
+      "description": "Email of the employee this payroll profile belongs to (one profile per employee)"
+    },
+    "employee_name": {
+      "type": "string",
+      "description": "Display name of the employee"
+    },
+    "phone_reimbursement": {
+      "type": "number",
+      "default": 0,
+      "description": "Standing per-pay-period phone reimbursement (an expense reimbursement, not pay or a wage rate) auto-applied to the employee's timesheets so it never has to be re-entered"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the standing reimbursement is currently applied"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Admin note about this payroll profile"
+    }
+  },
+  "required": [
+    "employee_email"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "employee_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

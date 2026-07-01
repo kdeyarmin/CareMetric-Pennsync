@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Check, X, Hourglass, CalendarRange, User } from "lucide-react";
+import { Check, CheckCheck, X, Hourglass, CalendarRange, User } from "lucide-react";
 import { toast } from "sonner";
 import {
   payPeriodLabel,
@@ -29,6 +29,8 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
   // { timesheet, decision: 'approved' | 'rejected' }
   const [review, setReview] = useState(null);
   const [note, setNote] = useState("");
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkNote, setBulkNote] = useState("");
 
   const submitted = useMemo(
     () =>
@@ -58,6 +60,33 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
       toast.error(err?.response?.data?.error || err?.message || "Could not update the timesheet."),
   });
 
+  // Approve every submitted timesheet in the queue at once. Runs the same
+  // server-side reviewTimesheet per row (authorization + notifications enforced
+  // there); tolerates partial failures and reports the counts.
+  const bulkApprove = useMutation({
+    mutationFn: async () => {
+      const results = await Promise.allSettled(
+        submitted.map((t) =>
+          reviewTimesheet({ timesheet_id: t.id, decision: "approved", note: bulkNote.trim() }).then((r) => {
+            if (r?.error) throw new Error(r.error);
+            return r;
+          })
+        )
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: ({ ok, failed }) => {
+      toast[failed ? "warning" : "success"](
+        `Approved ${ok} timesheet${ok === 1 ? "" : "s"}${failed ? ` · ${failed} could not be approved` : ""}.`
+      );
+      setBulkOpen(false);
+      setBulkNote("");
+      queryClient.invalidateQueries({ queryKey: ["timesheets"] });
+    },
+    onError: (err) => toast.error(err?.message || "Bulk approval failed."),
+  });
+
   const openReview = (timesheet, decision) => {
     setNote("");
     setReview({ timesheet, decision });
@@ -66,11 +95,27 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
   return (
     <Card className="shadow-sm">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Hourglass className="w-5 h-5 text-amber-600" />
-          Timesheets Awaiting Approval
-          <span className="text-sm font-normal text-slate-400">({submitted.length})</span>
-        </CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Hourglass className="w-5 h-5 text-amber-600" />
+            Timesheets Awaiting Approval
+            <span className="text-sm font-normal text-slate-400">({submitted.length})</span>
+          </CardTitle>
+          {submitted.length > 1 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+              onClick={() => {
+                setBulkNote("");
+                setBulkOpen(true);
+              }}
+            >
+              <CheckCheck className="w-4 h-4 mr-1.5" />
+              Approve all ({submitted.length})
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {submitted.length === 0 ? (
@@ -190,6 +235,40 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
                 : review?.decision === "approved"
                   ? "Confirm approval"
                   : "Return for changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkOpen} onOpenChange={(open) => !open && setBulkOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Approve all {submitted.length} timesheets?</DialogTitle>
+            <DialogDescription>
+              This approves every timesheet currently awaiting your review. Each employee is notified.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label htmlFor="ts-bulk-note">Note for all (optional)</Label>
+            <Textarea
+              id="ts-bulk-note"
+              className="mt-1"
+              rows={2}
+              placeholder="Optional note applied to each approval…"
+              value={bulkNote}
+              onChange={(e) => setBulkNote(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkOpen(false)} disabled={bulkApprove.isPending}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              disabled={bulkApprove.isPending}
+              onClick={() => bulkApprove.mutate()}
+            >
+              {bulkApprove.isPending ? "Approving…" : `Approve all ${submitted.length}`}
             </Button>
           </DialogFooter>
         </DialogContent>

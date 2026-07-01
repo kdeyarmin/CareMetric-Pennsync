@@ -84,6 +84,11 @@
       "default": 0,
       "description": "Vacation/PTO hours auto-carried from the employee's approved time-off requests overlapping this pay period; added to vacation_hours on the payroll report"
     },
+    "phone_reimbursement": {
+      "type": "number",
+      "default": 0,
+      "description": "Standing phone reimbursement (an expense reimbursement, not pay) auto-applied from the employee's EmployeePayrollProfile; added to reimbursement on the payroll report"
+    },
     "notes": {
       "type": "string",
       "description": "Free-text note from the employee for the reviewer"

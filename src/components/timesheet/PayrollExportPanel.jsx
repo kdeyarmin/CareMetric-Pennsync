@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileSpreadsheet, FileText, Download, Info } from "lucide-react";
+import { FileSpreadsheet, FileText, Download, Info, CheckCircle2, Hourglass, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   buildPayrollTable,
@@ -19,7 +19,8 @@ import {
   payrollFilename,
 } from "./payrollExport";
 import { downloadPayrollPDF } from "./payrollPdf";
-import { payPeriodLabel } from "./timesheetUtils";
+import { payPeriodLabel, submissionCoverage, serviceTypeLabel } from "./timesheetUtils";
+import { periodIndexForDate, payPeriodByIndex, paydayLabel, dueLabel } from "./payPeriodSchedule";
 
 /** Trigger a browser download of an in-memory text blob. */
 function downloadText(text, filename, type = "text/csv;charset=utf-8;") {
@@ -34,10 +35,36 @@ function downloadText(text, filename, type = "text/csv;charset=utf-8;") {
   URL.revokeObjectURL(url);
 }
 
-function PayrollTableCard({ serviceType, timesheets, period }) {
+function CoverageStrip({ coverage }) {
+  if (!coverage || coverage.expected.length === 0) return null;
+  const { approved, awaiting, missing } = coverage;
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
+      <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5">
+        <CheckCircle2 className="w-3.5 h-3.5" /> {approved.length} approved
+      </span>
+      {awaiting.length > 0 && (
+        <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5">
+          <Hourglass className="w-3.5 h-3.5" /> {awaiting.length} awaiting approval
+        </span>
+      )}
+      {missing.length > 0 && (
+        <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 border border-red-200 rounded-full px-2.5 py-0.5">
+          <AlertTriangle className="w-3.5 h-3.5" /> {missing.length} not submitted: {missing.map((e) => e.name || e.email).join(", ")}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function PayrollTableCard({ serviceType, approvedTimesheets, allTimesheets, employees, period }) {
   const table = useMemo(
-    () => buildPayrollTable(timesheets, serviceType, { periodStart: period.start, periodEnd: period.end }),
-    [timesheets, serviceType, period]
+    () => buildPayrollTable(approvedTimesheets, serviceType, { periodStart: period.start, periodEnd: period.end }),
+    [approvedTimesheets, serviceType, period]
+  );
+  const coverage = useMemo(
+    () => submissionCoverage(employees, allTimesheets, { serviceType, periodStart: period.start, periodEnd: period.end }),
+    [employees, allTimesheets, serviceType, period]
   );
   const totals = totalsRow(table);
   const empty = table.rows.length === 0;
@@ -74,9 +101,10 @@ function PayrollTableCard({ serviceType, timesheets, period }) {
         </div>
       </CardHeader>
       <CardContent>
+        <CoverageStrip coverage={coverage} />
         {empty ? (
           <p className="text-sm text-slate-400 py-6 text-center">
-            No approved timesheets for this service line in the selected pay period.
+            No approved timesheets for {serviceTypeLabel(serviceType)} in the selected pay period.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -128,38 +156,42 @@ function PayrollTableCard({ serviceType, timesheets, period }) {
   );
 }
 
-export default function PayrollExportPanel({ timesheets = [] }) {
-  // Only approved timesheets feed the final payroll.
-  const approved = useMemo(() => timesheets.filter((t) => t.status === "approved"), [timesheets]);
-
-  // Distinct pay periods present among approved timesheets, newest first.
+export default function PayrollExportPanel({ timesheets = [], employees = [] }) {
+  // Pay periods present among ALL timesheets (any status) so coverage shows even
+  // before approvals; the export tables themselves only use approved sheets.
   const periods = useMemo(() => {
     const map = new Map();
-    for (const t of approved) {
+    for (const t of timesheets) {
+      if (!t?.pay_period_start || !t?.pay_period_end) continue;
       const key = `${t.pay_period_start}__${t.pay_period_end}`;
       if (!map.has(key)) map.set(key, { start: t.pay_period_start, end: t.pay_period_end });
     }
     return [...map.values()].sort((a, b) => (b.start || "").localeCompare(a.start || ""));
-  }, [approved]);
+  }, [timesheets]);
 
   const [selectedKey, setSelectedKey] = useState("");
-  const selected =
-    periods.find((p) => `${p.start}__${p.end}` === selectedKey) || periods[0] || null;
+  const selected = periods.find((p) => `${p.start}__${p.end}` === selectedKey) || periods[0] || null;
 
-  const inPeriod = useMemo(() => {
+  const allInPeriod = useMemo(() => {
     if (!selected) return [];
-    return approved.filter(
-      (t) => t.pay_period_start === selected.start && t.pay_period_end === selected.end
-    );
-  }, [approved, selected]);
+    return timesheets.filter((t) => t.pay_period_start === selected.start && t.pay_period_end === selected.end);
+  }, [timesheets, selected]);
+
+  const approvedInPeriod = useMemo(() => allInPeriod.filter((t) => t.status === "approved"), [allInPeriod]);
+
+  // Schedule descriptor (due date + payday) for the selected period.
+  const schedule = useMemo(
+    () => (selected ? payPeriodByIndex(periodIndexForDate(selected.start)) : null),
+    [selected]
+  );
 
   if (periods.length === 0) {
     return (
       <Alert className="bg-blue-50 border-blue-200">
         <Info className="h-4 w-4 text-blue-600" />
         <AlertDescription className="text-blue-800 text-sm">
-          There are no approved timesheets yet. Approve submitted timesheets in the Approvals tab, then
-          come back here to generate the payroll for the accountant.
+          There are no timesheets yet. Once employees submit and you approve them, come back here to
+          generate the payroll for the accountant.
         </AlertDescription>
       </Alert>
     );
@@ -191,18 +223,39 @@ export default function PayrollExportPanel({ timesheets = [] }) {
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-sm text-slate-500">
-              {inPeriod.length} approved {inPeriod.length === 1 ? "timesheet" : "timesheets"} in this period.
-              Home health and hospice export as separate files, matching the accountant's format.
-            </p>
+            <div className="text-sm text-slate-500 space-y-1">
+              {schedule?.payday && (
+                <p className="text-slate-600">
+                  Due <span className="font-medium">{dueLabel(schedule)}</span> · Payday{" "}
+                  <span className="font-medium">{paydayLabel(schedule)}</span>
+                </p>
+              )}
+              <p>
+                {approvedInPeriod.length} approved {approvedInPeriod.length === 1 ? "timesheet" : "timesheets"} in this period.
+                Home health and hospice export as separate files, matching the accountant's format. Only approved
+                timesheets are included.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {selected && (
         <>
-          <PayrollTableCard serviceType="home_health" timesheets={inPeriod} period={selected} />
-          <PayrollTableCard serviceType="hospice" timesheets={inPeriod} period={selected} />
+          <PayrollTableCard
+            serviceType="home_health"
+            approvedTimesheets={approvedInPeriod}
+            allTimesheets={allInPeriod}
+            employees={employees}
+            period={selected}
+          />
+          <PayrollTableCard
+            serviceType="hospice"
+            approvedTimesheets={approvedInPeriod}
+            allTimesheets={allInPeriod}
+            employees={employees}
+            period={selected}
+          />
         </>
       )}
     </div>
