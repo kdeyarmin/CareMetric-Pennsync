@@ -386,7 +386,7 @@ Return JSON format:
   }
 
   const currentQuestion = quiz.questions[currentQuestionIndex];
-  const progress = ((currentQuestionIndex + 1) / quiz.questions.length) * 100;
+  const progress = safePercent(currentQuestionIndex + 1, quiz.questions.length, { round: false });
   const allAnswered = Object.keys(userAnswers).length === quiz.questions.length;
 
   return (

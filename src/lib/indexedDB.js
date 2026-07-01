@@ -98,13 +98,20 @@ export const deleteDraftNoteLocally = async (id) => {
 
 export const addToSyncQueue = async (action, payload) => {
   const db = await openDB();
-  return new Promise((resolve, reject) => {
+  const id = await new Promise((resolve, reject) => {
     const tx = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
     const store = tx.objectStore(STORES.SYNC_QUEUE);
     const request = store.put({ action, payload, createdAt: Date.now() });
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
+  // Let any mounted sync-status widget refresh its pending count immediately
+  // instead of waiting for its poll tick. Event name kept in sync with
+  // offlineSync.QUEUE_CHANGED_EVENT (not imported here to avoid a cycle).
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('offline-queue-changed'));
+  }
+  return id;
 };
 
 export const getSyncQueue = async () => {

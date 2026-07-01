@@ -17,7 +17,8 @@ import {
   Save,
   Clock
 } from 'lucide-react';
-import { OfflineStorageManager } from './OfflineSyncService';
+import { addToSyncQueue } from '@/lib/indexedDB';
+import { drainSyncQueue } from '@/lib/offlineSync';
 import { toast } from 'sonner';
 
 export default function OfflineVisitNoteCapture({ patient, onComplete }) {
@@ -145,8 +146,15 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
         visitData.nurse_signature && `Signed: ${visitData.nurse_signature}`,
       ].filter(Boolean).join('\n\n');
 
-      // Save the schema-conformant Visit to the offline queue.
-      const _savedId = OfflineStorageManager.saveToQueue('visit', {
+      // Save the schema-conformant Visit to the ONE canonical offline queue (the
+      // IndexedDB sync_queue, drained globally by OfflineManager). A stable
+      // client_request_id keeps a retried drain idempotent; crypto.randomUUID is
+      // only defined in secure contexts, so fall back so a field save never throws.
+      const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      await addToSyncQueue('CREATE_VISIT', {
+        client_request_id: clientRequestId,
         patient_id: visitData.patient_id,
         visit_date: visitData.visit_date,
         visit_type: VISIT_TYPE_MAP[visitData.visit_type] || 'skilled_nursing',
@@ -154,10 +162,13 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
         nurse_notes: nurseNotes,
         status: 'completed',
       });
+      // When online, drain immediately so it syncs now instead of waiting for the
+      // next reconnect (OfflineManager only auto-drains on the `online` event).
+      if (navigator.onLine) drainSyncQueue();
 
       toast.success(
-        isOnline 
-          ? 'Visit note saved and will sync shortly' 
+        isOnline
+          ? 'Visit note saved and will sync shortly'
           : 'Visit note saved offline - will sync when online'
       );
 

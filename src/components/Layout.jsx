@@ -17,7 +17,7 @@ import DesktopSidebar from "@/components/layout/DesktopSidebar";
 import MobileHeader from "@/components/layout/MobileHeader";
 import MobileMenu from "@/components/layout/MobileMenu";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
-import OfflineSyncService from "@/components/offline/OfflineSyncService";
+import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import SessionTimeoutManager from "@/components/security/SessionTimeoutManager";
 import Breadcrumbs from "@/components/navigation/Breadcrumbs";
@@ -351,7 +351,7 @@ export default function Layout({ children, currentPageName }) {
 
         {/* Floating Sync Status — only appears when there are pending items to sync */}
         <div className="fixed bottom-20 md:bottom-4 right-4 z-40 max-w-sm">
-          <OfflineSyncService />
+          <OfflineSyncStatus />
         </div>
         <SessionTimeoutManager timeoutMinutes={15} warningMinutes={2} />
 

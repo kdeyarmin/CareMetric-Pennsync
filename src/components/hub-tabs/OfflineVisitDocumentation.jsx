@@ -14,12 +14,13 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import OfflineVisitNoteCapture from '@/components/offline/OfflineVisitNoteCapture';
-import OfflineSyncService, { useOfflineSync } from '@/components/offline/OfflineSyncService';
+import OfflineSyncStatus from '@/components/offline/OfflineSyncStatus';
+import { useOfflineQueue } from '@/lib/offlineSync';
 
 export default function OfflineVisitDocumentation() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPatient, setSelectedPatient] = useState(null);
-  const { isOnline, pendingCount } = useOfflineSync();
+  const { isOnline, pendingCount } = useOfflineQueue();
 
   const { data: patients = [], isLoading } = useQuery({
     queryKey: ['patients-offline'],
@@ -110,10 +111,10 @@ export default function OfflineVisitDocumentation() {
         </Card>
       </div>
 
-      {/* Sync Service Widget */}
+      {/* Sync Status Widget */}
       {pendingCount > 0 && (
         <div className="mb-6">
-          <OfflineSyncService />
+          <OfflineSyncStatus />
         </div>
       )}
 

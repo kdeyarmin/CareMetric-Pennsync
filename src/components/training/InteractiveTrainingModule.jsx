@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { safePercent } from "@/lib/safePercent";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import {
@@ -54,7 +55,7 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
         content.quiz.forEach((q, idx) => {
           if (selectedAnswers[idx] === q.correct_answer) correctCount++;
         });
-        const finalScore = Math.round((correctCount / content.quiz.length) * 100);
+        const finalScore = safePercent(correctCount, content.quiz.length);
         setScore(finalScore);
         
         const timeSpent = Math.round((Date.now() - startTime) / 1000 / 60); // minutes
@@ -274,7 +275,7 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
                   <span className="text-sm text-slate-600">
                     Question {quizStep + 1} of {content.quiz.length}
                   </span>
-                  <Progress value={(quizStep + 1) / content.quiz.length * 100} className="w-48 h-2" />
+                  <Progress value={safePercent(quizStep + 1, content.quiz.length, { round: false })} className="w-48 h-2" />
                 </div>
 
                 <div className="bg-white rounded-lg p-4 border">
