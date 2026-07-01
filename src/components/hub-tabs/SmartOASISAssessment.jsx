@@ -16,6 +16,7 @@ import OASISSuggestionPanel from "@/components/oasis/OASISSuggestionPanel";
 import OASISComplianceWarnings, { getComplianceIssues } from "@/components/oasis/OASISComplianceWarnings";
 import OASISClinicalReasoningEngine, { getClinicalReasoningIssues } from "@/components/oasis/OASISClinicalReasoningEngine";
 import OASISQuestionGuidance from "@/components/oasis/OASISQuestionGuidance";
+import NoteToOasisPrefill from "@/components/oasis/NoteToOasisPrefill";
 import { OASIS_SECTIONS } from "@/components/oasis/oasisQuestions";
 import { AssessmentSkeleton } from "@/components/ui/PageSkeleton";
 
@@ -432,6 +433,11 @@ export default function SmartOASISAssessment() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left — OASIS Questions */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <NoteToOasisPrefill
+            patientId={selectedPatientId}
+            sections={OASIS_SECTIONS}
+            onApply={handleAnswer}
+          />
           {OASIS_SECTIONS.map(section => (
             <SectionCard 
               key={section.id} 
