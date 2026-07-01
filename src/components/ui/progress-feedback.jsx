@@ -1,6 +1,7 @@
 import { Progress } from "@/components/ui/progress";
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { safePercent } from "@/lib/safePercent";
 
 export default function ProgressFeedback({ 
   stages = [],
@@ -8,7 +9,7 @@ export default function ProgressFeedback({
   message = "Processing...",
   isComplete = false 
 }) {
-  const progress = isComplete ? 100 : ((currentStage + 1) / stages.length) * 100;
+  const progress = isComplete ? 100 : safePercent(currentStage + 1, stages.length, { round: false });
 
   return (
     <Card className="border-blue-200 bg-blue-50">

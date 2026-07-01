@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ShieldCheck, AlertTriangle, CalendarClock, ArrowRight } from "lucide-react";
 import { createPageUrl } from "@/utils";
+import { safePercent } from "@/lib/safePercent";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
@@ -57,7 +58,7 @@ export default function RequiredTrainingSummary({ assignments = [], courseMap = 
       completed: completed.length,
       overdue: overdue.length,
       outstanding: outstanding.length,
-      pct: Math.round((completed.length / total) * 100),
+      pct: safePercent(completed.length, total),
       next,
     };
   }, [assignments, courseMap]);

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { safePercent } from "@/lib/safePercent";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,7 +47,7 @@ function MicroQuiz({ questions, onComplete, submitting }) {
   const submit = () => {
     let correctCount = 0;
     questions.forEach((q) => { if (isCorrect(q, answers[q.id])) correctCount++; });
-    const score = Math.round((correctCount / questions.length) * 100);
+    const score = safePercent(correctCount, questions.length);
     setGraded({ score, correctCount });
     onComplete(score);
   };

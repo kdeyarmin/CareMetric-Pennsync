@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { safePercent } from "@/lib/safePercent";
 import {
   TrendingUp,
   AlertTriangle,
@@ -190,7 +191,7 @@ export default function DetailedDeficitReport({
                       AI has provided {deficit.count} suggestion{deficit.count > 1 ? 's' : ''} in this area
                     </p>
                     <Progress 
-                      value={Math.min((deficit.count / analysis.totalSuggestions) * 100, 100)} 
+                      value={Math.min(safePercent(deficit.count, analysis.totalSuggestions, { round: false }), 100)}
                       className="h-2 mb-3" 
                     />
                   </div>
@@ -283,7 +284,7 @@ export default function DetailedDeficitReport({
                     <span className="text-sm capitalize text-slate-700">{category}</span>
                     <div className="flex items-center gap-2">
                       <Progress 
-                        value={(count / analysis.totalSuggestions) * 100} 
+                        value={safePercent(count, analysis.totalSuggestions, { round: false })}
                         className="w-24 h-2" 
                       />
                       <span className="text-sm font-medium text-slate-900 w-8 text-right">{count}</span>
