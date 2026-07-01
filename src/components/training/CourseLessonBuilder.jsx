@@ -1,0 +1,357 @@
+import { useEffect, useRef, useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Plus, Trash2, ChevronUp, ChevronDown, Loader2, CheckCircle2, AlertCircle, BookOpen,
+} from "lucide-react";
+
+// Lightweight local id for unsaved lessons/sections so React keys stay stable
+// before a server id exists. Avoids Math.random (blocked in some envs) and Date.now.
+let localSeq = 0;
+const nextLocalId = () => `local-${localSeq++}`;
+
+const linesToArray = (value) =>
+  String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+// Map a persisted TrainingModule.content_json into the editor's working shape.
+const moduleToItem = (module) => {
+  const content = module.content_json || {};
+  return {
+    id: module.id,
+    _localId: nextLocalId(),
+    title: module.title || "",
+    intro: content.intro || "",
+    estimated_minutes: module.estimated_minutes || 10,
+    is_required: module.is_required !== false,
+    sections: (Array.isArray(content.sections) ? content.sections : []).map((s) => ({
+      _localId: nextLocalId(),
+      heading: s.heading || "",
+      body: s.body || "",
+      bulletsText: Array.isArray(s.bullets) ? s.bullets.join("\n") : "",
+    })),
+    takeawaysText: Array.isArray(content.key_takeaways) ? content.key_takeaways.join("\n") : "",
+  };
+};
+
+const blankSection = () => ({ _localId: nextLocalId(), heading: "", body: "", bulletsText: "" });
+
+const blankItem = () => ({
+  _localId: nextLocalId(),
+  title: "",
+  intro: "",
+  estimated_minutes: 10,
+  is_required: true,
+  sections: [blankSection()],
+  takeawaysText: "",
+});
+
+// Serialize a working item back into TrainingModule fields the player/viewer read.
+const itemToContentJson = (item) => ({
+  intro: item.intro || "",
+  sections: (item.sections || [])
+    .filter((s) => s.heading || s.body || s.bulletsText)
+    .map((s) => ({
+      heading: s.heading || "",
+      body: s.body || "",
+      bullets: linesToArray(s.bulletsText),
+    })),
+  key_takeaways: linesToArray(item.takeawaysText),
+  case_scenarios: [],
+});
+
+// TrainingModule.category is a required enum distinct from the course category.
+// Mirror the course category when it's a valid module category, else fall back.
+const MODULE_CATEGORIES = new Set([
+  "clinical", "documentation", "compliance", "safety", "technology", "specialty", "onboarding",
+]);
+const toModuleCategory = (courseCategory) =>
+  MODULE_CATEGORIES.has(courseCategory) ? courseCategory : "compliance";
+
+export default function CourseLessonBuilder({ courseId, courseCategory }) {
+  const queryClient = useQueryClient();
+  const [items, setItems] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const seededFor = useRef(null);
+
+  const { data: modules = [], isLoading } = useQuery({
+    queryKey: ["training-modules", courseId],
+    queryFn: () => base44.entities.TrainingModule.filter({ course_id: courseId }, "order_index", 100),
+    enabled: !!courseId,
+    initialData: [],
+  });
+
+  // Seed the editor from server data once per course. After that the local list
+  // is the source of truth until the admin saves.
+  useEffect(() => {
+    if (!courseId || seededFor.current === courseId) return;
+    if (isLoading) return;
+    setItems(modules.map(moduleToItem));
+    seededFor.current = courseId;
+  }, [courseId, isLoading, modules]);
+
+  const updateItem = (localId, patch) =>
+    setItems((prev) => prev.map((it) => (it._localId === localId ? { ...it, ...patch } : it)));
+
+  const move = (index, dir) => {
+    const target = index + dir;
+    if (target < 0 || target >= items.length) return;
+    setItems((prev) => {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const addSection = (localId) =>
+    setItems((prev) =>
+      prev.map((it) =>
+        it._localId === localId ? { ...it, sections: [...it.sections, blankSection()] } : it
+      )
+    );
+
+  const updateSection = (itemId, sectionId, patch) =>
+    setItems((prev) =>
+      prev.map((it) =>
+        it._localId === itemId
+          ? {
+              ...it,
+              sections: it.sections.map((s) => (s._localId === sectionId ? { ...s, ...patch } : s)),
+            }
+          : it
+      )
+    );
+
+  const removeSection = (itemId, sectionId) =>
+    setItems((prev) =>
+      prev.map((it) =>
+        it._localId === itemId
+          ? { ...it, sections: it.sections.filter((s) => s._localId !== sectionId) }
+          : it
+      )
+    );
+
+  const saveAll = async () => {
+    setSaving(true);
+    setSaved(false);
+    setError("");
+    try {
+      // Delete modules that were removed from the list.
+      const keptIds = new Set(items.filter((it) => it.id).map((it) => it.id));
+      const toDelete = modules.filter((m) => !keptIds.has(m.id));
+      await Promise.all(toDelete.map((m) => base44.entities.TrainingModule.delete(m.id)));
+
+      // Create/update each lesson with its list position as order_index.
+      await Promise.all(
+        items.map((item, index) => {
+          const payload = {
+            course_id: courseId,
+            title: item.title || `Lesson ${index + 1}`,
+            // category + module_type are required by the TrainingModule schema.
+            category: toModuleCategory(courseCategory),
+            module_type: "ongoing",
+            content_type: "text",
+            content_json: itemToContentJson(item),
+            order_index: index,
+            estimated_minutes: Number(item.estimated_minutes) || 10,
+            is_required: item.is_required !== false,
+          };
+          return item.id
+            ? base44.entities.TrainingModule.update(item.id, payload)
+            : base44.entities.TrainingModule.create(payload);
+        })
+      );
+
+      await queryClient.invalidateQueries({ queryKey: ["training-modules", courseId] });
+      // Force a re-seed from fresh server data so new rows pick up their ids.
+      seededFor.current = null;
+      setSaved(true);
+    } catch (err) {
+      console.error("Lesson save error:", err);
+      setError(err?.message || "Failed to save lessons. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!courseId) {
+    return (
+      <Alert className="border-slate-200 bg-slate-50">
+        <AlertCircle className="w-4 h-4 text-slate-500" />
+        <AlertDescription className="text-slate-600">
+          Save the course details first, then add lessons.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-600">
+          Lessons are shown to learners in order before the quiz.
+        </p>
+        <Button type="button" variant="outline" size="sm" onClick={() => setItems((prev) => [...prev, blankItem()])}>
+          <Plus className="w-4 h-4 mr-1" /> Add Lesson
+        </Button>
+      </div>
+
+      {items.length === 0 && (
+        <Card>
+          <CardContent className="py-10 text-center">
+            <BookOpen className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+            <p className="text-slate-500">No lessons yet. Add your first lesson.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {items.map((item, index) => (
+        <Card key={item._localId} className="border-slate-200">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Lesson {index + 1}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button type="button" variant="ghost" size="sm" disabled={index === 0} onClick={() => move(index, -1)}>
+                  <ChevronUp className="w-4 h-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="sm" disabled={index === items.length - 1} onClick={() => move(index, 1)}>
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setItems((prev) => prev.filter((it) => it._localId !== item._localId))}
+                >
+                  <Trash2 className="w-4 h-4 text-red-600" />
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-sm font-semibold">Lesson Title</Label>
+              <Input
+                value={item.title}
+                onChange={(e) => updateItem(item._localId, { title: e.target.value })}
+                placeholder="e.g. Hand Hygiene Basics"
+                className="h-10 mt-1"
+              />
+            </div>
+
+            <div>
+              <Label className="text-sm font-semibold">Introduction</Label>
+              <Textarea
+                value={item.intro}
+                onChange={(e) => updateItem(item._localId, { intro: e.target.value })}
+                placeholder="Short intro shown at the top of the lesson"
+                rows={2}
+                className="mt-1"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">Sections</Label>
+                <Button type="button" variant="outline" size="sm" onClick={() => addSection(item._localId)}>
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Section
+                </Button>
+              </div>
+              {item.sections.map((section, si) => (
+                <div key={section._localId} className="rounded-xl border border-slate-100 p-3 space-y-2 bg-slate-50/50">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-slate-400">Section {si + 1}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeSection(item._localId, section._localId)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    </Button>
+                  </div>
+                  <Input
+                    value={section.heading}
+                    onChange={(e) => updateSection(item._localId, section._localId, { heading: e.target.value })}
+                    placeholder="Section heading"
+                    className="h-10"
+                  />
+                  <Textarea
+                    value={section.body}
+                    onChange={(e) => updateSection(item._localId, section._localId, { body: e.target.value })}
+                    placeholder="Section content"
+                    rows={3}
+                  />
+                  <div>
+                    <Textarea
+                      value={section.bulletsText}
+                      onChange={(e) => updateSection(item._localId, section._localId, { bulletsText: e.target.value })}
+                      placeholder="Optional bullet points, one per line"
+                      rows={2}
+                    />
+                    <p className="text-xs text-slate-400 mt-1">One bullet per line (optional).</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <Label className="text-sm font-semibold">Key Takeaways</Label>
+              <Textarea
+                value={item.takeawaysText}
+                onChange={(e) => updateItem(item._localId, { takeawaysText: e.target.value })}
+                placeholder="One takeaway per line"
+                rows={2}
+                className="mt-1"
+              />
+            </div>
+
+            <div className="w-40">
+              <Label className="text-sm font-semibold">Est. Minutes</Label>
+              <Input
+                type="number"
+                min="1"
+                value={item.estimated_minutes}
+                onChange={(e) => updateItem(item._localId, { estimated_minutes: e.target.value })}
+                className="h-10 mt-1"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+
+      {error && (
+        <Alert className="border-red-200 bg-red-50">
+          <AlertCircle className="w-4 h-4 text-red-600" />
+          <AlertDescription className="text-red-800">{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="flex items-center gap-3 pt-2">
+        <Button type="button" onClick={saveAll} disabled={saving}>
+          {saving ? (
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+          ) : (
+            "Save Lessons"
+          )}
+        </Button>
+        {saved && !saving && (
+          <span className="flex items-center gap-1.5 text-sm text-emerald-600">
+            <CheckCircle2 className="w-4 h-4" /> Lessons saved
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}

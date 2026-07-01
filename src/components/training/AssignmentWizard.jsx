@@ -4,9 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export default function AssignmentWizard({ users = [], onAssign }) {
+export default function AssignmentWizard({ users = [], onAssign, initialFilters }) {
   const [selectedUsers, setSelectedUsers] = useState([]);
-  const [filters, setFilters] = useState({ role: 'all', discipline: 'all', department: 'all', business_line: 'all', location: 'all' });
+  const [filters, setFilters] = useState({
+    role: 'all', discipline: 'all', department: 'all', business_line: 'all', location: 'all',
+    ...(initialFilters || {}),
+  });
   const filteredUsers = useMemo(() => users.filter((user) => {
     if (!user.email || user.role === 'admin') return false;
     if (filters.role !== 'all' && (user.job_title || user.credential_type || user.role) !== filters.role) return false;
