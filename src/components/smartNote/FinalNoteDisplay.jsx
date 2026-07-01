@@ -14,7 +14,14 @@ export default function FinalNoteDisplay({ finalNote, setFinalNote, onCopy, copi
           <p className="font-bold text-green-800">Medicare-Compliant Note Ready</p>
           <p className="text-xs text-slate-400">Based only on information you provided</p>
         </div>
-        {analysisScore && <Badge className="bg-green-600 text-white px-2.5 py-1 text-sm">{analysisScore}%</Badge>}
+        {Number.isFinite(analysisScore) && (
+          <Badge
+            className={`${analysisScore >= 90 ? "bg-green-600" : analysisScore >= 70 ? "bg-amber-500" : "bg-red-600"} text-white px-2.5 py-1 text-sm`}
+            title={`Compliance coverage score: ${analysisScore}%`}
+          >
+            {analysisScore}%
+          </Badge>
+        )}
         <Button onClick={onCopy} className="bg-green-600 hover:bg-green-700 h-10 px-4 gap-2 font-semibold shrink-0">
           {copied ? <><CheckCircle2 className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy</>}
         </Button>

@@ -10,7 +10,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import OnCallCalendar from "@/components/oncall/OnCallCalendar";
 import AssignOnCallDialog from "@/components/oncall/AssignOnCallDialog";
-import { isSuperAdmin } from "@/lib/superAdmin";
+import { isAdminView } from "@/lib/roles";
 
 export default function OnCallSchedule() {
   const queryClient = useQueryClient();
@@ -21,7 +21,7 @@ export default function OnCallSchedule() {
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
   });
-  const isAdmin = currentUser?.role === "admin" || isSuperAdmin(currentUser);
+  const isAdmin = isAdminView(currentUser);
 
   // Load shifts for the visible month (plus a small buffer for grid spillover).
   const monthKey = format(cursor, "yyyy-MM");

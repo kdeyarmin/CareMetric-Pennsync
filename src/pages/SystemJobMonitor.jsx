@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { isSuperAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,7 +66,7 @@ export default function SystemJobMonitor() {
       }
       return base44.entities.SystemLog.filter({ job_type: selectedJobType }, '-created_date', 50);
     },
-    enabled: currentUser?.role === 'admin',
+    enabled: isSuperAdminView(currentUser),
     refetchInterval: 30000 // Refresh every 30 seconds
   });
 
@@ -130,7 +131,7 @@ export default function SystemJobMonitor() {
     return `${seconds}s`;
   };
 
-  if (currentUser?.role !== 'admin') {
+  if (!isSuperAdminView(currentUser)) {
     return (
       <div className="p-6">
         <Alert>

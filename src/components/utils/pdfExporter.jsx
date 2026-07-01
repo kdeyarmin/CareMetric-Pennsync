@@ -98,7 +98,25 @@ export const exportToPDF = async (options = {}) => {
         doc.text(lines, margin, yPosition);
         yPosition += lines.length * 5;
       } else if (section.type === 'table') {
-        const { headers, rows } = section;
+        // Accept both table shapes so no caller silently renders a blank table:
+        //   1. { headers: [...], rows: [[...]] }                         (most callers)
+        //   2. { columns: [{ header, key | accessor }], data: [{...}] }  (src/components/reports/*)
+        // The column/data shape previously fell through with `headers`
+        // undefined, throwing on `headers.length` — breaking the OASIS, PDGM,
+        // Nurse-Performance and Referral report exports.
+        let { headers, rows } = section;
+        if ((!headers || !rows) && Array.isArray(section.columns)) {
+          headers = section.columns.map((c) => c.header ?? c.key ?? '');
+          rows = (section.data || []).map((row) =>
+            section.columns.map((c) => {
+              const v = typeof c.accessor === 'function' ? c.accessor(row) : row[c.key];
+              return v == null ? '' : String(v);
+            })
+          );
+        }
+        headers = headers || [];
+        rows = rows || [];
+        if (headers.length === 0) continue; // nothing to render for an empty table
         const colWidth = (pageWidth - (2 * margin)) / headers.length;
         
         // Headers

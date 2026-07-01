@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BookOpen, Sparkles, TrendingDown, GraduationCap, Loader2, FileText, BarChart3, Clapperboard, ShieldCheck, FileCheck2 } from "lucide-react";
@@ -48,11 +49,11 @@ export default function AdminTraining() {
     queryFn: () => base44.auth.me(),
   });
 
-  const hasAccess = !userLoading && currentUser && (currentUser.role === 'admin' || isManager(currentUser));
+  const hasAccess = !userLoading && currentUser && (isAdminView(currentUser) || isManager(currentUser));
   // The compliance report aggregates org-wide staff PII (names, emails, scores,
   // completions). Unlike the team-scoped Skill Gaps tab, it is not limited to a
   // manager's team, so restrict it to admins.
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
   const requestedTab = searchParams.get("tab");
   const adminOnlyTabs = new Set(["video-studio", "compliance-report"]);
   let activeTab = TAB_KEYS.includes(requestedTab) ? requestedTab : "overview";

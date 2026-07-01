@@ -19,6 +19,7 @@ import MobileMenu from "@/components/layout/MobileMenu";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import PageTransition from "@/components/layout/PageTransition";
 import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
+import OfflineIndicator from "@/components/offline/OfflineIndicator";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import SessionTimeoutManager from "@/components/security/SessionTimeoutManager";
 import Breadcrumbs from "@/components/navigation/Breadcrumbs";
@@ -356,6 +357,7 @@ export default function Layout({ children, currentPageName }) {
           style={{ background: "linear-gradient(135deg, #cbd5e1 0%, #dbe5f5 45%, #9fb8e6 100%)" }}
         >
           <div className="p-4 sm:p-6 md:p-8 lg:p-10 min-w-0 max-w-[1600px] mx-auto">
+            <OfflineIndicator />
             <Breadcrumbs currentPageName={currentPageName} />
             <PageTransition pageKey={currentPageName}>
               {children}

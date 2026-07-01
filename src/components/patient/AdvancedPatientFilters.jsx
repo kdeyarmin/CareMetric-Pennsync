@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,6 +63,29 @@ export default function AdvancedPatientFilters({ onFilterChange, activeFilters =
     createdAfter: activeFilters.createdAfter || "",
     createdBefore: activeFilters.createdBefore || "",
   });
+
+  // Keep the panel in sync when filters are applied from OUTSIDE it — e.g. the
+  // roster stat-card shortcuts call setFilters on the parent, which flows back in
+  // as activeFilters. Without this the internal copy (and thus the chips, count,
+  // and date inputs) would ignore those external changes, so the roster could
+  // look narrowed with no visible active filter. The equality guard prevents a
+  // render loop when activeFilters simply echoes a change we just made.
+  useEffect(() => {
+    setFilters((prev) => {
+      const next = {
+        search: activeFilters.search || "",
+        status: activeFilters.status || "all",
+        diagnosis: activeFilters.diagnosis || "",
+        ageMin: activeFilters.ageMin || "",
+        ageMax: activeFilters.ageMax || "",
+        hasVisits: activeFilters.hasVisits || "all",
+        createdAfter: activeFilters.createdAfter || "",
+        createdBefore: activeFilters.createdBefore || "",
+      };
+      const unchanged = Object.keys(next).every((k) => next[k] === prev[k]);
+      return unchanged ? prev : next;
+    });
+  }, [activeFilters]);
 
   const handleFilterChange = (key, value) => {
     const newFilters = { ...filters, [key]: value };
@@ -282,6 +305,33 @@ export default function AdvancedPatientFilters({ onFilterChange, activeFilters =
                 <X
                   className="w-3 h-3 cursor-pointer"
                   onClick={() => handleFilterChange("ageMax", "")}
+                />
+              </Badge>
+            )}
+            {filters.hasVisits && filters.hasVisits !== "all" && (
+              <Badge variant="outline" className="gap-1">
+                {filters.hasVisits === "yes" ? "Has visits" : "No visits"}
+                <X
+                  className="w-3 h-3 cursor-pointer"
+                  onClick={() => handleFilterChange("hasVisits", "all")}
+                />
+              </Badge>
+            )}
+            {filters.createdAfter && (
+              <Badge variant="outline" className="gap-1">
+                Added after: {filters.createdAfter}
+                <X
+                  className="w-3 h-3 cursor-pointer"
+                  onClick={() => handleFilterChange("createdAfter", "")}
+                />
+              </Badge>
+            )}
+            {filters.createdBefore && (
+              <Badge variant="outline" className="gap-1">
+                Added before: {filters.createdBefore}
+                <X
+                  className="w-3 h-3 cursor-pointer"
+                  onClick={() => handleFilterChange("createdBefore", "")}
                 />
               </Badge>
             )}

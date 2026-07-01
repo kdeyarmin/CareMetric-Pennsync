@@ -8,13 +8,15 @@ import { handoutTemplates } from "./handoutTemplates";
 
 // Derived from the single source of truth (handoutTemplates) so EVERY topic has
 // a customizer — the hand-copied list previously covered only 14 of 20 topics,
-// leaving the rest with an empty customizer. bullets is the per-section count.
+// leaving the rest with an empty customizer. `bullets` carries the REAL bullet
+// strings (not just a count) so the nurse can see exactly which instructions —
+// e.g. "Call 911 if…" — they are including or removing from the handout.
 const templateSections = Object.fromEntries(
   Object.entries(handoutTemplates).map(([topic, t]) => [
     topic,
     (t.sections || []).map((sec) => ({
       heading: sec.heading,
-      bullets: Array.isArray(sec.bullets) ? sec.bullets.length : 0,
+      bullets: Array.isArray(sec.bullets) ? sec.bullets : [],
     })),
   ])
 );
@@ -30,8 +32,8 @@ export default function HandoutCustomizer({ topicId, selectedSections, onSelecti
 
   const handleSectionToggle = (heading, checked) => {
     const section = sections.find(s => s.heading === heading);
-    const bullets = section.bullets ? Array(section.bullets).fill(checked) : undefined;
-    
+    const bullets = section?.bullets?.length ? Array(section.bullets.length).fill(checked) : undefined;
+
     onSelectionChange({
       ...selectedSections,
       [heading]: {
@@ -85,7 +87,7 @@ export default function HandoutCustomizer({ topicId, selectedSections, onSelecti
                   {section.heading}
                 </Label>
                 
-                {section.bullets && (
+                {section.bullets.length > 0 && (
                   <Collapsible open={openSections[section.heading]}>
                     <CollapsibleTrigger
                       onClick={() => toggleSection(section.heading)}
@@ -96,22 +98,24 @@ export default function HandoutCustomizer({ topicId, selectedSections, onSelecti
                       ) : (
                         <ChevronDown className="w-3 h-3" />
                       )}
-                      {section.bullets} items
+                      {section.bullets.length} items
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-2 space-y-2 pl-4 border-l-2 border-slate-200">
-                      {Array.from({ length: section.bullets }).map((_, bulletIdx) => (
-                        <div key={bulletIdx} className="flex items-center gap-2">
+                      {section.bullets.map((bulletText, bulletIdx) => (
+                        <div key={bulletIdx} className="flex items-start gap-2">
                           <Checkbox
                             id={`bullet-${idx}-${bulletIdx}`}
+                            className="mt-0.5"
                             checked={isBulletChecked(section.heading, bulletIdx)}
                             onCheckedChange={(checked) => handleBulletToggle(section.heading, bulletIdx, checked)}
                             disabled={!isSectionChecked(section.heading)}
                           />
                           <Label
                             htmlFor={`bullet-${idx}-${bulletIdx}`}
-                            className="text-xs text-slate-600 cursor-pointer"
+                            title={bulletText}
+                            className="text-xs text-slate-600 cursor-pointer leading-snug"
                           >
-                            Item {bulletIdx + 1}
+                            {bulletText}
                           </Label>
                         </div>
                       ))}

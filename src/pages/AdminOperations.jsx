@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ShieldAlert, Activity, Database, Settings, Zap } from "lucide-react";
@@ -50,7 +51,7 @@ export default function AdminOperations() {
 
   if (isLoading) return null;
 
-  if (currentUser?.role !== 'admin') {
+  if (!isAdminView(currentUser)) {
     return (
       <div className="p-8 max-w-2xl mx-auto">
         <Card className="modern-card border-l-4 border-l-red-500">

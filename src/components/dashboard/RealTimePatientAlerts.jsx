@@ -36,16 +36,16 @@ export default function RealTimePatientAlerts({
     const newAlerts = [];
     const today = new Date();
 
-    // Get favorited patient IDs
+    // Favorites act as a PIN/filter, not a gate: a nurse who has starred
+    // patients sees just those, but a nurse who hasn't starred anyone still gets
+    // alerts across ALL their assigned patients (the server-scoped `patients`
+    // prop). Previously an empty favorites list short-circuited to zero alerts,
+    // so a brand-new nurse got a silent, empty safety net that hid overdue
+    // visits, recent incidents, and high-risk patients.
     const favoritedPatientIds = currentUser?.favorited_patients?.map(p => p.id) || [];
-    
-    // Only check favorited patients - if none, show no alerts
-    if (favoritedPatientIds.length === 0) {
-      setAlerts([]);
-      return;
-    }
-    
-    const patientsToCheck = (patients || []).filter(p => favoritedPatientIds.includes(p.id));
+    const patientsToCheck = favoritedPatientIds.length > 0
+      ? (patients || []).filter(p => favoritedPatientIds.includes(p.id))
+      : (patients || []);
 
     // Check each patient
     patientsToCheck.forEach(patient => {

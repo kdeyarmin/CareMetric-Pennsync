@@ -13,11 +13,20 @@ import { toast } from "sonner";
 import { Send, Loader2, AlertTriangle } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 
 export default function EventReport() {
   const { data: _currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
+  });
+
+  // Load the roster so the reporter picks a patient by name/MRN instead of
+  // typing an opaque UUID (which failed silently at submit if mistyped).
+  const { data: patients = [] } = useQuery({
+    queryKey: ['patients-for-select'],
+    queryFn: () => base44.entities.Patient.list('-created_date', 2000),
+    initialData: [],
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -242,13 +251,15 @@ export default function EventReport() {
       <Card>
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Patient ID */}
+            {/* Patient */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-              <Label className="text-red-600">*Patient ID:</Label>
-              <Input
+              <Label htmlFor="event-patient" className="text-red-600">*Patient:</Label>
+              <SearchablePatientSelect
+                id="event-patient"
+                patients={patients}
                 value={formData.patient_id}
-                onChange={(e) => handleChange('patient_id', e.target.value)}
-                required
+                onValueChange={(id) => handleChange('patient_id', id)}
+                placeholder="Search patient by name or MRN..."
               />
             </div>
 

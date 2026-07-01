@@ -17,10 +17,12 @@ import PageLoader from '@/components/ui/PageLoader';
 import SignerPortal from '@/pages/SignerPortal';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import AIContentResponsibilityAgreement from '@/components/compliance/AIContentResponsibilityAgreement';
 import Layout from '@/components/Layout';
 import ErrorBoundary from '@/components/utils/ErrorBoundary';
 import { ROUTES, REDIRECTS, MAIN_PAGE } from '@/routes';
 import { getRoleView } from '@/lib/roles';
+import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 
 // Public (no-login) patient telehealth join page. Stale-chunk auto-recovery
 // (dev-server restart) is handled centrally by the ErrorBoundary, which wraps
@@ -122,6 +124,17 @@ const AuthenticatedApp = () => {
   if (!isAuthenticated) {
     navigateToLogin();
     return null;
+  }
+
+  // Responsibility gate: before using the software, every user must sign off
+  // that they are responsible for proofreading/editing AI-generated material
+  // and for attesting to anything they submit. This sits AFTER the auth gate
+  // (so we have a user to record acceptance against) but BEFORE any app route
+  // renders. The public /join and /signer routes are handled above, so external
+  // patients are never asked to accept it. Version-bumping the agreement in
+  // lib/aiContentAgreement.js re-prompts everyone.
+  if (!hasAcceptedAiContentAgreement(user)) {
+    return <AIContentResponsibilityAgreement />;
   }
 
   // Render the main app

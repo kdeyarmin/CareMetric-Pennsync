@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +45,7 @@ export default function AdminTrainingAnalytics() {
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers'],
     queryFn: () => base44.entities.User.list(),
-    enabled: currentUser?.role === 'admin'
+    enabled: isAdminView(currentUser)
   });
 
   // Org-wide training activity now comes from the live TrainingAssignment system
@@ -52,22 +53,22 @@ export default function AdminTrainingAnalytics() {
   const { data: assignments = [] } = useQuery({
     queryKey: ['allTrainingAssignments'],
     queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 5000),
-    enabled: currentUser?.role === 'admin'
+    enabled: isAdminView(currentUser)
   });
 
   const { data: modules = [] } = useQuery({
     queryKey: ['trainingModules'],
     queryFn: () => base44.entities.TrainingModule.list(),
-    enabled: currentUser?.role === 'admin'
+    enabled: isAdminView(currentUser)
   });
 
   const { data: recommendations = [] } = useQuery({
     queryKey: ['allRecommendations'],
     queryFn: () => base44.entities.TrainingRecommendation.list(),
-    enabled: currentUser?.role === 'admin'
+    enabled: isAdminView(currentUser)
   });
 
-  if (currentUser?.role !== 'admin') {
+  if (!isAdminView(currentUser)) {
     return (
       <PageContainer>
         <AccessDeniedState description="Training analytics are available to administrators only." />
