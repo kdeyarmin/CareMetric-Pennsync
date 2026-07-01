@@ -107,7 +107,8 @@ measure so agency-level improvement rates exist for the first time. Keep it dete
 (AI only labels), consistent with the app's anti-fabrication posture.
 
 **Existing hooks.** `src/components/oasis/oasisScoringEngine.js` (evaluate pattern + M-item `RULES`
-map — already includes M1860/M1400/M2020/M1800–M1820); `base44/entities/OASISAssessment.jsonc`
+trigger map — already includes the M1860/M1400/M2020 triggers; bathing M1830 and bed-transferring
+M1850 are **not** in `RULES` and must be added); `base44/entities/OASISAssessment.jsonc`
 (`visit_type`, `oasis_items[]`); `base44/entities/PatientOutcomeMetric.jsonc` (the dead
 `functional_improvement.*_improved` fields to wire up); `base44/entities/AgencyKPI.jsonc`
 (`metric_category`, `benchmark_value`); `src/components/oasis/oasisScoringEngine.test.js` as the
@@ -155,9 +156,9 @@ input, not AI-verified output.
 
 **Existing hooks.** `base44/functions/expandClinicalPhrase/entry.ts` (template lookup + AI fallback
 + `usage_count` increment); `base44/entities/ClinicalLibraryTemplate.jsonc`;
-`src/pages/SmartNoteAssistant.jsx` (textarea ref + note state); `src/components/smartNote/
-ConstrainedNoteReviewer.jsx` + `compliance/valueGuard.js`; `src/components/templates/
-ClinicalTemplateLibrary.jsx` (authoring UI).
+`src/pages/SmartNoteAssistant.jsx` (textarea ref + note state);
+`src/components/smartNote/ConstrainedNoteReviewer.jsx` + `src/components/smartNote/compliance/valueGuard.js`;
+`src/components/templates/ClinicalTemplateLibrary.jsx` (authoring UI).
 
 **Impact.** Directly cuts keystrokes on the most repetitive narrative sections (education, wound
 care, homebound) and finally makes an already-built library pay off. Near-zero new backend.
@@ -195,9 +196,12 @@ cross-check entirely, and carries no grounding-deferred audit marker.
 `OfflineVisitNoteCapture` **before** queuing: `getRequiredElements(serviceLine, visitType)` +
 `presenceDetection` + `coverageScore` + `crossCheckChart` (all pure JS, already offline-first) to
 show the same gap questions, coverage score, and critical-vital/allergy cross-check the online flow
-shows. Hold the queued visit as `pending_review` with a `grounding_deferred` marker so it re-runs
-the value-guard/grounding pass on reconnect and is never shown as verified until then. Only the
-LLM re-voicing stays deferred; the deterministic scan runs offline.
+shows. Mirror the existing deferred-grounding pattern in `persistVisitNote.js`: set the queued
+visit's `grounding_pending: true` flag and set the associated audit record's status to
+`pending_review` — the deferred-grounding marker lives on `Visit.grounding_pending` and the audit
+record, **not** on `Visit.status` (whose enum has no such value). Grounding then re-runs on
+reconnect and the note is never shown as verified until then. Only the LLM re-voicing stays
+deferred; the deterministic scan runs offline.
 
 > **Note:** This overlaps `NURSE_APP_IMPROVEMENTS.md #2` and `APP_IMPROVEMENT_ROADMAP_2026-06 B1`
 > (offline-note grounding). This item is the *product* framing (bring the full compliance assist
@@ -262,9 +266,10 @@ together as a deterministic rule. Encode as `MedicareComplianceRule` categories 
 > F2F cluster.** F2F is checked once, upstream, on the uploaded referral — never re-checked in the
 > SmartNote. This keeps the note free of F2F concerns and avoids duplicating (or leaking) the check.
 
-**Existing hooks.** `src/components/smartNote/compliance/{requiredElements,ruleLibrary,answerAdequacy,
-completenessCritic,criticReconcile}.js`; `src/components/compliance/{defaultMedicareRules.js,
-VisitTypeComplianceChecker.jsx,AIComplianceAuditor.jsx}` (rules already keyed to 42 CFR CoP
+**Existing hooks.** the deterministic compliance modules under `src/components/smartNote/compliance/`
+(`requiredElements`, `ruleLibrary`, `answerAdequacy`, `completenessCritic`, `criticReconcile`); the
+compliance surfaces under `src/components/compliance/` (`defaultMedicareRules.js`,
+`VisitTypeComplianceChecker.jsx`, `AIComplianceAuditor.jsx` — rules already keyed to 42 CFR CoP
 citations); replace the naive homebound keyword matcher in `monitorComplianceRisks`;
 `base44/entities/{MedicareComplianceRule,AgencyComplianceRule,ComplianceRule}.jsonc`.
 
@@ -290,20 +295,33 @@ in the patient chart.
 - **Renders** inside `src/components/hub-tabs/ReferralProcessor.jsx` (after `ReferralAnalyzer`,
   before the PDGM Diagnosis Optimization block); a `pass/flag/fail` badge shows in the referral
   table in `src/pages/ReferralIntake.jsx`.
-- **Data in:** `extracted_data.demographics.referring_physician`,
-  `admission_details.{admission_date,referral_date,referral_reason}`, and
-  `orders_treatments.physician_orders` produced by `src/components/referral/referralExtraction.js`.
-  The extraction schema (`REFERRAL_EXTRACTION_SCHEMA`) may need one added field to capture the F2F
-  encounter date/certifier explicitly.
+- **Data in:** derive from the *existing* extracted fields —
+  `extracted_data.demographics.referring_physician`, the `admission_details` dates
+  (`admission_date`, `referral_date`, `referral_reason`), and `orders_treatments.physician_orders`
+  produced by `src/components/referral/referralExtraction.js`. **Do not** add an F2F field to
+  `REFERRAL_EXTRACTION_SCHEMA` / `extracted_data` (see the isolation constraint below); if the
+  referral lacks an explicit encounter date/certifier, capture it **top-level on `Referral`**, not
+  inside `extracted_data`.
 - **Persist:** add `face_to_face_validation` (object: `encounter_date`, `certifier`,
   `within_window`, `dx_linked`, `compliance_status`, `notes`) + `f2f_validator_notes` to
   `base44/entities/Referral.jsonc`, written in `ReferralIntake.jsx` `handleProcessingComplete()`.
 
-**Isolation guarantee (verified).** The only referral→note bridge,
-`base44/functions/extractReferralDataForSmartNote/entry.ts`, copies **only**
-demographics / diagnoses / vitals(text) / meds / skilled-needs / goals-of-care — it does **not** read
-F2F fields. Therefore F2F data added to the `Referral` entity **cannot** reach the SmartNote or the
-chart. **Do not** add any F2F inheritance into `SmartNoteAssistant` or `ComplianceChecklist`.
+**Isolation — a design constraint to enforce, not an automatic property.** There is **more than one**
+referral→note bridge, so keeping F2F out of the note/chart depends on keeping F2F data **off**
+`extracted_data`:
+- `base44/functions/extractReferralDataForSmartNote/entry.ts` copies only
+  demographics / diagnoses / vitals(text) / meds / skilled-needs / goals-of-care and does **not** read
+  F2F today; **but**
+- `src/components/referral/AIAdmissionNoteGenerator.jsx` prompts on `JSON.stringify(referralData, …)`,
+  and `src/components/hub-tabs/ReferralProcessor.jsx` / `ReferralAdmissionNote` pass the full
+  `extracted_data` into admission-note generation.
+
+So: store the F2F result **only** on the top-level `Referral.face_to_face_validation` /
+`f2f_validator_notes` fields (which those bridges do not read), and feed the validator from the
+existing extracted fields listed above. **Do not** add an F2F field to `REFERRAL_EXTRACTION_SCHEMA`
+— that is the path that would leak into generated admission notes; if an explicit F2F capture field
+is unavoidable, put it top-level on `Referral` and redact it in the two admission-note bridges above.
+Do **not** add any F2F inheritance into `SmartNoteAssistant` or `ComplianceChecklist`.
 
 **Impact.** Converts a leading auto-reject denial cause into a structured, caught-at-intake check,
 scoped exactly where the agency wants it — on the referral, before a patient is ever admitted.
