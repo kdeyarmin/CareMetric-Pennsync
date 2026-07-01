@@ -13,22 +13,16 @@
   "categories": ["medical", "productivity", "business"],
   "icons": [
     {
-      "src": "https://media.base44.com/images/public/694ec16e72e01b60d22f7cbf/f5040dde4_generated_image.png",
+      "src": "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "https://media.base44.com/images/public/694ec16e72e01b60d22f7cbf/f5040dde4_generated_image.png",
+      "src": "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
-    },
-    {
-      "src": "https://media.base44.com/images/public/694ec16e72e01b60d22f7cbf/f5040dde4_generated_image.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
     }
   ]
 }
