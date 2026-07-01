@@ -33,6 +33,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import HandoutCustomizer from "../components/education/HandoutCustomizer";
 import HandoutPreview from "../components/education/HandoutPreview";
 import HandoutStyleCustomizer from "../components/education/HandoutStyleCustomizer";
@@ -453,24 +454,18 @@ export default function PatientEducationHub() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <Label className="text-xs sm:text-sm mb-2 block">Select Patient (Optional)</Label>
-              <Select value={patientId} onValueChange={(value) => {
-                setPatientId(value);
-                const patient = patients.find(p => p.id === value);
-                if (patient?.email) {
-                  setPatientEmail(patient.email);
-                }
-              }}>
-                <SelectTrigger className="h-11 touch-target">
-                  <SelectValue placeholder="Select patient for personalization..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {patients.map(patient => (
-                    <SelectItem key={patient.id} value={patient.id}>
-                      {patient.first_name} {patient.last_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchablePatientSelect
+                patients={patients}
+                value={patientId}
+                onValueChange={(value) => {
+                  setPatientId(value);
+                  const patient = patients.find(p => p.id === value);
+                  if (patient?.email) {
+                    setPatientEmail(patient.email);
+                  }
+                }}
+                placeholder="Select patient for personalization..."
+              />
             </div>
             <div>
               <Label className="text-xs sm:text-sm mb-2 block">Search Topics</Label>
@@ -545,24 +540,19 @@ export default function PatientEducationHub() {
 
                   <div>
                     <Label className="text-sm">Patient (Optional)</Label>
-                    <Select value={patientId} onValueChange={(value) => {
-                      setPatientId(value);
-                      const patient = patients.find(p => p.id === value);
-                      if (patient?.email) {
-                        setPatientEmail(patient.email);
-                      }
-                    }}>
-                      <SelectTrigger className="mt-2 h-11 touch-target">
-                        <SelectValue placeholder="Select patient..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {patients.map(patient => (
-                          <SelectItem key={patient.id} value={patient.id}>
-                            {patient.first_name} {patient.last_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchablePatientSelect
+                      className="mt-2"
+                      patients={patients}
+                      value={patientId}
+                      onValueChange={(value) => {
+                        setPatientId(value);
+                        const patient = patients.find(p => p.id === value);
+                        if (patient?.email) {
+                          setPatientEmail(patient.email);
+                        }
+                      }}
+                      placeholder="Select patient..."
+                    />
                   </div>
 
                   <div>

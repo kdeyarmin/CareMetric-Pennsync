@@ -13,7 +13,7 @@ import EmbeddedPage from "@/components/ui/embeddedPage";
 import TemplateLibrary from "@/components/documents/TemplateLibrary";
 import PDFTemplateBuilder from "@/components/documents/PDFTemplateBuilder";
 import DocumentAnalytics from "@/components/documents/DocumentAnalytics";
-import { isSuperAdmin } from "@/lib/superAdmin";
+import { isAdminView } from "@/lib/roles";
 
 const DocumentSignatures = lazy(() => import("@/components/hub-tabs/DocumentSignatures"));
 const CreateSignatureRequest = lazy(() => import("@/components/hub-tabs/CreateSignatureRequest"));
@@ -43,7 +43,7 @@ export default function DocumentHub() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin' || isSuperAdmin(currentUser);
+  const isAdmin = isAdminView(currentUser);
 
   const validTabKeys = isAdmin ? [...TAB_KEYS, "audit"] : TAB_KEYS;
 

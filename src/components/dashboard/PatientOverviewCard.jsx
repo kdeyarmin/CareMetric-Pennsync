@@ -10,6 +10,7 @@ import {
   Heart
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
+import { formatLocalDate } from "@/lib/dateLocal";
 import { Link } from "react-router-dom";
 
 export default function PatientOverviewCard({ patient, visits, alerts, isSelected, onSelect, view }) {
@@ -121,7 +122,7 @@ export default function PatientOverviewCard({ patient, visits, alerts, isSelecte
           {patient.admission_date && (
             <div className="flex items-center gap-2 text-sm text-slate-700">
               <Calendar className="w-4 h-4 text-green-500" />
-              <span>Admitted: {new Date(patient.admission_date).toLocaleDateString()}</span>
+              <span>Admitted: {formatLocalDate(patient.admission_date)}</span>
             </div>
           )}
         </div>
@@ -145,7 +146,7 @@ export default function PatientOverviewCard({ patient, visits, alerts, isSelecte
           <div className="p-2 bg-blue-50 rounded border border-blue-200 mb-3">
             <p className="text-xs text-blue-600 font-medium mb-1">Last Visit</p>
             <p className="text-xs text-slate-700">
-              {new Date(recentVisit.visit_date).toLocaleDateString()} - {recentVisit.visit_type?.replace('_', ' ')}
+              {formatLocalDate(recentVisit.visit_date)} - {recentVisit.visit_type?.replace('_', ' ')}
             </p>
           </div>
         )}

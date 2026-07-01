@@ -1,14 +1,24 @@
 import { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 import { savePatients } from '@/lib/indexedDB';
 import { drainSyncQueue } from '@/lib/offlineSync';
 import { migrateLegacyOfflineQueues } from '@/lib/offlineMigration';
 import { toast } from 'sonner';
 
 export default function OfflineManager() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // Background clinical sync — draining queued Visit/Task/Incident writes and
+  // caching active-patient PHI below — is itself "using the software". This
+  // component is mounted in App() OUTSIDE the AuthenticatedApp route gate, so
+  // gating only route rendering would still let it submit queued writes and read
+  // PHI before the user signs the AI-content responsibility agreement (e.g. on
+  // first login or after a version bump). Require acceptance here too, matching
+  // the routed app, so no clinical data moves until the user has signed off.
+  const canSync = isAuthenticated && hasAcceptedAiContentAgreement(user);
 
   useEffect(() => {
     // Drains the canonical IndexedDB sync queue. Called both from the `online`
@@ -29,8 +39,12 @@ export default function OfflineManager() {
 
     const handleOnline = () => {
       setIsOnline(true);
-      toast.success('Back online! Syncing data...');
-      drainQueue();
+      // Only announce + drain once the user may sync; before sign-off we still
+      // track online state but must not push queued clinical writes.
+      if (canSync) {
+        toast.success('Back online! Syncing data...');
+        drainQueue();
+      }
     };
 
     const handleOffline = () => {
@@ -41,7 +55,7 @@ export default function OfflineManager() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    if (isAuthenticated) {
+    if (canSync) {
       // One-time replay of any pending writes left in the RETIRED localStorage
       // queues by a previous app version into the canonical IndexedDB queue, so an
       // upgrade doesn't strand offline visits/incidents on the device. Local-only +
@@ -54,9 +68,10 @@ export default function OfflineManager() {
         .finally(() => { if (navigator.onLine) drainQueue(); });
     }
 
-    // Initial cache of patients. OfflineManager is mounted outside the auth gate,
-    // so guard this PHI query on authentication to avoid firing it on the login screen.
-    if (isOnline && isAuthenticated) {
+    // Initial cache of patients. OfflineManager is mounted outside the auth AND
+    // agreement gates, so guard this PHI query on both — never fire it on the
+    // login screen or the agreement screen.
+    if (isOnline && canSync) {
       base44.entities.Patient.filter({ status: "active" }, "first_name", 200)
         .then(patients => {
           savePatients(patients);
@@ -68,7 +83,7 @@ export default function OfflineManager() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [isOnline, isAuthenticated]);
+  }, [isOnline, canSync]);
 
   return null;
 }

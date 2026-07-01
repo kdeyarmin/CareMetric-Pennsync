@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AlertTriangle, Camera, Send, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
+import AICaveat from "@/components/ui/AICaveat";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import IncidentPhotoCapture from "@/components/incident/IncidentPhotoCapture";
 import StateReportableBanner from "@/components/incident/StateReportableBanner";
@@ -54,6 +55,7 @@ export default function SmartIncidentForm({ patients = [], currentUser, onSubmit
   const [form, setForm] = useState(blankForm());
   const [submitted, setSubmitted] = useState(false);
   const ai = useAICall();
+  const [narrativeAiAssisted, setNarrativeAiAssisted] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const update = (patch) => setForm((prev) => ({ ...prev, ...patch }));
@@ -89,6 +91,7 @@ Produce a clear narrative that summarizes the event, objective observations, imm
 actions taken, and who was notified. Objective facts only. Return report text only, no JSON.`,
       });
       update({ report: text });
+      setNarrativeAiAssisted(true);
     } catch {
       toast.error("Could not generate the narrative. Please write it manually.");
     }
@@ -309,6 +312,7 @@ actions taken, and who was notified. Objective facts only. Return report text on
             onChange={(e) => update({ report: e.target.value })}
             placeholder="Describe what happened, what you observed, actions taken, and who was notified. Or jot notes and tap AI assist."
           />
+          {narrativeAiAssisted && <AICaveat label="AI-assisted draft — review and correct before submitting" />}
         </div>
 
         {/* Extra legally-required fields, only for state-reportable events. */}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -582,7 +583,7 @@ Please review this incident in the Incident Reporting Dashboard.`
       </Card>
 
       {/* State Reportable Events — admin follow-up folder */}
-      {currentUser?.role === 'admin' && (
+      {isAdminView(currentUser) && (
         <Card className="mb-6 border-red-200">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -702,7 +703,7 @@ Please review this incident in the Incident Reporting Dashboard.`
                       </div>
                     )}
                   </div>
-                  {currentUser?.role === 'admin' && incident.status !== 'resolved' && (
+                  {isAdminView(currentUser) && incident.status !== 'resolved' && (
                     <Select
                       value={incident.status}
                       onValueChange={(newStatus) => updateIncidentMutation.mutate({

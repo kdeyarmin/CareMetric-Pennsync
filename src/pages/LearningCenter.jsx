@@ -41,6 +41,7 @@ import {
   Brain
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
+import { isAdminView } from '@/lib/roles';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import EmbeddedPage from '@/components/ui/embeddedPage';
@@ -460,7 +461,7 @@ export default function LearningCenter() {
     [enrollments]
   );
 
-  const isEducatorOrAdmin = user?.role === 'admin' || user?.training_role === 'educator';
+  const isEducatorOrAdmin = isAdminView(user) || user?.training_role === 'educator';
   const isSupervisor = user?.training_role === 'supervisor';
 
   // Overall completion rate

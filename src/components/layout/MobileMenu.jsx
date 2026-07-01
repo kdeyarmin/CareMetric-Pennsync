@@ -26,7 +26,15 @@ export default function MobileMenu({ open, onClose, navCategories, adminItems, i
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    // Lock the page behind the full-screen menu so a scroll gesture over the
+    // drawer doesn't scroll the underlying page (and leave the user lost when
+    // the menu closes). Restore the prior overflow on close/unmount.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [open, onClose]);
 
   if (!open) return null;

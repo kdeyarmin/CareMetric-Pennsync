@@ -15,14 +15,35 @@ import {
   WifiOff,
   Wifi,
   Save,
-  Clock
+  Clock,
+  ShieldAlert,
+  ShieldCheck,
+  AlertTriangle
 } from 'lucide-react';
 import { addToSyncQueue } from '@/lib/indexedDB';
 import { drainSyncQueue } from '@/lib/offlineSync';
 import { toast } from 'sonner';
+import { scanOfflineNote, visitTypeKey } from './offlineComplianceScan';
+
+// Assemble the clinical narrative from the form (shared by the compliance scan
+// and the queued Visit's nurse_notes so they judge the same text).
+function buildNarrative(visitData) {
+  return [
+    visitData.chief_complaint && `Chief Complaint:\n${visitData.chief_complaint}`,
+    visitData.assessment && `Assessment:\n${visitData.assessment}`,
+    visitData.interventions && `Interventions:\n${visitData.interventions}`,
+    visitData.patient_response && `Patient Response:\n${visitData.patient_response}`,
+    visitData.plan && `Plan of Care:\n${visitData.plan}`,
+    visitData.clinical_notes && `Additional Notes:\n${visitData.clinical_notes}`,
+    visitData.visit_duration_minutes ? `Visit Duration: ${visitData.visit_duration_minutes} minutes` : null,
+    visitData.nurse_signature && `Signed: ${visitData.nurse_signature}`,
+  ].filter(Boolean).join('\n\n');
+}
 
 export default function OfflineVisitNoteCapture({ patient, onComplete }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [scan, setScan] = useState(null);
+  const [acknowledged, setAcknowledged] = useState(false);
   const [visitData, setVisitData] = useState({
     patient_id: patient?.id,
     patient_name: patient ? `${patient.first_name} ${patient.last_name}` : '',
@@ -107,6 +128,26 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
       }
     }
 
+    // Run the pure/offline compliance modules (required-element scan, gap
+    // detection, coverage score, chart cross-check) BEFORE queuing — the offline
+    // note previously bypassed all of them. Live AI grounding can't run offline,
+    // so the note is held pending_review (grounding_pending) until reconnect.
+    const narrative = buildNarrative(visitData);
+    const scanResult = scanOfflineNote({
+      noteText: narrative,
+      visitType: visitTypeKey(visitData.visit_type),
+      patient,
+    });
+    setScan(scanResult);
+    // On the first save with blocking gaps, surface them and let the nurse review
+    // before queuing (offline can't hard-block, but it must not silently swallow
+    // a missing homebound/skilled-need justification).
+    if (scanResult.has_blocking_issues && !acknowledged) {
+      setAcknowledged(true);
+      toast.warning('Review the compliance gaps below, then tap Save again to queue for review.');
+      return;
+    }
+
     try {
       // Map the form onto the Visit ENTITY SCHEMA before queuing. The offline sync
       // worker writes item.data verbatim via Visit.create and Base44 silently drops
@@ -135,16 +176,7 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
         'Social Work': 'routine_visit',
       };
 
-      const nurseNotes = [
-        visitData.chief_complaint && `Chief Complaint:\n${visitData.chief_complaint}`,
-        visitData.assessment && `Assessment:\n${visitData.assessment}`,
-        visitData.interventions && `Interventions:\n${visitData.interventions}`,
-        visitData.patient_response && `Patient Response:\n${visitData.patient_response}`,
-        visitData.plan && `Plan of Care:\n${visitData.plan}`,
-        visitData.clinical_notes && `Additional Notes:\n${visitData.clinical_notes}`,
-        visitData.visit_duration_minutes ? `Visit Duration: ${visitData.visit_duration_minutes} minutes` : null,
-        visitData.nurse_signature && `Signed: ${visitData.nurse_signature}`,
-      ].filter(Boolean).join('\n\n');
+      const nurseNotes = narrative;
 
       // Save the schema-conformant Visit to the ONE canonical offline queue (the
       // IndexedDB sync_queue, drained globally by OfflineManager). A stable
@@ -160,7 +192,11 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
         visit_type: VISIT_TYPE_MAP[visitData.visit_type] || 'skilled_nursing',
         vital_signs: hasVitals ? vital_signs : null,
         nurse_notes: nurseNotes,
-        status: 'completed',
+        // Held for review until the deferred AI grounding pass re-runs on
+        // reconnect (the deterministic compliance scan already ran above).
+        status: 'pending_review',
+        grounding_pending: true,
+        documentation_source: 'manual',
       });
       // When online, drain immediately so it syncs now instead of waiting for the
       // next reconnect (OfflineManager only auto-drains on the `online` event).
@@ -168,8 +204,8 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
 
       toast.success(
         isOnline
-          ? 'Visit note saved and will sync shortly'
-          : 'Visit note saved offline - will sync when online'
+          ? 'Visit note queued for review — grounding will run shortly'
+          : 'Visit note saved offline — held for review; grounding runs when online'
       );
 
       // Reset form
@@ -197,6 +233,8 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
         nurse_signature: '',
         visit_duration_minutes: 45
       });
+      setScan(null);
+      setAcknowledged(false);
 
       if (onComplete) onComplete();
     } catch (error) {
@@ -456,6 +494,54 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
         </CardContent>
       </Card>
 
+      {/* Offline compliance scan results */}
+      {scan && (
+        <Card className={`border-2 ${scan.has_blocking_issues ? 'border-red-300 bg-red-50' : 'border-green-300 bg-green-50'}`}>
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              {scan.has_blocking_issues ? (
+                <ShieldAlert className="w-5 h-5 text-red-600" />
+              ) : (
+                <ShieldCheck className="w-5 h-5 text-green-600" />
+              )}
+              <span className="font-semibold text-slate-800">
+                Compliance scan — coverage {scan.coverage}%
+              </span>
+              <Badge className="ml-auto bg-slate-600">Grounding deferred → pending review</Badge>
+            </div>
+            {scan.gaps.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-slate-700">Missing / unaddressed elements:</p>
+                <ul className="text-sm list-disc pl-5 space-y-0.5 mt-0.5">
+                  {scan.gaps.map((g) => (
+                    <li key={g.id} className={g.severity === 'critical' ? 'text-red-700 font-medium' : 'text-slate-600'}>
+                      {g.label}{g.severity === 'critical' ? ' (required)' : ''} — {g.question}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {scan.chart_conflicts.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-amber-800 flex items-center gap-1">
+                  <AlertTriangle className="w-4 h-4" /> Chart cross-check:
+                </p>
+                <ul className="text-sm list-disc pl-5 space-y-0.5 mt-0.5">
+                  {scan.chart_conflicts.map((c) => (
+                    <li key={c.id} className={c.severity === 'critical' ? 'text-red-700' : 'text-amber-700'}>
+                      {c.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {scan.gaps.length === 0 && scan.chart_conflicts.length === 0 && (
+              <p className="text-sm text-green-700">All required elements documented. Note held for grounding on reconnect.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Action Buttons */}
       <div className="flex gap-3 sticky bottom-4 bg-white p-4 rounded-lg border-2 border-slate-200 shadow-lg">
         <Button
@@ -464,7 +550,7 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
           size="lg"
         >
           <Save className="w-4 h-4 mr-2" />
-          Save Visit Note
+          {scan?.has_blocking_issues && acknowledged ? 'Queue for review anyway' : 'Save Visit Note'}
           {!isOnline && <Badge className="ml-2 bg-orange-500">Offline</Badge>}
         </Button>
       </div>

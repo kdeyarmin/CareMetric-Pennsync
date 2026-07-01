@@ -1,11 +1,21 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { Sparkles, Loader2, User, Globe, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { expandClinicalPhrase } from "@/functions/expandClinicalPhrase";
-import { detectPhraseTrigger, rankPhrases, applyExpansion, phraseNeedsPatient } from "./quickPhrase";
+import { DEFAULT_CLINICAL_PHRASES } from "@/components/clinical/defaultClinicalPhrases";
+import { detectPhraseTrigger, rankPhrases, applyExpansion, phraseNeedsPatient, normalizePhraseText } from "./quickPhrase";
+
+// Merge the agency's authored ClinicalLibraryTemplate records with the bundled
+// offline defaults, so the picker works even before an agency seeds its library
+// (and offline). Authored records win on a phrase-name collision.
+function mergePhrases(templates) {
+  const seen = new Set((templates || []).map((t) => normalizePhraseText(t.phrase)));
+  const defaults = DEFAULT_CLINICAL_PHRASES.filter((d) => !seen.has(normalizePhraseText(d.phrase)));
+  return [...(templates || []), ...defaults];
+}
 
 // A drop-in <textarea> replacement that adds inline quick-phrase expansion. The
 // nurse types a "/" (or a ".dot-token") to open a picker of their clinical
@@ -64,8 +74,9 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
     staleTime: 5 * 60 * 1000,
   });
 
+  const phrases = useMemo(() => mergePhrases(templates), [templates]);
   const ranked = trigger
-    ? rankPhrases(templates, { query: trigger.query, visitType, patientId, email: userEmail, limit: 8 })
+    ? rankPhrases(phrases, { query: trigger.query, visitType, patientId, email: userEmail, limit: 8 })
     : [];
   // Keep the menu quiet: only surface it for the bare "/" (discovery) or when the
   // typed query actually matches phrases. A non-matching query hides it entirely.
@@ -125,6 +136,24 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
       return;
     }
     const range = trigger;
+
+    // Offline default phrases (no library id) carry their own compliant text —
+    // insert directly, no backend round-trip needed (works offline too).
+    if (!template.id) {
+      const cur = areaRef.current?.value ?? value ?? "";
+      if (cur.slice(range.start, range.end) !== range.trigger + range.query) {
+        toast.error("Couldn't place the phrase — please retype the trigger.");
+        return;
+      }
+      const { text, caret } = applyExpansion(cur, range, template.expanded_text || template.phrase);
+      pendingCaretRef.current = caret;
+      onChange?.(text);
+      closeMenu();
+      toast.success("Phrase inserted");
+      setTimeout(() => areaRef.current?.focus(), 0);
+      return;
+    }
+
     setExpanding(true);
     try {
       const res = await expandClinicalPhrase({

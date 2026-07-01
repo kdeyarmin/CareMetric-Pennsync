@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, RefreshCw, TrendingUp, BookOpen, CheckCircle2, AlertTriangle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { severitySolidClass } from "@/lib/severityStyles";
+import AICaveat from "@/components/ui/AICaveat";
 
 export default function AIPathwayUpdater({ pathway, onPathwayUpdated }) {
   const ai = useAICall();
@@ -218,6 +219,7 @@ Return ONLY valid JSON.`;
                   <CheckCircle2 className="w-4 h-4 text-green-600" />
                   Recommendations ({recommendations.recommendations.length})
                 </h4>
+                <AICaveat label="AI-suggested — review clinically before applying" />
                 <ScrollArea className="max-h-96">
                   <div className="space-y-3">
                     {recommendations.recommendations.map((rec, idx) => (

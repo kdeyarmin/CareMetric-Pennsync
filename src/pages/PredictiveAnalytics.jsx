@@ -22,6 +22,7 @@ import PageHeader from "@/components/ui/PageHeader";
 
 import PatientRiskScorecard from "../components/predictive/PatientRiskScorecard";
 import RehospitalizationPredictor from "../components/predictive/RehospitalizationPredictor";
+import PPHPreventionWorklist from "../components/predictive/PPHPreventionWorklist";
 import TherapyNeedForecaster from "../components/predictive/TherapyNeedForecaster";
 import PopulationRiskOverview from "../components/predictive/PopulationRiskOverview";
 import PredictiveInsightsPanel from "../components/predictive/PredictiveInsightsPanel";
@@ -135,7 +136,12 @@ export default function PredictiveAnalytics() {
         </TabsContent>
 
         {/* Rehospitalization Tab */}
-        <TabsContent value="rehospitalization">
+        <TabsContent value="rehospitalization" className="space-y-4 sm:space-y-6">
+          <PPHPreventionWorklist
+            patients={patients}
+            oasisData={oasisData}
+            visits={visits}
+          />
           <RehospitalizationPredictor
             patients={patients}
             oasisData={oasisData}

@@ -189,6 +189,9 @@ const ENUM_USAGE = {
   'PatientAlert.alert_type': ['care_gap', 'documentation_risk', 'readmission_risk'],
   // Patient.status — 'merged' is written by deduplicatePatients' merge-archive step.
   'Patient.status': ['active', 'discharged', 'merged'],
+  // Visit.status — the offline capture queues 'pending_review' (grounding deferred
+  // to reconnect); the sync worker / other flows write 'completed'.
+  'Visit.status': ['completed', 'pending_review'],
 };
 
 // ---------------------------------------------------------------------------
@@ -226,8 +229,22 @@ const FIELD_USAGE = {
   // Visit.grounding_pending — set true when an offline save deferred the AI
   // grounding pass until reconnect (audit-trail completeness marker).
   Visit: ['documentation_source', 'grounding_pending'],
-  Referral: ['page_range', 'detection_confidence', 'manually_confirmed', 'rejection_date', 'rejected_by'],
+  Referral: [
+    'page_range', 'detection_confidence', 'manually_confirmed', 'rejection_date', 'rejected_by',
+    // Intake→SOC (Timely Initiation of Care) tracker writes these.
+    'soc_date', 'first_visit_date', 'soc_completed_by',
+  ],
   PatientAlert: ['contributing_factors', 'recommended_actions', 'risk_score'],
+  // PatientOutcomeMetric — written by computeOutcomeMeasures (the keystone
+  // outcome-measure cron). These fields were added alongside the CMS change-score
+  // engine; without them the platform would silently drop the per-measure
+  // results, GG score, and dyspnea-improvement flag.
+  PatientOutcomeMetric: [
+    'functional_improvement', 'gg_discharge_function_score', 'measure_results',
+    'outcome_measure_source',
+    // PPH worklist captures intervention + outcome here.
+    'pph_prevention', 'readmission_30_day', 'er_visit_30_day',
+  ],
   // OASISFeedback is written by two paths: the patient-match writers
   // (feedback_type/extracted_name + match fields) and the AI-suggestion
   // OASISFeedbackPanel (the fields below). The panel fields were historically

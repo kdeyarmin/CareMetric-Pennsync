@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sparkles, Copy, CheckCircle2, ClipboardList, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import VoiceNoteIntegration from "./VoiceNoteIntegration";
+import QuickPhraseTextarea from "./QuickPhraseTextarea";
 import { toCanonicalVitalSigns, extractCanonicalVitalsFromText } from "./compliance/factExtraction";
 
 const VISIT_TYPES = [
@@ -141,7 +142,7 @@ export default function StructuredNoteDrafter({ onDraftReady }) {
 
       {!collapsed && (
         <div className="p-4 space-y-4">
-          <p className="text-xs text-slate-500">Fill in structured fields to build a rough draft from exactly what you enter, then run the full compliance check in the Note Builder.</p>
+          <p className="text-xs text-slate-500">Fill in structured fields to build a rough draft from exactly what you enter, then run the full compliance check in the Note Builder. Tip: in any text field type <span className="font-mono">/</span> or a <span className="font-mono">.dot-token</span> (e.g. <span className="font-mono">.diabeticedu</span>) to insert a quick phrase.</p>
 
           {/* Visit Type */}
           <div>
@@ -198,10 +199,11 @@ export default function StructuredNoteDrafter({ onDraftReady }) {
                   disabled={false}
                 />
               </div>
-              <textarea
+              <QuickPhraseTextarea
                 ref={f.ref}
                 value={f.val}
-                onChange={e => f.set(e.target.value)}
+                onChange={f.set}
+                visitType={visitType}
                 placeholder={f.placeholder}
                 className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:ring-2 focus:ring-navy-300 focus:border-navy-400 outline-none resize-none min-h-[70px] leading-relaxed"
               />

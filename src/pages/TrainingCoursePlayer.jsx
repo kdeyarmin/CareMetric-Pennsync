@@ -14,7 +14,7 @@ import { createPageUrl } from "@/utils";
 import { gradeTrainingAttempt } from "@/functions/gradeTrainingAttempt";
 import { startTrainingAssignment } from "@/functions/startTrainingAssignment";
 import { getCoursePlayerQuestions } from "@/functions/getCoursePlayerQuestions";
-import { getRoleView } from "@/lib/roles";
+import { getRoleView, isAdminView } from "@/lib/roles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -157,7 +157,7 @@ export default function TrainingCoursePlayer() {
   );
 
   const passingScore = assignment?.passing_score_required || course?.passing_score || 80;
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = isAdminView(currentUser);
   const answeredCount = Object.keys(answers).length;
   const totalQuestions = randomizedQuestions.length;
 
