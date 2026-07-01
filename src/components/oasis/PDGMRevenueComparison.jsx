@@ -792,13 +792,26 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
                                 )}
 
                                 {/* Wage Index Display */}
+                                {revenueData.rateBasis?.isEstimate && (
+                                  <Alert className="bg-amber-50 border-amber-300">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                    <AlertDescription className="text-amber-800 text-xs">
+                                      {revenueData.original?.estimateDisclaimer
+                                        || 'Estimate only — based on approximate case-mix weights, not confirmed official CMS PDGM rates. These dollar figures are not billable amounts. Set your official numbers in Admin → PDGM Rate Settings and mark them official.'}
+                                    </AlertDescription>
+                                  </Alert>
+                                )}
+
                                 {revenueData.wageIndexApplied && revenueData.wageIndexApplied !== 1.0 && (
                                   <Alert className="bg-blue-50 border-blue-200">
                                     <Info className="w-4 h-4 text-blue-600" />
                                     <AlertDescription className="text-blue-800 text-xs">
                                       <strong>Wage Index Applied: {revenueData.wageIndexApplied.toFixed(4)}</strong>
                                       <br />
-                                      National Base: ${revenueData.original?.basePayment?.toFixed(2)} × {revenueData.wageIndexApplied.toFixed(4)} = ${revenueData.original?.adjustedBasePayment?.toFixed(2)} (Adjusted Base)
+                                      {/* CMS applies the wage index to the labor share only, so the
+                                          adjusted base is NOT base × wage index. Show the base and the
+                                          resulting adjusted base without a contradictory equation. */}
+                                      National Base ${revenueData.original?.basePayment?.toFixed(2)} → Adjusted Base ${revenueData.original?.adjustedBasePayment?.toFixed(2)} (wage index applied to labor share per CMS)
                                     </AlertDescription>
                                   </Alert>
                                 )}

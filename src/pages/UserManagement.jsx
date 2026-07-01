@@ -878,7 +878,6 @@ export default function UserManagement() {
                   <SelectContent style={{ zIndex: 9999 }}>
                     <SelectItem value="user">Nurse</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -886,7 +885,6 @@ export default function UserManagement() {
                 <Shield className="w-4 h-4" />
                 <AlertDescription className="text-sm">
                   <strong>Admin:</strong> Full access to all features and settings.<br/>
-                  <strong>Manager:</strong> Access to reports and user management.<br/>
                   <strong>Nurse:</strong> Access to patient care and documentation.
                 </AlertDescription>
               </Alert>
@@ -1050,18 +1048,11 @@ export default function UserManagement() {
                 <div className="space-y-3">
                   <Alert className="bg-emerald-50 border-emerald-300">
                     <AlertDescription className="text-emerald-900">
-                      Password reset successfully! An email with the temporary password has been sent to the user.
+                      Password reset successfully! An email with the temporary password has been sent to
+                      the user. For security, the temporary password is delivered only by email and is not
+                      shown here — if the email doesn't arrive, reset again or check email delivery.
                     </AlertDescription>
                   </Alert>
-                  <div className="p-4 bg-slate-50 rounded-lg border">
-                    <p className="text-sm text-slate-600 mb-2">Temporary Password:</p>
-                    <p className="font-mono text-lg font-bold text-slate-900 bg-white p-3 rounded border select-all">
-                      {resetPasswordResult.tempPassword}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-2">
-                      You can share this with the user if they didn't receive the email
-                    </p>
-                  </div>
                 </div>
               ) : (
                 <Alert className="bg-red-50 border-red-300">
@@ -1147,7 +1138,6 @@ export default function UserManagement() {
                 <SelectContent style={{ zIndex: 9999 }}>
                   <SelectItem value="user">Nurse</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -253,10 +253,28 @@ export function extractNumbersAndMeasurements(text) {
     matches.forEach(add);
   }
   // Also fold in labeled vitals so "BP 148/90" and "blood pressure of 148/90"
-  // both reduce to comparable component numbers.
+  // both reduce to comparable component numbers. Synthesize the unit-bearing form
+  // for HR/RR/temp/weight too: a nurse commonly documents these WITHOUT a unit
+  // ("HR 82", "T 98.6", "wt 180"), which the MEASUREMENT_PATTERNS above (which
+  // require the unit) don't capture — but the constrained scribe faithfully
+  // restates them WITH units ("HR 82 bpm", "98.6°F"). Without folding these in,
+  // the value-guard would flag those faithful outputs as hallucinated values and
+  // block the nurse from saving a note they actually wrote. normalizeToken strips
+  // spaces/° so "82bpm"/"98.6f" here match "82 bpm"/"98.6°F" in the output.
   const v = extractVitals(text);
   if (v.bp_sys && v.bp_dia) add(`${v.bp_sys}/${v.bp_dia}`);
   if (v.o2) add(`${v.o2}%`);
+  if (v.hr) add(`${v.hr}bpm`);
+  if (v.rr) add(`${v.rr}breaths`);
+  if (v.temp) add(`${v.temp}f`);
+  // Weight is the one vital with a unit ambiguity: extractVitals drops the unit, so
+  // synthesizing an "lbs" token for a source documented in kg would let a real unit
+  // error slip the value-guard ("80 kg" -> allowing "80 lbs", ~96 lb off). Only
+  // synthesize the lbs token when the source weight is UNITLESS ("wt 180"); an
+  // explicit lbs/kg weight is already emitted verbatim by MEASUREMENT_PATTERNS.
+  if (v.weight && !/(?:\bwt|weight)\s*:?\s*\d{2,3}(?:\.\d)?\s*(?:lbs?|kg)\b/i.test(text)) {
+    add(`${v.weight}lbs`);
+  }
   return found;
 }
 

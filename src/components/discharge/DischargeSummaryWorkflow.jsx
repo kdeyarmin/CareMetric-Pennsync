@@ -10,6 +10,18 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+// Discharge disposition options (mirror the DischargeSummary schema enum). The AI
+// generator no longer guesses a disposition — the reviewing clinician must set it.
+const DISPOSITION_OPTIONS = [
+  { value: 'home_independent', label: 'Home — Independent' },
+  { value: 'home_with_support', label: 'Home — With Support' },
+  { value: 'continuing_home_health', label: 'Continuing Home Health' },
+  { value: 'transferred_to_facility', label: 'Transferred to Facility' },
+  { value: 'expired', label: 'Expired' },
+  { value: 'other', label: 'Other' },
+];
 import { 
   FileText, Loader2, CheckCircle, Sparkles, PenTool, Download, Eye
 } from 'lucide-react';
@@ -100,6 +112,12 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
 
   // Mark as reviewed
   const handleReviewComplete = async () => {
+    // Disposition is a required legal fact that the AI no longer guesses — the
+    // clinician must select it before this discharge document can be signed/locked.
+    if (!summary?.discharge_disposition) {
+      toast.error('Select the discharge disposition before completing review.');
+      return;
+    }
     try {
       await updateMutation.mutateAsync({
         // Persist the clinician's edits to the narrative fields. Without this the
@@ -108,6 +126,10 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
         // sign content that was never stored, a legal-integrity defect.
         summary_of_care: summary?.summary_of_care,
         discharge_instructions: summary?.discharge_instructions,
+        // Persist the reviewer-set clinical facts (previously fabricated by the
+        // generator and never surfaced for review).
+        discharge_disposition: summary?.discharge_disposition,
+        functional_status: summary?.functional_status,
         status: 'reviewed',
         reviewed_by: currentUser?.email,
         reviewed_date: new Date().toISOString(),
@@ -292,6 +314,44 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
                       onChange={(e) => setEditedSummary({ ...summary, discharge_instructions: e.target.value })}
                       rows={5}
                     />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Discharge Disposition &amp; Functional Status</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label className="mb-1 block">
+                        Discharge Disposition <span className="text-red-600">*</span>
+                      </Label>
+                      <Select
+                        value={summary.discharge_disposition || ''}
+                        onValueChange={(value) => setEditedSummary({ ...summary, discharge_disposition: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select where the patient was discharged to…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DISPOSITION_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="mb-1 block">Functional Status at Discharge</Label>
+                      <Textarea
+                        value={summary.functional_status?.at_discharge || ''}
+                        onChange={(e) => setEditedSummary({
+                          ...summary,
+                          functional_status: { ...(summary.functional_status || {}), at_discharge: e.target.value },
+                        })}
+                        rows={3}
+                        placeholder="Describe the patient's actual functional status at discharge (e.g. improved, unchanged, declined, transferred to acute care)."
+                      />
+                    </div>
                   </CardContent>
                 </Card>
               </TabsContent>

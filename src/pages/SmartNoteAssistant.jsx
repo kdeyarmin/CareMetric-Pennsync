@@ -436,7 +436,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
   // instead of being dropped.
   const escalateToTasks = async (items) => {
     if (!items?.length || !currentUser?.email) return;
+    const newReqId = () =>
+      (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const payloads = items.map((it) => ({
+      // Stable idempotency key so a queued task (offline or failed-online retry)
+      // is created exactly once even if a drain is interrupted or two tabs drain
+      // the shared queue concurrently.
+      client_request_id: newReqId(),
       patient_id: patientId || undefined,
       title: it.title,
       description: it.description || "",

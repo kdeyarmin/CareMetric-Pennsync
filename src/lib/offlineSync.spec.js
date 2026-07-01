@@ -30,8 +30,8 @@ function harness(items, entityOverrides = {}) {
       filter: vi.fn(async () => []),
       ...entityOverrides.ComplianceAudit,
     },
-    Task: { create: vi.fn(async () => ({ id: 'task-new' })), ...entityOverrides.Task },
-    Incident: { create: vi.fn(async () => ({ id: 'inc-new' })), ...entityOverrides.Incident },
+    Task: { create: vi.fn(async () => ({ id: 'task-new' })), filter: vi.fn(async () => []), ...entityOverrides.Task },
+    Incident: { create: vi.fn(async () => ({ id: 'inc-new' })), filter: vi.fn(async () => []), ...entityOverrides.Incident },
   };
 
   return { entities, getQueue, removeItem, remaining: () => queue };
@@ -107,6 +107,38 @@ describe('drainSyncQueue', () => {
     expect(h.entities.Incident.create.mock.calls[0][0]).not.toHaveProperty('created_offline');
     expect(h.entities.Incident.create.mock.calls[0][0]).toMatchObject({ patient_id: 'p1', incident_type: 'fall' });
     expect(h.removeItem).toHaveBeenCalledWith(5);
+  });
+
+  it('dedupes CREATE_TASK on client_request_id (interrupted/multi-tab retry does not double-create)', async () => {
+    const h = harness(
+      [{ id: 40, action: 'CREATE_TASK', payload: { client_request_id: 'tk-1', title: 't' } }],
+      { Task: { filter: vi.fn(async () => [{ id: 'existing-task' }]) } },
+    );
+    const res = await drainSyncQueue(h);
+    expect(res.synced).toBe(1);
+    expect(h.entities.Task.filter).toHaveBeenCalledWith({ client_request_id: 'tk-1' });
+    expect(h.entities.Task.create).not.toHaveBeenCalled();
+    expect(h.removeItem).toHaveBeenCalledWith(40);
+  });
+
+  it('creates CREATE_TASK with a client_request_id when none exists yet (filter empty)', async () => {
+    const h = harness([{ id: 41, action: 'CREATE_TASK', payload: { client_request_id: 'tk-2', title: 't' } }]);
+    const res = await drainSyncQueue(h);
+    expect(res.synced).toBe(1);
+    expect(h.entities.Task.filter).toHaveBeenCalledWith({ client_request_id: 'tk-2' });
+    expect(h.entities.Task.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('dedupes CREATE_INCIDENT on client_request_id (no duplicate safety event)', async () => {
+    const h = harness(
+      [{ id: 42, action: 'CREATE_INCIDENT', payload: { client_request_id: 'ic-1', incident_type: 'fall' } }],
+      { Incident: { filter: vi.fn(async () => [{ id: 'existing-inc' }]) } },
+    );
+    const res = await drainSyncQueue(h);
+    expect(res.synced).toBe(1);
+    expect(h.entities.Incident.filter).toHaveBeenCalledWith({ client_request_id: 'ic-1' });
+    expect(h.entities.Incident.create).not.toHaveBeenCalled();
+    expect(h.removeItem).toHaveBeenCalledWith(42);
   });
 
   it('leaves an unknown action in the queue for inspection (no handler)', async () => {

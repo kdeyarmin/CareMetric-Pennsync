@@ -2,6 +2,10 @@
   "name": "Incident",
   "type": "object",
   "properties": {
+    "client_request_id": {
+      "type": "string",
+      "description": "Offline idempotency key (queue id) used to dedupe incidents created from the offline sync queue"
+    },
     "patient_id": {
       "type": "string",
       "description": "Reference to Patient entity"

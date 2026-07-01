@@ -134,14 +134,27 @@ async function drainOnce(deps) {
       } else if (item.action === 'CREATE_TASK') {
         // A provider follow-up escalated while offline (critical chart conflict or
         // vital). Create the Task on reconnect so the follow-up isn't lost.
-        await entities.Task.create(item.payload);
+        // Idempotency: dedupe on client_request_id so an interrupted drain, a
+        // migration crash-retry, or two tabs draining the shared queue never
+        // double-create the same follow-up task.
+        const key = item.payload?.client_request_id;
+        const existing = key ? await entities.Task.filter({ client_request_id: key }) : [];
+        if (!existing || existing.length === 0) {
+          await entities.Task.create(item.payload);
+        }
         await removeItem(item.id);
         synced += 1;
       } else if (item.action === 'CREATE_INCIDENT') {
         // An incident reported offline (OfflineMode). Create it on reconnect so the
         // safety event isn't lost. `created_offline` is local bookkeeping — strip it.
+        // Idempotency: dedupe on client_request_id (same rationale as CREATE_TASK)
+        // so a duplicate safety incident is never written to the log.
         const { created_offline: _createdOffline, ...incidentPayload } = item.payload || {};
-        await entities.Incident.create(incidentPayload);
+        const key = incidentPayload.client_request_id;
+        const existing = key ? await entities.Incident.filter({ client_request_id: key }) : [];
+        if (!existing || existing.length === 0) {
+          await entities.Incident.create(incidentPayload);
+        }
         await removeItem(item.id);
         synced += 1;
       } else {

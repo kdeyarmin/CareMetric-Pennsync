@@ -13,6 +13,8 @@ import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { gradeTrainingAttempt } from "@/functions/gradeTrainingAttempt";
 import { startTrainingAssignment } from "@/functions/startTrainingAssignment";
+import { getCoursePlayerQuestions } from "@/functions/getCoursePlayerQuestions";
+import { getRoleView } from "@/lib/roles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -104,9 +106,26 @@ export default function TrainingCoursePlayer() {
     enabled: !!(previewMode ? courseId : assignment?.course_id),
     initialData: [],
   });
+  // Preview is URL-derived (?preview=true), so it must NOT by itself unlock the raw
+  // question fetch — a learner could otherwise append ?preview=true to re-expose the
+  // answer key. Only a real admin/educator (facility_admin or super_admin) sees the
+  // full records; everyone else — including a forced-preview learner and the moment
+  // before the current user resolves — gets the answer-free server payload.
+  const canSeeAnswerKey = previewMode && getRoleView(currentUser) !== "nurse";
   const { data: questions = [] } = useQuery({
-    queryKey: ["training-questions", previewMode ? courseId : assignment?.course_id],
-    queryFn: () => base44.entities.TrainingQuestion.filter({ course_id: previewMode ? courseId : assignment?.course_id, active: true }, "order_index", 200),
+    queryKey: ["training-questions", previewMode ? courseId : assignment?.course_id, canSeeAnswerKey],
+    queryFn: async () => {
+      const cid = previewMode ? courseId : assignment?.course_id;
+      if (canSeeAnswerKey) {
+        // Admin/educator course preview may fetch full question data (incl. answers).
+        return base44.entities.TrainingQuestion.filter({ course_id: cid, active: true }, "order_index", 200);
+      }
+      // Learner test-taking (and non-admin preview): get answer-free questions from
+      // the server so the correct-answer key is never shipped to the browser
+      // (grading stays server-side).
+      const res = await getCoursePlayerQuestions({ course_id: cid });
+      return res?.data?.questions || [];
+    },
     enabled: !!(previewMode ? courseId : assignment?.course_id),
     initialData: [],
   });

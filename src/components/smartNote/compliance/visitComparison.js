@@ -14,10 +14,20 @@
 // `.js` modules with explicit extensions (never `.jsx`).
 import { extractVitals } from "./factExtraction.js";
 
-/** Pull the first "N/10" rating (0-10) from free text, or null. */
+/**
+ * Pull a documented "N/10" pain rating (0-10) from free text, or null.
+ * Requires an explicit pain/rating context near the fraction so a calendar date
+ * or recert date written as month/day (e.g. "Recert due 3/10", "9/10") is NOT
+ * misread as a pain score — a phantom pain value would corrupt the visit trend
+ * comparison and could trigger a spurious critical-pain escalation. Matches the
+ * common clinical forms ("pain 3/10", "pain rating of 7/10", "pain: 5/10") and
+ * the reversed "8/10 pain".
+ */
 export function extractPain(text) {
   if (!text) return null;
-  const m = text.match(/\b(\d{1,2})\s*\/\s*10\b/);
+  const m =
+    text.match(/(?:pain|discomfort|rating)\D{0,12}?\b(\d{1,2})\s*\/\s*10\b/i) ||
+    text.match(/\b(\d{1,2})\s*\/\s*10\b\D{0,8}?(?:pain|discomfort)/i);
   if (!m) return null;
   const v = parseInt(m[1], 10);
   return Number.isFinite(v) && v >= 0 && v <= 10 ? v : null;
@@ -32,7 +42,7 @@ function extractMetrics(text) {
   // 176 lbs) isn't reported as a huge swing, and a real change isn't masked.
   // (Temperature needs no such handling: extractVitals already rejects sub-90
   // values, so a Celsius reading is dropped rather than mis-compared.)
-  if (weight != null && /(?:\bwt|weight)\s*\d{2,3}(?:\.\d)?\s*kg\b/i.test(text)) {
+  if (weight != null && /(?:\bwt|weight)\s*:?\s*\d{2,3}(?:\.\d)?\s*kg\b/i.test(text)) {
     weight = Math.round(weight * 2.20462 * 10) / 10;
   }
   return {

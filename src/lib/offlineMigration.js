@@ -22,10 +22,11 @@ import { OFFLINE_KEYS } from '@/lib/offlineKeys';
  * once the visit's real id is known via the persisted offline_->real id map), and a
  * visit carrying a real server id is replayed as an edit, not a duplicate create.
  *
- * Idempotent: every CREATE_VISIT/UPDATE_VISIT carries a client_request_id/visit_id
- * derived from the legacy id, so re-running (or a crash between enqueue and clear)
- * can't create a duplicate visit — the drain dedupes on those keys. Safe to run on
- * every startup.
+ * Idempotent: every enqueued action carries a stable key derived from the legacy
+ * id — CREATE_VISIT a client_request_id, UPDATE_VISIT the real visit_id, and
+ * CREATE_TASK/CREATE_INCIDENT a client_request_id — so re-running (or a crash
+ * between enqueue and clear) can't create a duplicate record; the drain dedupes on
+ * those keys. Safe to run on every startup.
  */
 
 // Stable idempotency key from a legacy item id (falls back to a random one only
@@ -79,7 +80,9 @@ function mapSyncQueue(items, idMap) {
         if (rawId) createByOfflineId.set(rawId, payload);
       }
     } else if (it?.type === 'task') {
-      actions.push(['CREATE_TASK', stripLocal(data)]);
+      // Stable idempotency key from the legacy item id so a crash between enqueue
+      // and clear (or a re-run) can't create a duplicate task on the drain.
+      actions.push(['CREATE_TASK', { client_request_id: reqId('legacy-task', it.id), ...stripLocal(data) }]);
     } else if (it?.type === 'note' || it?.type === 'vitals') {
       deferred.push(it);
     } else {
@@ -112,7 +115,9 @@ function mapPending(items, idMap) {
     if (c?.type === 'visit_create') {
       actions.push(['CREATE_VISIT', { client_request_id: reqId('legacy-pending', c.id), status: 'completed', ...data }]);
     } else if (c?.type === 'incident_create') {
-      actions.push(['CREATE_INCIDENT', data]);
+      // Stable idempotency key from the legacy change id so a crash between enqueue
+      // and clear (or a re-run) can't create a duplicate safety incident.
+      actions.push(['CREATE_INCIDENT', { client_request_id: reqId('legacy-incident', c.id), ...data }]);
     } else if (c?.type === 'visit_update') {
       const rid = resolveVisitId(c?.entityId, idMap);
       if (!rid) return PRESERVE;
