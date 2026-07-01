@@ -3,6 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { savePatients } from '@/lib/indexedDB';
 import { drainSyncQueue } from '@/lib/offlineSync';
+import { migrateLegacyOfflineQueues } from '@/lib/offlineMigration';
 import { toast } from 'sonner';
 
 export default function OfflineManager() {
@@ -36,6 +37,19 @@ export default function OfflineManager() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    if (isAuthenticated) {
+      // One-time replay of any pending writes left in the RETIRED localStorage
+      // queues by a previous app version into the canonical IndexedDB queue, so an
+      // upgrade doesn't strand offline visits/incidents on the device. Local-only +
+      // idempotent (clears each store after enqueuing). Drain afterward so migrated
+      // items upload on this same startup when online. No `online` event fires when
+      // the app loads already-connected, so this mount-time drain is also what syncs
+      // a visit captured last session.
+      migrateLegacyOfflineQueues()
+        .catch((e) => console.error('Legacy offline queue migration failed:', e))
+        .finally(() => { if (navigator.onLine) drainQueue(); });
+    }
+
     // Initial cache of patients. OfflineManager is mounted outside the auth gate,
     // so guard this PHI query on authentication to avoid firing it on the login screen.
     if (isOnline && isAuthenticated) {
@@ -44,11 +58,6 @@ export default function OfflineManager() {
           savePatients(patients);
         })
         .catch(console.error);
-
-      // Drain any items left in the queue from a prior session. No `online` event
-      // fires when the app loads already-connected, so without this an offline
-      // visit captured last session would sit unsynced until the next reconnect.
-      drainQueue();
     }
 
     return () => {
