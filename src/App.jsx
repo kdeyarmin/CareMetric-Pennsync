@@ -66,6 +66,12 @@ const RedirectTo = ({ to }) => {
   return <Navigate to={query ? `${path}?${query}` : path} state={location.state} replace />;
 };
 
+const RoutePageLoader = () => (
+  <div className="flex min-h-[50vh] items-center justify-center">
+    <PageLoader />
+  </div>
+);
+
 const AuthenticatedApp = () => {
   const location = useLocation();
   const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, navigateToLogin } = useAuth();
@@ -137,49 +143,49 @@ const AuthenticatedApp = () => {
     return <AIContentResponsibilityAgreement />;
   }
 
-  // Render the main app
+  // Render the main app. Keep the layout mounted during lazy page loads so
+  // navbar clicks visibly navigate immediately instead of replacing the whole app
+  // with a blank centered loader.
   return (
-    <Suspense fallback={
-      <div className="fixed inset-0 flex items-center justify-center">
-        <PageLoader />
-      </div>
-    }>
-      <Routes>
-        <Route path="/" element={<Navigate to={`/${MAIN_PAGE}`} replace />} />
-        {ROUTES.map(({ name, Component, adminOnly, superAdminOnly }) => {
-          // Role gate: platform-level pages require super_admin; other admin
-          // pages require facility_admin or super_admin; everything else is open.
-          const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
-          const blockedAdmin = adminOnly && !isAdmin;
-          return (
-            <Route
-              key={name}
-              path={`/${name}`}
-              element={
-                <LayoutWrapper currentPageName={name}>
-                  {/* Per-route boundary: a render error in one page shows a
-                      contained error here while the nav shell stays mounted, and
-                      navigating to another route remounts a fresh boundary (no
-                      full-app reload). The app-level boundary in App() still
-                      catches errors in the layout/providers themselves. */}
-                  <ErrorBoundary key={name}>
-                    {blockedSuperAdmin
-                      ? <AdminOnlyFallback superAdmin />
-                      : blockedAdmin
-                        ? <AdminOnlyFallback />
-                        : <Component />}
-                  </ErrorBoundary>
-                </LayoutWrapper>
-              }
-            />
-          );
-        })}
-        {REDIRECTS.map(({ from, to }) => (
-          <Route key={from} path={from} element={<RedirectTo to={to} />} />
-        ))}
-        <Route path="*" element={<PageNotFound />} />
-      </Routes>
-    </Suspense>
+    <Routes>
+      <Route path="/" element={<Navigate to={`/${MAIN_PAGE}`} replace />} />
+      {ROUTES.map(({ name, Component, adminOnly, superAdminOnly }) => {
+        // Role gate: platform-level pages require super_admin; other admin
+        // pages require facility_admin or super_admin; everything else is open.
+        const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
+        const blockedAdmin = adminOnly && !isAdmin;
+        return (
+          <Route
+            key={name}
+            path={`/${name}`}
+            element={
+              <LayoutWrapper currentPageName={name}>
+                {/* Per-route boundary: a render error in one page shows a
+                    contained error here while the nav shell stays mounted, and
+                    navigating to another route remounts a fresh boundary (no
+                    full-app reload). The app-level boundary in App() still
+                    catches errors in the layout/providers themselves. */}
+                <ErrorBoundary key={name}>
+                  {blockedSuperAdmin
+                    ? <AdminOnlyFallback superAdmin />
+                    : blockedAdmin
+                      ? <AdminOnlyFallback />
+                      : (
+                        <Suspense fallback={<RoutePageLoader />}>
+                          <Component />
+                        </Suspense>
+                      )}
+                </ErrorBoundary>
+              </LayoutWrapper>
+            }
+          />
+        );
+      })}
+      {REDIRECTS.map(({ from, to }) => (
+        <Route key={from} path={from} element={<RedirectTo to={to} />} />
+      ))}
+      <Route path="*" element={<PageNotFound />} />
+    </Routes>
   );
 };
 
