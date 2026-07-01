@@ -18,17 +18,25 @@ let localSeq = 0;
 const nextLocalId = () => `local-${localSeq++}`;
 
 // Map a persisted TrainingModule.content_json into the editor's working shape.
-const moduleToItem = (module) => {
+// The editor only surfaces heading/body/bullets per section (plus intro and key
+// takeaways), but AI-generated / seeded lessons carry much richer content the
+// viewer renders (section example/pro_tip/warning/steps/do_dont/mnemonic/
+// regulation_ref, plus top-level case_scenarios, self-checks, pearls, summary).
+// We stash the raw content and raw section objects so a small edit doesn't erase
+// everything we don't surface — see itemToContentJson.
+export const moduleToItem = (module) => {
   const content = module.content_json || {};
   return {
     id: module.id,
     _localId: nextLocalId(),
+    _rawContent: content,
     title: module.title || "",
     intro: content.intro || "",
     estimated_minutes: module.estimated_minutes || 10,
     is_required: module.is_required !== false,
     sections: (Array.isArray(content.sections) ? content.sections : []).map((s) => ({
       _localId: nextLocalId(),
+      _raw: s,
       heading: s.heading || "",
       body: s.body || "",
       bulletsText: Array.isArray(s.bullets) ? s.bullets.join("\n") : "",
@@ -49,18 +57,21 @@ const blankItem = () => ({
   takeawaysText: "",
 });
 
-// Serialize a working item back into TrainingModule fields the player/viewer read.
-const itemToContentJson = (item) => ({
+// Serialize a working item back into TrainingModule content the player/viewer
+// read. We merge the editor's fields ONTO the preserved raw content/sections so
+// rich fields the editor doesn't surface survive an edit.
+export const itemToContentJson = (item) => ({
+  ...(item._rawContent || {}),
   intro: item.intro || "",
   sections: (item.sections || [])
-    .filter((s) => s.heading || s.body || s.bulletsText)
+    .filter((s) => s.heading || s.body || s.bulletsText || s._raw)
     .map((s) => ({
+      ...(s._raw || {}),
       heading: s.heading || "",
       body: s.body || "",
       bullets: linesToArray(s.bulletsText),
     })),
   key_takeaways: linesToArray(item.takeawaysText),
-  case_scenarios: [],
 });
 
 // TrainingModule.category is a required enum distinct from the course category.

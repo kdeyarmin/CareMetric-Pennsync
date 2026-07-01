@@ -41,9 +41,18 @@ export default function CourseAssignDialog({ course }) {
       ? { role: course.role_targets[0] }
       : undefined;
 
+  const isPublished = course?.status === "published";
+
   const handleAssign = async ({ userEmails, filters }) => {
     setError("");
     setResult(null);
+    // Never assign an unpublished course — learners would be notified and could
+    // open it (the player loads by assignment, not by publish status) before it
+    // has been reviewed and published.
+    if (!isPublished) {
+      setError("Publish this course before assigning it to employees.");
+      return;
+    }
     if (!dueDate) {
       setError("Please choose a due date before assigning.");
       return;
@@ -83,7 +92,12 @@ export default function CourseAssignDialog({ course }) {
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!isPublished}
+          title={isPublished ? "Assign this course to employees" : "Publish this course before assigning it"}
+        >
           <UserPlus className="w-4 h-4 mr-1" />
           Assign
         </Button>
