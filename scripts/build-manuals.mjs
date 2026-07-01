@@ -184,8 +184,8 @@ const MANUALS = [
     manualTitle: 'User Manual',
     coverCfg: {
       title: 'User Manual',
-      audience: 'For clinical staff — nurses, social workers, spiritual care, therapists, and aides',
-      badges: ['Home Health', 'Hospice', 'AI-Assisted Documentation', 'Medicare-Compliant'],
+      audience: 'For clinical &amp; office staff — nurses, social workers, spiritual care, therapists, aides, and administrative team members',
+      badges: ['Home Health', 'Hospice', 'Clinical & Office Staff', 'AI-Assisted Documentation'],
     },
     tocCfg: { title: 'Contents', subtitle: 'Everything you need to work confidently in PennSync, from your first sign-in to advanced AI documentation.' },
     blocks: () => userBlocks,

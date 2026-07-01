@@ -9,6 +9,52 @@ import {
 } from './theme.mjs';
 
 export const adminBlocks = [
+  /* Administrator Feature Overview ─────────────────────────────────────────── */
+  {
+    id: 'admin-features',
+    title: 'Administrator Feature Overview',
+    sub: [
+      { id: 'af-users', title: 'Users & staff' },
+      { id: 'af-office', title: 'Office & back-office' },
+      { id: 'af-oversight', title: 'Compliance, analytics & data' },
+      { id: 'af-config', title: 'Configuration' },
+    ],
+    html: `
+      <p class="sec-intro">A quick map of the facility-administration tools. Each is covered in detail in the sections that follow.</p>
+
+      <h3 id="af-users"><span class="h3-eyebrow">Users &amp; staff</span>Managing your team</h3>
+      ${table(['Tool', 'What it does'], [
+        ['<strong>Admin Console</strong>', 'Launchpad to every admin tool, plus user activity, data quality, and system health.'],
+        ['<strong>User Management</strong>', 'Invite staff, assign roles, edit profiles, revoke access, and export the roster.'],
+        ['<strong>Personnel &amp; Credentials</strong>', 'Personnel files, credential approvals, and agency-wide expiration/compliance tracking.'],
+        ['<strong>Performance</strong>', 'Nurse-performance and skill-gap dashboards.'],
+      ])}
+
+      <h3 id="af-office"><span class="h3-eyebrow">Office &amp; back-office</span>Front-office workflows</h3>
+      ${table(['Tool', 'What it does'], [
+        ['<strong>Referrals</strong>', 'Upload and process referrals with AI extraction, patient matching, and admission notes.'],
+        ['<strong>Incident Review</strong>', 'Triage, acknowledge, flag state-reportable, and resolve reported incidents.'],
+        ['<strong>Documents &amp; E-Signing</strong>', 'Signature requests, document storage/intake, discharge, templates, and audit logs.'],
+        ['<strong>Template Management</strong>', 'Create and maintain reusable note and PDF templates.'],
+      ])}
+
+      <h3 id="af-oversight"><span class="h3-eyebrow">Oversight</span>Compliance, analytics &amp; data</h3>
+      ${table(['Tool', 'What it does'], [
+        ['<strong>Training Management</strong>', 'Assign courses and learning plans, auto-generate AI in-services, and track completion.'],
+        ['<strong>Compliance Center</strong>', 'Real-time monitoring, regulatory tracking, and security/audit logs.'],
+        ['<strong>Reports &amp; Analytics</strong>', 'KPI, performance, OASIS/PDGM, predictive analytics, and documentation-impact ROI.'],
+        ['<strong>Data Management</strong>', 'Patient import/export, duplicate merge, and bulk discharge.'],
+      ])}
+
+      <h3 id="af-config"><span class="h3-eyebrow">Configuration</span>Agency setup</h3>
+      ${table(['Tool', 'What it does'], [
+        ['<strong>Agency Settings</strong>', 'Office info, cost calculations, AI/learning, communications (TCPA), phone/fax, billing, and validation rules.'],
+        ['<strong>PDGM Rate Settings</strong>', 'Configure Medicare case-mix weights, thresholds, and ICD-10 mappings.'],
+        ['<strong>On-Call, Pathways &amp; Announcements</strong>', 'Coverage scheduling, clinical protocols, and staff-wide announcements.'],
+      ])}
+    `,
+  },
+
   /* A ── Roles & Access ───────────────────────────────────────────────────── */
   {
     id: 'admin-roles',
