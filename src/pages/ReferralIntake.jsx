@@ -413,12 +413,19 @@ Actions available:
         related_event_type: 'referral'
       };
 
-      // Notify BEFORE persisting the assignment so the two succeed or fail together
-      // from the operator's view: if the message can't be sent, the assignment is
-      // not recorded (the operator sees the error and retries) rather than the nurse
-      // being silently assigned a referral they were never told about.
-      await base44.entities.Message.create(messageData);
+      // These are two separate writes with no shared transaction. Persist the
+      // assignment first, then notify; if the notification fails, roll the
+      // assignment back to its prior value so the nurse is never left assigned to a
+      // referral they were never told about (the original silent-orphan bug). The
+      // operator then sees the error and can retry cleanly.
+      const priorAssignedTo = referral.assigned_to ?? null;
       await base44.entities.Referral.update(referralId, { assigned_to: nurseEmail });
+      try {
+        await base44.entities.Message.create(messageData);
+      } catch (notifyErr) {
+        await base44.entities.Referral.update(referralId, { assigned_to: priorAssignedTo }).catch(() => {});
+        throw notifyErr;
+      }
 
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       queryClient.invalidateQueries({ queryKey: ['messages'] });

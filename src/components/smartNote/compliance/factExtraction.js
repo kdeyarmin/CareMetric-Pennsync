@@ -267,7 +267,14 @@ export function extractNumbersAndMeasurements(text) {
   if (v.hr) add(`${v.hr}bpm`);
   if (v.rr) add(`${v.rr}breaths`);
   if (v.temp) add(`${v.temp}f`);
-  if (v.weight) add(`${v.weight}lbs`);
+  // Weight is the one vital with a unit ambiguity: extractVitals drops the unit, so
+  // synthesizing an "lbs" token for a source documented in kg would let a real unit
+  // error slip the value-guard ("80 kg" -> allowing "80 lbs", ~96 lb off). Only
+  // synthesize the lbs token when the source weight is UNITLESS ("wt 180"); an
+  // explicit lbs/kg weight is already emitted verbatim by MEASUREMENT_PATTERNS.
+  if (v.weight && !/(?:\bwt|weight)\s*:?\s*\d{2,3}(?:\.\d)?\s*(?:lbs?|kg)\b/i.test(text)) {
+    add(`${v.weight}lbs`);
+  }
   return found;
 }
 

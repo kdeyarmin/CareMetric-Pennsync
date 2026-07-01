@@ -297,3 +297,13 @@ test("extractNumbersAndMeasurements surfaces bare labeled HR/RR/temp/weight as u
   assert.ok(tokens.includes("98.6f"));
   assert.ok(tokens.includes("180lbs"));
 });
+
+test("value-guard still catches a kg->lb weight unit error (no synthesized lbs token for a kg source)", () => {
+  // "80 kg" (~176 lb) must NOT be allowed to pass as "80 lbs": the source weight is
+  // explicitly in kg, so no lbs token is synthesized and the guard flags the change.
+  const res = valueGuard("Weight 80 lbs.", "Weight: 80 kg.");
+  assert.equal(res.ok, false);
+  assert.ok(res.unverified.some((u) => u.value === "80lbs"));
+  // A unitless source weight still round-trips (the intended false-positive fix).
+  assert.equal(valueGuard("weight 180 lbs", "wt 180").ok, true);
+});
