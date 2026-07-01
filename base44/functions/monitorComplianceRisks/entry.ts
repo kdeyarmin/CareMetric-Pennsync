@@ -1,5 +1,105 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// Discharge-OASIS completion enforcer (inlined mirror of the unit-tested
+// src/components/oasis/dischargeComplianceEnforcer.js — Deno cannot import from
+// src/). Flags episodes that ended without a completed Discharge OASIS, which
+// silently drops the patient's demonstrated improvement and erodes the
+// 20-episode / 5-of-7-measure star-rating eligibility floor.
+const STAR_MIN_EPISODES = 20;
+const STAR_MIN_MEASURES = 5;
+const DC_COMPLETE_STATUSES = new Set(['completed', 'submitted']);
+const DC_START_TYPES = new Set(['Start of Care', 'Resumption of Care']);
+
+function daysBetween(a, b) {
+  const t1 = new Date(a).getTime();
+  const t2 = new Date(b).getTime();
+  if (Number.isNaN(t1) || Number.isNaN(t2)) return null;
+  return Math.floor((t2 - t1) / (1000 * 60 * 60 * 24));
+}
+
+function detectMissingDischargeOASIS(ctx, opts = {}) {
+  const { patient, oasisAssessments = [], visits = [] } = ctx || {};
+  if (!patient || !patient.id) return null;
+  const asOf = opts.asOf ? new Date(opts.asOf) : new Date();
+  const staleDays = opts.staleDays ?? 14;
+
+  const dischargeAssessments = oasisAssessments.filter((a) => a?.visit_type === 'Discharge');
+  const hasCompletedDischarge = dischargeAssessments.some((a) => DC_COMPLETE_STATUSES.has(a?.status));
+  const hasDraftDischarge = dischargeAssessments.length > 0 && !hasCompletedDischarge;
+  const hasBaseline = oasisAssessments.some((a) => DC_START_TYPES.has(a?.visit_type));
+  if (hasCompletedDischarge) return null;
+
+  const status = String(patient.status || '').toLowerCase();
+  const isDischargedPatient = status === 'discharged' || status === 'deceased';
+
+  let daysSinceLastVisit = null;
+  if (visits.length) {
+    const lastVisitDate = visits.map((v) => v?.visit_date).filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0];
+    if (lastVisitDate) daysSinceLastVisit = daysBetween(lastVisitDate, asOf);
+  }
+  const episodeLikelyEnded = isDischargedPatient || (daysSinceLastVisit !== null && daysSinceLastVisit >= staleDays);
+  if (!episodeLikelyEnded) return null;
+  if (status === 'deceased') return null;
+
+  const severity = isDischargedPatient ? 'critical' : 'high';
+  const name = `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Patient';
+  const factors = [];
+  if (isDischargedPatient) factors.push('Patient is discharged but has no completed Discharge OASIS on file');
+  else factors.push(`No visit in ${daysSinceLastVisit} days — episode appears to have ended`);
+  if (hasDraftDischarge) factors.push('A Discharge OASIS exists but is still in draft/in-progress');
+  if (!hasBaseline) factors.push('No SOC/ROC assessment on file to pair for a change score');
+  factors.push(
+    'Without a completed Discharge OASIS this episode contributes no demonstrated improvement',
+    `Missing episodes erode the ${STAR_MIN_EPISODES}-episode / ${STAR_MIN_MEASURES}-of-7-measure star eligibility floor`,
+  );
+
+  return {
+    patient_id: patient.id,
+    alert_type: 'documentation_risk',
+    severity,
+    title: hasDraftDischarge ? 'Discharge OASIS Not Completed' : 'Missing Discharge OASIS Assessment',
+    message: hasDraftDischarge
+      ? `${name}'s Discharge OASIS is started but not completed — finalize it to capture outcome improvement.`
+      : `${name}'s episode has ended without a Discharge OASIS — demonstrated improvement will be lost.`,
+    contributing_factors: factors,
+    recommended_actions: [
+      hasDraftDischarge ? 'Complete and submit the in-progress Discharge OASIS' : 'Complete a Discharge OASIS assessment for this episode',
+      'Pair it with the SOC/ROC to compute the CMS change score',
+      'Verify functional items (M1860, M1850, M1830, M1400, M2020) are scored',
+    ],
+    risk_score: isDischargedPatient ? 88 : 72,
+    data_sources: {
+      patient_status: patient.status,
+      days_since_last_visit: daysSinceLastVisit,
+      has_baseline_oasis: hasBaseline,
+      has_draft_discharge: hasDraftDischarge,
+    },
+  };
+}
+
+// Persist a batch of candidate alerts for one patient, skipping active
+// same-type/same-title duplicates created within the last 24h.
+async function persistAlerts(base44, patientAlerts, currentDate, sink) {
+  for (const alert of patientAlerts) {
+    const existingAlerts = await base44.asServiceRole.entities.PatientAlert.filter({
+      patient_id: alert.patient_id,
+      alert_type: alert.alert_type,
+      status: 'active',
+    });
+    const isDuplicate = existingAlerts.some((ea) =>
+      ea.title === alert.title &&
+      new Date(ea.created_date) > new Date(currentDate.getTime() - 24 * 60 * 60 * 1000));
+    if (!isDuplicate) {
+      const created = await base44.asServiceRole.entities.PatientAlert.create({
+        ...alert,
+        status: 'active',
+        flagged_urgent: alert.severity === 'critical',
+      });
+      sink.push(created);
+    }
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -30,9 +130,10 @@ Deno.serve(async (req) => {
       const patientAlerts = [];
       
       // Fetch patient data
-      const [visits, oasisRecords] = await Promise.all([
+      const [visits, oasisRecords, oasisAssessments] = await Promise.all([
         base44.asServiceRole.entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
-        base44.asServiceRole.entities.OASISUpload.filter({ patient_id: patient.id }, '-created_date', 1)
+        base44.asServiceRole.entities.OASISUpload.filter({ patient_id: patient.id }, '-created_date', 1),
+        base44.asServiceRole.entities.OASISAssessment.filter({ patient_id: patient.id }, '-assessment_date', 20)
       ]);
       
       const lastVisit = visits[0];
@@ -166,31 +267,34 @@ Deno.serve(async (req) => {
         }
       }
       
-      // Create alerts that don't already exist
-      for (const alert of patientAlerts) {
-        // Check if similar alert already exists and is active
-        const existingAlerts = await base44.asServiceRole.entities.PatientAlert.filter({
-          patient_id: alert.patient_id,
-          alert_type: alert.alert_type,
-          status: 'active'
-        });
-        
-        const isDuplicate = existingAlerts.some(ea => 
-          ea.title === alert.title && 
-          new Date(ea.created_date) > new Date(currentDate.getTime() - 24 * 60 * 60 * 1000) // Created within 24h
-        );
-        
-        if (!isDuplicate) {
-          const created = await base44.asServiceRole.entities.PatientAlert.create({
-            ...alert,
-            status: 'active',
-            flagged_urgent: alert.severity === 'critical'
-          });
-          alerts.push(created);
-        }
-      }
+      // RISK 6: Episode ended without a completed Discharge OASIS. A missing
+      // Discharge OASIS silently loses the patient's demonstrated improvement
+      // and drags the agency below the star-rating eligibility floor.
+      const dischargeGap = detectMissingDischargeOASIS(
+        { patient, oasisAssessments, visits },
+        { asOf: currentDate },
+      );
+      if (dischargeGap) patientAlerts.push(dischargeGap);
+
+      // Create alerts that don't already exist (skips active 24h duplicates).
+      await persistAlerts(base44, patientAlerts, currentDate, alerts);
     }
-    
+
+    // Discharged-patient sweep: the main loop only iterates ACTIVE patients, so
+    // separately catch recently-discharged patients whose episode closed without
+    // a completed Discharge OASIS (the highest-value, critical-severity case).
+    const dischargedPatients = await base44.asServiceRole.entities.Patient.filter(
+      { status: 'discharged' }, '-updated_date', 2000,
+    );
+    for (const patient of dischargedPatients) {
+      const [visits, oasisAssessments] = await Promise.all([
+        base44.asServiceRole.entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
+        base44.asServiceRole.entities.OASISAssessment.filter({ patient_id: patient.id }, '-assessment_date', 20),
+      ]);
+      const gap = detectMissingDischargeOASIS({ patient, oasisAssessments, visits }, { asOf: currentDate });
+      if (gap) await persistAlerts(base44, [gap], currentDate, alerts);
+    }
+
     return Response.json({
       success: true,
       alerts_generated: alerts.length,

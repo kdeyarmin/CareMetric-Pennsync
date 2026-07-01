@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,14 +11,25 @@ import {
   XCircle,
   AlertCircle,
   TrendingUp,
-  Brain
+  Brain,
+  ShieldCheck,
+  ShieldAlert
 } from "lucide-react";
 import { toast } from 'sonner';
+import { referralToF2FInput, validateFaceToFace } from "./faceToFaceValidator.js";
 
 export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
   const [analysis, setAnalysis] = useState(null);
   const ai = useAICall();
   const [analysisError, setAnalysisError] = useState(false);
+
+  // Deterministic Face-to-Face (F2F) validation from the uploaded referral only
+  // (42 CFR 424.22). Pure — never an AI/LLM call, and never surfaced in the
+  // patient chart or Smart Note. Renders only when the referral carries an F2F.
+  const f2fValidation = useMemo(() => {
+    const input = referralToF2FInput(referralData);
+    return input ? validateFaceToFace(input) : null;
+  }, [referralData]);
 
   // Hold the completion callback in a ref so an inline (per-render) parent
   // callback doesn't change analyzeReferral's identity and re-fire the effect —
@@ -239,6 +250,55 @@ Referral Data: ${JSON.stringify(referralData)}`,
           </div>
         </AlertDescription>
       </Alert>
+
+      {/* Face-to-Face (F2F) validation — deterministic, referral-only */}
+      {f2fValidation && (
+        <Alert
+          className={`border-2 ${
+            f2fValidation.status === "valid"
+              ? "bg-green-50 border-green-300"
+              : f2fValidation.status === "invalid"
+              ? "bg-red-50 border-red-300"
+              : "bg-yellow-50 border-yellow-300"
+          }`}
+        >
+          {f2fValidation.status === "valid" ? (
+            <ShieldCheck className="w-5 h-5 text-green-600" />
+          ) : (
+            <ShieldAlert
+              className={`w-5 h-5 ${f2fValidation.status === "invalid" ? "text-red-600" : "text-yellow-600"}`}
+            />
+          )}
+          <AlertDescription>
+            <div className="flex items-center justify-between mb-1">
+              <p className="font-semibold">
+                Face-to-Face Encounter:{" "}
+                <Badge
+                  className={
+                    f2fValidation.status === "valid"
+                      ? "bg-green-600"
+                      : f2fValidation.status === "invalid"
+                      ? "bg-red-600"
+                      : "bg-yellow-600"
+                  }
+                >
+                  {f2fValidation.status === "valid"
+                    ? "Compliant"
+                    : f2fValidation.status === "invalid"
+                    ? "Non-compliant"
+                    : "Needs review"}
+                </Badge>
+              </p>
+              <span className="text-xs text-slate-600">42 CFR 424.22</span>
+            </div>
+            <ul className="text-sm list-disc pl-5 space-y-0.5">
+              {f2fValidation.reasons.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid md:grid-cols-2 gap-4">
         {/* Missing Information */}

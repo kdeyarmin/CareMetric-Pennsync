@@ -60,10 +60,25 @@
         "awaiting_info",
         "active",
         "declined",
-        "ready_for_admission"
+        "ready_for_admission",
+        "soc_completed"
       ],
       "default": "new",
-      "description": "Intake workflow status"
+      "description": "Intake workflow status. soc_completed = start-of-care visit done (closes the intake→SOC clock)."
+    },
+    "soc_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Start-of-care date (SOC assessment completed) — closes the referral→SOC timeliness clock"
+    },
+    "first_visit_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the first in-home visit for this referral"
+    },
+    "soc_completed_by": {
+      "type": "string",
+      "description": "Email of the clinician who completed the start of care"
     },
     "document_url": {
       "type": "string",
