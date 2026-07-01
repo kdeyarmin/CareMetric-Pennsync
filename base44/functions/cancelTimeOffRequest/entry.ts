@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
         });
         await base44.asServiceRole.integrations.Core.SendEmail({
           to: request.manager_email,
-          from_name: 'Penn Sync Time Off',
+          from_name: 'PennSync by CareMetric',
           subject: `Time off cancelled by ${who}`,
           body: `${who} has cancelled their previously approved ${prettyType} for ${request.start_date} → ${request.end_date}.`,
         }).catch(() => null);

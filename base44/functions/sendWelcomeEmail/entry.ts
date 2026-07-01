@@ -22,11 +22,11 @@ Deno.serve(async (req) => {
 
     const welcomeEmail = await base44.integrations.Core.SendEmail({
       to: email,
-      subject: 'Welcome to CareMetric AI - Your Account is Ready',
-      from_name: 'CareMetric AI Admin',
+      subject: 'Welcome to PennSync by CareMetric - Your Account is Ready',
+      from_name: 'PennSync by CareMetric',
       body: `Dear ${full_name},
 
-Welcome to CareMetric AI! Your user account has been set up by your administrator.
+Welcome to PennSync by CareMetric! Your user account has been set up by your administrator.
 
 LOGIN CREDENTIALS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -37,9 +37,9 @@ Temporary Password: ${temporary_password}
 IMPORTANT: Please change your password immediately upon first login for security.
 
 GETTING STARTED:
-1. Visit the CareMetric AI login page and sign in with the credentials above
+1. Visit the PennSync by CareMetric login page and sign in with the credentials above
   2. You will be prompted to change your temporary password to a secure password of your choice
-  3. Once logged in, you'll have access to the CareMetric AI platform
+  3. Once logged in, you'll have access to the PennSync by CareMetric platform
 4. Explore the dashboard and available features for your role
 5. Contact your administrator if you have any questions
 
@@ -59,7 +59,7 @@ SECURITY REMINDER:
 If you did not request this account or have any questions, please contact your administrator immediately.
 
 Best regards,
-CareMetric AI Administration Team
+PennSync by CareMetric Administration Team
 
 ---
 This is an automated message. Please do not reply to this email.`

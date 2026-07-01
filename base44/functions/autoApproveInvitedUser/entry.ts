@@ -84,11 +84,11 @@ Deno.serve(async (req) => {
         // Send welcome email (fire and forget to reduce timeout risk)
         base44.asServiceRole.integrations.Core.SendEmail({
           to: user.email,
-          from_name: 'CareMetric AI',
-          subject: 'Welcome to CareMetric AI — Your Account is Active',
+          from_name: 'PennSync by CareMetric',
+          subject: 'Welcome to PennSync by CareMetric — Your Account is Active',
           body: `Hello ${invitation.full_name || user.email},
 
-Your CareMetric AI account has been activated and is ready to use.
+Your PennSync by CareMetric account has been activated and is ready to use.
 
 🔗 Login: ${appUrl}
 👤 Email: ${user.email}
@@ -96,7 +96,7 @@ Your CareMetric AI account has been activated and is ready to use.
 If you have any questions, please reach out to your administrator.
 
 Best regards,
-CareMetric AI Team`
+PennSync by CareMetric Team`
         }).catch(err => console.error('Email failed for', user.email, err));
 
         approvedCount++;
