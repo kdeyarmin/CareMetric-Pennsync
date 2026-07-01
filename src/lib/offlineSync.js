@@ -40,14 +40,18 @@ let inFlightDrain = null;
 
 /**
  * Drain the canonical IndexedDB sync queue once. Idempotent per item and safe to
- * call concurrently: a call made while a drain is already running returns that
- * SAME in-flight promise, so the caller's `isSyncing` period matches the real
- * drain (rather than resolving instantly) and no two drains overlap. Returns
- * `{ synced, error }`; the caller owns any user-facing toast. `deps` is injectable
- * so the worker can be unit-tested without IndexedDB or the real SDK.
+ * call concurrently: a call made while a drain is already running joins that SAME
+ * in-flight drain (so the caller's `isSyncing` period matches the real drain and no
+ * two drains overlap). Returns `{ synced, error, coalesced }`; `coalesced` is true
+ * for a caller that joined an already-running drain, so it can suppress a duplicate
+ * user-facing toast (only the initiator toasts). `deps` is injectable so the worker
+ * can be unit-tested without IndexedDB or the real SDK.
  */
 export async function drainSyncQueue(deps = {}) {
-  if (inFlightDrain) return inFlightDrain;
+  if (inFlightDrain) {
+    const result = await inFlightDrain;
+    return { ...result, coalesced: true };
+  }
   inFlightDrain = drainOnce(deps);
   try {
     return await inFlightDrain;

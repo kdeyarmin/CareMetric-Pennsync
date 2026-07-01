@@ -18,7 +18,11 @@ export default function OfflineManager() {
     // The drain worker + its concurrency guard + idempotency live in
     // src/lib/offlineSync.js so the same logic backs every manual "Sync now".
     const drainQueue = async () => {
-      const { synced, error } = await drainSyncQueue();
+      const { synced, error, coalesced } = await drainSyncQueue();
+      // A coalesced call joined a drain another caller started (e.g. handleOnline
+      // and the post-migration drain both fire on reconnect) — let that initiator
+      // own the toast so we don't show it twice for one drain.
+      if (coalesced) return;
       if (synced > 0) toast.success(`Successfully synced ${synced} items.`);
       if (error) toast.error('Some items failed to sync.');
     };
