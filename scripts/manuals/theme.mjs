@@ -215,6 +215,63 @@ dl.gloss{margin:14px 0}
 .mini p{margin:0; color:var(--slate); font-size:10pt}
 .lead{font-size:11.5pt; color:var(--slate); margin:0 0 14px}
 .divider-sm{height:1px; background:var(--line); margin:22px 0}
+
+/* ── Figures (illustrative UI diagrams) ────────────────────────────────────── */
+figure.fig{margin:18px 0 20px; break-inside:avoid}
+.fig .frame{border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 10px 26px rgba(13,22,40,.10)}
+.fig figcaption{margin-top:9px; font-size:9.5pt; color:var(--muted); text-align:center; line-height:1.4}
+.fig figcaption .flabel{color:var(--gold-600); font-weight:800; text-transform:uppercase; letter-spacing:1.2px; margin-right:7px}
+.illus-note{font-size:8.5pt; color:var(--muted); font-style:italic; text-align:center; margin:-12px 0 16px}
+
+/* Mock app window */
+.uiwin{background:#fff; font-size:9.5px}
+.uiwin .titlebar{display:flex; align-items:center; gap:6px; padding:8px 12px; background:#eef2f8; border-bottom:1px solid var(--line)}
+.uiwin .dot{width:9px; height:9px; border-radius:50%}
+.uiwin .dot.r{background:#f87171} .uiwin .dot.y{background:#fbbf24} .uiwin .dot.g{background:#34d399}
+.uiwin .tb-title{margin-left:8px; font-size:9pt; color:var(--muted); font-weight:600}
+.uiwin .shell{display:grid; grid-template-columns:172px 1fr}
+.uiwin .side{background:var(--navy-800); color:#fff; padding:12px 10px}
+.uiwin .side .brand{display:flex; align-items:center; gap:6px; font-weight:800; font-size:12px; margin-bottom:10px}
+.uiwin .side .brand .sync{color:var(--gold-400)}
+.uiwin .side .cat{font-size:7px; letter-spacing:1.4px; text-transform:uppercase; color:#8aa0cf; margin:9px 0 3px}
+.uiwin .side .nav{display:flex; align-items:center; gap:7px; padding:5px 8px; border-radius:6px; font-size:9.5px; color:#dbe4f5; margin:1px 0}
+.uiwin .side .nav .ic{width:11px; height:11px; border-radius:3px; background:rgba(255,255,255,.22); flex:0 0 auto}
+.uiwin .side .nav.active{background:rgba(220,171,53,.20); color:#fff; font-weight:600}
+.uiwin .side .nav.active .ic{background:var(--gold-400)}
+.uiwin .main{display:flex; flex-direction:column}
+.uiwin .topbar{display:flex; align-items:center; justify-content:space-between; padding:9px 14px; border-bottom:1px solid var(--line); background:#fff}
+.uiwin .crumb{font-size:9px; color:var(--muted)} .uiwin .crumb b{color:var(--navy-700)}
+.uiwin .tools{display:flex; align-items:center; gap:8px}
+.uiwin .search{display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:4px 11px; font-size:8.5px; color:var(--muted)}
+.uiwin .kbdmini{background:#eef2f8; border:1px solid #d5deea; border-radius:4px; padding:0 4px; font-size:7.5px; font-weight:700; color:var(--navy-700)}
+.uiwin .bell{width:20px; height:20px; border-radius:50%; background:#eef2f8; position:relative}
+.uiwin .bell::after{content:''; position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:50%; background:var(--gold-500)}
+.uiwin .content{padding:14px; background:#f6f8fc; flex:1}
+.uiwin .h{height:11px; border-radius:4px; background:#dbe4f2; margin-bottom:9px}
+.uiwin .card{background:#fff; border:1px solid var(--line); border-radius:8px; padding:11px; margin-bottom:9px}
+.uiwin .bar{height:8px; border-radius:4px; background:#e7edf6; margin:5px 0}
+.uiwin .row2{display:grid; grid-template-columns:1fr 1fr; gap:9px}
+.uiwin .pill{display:inline-block; font-size:8px; font-weight:700; padding:2px 8px; border-radius:999px; background:var(--navy-50); color:var(--navy-700)}
+.uiwin .pill.gold{background:var(--gold-100); color:var(--gold-600)}
+.uiwin .btn{display:inline-block; font-size:8.5px; font-weight:700; color:#fff; background:var(--navy-700); border-radius:6px; padding:5px 12px}
+.uiwin .btn.gold{background:var(--gold-400); color:var(--navy-900)}
+.uiwin .tabs{display:flex; gap:14px; border-bottom:1px solid var(--line); padding:0 14px; background:#fff}
+.uiwin .tab{font-size:9px; color:var(--muted); padding:9px 0; border-bottom:2px solid transparent}
+.uiwin .tab.on{color:var(--navy-800); font-weight:700; border-bottom-color:var(--gold-400)}
+
+/* Annotation badge + legend */
+.anno{display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:50%; background:var(--gold-400); color:var(--navy-900); font-size:9px; font-weight:800; vertical-align:middle; margin-left:4px}
+ul.legend{list-style:none; padding:0; margin:12px 0 0; display:grid; grid-template-columns:1fr 1fr; gap:6px 20px}
+ul.legend li{font-size:10pt; color:var(--slate); display:flex; gap:8px; align-items:baseline}
+ul.legend .anno{margin-left:0; flex:0 0 auto; position:relative; top:2px}
+
+/* Step flow pipeline */
+.flow{display:flex; flex-wrap:wrap; gap:9px; margin:14px 0}
+.flow .fstep{flex:1 1 0; min-width:120px; border:1px solid var(--navy-100); border-radius:11px; padding:11px 12px; background:linear-gradient(180deg,#fff,#f6faff)}
+.flow .fstep .fn{width:23px; height:23px; border-radius:50%; background:var(--navy-800); color:#fff; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; margin-bottom:7px}
+.flow .fstep:last-child .fn{background:var(--gold-400); color:var(--navy-900)}
+.flow .fstep h5{margin:0 0 3px; font-size:10.5pt; color:var(--navy-800); font-weight:750}
+.flow .fstep p{margin:0; font-size:9pt; color:var(--slate); line-height:1.45}
 `;
 
 /* ── HTML builder helpers ─────────────────────────────────────────────────── */
@@ -337,6 +394,102 @@ export function grid2(cards) {
 
 export function kbd(s) {
   return `<span class="kbd">${s}</span>`;
+}
+
+// figure: wraps an illustrative UI mock in a captioned frame.
+export function figure(caption, body) {
+  return `<figure class="fig"><div class="frame">${body}</div><figcaption><span class="flabel">Figure</span>${caption}</figcaption></figure>`;
+}
+
+// legend: numbered key that pairs with .anno badges in a mock.
+export function legend(items) {
+  return `<ul class="legend">${items
+    .map((t, i) => `<li><span class="anno">${i + 1}</span><span>${t}</span></li>`)
+    .join('')}</ul>`;
+}
+
+// flow: a left-to-right numbered pipeline of steps (wraps on print).
+export function flow(steps) {
+  return `<div class="flow">${steps
+    .map((s, i) => `<div class="fstep"><div class="fn">${i + 1}</div><h5>${s.h}</h5><p>${s.p}</p></div>`)
+    .join('')}</div>`;
+}
+
+const A = (n) => `<span class="anno">${n}</span>`;
+const sideNav = (label, active = false) =>
+  `<div class="nav${active ? ' active' : ''}"><span class="ic"></span>${label}</div>`;
+
+// Illustrative mock of the PennSync workspace (sidebar, breadcrumbs, search, alerts).
+export function mockWorkspace() {
+  return `<div class="uiwin">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">${BRAND.full}</span></div>
+    <div class="shell">
+      <div class="side">
+        <div class="brand">Penn<span class="sync">Sync</span>${A(1)}</div>
+        <div class="cat">Overview</div>
+        ${sideNav('Dashboard')}
+        <div class="cat">Patient Care</div>
+        ${sideNav('Patients', true)}
+        ${sideNav('OASIS Center')}
+        ${sideNav('Incidents')}
+        ${sideNav('Patient Education')}
+        <div class="cat">Documentation</div>
+        ${sideNav('Clinical Notes')}
+        <div class="cat">Communication</div>
+        ${sideNav('Messages')}
+        ${sideNav('Phone Center')}
+      </div>
+      <div class="main">
+        <div class="topbar">
+          <div class="crumb"><b>Patients</b> &nbsp;▸&nbsp; Patient Details${A(2)}</div>
+          <div class="tools"><span class="search"><span class="kbdmini">Cmd</span><span class="kbdmini">K</span> &nbsp;Search patients &amp; pages…${A(3)}</span><span class="bell"></span>${A(4)}</div>
+        </div>
+        <div class="content">
+          <div class="h" style="width:38%"></div>
+          <div class="row2">
+            <div class="card"><span class="pill">Active</span><div class="bar" style="width:80%"></div><div class="bar" style="width:60%"></div></div>
+            <div class="card"><span class="pill gold">AI summary</span><div class="bar" style="width:70%"></div><div class="bar" style="width:85%"></div></div>
+          </div>
+          <div class="card"><div class="bar" style="width:55%"></div><div class="bar" style="width:40%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Illustrative mock of the Smart Note screen.
+export function mockSmartNote() {
+  return `<div class="uiwin">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">Clinical Notes — Smart Note</span></div>
+    <div class="content" style="background:#fff; padding:16px">
+      <div class="card"><span class="pill">Patient</span>${A(1)}<div class="bar" style="width:45%; margin-top:6px"></div></div>
+      <div class="card"><span class="pill">Vitals</span>${A(2)}
+        <div class="row2" style="margin-top:6px"><div class="bar" style="width:100%"></div><div class="bar" style="width:100%"></div></div>
+        <div class="row2"><div class="bar" style="width:100%"></div><div class="bar" style="width:100%"></div></div>
+      </div>
+      <div class="row2">
+        <div class="card"><span class="pill">Your observations</span>${A(3)}<div class="bar" style="width:90%; margin-top:6px"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:85%"></div></div>
+        <div class="card" style="background:#f6faff; border-color:var(--navy-100)"><span class="pill gold">AI compliance &amp; polish</span>${A(4)}<div class="bar" style="width:95%; margin-top:6px; background:#dbe7fb"></div><div class="bar" style="width:88%; background:#dbe7fb"></div><div class="bar" style="width:70%; background:#dbe7fb"></div></div>
+      </div>
+      <div style="text-align:right; margin-top:4px"><span class="btn gold">Save note${A(5)}</span></div>
+    </div>
+  </div>`;
+}
+
+// Illustrative mock of the OASIS Center tab bar.
+export function mockOasisTabs() {
+  return `<div class="uiwin">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">OASIS Center</span></div>
+    <div class="tabs">
+      <div class="tab on">Assessment</div><div class="tab">Analyze</div><div class="tab">Review &amp; Approve</div>
+      <div class="tab">Clinical</div><div class="tab">Quality</div>
+    </div>
+    <div class="content" style="background:#fff">
+      <div class="card"><span class="pill gold">AI pre-fill</span><div class="bar" style="width:70%; margin-top:6px"></div><div class="bar" style="width:82%"></div></div>
+      <div class="card"><div class="bar" style="width:60%"></div><div class="bar" style="width:48%"></div></div>
+      <div style="text-align:right"><span class="btn">Save draft</span> &nbsp; <span class="btn gold">Submit</span></div>
+    </div>
+  </div>`;
 }
 
 // Wrap assembled body HTML into a complete, self-contained HTML document.

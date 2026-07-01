@@ -6,6 +6,7 @@
 
 import {
   navpath, callout, steps, glance, table, faq, glossary, roleLine, grid2, kbd,
+  figure, legend, flow, mockWorkspace, mockSmartNote, mockOasisTabs,
 } from './theme.mjs';
 
 export const userBlocks = [
@@ -45,6 +46,7 @@ export const userBlocks = [
         <li>Use the <strong>Contents</strong> page to jump straight to a task.</li>
         <li>Look for <strong>“Go to”</strong> chips like the one below — they show the exact path through the app.</li>
         <li>Watch for the callout boxes: <strong>Tips</strong> save you time, <strong>Important</strong> notes prevent mistakes, and <strong>Best practice</strong> boxes reflect how top-performing clinicians work.</li>
+        <li><strong>Figures</strong> are simplified, labeled illustrations of the PennSync interface used to walk you through a screen; your live screens show real patient data and full detail.</li>
       </ul>
       ${navpath(['Sidebar', 'Overview', 'Dashboard'])}
     `,
@@ -65,50 +67,50 @@ export const userBlocks = [
       <p class="sec-intro">A quick map of everything PennSync does. Each feature below is covered step by step later in this manual.</p>
 
       <h3 id="feat-care"><span class="h3-eyebrow">Patient care</span>Care &amp; assessments</h3>
-      ${table(['Feature', 'What it does'], [
-        ['<strong>Dashboard</strong>', 'Your daily home base — today’s visits, alerts, high-risk patients, quick actions, and route planning.'],
-        ['<strong>Patients</strong>', 'Search, filter, sort, and manage your patient roster; add new patients.'],
-        ['<strong>Patient 360 record</strong>', 'One connected record per patient: overview, vitals trends, visits, documents, tasks, and AI insights.'],
-        ['<strong>Patient Alerts</strong>', 'Clinical, risk, and deterioration alerts you can review and acknowledge.'],
-        ['<strong>OASIS Center</strong>', 'Complete OASIS-E assessments with AI guidance, then review and validate them.'],
-        ['<strong>Incidents</strong>', 'Report safety events (falls, medication errors) with automatic state-reportable detection.'],
-        ['<strong>Patient Education</strong>', 'Generate personalized, plain-language handouts and document teach-back.'],
+      ${table(['Feature', 'What it does', 'Find it under'], [
+        ['<strong>Dashboard</strong>', 'Your daily home base — today’s visits, AI-note and time-saved stats, real-time patient alerts, high-risk and hospitalization-risk monitors, pending referrals, announcements, and one-tap quick actions. A Smart Route Optimizer sequences your day’s visits.', 'Overview'],
+        ['<strong>Patients</strong>', 'Your census with fuzzy search (name, MRN, phone, diagnosis) and filters for status, diagnosis, age, last visit, and insurance. Add patients, sort, favorite, and act in bulk.', 'Patient Care ▸ Patients'],
+        ['<strong>Patient 360 record</strong>', 'One connected record per patient: overview and health history, vitals-trend charts, visits, documents, proactive tasks, and AI tools (risk, deterioration, history summary, compliance).', 'Patients ▸ (select) ▸ Patient Details'],
+        ['<strong>Patient Alerts</strong>', 'A dedicated view of every clinical, risk, and deterioration alert for your patients — review, prioritize, and acknowledge.', 'Patient Care ▸ Patients ▸ Patient Alerts'],
+        ['<strong>OASIS Center</strong>', 'Complete OASIS-E with AI pre-fill and compliance hints, then analyze, review/approve, and validate — all as tabs of one hub.', 'Patient Care ▸ OASIS Center'],
+        ['<strong>Incidents</strong>', 'Report safety events (falls, medication errors, injuries) with event type, severity, and AI severity scoring; automatic state-reportable detection; track each report to resolution.', 'Patient Care ▸ Incidents'],
+        ['<strong>Patient Education</strong>', 'Generate personalized, plain-language handouts for common conditions, tuned to the patient’s history and reading level; email or print; document teach-back.', 'Patient Care ▸ Patient Education'],
       ])}
 
       <h3 id="feat-doc"><span class="h3-eyebrow">Documentation</span>Charting a visit</h3>
-      ${table(['Feature', 'What it does'], [
-        ['<strong>Clinical Notes</strong>', 'The documentation hub for every visit — choose Smart Note or Visit Scribe.'],
-        ['<strong>Smart Note</strong>', 'Type a few observations; AI expands them into a compliant, skilled note.'],
-        ['<strong>Visit Scribe</strong>', 'Record, upload, or dictate a visit out loud; AI transcribes it into a compliant note.'],
-        ['<strong>Offline Mode</strong>', 'Document without a signal; everything syncs automatically when you’re back online.'],
+      ${table(['Feature', 'What it does', 'Find it under'], [
+        ['<strong>Clinical Notes</strong>', 'The documentation hub for every visit — a clear choice between Smart Note and Visit Scribe, with structured vitals capture and automatic visit + compliance records.', 'Documentation ▸ Clinical Notes'],
+        ['<strong>Smart Note</strong>', 'Type a few rough observations; AI checks Home Health / Hospice compliance and rewrites them into a complete, skilled note with medical-necessity and homebound language.', 'Clinical Notes ▸ Smart Note'],
+        ['<strong>Visit Scribe</strong>', 'Document by voice — record or upload audio, or dictate live. AI transcribes and runs the same compliance review and polishing as a typed note.', 'Clinical Notes ▸ Visit Scribe'],
+        ['<strong>Offline Mode</strong>', 'Document a visit with no signal — notes and audio are saved on your device and sync automatically when you reconnect.', 'Tools ▸ Offline Mode'],
       ])}
 
       <h3 id="feat-comm"><span class="h3-eyebrow">Communication</span>Reaching your team &amp; patients</h3>
-      ${table(['Feature', 'What it does'], [
-        ['<strong>Messages</strong>', 'Secure internal messaging with priorities and patient context.'],
-        ['<strong>Phone Center</strong>', 'Calls and texts through a masked work number; callbacks, scheduled texts, and duty status.'],
-        ['<strong>Fax</strong>', 'Send faxes from your camera, an upload, or a template; track delivery.'],
-        ['<strong>Providers</strong>', 'A directory of physicians and provider offices with contact details.'],
-        ['<strong>Telehealth</strong>', 'Schedule and run secure video visits; patients join by a simple link.'],
+      ${table(['Feature', 'What it does', 'Find it under'], [
+        ['<strong>Messages</strong>', 'Secure internal messaging with Urgent / High / Normal priorities, threading, and patient context for clean handoffs.', 'Communication ▸ Messages'],
+        ['<strong>Phone Center</strong>', 'Calls and texts through a masked work number (your personal cell stays private): Texts, Recents, Callbacks queue, Scheduled texts, and Duty Status.', 'Communication ▸ Phone Center'],
+        ['<strong>Fax</strong>', 'Send a fax from your camera, an uploaded file, or a template — with an AI cover page, batch sending, contacts, and delivery tracking.', 'Communication ▸ Fax'],
+        ['<strong>Providers</strong>', 'A searchable directory of physicians and provider offices with phone, fax, email, address, and specialty.', 'Communication ▸ Providers'],
+        ['<strong>Telehealth</strong>', 'Schedule and run secure video visits; text the patient a one-tap join link; view vitals live and document from the session.', 'Communication ▸ Telehealth'],
       ])}
 
       <h3 id="feat-learn"><span class="h3-eyebrow">Learning &amp; resources</span>Growing &amp; referencing</h3>
-      ${table(['Feature', 'What it does'], [
-        ['<strong>Learning Center</strong>', 'Courses, learning plans, competencies, certificates, renewals, and transcripts.'],
-        ['<strong>Nurse Training Hub</strong>', 'Role-specific, AI-personalized training.'],
-        ['<strong>Libraries</strong>', 'Resource, Clinical, and Medicare Guidelines references on demand.'],
+      ${table(['Feature', 'What it does', 'Find it under'], [
+        ['<strong>Learning Center</strong>', 'Courses, learning plans, competencies, certificates, renewals (with calendar export), in-services, annual education, and transcripts.', 'Learning &amp; Resources ▸ Learning Center'],
+        ['<strong>Nurse Training Hub</strong>', 'Role-specific, AI-personalized nursing training and documentation practice.', 'Learning Center ▸ Nurse Training Hub'],
+        ['<strong>Reference Libraries</strong>', 'Resource Library (agency guidelines &amp; policies), Clinical Library (disease/medication references), and Medicare Guidelines on demand.', 'Learning &amp; Resources ▸ Library'],
       ])}
 
       <h3 id="feat-tools"><span class="h3-eyebrow">Personal tools</span>Settings &amp; day-to-day</h3>
-      ${table(['Feature', 'What it does'], [
-        ['<strong>Settings</strong>', 'Your profile, care scope, credentials, and AI preferences.'],
-        ['<strong>Notifications</strong>', 'Choose which alerts you receive and set quiet hours.'],
-        ['<strong>Time Off</strong>', 'Request and track time off.'],
-        ['<strong>On-Call Schedule</strong>', 'View holiday and overnight coverage.'],
-        ['<strong>Help &amp; User Guides</strong>', 'Quick-start help, FAQs, and downloadable manuals.'],
+      ${table(['Feature', 'What it does', 'Find it under'], [
+        ['<strong>Settings</strong>', 'Your profile, care scope (Home Health / Hospice / Both), credentials with expiration reminders, and AI preferences.', 'Tools ▸ Settings'],
+        ['<strong>Notifications</strong>', 'Choose which alerts you receive (messages, SMS, clinical alerts, approvals) and set quiet hours.', 'Settings ▸ Notification Settings'],
+        ['<strong>Time Off</strong>', 'Request PTO/sick/vacation and track approvals; managers approve and view a team calendar.', 'Tools ▸ Time Off'],
+        ['<strong>On-Call Schedule</strong>', 'View holiday and overnight coverage so you always know who’s on (admins edit it).', 'Tools ▸ On-Call'],
+        ['<strong>Help &amp; User Guides</strong>', 'Quick-start help, searchable FAQs, and downloadable manuals (including this one).', 'Tools ▸ Help'],
       ])}
 
-      ${callout('note', 'Back-office tools', '<p>Office and administrative staff also use back-office tools such as <strong>Referrals</strong>, <strong>Documents &amp; E-Signing</strong>, and <strong>Incident Review</strong>. These require administrator access and are documented in the Facility Administrator Manual.</p>')}
+      ${callout('note', 'For office &amp; administrative staff', '<p>Office staff also use back-office tools — <strong>Referrals</strong> (intake with AI extraction), <strong>Documents &amp; E-Signing</strong>, <strong>Incident Review</strong>, and <strong>Template Management</strong>. These require administrator access; ask your facility administrator, and see the <em>Facility Administrator Manual</em> for how they work.</p>')}
     `,
   },
 
@@ -135,15 +137,16 @@ export const userBlocks = [
       ${callout('important', 'Forgot your password?', '<p>Use the <strong>Forgot password</strong> link on the sign-in screen, or ask your facility administrator to send a reset. Never share your password — every action in PennSync is recorded under your name for HIPAA accountability.</p>')}
 
       <h3 id="gs-workspace"><span class="h3-eyebrow">Navigation</span>Finding your way around</h3>
-      <p>Every screen shares the same layout:</p>
-      ${grid2([
-        { h: 'Sidebar', p: 'On the left, grouped into Overview, Patient Care, Documentation, Communication, Learning & Resources, and Tools. Tap any item to open it.' },
-        { h: 'Breadcrumbs', p: 'Across the top, showing where you are (e.g. Patients ▸ Patient Details). Tap a crumb to step back.' },
-        { h: 'Command palette', p: `Press ${kbd('Ctrl / ⌘')} + ${kbd('K')} to jump to any page or patient by name — the fastest way to move around.` },
-        { h: 'Mobile bottom bar', p: 'On phones, the most-used shortcuts (including Notes) sit in a bottom navigation bar; a notifications bell shows new alerts.' },
+      <p>Every screen shares the same layout. The illustration below maps the four things you’ll use most to move around PennSync.</p>
+      ${figure('The PennSync workspace — the numbered elements are explained in the key below.', mockWorkspace())}
+      ${legend([
+        `<strong>Sidebar</strong> — your features, grouped into Overview, Patient Care, Documentation, Communication, Learning &amp; Resources, and Tools. Tap any item to open it.`,
+        `<strong>Breadcrumbs</strong> — show where you are (e.g. Patients ▸ Patient Details); click any crumb to step back.`,
+        `<strong>Command palette</strong> — press ${kbd('Cmd')} / ${kbd('Ctrl')} + ${kbd('K')} to jump to any page or patient by name.`,
+        `<strong>Notifications</strong> — the bell shows new alerts, messages, and approvals.`,
       ])}
-      ${navpath(['Anywhere', 'Press ⌘K / Ctrl+K', 'Type a page or patient'])}
-      ${callout('tip', 'Search beats scrolling', '<p>Don’t hunt through the sidebar — press <strong>⌘K / Ctrl+K</strong> and type “fax”, “oasis”, a patient’s name, or a task. The command palette only ever shows pages you’re allowed to open.</p>')}
+      ${callout('tip', 'Search beats scrolling', '<p>Don’t hunt through the sidebar — press <strong>Cmd / Ctrl + K</strong> and type “fax”, “oasis”, a patient’s name, or a task. The command palette only ever shows pages you’re allowed to open.</p>')}
+      ${callout('note', 'On a phone', '<p>On phones the sidebar collapses to a menu and the most-used shortcuts (including Notes) move to a bottom navigation bar. Pull down on the Dashboard to refresh your visits and alerts.</p>')}
 
       <h3 id="gs-profile"><span class="h3-eyebrow">Set up</span>Your profile & care scope</h3>
       <p>Before your first visit, complete your profile so PennSync tailors itself to you.</p>
@@ -222,7 +225,7 @@ export const userBlocks = [
         { h: 'Sort', p: 'Order by newest, oldest, last visit, or name (A–Z / Z–A).' },
         { h: 'Swipe (mobile)', p: 'Swipe a patient card to reveal quick actions like view or add a visit.' },
       ])}
-      ${callout('tip', 'Open a patient in one step', '<p>Skip the list — press <strong>⌘K / Ctrl+K</strong> and type the patient’s name to jump straight to their record.</p>')}
+      ${callout('tip', 'Open a patient in one step', '<p>Skip the list — press <strong>Cmd / Ctrl + K</strong> and type the patient’s name to jump straight to their record.</p>')}
 
       <h3 id="pat-add"><span class="h3-eyebrow">New patient</span>Adding a patient</h3>
       ${steps([
@@ -277,6 +280,7 @@ export const userBlocks = [
 
       <h3 id="oasis-tabs"><span class="h3-eyebrow">Everything in one place</span>The OASIS Center</h3>
       <p>Beyond the assessment itself, the OASIS Center gathers related tools as tabs:</p>
+      ${figure('The OASIS Center — the Assessment tab is open; the other tabs analyze, review, and validate the same assessment.', mockOasisTabs())}
       ${table(['Tab', 'Purpose'], [
         ['<strong>Assessment</strong>', 'Complete the OASIS-E with AI guidance (the default view).'],
         ['<strong>Analyze</strong>', 'Deep-dive accuracy scoring, compliance gaps, and clinical-pathway recommendations.'],
@@ -360,6 +364,23 @@ export const userBlocks = [
       ])}
 
       <h3 id="doc-smart"><span class="h3-eyebrow">Fastest for typing</span>Smart Note (typed)</h3>
+      <p>Smart Note turns a few quick observations into a complete, compliant note in five steps:</p>
+      ${flow([
+        { h: 'Select patient', p: 'AI personalizes to their diagnoses, meds, and history.' },
+        { h: 'Enter vitals', p: 'Structured vitals flow to the chart and trends.' },
+        { h: 'Write observations', p: 'Plain language and bullet points are fine.' },
+        { h: 'AI checks &amp; polishes', p: 'Compliance is verified; skilled language is added.' },
+        { h: 'Review &amp; save', p: 'Edit if needed; the visit and audit are created.' },
+      ])}
+      ${figure('The Smart Note screen — the numbered areas match the walkthrough below.', mockSmartNote())}
+      ${legend([
+        'Select the patient — AI uses their record to personalize the note.',
+        'Enter vital signs in the structured form.',
+        'Type your observations in plain language.',
+        'AI flags any compliance issues and rewrites your text into a skilled note.',
+        'Review and Save — the visit and compliance audit are created automatically.',
+      ])}
+      <h4>Step by step</h4>
       ${steps([
         ['Choose Smart Note', 'In Clinical Notes, select Smart Note. Always select the patient first.'],
         ['Capture vitals', 'Enter vital signs (temperature, blood pressure, heart rate, respiratory rate, O₂, pain) in the structured form so they reach the chart and trends.'],
