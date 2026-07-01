@@ -395,7 +395,7 @@ export default function UserManagement({ users }) {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="inviteEmail">Email Address *</Label>
                 <Input
@@ -418,7 +418,7 @@ export default function UserManagement({ users }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="phone">Phone Number</Label>
                 <Input
@@ -440,7 +440,7 @@ export default function UserManagement({ users }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="inviteRole">Role *</Label>
                 <Select value={inviteData.role} onValueChange={(value) => setInviteData({...inviteData, role: value})}>
