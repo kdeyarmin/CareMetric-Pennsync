@@ -105,18 +105,28 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 | 22 | Patient roster | **Added removable chips for the Has-Visits and created-after/before filters** — they counted toward the active-filter badge but had no chip, so a filter (including the new "New (30 days)" stat-card shortcut) was invisible and un-clearable. | ux-polish |
 | 23 | Messages | **Added an "urgent" toggle to the reply composer** so a nurse can escalate a specific reply above the thread's inherited priority; it resets after send and on thread switch. | quick-win |
 
+### Seventh batch (also in this PR) — start of the AI-trust layer (Theme 1)
+
+| # | Feature | Change | Type |
+|---|---|---|---|
+| 24 | Shared UI | **New reusable `AICaveat` component** (`src/components/ui/AICaveat.jsx`, tested) — a consistent "AI-generated — verify before clinical use" provenance line with an optional generated-at timestamp, to drop under any AI output. | trust-safety |
+| 25 | Patient chart AI summary | Applied `AICaveat` **with a generated-at timestamp**, and added a **Copy button** (flattens the structured summary to paste-able text) so the summary carries a trust signal and isn't trapped in the widget. | trust-safety |
+| 26 | Predictive AI insights | Applied `AICaveat` with a generated-at timestamp under the population insights executive summary. | trust-safety |
+
+> The `AICaveat` component is now the shared primitive for Theme 1. Remaining AI surfaces to adopt it (follow-up): incident AI narrative, template AI-enhance, Compliance Center AI insights, and clinical-pathway AI figures.
+
 ---
 
 ## 4. Prioritized backlog (not yet implemented)
 
 ### Top quick wins (high impact · low effort · low risk)
 
-- **Add copy + generated-at timestamp to the patient-chart AI summary**, and gate it behind an explicit action instead of auto-firing an Opus call on every chart open. *(performance + trust)*
 - **Bring back a real "Schedule Visit"** dialog on the patient chart (Visit.create + date/type form) to replace the removed placeholder. *(new-capability)*
+- **Gate the patient-chart AI summary behind an explicit action** (it still auto-fires an Opus call on chart open) — the copy + timestamp are done; the auto-fire is a behavior/perf decision left for you. *(performance)*
 
 ### Bigger bets (roadmap)
 
-1. **Unified AI-trust layer** — a shared provenance/caveat/review-ack pattern everywhere AI text reaches a chart or legal record (Theme 1).
+1. **Unified AI-trust layer** — the shared `AICaveat` primitive now exists and is applied to the patient-chart summary and predictive insights (batch 7); **extend it** to the remaining AI surfaces and add a review-ack before AI text is persisted to a chart (Theme 1).
 2. **First-class offline mode across the shell** — persistent offline indicator, cache-age warnings, and an offline write-queue for incidents/notes with auto-sync on reconnect (Theme 4).
 3. **Patient-centric command palette + working sidebar Favorites** — ⌘K jumps straight to any scoped patient chart; fix the `favorited_patients` ID-vs-object mismatch so Favorites and favorite-scoped alerts actually work.
 4. **Safe, auditable patient-merge workflow** — history-aware survivor selection, demographic back-fill, undo, and persistent "not duplicates" dismissals.
