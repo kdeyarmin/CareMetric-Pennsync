@@ -1,173 +1,147 @@
-// Quick-phrase expansion engine for the note editor.
+// Pure, framework-free logic for the inline quick-phrase expansion trigger in the
+// SmartNote editor. Kept free of React and the Base44 SDK so it can be unit-tested
+// (node --test) and shared by the editor wrapper + phrase menu.
 //
-// The app's advertised documentation-speed feature (expandClinicalPhrase + the
-// phrase library) had no trigger in any note textarea. This is the pure,
-// testable core that powers an inline /-slash menu and .dot-token (e.g.
-// ".diabeticedu"): given the textarea text + caret, it detects an active
-// trigger, filters the phrase library, and computes the text + caret after
-// inserting the expansion. It is dependency-free (unit-tested with `node --test`)
-// and carries no fabricated clinical facts — the inserted text is a generic,
-// compliant phrasing the nurse edits, and it still flows through the existing
-// ConstrainedNoteReviewer / grounding pass downstream, so anti-fabrication holds.
+// Two trigger forms are recognized at the caret, mirroring the roadmap spec
+// ("a `/`-slash menu and a dot-token pattern, e.g. `.diabeticedu`"):
+//   - slash form:  ".../wound care"   opens the picker; query may contain spaces
+//   - dot  form:  "....woundcare"      contiguous shorthand; query is one token
+//
+// Only the token immediately preceding the caret, on the caret's own line, counts,
+// and the trigger character must start a word (be at line start or follow
+// whitespace). This keeps clinical text like "BP 120/80", "95% O2", "e.g." and
+// "Mr." from ever spuriously opening the menu.
 
-export const TRIGGER = { SLASH: "slash", DOT: "dot" };
-
-// A small, safe, offline default phrase set. Each expansion is a generic
-// compliant phrasing (with [bracketed] cues where a specific fact is required)
-// — never a fabricated assessment finding. Agencies can extend via
-// ClinicalLibraryTemplate (pass merged phrases into detect/filter).
-export const DEFAULT_QUICK_PHRASES = [
-  {
-    token: "diabeticedu",
-    phrase: "diabetic education",
-    category: "education",
-    expanded_text:
-      "Provided diabetic self-management education including blood glucose monitoring, medication adherence, foot care, and diet; patient/caregiver verbalized understanding via teach-back.",
-  },
-  {
-    token: "woundcare",
-    phrase: "wound care provided",
-    category: "wound_care",
-    expanded_text:
-      "Performed skilled wound care using sterile technique per physician orders; assessed the wound bed, measured dimensions, and applied the ordered dressing. Wound appearance: [describe].",
-  },
-  {
-    token: "fallrisk",
-    phrase: "fall risk assessment",
-    category: "safety",
-    expanded_text:
-      "Completed a home-safety and fall-risk assessment; reviewed environmental hazards and reinforced fall-prevention strategies with patient/caregiver. Findings: [describe].",
-  },
-  {
-    token: "teachback",
-    phrase: "teach-back confirmed",
-    category: "education",
-    expanded_text:
-      "Confirmed patient/caregiver understanding of the instructions provided via teach-back / return demonstration.",
-  },
-  {
-    token: "homebound",
-    phrase: "homebound status",
-    category: "assessment",
-    expanded_text:
-      "Patient remains homebound; leaving the home requires a considerable and taxing effort due to [medical reason], requiring [assistance/assistive device].",
-  },
-  {
-    token: "medrec",
-    phrase: "medication reconciliation",
-    category: "medication",
-    expanded_text:
-      "Completed medication reconciliation; reviewed the current medication list against physician orders and addressed any discrepancies.",
-  },
-  {
-    token: "chfassess",
-    phrase: "CHF assessment",
-    category: "assessment",
-    expanded_text:
-      "Skilled cardiopulmonary assessment: auscultated lung and heart sounds, assessed for edema and dyspnea, and reviewed daily weights and sodium intake for CHF management. Findings: [describe].",
-  },
-];
-
-const TOKEN_BODY = /[a-z0-9]/i;
-
-/**
- * Detect an active quick-phrase trigger ending at the caret.
- *
- * A trigger is a "/" (slash menu) or "." (dot token) that (a) sits at a token
- * boundary — preceded by whitespace or the start of the field — and (b) is
- * followed by a contiguous alphanumeric token being typed. Dot tokens require at
- * least one letter after the dot so ordinary sentence periods / decimals never
- * open the menu.
- *
- * @param {string} text
- * @param {number} caret  caret index (selectionStart)
- * @returns {(null|{type:string, trigger:string, token:string, query:string, start:number, end:number})}
- */
-export function detectTrigger(text, caret) {
-  const s = String(text ?? "");
-  const pos = Math.max(0, Math.min(Number(caret) || 0, s.length));
-
-  // Walk back over the contiguous token body immediately before the caret.
-  let i = pos - 1;
-  while (i >= 0 && TOKEN_BODY.test(s[i])) i--;
-  if (i < 0) return null;
-
-  const trigger = s[i];
-  if (trigger !== "/" && trigger !== ".") return null;
-
-  // Must be at a token boundary (start-of-field or preceded by whitespace).
-  const prev = i > 0 ? s[i - 1] : "";
-  if (prev && !/\s/.test(prev)) return null;
-
-  const query = s.slice(i + 1, pos);
-  const type = trigger === "/" ? TRIGGER.SLASH : TRIGGER.DOT;
-
-  // A bare "." (no letters yet) is a period, not a dot token.
-  if (type === TRIGGER.DOT && !/^[a-z]/i.test(query)) return null;
-  // The query must be a clean token (the while-loop guarantees this, but keep
-  // the contract explicit).
-  if (query && !/^[a-z0-9]*$/i.test(query)) return null;
-
-  return { type, trigger, token: s.slice(i, pos), query: query.toLowerCase(), start: i, end: pos };
+function clampCaret(caret, len) {
+  const n = Number.isFinite(caret) ? Math.floor(caret) : len;
+  if (n < 0) return 0;
+  if (n > len) return len;
+  return n;
 }
 
 /**
- * Filter phrases matching an active trigger's query. Ranks exact token match,
- * then token prefix, then phrase substring. An empty query returns all (a
- * just-opened slash menu).
- *
- * @param {Array} phrases  [{ token, phrase, expanded_text, category }]
- * @param {string} query   lowercased
- * @param {number} [limit=8]
- * @returns {Array}
+ * Detect an in-progress quick-phrase token ending at the caret.
+ * @returns {null | { trigger: '/'|'.', query: string, start: number, end: number }}
+ *   `start` is the index of the trigger char, `end` is the caret position — the
+ *   half-open range [start, end) is the token text to replace on expansion.
  */
-export function filterPhrases(phrases, query, limit = 8) {
-  const list = Array.isArray(phrases) ? phrases : [];
-  const q = String(query || "").toLowerCase().trim();
-  if (!q) return list.slice(0, limit);
+export function detectPhraseTrigger(text, caret) {
+  if (typeof text !== 'string') return null;
+  const pos = clampCaret(caret, text.length);
+  // Restrict scanning to the caret's own line so a trigger never spans newlines.
+  const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+  const seg = text.slice(lineStart, pos);
 
-  const scored = [];
-  for (const p of list) {
-    const token = String(p.token || "").toLowerCase();
-    const phrase = String(p.phrase || "").toLowerCase();
-    let score = null;
-    if (token === q) score = 0;
-    else if (token.startsWith(q)) score = 1;
-    else if (phrase.startsWith(q)) score = 2;
-    else if (token.includes(q) || phrase.includes(q)) score = 3;
-    if (score !== null) scored.push({ p, score });
+  // Dot form first: contiguous token that must start with a letter (so "3.5" and
+  // "Mr." never match). The dot must be at line start or follow whitespace.
+  let m = seg.match(/(?:^|\s)\.([A-Za-z][\w-]*)$/);
+  if (m) {
+    const query = m[1];
+    return { trigger: '.', query, start: pos - query.length - 1, end: pos };
   }
-  scored.sort((a, b) => a.score - b.score || String(a.p.token).localeCompare(String(b.p.token)));
-  return scored.slice(0, limit).map((s) => s.p);
+
+  // Slash form: query may contain spaces (multi-word phrases like "wound care").
+  // The slash must be at line start or follow whitespace, and the query may not
+  // contain another slash — so "and/or" and "120/80" are inert.
+  m = seg.match(/(?:^|\s)\/([^/]*)$/);
+  if (m) {
+    const query = m[1];
+    return { trigger: '/', query, start: pos - query.length - 1, end: pos };
+  }
+
+  return null;
+}
+
+/** Lowercase + trim, tolerant of nullish input. */
+export function normalizePhraseText(s) {
+  return String(s == null ? '' : s).toLowerCase().trim();
 }
 
 /**
- * Replace the trigger token [start,end) with the expansion, returning the new
- * text and the caret position after the inserted text. A trailing space is
- * added when the insertion isn't already followed by whitespace, so the nurse
- * keeps typing cleanly.
- *
- * @param {string} text
- * @param {{start:number,end:number}} range
- * @param {string} expandedText
- * @returns {{text:string, caret:number}}
+ * Whether a template is usable by this nurse in this charting context.
+ * - patient-bound phrases (patient_id set) appear ONLY when charting that patient
+ * - otherwise: the nurse's own phrases + agency-wide phrases
+ * Inactive templates are never visible.
+ * @param {any} t
+ * @param {{ email?: string, patientId?: string }} [ctx]
+ */
+export function isPhraseVisible(t, { email, patientId } = {}) {
+  if (!t || t.is_active === false) return false;
+  if (t.patient_id) return String(t.patient_id) === String(patientId || '');
+  return t.is_agency_wide === true || (!!t.created_by && t.created_by === email);
+}
+
+// Score a template against the typed query. Higher = better; -Infinity = no match.
+// An empty query matches everything (score 0) so the picker can list top phrases.
+function phraseMatchScore(t, q) {
+  if (!q) return 0;
+  const p = normalizePhraseText(t.phrase);
+  if (!p) return -Infinity;
+  if (p === q) return 100;
+  if (p.startsWith(q)) return 80;
+  if (p.split(/\s+/).some((w) => w.startsWith(q))) return 60;
+  // Space-insensitive match powers the dot-token shorthand (".diabeticedu" →
+  // "diabetic education").
+  const pc = p.replace(/\s+/g, '');
+  const qc = q.replace(/\s+/g, '');
+  if (qc && pc.startsWith(qc)) return 55;
+  if (p.includes(q)) return 40;
+  if (qc && pc.includes(qc)) return 30;
+  return -Infinity;
+}
+
+/**
+ * Rank the visible templates for the current query/context. Sorted by match
+ * strength, then usage_count (popular phrases first), then phrase name for a
+ * stable order. Returns at most `limit` templates.
+ * @param {any[]} templates
+ * @param {{ query?: string, patientId?: string, email?: string, limit?: number }} [opts]
+ */
+export function rankPhrases(templates, { query = '', patientId, email, limit = 8 } = {}) {
+  const q = normalizePhraseText(query);
+  const visible = (Array.isArray(templates) ? templates : []).filter((t) =>
+    isPhraseVisible(t, { email, patientId }),
+  );
+  return visible
+    .map((t) => ({ t, score: phraseMatchScore(t, q) }))
+    .filter((x) => x.score > -Infinity)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (b.t.usage_count || 0) - (a.t.usage_count || 0) ||
+        normalizePhraseText(a.t.phrase).localeCompare(normalizePhraseText(b.t.phrase)),
+    )
+    .slice(0, Math.max(0, limit))
+    .map((x) => x.t);
+}
+
+/**
+ * Replace the trigger token [range.start, range.end) with the expanded text.
+ * @returns {{ text: string, caret: number }} new textarea value + caret position
+ *   (placed at the end of the inserted text).
  */
 export function applyExpansion(text, range, expandedText) {
-  const s = String(text ?? "");
-  const start = Math.max(0, Math.min(range?.start ?? 0, s.length));
-  const end = Math.max(start, Math.min(range?.end ?? start, s.length));
-  let insert = String(expandedText ?? "");
-  const after = s.slice(end);
-  if (insert && !/\s$/.test(insert) && after && !/^\s/.test(after)) insert += " ";
-  const next = s.slice(0, start) + insert + after;
-  return { text: next, caret: start + insert.length };
+  const src = typeof text === 'string' ? text : '';
+  const s = clampCaret(range && range.start, src.length);
+  const e = clampCaret(range && range.end, src.length);
+  const lo = Math.min(s, e);
+  const hi = Math.max(s, e);
+  const before = src.slice(0, lo);
+  const after = src.slice(hi);
+  let insert = String(expandedText == null ? '' : expandedText);
+  // Keep a word boundary: if the expansion runs straight into following non-space
+  // text (token expanded mid-line), add one separating space so words don't glue.
+  if (insert && after && !/\s$/.test(insert) && !/^\s/.test(after)) insert += ' ';
+  const newText = before + insert + after;
+  return { text: newText, caret: (before + insert).length };
 }
 
 /**
- * Resolve the expansion text for a selected phrase. Prefers an explicit
- * expanded_text; falls back to the human phrase label.
+ * Whether a template needs a selected patient to expand (patient-bound orders or
+ * a patient-specific AI template). Lets the UI prompt for a patient up front
+ * instead of round-tripping to a backend error.
  */
-export function expansionTextFor(phrase) {
-  if (!phrase) return "";
-  return phrase.expanded_text || phrase.phrase || phrase.token || "";
+export function phraseNeedsPatient(t) {
+  if (!t) return false;
+  return !!t.patient_id || t.template_type === 'patient_specific' || t.requires_patient_data === true;
 }

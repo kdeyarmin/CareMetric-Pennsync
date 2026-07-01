@@ -17,6 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ClinicalLibraryAnalytics from "./ClinicalLibraryAnalytics";
 import FolderTreeView from "./FolderTreeView";
 import ClinicalLibraryIntro from "./ClinicalLibraryIntro";
+import ClinicalPhraseSeeder from "./ClinicalPhraseSeeder";
+import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 
 export default function ClinicalLibraryManager() {
   const confirm = useConfirm();
@@ -35,7 +37,9 @@ export default function ClinicalLibraryManager() {
     requires_patient_data: false,
     patient_data_fields: [],
     is_agency_wide: false,
-    folder_id: null
+    folder_id: null,
+    patient_id: '',
+    patient_name: ''
   });
 
   const queryClient = useQueryClient();
@@ -54,6 +58,12 @@ export default function ClinicalLibraryManager() {
   const { data: folders = [] } = useQuery({
     queryKey: ['clinical-folders'],
     queryFn: () => base44.entities.ClinicalLibraryFolder.list('order', 200),
+    initialData: []
+  });
+
+  const { data: patients = [] } = useQuery({
+    queryKey: ['patients'],
+    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, 'first_name', 200),
     initialData: []
   });
 
@@ -117,7 +127,9 @@ export default function ClinicalLibraryManager() {
       requires_patient_data: false,
       patient_data_fields: [],
       is_agency_wide: false,
-      folder_id: selectedFolderId
+      folder_id: selectedFolderId,
+      patient_id: '',
+      patient_name: ''
     });
     setEditingTemplate(null);
     setIsDialogOpen(false);
@@ -145,7 +157,12 @@ export default function ClinicalLibraryManager() {
     const payload = {
       ...formData,
       phrase: formData.phrase.toLowerCase().trim(),
-      created_by: currentUser?.email
+      created_by: currentUser?.email,
+      // Normalize the optional patient binding. Use null (not undefined) so that
+      // clearing a previously-bound phrase actually unsets the field on update —
+      // JSON serialization drops undefined, which would leave the old binding.
+      patient_id: formData.patient_id || null,
+      patient_name: formData.patient_id ? (formData.patient_name || null) : null
     };
 
     if (editingTemplate) {
@@ -166,7 +183,9 @@ export default function ClinicalLibraryManager() {
       requires_patient_data: template.requires_patient_data || false,
       patient_data_fields: template.patient_data_fields || [],
       is_agency_wide: template.is_agency_wide || false,
-      folder_id: template.folder_id || null
+      folder_id: template.folder_id || null,
+      patient_id: template.patient_id || '',
+      patient_name: template.patient_name || ''
     });
     setIsDialogOpen(true);
   };
@@ -289,6 +308,7 @@ export default function ClinicalLibraryManager() {
 
       <TabsContent value="templates" className="space-y-6">
       <ClinicalLibraryIntro isAdmin={isAdmin} />
+      {isAdmin && <ClinicalPhraseSeeder currentUserEmail={currentUser?.email} />}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Sidebar */}
         <Card className="lg:col-span-1">
@@ -410,6 +430,12 @@ export default function ClinicalLibraryManager() {
                             <Badge className="bg-navy-100 text-navy-800">
                               <User className="w-3 h-3 mr-1" />
                               Patient-Specific
+                            </Badge>
+                          )}
+                          {template.patient_id && (
+                            <Badge className="bg-amber-100 text-amber-800">
+                              <User className="w-3 h-3 mr-1" />
+                              {template.patient_name || 'Bound patient'}
                             </Badge>
                           )}
                           {template.is_agency_wide && (
@@ -597,9 +623,43 @@ export default function ClinicalLibraryManager() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-slate-500 mt-1">
-                {formData.template_type === 'generic' 
-                  ? 'Same text for all patients' 
+                {formData.template_type === 'generic'
+                  ? 'Same text for all patients'
                   : 'Uses patient-specific data to generate personalized text'}
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-sm flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5" /> Bind to a specific patient
+                <span className="text-xs text-slate-400 font-normal">optional</span>
+              </Label>
+              <SearchablePatientSelect
+                patients={patients}
+                value={formData.patient_id}
+                onValueChange={(pid) => {
+                  const p = patients.find((x) => x.id === pid);
+                  setFormData({
+                    ...formData,
+                    patient_id: pid || '',
+                    patient_name: p ? `${p.first_name} ${p.last_name}` : ''
+                  });
+                }}
+                placeholder="All patients (leave empty)"
+                className="bg-slate-50 border-slate-200"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Bind a phrase to one patient — e.g. that patient's specific wound-care orders.
+                It then appears and expands only while charting that patient.
+                {formData.patient_id && (
+                  <button
+                    type="button"
+                    className="ml-2 text-navy-600 underline"
+                    onClick={() => setFormData({ ...formData, patient_id: '', patient_name: '' })}
+                  >
+                    Clear
+                  </button>
+                )}
               </p>
             </div>
 

@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   CheckCircle2, Loader2, ArrowRight, ClipboardList, User,
-  Mic, Square, AlertTriangle
+  Mic, Square, AlertTriangle, Sparkles
 } from "lucide-react";
 import { todayEastern } from "../components/utils/timezone";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
@@ -21,9 +21,12 @@ import VitalsTrendAnalysis from "../components/smartNote/VitalsTrendAnalysis";
 import FinalNoteDisplay from "../components/smartNote/FinalNoteDisplay";
 import FollowUpTasksPanel from "../components/smartNote/FollowUpTasksPanel";
 import ComplianceChecklist from "../components/smartNote/ComplianceChecklist";
+import QuickPhraseTextarea from "../components/smartNote/QuickPhraseTextarea";
+import FacilityRequirementsChecklist from "../components/smartNote/FacilityRequirementsChecklist";
 import ConstrainedNoteReviewer from "../components/smartNote/ConstrainedNoteReviewer";
 import { persistVisitNote } from "../components/smartNote/persistVisitNote";
 import { getPriorNote, parseNoteSections } from "../components/smartNote/noteHelpers";
+import { evaluateFacilityRules, summarizeFacilityRules } from "../components/smartNote/compliance/facilityDocRules";
 import { claimDictation, releaseDictation } from "@/components/smartNote/dictationController";
 import { generateFollowUpTasks } from "@/functions/generateFollowUpTasks";
 import { analyzeVisitForSupplyUsage } from "@/functions/analyzeVisitForSupplyUsage";
@@ -91,6 +94,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [draftRestored, setDraftRestored] = useState(false);
   const [signatureImage, setSignatureImage] = useState(null);
   const [followUpTasks, setFollowUpTasks] = useState([]);
+  // Explicit override when the nurse saves despite an unmet *critical* facility
+  // documentation requirement (keyword detection can miss, so this is an
+  // acknowledged override rather than a hard block). Reset for each review.
+  const [facilityAck, setFacilityAck] = useState(false);
   const [generatingTasks, setGeneratingTasks] = useState(false);
   const recRef = useRef(null);
   const recStopRef = useRef(null);
@@ -167,6 +174,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
     queryKey: ["patientDetail", patientId],
     queryFn: () => base44.entities.Patient.get(patientId),
     enabled: !!patientId,
+  });
+  // Facility-specific documentation requirements (e.g. "on oxygen → SpO2 in every
+  // note") — admin-authored, applied to the selected patient. Used for the live
+  // STEP 1 checklist and a non-blocking nudge before the nurse advances to review.
+  const { data: facilityDocRules = [] } = useQuery({
+    queryKey: ["facility-doc-rules"],
+    queryFn: () => base44.entities.FacilityDocumentationRule.list("-severity", 200),
+    initialData: [],
+    staleTime: 5 * 60 * 1000,
   });
   useEffect(() => {
     if (currentUser?.email) logActivity(ActivityActions.PAGE_VISIT, { page: "SmartNoteAssistant" });
@@ -318,9 +334,29 @@ export default function SmartNoteAssistant({ visitId = null }) {
   // live in <ConstrainedNoteReviewer>, which scans `note` on mount.
   const startReview = () => {
     if (!note || note.trim().length < 20) return;
+    // Non-blocking nudge: surface any facility documentation requirement this
+    // patient triggers that the draft doesn't yet satisfy. The nurse can still
+    // proceed (keyword detection can miss), and the same items stay visible in the
+    // STEP 1 checklist.
+    const facilityResults = evaluateFacilityRules({
+      rules: facilityDocRules,
+      patient: patientDetail || patient,
+      noteText: note,
+      visitType,
+    });
+    const facilitySummary = summarizeFacilityRules(facilityResults);
+    if (facilitySummary.missing > 0) {
+      const labels = facilityResults
+        .filter((r) => r.missing)
+        .map((r) => r.rule.requirement_label || r.rule.rule_name)
+        .slice(0, 3)
+        .join("; ");
+      toast.warning(`Facility requirement${facilitySummary.missing > 1 ? "s" : ""} not yet documented: ${labels}`);
+    }
     setSaved(false);
     setSavedVisitId(null);
     setSavedAuditId(null);
+    setFacilityAck(false);
     setStep(2);
   };
 
@@ -411,7 +447,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const reset = () => {
     setNote(""); setSaved(false); setSavedVisitId(null); setSavedAuditId(null);
     setStep(1); setDraftRestored(false); setSignatureImage(null); setFollowUpTasks([]);
-    setVitals({}); setExistingVisitId(null);
+    setVitals({}); setExistingVisitId(null); setFacilityAck(false);
     clearDraft(patientIdRef.current);
   };
 
@@ -607,13 +643,25 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
               <ComplianceChecklist isHospice={isHospice} />
 
+              <FacilityRequirementsChecklist
+                patient={patientDetail || patient}
+                noteText={note}
+                visitType={visitType}
+              />
+
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-100">
                   <span className="text-xs font-semibold text-navy-700">Your Rough Notes / Bullet Points</span>
-                  <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-navy-600 hover:text-navy-800"
-                    onClick={() => { setActiveTab("drafter"); }}>
-                    <ClipboardList className="w-3.5 h-3.5" /> Use Structured Form
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-navy-600 hover:text-navy-800"
+                      onClick={() => textareaRef.current?.openQuickPhrases?.()}>
+                      <Sparkles className="w-3.5 h-3.5" /> Quick Phrase
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-navy-600 hover:text-navy-800"
+                      onClick={() => { setActiveTab("drafter"); }}>
+                      <ClipboardList className="w-3.5 h-3.5" /> Use Structured Form
+                    </Button>
+                  </div>
                 </div>
                 {/* Voice input — one consolidated group: speak live, or record &
                     transcribe. All paths append your own words to the draft below;
@@ -637,8 +685,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     />
                   </div>
                 </div>
-                <textarea ref={textareaRef} value={note} onChange={e => setNote(e.target.value)}
-                  placeholder={"Enter bullet points or rough draft — AI will NOT invent information.\n\n• BP 148/90, HR 82, O2 95% RA, pain 3/10\n• homebound: unable to leave without considerable effort\n• skilled need: wound assessment and dressing change\n• wound R heel 2×3 cm granulating, no odor\n• taught med schedule, pt verbalized understanding\n• fall risk — clutter noted, discussed w/ family"}
+                <QuickPhraseTextarea
+                  ref={textareaRef}
+                  value={note}
+                  onChange={setNote}
+                  patientId={patientId}
+                  patientName={patient ? `${patient.first_name} ${patient.last_name}` : undefined}
+                  visitType={visitType}
+                  userEmail={currentUser?.email}
+                  placeholder={"Enter bullet points or rough draft — AI will NOT invent information.\n\nType / or .shortcut to insert a saved quick phrase.\n\n• BP 148/90, HR 82, O2 95% RA, pain 3/10\n• homebound: unable to leave without considerable effort\n• skilled need: wound assessment and dressing change\n• wound R heel 2×3 cm granulating, no odor\n• taught med schedule, pt verbalized understanding\n• fall risk — clutter noted, discussed w/ family"}
                   className="w-full min-h-[240px] sm:min-h-[320px] text-sm border-0 px-4 py-3 focus:ring-0 bg-white font-mono resize-none outline-none leading-relaxed" spellCheck={false}
                 />
                 <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50 gap-3">
@@ -674,7 +729,21 @@ export default function SmartNoteAssistant({ visitId = null }) {
               complianceRules={complianceRules}
               onEscalate={escalateToTasks}
               onBack={() => setStep(1)}
-              renderFinalNote={(api) => (
+              renderFinalNote={(api) => {
+                // Enforce facility documentation requirements against the FINAL
+                // note (not just the rough draft). Critical unmet requirements gate
+                // the save behind an explicit, audit-logged override.
+                const facilityResults = evaluateFacilityRules({
+                  rules: facilityDocRules,
+                  patient: patientDetail || patient,
+                  noteText: api.finalNote,
+                  visitType,
+                });
+                const facilityMissingCritical = facilityResults.filter(
+                  (r) => r.missing && r.rule.severity === "critical",
+                );
+                const facilityBlocked = facilityMissingCritical.length > 0 && !facilityAck;
+                return (
                 <>
                   {generatingTasks && (
                     <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
@@ -685,6 +754,38 @@ export default function SmartNoteAssistant({ visitId = null }) {
                   {followUpTasks.length > 0 && (
                     <FollowUpTasksPanel tasks={followUpTasks} onDismiss={() => setFollowUpTasks([])} />
                   )}
+
+                  <FacilityRequirementsChecklist
+                    patient={patientDetail || patient}
+                    noteText={api.finalNote}
+                    visitType={visitType}
+                  />
+
+                  {facilityMissingCritical.length > 0 && (
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-rose-800">
+                        <AlertTriangle className="w-4 h-4" />
+                        Critical facility requirement{facilityMissingCritical.length > 1 ? "s" : ""} not documented
+                      </div>
+                      <ul className="mt-1 ml-6 list-disc text-sm text-rose-700">
+                        {facilityMissingCritical.map((r) => (
+                          <li key={r.rule.id || r.rule.rule_name}>{r.rule.requirement_label || r.rule.rule_name}</li>
+                        ))}
+                      </ul>
+                      <label className="mt-2 flex items-start gap-2 text-xs text-rose-800">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 rounded"
+                          checked={facilityAck}
+                          onChange={(e) => setFacilityAck(e.target.checked)}
+                        />
+                        <span>
+                          Add the required detail above, or acknowledge saving without it. This override is recorded.
+                        </span>
+                      </label>
+                    </div>
+                  )}
+
                   <FinalNoteDisplay
                     finalNote={api.finalNote}
                     setFinalNote={api.setFinalNote}
@@ -708,13 +809,27 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     onReset={reset}
                     originalNote={note}
                     noteSections={parseNoteSections(api.finalNote)}
-                    onSave={() => handleSave(api)}
+                    onSave={() => {
+                      if (facilityBlocked) {
+                        toast.error("Document the required facility item(s) or acknowledge the override before saving.");
+                        return;
+                      }
+                      if (facilityMissingCritical.length > 0 && facilityAck) {
+                        logActivity(ActivityActions.NOTE_COMPLIANCE_CHECK, {
+                          patientId,
+                          facility_override: true,
+                          unmet_requirements: facilityMissingCritical.map((r) => r.rule.rule_name),
+                        });
+                      }
+                      handleSave(api);
+                    }}
                     saving={saving}
                     saved={saved && !api.dirty}
-                    saveDisabled={saving || !!(api.fixRequired && !api.fixRequired.offlinePending) || !patientId || api.chartRisk?.hasUnacknowledgedCritical}
+                    saveDisabled={saving || !!(api.fixRequired && !api.fixRequired.offlinePending) || !patientId || api.chartRisk?.hasUnacknowledgedCritical || facilityBlocked}
                   />
                 </>
-              )}
+                );
+              }}
             />
           )}
         </>

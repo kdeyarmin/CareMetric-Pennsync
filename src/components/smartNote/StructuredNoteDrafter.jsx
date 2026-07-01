@@ -1,4 +1,6 @@
 import { useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -24,6 +26,8 @@ const BLANK_VITALS = {
 };
 
 export default function StructuredNoteDrafter({ onDraftReady }) {
+  // Current user drives quick-phrase visibility (own + agency-wide phrases).
+  const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const [visitType, setVisitType] = useState("routine_visit");
   const [vitals, setVitals] = useState(BLANK_VITALS);
   const [symptoms, setSymptoms] = useState("");
@@ -200,9 +204,11 @@ export default function StructuredNoteDrafter({ onDraftReady }) {
                 />
               </div>
               <QuickPhraseTextarea
-                textareaRef={f.ref}
+                ref={f.ref}
                 value={f.val}
                 onChange={f.set}
+                visitType={visitType}
+                userEmail={currentUser?.email}
                 placeholder={f.placeholder}
                 className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:ring-2 focus:ring-navy-300 focus:border-navy-400 outline-none resize-none min-h-[70px] leading-relaxed"
               />

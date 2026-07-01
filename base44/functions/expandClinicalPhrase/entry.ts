@@ -21,7 +21,12 @@ Deno.serve(async (req) => {
       is_active: true
     });
 
-    let template = templates.find(t => t.is_agency_wide || t.created_by === user.email);
+    // A phrase bound to THIS patient wins (e.g. that patient's specific wound-care
+    // orders). Otherwise fall back to an agency-wide phrase or one the nurse owns.
+    const pid = patientId ? String(patientId) : '';
+    let template =
+      (pid ? templates.find(t => t.patient_id && String(t.patient_id) === pid) : undefined) ||
+      templates.find(t => !t.patient_id && (t.is_agency_wide || t.created_by === user.email));
 
     if (!template) {
       // No exact match, use AI to generate expansion
