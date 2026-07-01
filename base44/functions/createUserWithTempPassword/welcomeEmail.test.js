@@ -35,7 +35,7 @@ async function loadBuilders() {
 }
 
 const mod = await loadBuilders();
-const { buildWelcomeEmail, manualForRole, escapeHtml } = mod;
+const { buildWelcomeEmail, manualForRole, escapeHtml, DEFAULT_IOS_APP_URL, DEFAULT_ANDROID_APP_URL } = mod;
 
 const BASE = {
   fullName: "Jane Doe",
@@ -142,4 +142,20 @@ test("attacker-controlled name is HTML-escaped (no raw markup in body)", () => {
 test("blank name falls back to a friendly greeting", () => {
   const { body } = buildWelcomeEmail({ ...BASE, role: "user", fullName: "   " });
   assert.ok(body.includes("Welcome to PennSync, there!"));
+});
+
+test("ships the published App Store / Play Store defaults", () => {
+  assert.equal(DEFAULT_IOS_APP_URL, "https://apps.apple.com/us/app/caremetric-ai/id6757097720");
+  assert.equal(DEFAULT_ANDROID_APP_URL, "https://play.google.com/store/apps/details?id=com.caremetic.ai");
+  // Rendering with the shipped defaults produces working badges.
+  const { body } = buildWelcomeEmail({
+    ...BASE,
+    role: "user",
+    iosAppUrl: DEFAULT_IOS_APP_URL,
+    androidAppUrl: DEFAULT_ANDROID_APP_URL,
+  });
+  assert.ok(body.includes(DEFAULT_IOS_APP_URL));
+  assert.ok(body.includes(DEFAULT_ANDROID_APP_URL));
+  assert.ok(body.includes("App Store"));
+  assert.ok(body.includes("Google Play"));
 });

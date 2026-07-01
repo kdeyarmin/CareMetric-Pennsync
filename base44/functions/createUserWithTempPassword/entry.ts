@@ -19,6 +19,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const BRAND_LOGO_URL =
   'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png';
 
+// Published CareMetric / PennSync app-store listings. The IOS_APP_STORE_URL /
+// ANDROID_PLAY_STORE_URL env vars override these (e.g. a region-specific
+// storefront); the defaults ensure the badges render even when the env is unset.
+// Both verified to resolve (HTTP 200) — note the Android package is
+// intentionally "caremetic" (the real listing), not "caremetric".
+export const DEFAULT_IOS_APP_URL = 'https://apps.apple.com/us/app/caremetric-ai/id6757097720';
+export const DEFAULT_ANDROID_APP_URL = 'https://play.google.com/store/apps/details?id=com.caremetic.ai';
+
 const BRAND = {
   navy: '#213a76',
   navyDeep: '#1c2f5e',
@@ -314,8 +322,8 @@ Deno.serve(async (req) => {
         role: userRole,
         appUrl,
         manualsBaseUrl,
-        iosAppUrl: Deno.env.get('IOS_APP_STORE_URL') || null,
-        androidAppUrl: Deno.env.get('ANDROID_PLAY_STORE_URL') || null,
+        iosAppUrl: Deno.env.get('IOS_APP_STORE_URL') || DEFAULT_IOS_APP_URL,
+        androidAppUrl: Deno.env.get('ANDROID_PLAY_STORE_URL') || DEFAULT_ANDROID_APP_URL,
         supportEmail: Deno.env.get('SUPPORT_EMAIL') || user.email || null,
       });
       await base44.asServiceRole.integrations.Core.SendEmail({
