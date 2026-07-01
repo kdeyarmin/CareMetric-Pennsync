@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -312,16 +312,21 @@ class OfflineSyncWorker {
   }
 }
 
+// Module-level in-flight guard, shared by every mounted useOfflineSync() instance.
+// This service is mounted more than once at a time (globally in Layout AND inside
+// the offline-documentation tabs), so a per-instance ref can't prevent two widgets
+// from both draining the one shared localStorage queue at once. syncAll has no
+// per-item lock and the client_request_id idempotency check is TOCTOU-racy, so two
+// concurrent runs could both POST the same item and create duplicate clinical
+// records. A single module-scoped flag serializes syncNow across all instances.
+let syncInFlight = false;
+
 // React hook for offline sync
 export function useOfflineSync() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
-  // In-flight guard: the 5s pendingCount poll can re-fire the auto-sync effect
-  // mid-sync, and syncAll reads the queue with no per-item lock — two concurrent
-  // runs would both POST the same item, creating duplicate clinical records.
-  const isSyncingRef = useRef(false);
 
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
@@ -357,8 +362,8 @@ export function useOfflineSync() {
       toast.error('Cannot sync while offline');
       return;
     }
-    if (isSyncingRef.current) return; // a sync is already running — don't double-POST
-    isSyncingRef.current = true;
+    if (syncInFlight) return; // a sync is already running (in any instance) — don't double-POST
+    syncInFlight = true;
 
     setIsSyncing(true);
     setSyncProgress({ current: 0, total: pendingCount });
@@ -384,7 +389,7 @@ export function useOfflineSync() {
     } catch (error) {
       toast.error('Sync failed: ' + error.message);
     } finally {
-      isSyncingRef.current = false;
+      syncInFlight = false;
       setIsSyncing(false);
       setSyncProgress(null);
     }
