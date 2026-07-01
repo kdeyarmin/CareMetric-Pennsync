@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Edit2, Trash2, BookOpen, Eye, BarChart3, Copy, Loader2 } from "lucide-react";
+import { Plus, Edit2, Trash2, BookOpen, Eye, BarChart3, Copy, Loader2, CheckCircle2, AlertTriangle, Rocket } from "lucide-react";
 import { toast } from "sonner";
 import CourseForm from "./CourseForm";
 import CourseLessonBuilder from "./CourseLessonBuilder";
@@ -144,6 +144,34 @@ export default function CourseManager() {
     },
   });
 
+  // Live counts for the course open in the builder — these share query keys with
+  // the Lessons/Quiz builders, so react-query serves them from cache (no extra
+  // fetch) and they update as soon as the admin saves either tab.
+  const builderCourseId = builderCourse?.id;
+  const { data: builderModules = [] } = useQuery({
+    queryKey: ['training-modules', builderCourseId],
+    queryFn: () => base44.entities.TrainingModule.filter({ course_id: builderCourseId }, 'order_index', 100),
+    enabled: !!builderCourseId,
+  });
+  const { data: builderQuestions = [] } = useQuery({
+    queryKey: ['training-questions', builderCourseId],
+    queryFn: () => base44.entities.TrainingQuestion.filter({ course_id: builderCourseId, active: true }, 'order_index', 200),
+    enabled: !!builderCourseId,
+  });
+
+  const publishMutation = useMutation({
+    mutationFn: (courseId) => base44.entities.TrainingCourse.update(courseId, { status: 'published' }),
+    onSuccess: () => {
+      setBuilderCourse((prev) => (prev ? { ...prev, status: 'published' } : prev));
+      queryClient.invalidateQueries({ queryKey: ['training-courses'] });
+      toast.success('Course published — it can now be assigned to employees.');
+    },
+    onError: (err) => {
+      console.error('Publish error:', err);
+      toast.error('Could not publish the course. Please try again.');
+    },
+  });
+
   const openBuilder = (course) => {
     setBuilderCourse(course);
     setBuilderTab("details");
@@ -234,8 +262,69 @@ export default function CourseManager() {
                 </TabsContent>
               </Tabs>
 
-              <div className="flex justify-end pt-4">
-                <Button variant="outline" onClick={closeBuilder}>Done</Button>
+              {hasCourseId && (() => {
+                const lessonCount = builderModules.length;
+                const questionCount = builderQuestions.length;
+                const isPublished = builderCourse.status === 'published';
+                const ReadyRow = ({ ok, label, warn }) => (
+                  <div className="flex items-center gap-2 text-sm">
+                    {ok ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                    )}
+                    <span className={ok ? 'text-slate-700' : 'text-amber-700'}>{ok ? label : warn}</span>
+                  </div>
+                );
+                return (
+                  <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                      <h4 className="text-sm font-semibold text-slate-700">Course readiness</h4>
+                      {isPublished ? (
+                        <Badge className="bg-green-100 text-green-800">Published</Badge>
+                      ) : (
+                        <Badge className="bg-slate-200 text-slate-700">{builderCourse.status || 'draft'}</Badge>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <ReadyRow ok={lessonCount > 0} label={`${lessonCount} lesson${lessonCount === 1 ? '' : 's'}`} warn="Add at least one lesson" />
+                      <ReadyRow ok={questionCount > 0} label={`${questionCount}-question test`} warn="Add quiz questions for the end-of-course test" />
+                      <ReadyRow ok={builderCourse.enable_certificate !== false} label="Certificate on completion" warn="Certificate disabled" />
+                    </div>
+                    {!isPublished && questionCount === 0 && (
+                      <p className="text-xs text-amber-700 mt-3">
+                        Heads up: this course has no test yet. You can still publish it, but learners won&rsquo;t be graded or earn a certificate.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
+              <div className="flex justify-between items-center gap-2 pt-4 flex-wrap">
+                <div className="flex gap-2">
+                  {hasCourseId && (
+                    <Link to={`${createPageUrl('TrainingCoursePlayer')}?courseId=${builderCourse.id}&preview=true`} target="_blank">
+                      <Button variant="outline">
+                        <Eye className="w-4 h-4 mr-1.5" /> Preview
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {hasCourseId && builderCourse.status !== 'published' && (
+                    <Button
+                      onClick={() => publishMutation.mutate(builderCourse.id)}
+                      disabled={publishMutation.isPending}
+                    >
+                      {publishMutation.isPending ? (
+                        <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Publishing…</>
+                      ) : (
+                        <><Rocket className="w-4 h-4 mr-1.5" /> Publish</>
+                      )}
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={closeBuilder}>Done</Button>
+                </div>
               </div>
             </div>
           </DialogContent>
