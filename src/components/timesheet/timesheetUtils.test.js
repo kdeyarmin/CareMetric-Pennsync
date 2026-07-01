@@ -20,7 +20,6 @@ import {
   effectiveReimbursement,
   totalPaidHours,
   getTimesheetValidationError,
-  defaultPayPeriod,
   submissionCoverage,
   aggregateTimesheets,
   aggregateTotals,
@@ -209,12 +208,6 @@ test("getTimesheetValidationError: dates, negatives, and empty sheets", () => {
     getTimesheetValidationError({ pay_period_start: "2026-06-16", pay_period_end: "2026-06-29", auto_pto_hours: 16 }),
     null
   );
-});
-
-test("defaultPayPeriod returns a 14-day inclusive window ending today", () => {
-  const { start, end } = defaultPayPeriod(new Date(2026, 5, 29)); // Jun 29 2026
-  assert.equal(end, "2026-06-29");
-  assert.equal(start, "2026-06-16");
 });
 
 test("effectiveReimbursement adds entered + standing phone reimbursement", () => {

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ClipboardList } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import { isAdminView } from "@/lib/roles";
 
 import MyTimesheetForm from "@/components/timesheet/MyTimesheetForm";
 import MyTimesheetsList from "@/components/timesheet/MyTimesheetsList";
@@ -22,7 +23,9 @@ export default function Timesheets() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === "admin";
+  // Match the app's role model: facility admins (role 'admin' or agency_admin
+  // account type) and the super admin all see the admin workflow.
+  const isAdmin = isAdminView(currentUser);
   const isApprover = isAdmin || currentUser?.is_manager === true;
 
   const [editing, setEditing] = useState(null);

@@ -331,17 +331,6 @@ export function getTimesheetValidationError(ts) {
   return null;
 }
 
-/**
- * Default pay period: the two-week (14-day inclusive) window ending today.
- * Employees can adjust the dates on the form.
- */
-export function defaultPayPeriod(today = new Date()) {
-  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const start = new Date(end);
-  start.setDate(start.getDate() - 13);
-  return { start: toISODate(start), end: toISODate(end) };
-}
-
 /** Human-friendly pay-period label, e.g. "Jun 16 – Jun 29, 2026". */
 export function payPeriodLabel(start, end) {
   return formatDateRange(start, end);

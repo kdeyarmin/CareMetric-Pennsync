@@ -381,8 +381,11 @@ Deno.serve(async (req) => {
 
     // Standing phone reimbursement from the employee's payroll profile (loaded
     // above) — an expense reimbursement (not pay/wages) applied automatically each
-    // pay period. Server-authoritative: the client cannot set it.
-    const phone_reimbursement = profile ? toNonNegativeNumber(profile.phone_reimbursement) : 0;
+    // pay period. Server-authoritative: the client cannot set it. Only applied
+    // when the profile is active (the "Applied" toggle in Payroll Setup); an
+    // inactive profile still resolves service line / points but adds no reimbursement.
+    const phone_reimbursement =
+      profile && profile.active !== false ? toNonNegativeNumber(profile.phone_reimbursement) : 0;
 
     // Validate the chosen approver (admin or flagged manager, never the caller).
     let resolvedManagerEmail = '';
@@ -393,7 +396,8 @@ Deno.serve(async (req) => {
       }
       const matches = await base44.asServiceRole.entities.User.filter({ email: manager_email });
       const mgr = matches && matches[0];
-      if (!mgr || !(mgr.role === 'admin' || mgr.is_manager === true)) {
+      const mgrIsAdmin = mgr && (mgr.role === 'admin' || mgr.account_type === 'super_admin' || mgr.account_type === 'agency_admin');
+      if (!mgr || !(mgrIsAdmin || mgr.is_manager === true)) {
         return Response.json({ error: 'The selected approver is not authorized to approve timesheets.' }, { status: 400 });
       }
       resolvedManagerEmail = mgr.email;
@@ -454,10 +458,14 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'This timesheet has already been approved and can no longer be edited.' }, { status: 409 });
       }
       // Don't let an edit move this sheet onto a period+service line that already
-      // has an approved timesheet for this employee.
+      // has ANOTHER timesheet for this employee — that would create a duplicate
+      // (both could be approved and double-counted on the payroll export).
       const siblings = await siblingsForPeriod(timesheet_id);
-      if (siblings.some((s) => s.status === 'approved')) {
-        return Response.json({ error: 'You already have an approved timesheet for this pay period.' }, { status: 409 });
+      if (siblings.length > 0) {
+        const msg = siblings.some((s) => s.status === 'approved')
+          ? 'You already have an approved timesheet for this pay period.'
+          : 'You already have a timesheet for this pay period — edit that one instead.';
+        return Response.json({ error: msg }, { status: 409 });
       }
       saved = await base44.asServiceRole.entities.Timesheet.update(timesheet_id, { ...record, ...clearedReview });
     } else {
@@ -484,7 +492,9 @@ Deno.serve(async (req) => {
           recipients = [{ email: resolvedManagerEmail }];
         } else {
           const users = await base44.asServiceRole.entities.User.list('-created_date', 500);
-          recipients = users.filter((u) => u.role === 'admin' && u.email);
+          recipients = users.filter(
+            (u) => u.email && (u.role === 'admin' || u.account_type === 'super_admin' || u.account_type === 'agency_admin')
+          );
         }
         const employeeName = user.full_name || user.email;
         const prettyService = service_type === 'hospice' ? 'Hospice' : 'Home Health';

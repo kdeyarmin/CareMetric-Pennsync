@@ -152,7 +152,9 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Timesheet not found.' }, { status: 404 });
     }
 
-    const isAdmin = user.role === 'admin';
+    // Admin = role 'admin' or an admin account_type (agency/super), matching the
+    // app's role model (src/lib/roles.js) and other backend admin gates.
+    const isAdmin = user.role === 'admin' || user.account_type === 'super_admin' || user.account_type === 'agency_admin';
     const isAssignedManager = !!timesheet.manager_email && timesheet.manager_email === user.email;
     if (!isAdmin && !isAssignedManager) {
       return Response.json({ error: 'You are not authorized to review this timesheet.' }, { status: 403 });

@@ -23,7 +23,10 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    if (user.role !== 'admin') {
+    // Admin = role 'admin' or an admin account_type (agency/super), matching the
+    // app's role model (src/lib/roles.js) and other backend admin gates.
+    const isAdmin = user.role === 'admin' || user.account_type === 'super_admin' || user.account_type === 'agency_admin';
+    if (!isAdmin) {
       return Response.json({ error: 'Only administrators can set visit point values.' }, { status: 403 });
     }
 
