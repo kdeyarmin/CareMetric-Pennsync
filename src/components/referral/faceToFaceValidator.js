@@ -127,6 +127,19 @@ export function validateFaceToFace({ encounter = {}, socDate, primaryDiagnosis }
   } else if (!reasonText.trim()) {
     linked = false;
     reasons.push("Encounter documents no clinical reason to link to the primary diagnosis.");
+  } else if (dxTokens.length === 0) {
+    // The diagnosis has no significant (>= 4 char) tokens — e.g. an abbreviation
+    // like "CHF". A literal match still counts as linked; otherwise we can't
+    // deterministically assess linkage, so route to needs_review rather than
+    // hard-failing a potentially-compliant encounter.
+    const literal = String(primaryDiagnosis).toLowerCase().trim();
+    if (literal && reasonText.includes(literal)) {
+      linked = true;
+      reasons.push("Encounter substantively links to the primary diagnosis.");
+    } else {
+      linked = null;
+      reasons.push("Primary diagnosis is an abbreviation/short code — diagnosis linkage needs manual review.");
+    }
   } else {
     linked = dxTokens.some((t) => reasonText.includes(t));
     reasons.push(
@@ -162,7 +175,11 @@ export function validateFaceToFace({ encounter = {}, socDate, primaryDiagnosis }
  */
 export function referralToF2FInput(referral) {
   if (!referral) return null;
-  const ex = referral.extracted_data || {};
+  // Accept BOTH shapes: a Referral entity (extraction nested under
+  // extracted_data) AND the raw extraction object passed straight from
+  // ReferralPDFSummarizer (face_to_face / diagnoses / admission_details at the
+  // top level). Fall back to the referral itself as the extraction root.
+  const ex = referral.extracted_data || referral;
   const f2f = ex.face_to_face || {};
   const hasAny = f2f.encounter_date || f2f.practitioner_name || f2f.practitioner_type || f2f.clinical_reason;
   if (!hasAny) return null;

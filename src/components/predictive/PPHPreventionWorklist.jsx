@@ -17,10 +17,22 @@ const PRIORITY_STYLE = {
 
 export default function PPHPreventionWorklist({ patients = [], oasisData = [], visits = [], limit = 25 }) {
   const worklist = useMemo(() => {
+    // Pre-index by patient_id once so building items is O(patients + oasis +
+    // visits) rather than O(patients × (oasis + visits)) per render.
+    const groupByPatient = (rows) => {
+      const map = new Map();
+      for (const r of rows || []) {
+        if (!map.has(r.patient_id)) map.set(r.patient_id, []);
+        map.get(r.patient_id).push(r);
+      }
+      return map;
+    };
+    const oasisByPatient = groupByPatient(oasisData);
+    const visitsByPatient = groupByPatient(visits);
     const items = patients.map((p) => ({
       patient: p,
-      oasis: oasisData.filter((o) => o.patient_id === p.id),
-      visits: visits.filter((v) => v.patient_id === p.id),
+      oasis: oasisByPatient.get(p.id) || [],
+      visits: visitsByPatient.get(p.id) || [],
     }));
     return buildPphWorklist(items, { limit });
   }, [patients, oasisData, visits, limit]);

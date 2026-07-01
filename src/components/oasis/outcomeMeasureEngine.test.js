@@ -53,6 +53,12 @@ test("no change is not_improved, not excluded", () => {
   assert.equal(outcome.eligible_measure_count, 1);
 });
 
+test("M1850=5 (bedfast) is a valid start value and 5→3 counts as improvement", () => {
+  const outcome = computeEpisodeOutcome({ start: { m1850: 5 }, discharge: { m1850: 3 } });
+  const t = outcome.measures.find((m) => m.key === "bed_transfer");
+  assert.equal(t.status, MEASURE_STATUS.IMPROVED); // not excluded as unratable
+});
+
 test("a WORSE (higher) discharge value is not_improved", () => {
   const outcome = computeEpisodeOutcome({ start: { m1850: 1 }, discharge: { m1850: 3 } });
   const t = outcome.measures.find((m) => m.key === "bed_transfer");

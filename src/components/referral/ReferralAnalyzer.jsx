@@ -265,7 +265,9 @@ Referral Data: ${JSON.stringify(referralData)}`,
           {f2fValidation.status === "valid" ? (
             <ShieldCheck className="w-5 h-5 text-green-600" />
           ) : (
-            <ShieldAlert className="w-5 h-5 text-red-600" />
+            <ShieldAlert
+              className={`w-5 h-5 ${f2fValidation.status === "invalid" ? "text-red-600" : "text-yellow-600"}`}
+            />
           )}
           <AlertDescription>
             <div className="flex items-center justify-between mb-1">

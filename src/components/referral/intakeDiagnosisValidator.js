@@ -92,13 +92,15 @@ export function previewClinicalGroup(icd10) {
 }
 
 /**
- * Validate an intake diagnosis set: the principal (with clinical-group preview)
- * plus a scan of secondaries for accidentally-principal-only codes.
+ * Validate an intake diagnosis set. Validates the PRINCIPAL diagnosis (RTP
+ * acceptability) and previews the PDGM clinical group it drives; the secondaries
+ * are only counted (secondary_count), not individually validated here.
  *
  * @param {Object} input { primary, secondaries }
  * @returns {{
  *   primary: object, clinical_group_preview: object,
  *   acceptable: boolean, rtp_risk: boolean, findings: Array,
+ *   all_clinical_groups: Array, secondary_count: number,
  * }}
  */
 export function validateIntakeDiagnoses({ primary, secondaries = [] } = {}) {

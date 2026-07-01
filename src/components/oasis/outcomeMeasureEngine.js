@@ -48,7 +48,10 @@ export const IMPROVEMENT_MEASURES = [
     key: "bed_transfer",
     item: "m1850",
     label: "Improvement in Bed Transferring",
-    startMax: 4,
+    // M1850 Transferring is a 0–5 scale (see oasisScales.js); 5 = bedfast,
+    // unable to transfer/turn. All 0–5 are real functional levels (no unratable
+    // code), so a documented 5 must stay in the denominator (e.g. 5→3 improves).
+    startMax: 5,
     excludeStart: [0],
     excludeEither: [],
     metricField: "transferring_improved",

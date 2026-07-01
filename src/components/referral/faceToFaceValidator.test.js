@@ -105,6 +105,26 @@ test("encounter unrelated to the primary diagnosis is invalid", () => {
   assert.equal(res.status, "invalid");
 });
 
+test("a short abbreviation diagnosis that appears literally in the reason links", () => {
+  const res = validateFaceToFace({
+    encounter: { ...goodEncounter, documented_conditions: [], clinical_reason: "Acute CHF exacerbation" },
+    socDate: "2026-06-20",
+    primaryDiagnosis: "CHF",
+  });
+  assert.equal(res.checks.linkage.linked, true);
+  assert.equal(res.valid, true);
+});
+
+test("a short abbreviation with no literal match is needs_review, NOT a hard fail", () => {
+  const res = validateFaceToFace({
+    encounter: { ...goodEncounter, documented_conditions: [], clinical_reason: "Cardiac decompensation" },
+    socDate: "2026-06-20",
+    primaryDiagnosis: "CHF",
+  });
+  assert.equal(res.checks.linkage.linked, null);
+  assert.equal(res.status, "needs_review"); // not "invalid"
+});
+
 // ── needs review ──
 
 test("missing SOC date yields needs_review, not a hard fail", () => {
@@ -161,6 +181,26 @@ test("referralToF2FInput maps extracted_data.face_to_face onto validator input",
   assert.equal(input.primaryDiagnosis, "Congestive heart failure");
   const res = validateFaceToFace(input);
   assert.equal(res.valid, true);
+});
+
+test("referralToF2FInput accepts the RAW extraction shape (top-level face_to_face)", () => {
+  // ReferralPDFSummarizer passes extractedData directly to ReferralAnalyzer, so
+  // face_to_face / diagnoses / admission_details are top-level (not nested).
+  const rawExtraction = {
+    diagnoses: { primary_diagnosis: "Congestive heart failure" },
+    admission_details: { admission_date: "2026-06-20" },
+    face_to_face: {
+      encounter_date: "2026-06-15",
+      practitioner_name: "Dr. Alice Wong",
+      practitioner_type: "MD",
+      clinical_reason: "Acute exacerbation of congestive heart failure",
+    },
+  };
+  const input = referralToF2FInput(rawExtraction);
+  assert.ok(input);
+  assert.equal(input.socDate, "2026-06-20");
+  assert.equal(input.primaryDiagnosis, "Congestive heart failure");
+  assert.equal(validateFaceToFace(input).valid, true);
 });
 
 test("referralToF2FInput returns null when the referral carries no F2F block", () => {

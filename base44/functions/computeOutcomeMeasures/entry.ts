@@ -24,7 +24,7 @@ const isAdminLike = (u) => !!u && (
 // ── inlined outcome-measure engine (mirror of outcomeMeasureEngine.js) ────────
 const IMPROVEMENT_MEASURES = [
   { key: 'ambulation', item: 'm1860', label: 'Improvement in Ambulation/Locomotion', startMax: 5, excludeStart: [0], excludeEither: [], metricField: 'ambulation_improved' },
-  { key: 'bed_transfer', item: 'm1850', label: 'Improvement in Bed Transferring', startMax: 4, excludeStart: [0], excludeEither: [], metricField: 'transferring_improved' },
+  { key: 'bed_transfer', item: 'm1850', label: 'Improvement in Bed Transferring', startMax: 5, excludeStart: [0], excludeEither: [], metricField: 'transferring_improved' },
   { key: 'bathing', item: 'm1830', label: 'Improvement in Bathing', startMax: 6, excludeStart: [0], excludeEither: [6], metricField: 'bathing_improved' },
   { key: 'dyspnea', item: 'm1400', label: 'Improvement in Dyspnea', startMax: 4, excludeStart: [0], excludeEither: [], metricField: 'dyspnea_improved' },
   { key: 'oral_meds', item: 'm2020', label: 'Improvement in Management of Oral Medications', startMax: 3, excludeStart: [0], excludeEither: [], metricField: 'medication_management_improved' },
@@ -229,7 +229,9 @@ Deno.serve(async (req) => {
     );
 
     const outcomes = [];
+    const episodeEndDates = [];
     let metricsWritten = 0;
+    let skippedNoDate = 0;
 
     for (const dc of discharges) {
       if (!inPeriod(dc.assessment_date)) continue;
@@ -243,6 +245,11 @@ Deno.serve(async (req) => {
         (a.visit_type === 'Start of Care' || a.visit_type === 'Resumption of Care') &&
         (!dc.assessment_date || !a.assessment_date || new Date(a.assessment_date) <= new Date(dc.assessment_date)));
       if (!start) continue; // no SOC/ROC to pair → cannot compute a change score
+      // PatientOutcomeMetric requires episode_start (and we key the upsert on
+      // both episode dates): skip pairs missing either assessment_date rather
+      // than let a required-field create() throw and abort the whole cron.
+      if (!start.assessment_date || !dc.assessment_date) { skippedNoDate += 1; continue; }
+      episodeEndDates.push(dc.assessment_date);
 
       const dcAns = answersFromOasisItems(dc.oasis_items);
       const patient = await base44.asServiceRole.entities.Patient.filter({ id: dc.patient_id }, '-created_date', 1)
@@ -278,16 +285,36 @@ Deno.serve(async (req) => {
       metricsWritten += 1;
     }
 
-    // Roll up to agency KPIs (one row per measure).
+    // Roll up to agency KPIs (one row per measure). Default the period to the
+    // ACTUAL span of the evaluated discharges (ISO dates sort lexically), not
+    // discharges[0] (the newest) → today, which would label all-time rates as a
+    // single latest-date-to-today period and corrupt the KPI time series.
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultStart = episodeEndDates.length ? episodeEndDates.reduce((a, b) => (a < b ? a : b)) : today;
+    const defaultEnd = episodeEndDates.length ? episodeEndDates.reduce((a, b) => (a > b ? a : b)) : today;
     const rollup = rollupMeasures(outcomes);
     const kpis = toAgencyKPIs(rollup, {
-      periodStart: periodStart || (discharges[0]?.assessment_date ?? new Date().toISOString().slice(0, 10)),
-      periodEnd: periodEnd || new Date().toISOString().slice(0, 10),
+      periodStart: periodStart || defaultStart,
+      periodEnd: periodEnd || defaultEnd,
       benchmark,
     });
     let kpisWritten = 0;
     for (const kpi of kpis) {
-      await base44.asServiceRole.entities.AgencyKPI.create(kpi);
+      // Idempotent upsert so a retry / scheduled rerun for the same period does
+      // not create duplicate AgencyKPI rows (dashboards would double-count).
+      const kpiFilter = {
+        metric_name: kpi.metric_name,
+        metric_category: kpi.metric_category,
+        period_start: kpi.period_start,
+        period_end: kpi.period_end,
+      };
+      if (kpi.agency_id) kpiFilter.agency_id = kpi.agency_id;
+      const existingKpi = await base44.asServiceRole.entities.AgencyKPI.filter(kpiFilter, '-created_date', 1).catch(() => []);
+      if (existingKpi && existingKpi[0]) {
+        await base44.asServiceRole.entities.AgencyKPI.update(existingKpi[0].id, kpi);
+      } else {
+        await base44.asServiceRole.entities.AgencyKPI.create(kpi);
+      }
       kpisWritten += 1;
     }
 
@@ -295,6 +322,7 @@ Deno.serve(async (req) => {
       success: true,
       discharges_evaluated: outcomes.length,
       patient_outcome_metrics_written: metricsWritten,
+      skipped_missing_episode_date: skippedNoDate,
       agency_kpis_written: kpisWritten,
       star_eligible_measure_count: rollup.star_eligible_measure_count,
       star_eligible: rollup.star_eligible,
