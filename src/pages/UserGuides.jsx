@@ -2,13 +2,17 @@ import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Download, BookOpen, Users, Stethoscope, Star, Loader2, CheckCircle2, AlertTriangle, ListChecks, Lightbulb } from "lucide-react";
+import { FileText, Download, BookOpen, Users, Stethoscope, Star, Loader2, CheckCircle2, AlertTriangle, ListChecks, Lightbulb, ShieldCheck } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { toast } from 'sonner';
+import { useAuth } from "@/lib/AuthContext";
+import { isAdminView } from "@/lib/roles";
 
 export default function UserGuides() {
   const [downloading, setDownloading] = useState(null);
+  const { user } = useAuth();
+  const isAdmin = isAdminView(user);
 
   const handleDownloadGuide = async (guideType, guideName) => {
     setDownloading(guideType);
@@ -284,6 +288,54 @@ export default function UserGuides() {
         description="Download comprehensive PDF guides with step-by-step instructions and screenshots"
         favoritePage="UserGuides"
       />
+
+        {/* Branded, print-ready reference manuals (static PDFs in /public/manuals). */}
+        <Card className="mb-6 bg-navy-900 text-white border-none shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white">
+              <BookOpen className="w-5 h-5 text-gold-400" />
+              PennSync Manuals
+            </CardTitle>
+            <p className="text-sm text-navy-100">
+              Professionally designed, print-ready reference manuals covering every feature — branded for PennSync by CareMetric.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className={`grid gap-4 ${isAdmin ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>
+              <a
+                href="/manuals/PennSync-User-Manual.pdf"
+                download
+                className="flex items-center gap-4 rounded-lg bg-white/5 hover:bg-white/10 ring-1 ring-inset ring-white/10 p-4 transition-colors"
+              >
+                <div className="w-11 h-11 rounded-lg bg-gold-400 text-navy-900 flex items-center justify-center flex-shrink-0">
+                  <BookOpen className="w-6 h-6" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-white">User Manual</p>
+                  <p className="text-xs text-navy-100">For all clinical staff · PDF</p>
+                </div>
+                <Download className="w-5 h-5 text-gold-400 flex-shrink-0" />
+              </a>
+
+              {isAdmin && (
+                <a
+                  href="/manuals/PennSync-Facility-Admin-Manual.pdf"
+                  download
+                  className="flex items-center gap-4 rounded-lg bg-white/5 hover:bg-white/10 ring-1 ring-inset ring-white/10 p-4 transition-colors"
+                >
+                  <div className="w-11 h-11 rounded-lg bg-gold-400 text-navy-900 flex items-center justify-center flex-shrink-0">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-white">Facility Administrator Manual</p>
+                    <p className="text-xs text-navy-100">User guide + admin tools · PDF</p>
+                  </div>
+                  <Download className="w-5 h-5 text-gold-400 flex-shrink-0" />
+                </a>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Featured Complete Guide */}
         {guides.filter(g => g.featured).map((guide) => {
