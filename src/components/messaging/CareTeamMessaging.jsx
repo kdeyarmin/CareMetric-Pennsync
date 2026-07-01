@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
 
 export default function CareTeamMessaging({ patientId, relatedEventId, relatedEventType }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedThread, setSelectedThread] = useState(null);
   const [newMessage, setNewMessage] = useState("");
@@ -398,7 +400,7 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => window.location.href = createPageUrl(`ReferralIntake`)}
+                      onClick={() => navigate(createPageUrl(`ReferralIntake`))}
                       className="text-xs"
                     >
                       <FileText className="w-3 h-3 mr-1" />
@@ -407,7 +409,7 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
                     <Button
                       size="sm"
                       className="bg-navy-600 hover:bg-navy-700 text-xs"
-                      onClick={() => window.location.href = createPageUrl(`ReferralIntake?tab=admission&referral_id=${msg.related_event_id}`)}
+                      onClick={() => navigate(createPageUrl(`ReferralIntake?tab=admission&referral_id=${msg.related_event_id}`))}
                     >
                       <Sparkles className="w-3 h-3 mr-1" />
                       Create Admission Note
