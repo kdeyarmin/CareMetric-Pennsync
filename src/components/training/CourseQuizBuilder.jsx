@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCourseContentBuilder } from "./useCourseContentBuilder";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,56 +133,49 @@ export const itemToPayload = (item, courseId, orderIndex) => {
   return { ...base, options_json: [], correct_answer_json: {} };
 };
 
-export default function CourseQuizBuilder({ courseId }) {
-  const queryClient = useQueryClient();
-  const [items, setItems] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
-  const seededFor = useRef(null);
+// Returns an error message if the persisted questions are invalid, else null.
+const validateQuestions = (usable) => {
+  const invalid = usable.find(
+    (it) => CHOICE_TYPES.has(it.type) && !it.options.some((o) => o.correct)
+  );
+  if (invalid) return "Each multiple-choice question needs at least one correct answer marked.";
 
-  // No `initialData` — see CourseLessonBuilder: initialData makes isLoading false
-  // on first render, which would seed from an empty list and then let Save delete
-  // all existing questions.
-  const { data: questions = [], isLoading, isSuccess } = useQuery({
+  const badMatching = usable.find(
+    (it) => it.type === "matching" && !(it.pairs || []).some((p) => p.left.trim() && p.rightText.trim())
+  );
+  if (badMatching) return "Each matching question needs at least one complete left/right pair.";
+
+  // The learner's answer is keyed by left-prompt text, so duplicate left prompts
+  // within one matching question collide and can never all be graded correct.
+  const dupLeft = usable.find((it) => {
+    if (it.type !== "matching") return false;
+    const lefts = (it.pairs || []).map((p) => p.left.trim().toLowerCase()).filter(Boolean);
+    return new Set(lefts).size !== lefts.length;
+  });
+  if (dupLeft) return "Matching questions can't reuse the same left prompt twice — make each left unique.";
+
+  return null;
+};
+
+export default function CourseQuizBuilder({ courseId }) {
+  const { items, setItems, saving, saved, error, move, onDragEnd, saveAll } = useCourseContentBuilder({
+    courseId,
     queryKey: ["training-questions", courseId],
     queryFn: () =>
       base44.entities.TrainingQuestion.filter({ course_id: courseId, active: true }, "order_index", 200),
-    enabled: !!courseId,
+    entity: base44.entities.TrainingQuestion,
+    toItem: questionToItem,
+    toPayload: (item, index) => itemToPayload(item, courseId, index),
+    // Only questions with a prompt are persisted; a blanked-out existing question
+    // is therefore treated as removed and deleted.
+    shouldPersist: (it) => it.prompt.trim(),
+    validate: validateQuestions,
+    notReadyMessage: "Questions are still loading. Please try again in a moment.",
+    saveErrorMessage: "Failed to save quiz. Please try again.",
   });
-
-  useEffect(() => {
-    if (!courseId || seededFor.current === courseId) return;
-    if (isLoading || !isSuccess) return;
-    setItems(questions.map(questionToItem));
-    seededFor.current = courseId;
-  }, [courseId, isLoading, isSuccess, questions]);
 
   const updateItem = (localId, patch) =>
     setItems((prev) => prev.map((it) => (it._localId === localId ? { ...it, ...patch } : it)));
-
-  const move = (index, dir) => {
-    const target = index + dir;
-    if (target < 0 || target >= items.length) return;
-    setItems((prev) => {
-      const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  };
-
-  const onDragEnd = (result) => {
-    if (!result.destination) return;
-    const from = result.source.index;
-    const to = result.destination.index;
-    if (from === to) return;
-    setItems((prev) => {
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-  };
 
   const changeType = (localId, type) => {
     setItems((prev) =>
@@ -271,78 +263,6 @@ export default function CourseQuizBuilder({ courseId }) {
           : it
       )
     );
-
-  const saveAll = async () => {
-    // Guard against saving before the editor has seeded from server data — a
-    // save now would treat every existing question as "removed" and delete it.
-    if (seededFor.current !== courseId) {
-      setError("Questions are still loading. Please try again in a moment.");
-      return;
-    }
-    setSaving(true);
-    setSaved(false);
-    setError("");
-    try {
-      const usable = items.filter((it) => it.prompt.trim());
-
-      // Validate choice questions have a marked correct answer.
-      const invalid = usable.find(
-        (it) => CHOICE_TYPES.has(it.type) && !it.options.some((o) => o.correct)
-      );
-      if (invalid) {
-        setError("Each multiple-choice question needs at least one correct answer marked.");
-        setSaving(false);
-        return;
-      }
-
-      // Matching questions need at least one fully-filled pair.
-      const badMatching = usable.find(
-        (it) => it.type === "matching" && !(it.pairs || []).some((p) => p.left.trim() && p.rightText.trim())
-      );
-      if (badMatching) {
-        setError("Each matching question needs at least one complete left/right pair.");
-        setSaving(false);
-        return;
-      }
-
-      // The learner's answer is keyed by left-prompt text, so duplicate left
-      // prompts within one matching question collide and can never all be graded
-      // correct. Reject them at authoring time.
-      const dupLeft = usable.find((it) => {
-        if (it.type !== "matching") return false;
-        const lefts = (it.pairs || []).map((p) => p.left.trim().toLowerCase()).filter(Boolean);
-        return new Set(lefts).size !== lefts.length;
-      });
-      if (dupLeft) {
-        setError("Matching questions can't reuse the same left prompt twice — make each left unique.");
-        setSaving(false);
-        return;
-      }
-
-      // Delete questions removed from the list.
-      const keptIds = new Set(usable.filter((it) => it.id).map((it) => it.id));
-      const toDelete = questions.filter((q) => !keptIds.has(q.id));
-      await Promise.all(toDelete.map((q) => base44.entities.TrainingQuestion.delete(q.id)));
-
-      await Promise.all(
-        usable.map((item, index) => {
-          const payload = itemToPayload(item, courseId, index);
-          return item.id
-            ? base44.entities.TrainingQuestion.update(item.id, payload)
-            : base44.entities.TrainingQuestion.create(payload);
-        })
-      );
-
-      await queryClient.invalidateQueries({ queryKey: ["training-questions", courseId] });
-      seededFor.current = null;
-      setSaved(true);
-    } catch (err) {
-      console.error("Quiz save error:", err);
-      setError(err?.message || "Failed to save quiz. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   if (!courseId) {
     return (

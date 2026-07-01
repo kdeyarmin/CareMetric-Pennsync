@@ -1,6 +1,4 @@
-import { useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,17 +9,13 @@ import {
   Plus, Trash2, ChevronUp, ChevronDown, Loader2, CheckCircle2, AlertCircle, BookOpen, GripVertical,
 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+import { linesToArray } from "@/utils";
+import { useCourseContentBuilder } from "./useCourseContentBuilder";
 
 // Lightweight local id for unsaved lessons/sections so React keys stay stable
 // before a server id exists. Avoids Math.random (blocked in some envs) and Date.now.
 let localSeq = 0;
 const nextLocalId = () => `local-${localSeq++}`;
-
-const linesToArray = (value) =>
-  String(value || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
 
 // Map a persisted TrainingModule.content_json into the editor's working shape.
 const moduleToItem = (module) => {
@@ -78,59 +72,34 @@ const toModuleCategory = (courseCategory) =>
   MODULE_CATEGORIES.has(courseCategory) ? courseCategory : "compliance";
 
 export default function CourseLessonBuilder({ courseId, courseCategory }) {
-  const queryClient = useQueryClient();
-  const [items, setItems] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
-  const seededFor = useRef(null);
-
-  // NOTE: intentionally no `initialData` here. With initialData set, react-query
-  // v5 reports isLoading:false on the very first render (status is 'success'),
-  // so the seeding effect below would seed from the empty placeholder and the
-  // seededFor guard would then block re-seeding when the real rows arrive — the
-  // editor would show empty and Save would delete every existing lesson.
-  const { data: modules = [], isLoading, isSuccess } = useQuery({
-    queryKey: ["training-modules", courseId],
-    queryFn: () => base44.entities.TrainingModule.filter({ course_id: courseId }, "order_index", 100),
-    enabled: !!courseId,
+  // Serialize a lesson into the TrainingModule fields the player/viewer read.
+  // category + module_type are required by the schema; title falls back to a
+  // positional label.
+  const toPayload = (item, index) => ({
+    course_id: courseId,
+    title: item.title || `Lesson ${index + 1}`,
+    category: toModuleCategory(courseCategory),
+    module_type: "ongoing",
+    content_type: "text",
+    content_json: itemToContentJson(item),
+    order_index: index,
+    estimated_minutes: Number(item.estimated_minutes) || 10,
+    is_required: item.is_required !== false,
   });
 
-  // Seed the editor from server data once per course, only after the fetch has
-  // actually succeeded. After that the local list is the source of truth until
-  // the admin saves.
-  useEffect(() => {
-    if (!courseId || seededFor.current === courseId) return;
-    if (isLoading || !isSuccess) return;
-    setItems(modules.map(moduleToItem));
-    seededFor.current = courseId;
-  }, [courseId, isLoading, isSuccess, modules]);
+  const { items, setItems, saving, saved, error, move, onDragEnd, saveAll } = useCourseContentBuilder({
+    courseId,
+    queryKey: ["training-modules", courseId],
+    queryFn: () => base44.entities.TrainingModule.filter({ course_id: courseId }, "order_index", 100),
+    entity: base44.entities.TrainingModule,
+    toItem: moduleToItem,
+    toPayload,
+    notReadyMessage: "Lessons are still loading. Please try again in a moment.",
+    saveErrorMessage: "Failed to save lessons. Please try again.",
+  });
 
   const updateItem = (localId, patch) =>
     setItems((prev) => prev.map((it) => (it._localId === localId ? { ...it, ...patch } : it)));
-
-  const move = (index, dir) => {
-    const target = index + dir;
-    if (target < 0 || target >= items.length) return;
-    setItems((prev) => {
-      const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  };
-
-  const onDragEnd = (result) => {
-    if (!result.destination) return;
-    const from = result.source.index;
-    const to = result.destination.index;
-    if (from === to) return;
-    setItems((prev) => {
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-  };
 
   const addSection = (localId) =>
     setItems((prev) =>
@@ -159,55 +128,6 @@ export default function CourseLessonBuilder({ courseId, courseCategory }) {
           : it
       )
     );
-
-  const saveAll = async () => {
-    // Guard against saving before the editor has seeded from server data — a
-    // save now would treat every existing lesson as "removed" and delete it.
-    if (seededFor.current !== courseId) {
-      setError("Lessons are still loading. Please try again in a moment.");
-      return;
-    }
-    setSaving(true);
-    setSaved(false);
-    setError("");
-    try {
-      // Delete modules that were removed from the list.
-      const keptIds = new Set(items.filter((it) => it.id).map((it) => it.id));
-      const toDelete = modules.filter((m) => !keptIds.has(m.id));
-      await Promise.all(toDelete.map((m) => base44.entities.TrainingModule.delete(m.id)));
-
-      // Create/update each lesson with its list position as order_index.
-      await Promise.all(
-        items.map((item, index) => {
-          const payload = {
-            course_id: courseId,
-            title: item.title || `Lesson ${index + 1}`,
-            // category + module_type are required by the TrainingModule schema.
-            category: toModuleCategory(courseCategory),
-            module_type: "ongoing",
-            content_type: "text",
-            content_json: itemToContentJson(item),
-            order_index: index,
-            estimated_minutes: Number(item.estimated_minutes) || 10,
-            is_required: item.is_required !== false,
-          };
-          return item.id
-            ? base44.entities.TrainingModule.update(item.id, payload)
-            : base44.entities.TrainingModule.create(payload);
-        })
-      );
-
-      await queryClient.invalidateQueries({ queryKey: ["training-modules", courseId] });
-      // Force a re-seed from fresh server data so new rows pick up their ids.
-      seededFor.current = null;
-      setSaved(true);
-    } catch (err) {
-      console.error("Lesson save error:", err);
-      setError(err?.message || "Failed to save lessons. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   if (!courseId) {
     return (

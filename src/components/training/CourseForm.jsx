@@ -14,17 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { linesToArray } from "@/utils";
 
 // Details form for a course. On success it hands the SAVED course (with id) back
 // to the parent so the Lessons / Quiz builders can attach modules and questions
 // by course_id. Splitting objectives from a textarea keeps the entity's
 // learning_objectives array in sync without a separate editor.
-const linesToArray = (value) =>
-  String(value || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-
 export default function CourseForm({ course, onSuccess }) {
   const [formData, setFormData] = useState(() => ({
     title: "",
