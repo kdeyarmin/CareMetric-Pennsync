@@ -15,11 +15,13 @@ import {
   WifiOff,
   Save
 } from "lucide-react";
-import offlineStorage from "./OfflineStorage";
+import { addToSyncQueue } from "@/lib/indexedDB";
+import { useOfflineQueue } from "@/lib/offlineSync";
 import { toast } from 'sonner';
 
 export default function OfflineTaskManager({ patientId, patientName }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const { pendingCount } = useOfflineQueue();
   const [taskType, setTaskType] = useState('note');
   const [formData, setFormData] = useState({
     visit_date: new Date().toISOString().split('T')[0],
@@ -77,8 +79,13 @@ export default function OfflineTaskManager({ patientId, patientName }) {
         // Persist directly to the backend when connected.
         await base44.entities.Visit.create(visitData);
       } else {
-        // Queue for offline sync; the sync service replays it when back online.
-        offlineStorage.addPendingChange('visit_create', { ...visitData, created_offline: true });
+        // Queue to the ONE canonical offline queue (IndexedDB sync_queue), drained
+        // globally by OfflineManager on reconnect. A stable client_request_id keeps
+        // a retried drain idempotent.
+        const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        await addToSyncQueue('CREATE_VISIT', { client_request_id: clientRequestId, ...visitData });
       }
 
       setSaved(true);
@@ -132,7 +139,9 @@ export default function OfflineTaskManager({ patientId, patientName }) {
       if (isOnline) {
         await base44.entities.Incident.create(incidentData);
       } else {
-        offlineStorage.addPendingChange('incident_create', { ...incidentData, created_offline: true });
+        // Queue to the canonical offline queue; OfflineManager creates the
+        // Incident on reconnect (CREATE_INCIDENT handler).
+        await addToSyncQueue('CREATE_INCIDENT', { ...incidentData });
       }
 
       setSaved(true);
@@ -396,7 +405,7 @@ export default function OfflineTaskManager({ patientId, patientName }) {
         <div className="pt-3 border-t">
           <div className="flex items-center justify-between text-sm text-slate-600">
             <span>Pending items to sync:</span>
-            <Badge variant="outline">{offlineStorage.getPendingCount()}</Badge>
+            <Badge variant="outline">{pendingCount}</Badge>
           </div>
         </div>
       </CardContent>

@@ -7,8 +7,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WifiOff, Wifi, Users, FileText, Database, Activity, Upload, Loader2 } from "lucide-react";
 import OfflinePatientSelector from "../components/mobile/OfflinePatientSelector";
-import OfflineSyncManager from "../components/mobile/OfflineSyncManager";
+import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
 import OfflineTaskManager from "../components/mobile/OfflineTaskManager";
+import { useOfflineQueue } from "@/lib/offlineSync";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
 import PageHeader from "@/components/ui/PageHeader";
@@ -30,6 +31,10 @@ export default function OfflineMode() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
+  // Pending count comes from the ONE canonical offline queue (IndexedDB
+  // sync_queue) so this page reflects every offline write — including the main
+  // SmartNote / Visit Scribe flow — not a separate, often-empty draft store.
+  const { pendingCount } = useOfflineQueue();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
@@ -135,7 +140,7 @@ export default function OfflineMode() {
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-sm text-amber-600 font-medium mb-1 truncate">Pending Sync</p>
                 <p className="text-2xl sm:text-3xl font-bold text-amber-900">
-                  {(() => { try { return JSON.parse(localStorage.getItem('offline_visit_drafts') || '[]').length; } catch { return 0; } })()}
+                  {pendingCount}
                 </p>
               </div>
               <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400 flex-shrink-0" />
@@ -163,7 +168,7 @@ export default function OfflineMode() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="space-y-6">
-          <OfflineSyncManager />
+          <OfflineSyncStatus />
           <OfflinePatientSelector onCacheComplete={() => {
             toast.success('Patient data cached for offline use');
           }} />

@@ -1,14 +1,20 @@
 /**
- * offlineKeys — the SINGLE registry of every offline localStorage key the app
- * uses, plus how each is treated by the logout/idle PHI purge (clearCachedPHI).
+ * offlineKeys — the SINGLE registry of every offline localStorage key the app has
+ * used, plus how each is treated by the logout/idle PHI purge (clearCachedPHI).
  *
- * Historically three offline subsystems each kept their own key constants:
- *   - src/components/mobile/OfflineStorage.jsx     (penn_sync_offline_*)
- *   - src/components/offline/OfflineSyncService.jsx (offline_*)
- *   - the IndexedDB SYNC_QUEUE (src/lib/indexedDB.js — IndexedDB stores, not LS)
- * Those overlapping namespaces made it impossible to audit whether the PHI purge
- * covered every key. This module unifies the localStorage namespace so the purge
- * is DERIVED from one classified list and a test can assert nothing is missed.
+ * The offline mutation queue is now unified on the IndexedDB `sync_queue`
+ * (src/lib/indexedDB.js + src/lib/offlineSync.js) — every offline write goes
+ * through addToSyncQueue and one worker drains it. Several older localStorage
+ * subsystems that each kept their own queue were removed in that consolidation:
+ *   - src/components/mobile/OfflineStorage.jsx     (penn_sync_offline_*)  [deleted]
+ *   - src/components/offline/OfflineSyncService.jsx (offline_sync_queue …) [deleted]
+ *   - src/components/mobile/OfflineSyncManager.jsx  (offline_visit_drafts) [deleted]
+ *
+ * Their KEYS are deliberately retained here (and in the purge lists below): a
+ * returning nurse may still have PHI left in localStorage under these keys by a
+ * prior app version, and the logout/idle purge must keep cleaning that up. Live
+ * code no longer writes them; the classification exists so the purge is DERIVED
+ * from one list and a test can assert nothing is missed.
  *
  * Classification (HIPAA — shared/kiosk devices):
  *   PURGE_FULL    re-fetchable PHI or diagnostic logs → remove entirely on logout.
@@ -17,29 +23,36 @@
  *   PRESERVE      unsynced field documentation → NEVER wiped (wiping on a 15-min
  *                 idle timeout mid-visit would be silent loss of documented care).
  *   NON_PHI       bookkeeping/metadata (timestamps, id maps) — no purge needed.
+ *
+ * Note: the canonical IndexedDB sync_queue is PHI but is preserved across logout
+ * by clearCachedPatients() (which clears only the patient cache store), matching
+ * the PRESERVE treatment of the retired localStorage queues.
  */
 
 export const OFFLINE_KEYS = {
-  // ── mobile/OfflineStorage.jsx (STORAGE_PREFIX = 'penn_sync_offline_') ──────────
+  // ── retired mobile/OfflineStorage.jsx (prefix 'penn_sync_offline_') ────────────
+  // Subsystem removed; keys kept so the purge still cleans stale data from prior
+  // app versions on a returning nurse's device.
   PENN_PENDING_VISITS: 'penn_sync_offline_pending_visits',
   PENN_PENDING_UPDATES: 'penn_sync_offline_pending_updates',
   PENN_SYNC_ERRORS: 'penn_sync_offline_sync_errors',
   PENN_SYNC_STATUS: 'penn_sync_offline_sync_status',
   PENN_CACHE_PREFIX: 'penn_sync_offline_cache_', // cacheData(key) → penn_sync_offline_cache_<key>
 
-  // ── offline/OfflineSyncService.jsx ────────────────────────────────────────────
-  PENDING_VISITS: 'offline_pending_visits', // declared in STORAGE_KEYS (currently unused)
+  // ── retired offline/OfflineSyncService.jsx localStorage queue ─────────────────
+  // Also removed; keys retained for stale-data purge only (no live writers).
+  PENDING_VISITS: 'offline_pending_visits', // placeholder, never written
   PENDING_NOTES: 'offline_pending_notes',   //   ""
   PENDING_VITALS: 'offline_pending_vitals', //   ""
   PENDING_TASKS: 'offline_pending_tasks',   //   ""
-  SYNC_QUEUE: 'offline_sync_queue',         // the live mutation queue (PHI, unsynced)
+  SYNC_QUEUE: 'offline_sync_queue',         // legacy LS mutation queue (PHI, unsynced)
   LAST_SYNC: 'offline_last_sync',
-  CONFLICTS: 'offline_conflicts',           // shared with OfflineStorage.storeConflict
+  CONFLICTS: 'offline_conflicts',
   ID_MAP: 'offline_id_map',
 
-  // ── generic offline cache + drafts (OfflineStorage / OfflinePatientSelector) ──
-  PENDING: 'offline_pending',               // OfflineStorage.addPendingChange queue
-  VISIT_DRAFTS: 'offline_visit_drafts',
+  // ── generic offline cache + drafts (OfflinePatientSelector, autosave drafts) ──
+  PENDING: 'offline_pending',               // retired addPendingChange queue (stale-data purge)
+  VISIT_DRAFTS: 'offline_visit_drafts',     // retired draft store (stale-data purge)
   PATIENTS: 'offline_patients',             // full cached patient roster
   PATIENT_DATA: 'offline_patient_data',
   CACHE_TIMESTAMP: 'offline_cache_timestamp',

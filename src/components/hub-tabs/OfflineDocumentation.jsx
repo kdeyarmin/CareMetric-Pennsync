@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import EmptyState from '@/components/ui/empty-state';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SearchablePatientSelect from '@/components/ui/SearchablePatientSelect';
-import OfflineSyncService from '@/components/offline/OfflineSyncService';
+import OfflineSyncStatus from '@/components/offline/OfflineSyncStatus';
 import OfflineVisitDocumentation from '@/components/offline/OfflineVisitDocumentation';
 import { FileText, Upload, AlertCircle, Info, UserSearch } from 'lucide-react';
 
@@ -20,7 +20,7 @@ export default function OfflineDocumentation() {
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Sync Status */}
-      <OfflineSyncService />
+      <OfflineSyncStatus />
 
       {/* Info Card */}
       <Card className="border-blue-200 bg-blue-50">

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useOfflineSync } from './OfflineSyncService';
+import { addToSyncQueue } from '@/lib/indexedDB';
+import { useOfflineQueue } from '@/lib/offlineSync';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,7 @@ import { WifiOff, Save, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function OfflineVisitDocumentation({ patientId, visitId, existingData, onSaved }) {
-  const { isOnline, saveOffline } = useOfflineSync();
+  const { isOnline } = useOfflineQueue();
   const [formData, setFormData] = useState({
     visit_id: visitId || `offline_visit_${Date.now()}`,
     patient_id: patientId,
@@ -54,7 +55,7 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
     }
   }, [isOnline, formData, handleAutoSave]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.patient_id) {
       toast.error('Patient ID is required');
       return;
@@ -64,16 +65,29 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
       // Save directly online
       saveOnline();
     } else {
-      // Save to offline queue
-      const offlineId = saveOffline('visit', formData);
+      // Queue to the ONE canonical offline queue (IndexedDB sync_queue), drained
+      // globally by OfflineManager on reconnect. Strip the local-only placeholder
+      // visit_id; a stable client_request_id keeps a retried drain idempotent.
+      const { visit_id: _placeholderId, ...rest } = formData;
+      const hasVitals = rest.vital_signs &&
+        Object.values(rest.vital_signs).some((v) => v !== '' && v != null);
+      const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      await addToSyncQueue('CREATE_VISIT', {
+        client_request_id: clientRequestId,
+        ...rest,
+        vital_signs: hasVitals ? rest.vital_signs : null,
+        status: 'completed',
+      });
       setSavedOffline(true);
       setLastSaved(new Date());
       toast.success('Saved offline - will sync when online', {
         description: 'Your documentation is safe and will be uploaded automatically'
       });
-      
+
       if (onSaved) {
-        onSaved({ ...formData, offlineId, status: 'offline' });
+        onSaved({ ...formData, offlineId: clientRequestId, status: 'offline' });
       }
     }
   };
