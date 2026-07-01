@@ -15,21 +15,34 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Phrase is required' }, { status: 400 });
     }
 
-    // Find matching template. Read as service role (RLS on ClinicalLibraryTemplate
-    // scopes the CLIENT list to own/agency-wide, so a patient-bound phrase authored
-    // by a teammate wouldn't be visible there). The selection below stays
-    // minimum-necessary: it only returns THIS patient's bound phrase, or an
-    // agency-wide/own phrase — never another patient's or another user's private text.
+    // Find matching template. Read as service role so a patient-bound phrase
+    // authored by a teammate is reachable (RLS on ClinicalLibraryTemplate scopes
+    // the CLIENT list to own/agency-wide). Because this bypasses RLS, any
+    // patient-bound match MUST be re-authorized against patient access below.
     const templates = await base44.asServiceRole.entities.ClinicalLibraryTemplate.filter({
       phrase: phrase.toLowerCase().trim(),
       is_active: true
     });
 
     // A phrase bound to THIS patient wins (e.g. that patient's specific wound-care
-    // orders). Otherwise fall back to an agency-wide phrase or one the nurse owns.
+    // orders). Enforce patient access BEFORE honoring a patient-bound template: the
+    // caller must be able to read the patient under their OWN RLS. Without this
+    // gate, an authenticated user could supply another patient's id + a known
+    // phrase and retrieve that patient's bound order text (the service-role read
+    // and the early generic-branch return would otherwise skip any access check).
     const pid = patientId ? String(patientId) : '';
+    let patientBound = pid
+      ? templates.find(t => t.patient_id && String(t.patient_id) === pid)
+      : undefined;
+    if (patientBound) {
+      const accessiblePatient = await base44.entities.Patient.filter({ id: patientBound.patient_id });
+      if (!accessiblePatient || accessiblePatient.length === 0) {
+        patientBound = undefined; // caller has no access to this patient — do not leak bound text
+      }
+    }
+
     let template =
-      (pid ? templates.find(t => t.patient_id && String(t.patient_id) === pid) : undefined) ||
+      patientBound ||
       templates.find(t => !t.patient_id && (t.is_agency_wide || t.created_by === user.email));
 
     if (!template) {
