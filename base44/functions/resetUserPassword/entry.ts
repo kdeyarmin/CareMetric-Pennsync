@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     // Send email with temporary password
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: userEmail,
-      subject: 'Your Penn Sync Password Has Been Reset',
+      subject: 'Your PennSync Password Has Been Reset',
       body: `Hello ${targetUser.full_name || 'User'},
 
 Your password has been reset by an administrator. Here are your login details:
@@ -60,7 +60,7 @@ Please log in and change your password immediately for security purposes.
 If you did not request this password reset, please contact your administrator immediately.
 
 Best regards,
-Penn Sync Team`
+PennSync Team`
     });
 
     // Log the action

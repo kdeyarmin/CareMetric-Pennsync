@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
         from_name: 'PennSync by CareMetric',
         subject: decision === 'approved' ? 'Your time off was approved' : 'Your time-off request was denied',
         body: `Your ${prettyType} request for ${request.start_date} → ${request.end_date} was ${decision} by ${reviewerName}.` +
-          `${trimmedNote ? `\n\nNote: ${trimmedNote}` : ''}\n\nView the details in Penn Sync under Time Off.`,
+          `${trimmedNote ? `\n\nNote: ${trimmedNote}` : ''}\n\nView the details in PennSync under Time Off.`,
       }).catch(() => null);
     } catch (_notifyError) {
       // Best-effort notification/email.

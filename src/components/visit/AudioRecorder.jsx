@@ -93,15 +93,15 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
             <Mic className="w-6 h-6 text-white" />
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-slate-900 mb-2">Voice Dictation - Penn Sync AI</h3>
+            <h3 className="font-semibold text-slate-900 mb-2">Voice Dictation - PennSync AI</h3>
             
             <Alert className="bg-white border-navy-200 mb-4">
               <AlertDescription className="text-sm text-slate-700">
-                <strong>🎤 How Penn Sync Voice Works:</strong>
+                <strong>🎤 How PennSync Voice Works:</strong>
                 <ul className="list-disc ml-5 mt-2 space-y-1">
                   <li>Click "Start Recording" and speak naturally about your patient visit</li>
                   <li>Describe observations, assessments, interventions, patient responses</li>
-                  <li>Penn Sync AI will transcribe, format, and merge into your clinical narrative</li>
+                  <li>PennSync AI will transcribe, format, and merge into your clinical narrative</li>
                   <li>Works seamlessly with existing templates and vital signs</li>
                 </ul>
               </AlertDescription>
@@ -144,7 +144,7 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
                     className="bg-green-600 hover:bg-green-700"
                   >
                     <Upload className="w-4 h-4 mr-2" />
-                    Process with Penn Sync AI
+                    Process with PennSync AI
                   </Button>
                   <Button
                     onClick={handleDiscard}
@@ -162,7 +162,7 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
 
             {isProcessing && (
               <p className="text-sm text-navy-600 mt-3 font-medium">
-                ⚡ Penn Sync AI is processing your dictation...
+                ⚡ PennSync AI is processing your dictation...
               </p>
             )}
           </div>

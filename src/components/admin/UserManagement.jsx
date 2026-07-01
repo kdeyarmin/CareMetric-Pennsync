@@ -151,7 +151,7 @@ export default function UserManagement({ users }) {
     updateUserMutation.mutate({ userId: id, data: userData });
   };
 
-  // Penn Sync is invite-only: there is no manual "approve" path. Access is
+  // PennSync is invite-only: there is no manual "approve" path. Access is
   // granted ONLY by sending an invitation (invited users are auto-approved on
   // signup). Admins can still revoke access for any approved user.
   const handleRevokeAccess = async (userId) => {
@@ -242,12 +242,12 @@ export default function UserManagement({ users }) {
           <Alert className="mb-4 bg-blue-50 border-blue-200">
             <Shield className="w-4 h-4 text-blue-600" />
             <AlertDescription className="text-blue-900">
-              <p className="font-semibold mb-1">Penn Sync User Management</p>
+              <p className="font-semibold mb-1">PennSync by CareMetric User Management</p>
               <p className="text-sm">Manage user roles, permissions, and care scope assignments. Care scope determines which Medicare compliance templates users see.</p>
             </AlertDescription>
           </Alert>
 
-          {/* Unapproved/blocked accounts. Penn Sync is invite-only, so these
+          {/* Unapproved/blocked accounts. PennSync is invite-only, so these
               accounts cannot be approved here — access is granted only via an
               invitation. They stay blocked until invited (or were revoked). */}
           {pendingUsers.length > 0 && (
@@ -257,7 +257,7 @@ export default function UserManagement({ users }) {
                 <p className="font-semibold">
                   {pendingUsers.length} unapproved account{pendingUsers.length > 1 ? 's' : ''} (blocked)
                 </p>
-                <p className="text-sm mt-1">Penn Sync is invite-only. These accounts can’t be approved here — to grant someone access, send them an invitation. You can still revoke access for any approved user.</p>
+                <p className="text-sm mt-1">PennSync is invite-only. These accounts can’t be approved here — to grant someone access, send them an invitation. You can still revoke access for any approved user.</p>
               </AlertDescription>
             </Alert>
           )}

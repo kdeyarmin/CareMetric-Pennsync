@@ -36,7 +36,7 @@ export default function FeedbackButton() {
     try {
       await base44.integrations.Core.SendEmail({
         to: "kdeyarmin@pennhospice.com",
-        subject: subject || "Feedback from Penn Sync User",
+        subject: subject || "Feedback from PennSync by CareMetric User",
         body: `
 Feedback from: ${currentUser?.full_name || 'Unknown'} (${currentUser?.email || 'No email'})
 Role: ${currentUser?.role || 'Unknown'}
@@ -47,7 +47,7 @@ Feedback:
 ${feedback}
 
 ---
-Sent from Penn Sync Feedback Feature
+Sent from PennSync by CareMetric Feedback Feature
         `.trim()
       });
 
@@ -82,7 +82,7 @@ Sent from Penn Sync Feedback Feature
         <DialogHeader>
           <DialogTitle>Send Feedback or Suggestion</DialogTitle>
           <DialogDescription>
-            Share your ideas, report issues, or suggest new features. Your feedback helps us improve Penn Sync.
+            Share your ideas, report issues, or suggest new features. Your feedback helps us improve PennSync by CareMetric.
           </DialogDescription>
         </DialogHeader>
         {sent ? (

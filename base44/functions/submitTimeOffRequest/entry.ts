@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
             body: `${requesterName} has requested time off and needs your review.\n\n` +
               `Type: ${prettyType}\nDates: ${start_date} → ${end_date}\nBusiness days: ${total}\n` +
               `${reason ? `Reason: ${reason}\n` : ''}${coverage ? `Coverage: ${coverage}\n` : ''}` +
-              `\nReview it in Penn Sync under Time Off → Approvals.`,
+              `\nReview it in PennSync under Time Off → Approvals.`,
           }).catch(() => null)
         )
       );

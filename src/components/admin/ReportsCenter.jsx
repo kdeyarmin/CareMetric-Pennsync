@@ -632,7 +632,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
       value: 'productivity',
       label: 'Productivity Report',
       icon: TrendingUp,
-      description: 'Visit counts, completion rates, documentation time, Penn Sync time savings'
+      description: 'Visit counts, completion rates, documentation time, PennSync AI time savings'
     },
     {
       value: 'quality',
@@ -644,7 +644,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
       value: 'financial',
       label: 'Financial Report',
       icon: DollarSign,
-      description: 'Revenue analysis by visit type, ROI from Penn Sync efficiency'
+      description: 'Revenue analysis by visit type, ROI from PennSync AI efficiency'
     },
     {
       value: 'compliance',
@@ -892,7 +892,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold mb-2">Penn Sync Reports Center</h2>
+              <h2 className="text-2xl font-bold mb-2">PennSync by CareMetric Reports Center</h2>
               <p className="text-blue-100">
                 Generate comprehensive reports and analytics for your agency
               </p>

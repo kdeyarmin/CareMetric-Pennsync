@@ -24,7 +24,7 @@ export default function SecurityDocumentation() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="w-6 h-6 text-blue-600" />
-            Penn Sync Security Architecture
+            PennSync by CareMetric Security Architecture
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -38,7 +38,7 @@ export default function SecurityDocumentation() {
             <Alert className="bg-green-50 border-green-200">
               <AlertDescription className="text-green-900">
                 <p className="font-semibold mb-2">✓ Enterprise-Grade Encryption</p>
-                <p className="mb-2">All patient data (PHI) is encrypted at rest using the Penn Sync platform's AES-256 encryption.</p>
+                <p className="mb-2">All patient data (PHI) is encrypted at rest using the PennSync platform's AES-256 encryption.</p>
                 <ul className="list-disc ml-5 space-y-1">
                   <li>Patient records</li>
                   <li>Visit documentation</li>
@@ -60,7 +60,7 @@ export default function SecurityDocumentation() {
             <Alert className="bg-blue-50 border-blue-200">
               <AlertDescription className="text-blue-900">
                 <p className="font-semibold mb-2">✓ TLS/HTTPS Protection</p>
-                <p className="mb-2">All data transmitted between your browser and Penn Sync servers is encrypted using TLS 1.2+</p>
+                <p className="mb-2">All data transmitted between your browser and PennSync servers is encrypted using TLS 1.2+</p>
                 <ul className="list-disc ml-5 space-y-1">
                   <li>API calls are HTTPS-only</li>
                   <li>File uploads are encrypted in transit</li>
@@ -186,7 +186,7 @@ export default function SecurityDocumentation() {
             </h3>
             <Alert className="bg-gradient-to-r from-red-50 to-gold-50 border-red-200">
               <AlertDescription className="text-red-900">
-                <p className="font-semibold mb-3">Penn Sync HIPAA Security Rule Compliance:</p>
+                <p className="font-semibold mb-3">PennSync HIPAA Security Rule Compliance:</p>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-green-600" />
@@ -230,7 +230,7 @@ export default function SecurityDocumentation() {
             <h3 className="font-semibold text-lg mb-3">Data Retention & Backup</h3>
             <Alert>
               <AlertDescription className="text-slate-700">
-                <p className="mb-2">Penn Sync maintains secure backups and follows healthcare data retention requirements:</p>
+                <p className="mb-2">PennSync maintains secure backups and follows healthcare data retention requirements:</p>
                 <ul className="list-disc ml-5 space-y-1">
                   <li>Automated encrypted backups</li>
                   <li>7-year data retention (HIPAA compliance)</li>
