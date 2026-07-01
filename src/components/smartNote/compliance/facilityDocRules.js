@@ -59,8 +59,14 @@ export function patientMatchesCondition(rule, patient) {
       return anyKeyword(patientDiagnosisText(patient), rule.condition_keywords);
     case "medication_keyword":
       return anyKeyword(patientMedicationText(patient), rule.condition_keywords);
-    case "care_type":
-      return !!patient && lc(patient.care_type) === lc(rule.condition_care_type);
+    case "care_type": {
+      // Require a concrete care type on BOTH sides — otherwise an unset
+      // condition_care_type vs a patient with no care_type collapses to
+      // "" === "" and the rule would match every incomplete record.
+      const want = lc(rule.condition_care_type);
+      const have = lc(patient && patient.care_type);
+      return want.length > 0 && have === want;
+    }
     default:
       return false;
   }

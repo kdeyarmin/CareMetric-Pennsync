@@ -26,6 +26,10 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
   const [activeIndex, setActiveIndex] = useState(0);
   const [expanding, setExpanding] = useState(false);
   const pendingCaretRef = useRef(null);
+  // Start index of a trigger token the nurse dismissed with Escape. While the
+  // caret stays inside that same token, re-detection (e.g. from the Escape keyup)
+  // must not re-open the menu; a NEW token (different start) reopens normally.
+  const dismissedStartRef = useRef(null);
 
   // Expose the underlying textarea to the parent (it calls .focus()).
   useImperativeHandle(forwardedRef, () => areaRef.current, []);
@@ -68,7 +72,20 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
       setTrigger(null);
       return;
     }
-    setTrigger(detectPhraseTrigger(el.value, el.selectionStart));
+    const t = detectPhraseTrigger(el.value, el.selectionStart);
+    if (!t) {
+      // Caret left every trigger token — a future token may open freely.
+      dismissedStartRef.current = null;
+      setTrigger(null);
+      return;
+    }
+    // Honor an Escape dismissal until the nurse starts a different token.
+    if (dismissedStartRef.current === t.start) {
+      setTrigger(null);
+      return;
+    }
+    dismissedStartRef.current = null;
+    setTrigger(t);
   };
 
   const handleChange = (e) => {
@@ -102,6 +119,13 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
         return;
       }
       const current = areaRef.current?.value ?? value ?? "";
+      // The textarea is locked (readOnly) during the round-trip, but guard anyway:
+      // if the captured token no longer sits at [start,end) (e.g. a draft restore
+      // fired mid-flight), abort rather than overwrite unrelated text.
+      if (current.slice(range.start, range.end) !== range.trigger + range.query) {
+        toast.error("Couldn't place the phrase — please retype the trigger.");
+        return;
+      }
       const { text, caret } = applyExpansion(current, range, expandedText);
       pendingCaretRef.current = caret;
       onChange?.(text);
@@ -137,6 +161,9 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
       runExpansion(ranked[activeIndex]);
     } else if (e.key === "Escape") {
       e.preventDefault();
+      // Remember which token was dismissed so the keyup that follows this same
+      // keystroke doesn't immediately re-detect and re-open it.
+      if (trigger) dismissedStartRef.current = trigger.start;
       closeMenu();
     } else {
       textareaProps.onKeyDown?.(e);
@@ -153,6 +180,7 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
         ref={areaRef}
         value={value}
         onChange={handleChange}
+        readOnly={expanding}
         onKeyDown={handleKeyDown}
         onKeyUp={(e) => refreshTrigger(e.currentTarget)}
         onClick={(e) => refreshTrigger(e.currentTarget)}

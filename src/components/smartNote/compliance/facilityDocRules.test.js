@@ -59,6 +59,15 @@ test('patientMatchesCondition: care_type matches hospice vs home_health', () => 
   assert.equal(patientMatchesCondition(rule, { care_type: 'home_health' }), false);
 });
 
+test('patientMatchesCondition: care_type never matches when either side is unset', () => {
+  // Rule missing condition_care_type must NOT match a patient with no care_type
+  // (would otherwise collapse to "" === "" → true).
+  assert.equal(patientMatchesCondition({ condition_type: 'care_type' }, { primary_diagnosis: 'CHF' }), false);
+  assert.equal(patientMatchesCondition({ condition_type: 'care_type' }, {}), false);
+  // Rule with a care type must not match a patient lacking one.
+  assert.equal(patientMatchesCondition({ condition_type: 'care_type', condition_care_type: 'hospice' }, {}), false);
+});
+
 test('ruleAppliesToVisit: empty list = all visits, otherwise membership', () => {
   assert.equal(ruleAppliesToVisit({}, 'routine_visit'), true);
   assert.equal(ruleAppliesToVisit({ applies_to_visit_types: [] }, 'discharge'), true);
