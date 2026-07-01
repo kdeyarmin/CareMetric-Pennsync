@@ -27,6 +27,7 @@ import {
   User,
   PenSquare,
   Search,
+  AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ export default function Messages() {
   const [filterRead, setFilterRead] = useState("all");
   const [search, setSearch] = useState("");
   const [replyText, setReplyText] = useState("");
+  const [replyUrgent, setReplyUrgent] = useState(false);
   const [newMessage, setNewMessage] = useState({
     subject: "",
     message_text: "",
@@ -114,6 +116,7 @@ export default function Messages() {
       // longer clears optimistically, so a failed send on flaky cellular keeps
       // the nurse's typed words instead of silently dropping them.
       setReplyText("");
+      setReplyUrgent(false);
       toast.success("Message sent");
     },
     onError: () => {
@@ -186,6 +189,7 @@ export default function Messages() {
   const handleThreadClick = (thread) => {
     setSelectedThreadId(thread.threadId);
     setReplyText("");
+    setReplyUrgent(false);
     // Mark all unread messages in thread as read
     thread.messages
       .filter(m => !m.read_by?.includes(currentUser?.email))
@@ -228,7 +232,9 @@ export default function Messages() {
       sender_name: currentUser?.full_name,
       sender_email: me,
       recipients,
-      priority: originalMessage.priority,
+      // A reply inherits the thread's priority, but the nurse can escalate this
+      // specific reply to urgent (e.g. a status change the recipient must see).
+      priority: replyUrgent ? 'urgent' : originalMessage.priority,
       patient_id: originalMessage.patient_id,
       thread_id: selectedThread.threadId
     });
@@ -335,6 +341,18 @@ export default function Messages() {
                   className="max-h-28 w-full resize-none border-0 bg-transparent py-2 text-[15px] placeholder:text-slate-400 focus:outline-none focus:ring-0"
                 />
               </div>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                onClick={() => setReplyUrgent((v) => !v)}
+                aria-pressed={replyUrgent}
+                aria-label={replyUrgent ? "Urgent priority on — tap to turn off" : "Mark this reply urgent"}
+                title={replyUrgent ? "Urgent — tap to turn off" : "Mark this reply urgent"}
+                className={`h-9 w-9 flex-shrink-0 rounded-full ${replyUrgent ? "bg-red-600 text-white hover:bg-red-700 border-red-600" : "text-slate-500"}`}
+              >
+                <AlertTriangle className="h-4 w-4" />
+              </Button>
               <Button
                 type="button"
                 size="icon"

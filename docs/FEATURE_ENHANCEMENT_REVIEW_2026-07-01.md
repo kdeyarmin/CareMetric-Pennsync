@@ -97,6 +97,14 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 
 > Follow-up noted: an in-call "End session?" confirm for Telehealth needs a **fullscreen-safe** pattern (a portalled dialog can render behind a fullscreen `<video>` element), so it was intentionally deferred rather than shipped as a dialog that might not display.
 
+### Sixth batch (also in this PR) — drill-through + filter visibility + reply priority
+
+| # | Feature | Change | Type |
+|---|---|---|---|
+| 21 | Predictive Analytics | **Made the population risk-list rows navigate to the patient chart** (each row is now a link to `PatientDetails` with a chevron affordance + focus ring), so an admin can jump from a high-risk name straight into the record. | ux-polish |
+| 22 | Patient roster | **Added removable chips for the Has-Visits and created-after/before filters** — they counted toward the active-filter badge but had no chip, so a filter (including the new "New (30 days)" stat-card shortcut) was invisible and un-clearable. | ux-polish |
+| 23 | Messages | **Added an "urgent" toggle to the reply composer** so a nurse can escalate a specific reply above the thread's inherited priority; it resets after send and on thread switch. | quick-win |
+
 ---
 
 ## 4. Prioritized backlog (not yet implemented)

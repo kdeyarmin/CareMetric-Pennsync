@@ -285,6 +285,33 @@ export default function AdvancedPatientFilters({ onFilterChange, activeFilters =
                 />
               </Badge>
             )}
+            {filters.hasVisits && filters.hasVisits !== "all" && (
+              <Badge variant="outline" className="gap-1">
+                {filters.hasVisits === "yes" ? "Has visits" : "No visits"}
+                <X
+                  className="w-3 h-3 cursor-pointer"
+                  onClick={() => handleFilterChange("hasVisits", "all")}
+                />
+              </Badge>
+            )}
+            {filters.createdAfter && (
+              <Badge variant="outline" className="gap-1">
+                Added after: {filters.createdAfter}
+                <X
+                  className="w-3 h-3 cursor-pointer"
+                  onClick={() => handleFilterChange("createdAfter", "")}
+                />
+              </Badge>
+            )}
+            {filters.createdBefore && (
+              <Badge variant="outline" className="gap-1">
+                Added before: {filters.createdBefore}
+                <X
+                  className="w-3 h-3 cursor-pointer"
+                  onClick={() => handleFilterChange("createdBefore", "")}
+                />
+              </Badge>
+            )}
           </div>
         )}
       </CardContent>
