@@ -7,6 +7,7 @@ import { BarChart3, MessageSquare, PhoneCall, ShieldCheck, Users, Download } fro
 import { summarizePhoneActivity, formatDuration } from "@/components/admin/phoneAnalytics";
 import { toCsv, exportTimestamp } from "@/components/admin/csvExport";
 import { downloadCsv } from "@/lib/downloadCsv";
+import { toast } from "sonner";
 
 // PHI-conscious export columns: metadata only — never the SMS body or media.
 const SMS_COLUMNS = [
@@ -103,8 +104,9 @@ export default function PhoneAnalyticsPanel() {
       return Number.isNaN(t) ? true : t >= cutoff;
     });
   };
-  const exportSms = () => downloadCsv(`sms-export_${exportTimestamp()}.csv`, toCsv(SMS_COLUMNS, inWindow(smsMessages)));
-  const exportCalls = () => downloadCsv(`calls-export_${exportTimestamp()}.csv`, toCsv(CALL_COLUMNS, inWindow(callLogs)));
+  const onExportError = () => toast.error("Couldn't generate the export");
+  const exportSms = () => downloadCsv(`sms-export_${exportTimestamp()}.csv`, toCsv(SMS_COLUMNS, inWindow(smsMessages)), { onError: onExportError });
+  const exportCalls = () => downloadCsv(`calls-export_${exportTimestamp()}.csv`, toCsv(CALL_COLUMNS, inWindow(callLogs)), { onError: onExportError });
 
   if (!isAdmin) return null;
 

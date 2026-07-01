@@ -14,6 +14,7 @@ import { DEFAULT_PDGM_RATES } from "@/components/pdgm/pdgmRates";
 import { computeImpact, normalizePdgmDataToScenario } from "@/components/pdgm/reimbursementImpact";
 import { toCsv, exportTimestamp } from "@/components/admin/csvExport";
 import { downloadCsv } from "@/lib/downloadCsv";
+import { toast } from "sonner";
 
 // Friendly labels for the pdgmRates clinical-group keys (the FE mirror of the
 // backend calculatePDGM groups).
@@ -182,7 +183,9 @@ export default function DocumentationImpact() {
       { key: "uplift", label: "Uplift" },
       { key: "pct", label: "Uplift %" },
     ];
-    downloadCsv(`documentation-impact_${exportTimestamp()}.csv`, toCsv(columns, sortedRows));
+    downloadCsv(`documentation-impact_${exportTimestamp()}.csv`, toCsv(columns, sortedRows), {
+      onError: () => toast.error("Couldn't generate the export"),
+    });
   };
 
   // Assessments whose pdgm_data can seed a "before" scenario.

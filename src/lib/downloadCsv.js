@@ -8,10 +8,16 @@
  * locally. Guards the DOM work in try/catch so a blocked/unsupported download
  * can't throw out of a click handler.
  *
+ * Returns whether the download was triggered, and accepts an optional `onError`
+ * so callers that want user-visible feedback (e.g. a toast) can surface a failure
+ * without re-implementing the guard.
+ *
  * @param {string} filename  suggested download filename (e.g. `report_2026-06.csv`)
  * @param {string} csv        the CSV text to download
+ * @param {{ onError?: (error: unknown) => void }} [options]
+ * @returns {boolean} true if the download was triggered, false if it failed
  */
-export function downloadCsv(filename, csv) {
+export function downloadCsv(filename, csv, { onError } = {}) {
   try {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -22,8 +28,11 @@ export function downloadCsv(filename, csv) {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  } catch {
-    // Download unsupported/blocked in this environment — fail silently rather
-    // than throwing out of the caller's click handler.
+    return true;
+  } catch (error) {
+    // Download unsupported/blocked in this environment — never throw out of the
+    // caller's click handler; let the caller optionally surface the failure.
+    onError?.(error);
+    return false;
   }
 }
