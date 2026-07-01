@@ -113,7 +113,18 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 | 25 | Patient chart AI summary | Applied `AICaveat` **with a generated-at timestamp**, and added a **Copy button** (flattens the structured summary to paste-able text) so the summary carries a trust signal and isn't trapped in the widget. | trust-safety |
 | 26 | Predictive AI insights | Applied `AICaveat` with a generated-at timestamp under the population insights executive summary. | trust-safety |
 
-> The `AICaveat` component is now the shared primitive for Theme 1. Remaining AI surfaces to adopt it (follow-up): incident AI narrative, template AI-enhance, Compliance Center AI insights, and clinical-pathway AI figures.
+> The `AICaveat` component is now the shared primitive for Theme 1.
+
+### Eighth batch (also in this PR) — AI-caveat coverage extended
+
+| # | Feature | Change | Type |
+|---|---|---|---|
+| 27 | Incident reporting | `AICaveat` shown under the incident narrative **only when AI wrote it** ("AI-assisted draft — review and correct before submitting"), tracked via a per-generation flag. | trust-safety |
+| 28 | Template editor | `AICaveat` shown under the content editor **after an AI enhance** ("AI-enhanced — verify accuracy before saving or using"). | trust-safety |
+| 29 | Clinical Pathways (generate) | `AICaveat` above the AI-generated pathways list ("review clinically before creating"). | trust-safety |
+| 30 | Clinical Pathways (update) | `AICaveat` above the AI update recommendations ("review clinically before applying"). | trust-safety |
+
+> Theme 1's **UI caveat coverage is now broad** — every major surface that shows AI-drafted text (patient summary, predictive insights, incident narrative, template enhance, pathway generate/update) carries a consistent provenance line. Remaining Theme-1 work is a **review-acknowledgement gate before AI text is persisted to a chart** (a bigger, backend-touching change left for a dedicated pass).
 
 ---
 
