@@ -21,9 +21,12 @@ import VitalsTrendAnalysis from "../components/smartNote/VitalsTrendAnalysis";
 import FinalNoteDisplay from "../components/smartNote/FinalNoteDisplay";
 import FollowUpTasksPanel from "../components/smartNote/FollowUpTasksPanel";
 import ComplianceChecklist from "../components/smartNote/ComplianceChecklist";
+import QuickPhraseTextarea from "../components/smartNote/QuickPhraseTextarea";
+import FacilityRequirementsChecklist from "../components/smartNote/FacilityRequirementsChecklist";
 import ConstrainedNoteReviewer from "../components/smartNote/ConstrainedNoteReviewer";
 import { persistVisitNote } from "../components/smartNote/persistVisitNote";
 import { getPriorNote, parseNoteSections } from "../components/smartNote/noteHelpers";
+import { evaluateFacilityRules, summarizeFacilityRules } from "../components/smartNote/compliance/facilityDocRules";
 import { claimDictation, releaseDictation } from "@/components/smartNote/dictationController";
 import { generateFollowUpTasks } from "@/functions/generateFollowUpTasks";
 import { analyzeVisitForSupplyUsage } from "@/functions/analyzeVisitForSupplyUsage";
@@ -167,6 +170,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
     queryKey: ["patientDetail", patientId],
     queryFn: () => base44.entities.Patient.get(patientId),
     enabled: !!patientId,
+  });
+  // Facility-specific documentation requirements (e.g. "on oxygen → SpO2 in every
+  // note") — admin-authored, applied to the selected patient. Used for the live
+  // STEP 1 checklist and a non-blocking nudge before the nurse advances to review.
+  const { data: facilityDocRules = [] } = useQuery({
+    queryKey: ["facility-doc-rules"],
+    queryFn: () => base44.entities.FacilityDocumentationRule.list("-severity", 200),
+    initialData: [],
+    staleTime: 5 * 60 * 1000,
   });
   useEffect(() => {
     if (currentUser?.email) logActivity(ActivityActions.PAGE_VISIT, { page: "SmartNoteAssistant" });
@@ -318,6 +330,25 @@ export default function SmartNoteAssistant({ visitId = null }) {
   // live in <ConstrainedNoteReviewer>, which scans `note` on mount.
   const startReview = () => {
     if (!note || note.trim().length < 20) return;
+    // Non-blocking nudge: surface any facility documentation requirement this
+    // patient triggers that the draft doesn't yet satisfy. The nurse can still
+    // proceed (keyword detection can miss), and the same items stay visible in the
+    // STEP 1 checklist.
+    const facilityResults = evaluateFacilityRules({
+      rules: facilityDocRules,
+      patient: patientDetail || patient,
+      noteText: note,
+      visitType,
+    });
+    const facilitySummary = summarizeFacilityRules(facilityResults);
+    if (facilitySummary.missing > 0) {
+      const labels = facilityResults
+        .filter((r) => r.missing)
+        .map((r) => r.rule.requirement_label || r.rule.rule_name)
+        .slice(0, 3)
+        .join("; ");
+      toast.warning(`Facility requirement${facilitySummary.missing > 1 ? "s" : ""} not yet documented: ${labels}`);
+    }
     setSaved(false);
     setSavedVisitId(null);
     setSavedAuditId(null);
@@ -607,6 +638,12 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
               <ComplianceChecklist isHospice={isHospice} />
 
+              <FacilityRequirementsChecklist
+                patient={patientDetail || patient}
+                noteText={note}
+                visitType={visitType}
+              />
+
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-100">
                   <span className="text-xs font-semibold text-navy-700">Your Rough Notes / Bullet Points</span>
@@ -637,8 +674,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     />
                   </div>
                 </div>
-                <textarea ref={textareaRef} value={note} onChange={e => setNote(e.target.value)}
-                  placeholder={"Enter bullet points or rough draft — AI will NOT invent information.\n\n• BP 148/90, HR 82, O2 95% RA, pain 3/10\n• homebound: unable to leave without considerable effort\n• skilled need: wound assessment and dressing change\n• wound R heel 2×3 cm granulating, no odor\n• taught med schedule, pt verbalized understanding\n• fall risk — clutter noted, discussed w/ family"}
+                <QuickPhraseTextarea
+                  ref={textareaRef}
+                  value={note}
+                  onChange={setNote}
+                  patientId={patientId}
+                  patientName={patient ? `${patient.first_name} ${patient.last_name}` : undefined}
+                  visitType={visitType}
+                  userEmail={currentUser?.email}
+                  placeholder={"Enter bullet points or rough draft — AI will NOT invent information.\n\nType / or .shortcut to insert a saved quick phrase.\n\n• BP 148/90, HR 82, O2 95% RA, pain 3/10\n• homebound: unable to leave without considerable effort\n• skilled need: wound assessment and dressing change\n• wound R heel 2×3 cm granulating, no odor\n• taught med schedule, pt verbalized understanding\n• fall risk — clutter noted, discussed w/ family"}
                   className="w-full min-h-[240px] sm:min-h-[320px] text-sm border-0 px-4 py-3 focus:ring-0 bg-white font-mono resize-none outline-none leading-relaxed" spellCheck={false}
                 />
                 <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50 gap-3">
