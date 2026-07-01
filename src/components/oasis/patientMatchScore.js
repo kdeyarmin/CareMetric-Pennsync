@@ -1,4 +1,4 @@
-import { soundex } from "../patient/patientDuplicateUtils.js";
+import { soundex, streetKeyOf } from "../patient/patientDuplicateUtils.js";
 
 /**
  * Fuzzy patient-matching score for OASIS document → patient-record linking.
@@ -255,20 +255,9 @@ export function calculatePatientMatchScore(extractedName, patient, extractedDOB,
       const patientStreetNum = patient.address.match(/^\d+/)?.[0];
 
       if (extractedStreetNum && extractedStreetNum === patientStreetNum) {
-        // Derive the street name, skipping the house number and keeping an optional
-        // leading directional (n/s/e/w) as part of the key — otherwise "123 N Main"
-        // and "123 N Oak" both reduce to the directional "n" and falsely match.
-        const streetKeyOf = (normalized) => {
-          const tokens = normalized.split(/\s+/).filter(Boolean);
-          let i = 0;
-          while (i < tokens.length && /^\d+$/.test(tokens[i])) i++; // skip house number
-          let dir = '';
-          if (i < tokens.length && /^[nsew]$/.test(tokens[i])) { dir = tokens[i]; i++; }
-          while (i < tokens.length && /^\d+$/.test(tokens[i])) i++; // skip stray numbers
-          const name = tokens[i];
-          if (!name) return undefined;
-          return dir ? `${dir} ${name}` : name;
-        };
+        // Derive the street name (canonical streetKeyOf, shared with the dedupe
+        // engine): skip the house number, keep an optional leading directional
+        // (n/s/e/w) so "123 N Main" and "123 N Oak" don't both reduce to "n".
         const extractedStreetName = streetKeyOf(extractedAddrNorm);
         const patientStreetName = streetKeyOf(patientAddrNorm);
 

@@ -5,8 +5,12 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // Regenerate: npm run sync:dedupe-engine>>>
 // Pure, deterministic utilities for duplicate patient detection.
 //
-// All scoring/grouping logic lives here (no React / no network) so it can be
-// unit-tested and reused by every duplicate-detection surface in the app.
+// SINGLE SOURCE OF TRUTH for the whole app. The scoring/grouping logic (no React,
+// no network) lives here so it can be unit-tested with the plain node test runner
+// and reused by every duplicate-detection surface. A thin `patientDuplicateUtils.jsx`
+// re-exports this module so bare-path importers resolve to the exact same engine
+// (no more `.js`/`.jsx` shadowing or drift).
+//
 // Point values are calibrated so that:
 //   - a single strong identifier (MRN / exact name+DOB / email) clears the bar,
 //   - typos and data-entry variations are still caught,
@@ -91,7 +95,7 @@ export function normalizeName(name) {
       // a-z strip; otherwise diacritics are deleted (José -> "jos"), corrupting
       // exact/full-name match scoring for accented names.
       .normalize('NFKD')
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim()
       .replace(/[^a-z\s]/g, '')
@@ -239,11 +243,18 @@ function scoreNames(p1, p2, add) {
     return true; // name fully resolved
   }
 
+  // Soundex is deliberately coarse and collides clearly-different surnames
+  // (e.g. "Snyder" and "Smithers" both encode to S536). A phonetic code match
+  // alone therefore is NOT proof two people are the same — require the actual
+  // name strings to also be reasonably similar before trusting it, so spelling
+  // collisions can't bridge unrelated patients.
   const phonetic =
     soundex(p1.first_name) === soundex(p2.first_name) &&
     soundex(p1.last_name) === soundex(p2.last_name) &&
     soundex(p1.first_name) !== '' &&
-    soundex(p1.last_name) !== '';
+    soundex(p1.last_name) !== '' &&
+    similarity(firstName1, firstName2) >= 70 &&
+    similarity(lastName1, lastName2) >= 70;
 
   if (name1 && name1 === name2) {
     add(45, REASON.FULL_NAME);
@@ -254,22 +265,33 @@ function scoreNames(p1, p2, add) {
     return true;
   }
 
+  const firstSim = similarity(firstName1, firstName2);
+  const lastSim = similarity(lastName1, lastName2);
+
+  // Fuzzy full-name match, but ONLY when the LAST names are themselves similar.
+  // Comparing the concatenated "first last" string alone let a shared first name
+  // + a prefix-overlapping surname clear the bar (e.g. "John Smith" vs
+  // "John Smithers" scored 77%), bridging unrelated patients. Requiring the
+  // surname to actually match stops that — different families never tie.
   let matchedName = false;
   const fullSim = similarity(name1, name2);
-  if (fullSim >= 90) {
+  if (fullSim >= 90 && lastSim >= 80) {
     add(35, REASON.VERY_SIMILAR_NAME);
     matchedName = true;
-  } else if (fullSim >= 75) {
+  } else if (fullSim >= 75 && lastSim >= 80) {
     add(28, REASON.SIMILAR_NAME);
     matchedName = true;
   }
 
-  const firstSim = similarity(firstName1, firstName2);
-  const lastSim = similarity(lastName1, lastName2);
   if (firstSim >= 85 && lastSim >= 85) {
     add(30, REASON.BOTH_NAMES_SIMILAR);
     matchedName = true;
-  } else if (firstSim === 100 || lastSim === 100) {
+  } else if (lastSim === 100 && firstSim >= 60) {
+    // Same last name AND a clearly-related first name (nickname/typo, e.g.
+    // "Bob"/"Robert" won't pass but "Jon"/"John" will). A shared FIRST name with
+    // a different last name is NOT a person match — that was flagging every
+    // "John <X>" as the same patient and letting union-find bridge unrelated
+    // people (e.g. "John Snyder" into a cluster of "John Smithers").
     add(18, REASON.PARTIAL_NAME);
     matchedName = true;
   }
@@ -334,6 +356,24 @@ function scorePhone(p1, p2, add) {
   }
 }
 
+// Build a street key of "[directional] name" from a normalized address.
+// Taking token[1] blindly picked up the directional itself (so "100 N Main"
+// vs "100 N Oak" both read as street "n"); dropping the directional instead
+// over-collapses ("100 W Main" vs "100 E Main" both become "main"). Keep the
+// directional as PART of the key so same-name/different-direction streets stay
+// distinct while genuine matches still align. Shared with oasis/patientMatchScore.
+export function streetKeyOf(normalized) {
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < tokens.length && /^\d+$/.test(tokens[i])) i++; // skip house number
+  let dir = '';
+  if (i < tokens.length && /^[nsew]$/.test(tokens[i])) { dir = tokens[i]; i++; }
+  while (i < tokens.length && /^\d+$/.test(tokens[i])) i++; // skip stray numbers
+  const name = tokens[i];
+  if (!name) return undefined;
+  return dir ? `${dir} ${name}` : name;
+}
+
 function scoreAddress(p1, p2, add) {
   if (!p1.address || !p2.address) return;
   const addr1 = String(p1.address).toLowerCase().trim();
@@ -349,23 +389,8 @@ function scoreAddress(p1, p2, add) {
   const bestSim = Math.max(similarity(addr1, addr2), similarity(normalized1, normalized2));
 
   if (streetNum1 && streetNum1 === streetNum2) {
-    // Build a street key of "[directional] name" from the normalized address.
-    // Taking token[1] blindly picked up the directional itself (so "100 N Main"
-    // vs "100 N Oak" both read as street "n"); dropping the directional instead
-    // over-collapses ("100 W Main" vs "100 E Main" both become "main"). Keep the
-    // directional as PART of the key so same-name/different-direction streets
-    // stay distinct while genuine matches still align.
-    const streetKeyOf = (normalized) => {
-      const tokens = normalized.split(/\s+/).filter(Boolean);
-      let i = 0;
-      while (i < tokens.length && /^\d+$/.test(tokens[i])) i++; // skip house number
-      let dir = '';
-      if (i < tokens.length && /^[nsew]$/.test(tokens[i])) { dir = tokens[i]; i++; }
-      while (i < tokens.length && /^\d+$/.test(tokens[i])) i++; // skip stray numbers
-      const name = tokens[i];
-      if (!name) return undefined;
-      return dir ? `${dir} ${name}` : name;
-    };
+    // Street key ("[directional] name") keeps same-name/different-direction
+    // streets distinct — see the module-level streetKeyOf above.
     const streetName1 = streetKeyOf(normalized1);
     const streetName2 = streetKeyOf(normalized2);
     if (streetName1 && streetName2 && similarity(streetName1, streetName2) >= 85) {
@@ -498,6 +523,68 @@ export function scorePatientPair(p1, p2, options = {}) {
       if (found) break;
     }
     if (found) add(8, REASON.NAME_VARIATION);
+  }
+
+  // ---- Identity guard ----------------------------------------------------
+  // Two records are the same PERSON only when a real NAME tie is present. A pile
+  // of shared circumstantial data (same address, area code, zip, caregiver) must
+  // never bridge two people with different names — that was pulling unrelated
+  // patients (e.g. "John Snyder" into a "John Smithers" cluster) together.
+  const NAME_TIE = new Set([
+    REASON.EXACT_NAME,
+    REASON.FULL_NAME,
+    REASON.PHONETIC_NAME,
+    REASON.VERY_SIMILAR_NAME,
+    REASON.SIMILAR_NAME,
+    REASON.BOTH_NAMES_SIMILAR,
+    REASON.PARTIAL_NAME,
+    REASON.NAME_VARIATION,
+  ]);
+  if (!matches.some((m) => NAME_TIE.has(m))) {
+    return { score: 0, matches: [] };
+  }
+
+  // Hard blockers: even with a matching name, two DIFFERENT people are not a
+  // duplicate. When BOTH records carry a DOB (or both an MRN) and they clearly
+  // differ — not a swap/typo we already credited — they are distinct patients.
+  const hasDobCredit = matches.some(
+    (m) => m === REASON.DOB || m === REASON.DOB_SWAPPED || m === REASON.DOB_YEAR_TYPO
+  );
+  const dob1 = parseDob(p1.date_of_birth);
+  const dob2 = parseDob(p2.date_of_birth);
+  if (!hasDobCredit && dob1 && dob2) {
+    // Both DOBs present, parseable, and not credited as same/swap/typo → mismatch.
+    return { score: 0, matches: [] };
+  }
+
+  const hasMrnCredit = matches.some((m) => m === REASON.MRN || m === REASON.MRN_SIMILAR);
+  const mrn1 = String(p1.medical_record_number ?? '').trim();
+  const mrn2 = String(p2.medical_record_number ?? '').trim();
+  if (!hasMrnCredit && mrn1 && mrn2) {
+    // Both MRNs present and neither exact nor similar → different patients.
+    return { score: 0, matches: [] };
+  }
+
+  // ---- Corroboration requirement -----------------------------------------
+  // A NAME match alone is never enough to declare two records the same person —
+  // common names ("John Smithers", "John Snyder") collide constantly, and the
+  // data is full of bare-name stub records with null DOB/MRN/phone/address. To
+  // call a pair a duplicate we require at least ONE corroborating identifier
+  // beyond the name: a credited DOB, MRN, phone, address, email, or
+  // caregiver/physician/emergency tie. Without that, two same-named records with
+  // no shared real-world identifier are treated as DIFFERENT people. This is
+  // what stops null-stub bridging (the Smithers/Snyder clusters).
+  const CORROBORATING = new Set([
+    REASON.DOB, REASON.DOB_SWAPPED, REASON.DOB_YEAR_TYPO, REASON.DOB_CLOSE,
+    REASON.MRN, REASON.MRN_SIMILAR,
+    REASON.PHONE, REASON.PHONE_LOCAL,
+    REASON.EMERGENCY_PHONE,
+    REASON.STREET_ADDRESS, REASON.ADDRESS_EXACT, REASON.ADDRESS_SIMILAR,
+    REASON.EMAIL, REASON.CAREGIVER_EMAIL, REASON.CAREGIVER_PHONE, REASON.PHYSICIAN_EMAIL,
+    REASON.MIDDLE_NAME,
+  ]);
+  if (!matches.some((m) => CORROBORATING.has(m))) {
+    return { score: 0, matches: [] };
   }
 
   return { score, matches };
@@ -673,55 +760,105 @@ export function findDuplicateGroups(patients, opts = {}) {
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
       const base = scorePatientPair(patients[i], patients[j], scoreOptions);
+      // Shared-visit corroboration only BOOSTS a pair that already has a real
+      // identity match (name + non-conflicting DOB/MRN). When the pair was
+      // rejected by the identity guard (base.matches empty), it must stay
+      // unlinked — two different people who happen to share a visit date or
+      // nurse are NOT the same patient. This was bridging unrelated records
+      // (e.g. "John Snyder" into a "John Smithers" cluster).
+      if (base.matches.length === 0) continue;
       const related = relatedEntityScore(patients[i], patients[j], visitsByPatient);
       const totalScore = base.score + related.score;
       const cutoff = minScore != null ? minScore : effectiveThreshold(base.matches, threshold);
 
       if (totalScore >= cutoff) {
-        addLink(i, j, totalScore, [...base.matches, ...related.matches]);
-        union(i, j);
+        const allMatches = [...base.matches, ...related.matches];
+        addLink(i, j, totalScore, allMatches);
+        // Only merge clusters transitively on a STRONG link — one backed by a
+        // hard identifier (DOB / MRN / phone / address / email). A pair that
+        // qualifies only via softer ties is still reported as a direct pair, but
+        // must NOT bridge other records into its cluster. This stops a chain of
+        // weak links from daisy-chaining unrelated people (Ritchey↔Langham via a
+        // shared phone-area, Smithers↔Snyder via name stubs) into one group.
+        const STRONG_LINK = new Set([
+          REASON.DOB, REASON.DOB_SWAPPED, REASON.DOB_YEAR_TYPO,
+          REASON.MRN, REASON.MRN_SIMILAR,
+          REASON.PHONE,
+          REASON.ADDRESS_EXACT, REASON.STREET_ADDRESS,
+          REASON.EMAIL,
+        ]);
+        if (base.matches.some((m) => STRONG_LINK.has(m))) {
+          union(i, j);
+        }
       }
     }
   }
 
-  // Collect cluster members by root. Iterating i ascending means each root (the
-  // cluster's min index) is first seen at i === root, so clusters land in
-  // primary-index order without a follow-up sort.
-  const clusters = new Map(); // root -> [indices]
-  for (let i = 0; i < n; i++) {
-    if (!links.has(i)) continue; // record matched nothing — not part of any group
-    const root = find(i);
-    if (!clusters.has(root)) clusters.set(root, []);
-    clusters.get(root).push(i);
-  }
-
+  // Build groups as connected components, but treat weak (non-union) links as
+  // STRICTLY PAIRWISE so they can never bridge a third record into a cluster.
+  //
+  // Strong links share a union-find root → those members cluster together. For
+  // each strong cluster we also attach any record weak-linked DIRECTLY to a
+  // member (and only that record, not its onward links). A weak link between two
+  // records that are each in no strong cluster forms its own 2-record group.
+  const memberOf = new Array(n).fill(-1); // index -> group id (once assigned)
   const groups = [];
-  for (const indices of clusters.values()) {
-    if (indices.length < 2) continue;
-    const memberSet = new Set(indices);
-    const primaryIdx = indices[0]; // ascending insertion => lowest index first
 
-    const duplicates = [];
-    for (const idx of indices) {
-      if (idx === primaryIdx) continue;
-      // Report this record with its strongest link to any other cluster member,
-      // so a record bridged in via a third party still shows a meaningful score.
-      let best = null;
-      for (const link of links.get(idx)) {
-        if (!memberSet.has(link.idx)) continue;
-        if (!best || link.score > best.score) best = link;
-      }
-      duplicates.push({
-        patient: patients[idx],
-        score: best.score,
-        matches: best.matches,
-        confidenceLevel: confidenceFromScore(best.score),
-        confidencePercent: confidencePercent(best.score),
-      });
+  // First pass: strong clusters (>= 2 members sharing a union-find root).
+  const strongClusters = new Map(); // root -> [indices]
+  for (let i = 0; i < n; i++) {
+    if (!links.has(i)) continue;
+    const root = find(i);
+    if (!strongClusters.has(root)) strongClusters.set(root, []);
+    strongClusters.get(root).push(i);
+  }
+
+  const makeDuplicate = (idx, memberSet) => {
+    let best = null;
+    for (const link of links.get(idx)) {
+      if (!memberSet.has(link.idx)) continue;
+      if (!best || link.score > best.score) best = link;
     }
+    return {
+      patient: patients[idx],
+      score: best.score,
+      matches: best.matches,
+      confidenceLevel: confidenceFromScore(best.score),
+      confidencePercent: confidencePercent(best.score),
+    };
+  };
 
+  for (const indices of strongClusters.values()) {
+    if (indices.length < 2) continue; // singleton root — no strong cluster here
+    const memberSet = new Set(indices);
+    const primaryIdx = indices[0];
+    for (const idx of indices) memberOf[idx] = groups.length;
+    const duplicates = indices
+      .filter((idx) => idx !== primaryIdx)
+      .map((idx) => makeDuplicate(idx, memberSet));
     duplicates.sort((a, b) => b.score - a.score);
     groups.push({ primary: patients[primaryIdx], duplicates });
+  }
+
+  // Second pass: weak-only pairs. Any link whose endpoints are not already in a
+  // strong group becomes its own pairwise group (deduped, lowest index primary).
+  const seenWeakPair = new Set();
+  for (let i = 0; i < n; i++) {
+    if (!links.has(i) || memberOf[i] !== -1) continue;
+    for (const link of links.get(i)) {
+      const j = link.idx;
+      if (memberOf[j] !== -1) continue; // partner already in a strong group
+      const a = Math.min(i, j);
+      const b = Math.max(i, j);
+      const key = `${a}-${b}`;
+      if (seenWeakPair.has(key)) continue;
+      seenWeakPair.add(key);
+      const memberSet = new Set([a, b]);
+      groups.push({
+        primary: patients[a],
+        duplicates: [makeDuplicate(b, memberSet)],
+      });
+    }
   }
 
   return groups;
