@@ -217,6 +217,20 @@
     "personal_cell_e164": {
       "type": "string",
       "description": "Nurse personal cell number in E.164 format"
+    },
+    "ai_content_agreement_accepted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the user has signed off on the AI-generated content responsibility agreement (responsible for proofreading/editing AI output and attesting to any material they submit)"
+    },
+    "ai_content_agreement_accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the user accepted the AI-generated content responsibility agreement"
+    },
+    "ai_content_agreement_version": {
+      "type": "string",
+      "description": "Version of the AI-generated content responsibility agreement the user accepted; a bump re-prompts the user for re-acceptance"
     }
   },
   "required": [
