@@ -1,0 +1,335 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+// computeOutcomeMeasures — the keystone quality cron.
+//
+// Pairs every Discharge OASIS with its matching SOC/ROC assessment, computes the
+// CMS home-health OUTCOME (change) measures, writes a PatientOutcomeMetric per
+// episode, and rolls the results up into AgencyKPI rows (one per measure). These
+// rows feed ~5 of the 7 Quality-of-Patient-Care star inputs and ~40% of HHVBP.
+//
+// The scoring below is a verbatim mirror of the unit-tested pure engine in
+// src/components/oasis/outcomeMeasureEngine.js. The edge function runs on Deno
+// and cannot import from src/, so the deterministic core is inlined here. Keep
+// the two in step: any change to a measure/exclusion rule must be made in both.
+
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const SUPER_ADMIN_EMAIL = ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase();
+const sameEmail = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin' || (SUPER_ADMIN_EMAIL !== '' && sameEmail(u.email, SUPER_ADMIN_EMAIL))
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
+// ── inlined outcome-measure engine (mirror of outcomeMeasureEngine.js) ────────
+const IMPROVEMENT_MEASURES = [
+  { key: 'ambulation', item: 'm1860', label: 'Improvement in Ambulation/Locomotion', startMax: 5, excludeStart: [0], excludeEither: [], metricField: 'ambulation_improved' },
+  { key: 'bed_transfer', item: 'm1850', label: 'Improvement in Bed Transferring', startMax: 5, excludeStart: [0], excludeEither: [], metricField: 'transferring_improved' },
+  { key: 'bathing', item: 'm1830', label: 'Improvement in Bathing', startMax: 6, excludeStart: [0], excludeEither: [6], metricField: 'bathing_improved' },
+  { key: 'dyspnea', item: 'm1400', label: 'Improvement in Dyspnea', startMax: 4, excludeStart: [0], excludeEither: [], metricField: 'dyspnea_improved' },
+  { key: 'oral_meds', item: 'm2020', label: 'Improvement in Management of Oral Medications', startMax: 3, excludeStart: [0], excludeEither: [], metricField: 'medication_management_improved' },
+];
+const STAR_MIN_EPISODES = 20;
+const STAR_MIN_MEASURES = 5;
+const GG_FUNCTION_ITEMS = [
+  'gg0130a', 'gg0130b', 'gg0130c', 'gg0130e', 'gg0130f', 'gg0130g', 'gg0130h',
+  'gg0170a', 'gg0170b', 'gg0170c', 'gg0170d', 'gg0170e', 'gg0170f',
+  'gg0170i', 'gg0170j', 'gg0170k', 'gg0170l', 'gg0170m',
+];
+const GG_NOT_ATTEMPTED = new Set([7, 9, 10, 88]);
+const DECEASED_DISPOSITIONS = new Set(['deceased', 'died', 'death', 'expired']);
+
+function toNum(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = typeof v === 'number' ? v : parseInt(String(v).trim(), 10);
+  return Number.isNaN(n) ? null : n;
+}
+function answersFromOasisItems(items) {
+  if (!items) return {};
+  if (!Array.isArray(items)) {
+    const out = {};
+    for (const [k, v] of Object.entries(items)) {
+      const n = toNum(v);
+      if (n !== null) out[String(k).toLowerCase()] = n;
+    }
+    return out;
+  }
+  const out = {};
+  for (const it of items) {
+    if (!it || it.item_number == null) continue;
+    const key = String(it.item_number).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const n = toNum(it.response);
+    if (n !== null) out[key] = n;
+  }
+  return out;
+}
+function evaluateMeasure(measure, startAns, dcAns) {
+  const s = toNum(startAns[measure.item]);
+  const d = toNum(dcAns[measure.item]);
+  const base = { key: measure.key, label: measure.label, item: measure.item, start_value: s, discharge_value: d };
+  if (s === null || d === null) return { ...base, status: 'excluded', reason: 'missing_data' };
+  if (s < 0 || s > measure.startMax || d < 0 || d > measure.startMax) return { ...base, status: 'excluded', reason: 'unratable_code' };
+  if (measure.excludeEither.includes(s) || measure.excludeEither.includes(d)) return { ...base, status: 'excluded', reason: 'unratable_code' };
+  if (measure.excludeStart.includes(s)) return { ...base, status: 'excluded', reason: 'no_room_to_improve' };
+  const improved = d < s;
+  return { ...base, status: improved ? 'improved' : 'not_improved', reason: improved ? 'improved' : 'no_improvement' };
+}
+function computeGGDischargeFunctionScore(dcAns) {
+  let score = 0, scored = 0;
+  for (const item of GG_FUNCTION_ITEMS) {
+    let v = toNum(dcAns[item]);
+    if (v === null) continue;
+    if (GG_NOT_ATTEMPTED.has(v)) v = 1;
+    if (v < 1 || v > 6) continue;
+    score += v; scored += 1;
+  }
+  const applicable = scored >= Math.ceil(GG_FUNCTION_ITEMS.length / 2);
+  return { applicable, score: applicable ? score : null, items_scored: scored };
+}
+function computeEpisodeOutcome({ start, discharge, dischargeDisposition }) {
+  const startAns = answersFromOasisItems(start);
+  const dcAns = answersFromOasisItems(discharge);
+  const deceased = dischargeDisposition && DECEASED_DISPOSITIONS.has(String(dischargeDisposition).toLowerCase());
+  const measures = IMPROVEMENT_MEASURES.map((m) => {
+    if (deceased) {
+      return { key: m.key, label: m.label, item: m.item, start_value: toNum(startAns[m.item]), discharge_value: toNum(dcAns[m.item]), status: 'excluded', reason: 'episode_ended_in_death' };
+    }
+    return evaluateMeasure(m, startAns, dcAns);
+  });
+  const eligibleMeasures = measures.filter((r) => r.status !== 'excluded');
+  const improved = eligibleMeasures.filter((r) => r.status === 'improved');
+  const overall = eligibleMeasures.length ? Math.round((improved.length / eligibleMeasures.length) * 100) : null;
+  return {
+    eligible: !deceased && eligibleMeasures.length > 0,
+    episode_excluded_reason: deceased ? 'episode_ended_in_death' : null,
+    measures,
+    improved_count: improved.length,
+    eligible_measure_count: eligibleMeasures.length,
+    overall_improvement_score: overall,
+    gg_discharge_function: computeGGDischargeFunctionScore(dcAns),
+  };
+}
+function toPatientOutcomeMetric(meta, outcome) {
+  const byKey = Object.fromEntries(outcome.measures.map((m) => [m.key, m]));
+  const flag = (key) => byKey[key]?.status === 'improved';
+  return {
+    patient_id: meta.patientId,
+    ...(meta.episodeStart ? { episode_start: meta.episodeStart } : {}),
+    ...(meta.episodeEnd ? { episode_end: meta.episodeEnd } : {}),
+    ...(meta.dischargeDisposition ? { discharge_disposition: meta.dischargeDisposition } : {}),
+    ...(meta.primaryDiagnosis ? { primary_diagnosis: meta.primaryDiagnosis } : {}),
+    functional_improvement: {
+      ambulation_improved: flag('ambulation'),
+      bathing_improved: flag('bathing'),
+      transferring_improved: flag('bed_transfer'),
+      medication_management_improved: flag('oral_meds'),
+      dyspnea_improved: flag('dyspnea'),
+      overall_improvement_score: outcome.overall_improvement_score ?? 0,
+    },
+    ...(outcome.gg_discharge_function.score != null ? { gg_discharge_function_score: outcome.gg_discharge_function.score } : {}),
+    measure_results: outcome.measures.map((m) => ({ measure: m.key, status: m.status, start_value: m.start_value, discharge_value: m.discharge_value, reason: m.reason })),
+    outcome_measure_source: 'oasis_change_score',
+  };
+}
+function rollupMeasures(outcomes) {
+  const acc = new Map();
+  for (const m of IMPROVEMENT_MEASURES) acc.set(m.key, { numerator: 0, denominator: 0 });
+  for (const outcome of outcomes) {
+    for (const r of outcome.measures || []) {
+      const bucket = acc.get(r.key);
+      if (!bucket || r.status === 'excluded') continue;
+      bucket.denominator += 1;
+      if (r.status === 'improved') bucket.numerator += 1;
+    }
+  }
+  const measures = IMPROVEMENT_MEASURES.map((m) => {
+    const { numerator, denominator } = acc.get(m.key);
+    const rate = denominator > 0 ? Math.round((numerator / denominator) * 1000) / 10 : null;
+    return { key: m.key, label: m.label, item: m.item, numerator, denominator, rate, star_eligible: denominator >= STAR_MIN_EPISODES };
+  });
+  const starEligibleCount = measures.filter((m) => m.star_eligible).length;
+  return { measures, total_episodes: outcomes.length, star_eligible_measure_count: starEligibleCount, star_eligible: starEligibleCount >= STAR_MIN_MEASURES };
+}
+function toAgencyKPIs(rollup, opts) {
+  const { periodStart, periodEnd, periodType = 'quarterly', agencyId, benchmark } = opts;
+  return (rollup?.measures || [])
+    .filter((m) => m.rate !== null)
+    .map((m) => {
+      const status = benchmark == null
+        ? (m.star_eligible ? 'on_target' : 'warning')
+        : (m.rate >= benchmark ? 'on_target' : m.rate >= benchmark - 10 ? 'warning' : 'critical');
+      return {
+        ...(agencyId ? { agency_id: agencyId } : {}),
+        metric_name: m.label,
+        metric_category: 'quality',
+        period_type: periodType,
+        period_start: periodStart,
+        period_end: periodEnd,
+        metric_value: m.rate,
+        ...(benchmark != null ? { benchmark_value: benchmark } : {}),
+        unit: '%',
+        status,
+        contributing_factors: [
+          `${m.numerator} of ${m.denominator} eligible episodes improved`,
+          m.star_eligible
+            ? `Meets the ${STAR_MIN_EPISODES}-episode star-rating threshold`
+            : `Below the ${STAR_MIN_EPISODES}-episode star-rating threshold (${m.denominator})`,
+        ],
+      };
+    });
+}
+
+// M2420 discharge-disposition code → PatientOutcomeMetric.discharge_disposition enum.
+function dispositionFromAnswers(dcAns, patient) {
+  const code = toNum(dcAns['m2420']);
+  if (code === 1) return 'remained_home';
+  if (code === 2) return 'hospital';
+  if (code === 3 || code === 4) return 'snf';
+  if (String(patient?.status || '').toLowerCase() === 'deceased') return 'deceased';
+  return undefined;
+}
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+
+    // Opt-in auth gate (mirrors monitorComplianceRisks): reads every patient's
+    // OASIS PHI and writes quality metrics, so require admin OR the internal
+    // scheduler secret when INTERNAL_FN_SECRET is configured.
+    const me = await base44.auth.me().catch(() => null);
+    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
+    if (internalSecret) {
+      if (!isAdminLike(me) && req.headers.get('x-internal-secret') !== internalSecret) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    } else if (me && !isAdminLike(me)) {
+      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+    }
+
+    let body = {};
+    try { body = await req.json(); } catch { /* GET / cron invocation */ }
+    const periodStart = body.period_start || null;
+    const periodEnd = body.period_end || null;
+    const benchmark = typeof body.benchmark === 'number' ? body.benchmark : undefined;
+
+    const inPeriod = (dateStr) => {
+      if (!periodStart && !periodEnd) return true;
+      if (!dateStr) return false;
+      const t = new Date(dateStr).getTime();
+      if (Number.isNaN(t)) return false;
+      if (periodStart && t < new Date(periodStart).getTime()) return false;
+      if (periodEnd && t > new Date(periodEnd).getTime()) return false;
+      return true;
+    };
+
+    // All Discharge OASIS assessments; each is paired with the latest SOC/ROC
+    // before it for the same patient.
+    const discharges = await base44.asServiceRole.entities.OASISAssessment.filter(
+      { visit_type: 'Discharge' }, '-assessment_date', 5000,
+    );
+
+    const outcomes = [];
+    const episodeEndDates = [];
+    let metricsWritten = 0;
+    let skippedNoDate = 0;
+
+    for (const dc of discharges) {
+      if (!inPeriod(dc.assessment_date)) continue;
+      if (!dc.patient_id) continue;
+
+      // Latest SOC/ROC on or before the discharge date.
+      const priors = await base44.asServiceRole.entities.OASISAssessment.filter(
+        { patient_id: dc.patient_id }, '-assessment_date', 50,
+      );
+      const start = priors.find((a) =>
+        (a.visit_type === 'Start of Care' || a.visit_type === 'Resumption of Care') &&
+        (!dc.assessment_date || !a.assessment_date || new Date(a.assessment_date) <= new Date(dc.assessment_date)));
+      if (!start) continue; // no SOC/ROC to pair → cannot compute a change score
+      // PatientOutcomeMetric requires episode_start (and we key the upsert on
+      // both episode dates): skip pairs missing either assessment_date rather
+      // than let a required-field create() throw and abort the whole cron.
+      if (!start.assessment_date || !dc.assessment_date) { skippedNoDate += 1; continue; }
+      episodeEndDates.push(dc.assessment_date);
+
+      const dcAns = answersFromOasisItems(dc.oasis_items);
+      const patient = await base44.asServiceRole.entities.Patient.filter({ id: dc.patient_id }, '-created_date', 1)
+        .then((rows) => rows[0]).catch(() => null);
+      const dischargeDisposition = dispositionFromAnswers(dcAns, patient);
+
+      const outcome = computeEpisodeOutcome({
+        start: start.oasis_items,
+        discharge: dc.oasis_items,
+        dischargeDisposition,
+      });
+      outcomes.push(outcome);
+
+      const payload = toPatientOutcomeMetric({
+        patientId: dc.patient_id,
+        episodeStart: start.assessment_date,
+        episodeEnd: dc.assessment_date,
+        dischargeDisposition,
+        primaryDiagnosis: patient?.primary_diagnosis,
+      }, outcome);
+
+      // Idempotent upsert keyed on patient + episode window.
+      const existing = await base44.asServiceRole.entities.PatientOutcomeMetric.filter({
+        patient_id: dc.patient_id,
+        episode_start: start.assessment_date,
+        episode_end: dc.assessment_date,
+      }, '-created_date', 1).catch(() => []);
+      if (existing && existing[0]) {
+        await base44.asServiceRole.entities.PatientOutcomeMetric.update(existing[0].id, payload);
+      } else {
+        await base44.asServiceRole.entities.PatientOutcomeMetric.create(payload);
+      }
+      metricsWritten += 1;
+    }
+
+    // Roll up to agency KPIs (one row per measure). Default the period to the
+    // ACTUAL span of the evaluated discharges (ISO dates sort lexically), not
+    // discharges[0] (the newest) → today, which would label all-time rates as a
+    // single latest-date-to-today period and corrupt the KPI time series.
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultStart = episodeEndDates.length ? episodeEndDates.reduce((a, b) => (a < b ? a : b)) : today;
+    const defaultEnd = episodeEndDates.length ? episodeEndDates.reduce((a, b) => (a > b ? a : b)) : today;
+    const rollup = rollupMeasures(outcomes);
+    const kpis = toAgencyKPIs(rollup, {
+      periodStart: periodStart || defaultStart,
+      periodEnd: periodEnd || defaultEnd,
+      benchmark,
+    });
+    let kpisWritten = 0;
+    for (const kpi of kpis) {
+      // Idempotent upsert so a retry / scheduled rerun for the same period does
+      // not create duplicate AgencyKPI rows (dashboards would double-count).
+      const kpiFilter = {
+        metric_name: kpi.metric_name,
+        metric_category: kpi.metric_category,
+        period_start: kpi.period_start,
+        period_end: kpi.period_end,
+      };
+      if (kpi.agency_id) kpiFilter.agency_id = kpi.agency_id;
+      const existingKpi = await base44.asServiceRole.entities.AgencyKPI.filter(kpiFilter, '-created_date', 1).catch(() => []);
+      if (existingKpi && existingKpi[0]) {
+        await base44.asServiceRole.entities.AgencyKPI.update(existingKpi[0].id, kpi);
+      } else {
+        await base44.asServiceRole.entities.AgencyKPI.create(kpi);
+      }
+      kpisWritten += 1;
+    }
+
+    return Response.json({
+      success: true,
+      discharges_evaluated: outcomes.length,
+      patient_outcome_metrics_written: metricsWritten,
+      skipped_missing_episode_date: skippedNoDate,
+      agency_kpis_written: kpisWritten,
+      star_eligible_measure_count: rollup.star_eligible_measure_count,
+      star_eligible: rollup.star_eligible,
+      measures: rollup.measures,
+    });
+  } catch (error) {
+    console.error('Error computing outcome measures:', error);
+    return Response.json({ success: false, error: error.message }, { status: 500 });
+  }
+});
