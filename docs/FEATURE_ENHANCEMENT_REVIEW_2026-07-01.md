@@ -63,18 +63,27 @@ A first batch of safe, self-contained, high-value items — all verified (`build
 | 9 | Performance Dashboard | **Fixed the inverted "Avg Doc Time" trend** — a team that got *slower* was shown with an up-arrow reading as improvement. Added an `invertTrend` prop + "lower is better" label. | bug |
 | 10 | Messages | **Resilient send** — success toast + the composed/reply text is now **preserved on failure** (was cleared optimistically), so a nurse on flaky cellular never loses typed words. | reliability |
 
+### Second batch (also in this PR)
+
+Verified the same way (`build` clean, lint clean, **306/306** component tests pass):
+
+| # | Feature | Change | Type |
+|---|---|---|---|
+| 11 | Dashboard | **Favorites are now a filter, not a gate** in `RealTimePatientAlerts` — a nurse who hasn't starred anyone now sees alerts across **all their assigned patients** instead of an empty "All patients on track". | bug |
+| 12 | Patient chart | **Removed the dead "Schedule Visit" quick action** that fired a developer-placeholder error toast (`"implement as needed"`) on tap. A real scheduler is tracked below. | bug |
+| 13 | Admin role lockout (Theme 2) | **Adopted the shared `isAdminView` / `isSuperAdminView` predicate** on the pages that hard-coded `role === 'admin'` for current-user access gates — Admin Console, Clinical Pathways, Training Analytics, User Management, Nurse Performance, Background Jobs — so `agency_admin` / `super_admin` accounts are no longer blocked by the page after the router admits them. Other-user checks (admin counts, created-user role) were intentionally left unchanged. | bug |
+
 ---
 
 ## 4. Prioritized backlog (not yet implemented)
 
 ### Top quick wins (high impact · low effort · low risk)
 
-- **Show assigned high-risk patients even when the nurse hasn't favorited anyone** (Dashboard) — `RealTimePatientAlerts` short-circuits to empty when `favorited_patients` is empty, so a new nurse gets a silent, empty safety net. Fall back to the assigned-patients prop. *(bug, high)*
-- **Wire up (or remove) the dead "Schedule Visit" quick action** on the patient chart — it currently fires a red "not implemented" error toast. *(bug)*
 - **Add copy + generated-at timestamp to the patient-chart AI summary**, and gate it behind an explicit action instead of auto-firing an Opus call on every chart open. *(performance + trust)*
 - **Use `SearchablePatientSelect`** in Event Report, PDF Search, and the Education Hub instead of raw UUID text fields / 2000-row selects. *(ux-polish)*
-- **Adopt the shared role predicate** (`isAdminView`) on the ~8 pages that hard-code `role === 'admin'` so agency/super admins aren't locked out. *(bug)*
+- **Finish the role-predicate adoption** — the remaining pages that still read `role === 'admin'` for current-user checks (e.g. `OASISCenter`, `DocumentHub`, `TemplateManagement`, `OnCallSchedule`, `TimeOff`, `IncidentReportingModule`, `AdminTraining`, `AdminUserSetup`, `ReportsAnalytics`, `AnalyticsDashboard`, `PatientDataManagement`, `MedicareGuidelinesLibrary`, `LearningCenter`, `TrainingCoursePlayer`) should also use `isAdminView`. *(bug)*
 - **Make StatCards actionable** (tap "Active" to filter the roster to active; tap a severity count to filter alerts). *(ux-polish)*
+- **Bring back a real "Schedule Visit"** dialog on the patient chart (Visit.create + date/type form) to replace the removed placeholder. *(new-capability)*
 
 ### Bigger bets (roadmap)
 
