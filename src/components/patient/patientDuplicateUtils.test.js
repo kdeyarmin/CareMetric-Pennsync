@@ -120,8 +120,10 @@ test('scoring is symmetric', () => {
 });
 
 test('exact name match is not double-counted by name variations', () => {
-  const a = { id: 'a', first_name: 'John', last_name: 'Smith' };
-  const b = { id: 'b', first_name: 'John', last_name: 'Smith' };
+  // Shared DOB corroborates the name tie so the identity guard admits the pair;
+  // the point under test is that EXACT_NAME does not ALSO fire NAME_VARIATION.
+  const a = { id: 'a', first_name: 'John', last_name: 'Smith', date_of_birth: '1950-01-15' };
+  const b = { id: 'b', first_name: 'John', last_name: 'Smith', date_of_birth: '1950-01-15' };
   const { matches } = scorePatientPair(a, b);
   assert.ok(matches.includes(REASON.EXACT_NAME));
   assert.ok(!matches.includes(REASON.NAME_VARIATION));
@@ -142,8 +144,10 @@ test('year-typo DOB is detected', () => {
 });
 
 test('phone formats normalize and match exactly', () => {
-  const a = { id: 'a', phone: '(215) 555-1234' };
-  const b = { id: 'b', phone: '215.555.1234' };
+  // Same person, phone written two ways: the phone digits must normalize and
+  // register a PHONE match (the name tie lets the identity guard admit the pair).
+  const a = { id: 'a', first_name: 'John', last_name: 'Smith', phone: '(215) 555-1234' };
+  const b = { id: 'b', first_name: 'John', last_name: 'Smith', phone: '215.555.1234' };
   assert.ok(scorePatientPair(a, b).matches.includes(REASON.PHONE));
 });
 
@@ -284,23 +288,27 @@ test('findDuplicateGroups returns [] when there are no duplicates', () => {
 });
 
 test('scorePatientPair signals can disable a signal group', () => {
+  // Same-named pair whose ONLY corroborating identifier is the shared MRN.
   const a = { id: 'a', first_name: 'John', last_name: 'Smith', medical_record_number: '555' };
-  const b = { id: 'b', first_name: 'Different', last_name: 'Person', medical_record_number: '555' };
+  const b = { id: 'b', first_name: 'John', last_name: 'Smith', medical_record_number: '555' };
 
-  // MRN enabled (default) -> matches.
+  // MRN enabled (default) -> matches (name tie + MRN corroboration).
   assert.ok(scorePatientPair(a, b).matches.includes(REASON.MRN));
 
-  // MRN disabled -> the only shared signal is gone, so no match.
+  // MRN disabled -> the only corroborating signal is gone, so the identity
+  // guard rejects the name-only pair.
   const { score, matches } = scorePatientPair(a, b, { signals: { mrn: false } });
   assert.ok(!matches.includes(REASON.MRN));
   assert.equal(score, 0);
 });
 
 test('findDuplicateGroups respects minScore floor and scoreOptions', () => {
-  // These two records match ONLY on MRN (names are entirely different).
+  // Same-named records whose corroborating identifier is a shared MRN. (Two
+  // DIFFERENT names sharing only an MRN are NOT a person match under the
+  // identity guard, so the fixture uses one name to isolate the MRN signal.)
   const patients = [
     { id: '1', first_name: 'Aaron', last_name: 'Adams', medical_record_number: 'X1' },
-    { id: '2', first_name: 'Chloe', last_name: 'Dunn', medical_record_number: 'X1' },
+    { id: '2', first_name: 'Aaron', last_name: 'Adams', medical_record_number: 'X1' },
   ];
 
   // Default: MRN is a strong identifier, so the pair is flagged.
@@ -441,8 +449,12 @@ test('same DOB written in different formats is an exact DOB match', () => {
 });
 
 test('different streets sharing a number and direction do NOT score a street-address match', () => {
-  const a = { id: 'a', first_name: 'A', last_name: 'A', address: '100 N Main St' };
-  const b = { id: 'b', first_name: 'B', last_name: 'B', address: '100 N Oak St' };
+  // Same person (shared name + DOB corroboration so the identity guard admits
+  // the pair). A bare STREET_NUMBER is deliberately NOT corroborating on its own,
+  // so a DOB is supplied to isolate the STREET signal: same house number but a
+  // different street name must yield STREET_NUMBER, never the stronger STREET_ADDRESS.
+  const a = { id: 'a', first_name: 'Sam', last_name: 'Reed', date_of_birth: '1960-06-06', address: '100 N Main St' };
+  const b = { id: 'b', first_name: 'Sam', last_name: 'Reed', date_of_birth: '1960-06-06', address: '100 N Oak St' };
   const { matches } = scorePatientPair(a, b);
   assert.ok(!matches.includes(REASON.STREET_ADDRESS));
   assert.ok(matches.includes(REASON.STREET_NUMBER));
@@ -450,17 +462,18 @@ test('different streets sharing a number and direction do NOT score a street-add
 
 test('same street name with different directionals is NOT a street-address match', () => {
   // "100 W Main St" vs "100 E Main St": the directional must stay part of the
-  // street key so these aren't collapsed into a strong-identifier match.
-  const a = { id: 'a', first_name: 'A', last_name: 'A', address: '100 W Main St' };
-  const b = { id: 'b', first_name: 'B', last_name: 'B', address: '100 E Main St' };
+  // street key so these aren't collapsed into a strong-identifier match. Shared
+  // DOB corroborates the pair so the address grade can be asserted.
+  const a = { id: 'a', first_name: 'Sam', last_name: 'Reed', date_of_birth: '1960-06-06', address: '100 W Main St' };
+  const b = { id: 'b', first_name: 'Sam', last_name: 'Reed', date_of_birth: '1960-06-06', address: '100 E Main St' };
   const { matches } = scorePatientPair(a, b);
   assert.ok(!matches.includes(REASON.STREET_ADDRESS));
   assert.ok(matches.includes(REASON.STREET_NUMBER));
 });
 
 test('identical directional street addresses still score a street-address match', () => {
-  const a = { id: 'a', first_name: 'A', last_name: 'A', address: '100 W Main St' };
-  const b = { id: 'b', first_name: 'B', last_name: 'B', address: '100 W Main St' };
+  const a = { id: 'a', first_name: 'Sam', last_name: 'Reed', address: '100 W Main St' };
+  const b = { id: 'b', first_name: 'Sam', last_name: 'Reed', address: '100 W Main St' };
   const { matches } = scorePatientPair(a, b);
   assert.ok(matches.includes(REASON.STREET_ADDRESS));
 });
