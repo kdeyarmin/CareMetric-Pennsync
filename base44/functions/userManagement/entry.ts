@@ -142,9 +142,9 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     const signupUrl = `${Deno.env.get('APP_URL') || 'https://app.base44.app'}`;
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: email,
-      subject: 'Invitation to Penn Sync',
-      body: `Hello ${full_name},\n\nYou've been invited to join Penn Sync.\n\nEmail: ${email}\nRole: ${role || 'user'}\n\nPlease visit ${signupUrl} to create your account.\n\n⏰ This invitation expires in 7 days (${expiresAt.toLocaleDateString()}).\n\nWelcome to Penn Sync!`,
-      from_name: 'Penn Sync'
+      subject: 'Invitation to CareMetric AI',
+      body: `Hello ${full_name},\n\nYou've been invited to join CareMetric AI.\n\nEmail: ${email}\nRole: ${role || 'user'}\n\nPlease visit ${signupUrl} to create your account.\n\n⏰ This invitation expires in 7 days (${expiresAt.toLocaleDateString()}).\n\nWelcome to CareMetric AI!`,
+      from_name: 'CareMetric AI'
     });
   } catch (emailError) {
     console.error('Email send failed (non-critical):', emailError.message);
@@ -199,9 +199,9 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   const signupUrl = `${Deno.env.get('APP_URL') || 'https://app.base44.app'}`;
   await base44.asServiceRole.integrations.Core.SendEmail({
     to: invitation.email,
-    subject: 'Reminder: Invitation to Penn Sync',
-    body: `Hello ${invitation.full_name},\n\nThis is a reminder that you've been invited to join Penn Sync.\n\nEmail: ${invitation.email}\nRole: ${invitation.role || 'user'}\n\nPlease visit ${signupUrl} to create your account.\n\n⏰ This invitation expires in 7 days (${newExpiresAt.toLocaleDateString()}).\n\nWelcome to Penn Sync!`,
-    from_name: 'Penn Sync'
+    subject: 'Reminder: Invitation to CareMetric AI',
+    body: `Hello ${invitation.full_name},\n\nThis is a reminder that you've been invited to join CareMetric AI.\n\nEmail: ${invitation.email}\nRole: ${invitation.role || 'user'}\n\nPlease visit ${signupUrl} to create your account.\n\n⏰ This invitation expires in 7 days (${newExpiresAt.toLocaleDateString()}).\n\nWelcome to CareMetric AI!`,
+    from_name: 'CareMetric AI'
   });
 
   // Log activity
@@ -256,7 +256,7 @@ async function resetPassword(base44, currentUser, params, isAdmin) {
   await base44.asServiceRole.integrations.Core.SendEmail({
     to: userEmail,
     subject: 'Your Password Has Been Reset',
-    body: `Hello ${targetUser.full_name || 'User'},\n\nYour password has been reset by an administrator.\n\nYour temporary password is: ${tempPassword}\n\nPlease log in and change your password immediately for security purposes.\n\nIf you did not request this password reset, please contact your administrator immediately.\n\nBest regards,\nPenn Sync Team`
+    body: `Hello ${targetUser.full_name || 'User'},\n\nYour password has been reset by an administrator.\n\nYour temporary password is: ${tempPassword}\n\nPlease log in and change your password immediately for security purposes.\n\nIf you did not request this password reset, please contact your administrator immediately.\n\nBest regards,\nCareMetric AI Team`
   });
 
   // Log activity
@@ -323,14 +323,14 @@ async function checkExpiredInvitations(base44) {
         emailBody += '\n';
       }
 
-      emailBody += 'Please consider resending these invitations from the User Management page.\n\nPenn Sync';
+      emailBody += 'Please consider resending these invitations from the User Management page.\n\nCareMetric AI';
 
       try {
         await base44.asServiceRole.integrations.Core.SendEmail({
           to: admin.email,
           subject: `📧 User Invitation Status - ${expired.length} Expired, ${expiringSoon.length} Expiring Soon`,
           body: emailBody,
-          from_name: 'Penn Sync'
+          from_name: 'CareMetric AI'
         });
       } catch (emailError) {
         console.error('Failed to send email to admin:', admin.email, emailError);

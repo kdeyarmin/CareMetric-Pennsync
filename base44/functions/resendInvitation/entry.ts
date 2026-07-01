@@ -34,6 +34,7 @@ Deno.serve(async (req) => {
 
     // Use platform invite (handles email natively)
     await base44.users.inviteUser(invitation.email, invitation.role || 'user');
+
     console.log('✓ Re-invite sent to:', invitation.email);
 
     // Update invitation record

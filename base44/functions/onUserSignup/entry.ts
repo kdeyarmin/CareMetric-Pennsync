@@ -249,9 +249,9 @@ Deno.serve(async (req) => {
     const emailBody = `
     Hello,
 
-    A sign-up attempt was BLOCKED on PennSync because the account was not invited.
+    A sign-up attempt was BLOCKED on CareMetric AI because the account was not invited.
 
-    PennSync is invite-only — there is no public sign-up. This account has NOT
+    CareMetric AI is invite-only — there is no public sign-up. This account has NOT
     been granted access and cannot be approved manually.
 
     👤 Name: ${user.full_name || 'Not provided'}
@@ -264,15 +264,15 @@ Deno.serve(async (req) => {
     No other action is required — they remain blocked until invited.
 
     Best regards,
-    PennSync Security
+    CareMetric AI Security
     `.trim();
 
     // Send a security alert to all admins
     const emailPromises = admins.map(admin =>
       base44.asServiceRole.integrations.Core.SendEmail({
         to: admin.email,
-        subject: `🚫 Blocked Uninvited Sign-up - PennSync`,
-        from_name: 'PennSync Security',
+        subject: `🚫 Blocked Uninvited Sign-up - CareMetric AI`,
+        from_name: 'CareMetric AI Security',
         body: `Hello ${admin.full_name || 'Admin'},\n\n${emailBody}`
       })
     );
@@ -284,8 +284,8 @@ Deno.serve(async (req) => {
       emailPromises.push(
         base44.asServiceRole.integrations.Core.SendEmail({
           to: extraAlertEmail,
-          subject: `🚫 Blocked Uninvited Sign-up - PennSync`,
-          from_name: 'PennSync Security',
+          subject: `🚫 Blocked Uninvited Sign-up - CareMetric AI`,
+          from_name: 'CareMetric AI Security',
           body: `Hello,\n\n${emailBody}`
         })
       );

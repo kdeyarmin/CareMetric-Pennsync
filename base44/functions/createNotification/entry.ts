@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
         try {
           await base44.asServiceRole.integrations.Core.SendEmail({
             to: user_email,
-            subject: `[Penn Sync] ${title}`,
+            subject: `[CareMetric AI] ${title}`,
             body: `
               ${message}
               

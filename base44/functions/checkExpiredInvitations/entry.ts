@@ -92,14 +92,14 @@ Deno.serve(async (req) => {
           emailBody += '\n';
         }
 
-        emailBody += 'Please consider resending these invitations from the User Management page.\n\nPenn Sync';
+        emailBody += 'Please consider resending these invitations from the User Management page.\n\nCareMetric AI';
 
         try {
           await base44.asServiceRole.integrations.Core.SendEmail({
             to: admin.email,
             subject: `📧 User Invitation Status - ${expired.length} Expired, ${expiringSoon.length} Expiring Soon`,
             body: emailBody,
-            from_name: 'Penn Sync'
+            from_name: 'CareMetric AI'
           });
         } catch (emailError) {
           console.error('Failed to send email to admin:', admin.email, emailError);

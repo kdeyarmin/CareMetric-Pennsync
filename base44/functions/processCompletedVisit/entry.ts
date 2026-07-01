@@ -222,7 +222,7 @@ Only suggest tasks that are clinically necessary. If no follow-up is needed, ret
       message: `Medicare-compliant narrative generated for ${patient.first_name} ${patient.last_name}. ${createdTasks.length} follow-up task${createdTasks.length !== 1 ? 's' : ''} created.`,
       type: 'info',
       priority: 'medium',
-      action_url: `/patientdetails?id=${visit.patient_id}`,
+      action_url: `/PatientDetails?id=${visit.patient_id}`,
       action_label: 'View Patient Chart',
       metadata: {
         patient_id: visit.patient_id,

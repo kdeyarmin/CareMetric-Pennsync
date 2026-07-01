@@ -31,11 +31,11 @@ Deno.serve(async (req) => {
     // Also send a clear email with login details
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: userEmail,
-      from_name: 'Penn Sync',
-      subject: 'Penn Sync — Your Account Access',
+      from_name: 'CareMetric AI',
+      subject: 'CareMetric AI — Your Account Access',
       body: `Hello ${targetUser.full_name || userEmail},
 
-An administrator has reset your account access for Penn Sync.
+An administrator has reset your account access for CareMetric AI.
 
 You should receive a separate email shortly with a link to set your password. Once set, use the details below to log in:
 
@@ -45,7 +45,7 @@ You should receive a separate email shortly with a link to set your password. On
 If you do not receive the password setup email within a few minutes, please check your spam folder or contact your administrator.
 
 Best regards,
-Penn Sync Team`
+CareMetric AI Team`
     });
 
     return Response.json({

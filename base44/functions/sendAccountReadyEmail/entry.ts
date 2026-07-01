@@ -16,11 +16,11 @@ Deno.serve(async (req) => {
 
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: email,
-      from_name: 'PennSync Administration',
-      subject: 'Your PennSync Account is Ready – You Can Now Log In',
+      from_name: 'CareMetric AI Administration',
+      subject: 'Your CareMetric AI Account is Ready – You Can Now Log In',
       body: `Dear ${full_name},
 
-Great news! Your PennSync account has been fully verified and activated. You can now log in at any time.
+Great news! Your CareMetric AI account has been fully verified and activated. You can now log in at any time.
 
 Your login email: ${email}
 
@@ -34,7 +34,7 @@ GETTING STARTED:
 If you did not create this account or have concerns, please contact your administrator immediately.
 
 Best regards,
-PennSync Administration Team
+CareMetric AI Administration Team
 
 ---
 This is an automated message. Please do not reply to this email.`
