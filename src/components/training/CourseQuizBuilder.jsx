@@ -139,8 +139,15 @@ export const itemToPayload = (item, courseId, orderIndex) => {
 
 // Returns an error message if the persisted questions are invalid, else null.
 const validateQuestions = (usable) => {
+  // Choice questions need at least two real (non-blank) options, else the learner
+  // UI renders an unusable question.
+  const tooFewOptions = usable.find(
+    (it) => CHOICE_TYPES.has(it.type) && it.options.filter((o) => (o.label || "").trim()).length < 2
+  );
+  if (tooFewOptions) return "Multiple-choice questions need at least two answer options with text.";
+
   const invalid = usable.find(
-    (it) => CHOICE_TYPES.has(it.type) && !it.options.some((o) => o.correct)
+    (it) => CHOICE_TYPES.has(it.type) && !it.options.some((o) => o.correct && (o.label || "").trim())
   );
   if (invalid) return "Each multiple-choice question needs at least one correct answer marked.";
 

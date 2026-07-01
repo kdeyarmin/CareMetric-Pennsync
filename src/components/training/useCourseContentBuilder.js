@@ -51,6 +51,14 @@ export function useCourseContentBuilder({
     enabled: !!courseId,
   });
 
+  // When the course changes, immediately drop the previous course's rows so the
+  // editor never shows or edits stale items in the window before the new query
+  // resolves. Only fires on an actual courseId change (not the post-save re-seed,
+  // which keeps courseId fixed).
+  useEffect(() => {
+    if (seededFor.current !== courseId) setItems([]);
+  }, [courseId]);
+
   // Seed once per course, after the fetch succeeds. `toItem` is intentionally not
   // a dependency — seeding is keyed on courseId, not on the callback identity.
   useEffect(() => {

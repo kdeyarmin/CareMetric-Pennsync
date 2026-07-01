@@ -63,13 +63,20 @@ export default function CourseForm({ course, onSuccess }) {
     return Array.from(set).sort();
   }, [users, formData.role_targets]);
 
+  // Coerce a numeric text field to a finite number, or null — never NaN, which
+  // would otherwise be sent to the backend for a non-numeric input.
+  const toFiniteOrNull = (value) => {
+    if (value === "" || value == null) return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+
   const buildPayload = () => {
     const payload = {
       ...formData,
       learning_objectives: linesToArray(objectivesText),
-      ceu_hours: formData.ceu_hours === "" ? null : Number(formData.ceu_hours),
-      certificate_valid_months:
-        formData.certificate_valid_months === "" ? null : Number(formData.certificate_valid_months),
+      ceu_hours: toFiniteOrNull(formData.ceu_hours),
+      certificate_valid_months: toFiniteOrNull(formData.certificate_valid_months),
     };
     if (!payload.requires_attestation) payload.attestation_text = "";
     return payload;
