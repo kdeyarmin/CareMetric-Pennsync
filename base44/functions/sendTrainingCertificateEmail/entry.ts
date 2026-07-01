@@ -82,14 +82,14 @@ const buildCertificatePdf = async ({ userName, moduleName, completionDate, score
   doc.line(177, 175, 247, 175);
 
   doc.setFontSize(9);
-  doc.text(safeText(agencyName, 'CareMetric AI Training Platform'), 85, 182, { align: 'center' });
+  doc.text(safeText(agencyName, 'PennSync Training Platform'), 85, 182, { align: 'center' });
   doc.text(`Certificate ID: ${certificateId}`, 212, 182, { align: 'center' });
 
   doc.setFillColor(79, 70, 229);
   doc.rect(0, 195, 297, 15, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(8);
-  doc.text('CareMetric AI - AI-Powered Healthcare Training & Documentation', 148.5, 203, { align: 'center' });
+  doc.text('PennSync - AI-Powered Healthcare Training & Documentation', 148.5, 203, { align: 'center' });
 
   return doc.output('arraybuffer');
 };
@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
       completionDate: certificate.completion_date || certificate.issued_at,
       score: certificate.score,
       certificateId: certificate.certificate_id,
-      agencyName: employee?.agency_name || 'CareMetric AI Training Platform'
+      agencyName: employee?.agency_name || 'PennSync Training Platform'
     });
 
     const pdfFile = new File(
@@ -171,7 +171,7 @@ Certificate ID: ${certificate.certificate_id}`;
       to: certificate.user_id,
       subject: `Your training certificate: ${certificate.course_title}`,
       body: employeeBody,
-      from_name: 'CareMetric AI Training'
+      from_name: 'PennSync Training'
     });
 
     await Promise.all(agencyAdmins.map((manager) =>
@@ -184,7 +184,7 @@ Download the PDF certificate here:
 ${certificateUrl}
 
 Certificate ID: ${certificate.certificate_id}`,
-        from_name: 'CareMetric AI Training'
+        from_name: 'PennSync Training'
       })
     ));
 

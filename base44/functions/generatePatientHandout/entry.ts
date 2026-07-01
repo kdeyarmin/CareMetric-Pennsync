@@ -332,7 +332,7 @@ Deno.serve(async (req) => {
       layout: styleOptions?.layout || 'standard',
       customHeader: styleOptions?.customHeader || '',
       customFooter: styleOptions?.customFooter || '',
-      agencyName: styleOptions?.agencyName || 'CareMetric AI',
+      agencyName: styleOptions?.agencyName || 'PennSync',
       agencyPhone: styleOptions?.agencyPhone || ''
     };
 
@@ -343,7 +343,7 @@ Deno.serve(async (req) => {
     diagnostics.totalSections = template.sections?.length || 0;
 
     doc = new jsPDF();
-    doc.setProperties({ title: template.title, subject: 'Patient Education Material', author: style.agencyName, keywords: 'patient education, healthcare, ' + condition, creator: 'CareMetric AI Documentation System', language: 'en-US' });
+    doc.setProperties({ title: template.title, subject: 'Patient Education Material', author: style.agencyName, keywords: 'patient education, healthcare, ' + condition, creator: 'PennSync Documentation System', language: 'en-US' });
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -766,7 +766,7 @@ Deno.serve(async (req) => {
       fb.setFillColor(33, 58, 118); fb.rect(0, 0, fb.internal.pageSize.getWidth(), 26, 'F');
       fb.setFillColor(200, 145, 30); fb.rect(0, 26, fb.internal.pageSize.getWidth(), 1.4, 'F');
       fb.setTextColor(255, 255, 255); fb.setFontSize(14); fb.setFont('helvetica', 'bold');
-      fb.text('CareMetric AI', fb.internal.pageSize.getWidth() / 2, 16, { align: 'center' });
+      fb.text('PennSync', fb.internal.pageSize.getWidth() / 2, 16, { align: 'center' });
       fb.setTextColor(30, 41, 59); fb.setFontSize(13); fb.setFont('helvetica', 'normal');
       fb.text('We could not generate the full guide right now.', fb.internal.pageSize.getWidth() / 2, 60, { align: 'center' });
       fb.text('Please contact your nurse for this information.', fb.internal.pageSize.getWidth() / 2, 70, { align: 'center' });

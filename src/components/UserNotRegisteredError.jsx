@@ -1,9 +1,7 @@
 import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { ShieldAlert, LogOut } from "lucide-react";
-
-const LOGO_URL =
-  "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png";
+import { BRAND_LOGO_URL } from "@/lib/brand";
 
 const UserNotRegisteredError = () => {
   // Route sign-out through AuthContext.logout (not base44.auth.logout directly)
@@ -17,9 +15,12 @@ const UserNotRegisteredError = () => {
       <div className="w-full max-w-md">
         {/* Brand lockup */}
         <div className="mb-6 flex items-center justify-center gap-2">
-          <img src={LOGO_URL} alt="PennSync" className="h-9 w-9 rounded-lg" />
-          <span className="text-xl font-bold tracking-tight text-navy-900">
-            Penn<span className="text-gold-600">Sync</span>
+          <img src={BRAND_LOGO_URL} alt="" className="h-9 w-9 rounded-lg" />
+          <span className="flex flex-col leading-none">
+            <span className="text-xl font-bold tracking-tight text-navy-900">
+              Penn<span className="text-gold-600">Sync</span>
+            </span>
+            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">by CareMetric</span>
           </span>
         </div>
 
