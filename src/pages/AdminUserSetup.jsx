@@ -42,8 +42,9 @@ export default function AdminUserSetup() {
     mutationFn: async ({ email, full_name, role }) => {
       return await base44.functions.invoke('createUserWithTempPassword', { email, full_name, role });
     },
-    onSuccess: () => {
-      toast.success(`Invitation sent to ${inviteEmail}. They will be auto-approved when they sign up.`);
+    onSuccess: (_data, variables) => {
+      const manualLabel = variables?.role === 'admin' ? 'Facility Administrator Manual' : 'User Manual';
+      toast.success(`Invitation sent to ${variables?.email || inviteEmail}. They'll receive a branded welcome email with app-install steps and their ${manualLabel}, and are auto-approved when they sign up.`);
       setInviteEmail("");
       setInviteFullName("");
       setInviteRole("user");
@@ -150,6 +151,16 @@ export default function AdminUserSetup() {
               <Mail className="w-4 h-4 mr-2" />
               {inviteUserMutation.isPending ? "Sending..." : "Send Invitation"}
             </Button>
+
+            <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3">
+              <Mail className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-slate-600 leading-relaxed">
+                New users receive a branded PennSync welcome email with sign-in steps,
+                instructions to install the app on their phone, and a download link to the
+                reference manual for their role — <strong>Administrators</strong> get the
+                Facility Administrator Manual, <strong>Users</strong> get the User Manual.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

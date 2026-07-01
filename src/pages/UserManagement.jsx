@@ -197,11 +197,12 @@ export default function UserManagement() {
 
   const createUserMutation = useMutation({
     mutationFn: (data) => base44.functions.invoke('createUserWithTempPassword', data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
       setShowUserSetupDialog(false);
       setSetupFormData({ email: '', full_name: '', role: 'user', staff_type: '' });
-      toast.success('User invitation sent successfully!');
+      const manualLabel = variables?.role === 'admin' ? 'Facility Administrator Manual' : 'User Manual';
+      toast.success(`Invitation sent${variables?.email ? ` to ${variables.email}` : ''}. They'll receive a branded welcome email with app-install steps and their ${manualLabel}.`);
     },
     onError: (error) => {
       toast.error('Failed to create user: ' + error.message);
