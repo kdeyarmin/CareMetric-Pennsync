@@ -69,7 +69,10 @@ export default function OfflineManager() {
             // meta peeled off the Visit fields, same as the CREATE_VISIT path.
             const { __audit, visit_id, ...visitPayload } = item.payload || {};
             if (!visit_id) {
-              console.warn('Skipping UPDATE_VISIT with no visit_id:', item.id);
+              // A malformed UPDATE_VISIT (no target id) can never be processed —
+              // drop it so it doesn't re-warn and clog the queue on every drain.
+              console.warn('Dropping UPDATE_VISIT with no visit_id:', item.id);
+              await removeFromSyncQueue(item.id);
               continue;
             }
             await base44.entities.Visit.update(visit_id, visitPayload);

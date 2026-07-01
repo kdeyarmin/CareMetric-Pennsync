@@ -45,6 +45,9 @@ export default defineConfig({
     //   - maxForks: cap concurrent test processes so heavy jsdom files can't
     //     oversubscribe a 2–4 core runner (the CPU contention that triggers it).
     //   - retry: re-run a failed test up to 2×, clearing a one-off timing flake.
+    // `pool` is set explicitly so the maxForks cap can't silently become a no-op
+    // if Vitest's default pool changes in a future release.
+    pool: 'forks',
     poolOptions: { forks: { maxForks: 2 } },
     retry: 2,
   },
