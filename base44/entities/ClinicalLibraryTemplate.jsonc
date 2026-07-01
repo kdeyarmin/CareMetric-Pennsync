@@ -34,6 +34,14 @@
       "default": "generic",
       "description": "Whether template applies to all patients or uses patient-specific data"
     },
+    "patient_id": {
+      "type": "string",
+      "description": "When set, this phrase is bound to ONE patient (e.g. that patient's specific wound-care orders) and only appears/expands while charting that patient"
+    },
+    "patient_name": {
+      "type": "string",
+      "description": "Display name of the bound patient (denormalized for the authoring UI badge)"
+    },
     "expanded_text": {
       "type": "string",
       "description": "Full expanded compliant text"

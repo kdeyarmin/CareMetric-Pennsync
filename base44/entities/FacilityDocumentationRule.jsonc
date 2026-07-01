@@ -1,0 +1,96 @@
+{
+  "name": "FacilityDocumentationRule",
+  "type": "object",
+  "properties": {
+    "rule_name": {
+      "type": "string",
+      "description": "Short name of the facility documentation requirement (e.g. 'Oxygen patients require SpO2')"
+    },
+    "requirement_label": {
+      "type": "string",
+      "description": "What the nurse must document, shown in the note checklist (e.g. 'Document SpO2 / pulse-oximetry reading this visit')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Longer explanation / rationale for the requirement"
+    },
+    "condition_type": {
+      "type": "string",
+      "enum": [
+        "always",
+        "diagnosis_keyword",
+        "medication_keyword",
+        "has_wound",
+        "care_type"
+      ],
+      "default": "always",
+      "description": "How to decide whether this rule applies to a given patient"
+    },
+    "condition_keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Keywords matched against the patient's diagnoses/conditions (diagnosis_keyword) or medications (medication_keyword). Case-insensitive substring match."
+    },
+    "condition_care_type": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice"
+      ],
+      "description": "For condition_type 'care_type': the patient care type this rule applies to"
+    },
+    "required_keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tokens the note must contain to satisfy the rule (any one present = satisfied). Empty = advisory only (nurse must self-confirm)."
+    },
+    "applies_to_visit_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Visit types this rule applies to. Empty = all visit types."
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "high",
+      "description": "How serious a miss is (drives the warning styling and the pre-review nudge)"
+    },
+    "source": {
+      "type": "string",
+      "description": "Provenance of the requirement, e.g. 'PA State Survey 2025' or 'Agency policy'"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this rule is currently enforced"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Email of the admin who created the rule"
+    }
+  },
+  "required": [
+    "rule_name",
+    "requirement_label",
+    "condition_type"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

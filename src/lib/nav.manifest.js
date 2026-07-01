@@ -28,7 +28,7 @@ import {
   BarChart3, Settings, Brain, Bell, BookOpen, WifiOff,
   Mail, BookUser, Video, HelpCircle, AlertTriangle,
   Phone, Send, Heart, Database, Lock, Award,
-  Clipboard, Filter, Globe,
+  Clipboard, ClipboardCheck, Filter, Globe,
   Monitor, PieChart, Radio, Search, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
 } from "lucide-react";
 
@@ -660,6 +660,16 @@ export const NAV_MANIFEST = [
     adminOnly: true,
     breadcrumbParent: null,
     keywords: ["compliance", "audit", "quality", "metrics"],
+  },
+  {
+    page: "FacilityDocumentationRules",
+    label: "Facility Documentation Rules",
+    navLabel: "Facility Doc Rules",
+    icon: ClipboardCheck,
+    category: "Administration",
+    adminOnly: true,
+    breadcrumbParent: "ComplianceCenter",
+    keywords: ["facility rules", "documentation requirements", "state survey", "oxygen spo2", "diabetic blood sugar", "wound measurements", "conditional documentation"],
   },
 
   // ─── System / Admin Config ───────────────────────────────────────────────────
