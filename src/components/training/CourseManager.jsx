@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Edit2, Trash2, BookOpen, Eye, BarChart3 } from "lucide-react";
+import { Plus, Edit2, Trash2, BookOpen, Eye, BarChart3, Copy, Loader2 } from "lucide-react";
 import CourseForm from "./CourseForm";
 import CourseLessonBuilder from "./CourseLessonBuilder";
 import CourseQuizBuilder from "./CourseQuizBuilder";
@@ -37,6 +37,18 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+
+// Server-managed fields that must not be copied when duplicating an entity —
+// the backend assigns fresh values (and published/approved state should reset).
+const SYSTEM_FIELDS = [
+  "id", "created_date", "updated_date", "created_by",
+  "published_by", "published_date", "approved_by", "approved_at",
+];
+const stripSystem = (obj) => {
+  const clone = { ...obj };
+  SYSTEM_FIELDS.forEach((key) => delete clone[key]);
+  return clone;
+};
 
 export default function CourseManager() {
   // builderCourse holds the course currently open in the builder. It starts null
@@ -91,6 +103,34 @@ export default function CourseManager() {
 
   const deleteMutation = useMutation({
     mutationFn: (courseId) => base44.entities.TrainingCourse.delete(courseId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['training-courses'] });
+    },
+  });
+
+  // Deep-copy a course together with its lessons and quiz questions. The copy
+  // lands as a draft so it never appears to learners until an admin publishes it.
+  const duplicateMutation = useMutation({
+    mutationFn: async (course) => {
+      const newCourse = await base44.entities.TrainingCourse.create({
+        ...stripSystem(course),
+        title: `${course.title} (Copy)`,
+        status: 'draft',
+      });
+      const newId = newCourse?.id;
+      if (!newId) throw new Error('Failed to create the duplicated course.');
+
+      const [modules, questions] = await Promise.all([
+        base44.entities.TrainingModule.filter({ course_id: course.id }, 'order_index', 200),
+        base44.entities.TrainingQuestion.filter({ course_id: course.id }, 'order_index', 500),
+      ]);
+
+      await Promise.all([
+        ...modules.map((m) => base44.entities.TrainingModule.create({ ...stripSystem(m), course_id: newId })),
+        ...questions.map((q) => base44.entities.TrainingQuestion.create({ ...stripSystem(q), course_id: newId })),
+      ]);
+      return newCourse;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['training-courses'] });
     },
@@ -305,6 +345,19 @@ export default function CourseManager() {
                       onClick={() => openBuilder(course)}
                     >
                       <Edit2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      title="Duplicate course"
+                      disabled={duplicateMutation.isPending}
+                      onClick={() => duplicateMutation.mutate(course)}
+                    >
+                      {duplicateMutation.isPending && duplicateMutation.variables?.id === course.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>

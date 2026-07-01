@@ -11,8 +11,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Plus, Trash2, ChevronUp, ChevronDown, Loader2, CheckCircle2, AlertCircle, HelpCircle,
+  Plus, Trash2, ChevronUp, ChevronDown, Loader2, CheckCircle2, AlertCircle, HelpCircle, GripVertical,
 } from "lucide-react";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
 // Stable local ids (Math.random / Date.now are unavailable in some envs).
 let localSeq = 0;
@@ -126,6 +127,19 @@ export default function CourseQuizBuilder({ courseId }) {
     setItems((prev) => {
       const next = [...prev];
       [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const onDragEnd = (result) => {
+    if (!result.destination) return;
+    const from = result.source.index;
+    const to = result.destination.index;
+    if (from === to) return;
+    setItems((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
       return next;
     });
   };
@@ -266,32 +280,46 @@ export default function CourseQuizBuilder({ courseId }) {
         </Card>
       )}
 
-      {items.map((item, index) => (
-        <Card key={item._localId} className="border-slate-200">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Question {index + 1}
-              </span>
-              <div className="flex items-center gap-1">
-                <Button type="button" variant="ghost" size="sm" disabled={index === 0} onClick={() => move(index, -1)}>
-                  <ChevronUp className="w-4 h-4" />
-                </Button>
-                <Button type="button" variant="ghost" size="sm" disabled={index === items.length - 1} onClick={() => move(index, 1)}>
-                  <ChevronDown className="w-4 h-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setItems((prev) => prev.filter((it) => it._localId !== item._localId))}
-                >
-                  <Trash2 className="w-4 h-4 text-red-600" />
-                </Button>
-              </div>
-            </div>
+      <DragDropContext onDragEnd={onDragEnd}>
+        <Droppable droppableId="questions">
+          {(dropProvided) => (
+            <div ref={dropProvided.innerRef} {...dropProvided.droppableProps} className="space-y-4">
+              {items.map((item, index) => (
+                <Draggable key={item._localId} draggableId={item._localId} index={index}>
+                  {(dragProvided, dragSnapshot) => (
+                    <div ref={dragProvided.innerRef} {...dragProvided.draggableProps}>
+                      <Card className={`border-slate-200 ${dragSnapshot.isDragging ? "shadow-lg ring-2 ring-blue-200" : ""}`}>
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-1.5">
+                              <span
+                                {...dragProvided.dragHandleProps}
+                                className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500"
+                                aria-label="Drag to reorder question"
+                              >
+                                <GripVertical className="w-4 h-4" />
+                              </span>
+                              Question {index + 1}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <Button type="button" variant="ghost" size="sm" disabled={index === 0} onClick={() => move(index, -1)}>
+                                <ChevronUp className="w-4 h-4" />
+                              </Button>
+                              <Button type="button" variant="ghost" size="sm" disabled={index === items.length - 1} onClick={() => move(index, 1)}>
+                                <ChevronDown className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setItems((prev) => prev.filter((it) => it._localId !== item._localId))}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-600" />
+                              </Button>
+                            </div>
+                          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-3">
               <div>
                 <Label className="text-sm font-semibold">Type</Label>
                 <Select value={item.type} onValueChange={(v) => changeType(item._localId, v)}>
@@ -411,10 +439,18 @@ export default function CourseQuizBuilder({ courseId }) {
                 rows={2}
                 className="mt-1"
               />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {dropProvided.placeholder}
             </div>
-          </CardContent>
-        </Card>
-      ))}
+          )}
+        </Droppable>
+      </DragDropContext>
 
       {error && (
         <Alert className="border-red-200 bg-red-50">
