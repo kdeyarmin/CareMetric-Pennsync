@@ -104,6 +104,17 @@ function escapeEmailHtml(value) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+// Allow only absolute http(s)/mailto links in email buttons, then HTML-escape the
+// whole attribute value. Rejects dangerous/unusable schemes (javascript:, data:,
+// protocol-relative //host, app-relative paths that don't resolve in an inbox) so
+// a user-controlled URL can never inject a scheme or break out of the attribute.
+// Returns '' for a rejected URL, and the caller then renders no button.
+function safeEmailHref(raw) {
+  const url = String(raw ?? '').trim();
+  const lower = url.toLowerCase();
+  const ok = lower.startsWith('https://') || lower.startsWith('http://') || lower.startsWith('mailto:');
+  return ok ? escapeEmailHtml(url) : '';
+}
 function emailParagraph(text) {
   return \`<p style="margin:0 0 14px;font-size:15px;line-height:1.62;color:\${BRAND_EMAIL.slate};">\${escapeEmailHtml(text)}</p>\`;
 }
@@ -135,8 +146,10 @@ function renderEmailSection(section) {
     parts.push(\`<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:4px 0 16px;"><tr><td style="padding:13px 16px;background:\${t.bg};border-left:4px solid \${t.border};border-radius:8px;font-size:14px;line-height:1.55;color:\${t.text};font-weight:600;">\${escapeEmailHtml(s.callout.text)}</td></tr></table>\`);
   }
   if (s.button && s.button.href) {
-    const href = String(s.button.href).replace(/"/g, '&quot;');
-    parts.push(\`<div style="margin:6px 0 18px;"><a href="\${href}" target="_blank" rel="noopener" style="display:inline-block;padding:13px 26px;border-radius:8px;background:\${BRAND_EMAIL.navy};color:#ffffff;font-weight:700;font-size:15px;line-height:1;text-decoration:none;">\${escapeEmailHtml(s.button.label || 'Open PennSync')}</a></div>\`);
+    const href = safeEmailHref(s.button.href);
+    if (href) {
+      parts.push(\`<div style="margin:6px 0 18px;"><a href="\${href}" target="_blank" rel="noopener" style="display:inline-block;padding:13px 26px;border-radius:8px;background:\${BRAND_EMAIL.navy};color:#ffffff;font-weight:700;font-size:15px;line-height:1;text-decoration:none;">\${escapeEmailHtml(s.button.label || 'Open PennSync')}</a></div>\`);
+    }
   }
   if (s.note) {
     parts.push(\`<p style="margin:0 0 14px;font-size:12.5px;line-height:1.55;color:\${BRAND_EMAIL.muted};">\${escapeEmailHtml(s.note)}</p>\`);
