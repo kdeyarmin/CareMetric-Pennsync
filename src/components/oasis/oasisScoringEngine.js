@@ -77,7 +77,10 @@ const RULES = [
       // oasisQuestions.jsx), so a CHF patient was wrongly flagged for diabetes
       // management. CHF now routes to Cardiovascular Monitoring instead.
       { questionId: "m1020", values: [1], severity: "high" },  // primary diagnosis = Diabetes Mellitus
-      { questionId: "m2020", values: [3], severity: "medium" },
+      // NOTE: do NOT trigger on M2020 (oral-med management). M2020=3 ("unable to
+      // take oral medications") is a medication-adherence signal — already covered
+      // by the Medication Management rule above — and has no bearing on a diabetes
+      // diagnosis, so keying diabetes care off it flagged non-diabetic patients.
     ],
     reason: () => "Diabetes diagnosis requires structured glucose monitoring, foot care, and diet education.",
     interventionIds: ["dm-1", "dm-2", "dm-3", "dm-4"],

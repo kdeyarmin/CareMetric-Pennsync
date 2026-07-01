@@ -116,17 +116,23 @@ Format as a professional medical summary. Be detailed, objective, and Medicare-c
         therapy_visits: therapyVisits.length,
         visit_highlights: visitHighlights
       },
+      // Do NOT fabricate affirmative clinical conclusions here. This record is
+      // reviewed and SIGNED as a legal Medicare discharge document, and the review
+      // UI must let the clinician set these — never assert "improved" / a specific
+      // disposition on a patient who may have been transferred to acute care or
+      // expired. Leave functional status / disposition / education understanding
+      // blank for the reviewing clinician to complete.
       functional_status: {
         at_admission: 'See admission assessment',
-        at_discharge: 'Patient improved overall functional status',
+        at_discharge: '',
         improvement_areas: []
       },
       patient_education_provided: educationMaterials.map(e => ({
         topic: e.material_title,
         materials_provided: 'Written materials',
-        patient_understanding: 'Patient verbalized understanding'
+        patient_understanding: ''
       })),
-      discharge_disposition: 'home_independent',
+      // discharge_disposition intentionally left unset — the reviewer selects it.
       discharge_instructions: 'Continue current medications. Follow up with physician as recommended. Contact home health if symptoms worsen.',
       follow_up_recommendations: [
         {
@@ -139,8 +145,7 @@ Format as a professional medical summary. Be detailed, objective, and Medicare-c
       generated_by: user.email,
       generated_date: new Date().toISOString(),
       ai_generation_metadata: {
-        visits_analyzed: visits.length,
-        generation_confidence: 95
+        visits_analyzed: visits.length
       }
     });
 

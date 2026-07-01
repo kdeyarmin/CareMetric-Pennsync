@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
         }
 
         const body = await req.json();
-        const { assignment_id, user_id, course_id, score } = body;
+        const { assignment_id, user_id, course_id } = body;
 
         if (!assignment_id || !user_id || !course_id) {
             return Response.json({
@@ -48,6 +48,30 @@ Deno.serve(async (req) => {
         if (assignment.assigned_to_user_id && assignment.assigned_to_user_id !== user_id) {
             return Response.json({ error: 'user_id does not match the assignment assignee.' }, { status: 403 });
         }
+
+        // Verify the assignment was genuinely PASSED before minting a certificate —
+        // this gate must not depend on caller-supplied trust (a user could otherwise
+        // POST { score: 100 } for their own failed/never-taken assignment, especially
+        // before INTERNAL_FN_SECRET is configured). The trusted internal caller
+        // (gradeTrainingAttempt) writes the passing TrainingAttempt BEFORE invoking
+        // this and updates the assignment's pass_fail_result AFTER, so accept a pass
+        // reflected in EITHER source.
+        const assignmentPassed =
+            assignment.pass_fail_result === 'passed' || assignment.status === 'completed';
+        let passedAttempt = null;
+        if (!assignmentPassed) {
+            const attempts = await base44.asServiceRole.entities.TrainingAttempt
+                .filter({ assignment_id }, '-created_date', 20).catch(() => []);
+            passedAttempt = (attempts || []).find((a) => a.passed === true) || null;
+        }
+        if (!assignmentPassed && !passedAttempt) {
+            return Response.json({ error: 'Certificate can only be issued for a passed assignment.' }, { status: 403 });
+        }
+        // Derive the recorded score from the verified source, never from the request
+        // body — a forged high score must not land on the certificate.
+        const verifiedScore = assignmentPassed
+            ? (assignment.score_percentage ?? passedAttempt?.score ?? null)
+            : (passedAttempt?.score ?? null);
 
         const userName = userData && userData.length > 0 ? userData[0].full_name : user_id;
 
@@ -105,7 +129,7 @@ Deno.serve(async (req) => {
             issued_at: new Date().toISOString(),
             completion_date: assignment.completion_date || new Date().toISOString(),
             expiration_date: expirationDate,
-            score: score !== undefined ? score : assignment.score_percentage,
+            score: verifiedScore,
             hours: course.ceu_hours,
             verification_hash: verificationHash,
             revoked: false

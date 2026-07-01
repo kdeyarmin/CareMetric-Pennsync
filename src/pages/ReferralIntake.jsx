@@ -52,7 +52,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import LoadingState from "@/components/ui/LoadingState";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
+
+// AI-extracted referral dates (patient_dob, referral_date) are free-text strings
+// that may hold "Not documented", "March 2024", etc. date-fns format() throws
+// RangeError on an Invalid Date, which — during a list .map() render — crashes the
+// entire Referral Intake page. Guard every format with a validity check.
+const safeDate = (value) => {
+  if (!value) return "N/A";
+  const d = new Date(value);
+  return isValid(d) ? format(d, "MM/dd/yyyy") : "N/A";
+};
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -373,8 +383,6 @@ export default function ReferralIntake() {
       if (!referral) return;
       const nurse = users.find(u => u.email === nurseEmail);
 
-      await base44.entities.Referral.update(referralId, { assigned_to: nurseEmail });
-
       // Send secure message to assigned nurse with PROCESSED PDF document (not original upload)
       const attachmentUrl = referral.processed_document_url || referral.document_url;
       const messageData = {
@@ -386,7 +394,7 @@ export default function ReferralIntake() {
 Patient: ${referral.patient_name || 'Unknown'}
 Referral Source: ${referral.referral_source || 'N/A'}
 Priority: ${referral.priority}
-Referral Date: ${referral.referral_date ? format(new Date(referral.referral_date), 'MM/dd/yyyy') : 'N/A'}
+Referral Date: ${safeDate(referral.referral_date)}
 
 ${referral.extracted_data ? 'Referral has been processed with AI analysis and formatted into an admission packet.' : 'Please process this referral to extract patient information.'}
 
@@ -405,8 +413,13 @@ Actions available:
         related_event_type: 'referral'
       };
 
+      // Notify BEFORE persisting the assignment so the two succeed or fail together
+      // from the operator's view: if the message can't be sent, the assignment is
+      // not recorded (the operator sees the error and retries) rather than the nurse
+      // being silently assigned a referral they were never told about.
       await base44.entities.Message.create(messageData);
-      
+      await base44.entities.Referral.update(referralId, { assigned_to: nurseEmail });
+
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       queryClient.invalidateQueries({ queryKey: ['messages'] });
       
@@ -638,8 +651,13 @@ Actions available:
         }
       }
 
-      if (!existingPatient && extractedData.demographics) {
-        // Create new patient from referral data
+      if (!existingPatient && !updates.requires_manual_review && extractedData.demographics) {
+        // Create new patient from referral data. Skip the auto-create when the AI
+        // flagged a probable match for manual review (medium / high-but-<90%
+        // confidence): those branches set requires_manual_review but not
+        // existingPatient, so without this guard a duplicate chart was created for
+        // a patient a reviewer is about to confirm. Patient creation/linking then
+        // happens in handleConfirmMatch (existing) or handleCreateNewFromReview.
         const nameParts = (extractedData.demographics.full_name || '').split(' ');
         const firstName = nameParts[0] || '';
         const middleName = nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '';
@@ -1143,7 +1161,7 @@ Actions available:
                         )}
                         {referral.patient_dob && (
                           <p className="text-xs text-slate-500">
-                            DOB: {referral.patient_dob ? format(new Date(referral.patient_dob), 'MM/dd/yyyy') : 'N/A'}
+                            DOB: {safeDate(referral.patient_dob)}
                           </p>
                         )}
                         {referral.extracted_data?.demographics?.referring_physician && (
@@ -1191,7 +1209,7 @@ Actions available:
                         )}
                       </TableCell>
                       <TableCell className="text-xs sm:text-sm hidden md:table-cell">
-                        {referral.referral_date ? format(new Date(referral.referral_date), 'MM/dd/yyyy') : 'N/A'}
+                        {safeDate(referral.referral_date)}
                       </TableCell>
                       <TableCell className="text-xs sm:text-sm hidden lg:table-cell">{referral.referral_source || 'N/A'}</TableCell>
                       <TableCell>

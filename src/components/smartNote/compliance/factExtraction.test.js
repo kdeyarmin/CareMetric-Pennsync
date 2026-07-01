@@ -277,3 +277,23 @@ test("extractMedications does not report symptoms/diagnoses as medications", () 
     []
   );
 });
+
+// ── Regression: value-guard must accept faithful unit-restated vitals ────────
+test("value-guard accepts a scribe restating bare labeled vitals with units", () => {
+  // The nurse documents vitals the common way — WITHOUT units. The constrained
+  // scribe faithfully re-voices them WITH units. Every restated value traces to
+  // the draft, so the guard must pass (previously it flagged 82bpm/98.6f/etc as
+  // hallucinated because the bare draft produced no HR/RR/temp/weight tokens).
+  const draft = "HR 82, RR 18, T 98.6, wt 180";
+  const output = "Vitals: HR 82 bpm, RR 18 breaths/min, temperature 98.6°F, weight 180 lbs.";
+  const res = valueGuard(output, draft);
+  assert.equal(res.ok, true, `unexpected flags: ${JSON.stringify(res.unverified)}`);
+});
+
+test("extractNumbersAndMeasurements surfaces bare labeled HR/RR/temp/weight as unit tokens", () => {
+  const tokens = extractNumbersAndMeasurements("HR 82, RR 18, T 98.6, wt 180");
+  assert.ok(tokens.includes("82bpm"));
+  assert.ok(tokens.includes("18breaths"));
+  assert.ok(tokens.includes("98.6f"));
+  assert.ok(tokens.includes("180lbs"));
+});

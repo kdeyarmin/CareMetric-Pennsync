@@ -24,6 +24,33 @@ import {
   normalizeName,
   digitsOnly,
 } from "@/components/patient/patientDuplicateUtils";
+import { mergePatientInto } from "@/components/patient/mergePatients";
+
+// Demographic fields on Patient that count toward "how complete is this chart".
+// Used to pick the survivor of a duplicate group by completeness (not by newest),
+// so a sparse stub created moments ago never wins over an older, fully-documented
+// record.
+const SURVIVOR_FIELDS = [
+  "first_name", "last_name", "date_of_birth", "medical_record_number",
+  "phone", "email", "address", "city", "state", "zip",
+  "insurance_provider", "primary_diagnosis", "assigned_nurses", "gender",
+];
+// System / merge-bookkeeping fields never copied when back-filling the survivor.
+const SYSTEM_FIELDS = new Set([
+  "id", "created_date", "updated_date", "created_by", "is_archived",
+  "merged_into_id", "merged_at", "merged_by", "status",
+]);
+
+const nonEmpty = (v) => v != null && v !== "" && !(Array.isArray(v) && v.length === 0);
+const completenessScore = (p) => SURVIVOR_FIELDS.reduce((n, k) => n + (nonEmpty(p?.[k]) ? 1 : 0), 0);
+// Prefer an active record, then the most complete one (mirrors the backend
+// deduplicatePatients survivor rule so UI and server merges agree).
+const pickSurvivor = (patients) =>
+  [...patients].sort((a, b) => {
+    const active = (a.status === "active" ? 1 : 0) - (b.status === "active" ? 1 : 0);
+    if (active !== 0) return -active;
+    return completenessScore(b) - completenessScore(a);
+  })[0];
 
 // Composite, per-criterion matching for the destructive advanced scan. Each
 // enabled rule pairs a criterion with a corroborating identifier so a match is
@@ -139,30 +166,10 @@ export default function DuplicateScanner() {
       } else {
         // Advanced client-side scanning using the shared matching engine.
         const duplicateGroups = [];
-        const updateBatch = [];
-        const BATCH_SIZE = 10;
-        const BATCH_DELAY = 1000; // 1 second between batches
-
-        // Helper to process batches with delay
-        const processBatch = async (batch) => {
-          if (batch.length === 0) return;
-
-          const promises = batch.map(update =>
-            base44.entities.Patient.update(update.id, update.data)
-              .catch(err => console.error(`Failed to update ${update.id}:`, err))
-          );
-
-          await Promise.all(promises);
-
-          // Delay between batches to avoid rate limiting
-          if (batch.length === BATCH_SIZE) {
-            await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
-          }
-        };
 
         // Phase 1: Identify duplicate groups (no API calls). allPatients is
-        // ordered by -created_date, so the first record in each group (lowest
-        // index) is the most recent and is the one we keep.
+        // ordered by -created_date; grouping is order-independent — the survivor is
+        // chosen by completeness in Phase 2, not by position in the list.
         const processedIds = new Set();
         const groups = [];
         for (let i = 0; i < allPatients.length; i++) {
@@ -186,60 +193,89 @@ export default function DuplicateScanner() {
           }
         }
 
-        for (const group of groups) {
-          const toKeep = group.primary;
-          const toRemove = group.duplicates.map(d => d.patient);
+        // Phase 2: choose the survivor by completeness and MERGE each duplicate
+        // into it through the shared safe path (mergePatientInto): it reassigns
+        // every patient_id-linked record (visits, OASIS, incidents, documents, …)
+        // to the survivor and soft-archives the duplicate (is_archived + status
+        // 'merged' + merged_into_id) so it leaves the roster and its clinical
+        // history follows the kept chart — instead of the old status-only close,
+        // which orphaned history on a still-visible 'discharged' record.
+        const plans = groups.map(group => {
+          const members = [group.primary, ...group.duplicates.map(d => d.patient)];
+          const survivor = pickSurvivor(members);
+          const scoreById = new Map(group.duplicates.map(d => [d.patient.id, d]));
+          const dupInfos = members
+            .filter(m => m.id !== survivor.id)
+            // Honor "only close inactive duplicates": leave an active duplicate be.
+            .filter(m => !advancedOptions.closeInactiveOnly || m.status !== 'active')
+            .map(m => ({
+              patient: m,
+              score: scoreById.get(m.id)?.score ?? 100,
+              reasons: scoreById.get(m.id)?.reasons ?? ['reselected as duplicate (survivor chosen by completeness)'],
+            }));
+          return { survivor, dupInfos };
+        });
 
-          // Prepare updates for batching
+        const totalToMerge = plans.reduce((n, p) => n + p.dupInfos.length, 0);
+        let mergedCount = 0;
+        toast.info(`Merging ${totalToMerge} duplicate record(s) into the most complete chart...`);
+
+        for (const { survivor, dupInfos } of plans) {
+          if (dupInfos.length === 0) continue;
+
+          // Optionally back-fill the survivor's EMPTY demographic slots from the
+          // duplicates (never overwrite a populated field, never touch system
+          // fields). mergePatientInto moves the clinical records regardless.
           if (advancedOptions.autoMergeData) {
-            const mergedData = { ...toKeep };
-            toRemove.forEach(p => {
-              Object.keys(p).forEach(key => {
-                if (!mergedData[key] && p[key] && key !== 'id' && key !== 'created_date') {
-                  mergedData[key] = p[key];
+            const backfill = {};
+            for (const { patient } of dupInfos) {
+              for (const key of Object.keys(patient)) {
+                if (SYSTEM_FIELDS.has(key)) continue;
+                if (!nonEmpty(survivor[key]) && !nonEmpty(backfill[key]) && nonEmpty(patient[key])) {
+                  backfill[key] = patient[key];
                 }
-              });
-            });
-
-            updateBatch.push({ id: toKeep.id, data: mergedData });
+              }
+            }
+            if (Object.keys(backfill).length > 0) {
+              try {
+                await base44.entities.Patient.update(survivor.id, backfill);
+              } catch (err) {
+                console.error(`Survivor back-fill failed for ${survivor.id}:`, err?.message);
+              }
+            }
           }
 
-          // Add duplicate closures to batch
-          toRemove.forEach(dup => {
-            if (!advancedOptions.closeInactiveOnly || dup.status !== 'active') {
-              updateBatch.push({ id: dup.id, data: { status: 'discharged' } });
+          for (const { patient } of dupInfos) {
+            try {
+              await mergePatientInto(survivor.id, patient.id, { mergedBy: null });
+            } catch (err) {
+              // Best-effort per duplicate: log and continue so one failure doesn't
+              // abort the whole scan (mergePatientInto is itself best-effort per record).
+              console.error(`Merge failed for duplicate ${patient.id}:`, err?.message);
             }
-          });
+            mergedCount += 1;
+            const progress = totalToMerge ? Math.min(100, Math.round((mergedCount / totalToMerge) * 100)) : 100;
+            toast.info(`Progress: ${progress}% (${mergedCount}/${totalToMerge})`);
+          }
 
           duplicateGroups.push({
             kept: {
-              name: `${toKeep.first_name} ${toKeep.last_name}`,
-              mrn: toKeep.medical_record_number,
-              id: toKeep.id
+              name: `${survivor.first_name} ${survivor.last_name}`,
+              mrn: survivor.medical_record_number,
+              id: survivor.id
             },
-            removed: group.duplicates.map(d => ({
+            removed: dupInfos.map(d => ({
               name: `${d.patient.first_name} ${d.patient.last_name}`,
               mrn: d.patient.medical_record_number,
               match_score: Math.min(100, d.score),
               match_reasons: d.reasons
             })),
-            average_match_score: Math.round(
-              group.duplicates.reduce((sum, d) => sum + Math.min(100, d.score), 0) / group.duplicates.length
-            )
+            average_match_score: dupInfos.length
+              ? Math.round(dupInfos.reduce((sum, d) => sum + Math.min(100, d.score), 0) / dupInfos.length)
+              : 0
           });
         }
 
-        // Phase 2: Process updates in batches
-        toast.info(`Processing ${updateBatch.length} updates in batches...`);
-        for (let i = 0; i < updateBatch.length; i += BATCH_SIZE) {
-          const batch = updateBatch.slice(i, i + BATCH_SIZE);
-          await processBatch(batch);
-          
-          // Update progress
-          const progress = Math.min(100, Math.round(((i + batch.length) / updateBatch.length) * 100));
-          toast.info(`Progress: ${progress}% (${i + batch.length}/${updateBatch.length})`);
-        }
-        
         setResults({
           duplicate_groups_found: duplicateGroups.length,
           patients_removed: duplicateGroups.reduce((sum, g) => sum + g.removed.length, 0),

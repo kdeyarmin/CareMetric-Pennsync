@@ -164,19 +164,27 @@ Deno.serve(async (req) => {
           estimated_cost: estimatedCostPerPage
         });
 
+        // Attach the delivery-status webhook so scheduled/batch faxes get real-time
+        // DLR callbacks into handleTelnyxStatusWebhook, exactly like sendFax /
+        // retryFailedFax. Without it, every scheduled fax stays 'sending' until a
+        // polling reconciler happens to catch it (or forever, if polling is off).
+        const functionsBaseUrl = (Deno.env.get('FUNCTIONS_BASE_URL') || '').trim().replace(/\/+$/, '');
+        const telnyxPayload = {
+          connection_id: faxConnectionId,
+          from: telnyxFromNumber,
+          to: to_number,
+          media_url: file_url,
+          quality: 'high'
+        };
+        if (functionsBaseUrl) telnyxPayload.webhook_url = `${functionsBaseUrl}/handleTelnyxStatusWebhook`;
+
         const telnyxResponse = await fetch('https://api.telnyx.com/v2/faxes', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            connection_id: faxConnectionId,
-            from: telnyxFromNumber,
-            to: to_number,
-            media_url: file_url,
-            quality: 'high'
-          })
+          body: JSON.stringify(telnyxPayload)
         });
 
         const telnyxData = await telnyxResponse.json().catch(() => ({}));

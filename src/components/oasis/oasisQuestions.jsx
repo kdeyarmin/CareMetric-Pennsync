@@ -184,21 +184,6 @@ export const OASIS_SECTIONS = [
         ],
       },
       {
-        id: "m1860",
-        label: "M1860 — Ambulation/Locomotion",
-        description: "Current ability to walk safely, once in a standing position.",
-        type: "radio",
-        alert: { threshold: 2, message: "Impaired ambulation detected — fall prevention interventions strongly recommended." },
-        options: [
-          { value: 0, label: "0 — Able to ambulate on even/uneven surfaces" },
-          { value: 1, label: "1 — With minor difficulty on uneven surfaces" },
-          { value: 2, label: "2 — Requires use of a one-handed device" },
-          { value: 3, label: "3 — Requires use of a two-handed device" },
-          { value: 4, label: "4 — Requires use of a wheelchair" },
-          { value: 5, label: "5 — Unable to ambulate" },
-        ],
-      },
-      {
         id: "m1810",
         label: "M1810 — Upper Body Dressing",
         description: "Current ability to dress upper body safely (excluding prostheses).",
@@ -369,6 +354,7 @@ export const OASIS_SECTIONS = [
         label: "M1860 — Ambulation/Locomotion",
         description: "Current ability to walk safely, once in a standing position, or use of wheelchair.",
         type: "radio",
+        alert: { threshold: 2, message: "Impaired ambulation detected — fall prevention interventions strongly recommended." },
         options: [
           { value: 0, label: "0 — Able to independently walk on all surfaces" },
           { value: 1, label: "1 — With minor difficulty on uneven surfaces" },

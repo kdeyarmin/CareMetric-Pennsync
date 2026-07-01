@@ -133,3 +133,21 @@ test("a break in the most recent run stops the trend", () => {
   const trends = detectSustainedTrends(["weight 180 lbs", "weight 184 lbs", "BP 130/80"]);
   assert.equal(trends.find((t) => t.key === "weight"), undefined);
 });
+
+// ── Regression: pain extraction must not capture calendar dates ──────────────
+test("extractPain ignores month/day dates and requires pain context", () => {
+  // A recert/scheduling date written as month/day (day = 10) must NOT read as pain.
+  assert.equal(extractPain("Recert due 3/10. Patient stable."), null);
+  assert.equal(extractPain("Follow-up 9/10 at clinic."), null);
+  // Real documented pain still parses, in either order.
+  assert.equal(extractPain("pain 8/10 at incision"), 8);
+  assert.equal(extractPain("pain rating of 7/10"), 7);
+  assert.equal(extractPain("reports 6/10 pain"), 6);
+});
+
+test("a colon-labeled kg weight is converted, so a unit switch isn't a phantom trend", () => {
+  // "Weight: 80 kg" (~176 lbs) vs a prior "Weight: 176 lbs" is effectively no
+  // change — it must not surface as a ~96 lb weight loss.
+  const out = compareVisits("Weight: 80 kg.", "Weight: 176 lbs.");
+  assert.equal(out.find((c) => c.key === "weight"), undefined);
+});

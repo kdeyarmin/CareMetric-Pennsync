@@ -2,6 +2,10 @@
   "name": "Task",
   "type": "object",
   "properties": {
+    "client_request_id": {
+      "type": "string",
+      "description": "Offline idempotency key (queue id) used to dedupe tasks created from the offline sync queue"
+    },
     "patient_id": {
       "type": "string",
       "description": "Reference to Patient entity (optional for agency-wide tasks)"

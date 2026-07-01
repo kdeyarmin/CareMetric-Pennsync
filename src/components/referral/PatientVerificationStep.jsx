@@ -16,7 +16,17 @@ import {
 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
+
+// A suggested patient's stored date_of_birth may be a malformed string (patients
+// auto-created from referrals persist the raw AI-extracted DOB). date-fns format()
+// throws RangeError on an Invalid Date, which would crash this verification card
+// during render. Fall back to the raw value / "N/A" instead of throwing.
+const safeDOB = (value) => {
+  if (!value) return "N/A";
+  const d = new Date(value);
+  return isValid(d) ? format(d, "MM/dd/yyyy") : String(value);
+};
 
 export default function PatientVerificationStep({ 
   referral, 
@@ -201,7 +211,7 @@ export default function PatientVerificationStep({
                       <div className="grid md:grid-cols-3 gap-3 text-sm">
                         <div className="flex items-center gap-1 text-slate-600">
                           <Calendar className="w-4 h-4" />
-                          <span>DOB: {patient.date_of_birth ? format(new Date(patient.date_of_birth), 'MM/dd/yyyy') : 'N/A'}</span>
+                          <span>DOB: {safeDOB(patient.date_of_birth)}</span>
                         </div>
                         <div className="flex items-center gap-1 text-slate-600">
                           <Phone className="w-4 h-4" />

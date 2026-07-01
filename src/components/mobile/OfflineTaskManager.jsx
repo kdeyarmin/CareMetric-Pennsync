@@ -65,14 +65,25 @@ export default function OfflineTaskManager({ patientId, patientName }) {
 
     setSaving(true);
     try {
-      const hasVitals = !!formData.vital_signs.blood_pressure_systolic;
+      // The Visit schema types every vital_signs.* as a NUMBER, and the offline
+      // drain writes this payload verbatim via Visit.create. The form state holds
+      // strings ("120") and empty strings for blanks, so coerce to numbers and
+      // drop blanks — otherwise the create is rejected (stalling the whole queue)
+      // or string/empty vitals corrupt downstream numeric trend/bounds logic.
+      const coercedVitals = {};
+      for (const [key, val] of Object.entries(formData.vital_signs || {})) {
+        if (val === '' || val == null) continue;
+        const n = parseFloat(val);
+        if (Number.isFinite(n)) coercedVitals[key] = n;
+      }
+      const hasVitals = Object.keys(coercedVitals).length > 0;
       const visitData = {
         patient_id: patientId,
         visit_date: formData.visit_date,
         visit_type: formData.visit_type,
         status: 'completed',
         nurse_notes: formData.notes.trim(),
-        vital_signs: hasVitals ? formData.vital_signs : null,
+        vital_signs: hasVitals ? coercedVitals : null,
       };
 
       if (isOnline) {
@@ -140,8 +151,13 @@ export default function OfflineTaskManager({ patientId, patientName }) {
         await base44.entities.Incident.create(incidentData);
       } else {
         // Queue to the canonical offline queue; OfflineManager creates the
-        // Incident on reconnect (CREATE_INCIDENT handler).
-        await addToSyncQueue('CREATE_INCIDENT', { ...incidentData });
+        // Incident on reconnect (CREATE_INCIDENT handler). A stable
+        // client_request_id keeps a retried/multi-tab drain idempotent so a
+        // reported safety event isn't duplicated in the log.
+        const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        await addToSyncQueue('CREATE_INCIDENT', { client_request_id: clientRequestId, ...incidentData });
       }
 
       setSaved(true);

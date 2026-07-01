@@ -67,11 +67,21 @@ Deno.serve(async (req) => {
           priority: scheduledFax.priority
         });
 
+        // sendBatchFax always resolves 200 (even when every recipient failed), so
+        // inspect the result instead of assuming success — otherwise a fax whose
+        // recipients ALL failed is falsely recorded as 'sent' (a silent PHI
+        // delivery failure with a false delivery confirmation). Mirrors the
+        // processScheduledFaxesByPriority sibling.
+        const data = response?.data || {};
+        const recipientCount = scheduledFax.to_numbers?.length || 0;
+        const successful = data.successful || 0;
+        const failed = data.failed ?? (recipientCount - successful);
+
         await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-          status: 'sent'
+          status: failed > 0 ? 'failed' : 'sent'
         });
 
-        console.log(`Processed scheduled fax ${scheduledFax.id}`);
+        console.log(`Processed scheduled fax ${scheduledFax.id}: ${successful} sent, ${failed} failed`);
       } catch (error) {
         console.error(`Failed to process scheduled fax ${scheduledFax.id}:`, error);
         await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {

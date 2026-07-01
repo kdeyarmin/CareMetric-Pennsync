@@ -39,6 +39,8 @@ describe('migrateLegacyOfflineQueues', () => {
     expect(migrated).toBe(2);
     expect(actions().sort()).toEqual(['CREATE_TASK', 'CREATE_VISIT']);
     expect(one('CREATE_VISIT')).toMatchObject({ client_request_id: 'legacy-sq:offline_1', patient_id: 'p1', status: 'completed' });
+    // The migrated task carries a stable idempotency key so a crash-retry can't duplicate it.
+    expect(one('CREATE_TASK')).toMatchObject({ client_request_id: 'legacy-task:offline_2', patient_id: 'p1' });
     expect(storage.has(OFFLINE_KEYS.SYNC_QUEUE)).toBe(false);
   });
 
@@ -107,6 +109,8 @@ describe('migrateLegacyOfflineQueues', () => {
     expect(migrated).toBe(3);
     expect(actions().sort()).toEqual(['CREATE_INCIDENT', 'CREATE_VISIT', 'UPDATE_VISIT']);
     expect(one('CREATE_INCIDENT')).not.toHaveProperty('created_offline');
+    // The migrated incident carries a stable idempotency key (crash-retry safe).
+    expect(one('CREATE_INCIDENT')).toMatchObject({ client_request_id: 'legacy-incident:c2', patient_id: 'p1', incident_type: 'fall' });
     expect(one('UPDATE_VISIT')).toMatchObject({ visit_id: 'real-u', nurse_notes: 'e' });
   });
 

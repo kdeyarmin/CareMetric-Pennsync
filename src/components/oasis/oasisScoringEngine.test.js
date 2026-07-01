@@ -26,6 +26,14 @@ test("m1020 primary diagnosis routes to the correct domain (1=Diabetes, 2=CHF)",
   assert.ok(!chf.some((r) => r.domain === "Diabetes Management"));
 });
 
+test("inability to take oral meds (m2020=3) does NOT flag diabetes care", () => {
+  // M2020=3 is medication-adherence, not a diabetes signal. A non-diabetic patient
+  // unable to self-administer oral meds must route to Medication Management only.
+  const results = evaluateOASIS({ m2020: 3 });
+  assert.ok(!results.some((r) => r.domain === "Diabetes Management"));
+  assert.ok(results.some((r) => r.domain === "Medication Management"));
+});
+
 test("severe dyspnea (m1400=4) yields exactly one high-severity domain (Cardiovascular)", () => {
   // Regression: m1400 in [3,4] must not double-trigger high suggestions from
   // both Cardiovascular and Respiratory. Severe dyspnea routes to Cardiovascular.

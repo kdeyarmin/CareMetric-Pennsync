@@ -242,6 +242,7 @@ export default function AICourseGenerator({ onGenerated }) {
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
+                aria-label="Generate presenter videos (HeyGen)"
                 checked={form.generate_videos}
                 onChange={(e) => set({ generate_videos: e.target.checked })}
                 className="w-5 h-5 mt-0.5"

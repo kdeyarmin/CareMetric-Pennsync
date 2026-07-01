@@ -13,6 +13,7 @@ import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { gradeTrainingAttempt } from "@/functions/gradeTrainingAttempt";
 import { startTrainingAssignment } from "@/functions/startTrainingAssignment";
+import { getCoursePlayerQuestions } from "@/functions/getCoursePlayerQuestions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -106,7 +107,17 @@ export default function TrainingCoursePlayer() {
   });
   const { data: questions = [] } = useQuery({
     queryKey: ["training-questions", previewMode ? courseId : assignment?.course_id],
-    queryFn: () => base44.entities.TrainingQuestion.filter({ course_id: previewMode ? courseId : assignment?.course_id, active: true }, "order_index", 200),
+    queryFn: async () => {
+      const cid = previewMode ? courseId : assignment?.course_id;
+      // Admin course preview may fetch full question data (incl. answers) directly.
+      if (previewMode) {
+        return base44.entities.TrainingQuestion.filter({ course_id: cid, active: true }, "order_index", 200);
+      }
+      // Learner test-taking path: get answer-free questions from the server so the
+      // correct-answer key is never shipped to the browser (grading stays server-side).
+      const res = await getCoursePlayerQuestions({ course_id: cid });
+      return res?.data?.questions || [];
+    },
     enabled: !!(previewMode ? courseId : assignment?.course_id),
     initialData: [],
   });
