@@ -179,7 +179,7 @@ export default function MyTimesheetForm({
   const hasPointConfig =
     !!visitPointConfig && VISIT_TYPES.some((vt) => toNumber(visitPointConfig?.[pointFieldFor(vt.key)]) > 0);
 
-  // Approved PTO overlapping the chosen period — auto-added to the Vacation
+  // Approved PTO overlapping the chosen period — auto-added to the PTO
   // column on payroll. This is a live preview; the server recomputes it
   // authoritatively on submit so it can't be tampered with.
   const autoPtoHours = useMemo(
@@ -462,7 +462,7 @@ export default function MyTimesheetForm({
                 onCell={updateDaily}
               />
               <p className="text-xs text-slate-400 mt-1">
-                Fill the days you worked — totals roll up below. Vacation, mileage
+                Fill the days you worked — totals roll up below. PTO, mileage
                 {isHomeHealth ? ", emergency points," : ""} and other reimbursement are entered once below.
               </p>
             </div>
@@ -479,7 +479,7 @@ export default function MyTimesheetForm({
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-semibold text-slate-700">Vacation</p>
+              <p className="text-sm font-semibold text-slate-700">PTO</p>
               {autoPtoHours > 0 && (
                 <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5">
                   +{autoPtoHours} hrs from approved PTO (auto-added)
@@ -487,12 +487,12 @@ export default function MyTimesheetForm({
               )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {numberField({ key: "vacation_hours", label: "Extra Vacation Hours" })}
+              {numberField({ key: "vacation_hours", label: "Extra PTO Hours" })}
             </div>
             <p className="text-xs text-slate-400 mt-1">
               {autoPtoHours > 0
-                ? `Your approved time off in this period (${autoPtoHours} hrs) is added to Vacation automatically — only enter additional vacation here.`
-                : "Approved time-off requests overlapping this pay period are added to Vacation automatically."}
+                ? `Your approved time off in this period (${autoPtoHours} hrs) is added to PTO automatically — only enter additional PTO here.`
+                : "Approved time-off requests overlapping this pay period are added to PTO automatically."}
             </p>
           </div>
 

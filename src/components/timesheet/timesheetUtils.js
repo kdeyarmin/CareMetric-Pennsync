@@ -381,7 +381,7 @@ export function submissionCoverage(employees = [], timesheets = [], { serviceTyp
 export const REPORT_METRICS = [
   { key: "regular_hours", label: "Regular" },
   { key: "overtime_hours", label: "OT" },
-  { key: "vacation", label: "Vacation", value: effectiveVacationHours },
+  { key: "vacation", label: "PTO", value: effectiveVacationHours },
   { key: "holiday_hours", label: "Holiday" },
   { key: "on_call_hours", label: "On Call" },
   { key: "regular_points", label: "Reg Pts" },

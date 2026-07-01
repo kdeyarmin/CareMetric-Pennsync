@@ -149,7 +149,7 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
                         {toNumber(t.overtime_hours) > 0 && <span>OT: <span className="font-medium">{toNumber(t.overtime_hours)}</span></span>}
                         {toNumber(t.holiday_hours) > 0 && <span>Holiday: <span className="font-medium">{toNumber(t.holiday_hours)}</span></span>}
                         {toNumber(t.on_call_hours) > 0 && <span>On-call: <span className="font-medium">{toNumber(t.on_call_hours)}</span></span>}
-                        {vacation > 0 && <span>Vacation: <span className="font-medium">{vacation}</span></span>}
+                        {vacation > 0 && <span>PTO: <span className="font-medium">{vacation}</span></span>}
                         {isHH && toNumber(t.regular_points) > 0 && <span>Points: <span className="font-medium">{toNumber(t.regular_points)}</span></span>}
                         {!isHH && toNumber(t.on_call_visits) > 0 && <span>Visits: <span className="font-medium">{toNumber(t.on_call_visits)}</span></span>}
                         <span className="text-slate-400">Total {hours} hrs</span>
@@ -164,7 +164,7 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
                       )}
                       {toNumber(t.auto_pto_hours) > 0 && (
                         <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-2 inline-block">
-                          {toNumber(t.auto_pto_hours)} vacation hrs auto-carried from approved PTO
+                          {toNumber(t.auto_pto_hours)} PTO hrs auto-carried from approved time off
                         </p>
                       )}
                       {t.notes && <p className="text-sm text-slate-600 mt-2 italic">“{t.notes}”</p>}

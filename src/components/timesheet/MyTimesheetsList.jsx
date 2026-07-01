@@ -54,7 +54,7 @@ export default function MyTimesheetsList({ timesheets = [], onEdit }) {
                       {paysByPoints(t.service_type) && toNumber(t.regular_points) > 0
                         ? ` · ${toNumber(t.regular_points)} pts`
                         : ""}
-                      {vacation > 0 ? ` · ${vacation} vac hrs` : ""}
+                      {vacation > 0 ? ` · ${vacation} PTO hrs` : ""}
                     </p>
                     {toNumber(t.auto_pto_hours) > 0 && (
                       <p className="text-xs text-emerald-700 mt-0.5">

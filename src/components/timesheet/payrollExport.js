@@ -3,11 +3,11 @@
  *
  * The output mirrors the two accountant spreadsheets this feature replaces:
  *   • Home Health — "Penn Home Health": Last/First, Regular Points, Emerg Visit
- *     Pts, then hours (Regular, OT, Vacation, Holiday, On Call), Miles, Reimb.
+ *     Pts, then hours (Regular, OT, PTO, Holiday, On Call), Miles, Reimb.
  *     Home health nurses are paid by the point AND by the hour, so points and
  *     hours both appear.
  *   • Hospice — "Payroll Report": a single Employee column then hours (Regular,
- *     Holiday, OT, Vacation, On Call), Visits, Mileage, Reimb. Hospice nurses
+ *     Holiday, OT, PTO, On Call), Visits, Mileage, Reimb. Hospice nurses
  *     are paid by the hour only — there is no points column.
  *
  * Kept free of React/SDK imports and unit-tested with `node --test`
@@ -37,7 +37,7 @@ export const PAYROLL_COLUMNS = {
     { key: "emergency_visit_points", label: "Emerg Visit Pts", numeric: true },
     { key: "regular_hours", label: "Regular", numeric: true },
     { key: "overtime_hours", label: "OT", numeric: true },
-    { key: "vacation", label: "Vacation", numeric: true, value: effectiveVacationHours },
+    { key: "vacation", label: "PTO", numeric: true, value: effectiveVacationHours },
     { key: "holiday_hours", label: "Holiday", numeric: true },
     { key: "on_call_hours", label: "On Call", numeric: true },
     { key: "miles", label: "Miles", numeric: true },
@@ -48,7 +48,7 @@ export const PAYROLL_COLUMNS = {
     { key: "regular_hours", label: "Regular", numeric: true },
     { key: "holiday_hours", label: "Holiday", numeric: true },
     { key: "overtime_hours", label: "OT", numeric: true },
-    { key: "vacation", label: "Vacation", numeric: true, value: effectiveVacationHours },
+    { key: "vacation", label: "PTO", numeric: true, value: effectiveVacationHours },
     { key: "on_call_hours", label: "On Call", numeric: true },
     { key: "on_call_visits", label: "Visits", numeric: true },
     { key: "miles", label: "Mileage", numeric: true },

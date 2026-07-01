@@ -30,7 +30,7 @@ test("buildPayrollTable home_health: points + hours columns, filtered, sorted, s
   const labels = table.columns.map((c) => c.label);
   assert.deepEqual(labels, [
     "Last Name", "First Name", "Regular Points", "Emerg Visit Pts",
-    "Regular", "OT", "Vacation", "Holiday", "On Call", "Miles", "Reimb",
+    "Regular", "OT", "PTO", "Holiday", "On Call", "Miles", "Reimb",
   ]);
   // Only the two home-health nurses, sorted by surname (Contrael before Fuller).
   assert.equal(table.rows.length, 2);
@@ -48,7 +48,7 @@ test("buildPayrollTable: vacation column carries manual + approved PTO", () => {
     [{ employee_name: "Sue Frye", service_type: "home_health", vacation_hours: 4, auto_pto_hours: 24 }],
     "home_health"
   );
-  const vac = table.columns.findIndex((c) => c.label === "Vacation");
+  const vac = table.columns.findIndex((c) => c.label === "PTO");
   assert.equal(table.rows[0].cells[vac].display, "28");
   assert.equal(table.totals[vac], 28);
 });
@@ -62,7 +62,7 @@ test("buildPayrollTable hospice: no points, has Visits, hour-only", () => {
   );
   assert.equal(table.title, "Payroll Report");
   const labels = table.columns.map((c) => c.label);
-  assert.deepEqual(labels, ["Employee", "Regular", "Holiday", "OT", "Vacation", "On Call", "Visits", "Mileage", "Reimb."]);
+  assert.deepEqual(labels, ["Employee", "Regular", "Holiday", "OT", "PTO", "On Call", "Visits", "Mileage", "Reimb."]);
   assert.ok(!labels.includes("Regular Points"), "hospice has no points column");
   assert.equal(table.rows[0].cells[0].display, "Celesta Barnhart");
   assert.equal(table.totals[labels.indexOf("Visits")], 1);

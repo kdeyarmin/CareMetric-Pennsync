@@ -63,7 +63,7 @@
     "vacation_hours": {
       "type": "number",
       "default": 0,
-      "description": "Vacation hours entered manually (approved PTO is carried separately in auto_pto_hours and added to this on the payroll)"
+      "description": "PTO hours entered manually (approved PTO is carried separately in auto_pto_hours and added to this on the payroll's PTO column)"
     },
     "holiday_hours": {
       "type": "number",
