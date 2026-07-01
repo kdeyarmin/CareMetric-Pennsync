@@ -6,14 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Smartphone, Search, Check, Info } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { UsersRound, Search, Check, Info } from "lucide-react";
 import { toast } from "sonner";
-import { serviceTypeLabel, toNumber } from "./timesheetUtils";
+import { SERVICE_TYPES, toNumber } from "./timesheetUtils";
 
 /**
- * Admin panel to set a standing phone reimbursement per employee. Once set, it's
- * applied to that employee's timesheets automatically every pay period, so they
- * never re-enter it. This is an expense reimbursement — no pay rates here.
+ * Admin panel to configure each employee for payroll: their company/service line
+ * (home health or hospice — which sets their timesheet view and payroll report),
+ * whether they're paid by visit points (home-health field staff only; office and
+ * all hospice staff are hourly), and a standing per-pay phone reimbursement.
+ * No pay rates here — points and reimbursements only.
  */
 export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
   const queryClient = useQueryClient();
@@ -37,8 +46,14 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
     mutationFn: async (employee) => {
       const edit = edits[employee.email] || {};
       const profile = profileByEmail.get(employee.email);
+      const service_type =
+        edit.service_type ?? profile?.service_type ?? employee.service_type ?? "home_health";
+      const earns_points =
+        service_type === "home_health" && (edit.earns_points ?? profile?.earns_points === true) === true;
       const payload = {
         employee_email: employee.email,
+        service_type,
+        earns_points,
         phone_reimbursement: toNumber(edit.phone_reimbursement ?? profile?.phone_reimbursement ?? 0),
         active: edit.active ?? (profile ? profile.active !== false : true),
       };
@@ -69,8 +84,8 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Smartphone className="w-5 h-5 text-slate-600" />
-            Phone Reimbursement Setup
+            <UsersRound className="w-5 h-5 text-slate-600" />
+            Employee Payroll Setup
           </CardTitle>
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -87,8 +102,9 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
         <Alert className="bg-blue-50 border-blue-200 mb-4">
           <Info className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-blue-800 text-sm">
-            Set an employee's per-pay phone reimbursement once — it's added to their timesheet
-            automatically each pay period. This is an expense reimbursement; the system tracks no pay rates.
+            Set each employee's company (home health or hospice), whether they're paid by visit points
+            (home-health field staff only — office and hospice staff are hourly), and a standing per-pay phone
+            reimbursement. These drive the employee's timesheet view and payroll report. No pay rates here.
           </AlertDescription>
         </Alert>
 
@@ -100,7 +116,8 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
               <thead>
                 <tr className="text-left text-slate-500 border-b border-slate-200">
                   <th className="py-2 pr-3 font-medium">Employee</th>
-                  <th className="py-2 px-3 font-medium">Service line</th>
+                  <th className="py-2 px-3 font-medium">Company / service line</th>
+                  <th className="py-2 px-3 font-medium">Paid by points</th>
                   <th className="py-2 px-3 font-medium">Phone reimb. / pay ($)</th>
                   <th className="py-2 px-3 font-medium">Applied</th>
                   <th className="py-2 pl-3 font-medium"></th>
@@ -109,6 +126,14 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
               <tbody>
                 {rows.map((e) => {
                   const profile = profileByEmail.get(e.email);
+                  const serviceType = valueFor(
+                    e.email,
+                    "service_type",
+                    profile?.service_type || e.service_type || "home_health"
+                  );
+                  const earnsPoints =
+                    serviceType === "home_health" &&
+                    valueFor(e.email, "earns_points", profile?.earns_points === true) === true;
                   const amount = valueFor(e.email, "phone_reimbursement", profile?.phone_reimbursement ?? "");
                   const active = valueFor(e.email, "active", profile ? profile.active !== false : true);
                   const dirty = !!edits[e.email];
@@ -118,7 +143,33 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
                         <div className="font-medium text-slate-900">{e.name || e.email}</div>
                         <div className="text-xs text-slate-400">{e.email}</div>
                       </td>
-                      <td className="py-2 px-3 text-slate-600">{serviceTypeLabel(e.service_type)}</td>
+                      <td className="py-2 px-3">
+                        <Select
+                          value={serviceType}
+                          onValueChange={(v) =>
+                            setEdit(e.email, { service_type: v, ...(v === "hospice" ? { earns_points: false } : {}) })
+                          }
+                        >
+                          <SelectTrigger className="h-9 w-[150px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SERVICE_TYPES.map((s) => (
+                              <SelectItem key={s.value} value={s.value}>
+                                {s.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="py-2 px-3">
+                        <Checkbox
+                          checked={earnsPoints}
+                          disabled={serviceType !== "home_health"}
+                          onCheckedChange={(checked) => setEdit(e.email, { earns_points: checked === true })}
+                          aria-label="Paid by points"
+                        />
+                      </td>
                       <td className="py-2 px-3">
                         <Input
                           type="number"

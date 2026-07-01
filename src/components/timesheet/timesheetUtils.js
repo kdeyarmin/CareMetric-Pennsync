@@ -92,6 +92,26 @@ export function paysByPoints(serviceType) {
   return serviceType === "home_health";
 }
 
+/**
+ * The company/service line an employee is paid under, resolved from their
+ * admin-set payroll profile (preferred) and falling back to their user record.
+ * Defaults to home_health.
+ */
+export function resolvedServiceType(profile, user) {
+  const st = profile?.service_type || user?.service_type;
+  return st === "hospice" ? "hospice" : "home_health";
+}
+
+/**
+ * Whether an employee is paid by visit points: only home-health field/clinical
+ * staff flagged `earns_points`. Office staff (home health or hospice) and all
+ * hospice staff are hourly — this returns false for them.
+ */
+export function employeeEarnsPoints(profile, serviceType) {
+  const st = serviceType || profile?.service_type;
+  return st === "home_health" && profile?.earns_points === true;
+}
+
 /** Coerce any value to a finite number, defaulting to 0. */
 export function toNumber(value) {
   const n = Number(value);

@@ -17,9 +17,8 @@ import {
 import { ClipboardList, Send, Info, Save, X, CalendarClock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
-  SERVICE_TYPES,
   VISIT_TYPES,
-  paysByPoints,
+  serviceTypeLabel,
   computePtoHoursForPeriod,
   computeVisitPoints,
   normalizeVisitCounts,
@@ -54,10 +53,10 @@ const REIMB_FIELDS = [
   { key: "reimbursement", label: "Other Reimbursement ($)" },
 ];
 
-function blankForm(currentUser) {
+function blankForm(serviceType) {
   const period = currentPayPeriod();
   const base = {
-    service_type: currentUser?.service_type === "hospice" ? "hospice" : "home_health",
+    service_type: serviceType === "hospice" ? "hospice" : "home_health",
     pay_period_start: period.start,
     pay_period_end: period.end,
     manager_email: "",
@@ -128,12 +127,14 @@ export default function MyTimesheetForm({
   approvedTimeOff = [],
   phoneReimbursement = 0,
   visitPointConfig = null,
+  employeeServiceType = "home_health",
+  employeeEarnsPoints = false,
   editing = null,
   onCancelEdit,
 }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => ({
-    ...blankForm(currentUser),
+    ...blankForm(employeeServiceType),
     manager_email: defaultManagerEmail || "",
   }));
   const [error, setError] = useState("");
@@ -147,6 +148,12 @@ export default function MyTimesheetForm({
       daily: { ...prev.daily, [date]: { ...prev.daily?.[date], [key]: val } },
     }));
 
+  // Service line + points-eligibility are admin-set (props), not chosen here.
+  // Declared before the effects below, which depend on `serviceType`.
+  const serviceType = employeeServiceType === "hospice" ? "hospice" : "home_health";
+  const isHomeHealth = serviceType === "home_health";
+  const earnsPoints = employeeEarnsPoints === true;
+
   // Load an existing timesheet into the form when the user chooses to edit one.
   useEffect(() => {
     if (editing) setForm(fromExisting(editing));
@@ -159,7 +166,13 @@ export default function MyTimesheetForm({
     }
   }, [defaultManagerEmail, editing]);
 
-  const isHomeHealth = paysByPoints(form.service_type);
+  // Keep the (admin-set) service line in sync once the profile resolves.
+  useEffect(() => {
+    if (!editing) {
+      setForm((prev) => (prev.service_type === serviceType ? prev : { ...prev, service_type: serviceType }));
+    }
+  }, [serviceType, editing]);
+
   const mode = form.entry_mode === "daily" ? "daily" : "bulk";
 
   // Daily-entry rollup: the per-day rows summed into period totals + visit counts.
@@ -200,7 +213,9 @@ export default function MyTimesheetForm({
   const save = useMutation({
     mutationFn: async (status) => {
       const payload = {
-        service_type: form.service_type,
+        // service_type is resolved server-side from the employee's payroll
+        // profile; sent here only for reference.
+        service_type: serviceType,
         pay_period_start: form.pay_period_start,
         pay_period_end: form.pay_period_end,
         manager_email: form.manager_email || "",
@@ -212,7 +227,7 @@ export default function MyTimesheetForm({
       if (mode === "daily") {
         // Server sums the per-day rows into the totals + visit_counts.
         payload.daily_entries = dailyEntries;
-      } else if (form.service_type === "home_health") {
+      } else if (earnsPoints) {
         payload.visit_counts = normalizeVisitCounts(form.visit_counts);
       }
       if (editing?.id) payload.timesheet_id = editing.id;
@@ -233,7 +248,7 @@ export default function MyTimesheetForm({
     },
     onSuccess: (_data, status) => {
       toast.success(status === "submitted" ? "Timesheet submitted for approval." : "Draft saved.");
-      setForm({ ...blankForm(currentUser), manager_email: form.manager_email });
+      setForm({ ...blankForm(serviceType), manager_email: form.manager_email });
       setError("");
       onCancelEdit?.();
       queryClient.invalidateQueries({ queryKey: ["timesheets"] });
@@ -305,7 +320,7 @@ export default function MyTimesheetForm({
               className="ml-auto text-slate-500"
               onClick={() => {
                 onCancelEdit?.();
-                setForm({ ...blankForm(currentUser), manager_email: form.manager_email });
+                setForm({ ...blankForm(serviceType), manager_email: form.manager_email });
               }}
             >
               <X className="w-4 h-4 mr-1" />
@@ -324,19 +339,11 @@ export default function MyTimesheetForm({
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="ts-service">Service line</Label>
-              <Select value={form.service_type} onValueChange={(v) => update({ service_type: v })}>
-                <SelectTrigger id="ts-service" className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SERVICE_TYPES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Service line</Label>
+              <div className="mt-1 flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
+                {serviceTypeLabel(serviceType)}
+                <span className="ml-2 text-slate-400">· {earnsPoints ? "Paid by points + hourly" : "Hourly"}</span>
+              </div>
             </div>
             <div>
               <Label htmlFor="ts-period">Pay period</Label>
@@ -386,9 +393,11 @@ export default function MyTimesheetForm({
           <Alert className="bg-blue-50 border-blue-200">
             <Info className="h-4 w-4 text-blue-600" />
             <AlertDescription className="text-blue-800 text-sm">
-              {isHomeHealth
-                ? "Home health is paid by the point and by the hour — enter both your visit points and your hours."
-                : "Hospice is paid by the hour — enter your hours and on-call visits."}
+              {earnsPoints
+                ? "Home health field staff are paid by the point and by the hour — enter your visits and your hours."
+                : isHomeHealth
+                  ? "You're paid by the hour — enter your hours."
+                  : "Hospice is paid by the hour — enter your hours and on-call visits."}
             </AlertDescription>
           </Alert>
 
@@ -415,7 +424,7 @@ export default function MyTimesheetForm({
             </p>
           </div>
 
-          {isHomeHealth && mode === "bulk" && (
+          {earnsPoints && mode === "bulk" && (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-semibold text-slate-700">Visits (points)</p>
@@ -447,8 +456,10 @@ export default function MyTimesheetForm({
           {mode === "daily" && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-semibold text-slate-700">Daily hours &amp; visits</p>
-                {isHomeHealth && (
+                <p className="text-sm font-semibold text-slate-700">
+                  Daily hours{earnsPoints ? " & visits" : ""}
+                </p>
+                {earnsPoints && (
                   <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-0.5">
                     Total points: {computedPoints}
                   </span>
@@ -456,19 +467,20 @@ export default function MyTimesheetForm({
               </div>
               <DailyEntryGrid
                 days={days}
-                serviceType={form.service_type}
+                serviceType={serviceType}
+                earnsPoints={earnsPoints}
                 visitPointConfig={visitPointConfig}
                 value={form.daily}
                 onCell={updateDaily}
               />
               <p className="text-xs text-slate-400 mt-1">
                 Fill the days you worked — totals roll up below. PTO, mileage
-                {isHomeHealth ? ", emergency points," : ""} and other reimbursement are entered once below.
+                {earnsPoints ? ", emergency points," : ""} and other reimbursement are entered once below.
               </p>
             </div>
           )}
 
-          {isHomeHealth && (
+          {earnsPoints && (
             <div>
               <p className="text-sm font-semibold text-slate-700 mb-2">Emergency visit points</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

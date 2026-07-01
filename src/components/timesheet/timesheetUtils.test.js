@@ -4,6 +4,8 @@ import {
   serviceTypeLabel,
   timesheetStatusLabel,
   paysByPoints,
+  resolvedServiceType,
+  employeeEarnsPoints,
   toNumber,
   splitName,
   computeVisitPoints,
@@ -32,6 +34,24 @@ test("serviceTypeLabel / timesheetStatusLabel / paysByPoints", () => {
   assert.equal(timesheetStatusLabel("submitted"), "Submitted");
   assert.equal(paysByPoints("home_health"), true);
   assert.equal(paysByPoints("hospice"), false);
+});
+
+test("resolvedServiceType prefers the profile, falls back to user, defaults home_health", () => {
+  assert.equal(resolvedServiceType({ service_type: "hospice" }, { service_type: "home_health" }), "hospice");
+  assert.equal(resolvedServiceType(null, { service_type: "hospice" }), "hospice");
+  assert.equal(resolvedServiceType(null, null), "home_health");
+});
+
+test("employeeEarnsPoints only for home-health field staff (earns_points)", () => {
+  // Home-health field nurse → points.
+  assert.equal(employeeEarnsPoints({ service_type: "home_health", earns_points: true }), true);
+  // Home-health office staff → hourly.
+  assert.equal(employeeEarnsPoints({ service_type: "home_health", earns_points: false }), false);
+  // Hospice never earns points, even if flagged.
+  assert.equal(employeeEarnsPoints({ service_type: "hospice", earns_points: true }), false);
+  // Explicit serviceType arg wins.
+  assert.equal(employeeEarnsPoints({ earns_points: true }, "home_health"), true);
+  assert.equal(employeeEarnsPoints({ earns_points: true }, "hospice"), false);
 });
 
 test("toNumber coerces safely", () => {

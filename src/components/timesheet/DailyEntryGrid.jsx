@@ -20,17 +20,15 @@ import { parseISODate } from "../timeoff/timeOffUtils";
  * @param {object} value    { [date]: { regular_hours, soc, … } } (flat per day)
  * @param {(date: string, key: string, val: string) => void} onCell
  */
-export default function DailyEntryGrid({ days = [], serviceType, visitPointConfig, value = {}, onCell }) {
-  const isHomeHealth = serviceType === "home_health";
-
+export default function DailyEntryGrid({ days = [], serviceType, earnsPoints = false, visitPointConfig, value = {}, onCell }) {
   const columns = useMemo(() => {
     const hourCols = DAILY_HOUR_FIELDS.map((f) => ({ ...f, step: "0.25" }));
-    if (isHomeHealth) {
-      const visitCols = VISIT_TYPES.map((vt) => ({ key: vt.key, label: vt.label, step: "1", isVisit: true }));
-      return [...visitCols, ...hourCols];
-    }
-    return [...hourCols, { key: "on_call_visits", label: "Visits", step: "1" }];
-  }, [isHomeHealth]);
+    const visitCols = earnsPoints
+      ? VISIT_TYPES.map((vt) => ({ key: vt.key, label: vt.label, step: "1", isVisit: true }))
+      : [];
+    const tailCols = serviceType === "hospice" ? [{ key: "on_call_visits", label: "Visits", step: "1" }] : [];
+    return [...visitCols, ...hourCols, ...tailCols];
+  }, [earnsPoints, serviceType]);
 
   const totals = useMemo(() => {
     const t = {};
@@ -42,11 +40,11 @@ export default function DailyEntryGrid({ days = [], serviceType, visitPointConfi
   }, [columns, days, value]);
 
   const totalPoints = useMemo(() => {
-    if (!isHomeHealth) return 0;
+    if (!earnsPoints) return 0;
     let p = 0;
     for (const vt of VISIT_TYPES) p += toNumber(totals[vt.key]) * toNumber(visitPointConfig?.[pointFieldFor(vt.key)]);
     return Math.round(p * 100) / 100;
-  }, [isHomeHealth, totals, visitPointConfig]);
+  }, [earnsPoints, totals, visitPointConfig]);
 
   const dayLabel = (iso) => {
     const d = parseISODate(iso);
@@ -104,7 +102,7 @@ export default function DailyEntryGrid({ days = [], serviceType, visitPointConfi
         <tfoot>
           <tr className="bg-slate-100 font-semibold">
             <td className="sticky left-0 z-10 bg-slate-100 border-t border-r border-slate-200 px-2 py-1.5 text-slate-800">
-              Total{isHomeHealth ? ` · ${totalPoints} pts` : ""}
+              Total{earnsPoints ? ` · ${totalPoints} pts` : ""}
             </td>
             {columns.map((col) => (
               <td key={col.key} className="border-t border-slate-200 px-1.5 py-1.5 text-center tabular-nums text-slate-800">

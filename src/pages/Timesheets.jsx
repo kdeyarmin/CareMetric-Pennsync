@@ -14,7 +14,7 @@ import PayrollExportPanel from "@/components/timesheet/PayrollExportPanel";
 import PayrollReports from "@/components/timesheet/PayrollReports";
 import PayrollSetupPanel from "@/components/timesheet/PayrollSetupPanel";
 import VisitPointConfigCard from "@/components/timesheet/VisitPointConfigCard";
-import { toNumber } from "@/components/timesheet/timesheetUtils";
+import { toNumber, resolvedServiceType, employeeEarnsPoints } from "@/components/timesheet/timesheetUtils";
 
 export default function Timesheets() {
   const { data: currentUser } = useQuery({
@@ -70,6 +70,9 @@ export default function Timesheets() {
     enabled: !!currentUser?.email,
   });
   const myPhoneReimbursement = toNumber(myProfile?.phone_reimbursement);
+  // The current user's admin-set company + points eligibility drive their view.
+  const myServiceType = resolvedServiceType(myProfile, currentUser);
+  const myEarnsPoints = employeeEarnsPoints(myProfile, myServiceType);
 
   // Facility visit-type point values — readable by everyone so the nurse form can
   // preview total points; only admins can edit them (server-enforced).
@@ -132,6 +135,13 @@ export default function Timesheets() {
     enabled: !!currentUser?.email && isAdmin,
   });
 
+  // Roster with each employee's ADMIN-SET service line applied (profile overrides
+  // the user record) — drives payroll coverage/reports.
+  const employeesEffective = useMemo(() => {
+    const byEmail = new Map(payrollProfiles.map((p) => [p.employee_email, p]));
+    return employees.map((e) => ({ ...e, service_type: byEmail.get(e.email)?.service_type || e.service_type }));
+  }, [employees, payrollProfiles]);
+
   // Timesheets this user can act on (exclude their own — no self-approval).
   const reviewable = useMemo(
     () => teamTimesheets.filter((t) => t.employee_email !== currentUser?.email),
@@ -191,6 +201,8 @@ export default function Timesheets() {
               approvedTimeOff={approvedTimeOff}
               phoneReimbursement={myPhoneReimbursement}
               visitPointConfig={visitPointConfig}
+              employeeServiceType={myServiceType}
+              employeeEarnsPoints={myEarnsPoints}
               editing={editing}
               onCancelEdit={() => setEditing(null)}
             />
@@ -207,7 +219,7 @@ export default function Timesheets() {
         {isAdmin && (
           <>
             <TabsContent value="payroll">
-              <PayrollExportPanel timesheets={teamTimesheets} employees={employees} />
+              <PayrollExportPanel timesheets={teamTimesheets} employees={employeesEffective} />
             </TabsContent>
             <TabsContent value="reports">
               <PayrollReports timesheets={teamTimesheets} />

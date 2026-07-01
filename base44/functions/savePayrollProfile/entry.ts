@@ -25,11 +25,22 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Only administrators can manage payroll profiles.' }, { status: 403 });
     }
 
-    const { employee_email, phone_reimbursement = 0, active = true, notes = '' } = (await req.json()) || {};
+    const {
+      employee_email,
+      phone_reimbursement = 0,
+      active = true,
+      notes = '',
+      service_type,
+      earns_points,
+    } = (await req.json()) || {};
     const email = String(employee_email || '').trim().toLowerCase();
     if (!email) {
       return Response.json({ error: 'employee_email is required.' }, { status: 400 });
     }
+    // Company/service line and points-eligibility. Only home-health staff can be
+    // flagged points-eligible; hospice (and home-health office) are hourly.
+    const resolvedServiceType = service_type === 'hospice' ? 'hospice' : 'home_health';
+    const resolvedEarnsPoints = resolvedServiceType === 'home_health' && earns_points === true;
 
     // Resolve the employee's display name from their user record (best-effort).
     let employee_name = email;
@@ -43,6 +54,8 @@ Deno.serve(async (req) => {
     const fields = {
       employee_email: email,
       employee_name,
+      service_type: resolvedServiceType,
+      earns_points: resolvedEarnsPoints,
       phone_reimbursement: toNonNegativeNumber(phone_reimbursement),
       active: active !== false,
       notes: String(notes || '').slice(0, 1000),

@@ -290,13 +290,26 @@ Deno.serve(async (req) => {
     const body = (await req.json()) || {};
     const {
       timesheet_id = '',
-      service_type = 'home_health',
       pay_period_start,
       pay_period_end,
       notes = '',
       manager_email = '',
       status = 'submitted',
     } = body;
+
+    // Company/service line and points-eligibility are ADMIN-controlled via the
+    // employee's payroll profile — not chosen by the employee. Resolve them
+    // server-side (profile preferred, then the user record). Home-health field
+    // staff earn points; office staff and all hospice staff are hourly.
+    let profile = null;
+    try {
+      const profiles = await base44.asServiceRole.entities.EmployeePayrollProfile.filter({ employee_email: user.email });
+      profile = (profiles || []).find((p) => p && p.active !== false) || (profiles || [])[0] || null;
+    } catch (_profileError) {
+      profile = null;
+    }
+    const service_type = (profile?.service_type || user.service_type) === 'hospice' ? 'hospice' : 'home_health';
+    const earns_points = service_type === 'home_health' && profile?.earns_points === true;
 
     if (!VALID_SERVICE_TYPES.includes(service_type)) {
       return Response.json({ error: 'Invalid service type.' }, { status: 400 });
@@ -340,7 +353,7 @@ Deno.serve(async (req) => {
     // the client cannot set points directly. Hospice has no points.
     const visit_counts = {};
     let computedPoints = 0;
-    if (service_type === 'home_health') {
+    if (earns_points) {
       const rawCounts = dailyVisitCounts
         || (body.visit_counts && typeof body.visit_counts === 'object' ? body.visit_counts : {});
       for (const k of VISIT_TYPE_KEYS) visit_counts[k] = toNonNegativeNumber(rawCounts[k]);
@@ -366,19 +379,10 @@ Deno.serve(async (req) => {
       auto_pto_hours = 0; // Never block submission on the PTO lookup.
     }
 
-    // Standing phone reimbursement an admin configured for this employee — an
-    // expense reimbursement (not pay/wages) applied automatically each pay period
-    // so it never has to be re-entered. Server-authoritative: the client cannot set it.
-    let phone_reimbursement = 0;
-    try {
-      const profiles = await base44.asServiceRole.entities.EmployeePayrollProfile.filter({
-        employee_email: user.email,
-      });
-      const profile = (profiles || []).find((p) => p && p.active !== false) || (profiles || [])[0];
-      if (profile) phone_reimbursement = toNonNegativeNumber(profile.phone_reimbursement);
-    } catch (_profileError) {
-      phone_reimbursement = 0; // Never block submission on the profile lookup.
-    }
+    // Standing phone reimbursement from the employee's payroll profile (loaded
+    // above) — an expense reimbursement (not pay/wages) applied automatically each
+    // pay period. Server-authoritative: the client cannot set it.
+    const phone_reimbursement = profile ? toNonNegativeNumber(profile.phone_reimbursement) : 0;
 
     // Validate the chosen approver (admin or flagged manager, never the caller).
     let resolvedManagerEmail = '';

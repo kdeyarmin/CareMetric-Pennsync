@@ -10,6 +10,20 @@
       "type": "string",
       "description": "Display name of the employee"
     },
+    "service_type": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice"
+      ],
+      "default": "home_health",
+      "description": "The company/service line this employee is paid under — determines their timesheet view and which payroll report they appear on"
+    },
+    "earns_points": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this employee is paid by visit points (home-health field/clinical staff). Office staff and all hospice staff are hourly only, so this is false for them"
+    },
     "phone_reimbursement": {
       "type": "number",
       "default": 0,
