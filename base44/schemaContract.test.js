@@ -189,6 +189,9 @@ const ENUM_USAGE = {
   'PatientAlert.alert_type': ['care_gap', 'documentation_risk', 'readmission_risk'],
   // Patient.status — 'merged' is written by deduplicatePatients' merge-archive step.
   'Patient.status': ['active', 'discharged', 'merged'],
+  // Visit.status — the offline capture queues 'pending_review' (grounding deferred
+  // to reconnect); the sync worker / other flows write 'completed'.
+  'Visit.status': ['completed', 'pending_review'],
 };
 
 // ---------------------------------------------------------------------------

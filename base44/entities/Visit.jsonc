@@ -31,9 +31,11 @@
         "scheduled",
         "in_progress",
         "completed",
+        "pending_review",
         "cancelled"
       ],
-      "default": "scheduled"
+      "default": "scheduled",
+      "description": "Visit status. 'pending_review' = an offline-captured note whose AI grounding pass is deferred until reconnect (see grounding_pending)."
     },
     "start_time": {
       "type": "string",
