@@ -24,6 +24,8 @@ const CHOICE_TYPES = new Set(["mcq", "multi_select"]);
 
 const blankOption = (correct = false) => ({ _localId: nextLocalId(), value: newOptionValue(), label: "", correct });
 
+const blankPair = () => ({ _localId: nextLocalId(), left: "", rightText: "" });
+
 const blankQuestion = () => ({
   _localId: nextLocalId(),
   type: "mcq",
@@ -32,6 +34,7 @@ const blankQuestion = () => ({
   rationale: "",
   options: [blankOption(true), blankOption(false)],
   correctBool: true,
+  pairs: [blankPair(), blankPair()],
 });
 
 // Map a persisted TrainingQuestion into the editor's working shape, deriving the
@@ -46,6 +49,16 @@ export const questionToItem = (q) => {
         : answer === value;
     return { _localId: nextLocalId(), value, label: o.label ?? String(value), correct };
   });
+  // Reconstruct matching pairs by mapping each stored right-value back to its label.
+  const labelByValue = Object.fromEntries(
+    (Array.isArray(q.options_json) ? q.options_json : []).map((o) => [o.value ?? o.label, o.label])
+  );
+  const pairs = (Array.isArray(answer?.pairs) ? answer.pairs : []).map((p) => ({
+    _localId: nextLocalId(),
+    left: p.left || "",
+    rightText: labelByValue[p.right] ?? String(p.right ?? ""),
+  }));
+
   return {
     _localId: nextLocalId(),
     id: q.id,
@@ -55,6 +68,7 @@ export const questionToItem = (q) => {
     rationale: q.rationale || "",
     options: options.length ? options : [blankOption(true), blankOption(false)],
     correctBool: answer === true,
+    pairs: pairs.length ? pairs : [blankPair(), blankPair()],
   };
 };
 
@@ -89,6 +103,26 @@ export const itemToPayload = (item, courseId, orderIndex) => {
       ...base,
       options_json: [],
       correct_answer_json: { answer: item.correctBool === true },
+    };
+  }
+  if (item.type === "matching") {
+    // Each left is matched to a right. Build the option pool from the distinct
+    // right texts so every correct answer is selectable, and store pairs as
+    // { left, right: optionValue } — the shape the renderer and grader expect.
+    const pairs = (item.pairs || []).filter((p) => p.left.trim() && p.rightText.trim());
+    const rightLabels = [...new Set(pairs.map((p) => p.rightText.trim()))];
+    const valueByLabel = {};
+    const options_json = rightLabels.map((label, i) => {
+      const value = `m-${i}`;
+      valueByLabel[label] = value;
+      return { value, label };
+    });
+    return {
+      ...base,
+      options_json,
+      correct_answer_json: {
+        answer: { pairs: pairs.map((p) => ({ left: p.left.trim(), right: valueByLabel[p.rightText.trim()] })) },
+      },
     };
   }
   // short_answer / scenario_based — AI graded, no fixed answer.
@@ -152,10 +186,34 @@ export default function CourseQuizBuilder({ courseId }) {
         if (CHOICE_TYPES.has(type) && (!it.options || it.options.length < 2)) {
           next.options = [blankOption(true), blankOption(false)];
         }
+        if (type === "matching" && (!it.pairs || it.pairs.length < 2)) {
+          next.pairs = [blankPair(), blankPair()];
+        }
         return next;
       })
     );
   };
+
+  const updatePair = (itemId, pairId, patch) =>
+    setItems((prev) =>
+      prev.map((it) =>
+        it._localId === itemId
+          ? { ...it, pairs: it.pairs.map((p) => (p._localId === pairId ? { ...p, ...patch } : p)) }
+          : it
+      )
+    );
+
+  const addPair = (itemId) =>
+    setItems((prev) =>
+      prev.map((it) => (it._localId === itemId ? { ...it, pairs: [...(it.pairs || []), blankPair()] } : it))
+    );
+
+  const removePair = (itemId, pairId) =>
+    setItems((prev) =>
+      prev.map((it) =>
+        it._localId === itemId ? { ...it, pairs: it.pairs.filter((p) => p._localId !== pairId) } : it
+      )
+    );
 
   const updateOption = (itemId, optionId, patch) =>
     setItems((prev) =>
@@ -220,6 +278,16 @@ export default function CourseQuizBuilder({ courseId }) {
       );
       if (invalid) {
         setError("Each multiple-choice question needs at least one correct answer marked.");
+        setSaving(false);
+        return;
+      }
+
+      // Matching questions need at least one fully-filled pair.
+      const badMatching = usable.find(
+        (it) => it.type === "matching" && !(it.pairs || []).some((p) => p.left.trim() && p.rightText.trim())
+      );
+      if (badMatching) {
+        setError("Each matching question needs at least one complete left/right pair.");
         setSaving(false);
         return;
       }
@@ -330,6 +398,7 @@ export default function CourseQuizBuilder({ courseId }) {
                     <SelectItem value="mcq">Multiple Choice</SelectItem>
                     <SelectItem value="multi_select">Select All That Apply</SelectItem>
                     <SelectItem value="true_false">True / False</SelectItem>
+                    <SelectItem value="matching">Matching</SelectItem>
                     <SelectItem value="short_answer">Short Answer (AI graded)</SelectItem>
                   </SelectContent>
                 </Select>
@@ -421,6 +490,48 @@ export default function CourseQuizBuilder({ courseId }) {
                     <SelectItem value="false">False</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {/* Matching pairs */}
+            {item.type === "matching" && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold">
+                    Pairs <span className="font-normal text-slate-400">(left prompt → correct match)</span>
+                  </Label>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addPair(item._localId)}>
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Pair
+                  </Button>
+                </div>
+                {(item.pairs || []).map((pair) => (
+                  <div key={pair._localId} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                    <Input
+                      value={pair.left}
+                      onChange={(e) => updatePair(item._localId, pair._localId, { left: e.target.value })}
+                      placeholder="Left (prompt)"
+                      className="h-10"
+                    />
+                    <Input
+                      value={pair.rightText}
+                      onChange={(e) => updatePair(item._localId, pair._localId, { rightText: e.target.value })}
+                      placeholder="Right (correct match)"
+                      className="h-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={(item.pairs || []).length <= 2}
+                      onClick={() => removePair(item._localId, pair._localId)}
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </Button>
+                  </div>
+                ))}
+                <p className="text-xs text-slate-400">
+                  Learners see the left prompts and pick from all the right values shuffled together.
+                </p>
               </div>
             )}
 

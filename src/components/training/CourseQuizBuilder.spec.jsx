@@ -59,6 +59,60 @@ describe('CourseQuizBuilder serialization', () => {
     expect(payload.options_json).toEqual([]);
   });
 
+  it('matching builds an option pool from the right texts and stores pairs by value', () => {
+    const item = {
+      type: 'matching',
+      prompt: 'Match term to definition',
+      points: 3,
+      pairs: [
+        { _localId: 'a', left: 'RN', rightText: 'Registered Nurse' },
+        { _localId: 'b', left: 'LPN', rightText: 'Licensed Practical Nurse' },
+        { _localId: 'c', left: '', rightText: '' }, // incomplete pair is dropped
+      ],
+    };
+    const payload = itemToPayload(item, 'c', 0);
+    // Option pool is the distinct right texts.
+    expect(payload.options_json).toEqual([
+      { value: 'm-0', label: 'Registered Nurse' },
+      { value: 'm-1', label: 'Licensed Practical Nurse' },
+    ]);
+    // Pairs reference option values, matching what the renderer submits + grader compares.
+    expect(payload.correct_answer_json).toEqual({
+      answer: { pairs: [
+        { left: 'RN', right: 'm-0' },
+        { left: 'LPN', right: 'm-1' },
+      ] },
+    });
+  });
+
+  it('round-trips a matching question back to editable left/right text', () => {
+    const persisted = {
+      id: 'qm',
+      type: 'matching',
+      prompt: 'Match',
+      options_json: [
+        { value: 'm-0', label: 'Registered Nurse' },
+        { value: 'm-1', label: 'Licensed Practical Nurse' },
+      ],
+      correct_answer_json: { answer: { pairs: [
+        { left: 'RN', right: 'm-0' },
+        { left: 'LPN', right: 'm-1' },
+      ] } },
+    };
+    const item = questionToItem(persisted);
+    expect(item.pairs.map((p) => ({ left: p.left, rightText: p.rightText }))).toEqual([
+      { left: 'RN', rightText: 'Registered Nurse' },
+      { left: 'LPN', rightText: 'Licensed Practical Nurse' },
+    ]);
+    // Re-serializing preserves the mapping.
+    expect(itemToPayload(item, 'c', 0).correct_answer_json).toEqual({
+      answer: { pairs: [
+        { left: 'RN', right: 'm-0' },
+        { left: 'LPN', right: 'm-1' },
+      ] },
+    });
+  });
+
   it('round-trips an mcq question from persisted form back to the editor', () => {
     const persisted = {
       id: 'q1',

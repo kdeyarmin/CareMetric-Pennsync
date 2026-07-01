@@ -15,7 +15,16 @@ const gradeObjectiveQuestion = (question, answer) => {
     return JSON.stringify(norm(answer)) === JSON.stringify(norm(correct));
   }
   if (question.type === 'matching') {
-    return normalizeValue(answer) === normalizeValue(correct);
+    // The learner submits a { [leftPrompt]: selectedOptionValue } map (see
+    // TrainingQuestionRenderer). The correct answer is stored as
+    // correct_answer_json.answer.pairs = [{ left, right }] where `right` is the
+    // value of the option that correctly matches `left`. Compare per-pair so key
+    // order and any extra keys don't matter — a flat stringify comparison here
+    // was order-sensitive and compared against the wrong shape entirely.
+    const pairs = Array.isArray(correct?.pairs) ? correct.pairs : [];
+    if (pairs.length === 0) return false;
+    const submitted = answer && typeof answer === 'object' && !Array.isArray(answer) ? answer : {};
+    return pairs.every((pair) => normalizeValue(submitted[pair.left]) === normalizeValue(pair.right));
   }
   return normalizeValue(answer) === normalizeValue(correct);
 };
