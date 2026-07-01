@@ -529,6 +529,19 @@ export const REFERRAL_EXTRACTION_SCHEMA = {
         high_risk_conditions: { type: "array", items: { type: "string" } }
       }
     },
+    face_to_face: {
+      // Physician Face-to-Face (F2F) encounter documentation for the home-health
+      // certification requirement (42 CFR 424.22). Validated deterministically at
+      // referral intake by faceToFaceValidator.js — NOT surfaced in the chart.
+      type: "object",
+      properties: {
+        encounter_date: { type: "string", description: "Date of the face-to-face encounter (YYYY-MM-DD if determinable)" },
+        practitioner_name: { type: "string", description: "Name of the practitioner who performed the F2F encounter" },
+        practitioner_type: { type: "string", description: "Practitioner credential/type (e.g. MD, DO, NP, PA, CNS)" },
+        clinical_reason: { type: "string", description: "Documented clinical reason for the encounter" },
+        documented_conditions: { type: "array", items: { type: "string" }, description: "Conditions documented at the encounter" }
+      }
+    },
     oasis_assessment: {
       type: "object",
       properties: {

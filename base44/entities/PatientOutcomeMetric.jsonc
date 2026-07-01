@@ -63,10 +63,38 @@
         "medication_management_improved": {
           "type": "boolean"
         },
+        "dyspnea_improved": {
+          "type": "boolean"
+        },
         "overall_improvement_score": {
           "type": "number"
         }
       }
+    },
+    "gg_discharge_function_score": {
+      "type": "number",
+      "description": "Raw GG Discharge Function Score (GG0130 self-care + GG0170 mobility) when GG items are present"
+    },
+    "measure_results": {
+      "type": "array",
+      "description": "Per-measure CMS outcome results computed by the outcome-measure engine",
+      "items": {
+        "type": "object",
+        "properties": {
+          "measure": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["improved", "not_improved", "excluded"]
+          },
+          "start_value": { "type": "number" },
+          "discharge_value": { "type": "number" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "outcome_measure_source": {
+      "type": "string",
+      "description": "Provenance of the outcome metric (e.g. oasis_change_score)"
     },
     "care_plan_goals_achieved": {
       "type": "number",

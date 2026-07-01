@@ -1,0 +1,82 @@
+{
+  "name": "FaceToFaceEncounter",
+  "type": "object",
+  // Lightweight Face-to-Face (F2F) encounter record for the home-health
+  // certification requirement (42 CFR 424.22). Created and validated by the
+  // REFERRAL analyzer from the uploaded referral document only — F2F is
+  // intentionally NOT part of the nurse's Smart Note or anywhere else in the
+  // patient chart. Nothing is required so a partial extraction still persists.
+  "properties": {
+    "referral_id": {
+      "type": "string",
+      "description": "Referral this F2F encounter was extracted from"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Linked Patient entity id once matched/admitted"
+    },
+    "encounter_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the face-to-face encounter"
+    },
+    "practitioner_name": {
+      "type": "string",
+      "description": "Name of the practitioner who performed the encounter"
+    },
+    "practitioner_credential": {
+      "type": "string",
+      "description": "Parsed credential (e.g. MD, DO, NP, PA, CNS, CNM)"
+    },
+    "eligible_practitioner": {
+      "type": "boolean",
+      "description": "True when the practitioner type may perform/support F2F certification"
+    },
+    "clinical_reason": {
+      "type": "string",
+      "description": "Documented clinical reason for the encounter"
+    },
+    "documented_conditions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Conditions documented at the encounter"
+    },
+    "primary_diagnosis": {
+      "type": "string",
+      "description": "Referral primary diagnosis the encounter is checked against"
+    },
+    "soc_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Start-of-care date the timing window is measured from"
+    },
+    "days_from_soc": {
+      "type": "number",
+      "description": "Signed day offset of the encounter from SOC (negative = before SOC)"
+    },
+    "within_window": {
+      "type": "boolean",
+      "description": "True when the encounter falls within 90 days before / 30 days after SOC"
+    },
+    "diagnosis_linked": {
+      "type": "boolean",
+      "description": "True when the encounter substantively links to the primary diagnosis"
+    },
+    "validation_status": {
+      "type": "string",
+      "enum": ["valid", "invalid", "needs_review"],
+      "default": "needs_review",
+      "description": "Overall F2F validation outcome"
+    },
+    "validation_reasons": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Human-readable reasons behind the validation status"
+    },
+    "source": {
+      "type": "string",
+      "description": "Where the encounter data came from (e.g. referral_document)"
+    }
+  },
+  "required": []
+}
