@@ -543,7 +543,11 @@ export function scorePatientPair(p1, p2, options = {}) {
   // duplicate. When BOTH records carry a DOB (or both an MRN) and they clearly
   // differ — not a swap/typo we already credited — they are distinct patients.
   const hasDobCredit = matches.some(
-    (m) => m === REASON.DOB || m === REASON.DOB_SWAPPED || m === REASON.DOB_YEAR_TYPO
+    (m) =>
+      m === REASON.DOB ||
+      m === REASON.DOB_SWAPPED ||
+      m === REASON.DOB_YEAR_TYPO ||
+      m === REASON.DOB_CLOSE
   );
   const dob1 = parseDob(p1.date_of_birth);
   const dob2 = parseDob(p2.date_of_birth);
@@ -826,9 +830,22 @@ export function findDuplicateGroups(patients, opts = {}) {
   for (const indices of strongClusters.values()) {
     if (indices.length < 2) continue; // singleton root — no strong cluster here
     const memberSet = new Set(indices);
+    const attachedWeak = new Set();
+    for (const idx of indices) {
+      for (const link of links.get(idx)) {
+        const j = link.idx;
+        if (memberSet.has(j) || memberOf[j] !== -1) continue;
+        attachedWeak.add(j);
+      }
+    }
     const primaryIdx = indices[0];
     for (const idx of indices) memberOf[idx] = groups.length;
+    for (const idx of attachedWeak) {
+      memberSet.add(idx);
+      memberOf[idx] = groups.length;
+    }
     const duplicates = indices
+      .concat([...attachedWeak].sort((a, b) => a - b))
       .filter((idx) => idx !== primaryIdx)
       .map((idx) => makeDuplicate(idx, memberSet));
     duplicates.sort((a, b) => b.score - a.score);

@@ -143,6 +143,14 @@ test('year-typo DOB is detected', () => {
   assert.ok(scorePatientPair(a, b).matches.includes(REASON.DOB_YEAR_TYPO));
 });
 
+test('close DOB (one day apart) counts as DOB credit for same-name pairs', () => {
+  const a = { id: 'a', first_name: 'John', last_name: 'Smith', date_of_birth: '1950-01-01' };
+  const b = { id: 'b', first_name: 'John', last_name: 'Smith', date_of_birth: '1950-01-02' };
+  const { score, matches } = scorePatientPair(a, b);
+  assert.ok(matches.includes(REASON.DOB_CLOSE));
+  assert.ok(score >= effectiveThreshold(matches));
+});
+
 test('phone formats normalize and match exactly', () => {
   // Same person, phone written two ways: the phone digits must normalize and
   // register a PHONE match (the name tie lets the identity guard admit the pair).
@@ -372,6 +380,19 @@ test('findDuplicateGroups keeps unrelated clusters separate', () => {
   assert.equal(groups.length, 2);
   assert.equal(groups[0].primary.id, '1'); // primary-index order preserved
   assert.equal(groups[1].primary.id, '3');
+});
+
+test('findDuplicateGroups keeps weak links to a strong cluster visible', () => {
+  const patients = [
+    { id: 'A', first_name: 'John', last_name: 'Smith', phone: '215-555-1111' },
+    { id: 'B', first_name: 'John', last_name: 'Smith', phone: '215-555-1111' }, // strong link to A
+    { id: 'C', first_name: 'John', last_name: 'Smith', phone: '267-555-1111' }, // weak local-phone link to A/B
+  ];
+  const groups = findDuplicateGroups(patients);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].primary.id, 'A');
+  const ids = groups[0].duplicates.map((d) => d.patient.id).sort();
+  assert.deepEqual(ids, ['B', 'C']);
 });
 
 test('findDuplicatesForCandidate flags a matching existing record', () => {
