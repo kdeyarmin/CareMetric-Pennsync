@@ -52,6 +52,20 @@ export function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * The scheme+host origin of a URL, dropping any path. Manuals live in the app's
+ * `public/` dir and are served at the origin root (`/manuals/...`) — the same
+ * path the in-app download links resolve to — so email links must be built from
+ * the origin, not from an APP_URL that may carry an `/apps/<id>` path prefix.
+ */
+export function originOf(url) {
+  try {
+    return new URL(String(url)).origin;
+  } catch {
+    return String(url || '').replace(/\/+$/, '');
+  }
+}
+
 /** Resolve the reference manual that matches a user's role/access level. */
 export function manualForRole(role) {
   const r = String(role || '').toLowerCase();
@@ -115,9 +129,11 @@ export function buildWelcomeEmail(opts = {}) {
   const safeEmail = escapeHtml(email || '');
   const login = escapeHtml(appUrl || '');
   const manual = manualForRole(role);
-  const manualUrl = escapeHtml(
-    `${(manualsBaseUrl || appUrl || '').replace(/\/+$/, '')}/manuals/${manual.file}`
-  );
+  // Build the manual link from the app ORIGIN (so it resolves to the same
+  // `<origin>/manuals/...` the in-app links use), unless an explicit
+  // manualsBaseUrl override is given (e.g. a separate CDN) — used verbatim.
+  const manualBase = (manualsBaseUrl || originOf(appUrl) || '').replace(/\/+$/, '');
+  const manualUrl = escapeHtml(`${manualBase}/manuals/${manual.file}`);
   const supportRaw = String(supportEmail || 'your administrator');
   const support = supportRaw.includes('@')
     ? `<a href="mailto:${escapeHtml(supportRaw)}" style="color:${BRAND.navy};font-weight:600;text-decoration:none;">${escapeHtml(supportRaw)}</a>`
@@ -318,16 +334,17 @@ Deno.serve(async (req) => {
     // platform's transactional invite with app-install instructions and the
     // role-matched reference manual. A failure here must NEVER fail the invite, so
     // it is fully wrapped. Manuals are served from the app's `/manuals/` path
-    // (public/manuals/*); set MANUALS_BASE_URL if the PDFs are hosted elsewhere.
+    // (public/manuals/*, served at the app origin root). The builder derives the
+    // manual link from the app origin; set MANUALS_BASE_URL only if the PDFs are
+    // hosted on a different host/CDN than the app.
     try {
       const appUrl = (Deno.env.get('APP_URL') || 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932').replace(/\/+$/, '');
-      const manualsBaseUrl = (Deno.env.get('MANUALS_BASE_URL') || appUrl).replace(/\/+$/, '');
       const { subject, body } = buildWelcomeEmail({
         fullName: full_name,
         email,
         role: userRole,
         appUrl,
-        manualsBaseUrl,
+        manualsBaseUrl: Deno.env.get('MANUALS_BASE_URL') || null,
         iosAppUrl: Deno.env.get('IOS_APP_STORE_URL') || DEFAULT_IOS_APP_URL,
         androidAppUrl: Deno.env.get('ANDROID_PLAY_STORE_URL') || DEFAULT_ANDROID_APP_URL,
         supportEmail: Deno.env.get('SUPPORT_EMAIL') || DEFAULT_SUPPORT_EMAIL,

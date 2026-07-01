@@ -39,6 +39,7 @@ const {
   buildWelcomeEmail,
   manualForRole,
   escapeHtml,
+  originOf,
   DEFAULT_IOS_APP_URL,
   DEFAULT_ANDROID_APP_URL,
   DEFAULT_SUPPORT_EMAIL,
@@ -98,6 +99,27 @@ test("manuals base URL override and trailing slashes are handled", () => {
   });
   assert.ok(body.includes("https://cdn.example.test/static/manuals/PennSync-User-Manual.pdf"));
   assert.ok(!body.includes("static//manuals"));
+});
+
+test("originOf returns scheme+host and drops any path", () => {
+  assert.equal(originOf("https://hub.base44.app/apps/abc123"), "https://hub.base44.app");
+  assert.equal(originOf("https://app.pennsync.com/"), "https://app.pennsync.com");
+  assert.equal(originOf("https://app.pennsync.com"), "https://app.pennsync.com");
+});
+
+test("manual link uses the app ORIGIN when appUrl carries a path (no manualsBaseUrl)", () => {
+  // Regression: with a path-prefixed APP_URL the manual link must resolve to the
+  // origin root (matching the in-app /manuals/... links), NOT the /apps/<id> path.
+  const { body } = buildWelcomeEmail({
+    ...BASE,
+    role: "user",
+    appUrl: "https://hub.base44.app/apps/68ee80d98929370f9e8f2932",
+    manualsBaseUrl: undefined,
+  });
+  assert.ok(body.includes("https://hub.base44.app/manuals/PennSync-User-Manual.pdf"));
+  assert.ok(!body.includes("/apps/68ee80d98929370f9e8f2932/manuals/"));
+  // The sign-in button still uses the full app URL (with its path).
+  assert.ok(body.includes("https://hub.base44.app/apps/68ee80d98929370f9e8f2932"));
 });
 
 test("app-store badges render only when store URLs are provided", () => {
