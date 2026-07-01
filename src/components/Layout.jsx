@@ -121,6 +121,18 @@ export default function Layout({ children, currentPageName }) {
   // naturally see 0).
   const pendingTimeOffCount = pendingTimeOff.filter((r) => r.employee_email !== currentUser?.email).length;
 
+  // Timesheets awaiting this user's review (admins see all submitted; managers
+  // see their direct reports'). Drives the "Timesheets" nav badge.
+  const { data: pendingTimesheets = [] } = useQuery({
+    queryKey: ['pending-timesheets', currentUser?.email, isAdmin],
+    queryFn: () => isAdmin
+      ? base44.entities.Timesheet.filter({ status: 'submitted' }, '-created_date', 100)
+      : base44.entities.Timesheet.filter({ manager_email: currentUser.email, status: 'submitted' }, '-created_date', 100),
+    initialData: [], refetchInterval: 120000, enabled: !!currentUser?.email && isTimeOffApprover,
+  });
+  // Reviewers can't approve their own timesheet, so exclude it from the count.
+  const pendingTimesheetCount = pendingTimesheets.filter((t) => t.employee_email !== currentUser?.email).length;
+
   // Fetch charted visits to filter alerts
   const { data: chartedVisits = [] } = useQuery({
     queryKey: ['my-charted-visits', currentUser?.email],
@@ -175,7 +187,8 @@ export default function Layout({ children, currentPageName }) {
     sms: unreadSmsCount,
     notifications: unreadNotificationCount,
     timeOffApprovals: pendingTimeOffCount,
-  }), [unreadMessageCount, unreadSmsCount, unreadNotificationCount, pendingTimeOffCount]);
+    timesheetApprovals: pendingTimesheetCount,
+  }), [unreadMessageCount, unreadSmsCount, unreadNotificationCount, pendingTimeOffCount, pendingTimesheetCount]);
 
   // Action map — keys match the `action` field in nav.manifest entries
   const actionHandlers = useMemo(() => ({
