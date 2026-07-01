@@ -96,6 +96,18 @@
       "type": "string",
       "description": "Provenance of the outcome metric (e.g. oasis_change_score)"
     },
+    "pph_prevention": {
+      "type": "object",
+      "description": "Within-Stay Potentially Preventable Hospitalization prevention: captured risk, interventions delivered, and the outcome (from the PPH worklist engine)",
+      "properties": {
+        "risk_score": { "type": "number" },
+        "risk_level": { "type": "string" },
+        "within_dtc_pac_window": { "type": "boolean" },
+        "interventions": { "type": "array", "items": { "type": "string" } },
+        "rehospitalized": { "type": "boolean" },
+        "measure": { "type": "string" }
+      }
+    },
     "care_plan_goals_achieved": {
       "type": "number",
       "description": "Number of goals met"

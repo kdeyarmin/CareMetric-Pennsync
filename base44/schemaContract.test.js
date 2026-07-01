@@ -242,6 +242,8 @@ const FIELD_USAGE = {
   PatientOutcomeMetric: [
     'functional_improvement', 'gg_discharge_function_score', 'measure_results',
     'outcome_measure_source',
+    // PPH worklist captures intervention + outcome here.
+    'pph_prevention', 'readmission_30_day', 'er_visit_30_day',
   ],
   // OASISFeedback is written by two paths: the patient-match writers
   // (feedback_type/extracted_name + match fields) and the AI-suggestion
