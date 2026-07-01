@@ -32,7 +32,23 @@ import {
   Monitor, PieChart, Radio, Search, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
 } from "lucide-react";
 
-import { PAGE_NAMES, REDIRECTS } from "@/routes";
+// NOTE: PAGE_NAMES and REDIRECTS are NOT imported here to avoid a circular
+// dependency (nav.manifest → routes → nav.manifest). Instead, the helpers below
+// accept them as parameters (passed by callers who already have routes loaded),
+// or derive a lazy set on first use from import.meta.glob so the manifest can
+// still guard against unrouted pages.
+
+// Lazy-resolved route set: populated the first time it is needed so the import
+// evaluation order doesn't matter. Uses the same glob pattern as routes.jsx.
+let _routedPages = null;
+function getRoutedPages() {
+  if (_routedPages) return _routedPages;
+  const pageModules = import.meta.glob('../pages/*.jsx', { eager: false });
+  _routedPages = new Set(
+    Object.keys(pageModules).map(k => k.replace('../pages/', '').replace('.jsx', ''))
+  );
+  return _routedPages;
+}
 
 /**
  * The manifest.  Order within the same category determines sidebar order.
@@ -790,10 +806,11 @@ export const NAV_MAP = Object.fromEntries(NAV_MANIFEST.map(e => [e.page, e]));
  * page and it becomes navigable; unroute it and it drops out of nav automatically.
  */
 /** True if navigating to this page renders something (direct route or redirect). */
-export function isLinkablePage(page) {
-  const routed = new Set(PAGE_NAMES);
-  const redirected = new Set(REDIRECTS.map(r => r.from.replace(/^\//, "")));
-  return routed.has(page) || redirected.has(page);
+export function isLinkablePage(page, routedSet, redirectedSet) {
+  const routed = routedSet ?? getRoutedPages();
+  if (routed.has(page)) return true;
+  if (redirectedSet) return redirectedSet.has(page);
+  return false;
 }
 
 /**
@@ -806,7 +823,7 @@ export function buildNavCategories(manifest) {
     "Learning & Resources", "Tools",
   ];
   const map = {};
-  const routed = new Set(PAGE_NAMES);
+  const routed = getRoutedPages();
   for (const entry of manifest) {
     if (!entry.category || entry.adminOnly) continue;
     if (!routed.has(entry.page)) continue;  // never link to an unrouted page
@@ -838,7 +855,7 @@ export function buildAdminItems(manifest, isSuperAdmin = false) {
   // surface — see the Administration block in NAV_MANIFEST.
   const categoryOrder = ["Office", "Administration"];
   const map = {};
-  const routed = new Set(PAGE_NAMES);
+  const routed = getRoutedPages();
   for (const entry of manifest) {
     if (!entry.category || !entry.adminOnly) continue;
     if (entry.superAdminOnly && !isSuperAdmin) continue;  // platform-only pages
@@ -879,9 +896,10 @@ export function buildBreadcrumbs(pageName, navMap = NAV_MAP) {
   // Build crumb objects — ancestors are links (but only when they actually
   // resolve to a page, so a crumb never dead-ends on PageNotFound); the last
   // crumb is always plain text.
+  const routed = getRoutedPages();
   return trail.map((entry, i, arr) => ({
     label: entry.label,
-    page: i < arr.length - 1 && isLinkablePage(entry.page) ? entry.page : undefined,
+    page: i < arr.length - 1 && isLinkablePage(entry.page, routed) ? entry.page : undefined,
   }));
 }
 
@@ -892,7 +910,7 @@ export function buildBreadcrumbs(pageName, navMap = NAV_MAP) {
  * avoid duplicate entries for the same destination.
  */
 export function buildPaletteEntries(manifest, isAdmin, isSuperAdmin = false) {
-  const routed = new Set(PAGE_NAMES);
+  const routed = getRoutedPages();
   return manifest.filter(e => {
     if (!routed.has(e.page)) return false;
     if (e.superAdminOnly && !isSuperAdmin) return false;  // platform-only pages
