@@ -11,6 +11,7 @@ import { Loader2, Plus, Edit2, Trash2, FileText, FileType } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import { isAdminView } from '@/lib/roles';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 const PDFTemplateLibrary = lazy(() => import('@/components/hub-tabs/PDFTemplateLibrary'));
 
@@ -26,6 +27,7 @@ const tabLoader = (
 
 export default function TemplateManagement() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [formData, setFormData] = useState({
@@ -255,7 +257,16 @@ export default function TemplateManagement() {
                 <Button
                   size="sm"
                   variant="destructive"
-                  onClick={() => deleteMutation.mutate(template.id)}
+                  onClick={async () => {
+                    if (await confirm({
+                      title: 'Delete template?',
+                      description: `This permanently removes "${template.name}". This cannot be undone.`,
+                      confirmText: 'Delete',
+                      destructive: true,
+                    })) {
+                      deleteMutation.mutate(template.id);
+                    }
+                  }}
                   disabled={deleteMutation.isPending}
                 >
                   <Trash2 className="w-4 h-4" />

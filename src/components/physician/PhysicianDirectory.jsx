@@ -252,10 +252,17 @@ export default function PhysicianDirectory({ onSelectPhysician, mode = 'director
                           </a>
                         )}
                         {physician.office_address && (
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-3 h-3" />
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([physician.office_address, physician.office_city, physician.office_state, physician.office_zip].filter(Boolean).join(', '))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-2 min-h-[36px] text-indigo-600 hover:underline"
+                            title="Open address in maps"
+                          >
+                            <MapPin className="w-3 h-3 shrink-0" />
                             <span>{physician.office_address}, {physician.office_city}, {physician.office_state} {physician.office_zip}</span>
-                          </div>
+                          </a>
                         )}
                       </div>
 

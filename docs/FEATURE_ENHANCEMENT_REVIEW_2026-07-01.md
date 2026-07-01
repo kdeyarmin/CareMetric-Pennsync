@@ -87,6 +87,16 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 | 16 | Patient Education Hub | **Swapped both 2000-row patient `<Select>` dropdowns** for `SearchablePatientSelect`, preserving the "fill patient email on select" behavior. Finding a patient is now type-to-search instead of scroll. | ux-polish |
 | 17 | Patient roster | **Made the roster stat cards one-tap filters** — "Total" clears the status filter, "Active" filters to active, "New (30 days)" filters to the last 30 days — so tapping the number a nurse is already looking at narrows the list. | quick-win |
 
+### Fifth batch (also in this PR) — safety confirms + mobile ergonomics
+
+| # | Feature | Change | Type |
+|---|---|---|---|
+| 18 | Templates | **Added a delete confirmation** to document-template deletion (was a single-tap, irreversible `DocumentTemplate.delete`). | trust-safety |
+| 19 | Mobile shell | **Lock body scroll while the mobile menu is open**, so a scroll gesture over the drawer no longer scrolls the page underneath and leaves the user lost on close. | accessibility |
+| 20 | Provider Directory | **Made the provider office address a maps link** (opens Google Maps directions/search in a new tab) so a nurse can navigate to a provider without re-typing the address. | quick-win |
+
+> Follow-up noted: an in-call "End session?" confirm for Telehealth needs a **fullscreen-safe** pattern (a portalled dialog can render behind a fullscreen `<video>` element), so it was intentionally deferred rather than shipped as a dialog that might not display.
+
 ---
 
 ## 4. Prioritized backlog (not yet implemented)
