@@ -3,8 +3,8 @@ import { jsPDF } from 'npm:jspdf@2.5.1';
 
 // Operational logs are gated behind FUNCTIONS_DEBUG so they don't run in
 // production by default. console.error/warn remain ungated for visibility.
-const DEBUG = !!Deno.env.get('FUNCTIONS_DEBUG');
-const debugLog = (...args) => { if (DEBUG) console.log(...args); };
+const isDebugEnabled = () => !!Deno.env.get('FUNCTIONS_DEBUG');
+const debugLog = (...args) => { if (isDebugEnabled()) console.log(...args); };
 
 // Canonical, human-readable report body. Mirrors the format the
 // StateReportableForm previously built client-side so emails + the stored PDF

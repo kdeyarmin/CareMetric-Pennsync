@@ -10,13 +10,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // scheduled-job auth pattern of processTrainingRenewals.
 // ───────────────────────────────────────────────────────────────────────────
 
-const HEYGEN_API_KEY = Deno.env.get('HEYGEN_API_KEY') || '';
 const HEYGEN_BASE = 'https://api.heygen.com';
+const getHeyGenApiKey = () => Deno.env.get('HEYGEN_API_KEY') || '';
 
-async function heygen(path, method) {
+async function heygen(path, method, apiKey) {
   const res = await fetch(`${HEYGEN_BASE}${path}`, {
     method,
-    headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' },
+    headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
   });
   if (!res.ok) throw new Error(`HeyGen API error ${res.status}`);
   return res.json();
@@ -44,7 +44,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 
-    if (!HEYGEN_API_KEY) {
+    const heygenApiKey = getHeyGenApiKey();
+    if (!heygenApiKey) {
       return Response.json({ success: true, heygen_configured: false, checked: 0, completed: 0, failed: 0 });
     }
 
@@ -57,7 +58,7 @@ Deno.serve(async (req) => {
 
     await runChunked(processing, 5, async (m) => {
       try {
-        const r = await heygen(`/v1/video_status.get?video_id=${encodeURIComponent(String(m.video_job_id))}`, 'GET');
+        const r = await heygen(`/v1/video_status.get?video_id=${encodeURIComponent(String(m.video_job_id))}`, 'GET', heygenApiKey);
         const d = r.data || {};
         if (d.status === 'completed') {
           await svc.TrainingModule.update(m.id, {

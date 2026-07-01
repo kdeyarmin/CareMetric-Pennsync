@@ -10,18 +10,18 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // interval to watch progress.
 // ───────────────────────────────────────────────────────────────────────────
 
-const HEYGEN_API_KEY = Deno.env.get('HEYGEN_API_KEY') || '';
 const HEYGEN_BASE = 'https://api.heygen.com';
 const DEFAULT_AVATAR_ID = 'Daisy-inskirt-20220818';
 const DEFAULT_VOICE_ID = '55f8c0f546884f9cbdefa113f5e7b682'; // Elizabeth - Friendly English
+const getHeyGenApiKey = () => Deno.env.get('HEYGEN_API_KEY') || '';
 
 const isAdmin = (u) =>
   u?.role === 'admin' || u?.account_type === 'agency_admin' || u?.account_type === 'super_admin';
 
-async function heygen(path, method, body) {
+async function heygen(path, method, body, apiKey) {
   const res = await fetch(`${HEYGEN_BASE}${path}`, {
     method,
-    headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' },
+    headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   if (!res.ok) {
@@ -48,7 +48,7 @@ function buildNarrationScript(moduleTitle, content) {
   return script.length > 5000 ? script.slice(0, 4950) + '... That covers the key points for this module.' : script;
 }
 
-async function createVideo(script, title, avatarId, voiceId) {
+async function createVideo(script, title, avatarId, voiceId, apiKey) {
   const result = await heygen('/v2/video/generate', 'POST', {
     video_inputs: [{
       character: { type: 'avatar', avatar_id: avatarId || DEFAULT_AVATAR_ID, avatar_style: 'normal' },
@@ -58,7 +58,7 @@ async function createVideo(script, title, avatarId, voiceId) {
     dimension: { width: 1920, height: 1080 },
     caption: true,
     title,
-  });
+  }, apiKey);
   return result.data?.video_id;
 }
 
@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
     }
 
     const { action = 'status', course_id, module_id, avatar_id, voice_id } = await req.json();
+    const heygenApiKey = getHeyGenApiKey();
     const svc = base44.asServiceRole.entities;
 
     let modules = [];
@@ -115,11 +116,11 @@ Deno.serve(async (req) => {
 
     // ── STATUS: poll each in-flight job once, finalize finished modules ──────
     if (action === 'status') {
-      if (HEYGEN_API_KEY) {
+      if (heygenApiKey) {
         const processing = modules.filter((m) => m.video_status === 'processing' && m.video_job_id);
         await runChunked(processing, 5, async (m) => {
           try {
-            const r = await heygen(`/v1/video_status.get?video_id=${encodeURIComponent(String(m.video_job_id))}`, 'GET');
+            const r = await heygen(`/v1/video_status.get?video_id=${encodeURIComponent(String(m.video_job_id))}`, 'GET', null, heygenApiKey);
             const d = r.data || {};
             if (d.status === 'completed') {
               const patch = {
@@ -141,12 +142,12 @@ Deno.serve(async (req) => {
           }
         });
       }
-      return Response.json({ heygen_configured: !!HEYGEN_API_KEY, modules: modules.map(view) });
+      return Response.json({ heygen_configured: !!heygenApiKey, modules: modules.map(view) });
     }
 
     // ── START / REGENERATE: kick off jobs, return immediately ───────────────
     if (action === 'start' || action === 'regenerate') {
-      if (!HEYGEN_API_KEY) {
+      if (!heygenApiKey) {
         return Response.json({ error: 'HeyGen API key not configured', heygen_configured: false }, { status: 400 });
       }
       // Course-level "start" only fills in lessons that don't already have a
@@ -161,7 +162,7 @@ Deno.serve(async (req) => {
       await runChunked(targets, 4, async (m) => {
         try {
           const script = buildNarrationScript(String(m.title), m.content_json || {});
-          const videoId = await createVideo(script, `${m.title} - Training Video`, avatar_id, voice_id);
+          const videoId = await createVideo(script, `${m.title} - Training Video`, avatar_id, voice_id, heygenApiKey);
           if (!videoId) throw new Error('HeyGen did not return a video id');
           const patch = {
             video_job_id: videoId, video_status: 'processing', video_error: '',

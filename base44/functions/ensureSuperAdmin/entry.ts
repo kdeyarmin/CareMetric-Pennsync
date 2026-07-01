@@ -18,7 +18,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // SUPER_ADMIN_EMAIL is read from the env var set in the Base44 dashboard.
 // When unset, ensureSuperAdmin can still be called by an existing admin to
 // repair their account, but the email-based bootstrap path is disabled.
-const SUPER_ADMIN_EMAIL = ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase();
+const getSuperAdminEmail = () => ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase();
 
 const sameEmail = (a, b) =>
   String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     const caller = await base44.auth.me();
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const callerIsOwner = sameEmail(caller.email, SUPER_ADMIN_EMAIL);
+    const callerIsOwner = sameEmail(caller.email, getSuperAdminEmail());
     const callerIsAdmin = caller.role === 'admin' || caller.account_type === 'super_admin';
     if (!callerIsOwner && !callerIsAdmin) {
       return Response.json(
@@ -39,11 +39,11 @@ Deno.serve(async (req) => {
     }
 
     // Locate the owner's User record (the caller, or any record with that email).
-    const matches = await base44.asServiceRole.entities.User.filter({ email: SUPER_ADMIN_EMAIL }).catch(() => []);
+    const matches = await base44.asServiceRole.entities.User.filter({ email: getSuperAdminEmail() }).catch(() => []);
     const target = matches[0];
     if (!target) {
       return Response.json(
-        { error: `No user found for ${SUPER_ADMIN_EMAIL}. The owner must sign in once before being promoted.` },
+        { error: `No user found for ${getSuperAdminEmail()}. The owner must sign in once before being promoted.` },
         { status: 404 },
       );
     }
@@ -75,12 +75,12 @@ Deno.serve(async (req) => {
       user_email: caller.email,
       user_role: caller.role,
       action: 'super_admin_ensured',
-      details: { target_email: SUPER_ADMIN_EMAIL, role_updated: roleUpdated, was_already_super_admin: already },
+      details: { target_email: getSuperAdminEmail(), role_updated: roleUpdated, was_already_super_admin: already },
     }).catch(() => {});
 
     return Response.json({
       success: true,
-      email: SUPER_ADMIN_EMAIL,
+      email: getSuperAdminEmail(),
       account_type: 'super_admin',
       role: roleUpdated ? 'admin' : target.role || 'user',
       role_updated: roleUpdated,

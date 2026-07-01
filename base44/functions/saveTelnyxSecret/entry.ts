@@ -24,7 +24,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * Any omitted optional field is left unchanged; an explicit "" / null clears it.
  */
 
-const SUPER_ADMIN_EMAIL = ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase() || null;
+const getSuperAdminEmail = () => ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase() || null;
 
 const sameEmail = (a, b) =>
   String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const isSuperAdmin = (SUPER_ADMIN_EMAIL && sameEmail(user.email, SUPER_ADMIN_EMAIL)) || user.account_type === 'super_admin';
+    const isSuperAdmin = (getSuperAdminEmail() && sameEmail(user.email, getSuperAdminEmail())) || user.account_type === 'super_admin';
     if (!isSuperAdmin) {
       return Response.json({ error: 'Only the super administrator can manage integration secrets.' }, { status: 403 });
     }

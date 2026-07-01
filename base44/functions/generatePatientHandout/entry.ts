@@ -3,10 +3,9 @@ import { jsPDF } from 'npm:jspdf@2.5.1';
 
 // Operational logs are gated behind FUNCTIONS_DEBUG so they don't run in
 // production by default. console.error/warn remain ungated for visibility.
-const DEBUG = !!Deno.env.get('FUNCTIONS_DEBUG');
-const debugLog = (...args) => { if (DEBUG) console.log(...args); };
-
-const LOGO_URL = Deno.env.get('APP_LOGO_URL') || '';
+const isDebugEnabled = () => !!Deno.env.get('FUNCTIONS_DEBUG');
+const debugLog = (...args) => { if (isDebugEnabled()) console.log(...args); };
+const getLogoUrl = () => Deno.env.get('APP_LOGO_URL') || '';
 
 // Interactive elements for handouts
 const interactiveResources = {
@@ -388,9 +387,12 @@ Deno.serve(async (req) => {
     // Preload the logo once (used on every page banner).
     let logoDataUrl = null;
     try {
-      const logoResponse = await fetch(LOGO_URL);
-      const logoArrayBuffer = await logoResponse.blob().then((b) => b.arrayBuffer());
-      logoDataUrl = `data:image/png;base64,${btoa(String.fromCharCode(...new Uint8Array(logoArrayBuffer)))}`;
+      const logoUrl = getLogoUrl();
+      if (logoUrl) {
+        const logoResponse = await fetch(logoUrl);
+        const logoArrayBuffer = await logoResponse.blob().then((b) => b.arrayBuffer());
+        logoDataUrl = `data:image/png;base64,${btoa(String.fromCharCode(...new Uint8Array(logoArrayBuffer)))}`;
+      }
     } catch (e) { debugLog('Logo load skipped:', e.message); }
 
     const TOP_BAND_H = 26;

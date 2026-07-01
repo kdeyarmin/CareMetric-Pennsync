@@ -2,8 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // Operational logs are gated behind FUNCTIONS_DEBUG so they don't run in
 // production by default. console.error/warn remain ungated for visibility.
-const DEBUG = !!Deno.env.get('FUNCTIONS_DEBUG');
-const debugLog = (...args) => { if (DEBUG) console.log(...args); };
+const isDebugEnabled = () => !!Deno.env.get('FUNCTIONS_DEBUG');
+const debugLog = (...args) => { if (isDebugEnabled()) console.log(...args); };
 
 // One-time, idempotent backfill: turn TCPA quiet hours ON for existing agencies
 // that never configured it, so the legally-safer default enforces immediately in
