@@ -129,9 +129,8 @@ Deno.serve(async (req) => {
     const { event, data } = body;
 
     // This is a Base44 entity-trigger (fires when a DocumentSignature is updated):
-    // the platform invokes it with NO user identity and no way to attach an
-    // x-internal-secret header, so an auth/secret gate here would 403 the
-    // legitimate trigger the moment INTERNAL_FN_SECRET is set. The integrity
+    // the platform invokes it with NO user identity, so an auth gate here would
+    // 403 the legitimate trigger. The integrity
     // defense for a trigger is to NOT trust the posted body — re-fetch the
     // canonical record by id and act only on its real, server-side state. The id
     // is always present on a real trigger, so we REQUIRE it and never fall back to

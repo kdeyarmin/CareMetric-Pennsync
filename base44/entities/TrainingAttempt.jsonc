@@ -117,17 +117,14 @@
         }
       ]
     },
+    // Write is admin-only ON PURPOSE: attempts are graded and written
+    // server-side (gradeTrainingAttempt, via the service role), and a passing
+    // TrainingAttempt row is the evidence issueCertificate trusts. If users
+    // could write their own attempts they could mint certificates.
     "write": {
-      "$or": [
-        {
-          "user_id": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     }
   }
 }

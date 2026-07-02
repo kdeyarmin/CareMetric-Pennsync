@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
 
     // Fetch and add logo
     try {
-      const logoUrl = Deno.env.get('APP_LOGO_URL') || '';
+      const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png';
       if (logoUrl) {
         const logoResponse = await fetch(logoUrl);
         const logoBlob = await logoResponse.blob();

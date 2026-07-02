@@ -13,10 +13,6 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * Body: { target_user_email, limit? }
  */
 
-const getSuperAdminEmail = () => ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase() || null;
-const sameEmail = (a, b) =>
-  String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
-
 /** Mirrors maskPhone() in src/components/voice/phoneUtils.js — last-4 only. */
 function maskLast4(raw) {
   if (!raw) return '';
@@ -47,8 +43,7 @@ Deno.serve(async (req) => {
     const isAdmin =
       user.role === 'admin' ||
       user.account_type === 'super_admin' ||
-      user.account_type === 'agency_admin' ||
-      (getSuperAdminEmail() && sameEmail(user.email, getSuperAdminEmail()));
+      user.account_type === 'agency_admin';
     if (!isAdmin) {
       return Response.json({ error: 'Administrator access required.' }, { status: 403 });
     }

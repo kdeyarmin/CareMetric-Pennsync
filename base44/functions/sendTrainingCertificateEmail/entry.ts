@@ -139,9 +139,7 @@ const buildCertificatePdf = async ({ userName, moduleName, completionDate, score
   [[10, 10], [287, 10], [10, 200], [287, 200]].forEach(([x, y]) => doc.circle(x, y, 3, 'F'));
 
   try {
-    // Logo omitted — no app-specific logo URL configured for this deployment.
-    // Agencies can customize by setting APP_LOGO_URL env var.
-    const logoUrl = Deno.env.get('APP_LOGO_URL') || '';
+    const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png';
     if (logoUrl) {
       const logoResponse = await fetch(logoUrl);
       const logoBlob = await logoResponse.blob();

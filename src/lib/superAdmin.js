@@ -10,10 +10,12 @@
  *   2. account_type === 'super_admin' on the User record (what the rest of the
  *      app — Learning Center, skill dashboards — already keys off of).
  *
- * This is the single source of truth for the owner email on the FRONTEND. The
- * Base44 backend functions (ensureSuperAdmin, saveTelnyxSecret, etc.) run
- * as standalone Deno modules that can't import this file, so each mirrors the
- * same literal; keep them in sync when changing the owner.
+ * This is the single source of truth for the owner email on the FRONTEND, and
+ * it is FRONTEND-ONLY (UI gating): the Base44 backend functions determine
+ * admin/super-admin standing solely from role/account_type — the backend
+ * SUPER_ADMIN_EMAIL secret was retired. An email-matched owner who isn't yet
+ * promoted can reach the Super Admin page, where ensureSuperAdmin promotes
+ * their account (authorized by their platform 'admin' role).
  */
 
 /**

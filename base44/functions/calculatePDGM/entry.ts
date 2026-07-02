@@ -590,14 +590,12 @@ function validateEpisodeTiming(data) {
 // literal owner email and the admin checks are duplicated here. Keep in sync.
 // PDGM payment/revenue is restricted to administrators; clinical staff (nurses)
 // must never receive dollar figures, even by calling this endpoint directly.
-const getSuperAdminEmail = () => ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase() || null;
 function canViewFinancials(user) {
   if (!user) return false;
   return (
     user.role === 'admin' ||
     user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin' ||
-    String(user.email || '').trim().toLowerCase() === getSuperAdminEmail()
+    user.account_type === 'super_admin'
   );
 }
 

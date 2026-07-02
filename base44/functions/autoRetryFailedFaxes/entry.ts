@@ -129,19 +129,19 @@ function renderBrandedEmail(opts) {
  */
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
-  let apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
-  let publicKey = pick(Deno.env.get('TELNYX_PUBLIC_KEY'));
-  let messagingProfileId = pick(Deno.env.get('TELNYX_MESSAGING_PROFILE_ID'));
-  let voiceConnectionId = pick(Deno.env.get('TELNYX_VOICE_CONNECTION_ID')) || pick(Deno.env.get('TELNYX_CONNECTION_ID'));
-  let faxConnectionId = pick(Deno.env.get('TELNYX_FAX_CONNECTION_ID'));
+  let apiKey = null;
+  let publicKey = null;
+  let messagingProfileId = null;
+  let voiceConnectionId = null;
+  let faxConnectionId = null;
   try {
     const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' });
     const rec = rows?.[0] || {};
-    if (!apiKey) apiKey = pick(rec.api_key);
-    if (!publicKey) publicKey = pick(rec.public_key);
-    if (!messagingProfileId) messagingProfileId = pick(rec.messaging_profile_id);
-    if (!voiceConnectionId) voiceConnectionId = pick(rec.voice_connection_id);
-    if (!faxConnectionId) faxConnectionId = pick(rec.fax_connection_id);
+    apiKey = pick(rec.api_key);
+    publicKey = pick(rec.public_key);
+    messagingProfileId = pick(rec.messaging_profile_id);
+    voiceConnectionId = pick(rec.voice_connection_id);
+    faxConnectionId = pick(rec.fax_connection_id);
   } catch { /* ignore */ }
   return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
 }
@@ -201,19 +201,14 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Authorization: opt-in lockdown for this privileged scheduled job (mirrors
-    // pollFaxStatuses / processScheduledFaxes). This reads FaxLog PHI and dispatches
-    // billable Telnyx fax sends under the service role. When INTERNAL_FN_SECRET is
-    // set, require an admin OR the internal-secret header; the no-identity cron path
-    // is allowed only while no secret is configured.
+    // Authorization: privileged scheduled job (mirrors pollFaxStatuses /
+    // processScheduledFaxes). This reads FaxLog PHI and dispatches billable
+    // Telnyx fax sends under the service role. The
+    // no-identity cron path is allowed (platform invocation restriction is the
+    // control); an authenticated non-admin caller is always rejected.
     const me = await base44.auth.me().catch(() => null);
     const isAdmin = me?.role === 'admin' || me?.account_type === 'agency_admin' || me?.account_type === 'super_admin';
-    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
-    if (internalSecret) {
-      if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    } else if (me && !isAdmin) {
+    if (me && !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 
@@ -239,12 +234,21 @@ Deno.serve(async (req) => {
 
     const { apiKey, faxConnectionId } = await resolveTelnyxCreds(base44);
     // Resolve the office fax from-number the same way sendFax does: prefer the
-    // in-app AgencySettings.office_fax_number_e164, else the TELNYX_FAX_NUMBER env.
+    // in-app AgencySettings.office_fax_number_e164.
     const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
     const officeFax = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const fromNumber = officeFax || Deno.env.get('TELNYX_FAX_NUMBER');
+    const fromNumber = officeFax || null;
     // Include the same DLR webhook sendFax uses so the retried fax reports status.
-    const functionsBaseUrl = (Deno.env.get('FUNCTIONS_BASE_URL') || '').trim().replace(/\/+$/, '');
+    // Derive the functions base from this request's own URL — every backend
+    // function (including handleTelnyxStatusWebhook) is served from the same
+    // base, so the status-webhook peer is one path segment over. Replaces the
+    // retired FUNCTIONS_BASE_URL secret; non-https (local dev) derives nothing.
+    const functionsBaseUrl = (() => {
+      try {
+        const u = new URL(req.url);
+        return u.protocol === 'https:' ? (u.origin + u.pathname).replace(/\/+$/, '').replace(/\/[^/]+$/, '') : '';
+      } catch { return ''; }
+    })();
     const webhookUrl = functionsBaseUrl ? `${functionsBaseUrl}/handleTelnyxStatusWebhook` : undefined;
 
     if (!apiKey || !faxConnectionId || !fromNumber) {

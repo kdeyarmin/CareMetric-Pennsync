@@ -19,15 +19,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const BRAND_LOGO_URL =
   'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png';
 
-// Published CareMetric / PennSync app-store listings. The IOS_APP_STORE_URL /
-// ANDROID_PLAY_STORE_URL env vars override these (e.g. a region-specific
-// storefront); the defaults ensure the badges render even when the env is unset.
-// Both verified to resolve (HTTP 200) — note the Android package is
+// Published CareMetric / PennSync app-store listings (hardcoded — no env
+// override). Both verified to resolve (HTTP 200) — note the Android package is
 // intentionally "caremetic" (the real listing), not "caremetric".
 export const DEFAULT_IOS_APP_URL = 'https://apps.apple.com/us/app/caremetric-ai/id6757097720';
 export const DEFAULT_ANDROID_APP_URL = 'https://play.google.com/store/apps/details?id=com.caremetic.ai';
 
-// Support address shown in the email (the SUPPORT_EMAIL env var overrides it).
+// Support address shown in the email.
 export const DEFAULT_SUPPORT_EMAIL = 'info@caremetric.ai';
 
 const BRAND = {
@@ -294,11 +292,9 @@ Deno.serve(async (req) => {
     // Privilege-propagation guard: the gate above admits a plain facility `admin`,
     // but the requested role is applied verbatim to the new account (with
     // is_approved: true) by onUserSignup / autoApproveInvitedUser. Without this, any
-    // admin could mint another admin. Only a super_admin (or the platform owner) may
+    // admin could mint another admin. Only a super_admin may
     // invite a user into a privileged role — mirrors the guard in fixUserAccount.
-    const SUPER_ADMIN_EMAIL = (Deno.env.get('SUPER_ADMIN_EMAIL') || '').trim().toLowerCase() || null;
-    const callerIsSuperAdmin = user.account_type === 'super_admin'
-      || String(user.email || '').trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+    const callerIsSuperAdmin = user.account_type === 'super_admin';
     const PRIVILEGED_ROLES = ['admin', 'super_admin'];
     if (PRIVILEGED_ROLES.includes(String(userRole)) && !callerIsSuperAdmin) {
       return Response.json(
@@ -334,20 +330,19 @@ Deno.serve(async (req) => {
     // platform's transactional invite with app-install instructions and the
     // role-matched reference manual. A failure here must NEVER fail the invite, so
     // it is fully wrapped. Manuals are served from the app's `/manuals/` path
-    // (public/manuals/*, served at the app origin root). The builder derives the
-    // manual link from the app origin; set MANUALS_BASE_URL only if the PDFs are
-    // hosted on a different host/CDN than the app.
+    // (public/manuals/*, served at the app origin root); the builder derives the
+    // manual link from the app origin.
     try {
-      const appUrl = (Deno.env.get('APP_URL') || 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932').replace(/\/+$/, '');
+      const appUrl = 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
       const { subject, body } = buildWelcomeEmail({
         fullName: full_name,
         email,
         role: userRole,
         appUrl,
-        manualsBaseUrl: Deno.env.get('MANUALS_BASE_URL') || null,
-        iosAppUrl: Deno.env.get('IOS_APP_STORE_URL') || DEFAULT_IOS_APP_URL,
-        androidAppUrl: Deno.env.get('ANDROID_PLAY_STORE_URL') || DEFAULT_ANDROID_APP_URL,
-        supportEmail: Deno.env.get('SUPPORT_EMAIL') || DEFAULT_SUPPORT_EMAIL,
+        manualsBaseUrl: null,
+        iosAppUrl: DEFAULT_IOS_APP_URL,
+        androidAppUrl: DEFAULT_ANDROID_APP_URL,
+        supportEmail: DEFAULT_SUPPORT_EMAIL,
       });
       await base44.asServiceRole.integrations.Core.SendEmail({
         to: email,

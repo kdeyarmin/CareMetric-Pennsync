@@ -123,10 +123,9 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
-// Operational logs are gated behind FUNCTIONS_DEBUG so they don't run in
-// production by default. console.error/warn remain ungated for visibility.
-const isDebugEnabled = () => !!Deno.env.get('FUNCTIONS_DEBUG');
-const debugLog = (...args) => { if (isDebugEnabled()) console.log(...args); };
+// Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG
+// secret was retired). console.error/warn remain ungated for visibility.
+const debugLog = (..._args) => {};
 
 // Canonical, human-readable report body. Mirrors the format the
 // StateReportableForm previously built client-side so emails + the stored PDF

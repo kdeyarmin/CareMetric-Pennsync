@@ -30,19 +30,19 @@ const PROBE_TIMEOUT_MS = 8000;
  */
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
-  let apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
-  let publicKey = pick(Deno.env.get('TELNYX_PUBLIC_KEY'));
-  let messagingProfileId = pick(Deno.env.get('TELNYX_MESSAGING_PROFILE_ID'));
-  let voiceConnectionId = pick(Deno.env.get('TELNYX_VOICE_CONNECTION_ID')) || pick(Deno.env.get('TELNYX_CONNECTION_ID'));
-  let faxConnectionId = pick(Deno.env.get('TELNYX_FAX_CONNECTION_ID'));
+  let apiKey = null;
+  let publicKey = null;
+  let messagingProfileId = null;
+  let voiceConnectionId = null;
+  let faxConnectionId = null;
   try {
     const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' });
     const rec = rows?.[0] || {};
-    if (!apiKey) apiKey = pick(rec.api_key);
-    if (!publicKey) publicKey = pick(rec.public_key);
-    if (!messagingProfileId) messagingProfileId = pick(rec.messaging_profile_id);
-    if (!voiceConnectionId) voiceConnectionId = pick(rec.voice_connection_id);
-    if (!faxConnectionId) faxConnectionId = pick(rec.fax_connection_id);
+    apiKey = pick(rec.api_key);
+    publicKey = pick(rec.public_key);
+    messagingProfileId = pick(rec.messaging_profile_id);
+    voiceConnectionId = pick(rec.voice_connection_id);
+    faxConnectionId = pick(rec.fax_connection_id);
   } catch { /* ignore */ }
   return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
 }
@@ -96,8 +96,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const isAdmin =
       user.role === 'admin' ||
-      user.account_type === 'super_admin' ||
-      String(user.email || '').trim().toLowerCase() === ((Deno.env.get('SUPER_ADMIN_EMAIL') || '').trim().toLowerCase() || null);
+      user.account_type === 'super_admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can test the Telnyx connection' }, { status: 403 });
     }

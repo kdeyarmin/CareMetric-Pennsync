@@ -103,19 +103,19 @@ async function sendTelnyx(apiKey, messagingProfileId, from, to, body, webhookUrl
  */
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
-  let apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
-  let publicKey = pick(Deno.env.get('TELNYX_PUBLIC_KEY'));
-  let messagingProfileId = pick(Deno.env.get('TELNYX_MESSAGING_PROFILE_ID'));
-  let voiceConnectionId = pick(Deno.env.get('TELNYX_VOICE_CONNECTION_ID')) || pick(Deno.env.get('TELNYX_CONNECTION_ID'));
-  let faxConnectionId = pick(Deno.env.get('TELNYX_FAX_CONNECTION_ID'));
+  let apiKey = null;
+  let publicKey = null;
+  let messagingProfileId = null;
+  let voiceConnectionId = null;
+  let faxConnectionId = null;
   try {
     const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' });
     const rec = rows?.[0] || {};
-    if (!apiKey) apiKey = pick(rec.api_key);
-    if (!publicKey) publicKey = pick(rec.public_key);
-    if (!messagingProfileId) messagingProfileId = pick(rec.messaging_profile_id);
-    if (!voiceConnectionId) voiceConnectionId = pick(rec.voice_connection_id);
-    if (!faxConnectionId) faxConnectionId = pick(rec.fax_connection_id);
+    apiKey = pick(rec.api_key);
+    publicKey = pick(rec.public_key);
+    messagingProfileId = pick(rec.messaging_profile_id);
+    voiceConnectionId = pick(rec.voice_connection_id);
+    faxConnectionId = pick(rec.fax_connection_id);
   } catch { /* ignore */ }
   return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
 }
@@ -445,19 +445,12 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     // Authorization: privileged cron job (service-role reads/writes + billable
-    // Telnyx sends, no end user). Opt-in lockdown mirroring pollFaxStatuses — a
-    // real scheduler runs unauthenticated and still passes while no secret is
-    // configured; once INTERNAL_FN_SECRET is set it must present the header, and
-    // a logged-in non-admin is always rejected (closing the "any logged-in user
-    // can force-dispatch queued SMS off-schedule" vector).
+    // Telnyx sends, no end user). A real scheduler runs unauthenticated and
+    // passes; a logged-in non-admin is always rejected (closing the "any
+    // logged-in user can force-dispatch queued SMS off-schedule" vector).
     const me = await base44.auth.me().catch(() => null);
     const isAdmin = me?.role === 'admin';
-    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
-    if (internalSecret) {
-      if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    } else if (me && !isAdmin) {
+    if (me && !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 
@@ -467,7 +460,16 @@ Deno.serve(async (req) => {
     const runId = crypto.randomUUID();
 
     // Reconcile terminal delivery status via the DLR webhook (mirrors sendSms).
-    const functionsBaseUrl = (Deno.env.get('FUNCTIONS_BASE_URL') || '').trim().replace(/\/+$/, '');
+    // Derive the functions base from this request's own URL — every backend
+    // function (including handleTelnyxStatusWebhook) is served from the same
+    // base, so the status-webhook peer is one path segment over. Replaces the
+    // retired FUNCTIONS_BASE_URL secret; non-https (local dev) derives nothing.
+    const functionsBaseUrl = (() => {
+      try {
+        const u = new URL(req.url);
+        return u.protocol === 'https:' ? (u.origin + u.pathname).replace(/\/+$/, '').replace(/\/[^/]+$/, '') : '';
+      } catch { return ''; }
+    })();
     const statusCallback = functionsBaseUrl ? `${functionsBaseUrl}/handleTelnyxStatusWebhook` : undefined;
 
     const nowIso = new Date().toISOString();

@@ -109,8 +109,11 @@ test("sendFax posts the Telnyx Programmable Fax contract", async () => {
     { match: (u) => u.includes("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fax_1", status: "queued" } } }) },
   ]);
   const handler = await loadHandler("./sendFax/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest", TELNYX_FAX_CONNECTION_ID: "FC1", TELNYX_FAX_NUMBER: "+12155550190" },
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }] } }),
+    env: {},
+    makeClient: () => makeBase44({ data: {
+      IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
+      AgencySettings: [{ office_fax_number_e164: "+12155550190" }],
+    } }),
     fetchImpl: impl,
   });
   await handler(new Request("https://app/functions/sendFax", {

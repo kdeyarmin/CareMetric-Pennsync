@@ -128,10 +128,10 @@ Deno.serve(async (req) => {
     const { data } = await req.json();
 
     // Entity-trigger (fires on DocumentSignature update): invoked by the platform
-    // with no identity / no custom header, so a secret gate would 403 the
-    // legitimate trigger when INTERNAL_FN_SECRET is set. The defense for a trigger
-    // is to re-fetch the canonical record and act only on its real state, never
-    // the posted body — so a forged id/status can't probe patients or spam admins.
+    // with no identity / no custom header, so it can't be gated on auth. The
+    // defense for a trigger is to re-fetch the canonical record and act only on
+    // its real state, never the posted body — so a forged id/status can't probe
+    // patients or spam admins.
     if (!data || !data.id) {
       return Response.json({ error: 'No signature data provided' }, { status: 400 });
     }
@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
       .slice(-1)[0] || signature.completed_date;
 
     const subject = `Document signed: ${documentTitle}`;
-    const appBase = (Deno.env.get('APP_URL') || 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932').replace(/\/+$/, '');
+    const appBase = 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
     const body = renderBrandedEmail({
       preheader: `${documentTitle} has been signed by ${signedByText}.`,
       eyebrow: 'Document signed',

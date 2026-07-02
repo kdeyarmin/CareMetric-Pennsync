@@ -297,9 +297,6 @@ Deno.serve(async (req) => {
           user_id: assignment.assigned_to_user_id,
           course_id: assignment.course_id,
           score,
-          // Proves this is the trusted internal caller (see issueCertificate
-          // lockdown). No-op unless INTERNAL_FN_SECRET is configured.
-          _internal_secret: Deno.env.get('INTERNAL_FN_SECRET')
         });
         
         if (certResult.data?.certificate) {

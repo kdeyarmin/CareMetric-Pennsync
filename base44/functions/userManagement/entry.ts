@@ -179,9 +179,7 @@ Deno.serve(async (req) => {
     // matching the hardened sibling functions (createUserWithTempPassword,
     // fixUserAccount): a plain facility admin must not be able to mint another
     // facility admin without super-admin oversight.
-    const SUPER_ADMIN_EMAIL = (Deno.env.get('SUPER_ADMIN_EMAIL') || '').trim().toLowerCase() || null;
-    const callerIsSuperAdmin = currentUser?.account_type === 'super_admin'
-      || String(currentUser?.email || '').trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+    const callerIsSuperAdmin = currentUser?.account_type === 'super_admin';
 
     switch (action) {
       case 'invite_user':
@@ -264,7 +262,7 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
 
   // Send invitation email
   try {
-    const signupUrl = `${Deno.env.get('APP_URL') || 'https://app.base44.app'}`;
+    const signupUrl = 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: email,
       subject: 'You’re invited to join PennSync by CareMetric',
@@ -331,7 +329,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   });
 
   // Resend email
-  const signupUrl = `${Deno.env.get('APP_URL') || 'https://app.base44.app'}`;
+  const signupUrl = 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
   await base44.asServiceRole.integrations.Core.SendEmail({
     to: invitation.email,
     subject: 'Reminder: your invitation to PennSync by CareMetric',

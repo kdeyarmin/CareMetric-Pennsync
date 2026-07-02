@@ -248,9 +248,8 @@ Return comprehensive risk assessment:`,
 
     // Confidence/risk gate: the prompt asks for alerts only at risk_score >= 50,
     // but nothing enforces it — without a floor a low-risk AI alert auto-creates a
-    // PatientAlert and adds to alert fatigue. Skip anything below the threshold
-    // (override with RISK_ALERT_MIN_SCORE).
-    const minRiskScore = Number(Deno.env.get('RISK_ALERT_MIN_SCORE') || '50');
+    // PatientAlert and adds to alert fatigue. Skip anything below the threshold.
+    const minRiskScore = 50;
 
     // Create or update patient alerts for high-risk findings
     const createdAlerts = [];

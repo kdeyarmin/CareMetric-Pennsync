@@ -16,8 +16,8 @@ Deno.serve(async (req) => {
     const payload = await req.json();
 
     // Entity-trigger (fires on Visit create): invoked by the platform with no
-    // identity / no custom header, so a secret gate would 403 the legitimate
-    // trigger when INTERNAL_FN_SECRET is set. Defense for a trigger: re-fetch the
+    // identity / no custom header, so it can't be gated on auth. Defense for a
+    // trigger: re-fetch the
     // canonical Visit by id and derive the nurse + patient FROM the real record.
     // The id is ALWAYS present on a real trigger payload, so we require it and
     // NEVER fall back to the posted body — otherwise an unauthenticated caller

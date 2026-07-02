@@ -40,14 +40,15 @@ must not be able to write directly; writes go through backend functions.
 
 ## 3. Backend env secrets to set
 
+Text/voice/video/fax credentials are configured in-app (IntegrationSecret via
+Administration → Super Admin), the server-side file-fetch SSRF allowlist is
+hardcoded in code (always-on), and the `onUserSignup` re-fetch/email-match guard
+is always active. The dashboard-env secret list is therefore just:
+
 | Secret | Purpose | If unset |
 |---|---|---|
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | SMS/voice + webhook verification (X-Twilio-Signature) + fax | all Twilio features fail / webhooks rejected (fail-closed) |
-| `TWILIO_FAX_NUMBER`, `TWILIO_API_KEY`, `TWILIO_API_SECRET` | Fax + telehealth video | those features fail |
-| `TWILIO_WEBHOOK_URL` | Exact URL for Twilio signature check behind a proxy (SMS/voice + fax) | falls back to `req.url` |
-| **`INTERNAL_FN_SECRET`** | Activates the `issueCertificate` lockdown (only the training system/admin may issue) | **lockdown inactive — set it at launch** |
-| **`FILE_URL_ALLOWED_HOSTS`** | Restrict server-side file fetches to your storage host(s) — fully closes SSRF incl. DNS-rebinding | only IP/scheme literals blocked |
-| `SIGNUP_WEBHOOK_SECRET` (optional) | Locks `onUserSignup` to the trusted trigger | re-fetch/email-match guard still applies |
+| **`SIGNATURE_HMAC_SECRET`** | Keys the e-signature integrity MAC (forgery-resistant tamper-evidence) | unkeyed sha256 — detects corruption, not forgery — **set it at launch** |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `HEYGEN_API_KEY` | AI feature gates (transcription / SOAP notes / fax cover pages / training videos) | those features show a "not configured" notice |
 
 All `VITE_*` vars are public by design — never put secrets there.
 
@@ -107,9 +108,9 @@ if the platform restricts who can invoke function endpoints — **confirm**):
 5. Webhook smoke tests (good/bad signatures) per §5.
 6. Confirm audit rows (`UserActivity`/`SecurityLog`) carry **no PHI** (bodies,
    full numbers).
-7. With `INTERNAL_FN_SECRET` set, a direct `issueCertificate` call from a
-   non-admin is rejected; legitimate completion via `gradeTrainingAttempt` still
-   issues a certificate.
+7. A direct `issueCertificate` call from a non-admin with no passing
+   `TrainingAttempt` is rejected (attempts are admin/service-role-write only);
+   legitimate completion via `gradeTrainingAttempt` still issues a certificate.
 
 ## 8. Tracked follow-ups (code, post-launch)
 

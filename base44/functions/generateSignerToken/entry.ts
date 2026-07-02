@@ -78,6 +78,6 @@ function generateSecureToken() {
 }
 
 function getAppBaseUrl() {
-  const appId = Deno.env.get('BASE44_APP_ID');
-  return `https://${appId}.base44.io`;
+  // Hardcoded app URL (matches the signer links built by notifySignerOfPackage).
+  return 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
 }

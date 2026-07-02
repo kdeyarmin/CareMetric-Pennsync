@@ -13,14 +13,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * failure reasons, and timestamps.
  */
 
-const getSuperAdminEmail = () => ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase() || null;
-
 const isAdminLike = (u) =>
   !!u &&
   (u.role === 'admin' ||
     u.account_type === 'agency_admin' ||
-    u.account_type === 'super_admin' ||
-    u.email === getSuperAdminEmail());
+    u.account_type === 'super_admin');
 
 const round = (n) => Math.round(n);
 const MISSED_CALL_STATUSES = new Set(['failed', 'no_answer', 'busy', 'canceled', 'cancelled']);

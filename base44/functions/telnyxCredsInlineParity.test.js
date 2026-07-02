@@ -10,10 +10,12 @@ import ts from "typescript";
  * Drift guard for resolveTelnyxCreds, which is inlined (single-file Deno deploy
  * model) into every Telnyx function: testTelnyxConnection, sendTelnyxSms,
  * sendTelnyxFax, startTelnyxCall, handleTelnyxStatusWebhook (and the apiKey-only
- * copy in createTelnyxVideoToken). It resolves Telnyx credentials env-first, then
- * the in-app IntegrationSecret. Since it gates who can send/verify across all four
- * channels, a silent divergence between copies is a security concern; this asserts
- * every copy resolves each field it exposes identically.
+ * copy in createTelnyxVideoToken). It resolves Telnyx credentials from the
+ * in-app IntegrationSecret row ONLY — the TELNYX_* dashboard-env override path
+ * was retired. Since it gates who can send/verify across all four channels, a
+ * silent divergence between copies is a security concern; this asserts every
+ * copy resolves each field it exposes identically (and that no copy quietly
+ * re-grows an env read).
  */
 globalThis.Deno = globalThis.Deno || { serve() {}, env: { get: () => undefined } };
 
@@ -57,31 +59,31 @@ const FILES = {
 
 const SCENARIOS = [
   {
-    name: "env vars win over the stored secret",
-    env: {
-      TELNYX_API_KEY: "KEYenv", TELNYX_PUBLIC_KEY: "PUBenv",
-      TELNYX_MESSAGING_PROFILE_ID: "MPenv", TELNYX_VOICE_CONNECTION_ID: "VCenv", TELNYX_FAX_CONNECTION_ID: "FCenv",
-    },
-    rows: [{ api_key: "KEYdb", public_key: "PUBdb", messaging_profile_id: "MPdb", voice_connection_id: "VCdb", fax_connection_id: "FCdb" }],
-    expect: { apiKey: "KEYenv", publicKey: "PUBenv", messagingProfileId: "MPenv", voiceConnectionId: "VCenv", faxConnectionId: "FCenv" },
-  },
-  {
-    name: "falls back to IntegrationSecret when env unset",
+    name: "resolves every field from the in-app IntegrationSecret",
     env: {},
     rows: [{ api_key: "KEYdb", public_key: "PUBdb", messaging_profile_id: "MPdb", voice_connection_id: "VCdb", fax_connection_id: "FCdb" }],
     expect: { apiKey: "KEYdb", publicKey: "PUBdb", messagingProfileId: "MPdb", voiceConnectionId: "VCdb", faxConnectionId: "FCdb" },
   },
   {
-    name: "blank env values are ignored, stored used",
-    env: { TELNYX_API_KEY: "  ", TELNYX_PUBLIC_KEY: "" },
-    rows: [{ api_key: "KEYdb", public_key: "PUBdb" }],
-    expect: { apiKey: "KEYdb", publicKey: "PUBdb", messagingProfileId: null, voiceConnectionId: null, faxConnectionId: null },
+    name: "blank stored values resolve to null",
+    env: {},
+    rows: [{ api_key: "KEYdb", public_key: "  ", messaging_profile_id: "" }],
+    expect: { apiKey: "KEYdb", publicKey: null, messagingProfileId: null, voiceConnectionId: null, faxConnectionId: null },
   },
   {
-    name: "legacy TELNYX_CONNECTION_ID is accepted for the voice connection",
+    name: "retired TELNYX_* env vars are ignored (IntegrationSecret only)",
+    env: {
+      TELNYX_API_KEY: "KEYenv", TELNYX_PUBLIC_KEY: "PUBenv", TELNYX_MESSAGING_PROFILE_ID: "MPenv",
+      TELNYX_VOICE_CONNECTION_ID: "VCenv", TELNYX_CONNECTION_ID: "VClegacy", TELNYX_FAX_CONNECTION_ID: "FCenv",
+    },
+    rows: [{ api_key: "KEYdb", public_key: "PUBdb", messaging_profile_id: "MPdb", voice_connection_id: "VCdb", fax_connection_id: "FCdb" }],
+    expect: { apiKey: "KEYdb", publicKey: "PUBdb", messagingProfileId: "MPdb", voiceConnectionId: "VCdb", faxConnectionId: "FCdb" },
+  },
+  {
+    name: "retired env vars alone configure nothing",
     env: { TELNYX_API_KEY: "KEYenv", TELNYX_CONNECTION_ID: "VClegacy" },
     rows: [],
-    expect: { apiKey: "KEYenv", publicKey: null, messagingProfileId: null, voiceConnectionId: "VClegacy", faxConnectionId: null },
+    expect: { apiKey: null, publicKey: null, messagingProfileId: null, voiceConnectionId: null, faxConnectionId: null },
   },
   {
     name: "no creds anywhere → nulls",

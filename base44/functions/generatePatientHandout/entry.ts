@@ -1,11 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@2.5.1';
 
-// Operational logs are gated behind FUNCTIONS_DEBUG so they don't run in
-// production by default. console.error/warn remain ungated for visibility.
-const isDebugEnabled = () => !!Deno.env.get('FUNCTIONS_DEBUG');
-const debugLog = (...args) => { if (isDebugEnabled()) console.log(...args); };
-const getLogoUrl = () => Deno.env.get('APP_LOGO_URL') || '';
+// Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG
+// secret was retired). console.error/warn remain ungated for visibility.
+const debugLog = (..._args) => {};
+const getLogoUrl = () => 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png';
 
 // Interactive elements for handouts
 const interactiveResources = {

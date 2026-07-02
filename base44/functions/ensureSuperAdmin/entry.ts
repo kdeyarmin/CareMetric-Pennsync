@@ -1,27 +1,22 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
- * ensureSuperAdmin — promotes the designated platform owner
- * (configured via SUPER_ADMIN_EMAIL env var) to the super administrator account so the rest of the
- * app recognizes them: account_type = 'super_admin', role = 'admin', approved.
+ * ensureSuperAdmin — promotes the calling administrator to the super
+ * administrator account so the rest of the app recognizes them:
+ * account_type = 'super_admin', role = 'admin', approved.
  *
- * This is self-bootstrapping and safe to call repeatedly (idempotent). It is
- * authorized in one of two ways:
- *   - the caller IS the designated owner (they can claim their own account), or
- *   - the caller is already an admin / super_admin (they can repair it).
+ * This is self-bootstrapping and safe to call repeatedly (idempotent). It only
+ * ever promotes the caller's own account, and is authorized two ways:
+ *   - an existing super_admin (self-repair of role/approval), or
+ *   - a platform admin (role 'admin' — which Base44 grants the app owner)
+ *     while NO super_admin exists yet (the one-time first-boot bootstrap).
+ * There is no owner-email override (the SUPER_ADMIN_EMAIL secret was retired);
+ * super-admin status is carried entirely by account_type.
  *
- * Keeping this server-side (with the service role) means the very first sign-in
- * by the owner can establish their elevated account without anyone having to
- * hand-edit the database.
+ * Keeping this server-side (with the service role) means the very first visit
+ * by the owner (whose platform role is 'admin') can establish their elevated
+ * account without anyone having to hand-edit the database.
  */
-
-// SUPER_ADMIN_EMAIL is read from the env var set in the Base44 dashboard.
-// When unset, ensureSuperAdmin can still be called by an existing admin to
-// repair their account, but the email-based bootstrap path is disabled.
-const getSuperAdminEmail = () => ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase();
-
-const sameEmail = (a, b) =>
-  String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 
 Deno.serve(async (req) => {
   try {
@@ -29,41 +24,44 @@ Deno.serve(async (req) => {
     const caller = await base44.auth.me();
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const callerIsOwner = sameEmail(caller.email, getSuperAdminEmail());
-    const callerIsAdmin = caller.role === 'admin' || caller.account_type === 'super_admin';
-    if (!callerIsOwner && !callerIsAdmin) {
-      return Response.json(
-        { error: 'Only the platform owner or an existing administrator can run this.' },
-        { status: 403 },
-      );
+    // An existing super_admin may always run this (self-repair). A plain
+    // platform admin may claim super-admin ONLY while no super_admin exists yet
+    // (the first-boot bootstrap) — otherwise any facility admin could silently
+    // self-escalate to the tier that manages integration secrets.
+    const callerIsSuper = caller.account_type === 'super_admin';
+    if (!callerIsSuper) {
+      if (caller.role !== 'admin') {
+        return Response.json(
+          { error: 'Only a platform administrator can run this.' },
+          { status: 403 },
+        );
+      }
+      const existingSupers = await base44.asServiceRole.entities.User
+        .filter({ account_type: 'super_admin' }, '-created_date', 1).catch(() => []);
+      if ((existingSupers || []).length > 0) {
+        return Response.json(
+          { error: 'A super administrator already exists; only they can run this.' },
+          { status: 403 },
+        );
+      }
     }
 
-    // Locate the owner's User record (the caller, or any record with that email).
-    const matches = await base44.asServiceRole.entities.User.filter({ email: getSuperAdminEmail() }).catch(() => []);
-    const target = matches[0];
-    if (!target) {
-      return Response.json(
-        { error: `No user found for ${getSuperAdminEmail()}. The owner must sign in once before being promoted.` },
-        { status: 404 },
-      );
-    }
-
-    const already = target.account_type === 'super_admin' && target.role === 'admin' && target.is_approved === true;
+    const already = caller.account_type === 'super_admin' && caller.role === 'admin' && caller.is_approved === true;
 
     // account_type + approval are plain custom fields and always updatable.
-    await base44.asServiceRole.entities.User.update(target.id, {
+    await base44.asServiceRole.entities.User.update(caller.id, {
       account_type: 'super_admin',
       is_approved: true,
     });
 
     // role is a platform-managed field; set it best-effort so the owner gains
     // admin-gated surfaces. If the platform rejects a direct role change, the
-    // account_type promotion above still stands and the app's super-admin checks
-    // (which also key off the owner email) keep working.
-    let roleUpdated = target.role === 'admin';
+    // account_type promotion above still stands and the app's super-admin
+    // checks (which key off account_type) keep working.
+    let roleUpdated = caller.role === 'admin';
     if (!roleUpdated) {
       try {
-        await base44.asServiceRole.entities.User.update(target.id, { role: 'admin' });
+        await base44.asServiceRole.entities.User.update(caller.id, { role: 'admin' });
         roleUpdated = true;
       } catch (err) {
         console.error('ensureSuperAdmin: could not set role=admin directly:', err.message);
@@ -75,14 +73,14 @@ Deno.serve(async (req) => {
       user_email: caller.email,
       user_role: caller.role,
       action: 'super_admin_ensured',
-      details: { target_email: getSuperAdminEmail(), role_updated: roleUpdated, was_already_super_admin: already },
+      details: { target_email: caller.email, role_updated: roleUpdated, was_already_super_admin: already },
     }).catch(() => {});
 
     return Response.json({
       success: true,
-      email: getSuperAdminEmail(),
+      email: caller.email,
       account_type: 'super_admin',
-      role: roleUpdated ? 'admin' : target.role || 'user',
+      role: roleUpdated ? 'admin' : caller.role || 'user',
       role_updated: roleUpdated,
       already_super_admin: already,
     });

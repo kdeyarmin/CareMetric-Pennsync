@@ -12,34 +12,20 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * even before this sweep runs — this function just persists that so the toggle
  * and the morning default reflect reality.
  *
- * Auth: runs as a scheduled job (service role). If INTERNAL_FN_SECRET is set, a
- * non-scheduled caller must present it via x-internal-secret, otherwise only an
- * admin user may invoke it manually.
+ * Auth: runs as a scheduled job (service role). The no-identity cron path is
+ * allowed; only an admin user may invoke it manually.
  */
-
-function timingSafeEqual(a, b) {
-  if (a.length !== b.length) return false;
-  let out = 0;
-  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return out === 0;
-}
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Optional hardening: when INTERNAL_FN_SECRET is set, accept the matching
-    // header (the scheduler) OR an authenticated admin; otherwise run openly so
-    // it works as a zero-config scheduled job.
-    const internalSecret = (Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
-    if (internalSecret) {
-      const header = (req.headers.get('x-internal-secret') || '').trim();
-      if (!header || !timingSafeEqual(header, internalSecret)) {
-        const user = await base44.auth.me().catch(() => null);
-        const isAdmin = user && (user.role === 'admin' || user.account_type === 'super_admin');
-        if (!isAdmin) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-    }
+    // Zero-config scheduled job: the no-identity cron path is allowed (platform
+    // invocation restriction is the control); an authenticated non-admin may not
+    // trigger the sweep manually.
+    const user = await base44.auth.me().catch(() => null);
+    const isAdmin = user && (user.role === 'admin' || user.account_type === 'super_admin');
+    if (user && !isAdmin) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     // Find everyone still toggled on and flip them off.
     const onDuty = await base44.asServiceRole.entities.User.filter({ duty_status: 'on_duty' }).catch(() => []);

@@ -23,8 +23,10 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
   `src/lib/app-params.js`). The Vite dev server boots regardless, but without a
   **valid** app id + backend URL the app shows a blocking config state or redirects
   to `/login` and renders blank (the `/login` route is served by the hosted backend,
-  not client-side). All other `.env` vars (`TELNYX_*`, `OPENAI_API_KEY`, etc.) are
-  **backend Deno-function secrets**, not used by the local frontend.
+  not client-side). The other `.env` vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+  `HEYGEN_API_KEY`, `SIGNATURE_HMAC_SECRET`) are **backend
+  Deno-function secrets**, not used by the local frontend. Telnyx credentials are
+  configured in-app (IntegrationSecret), not via env.
 - App id / backend URL can also be passed via URL params `?app_id=...&server_url=...`
   (persisted to localStorage).
 
