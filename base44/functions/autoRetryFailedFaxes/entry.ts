@@ -201,19 +201,14 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Authorization: opt-in lockdown for this privileged scheduled job (mirrors
-    // pollFaxStatuses / processScheduledFaxes). This reads FaxLog PHI and dispatches
-    // billable Telnyx fax sends under the service role. When INTERNAL_FN_SECRET is
-    // set, require an admin OR the internal-secret header; the no-identity cron path
-    // is allowed only while no secret is configured.
+    // Authorization: privileged scheduled job (mirrors pollFaxStatuses /
+    // processScheduledFaxes). This reads FaxLog PHI and dispatches billable
+    // Telnyx fax sends under the service role. The
+    // no-identity cron path is allowed (platform invocation restriction is the
+    // control); an authenticated non-admin caller is always rejected.
     const me = await base44.auth.me().catch(() => null);
     const isAdmin = me?.role === 'admin' || me?.account_type === 'agency_admin' || me?.account_type === 'super_admin';
-    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
-    if (internalSecret) {
-      if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    } else if (me && !isAdmin) {
+    if (me && !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 

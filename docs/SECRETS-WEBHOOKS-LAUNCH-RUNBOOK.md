@@ -64,19 +64,23 @@ MUST be set or all inbound webhooks are rejected 401.**
 
 ## 3. Backend security secrets
 
-Set in the dashboard env (function secrets). These are the only two — the file-fetch
-SSRF allowlist is now hardcoded in code (always-on, fail-closed on the app's own
+Set in the dashboard env (function secrets). There is only one — the file-fetch
+SSRF allowlist is hardcoded in code (always-on, fail-closed on the app's own
 storage hosts), the `onUserSignup` re-fetch/email-match guard is always active
-(`SIGNUP_WEBHOOK_SECRET` retired), and debug logging is compiled out
-(`FUNCTIONS_DEBUG` retired).
+(`SIGNUP_WEBHOOK_SECRET` retired), debug logging is compiled out
+(`FUNCTIONS_DEBUG` retired), and certificate issuance is protected structurally
+(`INTERNAL_FN_SECRET` retired): `issueCertificate` only trusts a passing
+`TrainingAttempt` row, which is written exclusively server-side by
+`gradeTrainingAttempt` (entity RLS allows admin writes only), and the scheduled
+functions always reject authenticated non-admin callers.
 
 | Secret | Set at launch? | Effect if unset |
 |---|---|---|
-| `INTERNAL_FN_SECRET` | **Yes** | `issueCertificate` lockdown inactive → training certificates are **forgeable**. Required for the §4-RLS attestation lock to mean anything. |
 | `SIGNATURE_HMAC_SECRET` | **Yes** | Signature integrity MAC falls back to **unkeyed sha256** — detects corruption, **not** forgery. Set it so e-signature tamper-evidence is forgery-resistant. |
 
-**Verify `INTERNAL_FN_SECRET`:** a direct `issueCertificate` call from a non-admin is
-rejected; a legitimate completion via `gradeTrainingAttempt` still issues a certificate.
+**Verify certificate issuance:** a direct `issueCertificate` call from a non-admin
+with no passing attempt is rejected; a legitimate completion via
+`gradeTrainingAttempt` still issues a certificate.
 
 ---
 
@@ -93,8 +97,8 @@ of the app is unaffected.
 
 (Telehealth video tokens and outbound fax use the Telnyx config from §2, not these.)
 
-These three plus the two §3 security secrets are the **complete** backend secret
-list — nothing else is read from the dashboard env.
+These three plus the §3 `SIGNATURE_HMAC_SECRET` are the **complete** backend
+secret list (four total) — nothing else is read from the dashboard env.
 
 **Verify:** with a key set, the corresponding feature runs; with it unset, it shows the
 not-configured notice rather than erroring.

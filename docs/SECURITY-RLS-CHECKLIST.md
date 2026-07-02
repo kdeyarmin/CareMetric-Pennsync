@@ -47,7 +47,6 @@ is always active. The dashboard-env secret list is therefore just:
 
 | Secret | Purpose | If unset |
 |---|---|---|
-| **`INTERNAL_FN_SECRET`** | Activates the `issueCertificate` lockdown (only the training system/admin may issue) | **lockdown inactive — set it at launch** |
 | **`SIGNATURE_HMAC_SECRET`** | Keys the e-signature integrity MAC (forgery-resistant tamper-evidence) | unkeyed sha256 — detects corruption, not forgery — **set it at launch** |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `HEYGEN_API_KEY` | AI feature gates (transcription / SOAP notes / fax cover pages / training videos) | those features show a "not configured" notice |
 
@@ -109,9 +108,9 @@ if the platform restricts who can invoke function endpoints — **confirm**):
 5. Webhook smoke tests (good/bad signatures) per §5.
 6. Confirm audit rows (`UserActivity`/`SecurityLog`) carry **no PHI** (bodies,
    full numbers).
-7. With `INTERNAL_FN_SECRET` set, a direct `issueCertificate` call from a
-   non-admin is rejected; legitimate completion via `gradeTrainingAttempt` still
-   issues a certificate.
+7. A direct `issueCertificate` call from a non-admin with no passing
+   `TrainingAttempt` is rejected (attempts are admin/service-role-write only);
+   legitimate completion via `gradeTrainingAttempt` still issues a certificate.
 
 ## 8. Tracked follow-ups (code, post-launch)
 

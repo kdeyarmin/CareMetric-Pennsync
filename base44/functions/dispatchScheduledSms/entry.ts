@@ -445,19 +445,12 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     // Authorization: privileged cron job (service-role reads/writes + billable
-    // Telnyx sends, no end user). Opt-in lockdown mirroring pollFaxStatuses — a
-    // real scheduler runs unauthenticated and still passes while no secret is
-    // configured; once INTERNAL_FN_SECRET is set it must present the header, and
-    // a logged-in non-admin is always rejected (closing the "any logged-in user
-    // can force-dispatch queued SMS off-schedule" vector).
+    // Telnyx sends, no end user). A real scheduler runs unauthenticated and
+    // passes; a logged-in non-admin is always rejected (closing the "any
+    // logged-in user can force-dispatch queued SMS off-schedule" vector).
     const me = await base44.auth.me().catch(() => null);
     const isAdmin = me?.role === 'admin';
-    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
-    if (internalSecret) {
-      if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    } else if (me && !isAdmin) {
+    if (me && !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 

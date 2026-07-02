@@ -20,19 +20,6 @@ Deno.serve(async (req) => {
             }, { status: 400 });
         }
 
-        // Opt-in lockdown: this should only be invoked by the training system
-        // (gradeTrainingAttempt passes _internal_secret) or an admin. When
-        // INTERNAL_FN_SECRET is configured we ENFORCE that; unset => no
-        // enforcement (so nothing breaks before it's set). Set it at launch to
-        // stop a user self-issuing a certificate by calling this endpoint.
-        const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
-        if (internalSecret) {
-            const isInternal = body._internal_secret === internalSecret;
-            if (!isInternal && user.role !== 'admin') {
-                return Response.json({ error: 'Certificates may only be issued by the training system or an admin.' }, { status: 403 });
-            }
-        }
-
         // Fetch assignment and course details
         const assignment = await base44.asServiceRole.entities.TrainingAssignment.get(assignment_id);
         const course = await base44.asServiceRole.entities.TrainingCourse.get(course_id);
@@ -50,28 +37,28 @@ Deno.serve(async (req) => {
         }
 
         // Verify the assignment was genuinely PASSED before minting a certificate —
-        // this gate must not depend on caller-supplied trust (a user could otherwise
-        // POST { score: 100 } for their own failed/never-taken assignment, especially
-        // before INTERNAL_FN_SECRET is configured). The trusted internal caller
-        // (gradeTrainingAttempt) writes the passing TrainingAttempt BEFORE invoking
-        // this and updates the assignment's pass_fail_result AFTER, so accept a pass
-        // reflected in EITHER source.
-        const assignmentPassed =
-            assignment.pass_fail_result === 'passed' || assignment.status === 'completed';
-        let passedAttempt = null;
-        if (!assignmentPassed) {
-            const attempts = await base44.asServiceRole.entities.TrainingAttempt
-                .filter({ assignment_id }, '-created_date', 20).catch(() => []);
-            passedAttempt = (attempts || []).find((a) => a.passed === true) || null;
-        }
-        if (!assignmentPassed && !passedAttempt) {
+        // this gate must not depend on caller-supplied trust. The only evidence a
+        // NON-ADMIN caller can present is a passing TrainingAttempt row: attempts
+        // are written exclusively server-side by gradeTrainingAttempt (entity RLS
+        // allows admin writes only; the grader uses the service role), whereas
+        // TrainingAssignment rows are writable by their assignee and must not be
+        // trusted for issuance. gradeTrainingAttempt writes the passing attempt
+        // BEFORE invoking this, so the internal flow always qualifies. An admin
+        // caller may additionally issue manually from the assignment's recorded
+        // state (pass_fail_result / status).
+        const callerIsAdmin = user.role === 'admin' ||
+            user.account_type === 'super_admin' || user.account_type === 'agency_admin';
+        const attempts = await base44.asServiceRole.entities.TrainingAttempt
+            .filter({ assignment_id }, '-created_date', 20).catch(() => []);
+        const passedAttempt = (attempts || []).find((a) => a.passed === true) || null;
+        const assignmentPassed = callerIsAdmin &&
+            (assignment.pass_fail_result === 'passed' || assignment.status === 'completed');
+        if (!passedAttempt && !assignmentPassed) {
             return Response.json({ error: 'Certificate can only be issued for a passed assignment.' }, { status: 403 });
         }
         // Derive the recorded score from the verified source, never from the request
         // body — a forged high score must not land on the certificate.
-        const verifiedScore = assignmentPassed
-            ? (assignment.score_percentage ?? passedAttempt?.score ?? null)
-            : (passedAttempt?.score ?? null);
+        const verifiedScore = passedAttempt?.score ?? assignment.score_percentage ?? null;
 
         const userName = userData && userData.length > 0 ? userData[0].full_name : user_id;
 

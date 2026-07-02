@@ -49,12 +49,7 @@ Deno.serve(async (req) => {
     // lockdown like checkExpiredInvitations (see §4); mirrors syncCMSRegulations.
     const me = await base44.auth.me().catch(() => null);
     const isAdmin = me?.role === 'admin';
-    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
-    if (internalSecret) {
-      if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    } else if (me && !isAdmin) {
+    if (me && !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 

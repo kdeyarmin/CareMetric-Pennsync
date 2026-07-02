@@ -104,19 +104,12 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Opt-in auth gate (mirrors checkExpiredInvitations): this cron reads every
-    // active patient's PHI and writes PatientAlerts, so when INTERNAL_FN_SECRET is
-    // set require admin OR the internal secret header (the trusted scheduler sends
-    // x-internal-secret). Unset => the no-identity cron path stays allowed; an
-    // authenticated non-admin is rejected.
+    // Auth gate (mirrors checkExpiredInvitations): this cron reads every active
+    // patient's PHI and writes PatientAlerts. The no-identity cron path is
+    // allowed; an authenticated non-admin is rejected.
     const me = await base44.auth.me().catch(() => null);
     const isAdmin = me?.role === 'admin';
-    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
-    if (internalSecret) {
-      if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    } else if (me && !isAdmin) {
+    if (me && !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 

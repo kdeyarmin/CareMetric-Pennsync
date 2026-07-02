@@ -192,16 +192,11 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Opt-in auth gate (mirrors monitorComplianceRisks): reads every patient's
-    // OASIS PHI and writes quality metrics, so require admin OR the internal
-    // scheduler secret when INTERNAL_FN_SECRET is configured.
+    // Auth gate (mirrors monitorComplianceRisks): reads every patient's OASIS
+    // PHI and writes quality metrics. The no-identity cron path is allowed; an
+    // authenticated non-admin is rejected.
     const me = await base44.auth.me().catch(() => null);
-    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
-    if (internalSecret) {
-      if (!isAdminLike(me) && req.headers.get('x-internal-secret') !== internalSecret) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    } else if (me && !isAdminLike(me)) {
+    if (me && !isAdminLike(me)) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 

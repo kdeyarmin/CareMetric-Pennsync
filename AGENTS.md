@@ -24,7 +24,7 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
   **valid** app id + backend URL the app shows a blocking config state or redirects
   to `/login` and renders blank (the `/login` route is served by the hosted backend,
   not client-side). The other `.env` vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-  `HEYGEN_API_KEY`, `INTERNAL_FN_SECRET`, `SIGNATURE_HMAC_SECRET`) are **backend
+  `HEYGEN_API_KEY`, `SIGNATURE_HMAC_SECRET`) are **backend
   Deno-function secrets**, not used by the local frontend. Telnyx credentials are
   configured in-app (IntegrationSecret), not via env.
 - App id / backend URL can also be passed via URL params `?app_id=...&server_url=...`

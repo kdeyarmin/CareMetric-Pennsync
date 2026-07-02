@@ -128,8 +128,8 @@ Deno.serve(async (req) => {
     const { data } = await req.json();
 
     // Entity-trigger (fires on DocumentPackage create): invoked by the platform
-    // with no identity / no custom header, so a secret gate would 403 the
-    // legitimate trigger when INTERNAL_FN_SECRET is set. Defense for a trigger:
+    // with no identity / no custom header, so it can't be gated on auth.
+    // Defense for a trigger:
     // re-fetch the canonical package by id and use ITS signer fields (never the
     // posted body), so the 30-day signing credential can only be minted for a real
     // package and can't be redirected to an attacker-chosen address.
