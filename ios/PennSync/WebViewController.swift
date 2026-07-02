@@ -109,12 +109,20 @@ extension WebViewController: WKUIDelegate {
         type: WKMediaCaptureType,
         decisionHandler: @escaping (WKPermissionDecision) -> Void
     ) {
-        // Only auto-grant getUserMedia to the app's own origin; anything else
-        // (embedded third-party frames) falls back to the default prompt.
-        guard origin.host == appURL.host else {
-            decisionHandler(.prompt)
-            return
-        }
+// Only auto-grant getUserMedia to the app's own origin; anything else
+// (embedded third-party frames) falls back to the default prompt.
+guard let expectedHost = appURL.host,
+      let expectedScheme = appURL.scheme else {
+    decisionHandler(.prompt)
+    return
+}
+let expectedPort = appURL.port ?? (expectedScheme == "http" ? 80 : 443)
+guard origin.host == expectedHost,
+      origin.`protocol` == expectedScheme,
+      origin.port == expectedPort else {
+    decisionHandler(.prompt)
+    return
+}
         // iOS has already shown the system camera/microphone permission
         // dialog (driven by the Info.plist usage strings); avoid a second
         // per-page prompt for telehealth, audio recording, and camera fax.
