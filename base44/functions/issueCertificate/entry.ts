@@ -57,8 +57,11 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Certificate can only be issued for a passed assignment.' }, { status: 403 });
         }
         // Derive the recorded score from the verified source, never from the request
-        // body — a forged high score must not land on the certificate.
-        const verifiedScore = passedAttempt?.score ?? assignment.score_percentage ?? null;
+        // body — a forged high score must not land on the certificate. For a
+        // non-admin caller the only trusted source is the server-written attempt;
+        // the assignee-writable assignment score is honored for admin issuance only.
+        const verifiedScore = passedAttempt?.score ??
+            (callerIsAdmin ? (assignment.score_percentage ?? null) : null);
 
         const userName = userData && userData.length > 0 ? userData[0].full_name : user_id;
 

@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
     // (platform invocation restriction is the control, see
     // docs/SECURITY-RLS-CHECKLIST.md §4); an authenticated non-admin is rejected.
     const me = await base44.auth.me().catch(() => null);
-    const isAdmin = me?.role === 'admin';
+    const isAdmin = me?.role === 'admin' || me?.account_type === 'agency_admin' || me?.account_type === 'super_admin';
     if (me && !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }

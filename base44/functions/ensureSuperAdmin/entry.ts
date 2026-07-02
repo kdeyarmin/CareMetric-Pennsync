@@ -5,10 +5,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * administrator account so the rest of the app recognizes them:
  * account_type = 'super_admin', role = 'admin', approved.
  *
- * This is self-bootstrapping and safe to call repeatedly (idempotent). It is
- * authorized by the caller's existing platform standing: only a platform
- * admin (role 'admin' — which Base44 grants the app owner) or an existing
- * super_admin can run it, and it only ever promotes the caller's own account.
+ * This is self-bootstrapping and safe to call repeatedly (idempotent). It only
+ * ever promotes the caller's own account, and is authorized two ways:
+ *   - an existing super_admin (self-repair of role/approval), or
+ *   - a platform admin (role 'admin' — which Base44 grants the app owner)
+ *     while NO super_admin exists yet (the one-time first-boot bootstrap).
  * There is no owner-email override (the SUPER_ADMIN_EMAIL secret was retired);
  * super-admin status is carried entirely by account_type.
  *
@@ -23,12 +24,26 @@ Deno.serve(async (req) => {
     const caller = await base44.auth.me();
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const callerIsAdmin = caller.role === 'admin' || caller.account_type === 'super_admin';
-    if (!callerIsAdmin) {
-      return Response.json(
-        { error: 'Only a platform administrator can run this.' },
-        { status: 403 },
-      );
+    // An existing super_admin may always run this (self-repair). A plain
+    // platform admin may claim super-admin ONLY while no super_admin exists yet
+    // (the first-boot bootstrap) — otherwise any facility admin could silently
+    // self-escalate to the tier that manages integration secrets.
+    const callerIsSuper = caller.account_type === 'super_admin';
+    if (!callerIsSuper) {
+      if (caller.role !== 'admin') {
+        return Response.json(
+          { error: 'Only a platform administrator can run this.' },
+          { status: 403 },
+        );
+      }
+      const existingSupers = await base44.asServiceRole.entities.User
+        .filter({ account_type: 'super_admin' }, '-created_date', 1).catch(() => []);
+      if ((existingSupers || []).length > 0) {
+        return Response.json(
+          { error: 'A super administrator already exists; only they can run this.' },
+          { status: 403 },
+        );
+      }
     }
 
     const already = caller.account_type === 'super_admin' && caller.role === 'admin' && caller.is_approved === true;
