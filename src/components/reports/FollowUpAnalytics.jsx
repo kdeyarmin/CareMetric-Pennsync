@@ -91,7 +91,10 @@ export default function FollowUpAnalytics() {
           gapCounts.set(it.title, (gapCounts.get(it.title) || 0) + 1);
         }
         // Open exposure: only referrals whose gaps aren't resolved yet.
-        if (r.follow_up_requests?.status !== "resolved") {
+        // Computed ONLY for admin viewers — dollar figures are admin-only by
+        // policy, so non-admin renders never even run the estimator
+        // (defense-in-depth if this widget is reused on a non-admin page).
+        if (adminView && r.follow_up_requests?.status !== "resolved") {
           const impact = estimateFollowUpRevenueImpact(plan, { rates: rateConfig?.rates });
           atRiskTotal += impact.totalAtRisk;
           upsideLow += impact.totalUpsideLow;
@@ -115,7 +118,7 @@ export default function FollowUpAnalytics() {
       upsideLow,
       upsideHigh,
     };
-  }, [referrals, rateConfig]);
+  }, [referrals, rateConfig, adminView]);
 
   const fmtHours = (h) => (h === null ? "—" : h < 48 ? `${Math.round(h)}h` : `${(h / 24).toFixed(1)}d`);
 

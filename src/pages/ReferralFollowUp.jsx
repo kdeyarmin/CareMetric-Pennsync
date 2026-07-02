@@ -156,10 +156,15 @@ export default function ReferralFollowUp() {
   }, [agencySettings]);
 
   // Prefill the provider's fax from the Physician directory (best name match).
+  // ALWAYS reset on selection change — a stale number from the previous
+  // referral must never survive into a new patient's send (wrong-recipient
+  // fax = PHI disclosure).
   useEffect(() => {
-    if (!selected) return;
-    const refName = normName(selected.extracted_data?.demographics?.referring_physician);
-    if (!refName) return;
+    const refName = selected ? normName(selected.extracted_data?.demographics?.referring_physician) : "";
+    if (!refName) {
+      setProviderFax("");
+      return;
+    }
     const match = (physicians || []).find((p) => {
       const n = normName(p.full_name);
       return n && (n.includes(refName) || refName.includes(n));
@@ -274,7 +279,10 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
       }
     : null;
 
-  const generatePortalLink = async () => {
+  // Mint a fresh portal token. The backend deactivates any prior active token
+  // for the referral, so every mint ROTATES the link — a re-send always
+  // invalidates a previously mailed/leaked link.
+  const mintPortalLink = async () => {
     if (!selected) return null;
     try {
       const { data } = await base44.functions.invoke("generateFollowUpPortalToken", {
@@ -299,15 +307,45 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
       { items: includedItems, counts: countFollowUpItems(includedItems) },
       { generatedAt: new Date().toISOString(), status, sentVia, faxLogId, portalLink: link || portalLink || null }
     );
+    // A re-send must not silently discard responses the provider already gave:
+    // carry answered/resolved state forward for items that survive the re-send.
+    if (tracking?.items?.length) {
+      const prior = new Map(tracking.items.map((it) => [it.id, it]));
+      persisted.items = persisted.items.map((it) => {
+        const old = prior.get(it.id);
+        return old && old.item_status !== "open"
+          ? { ...it, item_status: old.item_status, response: old.response, answered_at: old.answered_at }
+          : it;
+      });
+    }
     await base44.entities.Referral.update(selected.id, { follow_up_requests: persisted });
     queryClient.invalidateQueries({ queryKey: ["referrals"] });
+    return persisted;
+  };
+
+  // "Generate online response link" must leave a WORKING link behind:
+  // validateFollowUpToken rejects tokens whose referral carries no
+  // follow_up_requests items, so persist the request (status stays open —
+  // nothing has been sent yet) in the same action as the mint.
+  const generateAndPersistPortalLink = async () => {
+    const link = await mintPortalLink();
+    if (!link) return null;
+    try {
+      await persistRequest({ status: tracking?.status || "open", sentVia: tracking?.sent_via || null, faxLogId: tracking?.fax_log_id || null, link });
+    } catch (error) {
+      console.error("Persisting the portal link failed:", error);
+      toast.error("Link generated but not saved — re-generate before sending.");
+      return null;
+    }
+    return link;
   };
 
   const saveAndMarkSent = async () => {
     if (!selected) return;
     setSaving(true);
     try {
-      const link = portalLink || (await generatePortalLink());
+      // Always rotate the link on send (old links deactivate server-side).
+      const link = await mintPortalLink();
       await persistRequest({ status: "sent", sentVia: "manual", faxLogId: null, link });
       toast.success("Follow-up request saved and marked sent.");
     } catch (error) {
@@ -327,8 +365,11 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
     }
     setFaxing(true);
     try {
-      // Portal link first, so the faxed form carries the online-response URL.
-      const link = portalLink || (await generatePortalLink());
+      // Rotate the portal link on every send, and persist the request BEFORE
+      // faxing so the link on the outgoing form is live the moment the fax
+      // lands (a fax failure leaves a valid open request, which is harmless).
+      const link = await mintPortalLink();
+      await persistRequest({ status: "open", sentVia: null, faxLogId: null, link });
       const form = buildProviderForm({ ...formHeader, portalLink: link }, includedItems);
       const blob = await exportToPDF({
         output: "blob",
@@ -434,7 +475,15 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
       />
 
       {adminView && showSettings && (
-        <RuleSettingsCard ruleConfig={ruleConfig} onSaved={() => queryClient.invalidateQueries({ queryKey: ["followUpRuleConfig"] })} />
+        <RuleSettingsCard
+          // Remount when the async config (or a save) lands so the local edit
+          // state re-seeds from the saved values — otherwise a card opened
+          // before the fetch resolves would save empty defaults over the
+          // agency's existing configuration.
+          key={ruleConfig ? `${ruleConfig.id}-${ruleConfig.updated_date || ""}` : "unloaded"}
+          ruleConfig={ruleConfig}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ["followUpRuleConfig"] })}
+        />
       )}
 
       {isLoading ? (
@@ -733,9 +782,9 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <Button type="button" variant="outline" size="sm" onClick={generatePortalLink} disabled={!!portalLink}>
+                          <Button type="button" variant="outline" size="sm" onClick={generateAndPersistPortalLink}>
                             <LinkIcon className="w-4 h-4 mr-1" />
-                            {portalLink ? "Online response link ready" : "Generate online response link"}
+                            {portalLink ? "Rotate online response link" : "Generate online response link"}
                           </Button>
                           {portalLink && (
                             <span className="text-xs text-slate-500 truncate max-w-[360px]">{portalLink}</span>
