@@ -28,11 +28,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  *   patient_id,
  *   mode: 'append' | 'update',
  *   clinical_notes?,   // mirror of the latest note kept on the patient
- *   entry: {
- *     append: { entry_id?, visit_id?, date?, visit_type?, note, compliance_score? }
- *     update: { visit_id, note, compliance_score? }
- *   }
+ *   entry: { entry_id?, visit_id?, date?, visit_type?, note, compliance_score? }
  * }
+ * `entry` is one flat object in both modes; `note` is always required, and
+ * mode 'update' additionally requires `visit_id` (it selects which existing
+ * history entry to update).
  */
 
 const MAX_ATTEMPTS = 4;

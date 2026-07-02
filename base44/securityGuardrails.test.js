@@ -197,6 +197,20 @@ test('scheduleSignatureReminders queues future reminders instead of sending imme
     /status:\s*'sending',\s*claimed_by/.test(dispatcher),
     'dispatchScheduledSignatureReminders must claim rows (pending->sending with a run token) so overlapping runs cannot double-notify.',
   );
+  // The queue rows are consumed by a SERVICE-ROLE dispatcher, so direct client
+  // writes must stay admin-only: an owner write rule would let any user queue a
+  // reminder for an arbitrary document_id, bypassing scheduleSignatureReminders'
+  // ownership/role checks (the scheduling function itself writes via service role).
+  const entity = read('base44/entities/ScheduledSignatureReminder.jsonc');
+  const writeBlock = entity.slice(entity.indexOf('"write"'));
+  assert.ok(
+    !/"(created_by|requested_by)"\s*:\s*"\{\{user\.email\}\}"/.test(writeBlock),
+    'ScheduledSignatureReminder write RLS must NOT include an owner rule — a direct client create would make the service-role dispatcher notify signers of a document the caller does not control.',
+  );
+  assert.ok(
+    /"user_condition"\s*:\s*\{\s*"role"\s*:\s*"admin"/.test(writeBlock),
+    'ScheduledSignatureReminder write RLS must be admin-only.',
+  );
 });
 
 // 10. Patient.enhanced_notes_history is append-only via the backend function —

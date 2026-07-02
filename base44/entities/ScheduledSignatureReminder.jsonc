@@ -93,20 +93,16 @@
         }
       ]
     },
+    // Write is ADMIN-ONLY: rows are created by scheduleSignatureReminders and
+    // consumed by dispatchScheduledSignatureReminders, both via service role
+    // (RLS-bypassing). An owner write rule would let a non-admin create a row
+    // for an ARBITRARY document_id directly, and the dispatcher would then
+    // notify that document's signers — bypassing scheduleSignatureReminders'
+    // ownership/role checks.
     "write": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "requested_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     }
   }
 }
