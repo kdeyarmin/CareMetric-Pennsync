@@ -99,6 +99,7 @@ extension WebViewController: WKNavigationDelegate {
 
 // MARK: - WKUIDelegate (camera/mic capture for telehealth, audio, camera-fax)
 
+@available(iOS 15.0, *)
 extension WebViewController: WKUIDelegate {
 
     func webView(
