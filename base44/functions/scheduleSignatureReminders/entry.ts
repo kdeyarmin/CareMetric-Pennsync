@@ -14,6 +14,13 @@ Deno.serve(async (req) => {
     if (!document_id || !reminder_days) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
+    // reminder_days feeds the reminder-time math below; a non-numeric value makes
+    // reminderTime NaN and new Date(NaN).toISOString() throw a 500, and a negative
+    // value would schedule the reminder AFTER the deadline. Require a finite >= 0.
+    const reminderDays = Number(reminder_days);
+    if (!Number.isFinite(reminderDays) || reminderDays < 0) {
+      return Response.json({ error: 'reminder_days must be a non-negative number' }, { status: 400 });
+    }
     // deadline_date drives the reminder-time math below; reject a missing/unparseable
     // value with a 400 rather than letting new Date(NaN).toISOString() throw a 500.
     if (!deadline_date || Number.isNaN(new Date(deadline_date).getTime())) {
@@ -59,7 +66,7 @@ Deno.serve(async (req) => {
     }
 
     const deadlineTime = new Date(deadline_date).getTime();
-    const reminderTime = deadlineTime - (reminder_days * 24 * 60 * 60 * 1000);
+    const reminderTime = deadlineTime - (reminderDays * 24 * 60 * 60 * 1000);
     const now = new Date().getTime();
 
     // If the computed reminder time is already in the past, deliver NOW rather

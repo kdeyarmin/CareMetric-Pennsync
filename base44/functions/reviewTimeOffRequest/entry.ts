@@ -151,7 +151,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Time-off request not found.' }, { status: 404 });
     }
 
-    const isAdmin = user.role === 'admin';
+    // Admin = role 'admin' or an admin account_type (agency/super), matching
+    // reviewTimesheet — an agency_admin who isn't role:'admin' could otherwise
+    // review timesheets but not time-off requests.
+    const isAdmin = user.role === 'admin' || user.account_type === 'super_admin' || user.account_type === 'agency_admin';
     const isAssignedManager = !!request.manager_email && request.manager_email === user.email;
     if (!isAdmin && !isAssignedManager) {
       return Response.json({ error: 'You are not authorized to review this request.' }, { status: 403 });
