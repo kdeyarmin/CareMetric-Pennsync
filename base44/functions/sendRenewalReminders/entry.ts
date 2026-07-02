@@ -120,27 +120,44 @@ Deno.serve(async (req) => {
 
       // Record the crossed tiers so a missed run doesn't replay old tiers — but
       // DEFER the write until after the notifications are created (see above).
-      markerUpdates.push(() => svc.TrainingAssignment.update(a.id, {
-        reminder_offsets_sent: Array.from(new Set([...alreadySent, ...crossed])),
-        last_reminder_date: today.toISOString(),
-        reminder_sent: true,
-      }));
+      markerUpdates.push({
+        assignmentId: a.id,
+        apply: () => svc.TrainingAssignment.update(a.id, {
+          reminder_offsets_sent: Array.from(new Set([...alreadySent, ...crossed])),
+          last_reminder_date: today.toISOString(),
+          reminder_sent: true,
+        }),
+      });
       remindersSent++;
     }
 
-    // Batch-create notifications FIRST. A create failure here propagates and
-    // skips the marker writes below, so the reminder replays next run rather than
-    // being silently lost.
+    // Batch-create notifications FIRST, with per-notification fault isolation:
+    // one un-creatable Notification (e.g. a bad manager_email) must NOT abort the
+    // whole run — that would skip every tier marker and re-notify every learner on
+    // the next run (a storm). Track the assignments whose notifications failed so
+    // ONLY their tier marker is withheld (they replay next run); all others are
+    // marked so they don't replay.
     let notificationsCreated = 0;
+    const failedAssignmentIds = new Set();
     for (let i = 0; i < notifications.length; i += 50) {
       const batch = notifications.slice(i, i + 50);
-      await Promise.all(batch.map((n) => svc.Notification.create(n)));
-      notificationsCreated += batch.length;
+      const results = await Promise.allSettled(batch.map((n) => svc.Notification.create(n)));
+      results.forEach((r, k) => {
+        if (r.status === 'fulfilled') {
+          notificationsCreated++;
+        } else {
+          const aid = batch[k]?.metadata?.assignment_id;
+          if (aid) failedAssignmentIds.add(aid);
+          console.error('sendRenewalReminders: notification create failed', r.reason?.message || r.reason);
+        }
+      });
     }
 
-    // Only now that the notifications are persisted, record the crossed tiers.
-    for (const applyMarker of markerUpdates) {
-      await applyMarker();
+    // Record the crossed tiers, skipping any assignment whose notification failed
+    // so its reminder replays next run (the safe direction) instead of being lost.
+    for (const { assignmentId, apply } of markerUpdates) {
+      if (failedAssignmentIds.has(assignmentId)) continue;
+      await apply();
     }
 
     return Response.json({ success: true, date: todayIso, reminders_sent: remindersSent, notifications_created: notificationsCreated });

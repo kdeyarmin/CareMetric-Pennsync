@@ -15,7 +15,10 @@ export default function AdvancedComplianceAnalyzer({ analysisResults, pdgmData, 
   const [autoAnalyze, setAutoAnalyze] = useState(false);
 
   // Fetch historical OASIS data for pattern analysis
-  const { data: historicalOASIS = [], isSuccess: historicalOASISLoaded } = useQuery({
+  // Gate the one-shot auto-analyze on isFetched (settled — success OR error), not
+  // isSuccess: a failed historical fetch should let the analysis run with empty
+  // history rather than suppressing the automatic run for the life of the mount.
+  const { data: historicalOASIS = [], isFetched: historicalOASISLoaded } = useQuery({
     queryKey: ['historicalOASIS', patientId],
     queryFn: () => {
       if (patientId) {
@@ -27,7 +30,7 @@ export default function AdvancedComplianceAnalyzer({ analysisResults, pdgmData, 
   });
 
   // Fetch historical compliance audits
-  const { data: historicalAudits = [], isSuccess: historicalAuditsLoaded } = useQuery({
+  const { data: historicalAudits = [], isFetched: historicalAuditsLoaded } = useQuery({
     queryKey: ['complianceAudits'],
     queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 100),
     enabled: !!analysisResults

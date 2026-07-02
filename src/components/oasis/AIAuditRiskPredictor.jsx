@@ -30,13 +30,17 @@ export default function AIAuditRiskPredictor({ analysisResults, patientId }) {
   const hasRunRef = useRef(false);
 
   // Fetch historical audits for pattern analysis
-  const { data: historicalAudits = [], isSuccess: historicalAuditsLoaded } = useQuery({
+  // Gate the one-shot auto-run on isFetched (settled — success OR error), not
+  // isSuccess: a failed historical fetch (RLS/permission/network) should let the
+  // prediction run with empty history, exactly as it did before, rather than
+  // suppressing the automatic run for the life of the mount.
+  const { data: historicalAudits = [], isFetched: historicalAuditsLoaded } = useQuery({
     queryKey: ['historicalAudits'],
     queryFn: () => base44.entities.OASISAudit.list('-created_date', 50),
   });
 
   // Fetch patient's previous OASIS uploads
-  const { data: patientOASIS = [], isSuccess: patientOASISLoaded } = useQuery({
+  const { data: patientOASIS = [], isFetched: patientOASISLoaded } = useQuery({
     queryKey: ['patientOASISHistory', patientId],
     queryFn: () => patientId ? base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 10) : [],
     enabled: !!patientId
