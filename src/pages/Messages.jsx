@@ -102,7 +102,28 @@ export default function Messages() {
 
   const sendMessageMutation = useMutation({
     mutationFn: (messageData) => base44.entities.Message.create(messageData),
-    onSuccess: () => {
+    onMutate: async (messageData) => {
+      await queryClient.cancelQueries({ queryKey: ['messages'] });
+      const previousMessages = queryClient.getQueryData(['messages']) || [];
+      const optimisticId = `optimistic-${Date.now()}`;
+      queryClient.setQueryData(['messages'], [
+        {
+          ...messageData,
+          id: optimisticId,
+          created_date: new Date().toISOString(),
+          updated_date: new Date().toISOString(),
+          is_optimistic: true,
+        },
+        ...previousMessages,
+      ]);
+      return { previousMessages, optimisticId };
+    },
+    onSuccess: (createdMessage, _variables, context) => {
+      if (createdMessage && context?.optimisticId) {
+        queryClient.setQueryData(['messages'], (current = []) =>
+          current.map((message) => message.id === context.optimisticId ? createdMessage : message)
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['messages'] });
       setShowNewMessage(false);
       setNewMessage({
@@ -119,7 +140,8 @@ export default function Messages() {
       setReplyUrgent(false);
       toast.success("Message sent");
     },
-    onError: () => {
+    onError: (_error, _variables, context) => {
+      if (context?.previousMessages) queryClient.setQueryData(['messages'], context.previousMessages);
       toast.error("Message failed to send. Your text was kept — tap send to retry.");
     },
   });

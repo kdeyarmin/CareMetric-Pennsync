@@ -51,13 +51,13 @@ const TabsTrigger = React.forwardRef((props, ref) => {
     <TabsPrimitive.Trigger
       ref={innerRef}
       style={{
-        backgroundColor: active ? "#213a76" : "#ffffff",
-        color: active ? "#ffffff" : "#334155",
-        borderColor: active ? "#213a76" : "#cbd5e1",
+        backgroundColor: active ? "var(--tab-active-bg, #213a76)" : "var(--tab-inactive-bg, #ffffff)",
+        color: active ? "var(--tab-active-fg, #ffffff)" : "var(--tab-inactive-fg, #334155)",
+        borderColor: active ? "var(--tab-active-border, #213a76)" : "var(--tab-inactive-border, #cbd5e1)",
         ...style,
       }}
       className={cn(
-        "flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm ring-offset-white transition-all [&_svg]:h-4 [&_svg]:w-4 [&_svg]:flex-shrink-0 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm ring-offset-white transition-all [--tab-active-bg:#213a76] [--tab-active-border:#213a76] [--tab-active-fg:#ffffff] [--tab-inactive-bg:#ffffff] [--tab-inactive-border:#cbd5e1] [--tab-inactive-fg:#334155] dark:[--tab-active-bg:#88a5e0] dark:[--tab-active-border:#88a5e0] dark:[--tab-active-fg:#0f172a] dark:[--tab-inactive-bg:#0f172a] dark:[--tab-inactive-border:#334155] dark:[--tab-inactive-fg:#e2e8f0] dark:ring-offset-slate-950 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:flex-shrink-0 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50", 
         className
       )}
       {...rest}
@@ -70,7 +70,7 @@ const TabsContent = React.forwardRef(({ className, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      "mt-2 ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2",
+      "mt-2 ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2 dark:ring-offset-slate-950", 
       className
     )}
     {...props}

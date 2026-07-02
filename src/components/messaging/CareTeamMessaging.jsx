@@ -82,13 +82,40 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
     mutationFn: async (messageData) => {
       return base44.entities.Message.create(messageData);
     },
-    onSuccess: () => {
+    onMutate: async (messageData) => {
+      await queryClient.cancelQueries({ queryKey: ['messages', patientId] });
+      const previousMessages = queryClient.getQueryData(['messages', patientId]) || [];
+      const optimisticId = `optimistic-${Date.now()}`;
+      queryClient.setQueryData(['messages', patientId], [
+        {
+          ...messageData,
+          id: optimisticId,
+          created_date: new Date().toISOString(),
+          updated_date: new Date().toISOString(),
+          read_by: user?.email ? [user.email] : [],
+          is_optimistic: true,
+        },
+        ...previousMessages,
+      ]);
+      setSelectedThreadId(messageData.thread_id);
+      return { previousMessages, optimisticId };
+    },
+    onSuccess: (createdMessage, _variables, context) => {
+      if (createdMessage && context?.optimisticId) {
+        queryClient.setQueryData(['messages', patientId], (current = []) =>
+          current.map((message) => message.id === context.optimisticId ? createdMessage : message)
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['messages', patientId] });
       setNewMessage("");
       if (showNewThread) {
         setNewSubject("");
         setShowNewThread(false);
       }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousMessages) queryClient.setQueryData(['messages', patientId], context.previousMessages);
+      toast.error("Message failed to send. Your text was kept — tap send to retry.");
     }
   });
 

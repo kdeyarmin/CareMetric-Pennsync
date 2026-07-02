@@ -13,6 +13,19 @@ import { installAlertToToastShim } from '@/lib/alert-shim'
 // Surface legacy window.alert() notifications as on-brand toasts.
 installAlertToToastShim()
 
+// Apply the native/web color scheme before React paints. Users can override by
+// setting localStorage.theme to "light" or "dark"; otherwise the OS preference
+// drives Tailwind's class-based dark mode.
+const savedTheme = localStorage.getItem('theme')
+const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
+if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+  document.documentElement.classList.add('dark')
+  document.documentElement.style.colorScheme = 'dark'
+} else {
+  document.documentElement.classList.remove('dark')
+  document.documentElement.style.colorScheme = 'light'
+}
+
 // ── Stale-chunk auto-recovery ───────────────────────────────────────────────
 // When the Vite dev server restarts, the browser's in-memory module graph holds
 // chunk URLs (dep pre-bundle hashes, ?t= timestamps) the restarted server no

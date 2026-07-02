@@ -17,7 +17,7 @@ const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) 
     ref={ref}
     {...props}
     className={cn(
-      "flex h-10 w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm ring-offset-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-navy-500 focus:border-navy-500 focus:shadow-md transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-slate-50",
+      "flex h-10 w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm ring-offset-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-navy-500 focus:border-navy-500 focus:shadow-md transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:ring-offset-slate-950 dark:placeholder:text-slate-500 dark:disabled:bg-slate-800 dark:focus:border-navy-400 dark:focus:ring-navy-400", 
       className
     )}
   >
@@ -33,7 +33,7 @@ const SelectScrollUpButton = React.forwardRef(({ className, ...props }, ref) => 
   <SelectPrimitive.ScrollUpButton
     ref={ref}
     {...props}
-    className={cn("flex cursor-default items-center justify-center py-1 bg-white text-slate-500", className)}
+    className={cn("flex cursor-default items-center justify-center py-1 bg-white text-slate-500 dark:bg-slate-900 dark:text-slate-400", className)}
   >
     <ChevronUp className="h-4 w-4" />
   </SelectPrimitive.ScrollUpButton>
@@ -44,7 +44,7 @@ const SelectScrollDownButton = React.forwardRef(({ className, ...props }, ref) =
   <SelectPrimitive.ScrollDownButton
     ref={ref}
     {...props}
-    className={cn("flex cursor-default items-center justify-center py-1 bg-white text-slate-500", className)}
+    className={cn("flex cursor-default items-center justify-center py-1 bg-white text-slate-500 dark:bg-slate-900 dark:text-slate-400", className)}
   >
     <ChevronDown className="h-4 w-4" />
   </SelectPrimitive.ScrollDownButton>
@@ -58,12 +58,12 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
       position={position}
       {...props}
       className={cn(
-        "relative z-[10001] max-h-96 min-w-[8rem] overflow-hidden rounded-lg border border-slate-300 bg-white text-slate-900 shadow-xl animate-in fade-in-80",
+        "relative z-[10001] max-h-96 min-w-[8rem] overflow-hidden rounded-lg border border-slate-300 bg-white text-slate-900 shadow-xl animate-in fade-in-80 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100", 
         className
       )}
     >
       <SelectScrollUpButton />
-      <SelectPrimitive.Viewport className="p-1 bg-white">
+      <SelectPrimitive.Viewport className="p-1 bg-white dark:bg-slate-900">
         {children}
       </SelectPrimitive.Viewport>
       <SelectScrollDownButton />
@@ -86,7 +86,7 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
     ref={ref}
     {...props}
     className={cn(
-      "relative flex w-full cursor-pointer select-none items-center rounded-md py-2.5 pl-8 pr-2 text-sm bg-white text-slate-900 outline-none focus:bg-navy-50 focus:text-navy-900 hover:bg-slate-50 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors",
+      "relative flex w-full cursor-pointer select-none items-center rounded-md py-2.5 pl-8 pr-2 text-sm bg-white text-slate-900 outline-none focus:bg-navy-50 focus:text-navy-900 hover:bg-slate-50 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors dark:bg-slate-900 dark:text-slate-100 dark:focus:bg-slate-800 dark:focus:text-white dark:hover:bg-slate-800", 
       className
     )}
   >

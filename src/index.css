@@ -45,17 +45,57 @@
     --sidebar-accent-foreground: 223 47% 20%;
     --sidebar-border: 214.3 31.8% 91.4%;
     --sidebar-ring: 223 58% 42%;
+    --app-shell-background: linear-gradient(135deg, #cbd5e1 0%, #dbe5f5 45%, #9fb8e6 100%);
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 223 58% 58%;
+    --primary-foreground: 222 47% 8%;
+    --secondary: 215 20% 20%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 32% 17%;
+    --muted-foreground: 215 20% 72%;
+    --accent: 223 35% 18%;
+    --accent-foreground: 210 40% 98%;
+    --gold: 40 73% 56%;
+    --gold-foreground: 222 47% 8%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 32% 20%;
+    --input: 217 32% 20%;
+    --ring: 223 58% 62%;
+    --chart-1: 223 58% 62%;
+    --chart-2: 40 73% 56%;
+    --chart-3: 199 89% 58%;
+    --chart-4: 160 60% 45%;
+    --chart-5: 280 65% 60%;
+    --sidebar-background: 222 47% 9%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 223 58% 58%;
+    --sidebar-primary-foreground: 222 47% 8%;
+    --sidebar-accent: 223 35% 18%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 32% 20%;
+    --sidebar-ring: 223 58% 62%;
+    --app-shell-background: linear-gradient(135deg, #020617 0%, #0f172a 50%, #1e293b 100%);
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 antialiased font-sans selection:bg-navy-100 selection:text-navy-900;
+    @apply bg-slate-50 text-slate-900 antialiased font-sans selection:bg-navy-100 selection:text-navy-900 dark:bg-slate-950 dark:text-slate-100 dark:selection:bg-navy-700 dark:selection:text-white;
     min-width: 320px;
+    overscroll-behavior: none;
     font-feature-settings: "cv11", "ss01";
     font-variation-settings: "opsz" 32;
   }
 
   * {
-    @apply border-slate-200;
+    @apply border-slate-200 dark:border-slate-800;
     box-sizing: border-box;
   }
 
@@ -111,10 +151,19 @@
     word-break: break-word;
   }
 
-  /* Non-content UI elements should not be selectable */
-  button, a[href], nav, header, [role="button"], [role="tab"], [role="tablist"],
-  .sidebar, .mobile-header, .navigation {
+  /* Native app gesture suppression for controls: avoid text selection/callout
+     on tappable Button, Link, and Tab surfaces while preserving clinical text. */
+  button, a[href], [role="button"], [role="tab"], [data-radix-tabs-trigger],
+  nav, header, [role="tablist"], .sidebar, .mobile-header, .navigation {
     @apply select-none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .clinical-content, .clinical-content *, p, p *, li, li *, textarea, input, [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
   }
 
   /* Refined, unobtrusive scrollbars on pointer devices for a more polished,
@@ -147,15 +196,15 @@
 /* Modern Card Styles */
 @layer components {
   .modern-card {
-    @apply bg-slate-50 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 ease-out;
+    @apply bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 ease-out;
   }
   
   .modern-card-elevated {
-    @apply bg-slate-50 rounded-xl border border-slate-200 shadow-md hover:shadow-lg transition-all duration-300 ease-out;
+    @apply bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-md hover:shadow-lg transition-all duration-300 ease-out;
   }
   
   .modern-card-interactive {
-    @apply bg-slate-50 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 ease-out cursor-pointer;
+    @apply bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 ease-out cursor-pointer;
   }
   
   /* AI Feature Cards with Gradient */
@@ -217,6 +266,20 @@
 }
 
 @layer utilities {
+  /* Dark-mode compatibility shims for existing screens that use direct slate/white utilities. */
+  .dark .bg-white { @apply bg-slate-900; }
+  .dark .bg-white\/50 { @apply bg-slate-900/50; }
+  .dark .bg-slate-50 { @apply bg-slate-900; }
+  .dark .bg-slate-100 { @apply bg-slate-800; }
+  .dark .bg-slate-200 { @apply bg-slate-700; }
+  .dark .border-slate-100, .dark .border-slate-200, .dark .border-slate-300 { @apply border-slate-700; }
+  .dark .text-slate-900 { @apply text-slate-100; }
+  .dark .text-slate-800 { @apply text-slate-200; }
+  .dark .text-slate-700 { @apply text-slate-300; }
+  .dark .text-slate-600 { @apply text-slate-300; }
+  .dark .text-slate-500 { @apply text-slate-400; }
+  .dark .shadow-sm, .dark .shadow-md, .dark .shadow-lg { box-shadow: 0 1px 2px rgb(0 0 0 / 0.35); }
+
   /* Navigation and button selection prevention */
   nav, button, [role="button"], a[href], .touch-target {
     @apply select-none;
@@ -513,27 +576,27 @@
 
   /* Professional Typography Scale */
   h1 {
-    @apply text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight;
+    @apply text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tight;
   }
 
   h2 {
-    @apply text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight;
+    @apply text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight;
   }
 
   h3 {
-    @apply text-xl sm:text-2xl font-semibold text-slate-900;
+    @apply text-xl sm:text-2xl font-semibold text-slate-900 dark:text-slate-100;
   }
 
   h4 {
-    @apply text-lg font-semibold text-slate-900;
+    @apply text-lg font-semibold text-slate-900 dark:text-slate-100;
   }
 
   h5 {
-    @apply text-base font-semibold text-slate-900;
+    @apply text-base font-semibold text-slate-900 dark:text-slate-100;
   }
 
   p {
-    @apply text-slate-700 leading-relaxed;
+    @apply text-slate-700 dark:text-slate-300 leading-relaxed;
   }
 
   /* Enhanced focus states */
@@ -640,6 +703,7 @@
 
     body {
       @apply bg-white text-black;
+      overscroll-behavior: auto;
     }
     
     .modern-card,

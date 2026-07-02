@@ -133,10 +133,35 @@ export default function NurseTrainingHub() {
         content: activeTraining || {},
       });
     },
+    onMutate: async ({ score }) => {
+      const queryKey = ['my-micro-progress', currentUser?.email];
+      await queryClient.cancelQueries({ queryKey });
+      const previousProgress = queryClient.getQueryData(queryKey) || [];
+      const optimisticCompletion = {
+        id: `optimistic-${Date.now()}`,
+        nurse_email: currentUser?.email,
+        skill_area: activeTraining?.title || activeTraining?.skill_gap || 'Personalized training',
+        module_type: 'micro_lesson',
+        status: 'completed',
+        score,
+        attempts: 1,
+        source: 'ai_recommendation',
+        content: activeTraining || {},
+        created_date: new Date().toISOString(),
+        updated_date: new Date().toISOString(),
+        is_optimistic: true,
+      };
+      queryClient.setQueryData(queryKey, [optimisticCompletion, ...previousProgress]);
+      return { queryKey, previousProgress };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-micro-progress', currentUser?.email] });
       setActiveTraining(null);
       setSelectedModule(null);
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.queryKey) queryClient.setQueryData(context.queryKey, context.previousProgress || []);
+      toast.error('Could not save completion. Please try again.');
     }
   });
 

@@ -354,7 +354,7 @@ export default function Layout({ children, currentPageName }) {
         <main
           id="main-content"
           className="flex-1 pt-[calc(4rem_+_env(safe-area-inset-top))] md:pt-0 pb-[calc(5rem_+_env(safe-area-inset-bottom))] md:pb-0 min-h-screen w-0 md:w-auto overscroll-none"
-          style={{ background: "linear-gradient(135deg, #cbd5e1 0%, #dbe5f5 45%, #9fb8e6 100%)" }}
+          style={{ background: "var(--app-shell-background)" }}
         >
           <div className="p-4 sm:p-6 md:p-8 lg:p-10 min-w-0 max-w-[1600px] mx-auto">
             <OfflineIndicator />
