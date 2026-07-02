@@ -13,7 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Sparkles, Loader2, AlertTriangle, Film, ChevronDown, ChevronUp } from "lucide-react";
-import { generateTrainingCourse } from "@/functions/generateTrainingCourse";
+import { generateTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { toast } from "sonner";
 
@@ -28,12 +28,15 @@ const DEFAULT_QUESTION_TYPES = ["mcq", "true_false", "scenario_based"];
 
 // One-topic-and-go AI course creation. The heavy lifting (course + lessons +
 // quiz + optional HeyGen presenter videos) is done by the generateTrainingCourse
-// backend; this dialog keeps the required input to just a topic and hands the new
-// course id back so the caller can open it in the builder for review.
+// backend, driven phase-by-phase via generateTrainingCourseStepwise so no single
+// request outlives the platform's execution window; this dialog keeps the
+// required input to just a topic and hands the new course id back so the caller
+// can open it in the builder for review.
 export default function AICourseGenerator({ onGenerated }) {
   const [open, setOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(null);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
     topic: "",
@@ -63,6 +66,7 @@ export default function AICourseGenerator({ onGenerated }) {
   const reset = () => {
     setError("");
     setLoading(false);
+    setProgress(null);
   };
 
   const handleGenerate = async () => {
@@ -88,8 +92,7 @@ export default function AICourseGenerator({ onGenerated }) {
         video_avatar_id: form.video_avatar_id.trim(),
         video_voice_id: form.video_voice_id.trim(),
       };
-      const response = await generateTrainingCourse(payload);
-      const data = response?.data || response;
+      const data = await generateTrainingCourseStepwise(payload, setProgress);
       if (!data?.success || !data?.course_id) {
         throw new Error(data?.error || "Generation did not return a course.");
       }
@@ -110,9 +113,17 @@ export default function AICourseGenerator({ onGenerated }) {
     } catch (err) {
       const friendly = configNotReadyMessage(err);
       if (!friendly) console.error("AI course generation failed:", err);
-      setError(friendly || err?.message || "Failed to generate the course. Please try again.");
+      const base = friendly || err?.message || "Failed to generate the course. Please try again.";
+      // A later phase failed after the draft was created — tell the admin where
+      // the partial draft is instead of leaving a mystery course in the list.
+      setError(
+        err?.course_id
+          ? `${base} A draft ("${err.course_title || "Untitled"}") was created with partial content — you can finish or delete it in the course builder.`
+          : base
+      );
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   };
 
@@ -333,7 +344,10 @@ export default function AICourseGenerator({ onGenerated }) {
             </Button>
             {loading && (
               <span className="text-sm text-slate-500">
-                Building lessons and quiz{form.generate_videos ? " and starting videos" : ""} — this can take up to a minute.
+                {progress
+                  ? `Step ${progress.step} of ${progress.totalSteps}: ${progress.label}`
+                  : "Starting generation…"}{" "}
+                This can take a few minutes.
               </span>
             )}
           </div>

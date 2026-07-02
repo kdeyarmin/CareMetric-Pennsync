@@ -14,13 +14,14 @@ import { base44 } from '@/api/base44Client';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import { useQuery } from '@tanstack/react-query';
-import { generateTrainingCourse } from '@/functions/generateTrainingCourse';
+import { generateTrainingCourseStepwise } from '@/functions/generateTrainingCourse';
 import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 
 export default function AITrainingGenerator() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(null);
   const [formData, setFormData] = useState({
     topic: '',
     audience_roles: [],
@@ -84,16 +85,36 @@ export default function AITrainingGenerator() {
     setLoading(true);
 
     try {
-      const response = await generateTrainingCourse(formData);
-      // functions.invoke returns the full axios response; body is under .data.
-      setGeneratedCourse(response?.data || response);
+      // Map the form onto the backend's generation parameters and drive the
+      // phased generation (outline → lessons → quiz → finalize) step by step.
+      const data = await generateTrainingCourseStepwise(
+        {
+          topic: formData.topic.trim(),
+          audience_roles: formData.audience_roles,
+          business_line: formData.setting,
+          skill_level: formData.skill_level,
+          lesson_length: Number(formData.time_length_minutes) || 30,
+          state: formData.state.trim(),
+          policy_ids: formData.policy_ids,
+          include_competency: formData.include_competency,
+          training_type: 'in_service',
+        },
+        setProgress
+      );
+      setGeneratedCourse(data);
       toast.success('Training course generated successfully!');
     } catch (error) {
       const friendly = configNotReadyMessage(error);
       if (!friendly) console.error('Generation failed:', error);
-      toast.error(friendly || ('Failed to generate course: ' + error.message));
+      const base = friendly || ('Failed to generate course: ' + error.message);
+      toast.error(
+        error?.course_id
+          ? `${base} A draft ("${error.course_title || 'Untitled'}") was created with partial content — you can finish or delete it under Admin Training.`
+          : base
+      );
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   };
 
@@ -252,7 +273,7 @@ export default function AITrainingGenerator() {
             {loading ? (
               <>
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Generating Course...
+                {progress ? `Step ${progress.step} of ${progress.totalSteps}: ${progress.label}` : 'Generating Course...'}
               </>
             ) : (
               <>
@@ -261,6 +282,11 @@ export default function AITrainingGenerator() {
               </>
             )}
           </Button>
+          {loading && (
+            <p className="text-sm text-slate-500 text-center">
+              The course is generated lesson by lesson — this can take a few minutes. Keep this page open.
+            </p>
+          )}
         </CardContent>
       </Card>
 
