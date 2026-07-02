@@ -106,16 +106,19 @@ export async function persistVisitNote({
 
   // Re-save after an edit → update the same visit, never duplicate. Also keep the
   // appended enhanced_notes_history entry in sync, since getPriorNote() prefers it
-  // for the next note's carry-forward pre-fill.
+  // for the next note's carry-forward pre-fill. History writes go through the
+  // appendPatientNoteHistory backend function: a browser-side read-modify-write
+  // of the array lost entries when two saves for the same patient raced, and it
+  // targeted "the last entry" — which may meanwhile be a COLLEAGUE's newer note.
+  // The function serializes the write server-side (verify-and-retry) and targets
+  // this visit's entry by visit_id.
   if (savedVisitId) {
-    const currentPatient = await base44.entities.Patient.get(patientId);
-    const history = currentPatient.enhanced_notes_history || [];
-    if (history.length) {
-      history[history.length - 1] = { ...history[history.length - 1], note: finalText, compliance_score: coverageScore };
-    }
     await Promise.all([
       base44.entities.Visit.update(savedVisitId, { nurse_notes: finalText, compliance_score: coverageScore, vital_signs: vitals, grounding_pending: false, ...structured, ...reportingFields }),
-      base44.entities.Patient.update(patientId, { clinical_notes: finalText, enhanced_notes_history: history }),
+      base44.functions.invoke('appendPatientNoteHistory', {
+        patient_id: patientId, mode: 'update', clinical_notes: finalText,
+        entry: { visit_id: savedVisitId, note: finalText, compliance_score: coverageScore },
+      }),
       // Keep the audit in step with the edit — a re-save that resolves a conflict
       // must clear the stale `critical` status/issues, not leave them behind.
       ...(savedAuditId ? [base44.entities.ComplianceAudit.update(savedAuditId, auditFields)] : []),
@@ -141,16 +144,13 @@ export async function persistVisitNote({
     ? (await base44.entities.Visit.update(existingVisitId, visitFields), { id: existingVisitId })
     : await base44.entities.Visit.create(visitFields);
 
-  const currentPatient = await base44.entities.Patient.get(patientId);
-  const enhancedHistory = currentPatient.enhanced_notes_history || [];
-  enhancedHistory.push({
-    date: visitDate, visit_type: visitType, note: finalText,
-    compliance_score: coverageScore, created_by: currentUser.email,
-    created_at: new Date().toISOString(),
-  });
-
+  // Atomic-append the history entry server-side (see the re-save comment above);
+  // created_by/created_at are stamped by the function from the caller's session.
   const [, , audit] = await Promise.all([
-    base44.entities.Patient.update(patientId, { enhanced_notes_history: enhancedHistory, clinical_notes: finalText }),
+    base44.functions.invoke('appendPatientNoteHistory', {
+      patient_id: patientId, mode: 'append', clinical_notes: finalText,
+      entry: { visit_id: visit.id, date: visitDate, visit_type: visitType, note: finalText, compliance_score: coverageScore },
+    }),
     base44.entities.NoteConversion.create(toNoteConversionFields({
       coverageScore, draftPresenceScore: draftScore,
       roughLen: roughNote.length, enhancedLen: finalText.length,

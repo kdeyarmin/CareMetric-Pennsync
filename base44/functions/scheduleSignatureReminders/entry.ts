@@ -62,10 +62,36 @@ Deno.serve(async (req) => {
     const reminderTime = deadlineTime - (reminder_days * 24 * 60 * 60 * 1000);
     const now = new Date().getTime();
 
-    // If the computed reminder time is already in the past, schedule it for NOW
-    // rather than silently dropping it.
+    // If the computed reminder time is already in the past, deliver NOW rather
+    // than silently dropping it. A future reminder is QUEUED as a
+    // ScheduledSignatureReminder row for dispatchScheduledSignatureReminders
+    // (cron) — previously the notifications were created immediately no matter
+    // how far out the reminder time was, so "schedule for 3 days before the
+    // deadline" pinged every signer the moment the request was made.
     const immediate = reminderTime <= now;
     const reminderIso = new Date(immediate ? now : reminderTime).toISOString();
+
+    if (!immediate) {
+      const documentName = sig.document_name || sig.document_title || sig.document_type || 'Document';
+      await base44.asServiceRole.entities.ScheduledSignatureReminder.create({
+        document_id,
+        document_name: documentName,
+        deadline_date: new Date(deadline_date).toISOString(),
+        send_at: reminderIso,
+        requested_by: user.email,
+        status: 'pending',
+        attempts: 0,
+      });
+      return Response.json({
+        success: true,
+        message: 'Reminders scheduled successfully',
+        scheduled: true,
+        // Recipients are re-derived from the document's pending signers at send
+        // time, so signers who complete before send_at aren't reminded.
+        reminder_count: recipients.length,
+        reminder_date: reminderIso
+      });
+    }
 
     for (const email of recipients) {
       await base44.asServiceRole.entities.Notification.create({
@@ -79,12 +105,15 @@ Deno.serve(async (req) => {
     }
 
     await base44.asServiceRole.entities.DocumentSignature.update(document_id, {
-      reminder_sent: true
+      reminder_sent: true,
+      last_reminder_sent_at: new Date().toISOString(),
+      reminder_sent_count: (Number(sig.reminder_sent_count) || 0) + 1,
     });
 
     return Response.json({
       success: true,
-      message: immediate ? 'Reminder date had passed; reminders created immediately' : 'Reminders scheduled successfully',
+      message: 'Reminder date had passed; reminders created immediately',
+      scheduled: false,
       reminder_count: recipients.length,
       reminder_date: reminderIso
     });

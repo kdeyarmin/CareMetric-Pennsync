@@ -24,7 +24,9 @@ const PRESETS = [
   { key: "other", label: "Other", item_type: "license", title: "" },
 ];
 
-export default function PersonnelCredentialForm({ currentUser, existingItem, onDone }) {
+// currentUser is no longer needed: submitPersonnelCredential derives the owner
+// identity from the caller's session server-side.
+export default function PersonnelCredentialForm({ existingItem, onDone }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(existingItem || {
     item_type: "license",
@@ -59,31 +61,23 @@ export default function PersonnelCredentialForm({ currentUser, existingItem, onD
         uploaded_file_name = file.name;
       }
 
-      const payload = {
-        item_type: form.item_type,
-        title: form.title,
-        issuing_organization: form.issuing_organization || undefined,
-        credential_number: form.credential_number || undefined,
-        issued_date: form.issued_date || undefined,
-        expiration_date: form.expiration_date,
-        uploaded_file_url: uploaded_file_url || undefined,
-        uploaded_file_name: uploaded_file_name || undefined,
-        notes: form.notes || undefined,
-        user_id: currentUser.email,
-        user_name: currentUser.full_name,
-        agency_name: currentUser.agency_name || undefined,
-        status: "pending_approval",
-        approved_by: undefined,
-        approved_at: undefined,
-        rejection_reason: undefined,
-        reminder_offsets_sent: existingItem?.reminder_offsets_sent || [],
-        last_reminder_sent_at: existingItem?.last_reminder_sent_at || undefined,
-      };
-
-      if (existingItem?.id) {
-        return base44.entities.PersonnelCredential.update(existingItem.id, payload);
-      }
-      return base44.entities.PersonnelCredential.create(payload);
+      // Self-service writes go through submitPersonnelCredential — the entity's
+      // write RLS is admin-only, and the function pins status=pending_approval
+      // and owns identity/approval/reminder bookkeeping server-side.
+      return base44.functions.invoke('submitPersonnelCredential', {
+        credential_id: existingItem?.id || undefined,
+        credential: {
+          item_type: form.item_type,
+          title: form.title,
+          issuing_organization: form.issuing_organization || undefined,
+          credential_number: form.credential_number || undefined,
+          issued_date: form.issued_date || undefined,
+          expiration_date: form.expiration_date,
+          uploaded_file_url: uploaded_file_url || undefined,
+          uploaded_file_name: uploaded_file_name || undefined,
+          notes: form.notes || undefined,
+        },
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["personnel-credentials"] });

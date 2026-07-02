@@ -58,6 +58,22 @@ For every entity below: **Read = `byPatient`**, **Write = clinician-on-own-patie
 admin** (or service-role where noted). These currently have **no in-repo block** and
 are the largest body of outstanding work.
 
+> **2026-07-02 update — interim in-repo read floor.** Seven of these now ship an
+> in-repo `rls.read` owner rule (+ admin): `OASISUpload`, `OASISAssessment`,
+> `OASISAudit`, `Referral` (created_by **and** `assigned_to`), `NoteConversion`,
+> `Document` (uploaded_by + created_by), `DischargeSummary`. This was a deliberate
+> accepted tradeoff (see `base44/securityGuardrails.test.js` §7): it closes the
+> open bulk-read of PHI now, at the cost that non-admin staff see only their own
+> rows on shared views — consistent with the app's actual role model, where
+> `Patient`/`Visit` themselves are already `created_by`-scoped. A dashboard
+> `byPatient` relation rule remains the richer end-state and may REPLACE these
+> field rules; do not simply delete them (the guardrail test pins their presence).
+> Writes on these seven were intentionally left open (`"write": {}`) pending the
+> dashboard pass, since several write flows are legitimately cross-user.
+> `ClinicalEvent` was **excluded on purpose**: its rows are created only by the
+> service role (no per-user owner field), so an owner rule would zero out every
+> non-admin's clinical timeline — it still needs the dashboard relation rule.
+
 | Entity | Link field | Write |
 |---|---|---|
 | `OASISUpload` | `patient_id` | byPatient + admin |

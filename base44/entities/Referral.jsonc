@@ -178,5 +178,27 @@
   // Referrals are created from several flows with no single universal field
   // (e.g. DocumentToTriageMapper creates by patient_id without patient_name),
   // so nothing is marked required to avoid rejecting a valid create shape.
-  "required": []
+  "required": [],
+  // PHI read-scoping: with no read rule, ANY authenticated user could bulk-
+  // .list() every row (referrals carry full patient demographics/insurance).
+  // assigned_to is REQUIRED in the $or — referrals are created by office staff
+  // and only ASSIGNED to nurses, so a created_by-only rule would hide every
+  // referral from the assigned nurse (empty Pending Referrals queue, broken
+  // referral-driven admission-note prefill).
+  // Reads are scoped to the owning user (+ admin), matching the app's
+  // Patient/Visit/ComplianceAudit role model: non-admin staff see only their
+  // own rows on agency-wide report surfaces; admins see everything. "write": {}
+  // deliberately preserves the existing open write behavior — this change is
+  // read-scoping only (several write flows are legitimately cross-user), the
+  // same shape as the ClinicalLibraryTemplate read-scoping fix.
+  "rls": {
+    "read": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "assigned_to": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {}
+  }
 }
