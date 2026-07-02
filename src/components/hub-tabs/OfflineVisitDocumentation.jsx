@@ -16,6 +16,7 @@ import {
 import OfflineVisitNoteCapture from '@/components/offline/OfflineVisitNoteCapture';
 import OfflineSyncStatus from '@/components/offline/OfflineSyncStatus';
 import { useOfflineQueue } from '@/lib/offlineSync';
+import { withOfflineRosterFallback } from '@/lib/offlinePatients';
 
 export default function OfflineVisitDocumentation() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,7 +25,13 @@ export default function OfflineVisitDocumentation() {
 
   const { data: patients = [], isLoading } = useQuery({
     queryKey: ['patients-offline'],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 100),
+    // 'always' runs the queryFn even while offline — the default 'online' mode
+    // pauses it, which left this list empty exactly when the offline
+    // documentation flow needs it. The fallback serves the IndexedDB roster.
+    networkMode: 'always',
+    queryFn: () => withOfflineRosterFallback(
+      () => base44.entities.Patient.list('-updated_date', 100)
+    ),
     initialData: [],
   });
 

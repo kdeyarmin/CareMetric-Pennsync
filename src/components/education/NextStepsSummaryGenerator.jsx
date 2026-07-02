@@ -163,6 +163,12 @@ Return JSON:
     const selectedDaily = (summary.daily_checklist || []).filter((_, idx) => selectedItems[`daily_${idx}`]);
 
     const printWindow = window.open('', '_blank');
+    // Popup blockers and installed-app webviews (iOS standalone/WKWebView)
+    // return null here — bail with a hint instead of throwing on .document.
+    if (!printWindow) {
+      toast.error('Unable to open the print view. Please allow pop-ups and try again.');
+      return;
+    }
     printWindow.document.write(`
       <html>
         <head>

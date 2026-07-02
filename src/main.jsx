@@ -31,6 +31,11 @@ const handleStaleChunk = (err) => {
   const isStaleChunk = err?.name === 'TypeError' &&
     /dynamically imported module/i.test(err?.message || '');
   if (!isStaleChunk) return false;
+  // Offline is NOT a stale module graph: the chunk failed because the network
+  // is gone, and a hard reload while offline just tears down the running app
+  // (losing SPA state) for the same failure. Let the ErrorBoundary show its
+  // offline message instead; the user retries after reconnecting.
+  if (navigator.onLine === false) return false;
   const key = `${VITE_CHUNK_KEY}:${window.location.pathname}`;
   const attempts = parseInt(sessionStorage.getItem(key) || '0', 10);
   if (attempts >= 3) {
@@ -51,6 +56,20 @@ window.addEventListener('error', (e) => handleStaleChunk(e.error));
 window.addEventListener('unhandledrejection', (e) => {
   if (handleStaleChunk(e.reason)) e.preventDefault();
 });
+
+// Register the offline service worker (public/sw.js): network-first app shell
+// with an offline fallback, cache-first hashed /assets/ chunks, and the
+// font/image cache with PHI-exclusion rules. Production only — the dev server
+// serves unhashed source modules the worker's caching policy doesn't apply to,
+// and a worker left controlling localhost masks dev-server restarts.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Registration failure (private mode, unsupported embedder) just means
+      // no offline cache — the app itself still runs normally.
+    });
+  });
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -145,6 +145,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const serviceLine = isHospice ? "hospice" : "home_health";
   const { data: patients = [] } = useQuery({
     queryKey: ["patients", "active-200"],
+    // Without 'always', React Query's default networkMode PAUSES the queryFn
+    // while offline — so the IndexedDB fallback below could never run in the
+    // exact situation it exists for.
+    networkMode: 'always',
     queryFn: async () => {
         try {
             return await base44.entities.Patient.filter({ status: "active" }, "first_name", 200);

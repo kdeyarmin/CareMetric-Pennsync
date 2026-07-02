@@ -43,7 +43,7 @@ import {
 } from "lucide-react";
 import { getAlertIcon, getSeverityColor } from "@/components/alerts/alertPresentation";
 import { format, formatDistanceToNow } from "date-fns";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
 export default function PatientAlertsDashboard({ patientId = null, _showAllPatients = true }) {
@@ -55,6 +55,7 @@ export default function PatientAlertsDashboard({ patientId = null, _showAllPatie
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("active");
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Fetch current user FIRST — the alerts useMemo below references currentUser
   // and isAdmin, which would hit the temporal dead zone (ReferenceError) if
@@ -535,7 +536,11 @@ export default function PatientAlertsDashboard({ patientId = null, _showAllPatie
                         onClick={() => {
                           const patient = patientMap[selectedAlert.patient_id];
                           if (patient) {
-                            window.open(createPageUrl(`PatientDetails?id=${patient.id}`), '_blank');
+                            // In-app navigation, not window.open: installed
+                            // apps (standalone PWA/TWA) have no "new tab" — a
+                            // _blank open breaks out of the app shell or no-ops.
+                            setDetailsDialogOpen(false);
+                            navigate(createPageUrl(`PatientDetails?id=${patient.id}`));
                           }
                         }}
                       >

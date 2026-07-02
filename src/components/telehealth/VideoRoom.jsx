@@ -370,6 +370,13 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
   };
 
   const toggleScreenShare = async () => {
+    // getDisplayMedia does not exist on iOS (Safari, standalone PWA, WKWebView
+    // wrappers) and some Android webviews — tell the user instead of silently
+    // doing nothing (console.* is stripped from production builds).
+    if (!screenSharing && typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
+      toast.error("Screen sharing isn't supported on this device.");
+      return;
+    }
     try {
       if (screenSharing) {
         stopScreenShare();
@@ -377,8 +384,12 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
         await startScreenShare();
       }
     } catch (err) {
-      // Most commonly the user dismissed the screen picker — leave the call as-is.
+      // NotAllowedError = the user dismissed the screen picker — leave the call
+      // as-is with no toast. Anything else deserves a visible failure.
       console.error("Screen share error:", err);
+      if (err?.name !== 'NotAllowedError') {
+        toast.error('Screen sharing failed to start.');
+      }
       setScreenSharing(false);
     }
   };

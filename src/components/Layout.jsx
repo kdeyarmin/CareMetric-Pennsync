@@ -367,8 +367,11 @@ export default function Layout({ children, currentPageName }) {
 
         <MobileBottomNav isActive={isActive} unreadMessageCount={unreadMessageCount} isAdmin={isAdmin} />
 
-        {/* Floating Sync Status — only appears when there are pending items to sync */}
-        <div className="fixed bottom-20 md:bottom-4 right-4 z-40 max-w-sm">
+        {/* Floating Sync Status — only appears when there are pending items to
+            sync. Bottom offset includes the safe-area inset because the mobile
+            bottom nav grows by env(safe-area-inset-bottom) on notched phones —
+            a fixed 5rem would sit under the nav there. */}
+        <div className="fixed bottom-[calc(5rem_+_env(safe-area-inset-bottom))] md:bottom-4 right-4 z-40 max-w-sm">
           <OfflineSyncStatus />
         </div>
         <SessionTimeoutManager timeoutMinutes={15} warningMinutes={2} />
