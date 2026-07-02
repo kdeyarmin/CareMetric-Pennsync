@@ -157,18 +157,20 @@ const normalizePreAssessment = (items) =>
 
 const BRAIN_SPARK_OFFSETS = [2, 4, 6, 30, 32, 34];
 
-const normalizeBrainSparks = (items) =>
+const normalizeBrainSparks = (items, moduleCount) =>
   (Array.isArray(items) ? items : [])
     .slice(0, BRAIN_SPARK_OFFSETS.length)
     .map((s, i) => {
       const options = normalizeOptions(s?.options);
+      const rawIndex = Number.isInteger(s?.linked_module_index) ? s.linked_module_index : 0;
       return {
         prompt: String(s?.prompt || '').trim(),
         options,
         correct_answer: matchOptionValue(options, s?.correct_answer),
         rationale: String(s?.rationale || ''),
-        day_offset: Number.isFinite(Number(s?.day_offset)) ? Number(s.day_offset) : BRAIN_SPARK_OFFSETS[i],
-        linked_module_index: Number.isInteger(s?.linked_module_index) ? s.linked_module_index : 0,
+        // The spaced-recall schedule is fixed — don't trust an LLM-provided offset.
+        day_offset: BRAIN_SPARK_OFFSETS[i],
+        linked_module_index: Math.min(Math.max(rawIndex, 0), Math.max(moduleCount - 1, 0)),
       };
     })
     .filter((s) => s.prompt);
@@ -345,7 +347,7 @@ Design principles:
     include_case_scenarios,
     include_key_takeaways,
     real_world_relevance: outline.real_world_relevance || '',
-    regulatory_crosswalk_json: Array.isArray(outline.regulatory_crosswalk) ? outline.regulatory_crosswalk : [],
+    regulatory_crosswalk_json: include_policy_section && Array.isArray(outline.regulatory_crosswalk) ? outline.regulatory_crosswalk : [],
     competency_skills_json: include_competency && Array.isArray(outline.competency_skills) ? outline.competency_skills : [],
     policy_references: Array.isArray(policy_ids) ? policy_ids : [],
     // Everything later phases need is stored here so they only receive course_id.
@@ -527,9 +529,11 @@ async function runAssessmentPhase(base44, body) {
 
   const questionCount = Math.max(1, Math.min(Number(params.question_count) || 10, 30));
   const preAssessmentCount = Math.max(3, Math.round(questionCount * 0.4));
-  const questionTypes = Array.isArray(params.question_types) && params.question_types.length
-    ? params.question_types
-    : ['mcq', 'true_false', 'scenario_based'];
+  // Only ask the LLM for types normalizeQuestion can persist correctly — an
+  // unsupported requested type (e.g. 'matching') would otherwise come back and
+  // be coerced into a broken mcq.
+  const requestedTypes = Array.isArray(params.question_types) ? params.question_types.filter((t) => ALLOWED_QUESTION_TYPES.includes(t)) : [];
+  const questionTypes = requestedTypes.length ? requestedTypes : ['mcq', 'true_false', 'scenario_based'];
 
   const assessmentPrompt = `You are writing the complete assessment package for the healthcare training course "${course.title}". Ground every item ONLY in the lesson content below — do not introduce facts the lessons don't cover.
 
@@ -603,10 +607,15 @@ REQUIREMENTS:
     return Response.json({ error: 'The AI could not generate assessment questions. Please try again.' }, { status: 502 });
   }
 
-  // Replace-all so a client retry can't duplicate questions.
-  const existingQuestions = await base44.asServiceRole.entities.TrainingQuestion.filter({ course_id }, 'order_index', 200);
-  for (const q of existingQuestions) {
-    await base44.asServiceRole.entities.TrainingQuestion.delete(q.id);
+  // Replace-all so a client retry can't duplicate questions. Paginate the
+  // deletes (bounded so a persistently-failing delete can't loop forever) in
+  // case a course has accumulated more than one fetch page of questions.
+  for (let pass = 0; pass < 10; pass++) {
+    const existingQuestions = await base44.asServiceRole.entities.TrainingQuestion.filter({ course_id }, 'order_index', 200);
+    if (existingQuestions.length === 0) break;
+    for (const q of existingQuestions) {
+      await base44.asServiceRole.entities.TrainingQuestion.delete(q.id);
+    }
   }
   const questions = rawQuestions.slice(0, questionCount).map(normalizeQuestion);
   for (const q of questions) {
@@ -615,7 +624,7 @@ REQUIREMENTS:
 
   await base44.asServiceRole.entities.TrainingCourse.update(course_id, {
     pre_assessment_json: normalizePreAssessment(generated?.pre_assessment),
-    brain_sparks_json: normalizeBrainSparks(generated?.brain_sparks),
+    brain_sparks_json: normalizeBrainSparks(generated?.brain_sparks, modules.length),
     references_json: Array.isArray(generated?.references) ? generated.references : [],
   });
 
@@ -634,25 +643,30 @@ async function runFinalizePhase(base44, user, body, req) {
   const modules = await base44.asServiceRole.entities.TrainingModule.filter({ course_id }, 'order_index', 100);
   const questions = await base44.asServiceRole.entities.TrainingQuestion.filter({ course_id }, 'order_index', 200);
 
-  await base44.asServiceRole.entities.TrainingAuditLog.create({
-    actor_id: user.email,
-    actor_name: user.full_name,
-    action: 'course_created',
-    entity_type: 'TrainingCourse',
-    entity_id: course_id,
-    after_json: {
-      title: course.title,
-      training_type: course.training_type,
-      annual_cycle_year: course.annual_cycle_year || null,
-      status: course.status,
-      ai_generated: true,
-      generation_method: 'phased',
-      outline_modules: params.outline_modules.length,
-      modules_generated: modules.length,
-      questions_generated: questions.length,
-    },
-    severity: 'info',
-  });
+  // Finalize must be retry-safe: don't write a second 'course_created' audit
+  // entry when a client retries after an ambiguous failure.
+  const existingLogs = await base44.asServiceRole.entities.TrainingAuditLog.filter({ entity_id: course_id, action: 'course_created' });
+  if (existingLogs.length === 0) {
+    await base44.asServiceRole.entities.TrainingAuditLog.create({
+      actor_id: user.email,
+      actor_name: user.full_name,
+      action: 'course_created',
+      entity_type: 'TrainingCourse',
+      entity_id: course_id,
+      after_json: {
+        title: course.title,
+        training_type: course.training_type,
+        annual_cycle_year: course.annual_cycle_year || null,
+        status: course.status,
+        ai_generated: true,
+        generation_method: 'phased',
+        outline_modules: params.outline_modules.length,
+        modules_generated: modules.length,
+        questions_generated: questions.length,
+      },
+      severity: 'info',
+    });
+  }
 
   let video_generation_status = 'skipped';
   if (generate_videos) {
@@ -660,6 +674,11 @@ async function runFinalizePhase(base44, user, body, req) {
       const HEYGEN_API_KEY = Deno.env.get('HEYGEN_API_KEY') || '';
       if (!HEYGEN_API_KEY) {
         video_generation_status = 'skipped_no_api_key';
+      } else if (modules.some((m) => m.video_status === 'processing' || m.video_url)) {
+        // A retry of finalize must not re-kick HeyGen: manageTrainingVideos
+        // 'start' targets every non-completed module, so re-invoking it while
+        // jobs are processing would create duplicate jobs (and burn credits).
+        video_generation_status = 'generating';
       } else {
         // Kick off video generation via manageTrainingVideos (action: 'start').
         // That path is non-blocking: it CREATES the HeyGen jobs, stamps each
