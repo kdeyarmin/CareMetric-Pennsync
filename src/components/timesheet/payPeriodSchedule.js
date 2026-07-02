@@ -5,11 +5,16 @@
  *   • Pay period: two weeks, Sunday → Saturday (14 days inclusive).
  *   • Timesheets are due before NOON on the Monday after the period ends
  *     (period_end Saturday + 2 days).
- *   • Payday is the Saturday one week after the period ends (period_end + 7 days).
+ *   • Payday is the Friday after the period ends (period_end + 6 days — the
+ *     Friday of the week timesheets are due). If that Friday IS a bank
+ *     holiday, payday is always the day prior (Thursday). One-off exceptions
+ *     confirmed by payroll live in PAYDAY_OVERRIDES.
  *
- * Anchored to the known cycle: Sun 2026-06-14 → Sat 2026-06-27, due Mon
- * 2026-06-29 12:00 PM, payday Sat 2026-07-04 (the uploaded example files are
- * named for that 6/29 due date). Every other period is derived from this anchor.
+ * Anchored at ANCHOR_START: Sun 2026-06-14 → Sat 2026-06-27, due Mon
+ * 2026-06-29 12:00 PM, payday Sat 2026-07-04 (shifted off Fri 7/3, the
+ * observed Independence Day holiday). Every other period is derived from that
+ * 14-day cadence — e.g. the next period runs Sun 2026-06-28 → Sat 2026-07-11,
+ * due Mon 2026-07-13 12:00 PM, payday Fri 2026-07-17.
  *
  * Pure and unit-tested (payPeriodSchedule.test.js). Date math uses UTC-midpoint
  * differencing so DST transitions can't shift a period boundary.
@@ -22,6 +27,34 @@ import { payPeriodLabel } from "./timesheetUtils.js";
 export const ANCHOR_START = "2026-06-14";
 const PERIOD_DAYS = 14;
 const DAY_MS = 86400000;
+
+/**
+ * When the scheduled Friday payday falls ON a bank holiday, pay is always the
+ * day prior (Thursday). Only fixed-date holidays can land on a Friday —
+ * Monday-observed holidays and Thanksgiving (Thursday) never do.
+ * Month/day pairs:
+ */
+const FRIDAY_HOLIDAYS = [
+  [1, 1], // New Year's Day
+  [6, 19], // Juneteenth
+  [7, 4], // Independence Day
+  [11, 11], // Veterans Day
+  [12, 25], // Christmas Day
+];
+
+function isBankHoliday(iso) {
+  const [, m, d] = iso.split("-").map(Number);
+  return FRIDAY_HOLIDAYS.some(([hm, hd]) => hm === m && hd === d);
+}
+
+/**
+ * One-off payday exceptions confirmed by payroll, keyed by the scheduled
+ * Friday. 2026-07-03 isn't itself a holiday (Independence Day is Sat 7/4,
+ * observed Fri 7/3), and payroll pays that period on Sat 7/4.
+ */
+const PAYDAY_OVERRIDES = {
+  "2026-07-03": "2026-07-04",
+};
 
 function addDays(iso, n) {
   const d = parseISODate(iso);
@@ -49,7 +82,10 @@ export function payPeriodByIndex(index) {
   const start = addDays(ANCHOR_START, index * PERIOD_DAYS); // Sunday
   const end = addDays(start, PERIOD_DAYS - 1); // Saturday
   const dueDate = addDays(end, 2); // Monday
-  const payday = addDays(end, 7); // Saturday, one week after period end
+  const scheduledPayday = addDays(end, 6); // Friday of the due week
+  const payday =
+    PAYDAY_OVERRIDES[scheduledPayday] ??
+    (isBankHoliday(scheduledPayday) ? addDays(scheduledPayday, -1) : scheduledPayday);
   return {
     index,
     start,
@@ -104,7 +140,7 @@ export function dueLabel(period) {
   return `${d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })} · 12:00 PM`;
 }
 
-/** "Sat, Jul 4, 2026" — the payday. */
+/** "Fri, Jul 17, 2026" — the payday. */
 export function paydayLabel(period) {
   const d = parseISODate(period?.payday);
   if (!d) return "—";
