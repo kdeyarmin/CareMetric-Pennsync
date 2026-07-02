@@ -14,8 +14,12 @@ self.addEventListener('install', (event) => {
   // Activate the new worker immediately. The only precached document is the
   // static offline fallback page — never the app shell itself, so an updated
   // index.html (with new hashed JS) is always fetched fresh while online.
+  // Best-effort: a failed precache (transient network drop during install)
+  // must not reject the install event, or the worker never activates and the
+  // app loses ALL offline support. Worst case the fallback page is just
+  // missing until the next successful update.
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.add(OFFLINE_URL))
+    caches.open(CACHE_NAME).then((cache) => cache.add(OFFLINE_URL)).catch(() => {})
   );
   self.skipWaiting();
 });

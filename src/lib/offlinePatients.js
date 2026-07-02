@@ -16,26 +16,26 @@
  * roster.
  */
 export async function withOfflineRosterFallback(fetchRemote, { getLocal, isOffline } = {}) {
-	try {
-		return await fetchRemote();
-	} catch (error) {
-		const offline = isOffline
-			? isOffline()
-			: typeof navigator !== 'undefined' && navigator.onLine === false;
-		if (!offline) throw error;
+  try {
+    return await fetchRemote();
+  } catch (error) {
+    const offline = isOffline
+      ? isOffline()
+      : typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (!offline) throw error;
 
-		const loadLocal = getLocal ?? (async () => {
-			const { getPatientsLocally } = await import('@/lib/indexedDB');
-			return getPatientsLocally();
-		});
+    const loadLocal = getLocal ?? (async () => {
+      const { getPatientsLocally } = await import('@/lib/indexedDB');
+      return getPatientsLocally();
+    });
 
-		let local = null;
-		try {
-			local = await loadLocal();
-		} catch {
-			/* cache unavailable (fresh install, private mode) — rethrow below */
-		}
-		if (Array.isArray(local) && local.length > 0) return local;
-		throw error;
-	}
+    let local = null;
+    try {
+      local = await loadLocal();
+    } catch {
+      /* cache unavailable (fresh install, private mode) — rethrow below */
+    }
+    if (Array.isArray(local) && local.length > 0) return local;
+    throw error;
+  }
 }
