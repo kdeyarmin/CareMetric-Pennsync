@@ -78,6 +78,7 @@ import { todayEastern } from "@/components/utils/timezone";
 import { Link, useSearchParams } from "react-router-dom";
 import ReferralPDFSummarizer from "../components/referral/ReferralPDFSummarizer";
 import { validateReferralFile, getDocumentType } from "../components/referral/referralUploadUtils";
+import { generateDiagnosisCodes, toPersistedCoding } from "../components/referral/diagnosisCodeGenerator";
 import { runReferralQuickScan } from "../components/referral/referralExtraction";
 import PatientMatchReview from "../components/referral/PatientMatchReview";
 import PatientVerificationStep from "../components/referral/PatientVerificationStep";
@@ -474,6 +475,22 @@ Actions available:
         diagnosis: extractedData.diagnoses?.primary_diagnosis || null,
         priority: priorityAnalysis.priority || 'normal'
       };
+
+      // Deterministic PDGM-sequenced diagnosis coding (codes only ever
+      // harvested from the referral, never generated). Persisted TOP-LEVEL —
+      // not inside extracted_data — so it can't leak into the
+      // referral→admission-note bridges. Best-effort: never blocks intake.
+      try {
+        const rateRows = await base44.entities.PDGMRateConfig.list('-created_date', 1).catch(() => []);
+        updates.diagnosis_coding = toPersistedCoding(
+          generateDiagnosisCodes(extractedData, {
+            rates: rateRows?.[0]?.rates,
+            icdGroups: rateRows?.[0]?.icd10_clinical_groups,
+          })
+        );
+      } catch (codingError) {
+        console.error('Diagnosis coding skipped:', codingError);
+      }
 
       // Check for missing critical information using AI analysis
       const allMissingInfo = [
@@ -1209,6 +1226,33 @@ Actions available:
                             {referral.extracted_data.diagnoses.primary_diagnosis}
                           </Badge>
                         )}
+                        {referral.diagnosis_coding?.sequenced?.length > 0 && (
+                          <Badge
+                            variant="outline"
+                            className={`text-xs mt-1 ${
+                              referral.diagnosis_coding.has_pdgm_primary
+                                ? 'bg-indigo-50 text-indigo-700'
+                                : 'bg-amber-50 text-amber-700'
+                            }`}
+                          >
+                            {/* sequenced[0] is the chosen primary only when the
+                                sequencer picked one (has_pdgm_primary) */}
+                            {referral.diagnosis_coding.has_pdgm_primary
+                              ? `PDGM: ${referral.diagnosis_coding.sequenced[0].code}${
+                                  referral.diagnosis_coding.sequenced.length > 1
+                                    ? ` +${referral.diagnosis_coding.sequenced.length - 1}`
+                                    : ''
+                                }`
+                              : referral.diagnosis_coding.has_acceptable_primary
+                              ? 'PDGM primary unmapped'
+                              : 'No PDGM primary'}
+                          </Badge>
+                        )}
+                        {referral.diagnosis_coding?.uncoded?.length > 0 && (
+                          <Badge variant="outline" className="bg-amber-50 text-amber-700 text-xs mt-1">
+                            {referral.diagnosis_coding.uncoded.length} uncoded dx
+                          </Badge>
+                        )}
                         {referral.analysis_results?.intake_analysis?.category?.primary && (
                           <Badge className="bg-navy-100 text-navy-700 text-xs mt-1">
                             {referral.analysis_results.intake_analysis.category.primary.replace(/_/g, ' ')}
@@ -1256,6 +1300,20 @@ Actions available:
                       </TableCell>
                       <TableCell>
                        <div className="flex flex-col gap-2 min-w-[120px]">
+                         {/* Follow-Up review requires the FULL extraction; quick-scan
+                             uploads carry a partial extracted_data until processed */}
+                         {referral.extracted_data && referral.analysis_results && (
+                           <Link to={`/ReferralFollowUp?id=${referral.id}`}>
+                             <Button
+                               size="sm"
+                               variant="outline"
+                               className="min-h-[36px] text-xs w-full"
+                             >
+                               <ClipboardCheck className="w-4 h-4 mr-1" />
+                               {referral.follow_up_requests?.status ? `Follow-Up (${referral.follow_up_requests.status})` : 'Follow-Up'}
+                             </Button>
+                           </Link>
+                         )}
                          {referral.requires_manual_review ? (
                            <Button
                              size="sm"

@@ -101,10 +101,13 @@ const HARVEST_FIELDS = [
   ["oasis_assessment.m1021_primary_diagnosis", true, false],
   ["oasis_assessment.m1023_other_diagnoses[]", false, false],
   ["psychosocial.mental_health_assessment.psychiatric_diagnoses[]", false, false],
-  // Quick-scan shape (top-level fields).
+  // Quick-scan shape: raw scan output (top-level fields) AND the persisted
+  // Referral.extracted_data shape ReferralIntake.handleCreateReferral writes
+  // (codes nested under diagnoses.icd10_codes).
   ["primary_diagnosis", true, false],
   ["secondary_diagnoses[]", false, false],
   ["icd10_codes[]", false, true],
+  ["diagnoses.icd10_codes[]", false, true],
 ];
 
 function getPath(obj, dotted) {
@@ -347,4 +350,42 @@ export function generateDiagnosisCodes(referralData, opts = {}) {
 export function formatIcd(code) {
   const norm = normalizeIcd(code);
   return norm.length > 3 ? `${norm.slice(0, 3)}.${norm.slice(3)}` : norm;
+}
+
+/** "I50.9 — Heart failure" label for chart/report text fields. */
+export function codeLabel(dx) {
+  if (!dx) return "";
+  return dx.description ? `${dx.displayCode} — ${dx.description}` : dx.displayCode;
+}
+
+/**
+ * Lean, persistence-ready shape of a generateDiagnosisCodes result for the
+ * top-level `Referral.diagnosis_coding` field. Kept OFF `extracted_data` on
+ * purpose: the referral→admission-note bridges prompt on the full
+ * extracted_data object, and coding/reimbursement mechanics must not leak
+ * into generated clinical notes. Evidence is reduced to field paths; the full
+ * quotes stay in the interactive UI only.
+ */
+export function toPersistedCoding(result) {
+  if (!result) return null;
+  return {
+    sequenced: result.sequenced.map((dx) => ({
+      position: dx.position,
+      role: dx.role,
+      code: dx.displayCode,
+      description: dx.description,
+      clinical_group: dx.clinicalGroupKey,
+      case_mix_weight: dx.caseMixWeight,
+      acceptable_primary: dx.acceptablePrimary,
+      evidence_paths: dx.evidence.map((e) => e.path),
+    })),
+    uncoded: result.uncoded.map((u) => ({ description: u.description, path: u.path })),
+    warnings: result.warnings,
+    scenario: { timing: result.scenario.timing, admission_source: result.scenario.admissionSource },
+    // Two distinct facts, kept separate: an RTP-acceptable principal CANDIDATE
+    // exists vs the sequencer actually CHOSE a weighted PDGM primary (a
+    // candidate can exist yet be unmapped/unweighted in the agency tables).
+    has_acceptable_primary: result.sequenced.some((d) => d.acceptablePrimary),
+    has_pdgm_primary: !!result.primary,
+  };
 }

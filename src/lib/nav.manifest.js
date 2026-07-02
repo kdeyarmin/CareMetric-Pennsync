@@ -168,6 +168,18 @@ export const NAV_MANIFEST = [
     keywords: ["referral", "intake", "admission", "office"],
   },
   {
+    // Coder/QA follow-up worklist: what each processed referral still needs
+    // from the provider (CMS compliance + PDGM reimbursement) and the
+    // printable provider information-request form.
+    page: "ReferralFollowUp",
+    label: "Referral Follow-Up",
+    icon: ClipboardCheck,
+    category: "Office",
+    adminOnly: true,
+    breadcrumbParent: "ReferralIntake",
+    keywords: ["referral", "follow up", "provider", "request", "compliance", "pdgm", "reimbursement", "coder", "qa"],
+  },
+  {
     // Admin-only incident review queue — staff report on /Incidents, admins
     // triage and resolve here. Lives in the back-office Office section.
     page: "IncidentReview",

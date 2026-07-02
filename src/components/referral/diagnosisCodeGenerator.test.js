@@ -9,6 +9,8 @@ import {
   generateDiagnosisCodes,
   formatIcd,
   formatClinicalGroup,
+  codeLabel,
+  toPersistedCoding,
 } from "./diagnosisCodeGenerator.js";
 import { DEFAULT_ICD10_CLINICAL_GROUPS, DEFAULT_PDGM_RATES } from "../pdgm/pdgmRates.js";
 
@@ -117,6 +119,19 @@ test("harvest supports the quick-scan shape (top-level fields)", () => {
   assert.deepEqual(candidates.map((c) => c.code).sort(), ["I4891", "I639"]);
 });
 
+test("harvest supports the persisted quick-scan shape (diagnoses.icd10_codes)", () => {
+  // ReferralIntake.handleCreateReferral nests the scan output under
+  // extracted_data.diagnoses — codes there must not read as "uncoded".
+  const { candidates } = harvestDiagnosisCandidates({
+    diagnoses: {
+      primary_diagnosis: "CHF",
+      secondary_diagnoses: ["COPD"],
+      icd10_codes: ["I50.9", "J44.9"],
+    },
+  });
+  assert.deepEqual(candidates.map((c) => c.code).sort(), ["I509", "J449"]);
+});
+
 test("empty/absent referral data yields no candidates and no crash", () => {
   assert.deepEqual(harvestDiagnosisCandidates(null).candidates, []);
   assert.deepEqual(harvestDiagnosisCandidates({}).candidates, []);
@@ -211,6 +226,48 @@ test("agency rate/map overrides change the sequencing model", () => {
   });
   assert.equal(mapped.primary.code, "I509");
   assert.ok(mapped.warnings.some((w) => /not in the agency's ICD-10/i.test(w)));
+});
+
+// ── persistence shape (Referral.diagnosis_coding) ──
+
+test("codeLabel renders 'CODE — description' with a code-only fallback", () => {
+  assert.equal(codeLabel({ displayCode: "I50.9", description: "CHF exacerbation" }), "I50.9 — CHF exacerbation");
+  assert.equal(codeLabel({ displayCode: "I10", description: "" }), "I10");
+  assert.equal(codeLabel(null), "");
+});
+
+test("toPersistedCoding distinguishes acceptable-candidate from chosen-primary", () => {
+  // An RTP-acceptable code that the agency map can't weight: candidate exists
+  // (has_acceptable_primary) but no PDGM primary was chosen (has_pdgm_primary).
+  const unmapped = toPersistedCoding(
+    generateDiagnosisCodes(
+      { diagnoses: { primary_icd10: "I63.9" } },
+      { icdGroups: { Q99: "MMTA_Other" } } // replace-semantics map missing I63
+    )
+  );
+  assert.equal(unmapped.has_acceptable_primary, true);
+  assert.equal(unmapped.has_pdgm_primary, false);
+  // All-RTP referral: neither flag.
+  const rtpOnly = toPersistedCoding(generateDiagnosisCodes({ diagnoses: { primary_icd10: "R26.9" } }));
+  assert.equal(rtpOnly.has_acceptable_primary, false);
+  assert.equal(rtpOnly.has_pdgm_primary, false);
+});
+
+test("toPersistedCoding produces the lean top-level Referral shape", () => {
+  const persisted = toPersistedCoding(generateDiagnosisCodes(FULL_REFERRAL));
+  assert.equal(persisted.has_acceptable_primary, true);
+  assert.equal(persisted.has_pdgm_primary, true);
+  assert.equal(persisted.sequenced[0].role, "primary");
+  assert.equal(persisted.sequenced[0].code, "L89.153");
+  assert.equal(persisted.scenario.admission_source, "institutional");
+  // Evidence is reduced to paths — no verbatim quotes are persisted.
+  for (const dx of persisted.sequenced) {
+    assert.ok(Array.isArray(dx.evidence_paths));
+    assert.equal(dx.evidence, undefined);
+    assert.equal(typeof dx.evidence_paths[0], "string");
+  }
+  assert.ok(persisted.uncoded.some((u) => /generalized weakness/i.test(u.description)));
+  assert.equal(toPersistedCoding(null), null);
 });
 
 test("uses the same default tables as the live PDGM model (drift guard)", () => {
