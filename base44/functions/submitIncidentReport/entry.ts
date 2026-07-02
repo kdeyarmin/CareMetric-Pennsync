@@ -33,8 +33,11 @@ Deno.serve(async (req) => {
     });
 
     if (payload.immediate_alert) {
-      const users = await base44.asServiceRole.entities.User.list('-created_date', 200);
-      const adminUsers = users.filter((candidate) => candidate.role === 'admin');
+      // Query admins directly rather than filtering the 200 newest users — in an
+      // agency with >200 users the early-created admins (typically owners) were
+      // silently dropped and never alerted. Mirrors submitStateReportableIncident.
+      const users = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+      const adminUsers = (Array.isArray(users) ? users : []).filter((candidate) => candidate.role === 'admin');
 
       if (adminUsers.length > 0) {
         await Promise.all(

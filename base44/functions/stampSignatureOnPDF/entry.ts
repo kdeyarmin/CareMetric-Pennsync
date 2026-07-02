@@ -43,8 +43,12 @@ Deno.serve(async (req) => {
     }
 
     if (!isSafeFetchUrl(pdf_url)) return Response.json({ error: 'Invalid or disallowed pdf_url' }, { status: 400 });
-    // Fetch the PDF bytes
+    // Fetch the PDF bytes. Guard response.ok so an expired/404 storage URL yields
+    // a clean 400 instead of feeding an HTML error page into pdf-lib (opaque 500).
     const pdfResponse = await fetch(pdf_url);
+    if (!pdfResponse.ok) {
+      return Response.json({ error: 'Failed to fetch PDF' }, { status: 400 });
+    }
     const pdfBytes = await pdfResponse.arrayBuffer();
 
     // Load PDF
