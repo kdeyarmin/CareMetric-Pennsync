@@ -163,15 +163,28 @@ async function renderPDF(cdp, htmlPath, pdfPath, manualTitle) {
   await loaded;
   await delay(700); // let the embedded font + layout settle
   const { headerTemplate, footerTemplate } = headerFooter(manualTitle);
-  const { data } = await cdp.send('Page.printToPDF', {
+  // transferMode:'ReturnAsStream' is required: returning the PDF inline embeds
+  // the whole document as base64 in a single CDP WebSocket message, and once
+  // that message exceeds ~4 MiB it is silently never delivered to Node's
+  // WebSocket client — the build then waits forever on a PDF that already
+  // rendered. Streaming reads the result in 1 MiB chunks instead.
+  const { stream } = await cdp.send('Page.printToPDF', {
     printBackground: true,
     preferCSSPageSize: true,
     displayHeaderFooter: true,
     headerTemplate,
     footerTemplate,
     scale: 1,
+    transferMode: 'ReturnAsStream',
   }, sessionId);
-  writeFileSync(pdfPath, Buffer.from(data, 'base64'));
+  const chunks = [];
+  for (;;) {
+    const r = await cdp.send('IO.read', { handle: stream, size: 1 << 20 }, sessionId);
+    chunks.push(Buffer.from(r.data, r.base64Encoded ? 'base64' : 'utf8'));
+    if (r.eof) break;
+  }
+  await cdp.send('IO.close', { handle: stream }, sessionId).catch(() => {});
+  writeFileSync(pdfPath, Buffer.concat(chunks));
   await cdp.send('Target.closeTarget', { targetId });
 }
 
