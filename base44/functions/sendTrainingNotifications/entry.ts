@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
     // unauthenticated caller could drive mass service-role notification creation,
     // flip assignments to 'overdue', and burn reminder tiers.
     const me = await base44.auth.me().catch(() => null);
-    const isAdmin = me?.role === 'admin';
+    const isAdmin = me?.role === 'admin' || me?.account_type === 'agency_admin' || me?.account_type === 'super_admin';
     const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
     if (internalSecret) {
       if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
