@@ -227,7 +227,7 @@ export default function TrainingVideoStudio() {
 
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {m.video_url && (
-                        <a href={m.video_url} target="_blank" rel="noreferrer">
+                        <a href={m.video_url} target="_blank" rel="noopener noreferrer">
                           <Button size="sm" variant="outline"><Play className="w-3.5 h-3.5 mr-1.5" />Preview</Button>
                         </a>
                       )}

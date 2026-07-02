@@ -165,7 +165,7 @@ export default function AdminCredentialApproval() {
                       href={cred.uploaded_file_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700"
+                      className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
                     >
                       <FileText className="w-4 h-4" />
                       View Document
@@ -179,7 +179,6 @@ export default function AdminCredentialApproval() {
                     size="sm"
                     onClick={() => handleApprove(cred)}
                     disabled={approveMutation.isPending}
-                    className="bg-green-600 hover:bg-green-700"
                   >
                     <CheckCircle2 className="w-4 h-4 mr-2" />
                     Approve

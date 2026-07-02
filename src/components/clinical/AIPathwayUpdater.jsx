@@ -251,7 +251,7 @@ Return ONLY valid JSON.`;
                             <Button
                               onClick={() => applyRecommendation(rec)}
                               size="sm"
-                              className="w-full bg-green-600 hover:bg-green-700 mt-2"
+                              className="w-full mt-2"
                             >
                               Apply This Update
                             </Button>

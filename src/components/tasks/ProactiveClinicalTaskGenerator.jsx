@@ -305,7 +305,7 @@ export default function ProactiveClinicalTaskGenerator({
                       <Button
                         size="sm"
                         onClick={() => handleApproveTask(task)}
-                        className="flex-1 bg-green-600 hover:bg-green-700"
+                        className="flex-1"
                       >
                         <CheckCircle2 className="w-3 h-3 mr-1" />
                         Approve

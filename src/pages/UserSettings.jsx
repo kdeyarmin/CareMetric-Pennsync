@@ -481,7 +481,7 @@ export default function UserSettings() {
                             <p className="text-sm text-slate-500">#{item.credential_number}</p>
                           )}
                           {item.uploaded_file_url && (
-                            <a href={item.uploaded_file_url} target="_blank" rel="noreferrer" className="text-sm text-indigo-600 underline hover:text-indigo-700 mt-2 inline-block">
+                            <a href={item.uploaded_file_url} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 underline hover:text-indigo-700 mt-2 inline-block">
                               View Document
                             </a>
                           )}

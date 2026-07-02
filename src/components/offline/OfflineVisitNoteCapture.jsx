@@ -546,7 +546,7 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
       <div className="flex gap-3 sticky bottom-4 bg-white p-4 rounded-lg border-2 border-slate-200 shadow-lg">
         <Button
           onClick={saveVisitNote}
-          className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+          className="flex-1"
           size="lg"
         >
           <Save className="w-4 h-4 mr-2" />

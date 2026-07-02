@@ -241,7 +241,7 @@ Nurse Signature: _______________________`;
 
               <Button
                 onClick={handleRecordResponse}
-                className="w-full bg-green-600 hover:bg-green-700"
+                className="w-full"
                 disabled={!currentResponse.trim() || !understandingLevel}
               >
                 {currentQuestionIdx < questions.length - 1 ? 'Record & Next Question' : 'Complete Teach-Back'}

@@ -406,7 +406,6 @@ export default function OASISScenarioManager({
                 <Button 
                   size="sm" 
                   onClick={handleCreateActions}
-                  className="bg-green-600 hover:bg-green-700"
                 >
                   <FileCheck className="w-4 h-4 mr-1" />
                   Create Actions ({selectedScenarios.length})

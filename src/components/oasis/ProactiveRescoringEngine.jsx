@@ -176,7 +176,6 @@ For each opportunity, calculate:
           {!opportunities && !ai.loading && (
             <Button
               onClick={analyzeRescoringOpportunities}
-              className="bg-green-600 hover:bg-green-700"
             >
               <TrendingUp className="w-4 h-4 mr-2" />
               Analyze Opportunities

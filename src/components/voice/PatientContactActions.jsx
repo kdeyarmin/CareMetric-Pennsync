@@ -206,7 +206,6 @@ export default function PatientContactActions({ patient, currentUser }) {
               Mark opted out
             </Button>
             <Button
-              className="bg-green-600 hover:bg-green-700"
               disabled={recordConsent.isPending}
               onClick={() => recordConsent.mutate("opted_in")}
             >

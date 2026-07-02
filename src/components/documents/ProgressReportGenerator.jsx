@@ -254,7 +254,7 @@ Use professional medical terminology. Be objective and data-driven. Include spec
             <Button 
               onClick={generateReport} 
               disabled={ai.loading}
-              className="w-full bg-green-600 hover:bg-green-700"
+              className="w-full"
             >
               {ai.loading ? (
                 <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" /> Generating...</>

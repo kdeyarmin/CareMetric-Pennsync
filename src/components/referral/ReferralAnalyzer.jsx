@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertTriangle,
@@ -188,13 +189,9 @@ Referral Data: ${JSON.stringify(referralData)}`,
           <CardContent className="p-8 text-center">
             <XCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
             <p className="text-slate-700 mb-4">Couldn't analyze this referral.</p>
-            <button
-              type="button"
-              onClick={analyzeReferral}
-              className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
-            >
+            <Button type="button" onClick={analyzeReferral}>
               Retry analysis
-            </button>
+            </Button>
           </CardContent>
         </Card>
       );

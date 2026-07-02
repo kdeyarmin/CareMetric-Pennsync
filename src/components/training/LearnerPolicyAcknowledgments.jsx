@@ -84,7 +84,7 @@ export default function LearnerPolicyAcknowledgments() {
             </CardHeader>
             <CardContent className="space-y-3">
               {ack.doc_url ? (
-                <a href={ack.doc_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-blue-600 underline text-sm">
+                <a href={ack.doc_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-blue-600 underline hover:text-blue-700 text-sm">
                   <ExternalLink className="w-4 h-4" />Open policy document
                 </a>
               ) : (

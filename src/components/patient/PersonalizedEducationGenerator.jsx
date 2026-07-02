@@ -226,7 +226,7 @@ ${educationMaterials.key_takeaways?.map(k => `• ${k}`).join('\n')}
               Generate customized education materials based on patient's diagnosis, medications, compliance status, and reading level
             </AlertDescription>
           </Alert>
-          <Button onClick={generateMaterials} className="bg-green-600 hover:bg-green-700">
+          <Button onClick={generateMaterials} >
             <Sparkles className="w-4 h-4 mr-2" />
             Generate Education Materials
           </Button>
@@ -349,7 +349,7 @@ ${educationMaterials.key_takeaways?.map(k => `• ${k}`).join('\n')}
                           href={isSafeExternalUrl(resource.link) ? resource.link : undefined}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="ml-2 text-blue-600 hover:text-blue-800"
+                          className="ml-2 text-blue-600 hover:text-blue-700"
                         >
                           <Badge variant="outline" className="cursor-pointer">Visit</Badge>
                         </a>

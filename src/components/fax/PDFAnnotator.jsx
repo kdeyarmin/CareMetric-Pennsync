@@ -400,7 +400,7 @@ export default function PDFAnnotator({ pdfUrl, onAnnotatedReady, onClose }) {
         </div>
 
         {/* Save / Close */}
-        <Button onClick={handleSave} disabled={isSaving} size="sm" className="h-8 gap-1.5 text-xs bg-green-600 hover:bg-green-700">
+        <Button onClick={handleSave} disabled={isSaving} size="sm" className="h-8 gap-1.5 text-xs">
           {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
           {isSaving ? "Saving..." : "Apply & Use"}
         </Button>

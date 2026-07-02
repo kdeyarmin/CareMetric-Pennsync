@@ -240,7 +240,7 @@ export default function StructuredNoteDrafter({ onDraftReady }) {
                       <Sparkles className="w-3 h-3" /> Use in Note Builder
                     </Button>
                   )}
-                  <Button size="sm" className="h-7 bg-green-600 hover:bg-green-700 gap-1 text-xs" onClick={copy}>
+                  <Button size="sm" className="h-7 gap-1 text-xs" onClick={copy}>
                     {copied ? <><CheckCircle2 className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
                   </Button>
                 </div>

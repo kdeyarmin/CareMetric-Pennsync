@@ -427,8 +427,8 @@ export default function TrainingCoursePlayer() {
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {course.attachment_urls.map((url, i) => (
-                    <a key={i} href={url} target="_blank" rel="noreferrer"
-                      className="text-sm text-blue-600 underline hover:text-blue-800">
+                    <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                      className="text-sm text-blue-600 underline hover:text-blue-700">
                       {course.attachment_names?.[i] || `Resource ${i + 1}`}
                     </a>
                   ))}
@@ -526,8 +526,8 @@ export default function TrainingCoursePlayer() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {modules[activeModuleIndex].attachment_urls.map((url, i) => (
-                      <a key={i} href={url} target="_blank" rel="noreferrer"
-                        className="text-sm text-blue-600 underline hover:text-blue-800">
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                        className="text-sm text-blue-600 underline hover:text-blue-700">
                         {modules[activeModuleIndex].attachment_names?.[i] || `File ${i + 1}`}
                       </a>
                     ))}
@@ -548,7 +548,6 @@ export default function TrainingCoursePlayer() {
 
                 <Button
                   onClick={() => markModuleDone(modules[activeModuleIndex].id)}
-                  className={completedModules.includes(modules[activeModuleIndex].id) ? "bg-emerald-600 hover:bg-emerald-700" : ""}
                 >
                   {completedModules.includes(modules[activeModuleIndex].id) ? (
                     <><Check className="w-4 h-4 mr-1" /> Done — Next</>

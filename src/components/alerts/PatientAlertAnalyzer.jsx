@@ -361,7 +361,6 @@ Return JSON:
             <Button
               onClick={runAnalysis}
               disabled={isAnalyzing || !patient}
-              className="bg-orange-600 hover:bg-orange-700"
               size="sm"
             >
               <Brain className="w-4 h-4 mr-2" />

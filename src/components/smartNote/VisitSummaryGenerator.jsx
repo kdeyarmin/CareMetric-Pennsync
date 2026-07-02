@@ -257,7 +257,7 @@ Return JSON with these keys:
               </button>
               <Button
                 size="sm"
-                className="h-7 bg-green-600 hover:bg-green-700 gap-1 text-xs"
+                className="h-7 gap-1 text-xs"
                 onClick={copySelected}
               >
                 {copiedAll ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Selected</>}

@@ -494,7 +494,6 @@ export default function OASISActionWorkflow({
                           </Button>
                           <Button 
                             size="sm" 
-                            className="bg-green-600 hover:bg-green-700"
                             onClick={() => handleReview(action, 'approved')}
                           >
                             <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
@@ -631,7 +630,6 @@ export default function OASISActionWorkflow({
                 <XCircle className="w-4 h-4 mr-1" /> Reject
               </Button>
               <Button 
-                className="bg-green-600 hover:bg-green-700"
                 onClick={() => handleReview(selectedAction, 'approved')}
               >
                 <CheckCircle2 className="w-4 h-4 mr-1" /> Approve

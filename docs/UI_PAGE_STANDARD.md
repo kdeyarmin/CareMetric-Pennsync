@@ -47,6 +47,28 @@ export default function Example() {
 4. **Icon tile** stays the default gradient — don't override `iconColor` per
    page, so every header shares one accent.
 
+## Buttons & links
+
+All action buttons use the shared `@/components/ui/button` variants — `default`
+(navy), `destructive` (red), `outline`, `ghost`, `secondary`, `link`, `gold` —
+with no ad-hoc color overrides. In particular:
+
+1. **No off-palette fills.** Don't override a button with `bg-green-*`,
+   `bg-emerald-*`, `bg-orange-*`, `bg-amber-*`, or gradients. Approve/confirm/
+   save actions are `default` navy; danger actions are `destructive`. Status is
+   communicated by badges, icons, and surrounding context — not button color.
+2. **No hand-rolled buttons for CTAs.** A raw `<button>` is fine as an
+   invisible click target (list rows, tab triggers); a visible call-to-action
+   uses `<Button>` so radius, typography, and focus rings stay uniform.
+3. **Semantic exceptions** (intentional, keep): telephony call/answer actions
+   stay green (universal phone-UI convention); icon-only state pairs (e.g.
+   enable/disable toggles, inline save/cancel) and icon buttons inside colored
+   status callouts may match their context.
+4. **Inline text links** follow the Button `link` variant recipe:
+   navy text (`text-blue-600`/`text-navy-600`), hover darkens one step to
+   `-700`, underline (static or on hover) for inline links. External links use
+   `target="_blank" rel="noopener noreferrer"`.
+
 ## Adoption & intentional exceptions
 
 `PageHeader` is adopted by every routed content page. A small set of pages

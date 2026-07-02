@@ -499,7 +499,7 @@ export default function SignatureRequestCreator({ onCancel }) {
                 <Button 
                   onClick={handleSend} 
                   disabled={isSending || fields.length === 0}
-                  className="w-full bg-green-600 hover:bg-green-700 gap-2"
+                  className="w-full gap-2"
                 >
                   {isSending ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

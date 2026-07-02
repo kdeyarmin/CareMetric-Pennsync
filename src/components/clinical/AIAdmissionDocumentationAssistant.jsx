@@ -431,7 +431,7 @@ Return ONLY the enhanced documentation text.`
                 <Button
                   onClick={incorporateSubjectiveInputs}
                   disabled={isGenerating || Object.keys(subjectiveInputs).length === 0}
-                  className="w-full bg-orange-600 hover:bg-orange-700"
+                  className="w-full"
                 >
                   {isGenerating ? (
                     <>
@@ -534,7 +534,6 @@ Return ONLY the enhanced documentation text.`
                             <Button
                               onClick={() => onSaveSection(section.title, section.content)}
                               size="sm"
-                              className="bg-green-600 hover:bg-green-700"
                             >
                               <FileText className="w-4 h-4 mr-2" />
                               Save to Chart

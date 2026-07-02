@@ -237,7 +237,7 @@ export default function AdminDashboardOverview() {
               ))}
             </div>
             <Link to={createPageUrl("DocumentSignatures")}>
-              <Button className="w-full bg-orange-600 hover:bg-orange-700">
+              <Button className="w-full">
                 Review Signature Requests
               </Button>
             </Link>

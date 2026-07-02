@@ -384,7 +384,7 @@ export default function PDFTemplateManager() {
                   setShowVisualEditor(!showVisualEditor);
                   setShowFieldMapper(false);
                 }}
-                className="w-full bg-gradient-to-r from-navy-50 to-indigo-50 hover:from-navy-100 hover:to-indigo-100"
+                className="w-full"
               >
                 <Settings className="w-4 h-4 mr-2" />
                 {showVisualEditor ? 'Hide' : 'Open'} Visual Editor ({templateData.visual_elements?.length || 0} elements)

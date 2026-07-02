@@ -273,7 +273,7 @@ Return JSON:
                                 onClick={() => handleCopy(idx, currentText)}
                                 size="sm"
                                 variant={isCopied ? "default" : "ghost"}
-                                className={`h-6 px-2 text-xs ${isCopied ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                                className={`h-6 px-2 text-xs ${isCopied ? ' ' : ''}`}
                               >
                                 {isCopied ? (
                                   <>
@@ -301,7 +301,6 @@ Return JSON:
                                   <Button
                                     onClick={() => handleSaveEdit(idx)}
                                     size="sm"
-                                    className="bg-green-600 hover:bg-green-700"
                                   >
                                     <CheckCircle2 className="w-3 h-3 mr-1" />
                                     Save Changes

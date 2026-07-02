@@ -1666,7 +1666,6 @@ Return scores (0-100) and top 3-5 issues in each category.`,
                 <Button
                   onClick={handleSaveToPatient}
                   disabled={isSaving || savedToPatient || !uploadedFileUrl}
-                  className={savedToPatient ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"}
                 >
                   {isSaving ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
@@ -1692,7 +1691,7 @@ Return scores (0-100) and top 3-5 issues in each category.`,
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FinancialGate>
                 <Link to="/OASISCenter?tab=revenue" state={{ analysisResults, pdgmData, patientName, uploadId: analysisId }}>
-                  <Button className="w-full bg-green-600 hover:bg-green-700 h-auto py-4 flex flex-col items-center gap-2">
+                  <Button className="w-full h-auto py-4 flex flex-col items-center gap-2">
                     <DollarSign className="w-8 h-8" />
                     <div className="text-center">
                       <div className="font-bold">Revenue Analysis</div>
@@ -1702,7 +1701,7 @@ Return scores (0-100) and top 3-5 issues in each category.`,
                 </Link>
                 </FinancialGate>
                 <Link to="/OASISCenter?tab=quality" state={{ analysisResults, pdgmData, patientName, patientId: selectedPatientId }}>
-                  <Button className="w-full bg-red-600 hover:bg-red-700 h-auto py-4 flex flex-col items-center gap-2">
+                  <Button className="w-full h-auto py-4 flex flex-col items-center gap-2">
                     <Shield className="w-8 h-8" />
                     <div className="text-center">
                       <div className="font-bold">Compliance Review</div>

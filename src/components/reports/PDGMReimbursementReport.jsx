@@ -66,7 +66,7 @@ export default function PDGMReimbursementReport({ dateRange }) {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-xl font-semibold text-slate-900">PDGM Case-Mix Analysis (Illustrative)</h3>
-        <Button onClick={handleExport} className="bg-emerald-600 hover:bg-emerald-700">
+        <Button onClick={handleExport} >
           <Download className="w-4 h-4 mr-2" />
           Export PDF
         </Button>

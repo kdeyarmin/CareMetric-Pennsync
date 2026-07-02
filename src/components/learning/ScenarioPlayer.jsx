@@ -229,7 +229,7 @@ export default function ScenarioPlayer({ scenario, attemptId, onComplete }) {
           {isTerminal && !showFeedback && (
             <Button
               onClick={handleFinishScenario}
-              className="w-full bg-green-600 hover:bg-green-700"
+              className="w-full"
             >
               Finish Scenario
             </Button>

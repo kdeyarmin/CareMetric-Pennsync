@@ -639,7 +639,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
             <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 space-y-2">
               <h3 className="font-semibold text-amber-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Edited since verification</h3>
               <p className="text-sm text-amber-800">You changed the note after it was checked. Re-check to verify your edits against what you wrote.</p>
-              <Button onClick={recheck} className="bg-amber-600 hover:bg-amber-700 h-9 gap-2 text-sm font-semibold"><ShieldCheck className="w-4 h-4" /> Re-check</Button>
+              <Button onClick={recheck} className="h-9 gap-2 text-sm font-semibold"><ShieldCheck className="w-4 h-4" /> Re-check</Button>
             </div>
           ) : (
             <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-800">
@@ -719,7 +719,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
                 </div>
                 <textarea value={finalNote} onChange={e => setFinalNote(e.target.value)} className="w-full min-h-[280px] font-mono text-sm border-0 px-4 py-3 focus:ring-0 bg-white resize-none outline-none" />
                 <div className="flex gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50">
-                  <Button onClick={copy} className="flex-1 bg-green-600 hover:bg-green-700 h-11 gap-2 font-semibold">
+                  <Button onClick={copy} className="flex-1 h-11 gap-2 font-semibold">
                     {copied ? <><CheckCircle2 className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy</>}
                   </Button>
                   <Button variant="outline" className="h-11 px-4" onClick={() => { setFinalNote(""); setVerifiedNote(""); setFixRequired(null); }}>Back</Button>

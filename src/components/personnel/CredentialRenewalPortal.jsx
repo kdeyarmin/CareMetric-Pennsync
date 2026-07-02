@@ -354,7 +354,6 @@ export default function CredentialRenewalPortal({ userId }) {
                               <Button
                                 type="submit"
                                 disabled={!renewalData.uploaded_file_url || submitRenewalMutation.isPending}
-                                className="bg-green-600 hover:bg-green-700"
                               >
                                 <FileCheck className="w-4 h-4 mr-2" />
                                 Submit for Approval
@@ -485,7 +484,6 @@ export default function CredentialRenewalPortal({ userId }) {
                               <Button
                                 type="submit"
                                 disabled={!renewalData.uploaded_file_url || submitRenewalMutation.isPending}
-                                className="bg-green-600 hover:bg-green-700"
                               >
                                 <FileCheck className="w-4 h-4 mr-2" />
                                 {submitRenewalMutation.isPending ? "Submitting..." : "Submit for Approval"}

@@ -226,7 +226,7 @@ export default function PatientMatchSelector({
                 <Button
                   onClick={() => handleConfirmMatch(bestMatch.patient.id, true)}
                   size="sm"
-                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  className="flex-1"
                 >
                   <ThumbsUp className="w-3 h-3 mr-2" />
                   Correct Match

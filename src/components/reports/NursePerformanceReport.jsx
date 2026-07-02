@@ -100,7 +100,7 @@ export default function NursePerformanceReport({ dateRange }) {
             {format(new Date(dateRange.start), 'MMM d, yyyy')} - {format(new Date(dateRange.end + 'T23:59:59.999'), 'MMM d, yyyy')}
           </p>
         </div>
-        <Button onClick={handleExport} className="bg-orange-600 hover:bg-orange-700">
+        <Button onClick={handleExport} >
           <Download className="w-4 h-4 mr-2" />
           Export PDF
         </Button>

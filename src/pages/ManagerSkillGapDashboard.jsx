@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Sparkles, BarChart3 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
+import { Button } from "@/components/ui/button";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import ManagerSkillGapSummary from "@/components/training/ManagerSkillGapSummary";
@@ -88,9 +89,9 @@ export default function ManagerSkillGapDashboard() {
         favoritePage="ManagerSkillGapDashboard"
         actions={
           <Link to={createPageUrl('AIComplianceInServices')}>
-            <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            <Button variant="outline">
               <Sparkles className="w-4 h-4 mr-2" /> Open AI Compliance In-Services
-            </button>
+            </Button>
           </Link>
         }
       />

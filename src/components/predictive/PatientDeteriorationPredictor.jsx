@@ -154,7 +154,7 @@ Return a deterioration risk assessment with:
         {!analysis && !ai.loading && (
           <Button
             onClick={analyzeDeteriorationRisk}
-            className="w-full bg-orange-600 hover:bg-orange-700"
+            className="w-full"
           >
             <Brain className="w-4 h-4 mr-2" />
             Analyze Deterioration Risk

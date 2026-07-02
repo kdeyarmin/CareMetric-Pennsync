@@ -948,7 +948,6 @@ PREDICT:
                             disabled={loadingPrediction === idx}
                             size="sm"
                             variant="outline"
-                            className="border-green-300 hover:bg-green-50"
                           >
                             {loadingPrediction === idx ? (
                               <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> Calculating...</>
@@ -1354,7 +1353,7 @@ PREDICT:
                           disabled={loadingPrediction === oppIndex}
                           size="sm"
                           variant="outline"
-                          className="w-full border-green-300 hover:bg-green-50"
+                          className="w-full"
                         >
                           {loadingPrediction === oppIndex ? (
                             <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> Calculating...</>

@@ -140,7 +140,7 @@ export default function PolicyAcknowledgmentManager() {
           {selectedPolicy && (
             <p className="text-sm text-slate-500">
               {selectedPolicy.policy_number ? `${selectedPolicy.policy_number} · ` : ""}Version {selectedPolicy.version || "1"}
-              {selectedPolicy.doc_url ? <> · <a className="text-blue-600 underline" href={selectedPolicy.doc_url} target="_blank" rel="noopener noreferrer">Document</a></> : null}
+              {selectedPolicy.doc_url ? <> · <a className="text-blue-600 underline hover:text-blue-700" href={selectedPolicy.doc_url} target="_blank" rel="noopener noreferrer">Document</a></> : null}
             </p>
           )}
           {result && !result.error && (

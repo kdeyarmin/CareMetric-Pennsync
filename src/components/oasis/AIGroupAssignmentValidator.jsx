@@ -546,7 +546,7 @@ PROVIDE:
                 <Button
                   onClick={openOverrideDialog}
                   variant="outline"
-                  className="flex-1 border-orange-400 text-orange-700 hover:bg-orange-50"
+                  className="flex-1"
                 >
                   <Shield className="w-4 h-4 mr-2" />
                   Manual Override
@@ -632,7 +632,6 @@ PROVIDE:
               <Button
                 onClick={handleOverride}
                 disabled={saveOverrideMutation.isPending || !overrideReason.trim()}
-                className="bg-orange-600 hover:bg-orange-700"
               >
                 {saveOverrideMutation.isPending ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>

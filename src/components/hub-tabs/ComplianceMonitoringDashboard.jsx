@@ -377,7 +377,7 @@ Compliance Management System`;
               <Button
                 onClick={handleNotifySelected}
                 disabled={selectedUsers.size === 0 || sendNotificationMutation.isPending}
-                className="bg-orange-600 hover:bg-orange-700 flex-1 lg:flex-none"
+                className="flex-1 lg:flex-none"
               >
                 <Bell className="w-4 h-4 mr-2" />
                 Notify ({selectedUsers.size})

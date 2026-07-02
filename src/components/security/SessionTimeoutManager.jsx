@@ -148,7 +148,7 @@ export default function SessionTimeoutManager({
           <div className="space-y-2">
             <Button
               onClick={handleExtendSession}
-              className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold h-11 rounded-xl text-sm"
+              className="w-full h-11"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
               Keep Me Signed In

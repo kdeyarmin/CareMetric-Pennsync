@@ -529,7 +529,6 @@ export default function OASISAuditDashboard() {
                 )}
                 {selectedAudit.status === 'in_review' && (
                   <Button 
-                    className="bg-green-600 hover:bg-green-700"
                     onClick={handleCompleteReview}
                   >
                     <CheckCircle2 className="w-4 h-4 mr-2" />

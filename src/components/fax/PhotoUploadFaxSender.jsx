@@ -175,7 +175,7 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
         <Button
           onClick={handleSendFax}
           disabled={uploadedImages.length === 0 || isSending || !toNumber.trim()}
-          className="w-full h-14 rounded-2xl bg-gradient-to-r from-indigo-600 to-navy-600 text-white shadow-lg shadow-indigo-200 hover:from-indigo-700 hover:to-navy-700"
+          className="w-full"
           size="lg"
         >
           {isSending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Send className="w-5 h-5 mr-2" />}

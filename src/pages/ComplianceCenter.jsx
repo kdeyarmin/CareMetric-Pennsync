@@ -578,7 +578,6 @@ Provide: overall_assessment, critical_priorities (array), systemic_issues, actio
                 <Button
                   onClick={handleNotifySelected}
                   disabled={selectedUsers.size === 0}
-                  className="bg-orange-600 hover:bg-orange-700"
                 >
                   <Bell className="w-4 h-4 mr-2" />
                   Notify ({selectedUsers.size})

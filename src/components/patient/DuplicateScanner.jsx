@@ -645,7 +645,7 @@ export default function DuplicateScanner() {
                   <Button
                     onClick={applyStandardMerge}
                     disabled={isApplying}
-                    className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                    className="w-full"
                   >
                     {isApplying ? 'Merging…' : `Confirm & merge ${results.patients_to_remove} duplicate(s)`}
                   </Button>

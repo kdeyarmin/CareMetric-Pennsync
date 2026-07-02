@@ -353,7 +353,7 @@ For each issue found, provide:
                                 href={isSafeExternalUrl(issue.cms_reference_link) ? issue.cms_reference_link : undefined}
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="text-xs text-indigo-600 underline hover:text-indigo-800"
+                                className="text-xs text-indigo-600 underline hover:text-indigo-700"
                               >
                                 View Official Guideline →
                               </a>
@@ -413,7 +413,6 @@ For each issue found, provide:
                           <Button
                             size="sm"
                             onClick={() => applyCorrection(issue, `inc-${issue.m_item_code || idx}`)}
-                            className="bg-green-600 hover:bg-green-700 text-white"
                           >
                             <CheckCircle2 className="w-3 h-3 mr-1" />
                             Apply Correction
@@ -490,7 +489,7 @@ For each issue found, provide:
                         <Button
                           size="sm"
                           onClick={() => applyCorrection(opt, `opt-${opt.m_item_code || idx}`)}
-                          className="bg-green-600 hover:bg-green-700 text-white mt-2"
+                          className="mt-2"
                         >
                           Apply Optimization
                         </Button>
@@ -556,7 +555,7 @@ For each issue found, provide:
                               href={isSafeExternalUrl(risk.cms_reference_link) ? risk.cms_reference_link : undefined}
                               target="_blank" 
                               rel="noopener noreferrer"
-                              className="text-xs text-indigo-600 underline hover:text-indigo-800"
+                              className="text-xs text-indigo-600 underline hover:text-indigo-700"
                             >
                               View Official CMS Guideline →
                             </a>
@@ -637,7 +636,7 @@ For each issue found, provide:
                             href={isSafeExternalUrl(exp.cms_reference_link) ? exp.cms_reference_link : undefined} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="text-xs text-indigo-600 underline hover:text-indigo-800"
+                            className="text-xs text-indigo-600 underline hover:text-indigo-700"
                           >
                             View Official CMS Guideline →
                           </a>

@@ -300,7 +300,6 @@ Return detailed JSON analysis:`,
             <Button
               onClick={analyzePDGMImpact}
               disabled={ai.loading || !currentPdgmData || !suggestedChanges}
-              className="bg-green-600 hover:bg-green-700"
             >
               {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing Impact...</>
