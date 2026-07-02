@@ -181,7 +181,11 @@ Deno.serve(async (req) => {
       // credential first seen at <=7 days fired all four tiers at once (and the
       // per-iteration write overwrote the tracking, causing repeats every run).
       const reminderOffsets = [90, 60, 30, 14, 7];
-      const remindersSent = cred.reminder_offsets_sent || [];
+      // Use a marker field dedicated to THIS job. The three credential-reminder
+      // crons previously shared `reminder_offsets_sent` with different tier sets,
+      // so whichever fired a shared tier first consumed it for the others (e.g.
+      // sendExpirationNotifications marking tier 30 suppressed this renewal email).
+      const remindersSent = cred.renewal_email_offsets_sent || [];
       const dueOffsets = reminderOffsets.filter(
         (offset) => daysUntilExpiry <= offset && !remindersSent.includes(offset)
       );
@@ -234,7 +238,7 @@ Deno.serve(async (req) => {
 
           // Record every newly-crossed tier so they are never re-sent.
           await base44.asServiceRole.entities.PersonnelCredential.update(cred.id, {
-            reminder_offsets_sent: [...remindersSent, ...dueOffsets],
+            renewal_email_offsets_sent: [...remindersSent, ...dueOffsets],
             last_reminder_sent_at: new Date().toISOString()
           });
 

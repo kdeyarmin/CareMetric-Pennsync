@@ -8,7 +8,7 @@
     },
     "token": {
       "type": "string",
-      "description": "Secure token for public access"
+      "description": "SHA-256 hash of the secure access token. The plaintext token exists only in the emailed signing link; validators hash the presented token before lookup. (Legacy rows may still hold a plaintext token until they expire.)"
     },
     "signer_email": {
       "type": "string",

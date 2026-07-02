@@ -32,6 +32,26 @@ const sanitizeValue = (value) => {
 	return trimmed.length ? trimmed : undefined;
 };
 
+// A backend origin is only accepted if it lives on a trusted Base44 host or on
+// the build's own configured backend host. Without this, a phishing link like
+// `?server_url=https://evil.com` is sanitized as "valid" and persisted to
+// localStorage, permanently rerouting ALL API traffic — including the email +
+// password the sign-in screen POSTs and the bearer token/PHI the SDK sends — to
+// the attacker's origin.
+const TRUSTED_BACKEND_SUFFIXES = ['base44.com', 'base44.app', 'base44.io', 'base44.dev'];
+const envBackendHost = (() => {
+	try {
+		return new URL(import.meta.env.VITE_BASE44_BACKEND_URL).host.toLowerCase();
+	} catch {
+		return null;
+	}
+})();
+const isTrustedBackendHost = (host) => {
+	const h = String(host || '').toLowerCase();
+	if (envBackendHost && h === envBackendHost) return true;
+	return TRUSTED_BACKEND_SUFFIXES.some((s) => h === s || h.endsWith('.' + s));
+};
+
 const sanitizeServerUrl = (value) => {
 	const sanitized = sanitizeValue(value);
 	if (!sanitized) {
@@ -40,6 +60,10 @@ const sanitizeServerUrl = (value) => {
 
 	try {
 		const url = new URL(sanitized);
+		if (!isTrustedBackendHost(url.host)) {
+			console.warn(`[app-params] Ignoring server URL on untrusted host: ${url.host}`);
+			return undefined;
+		}
 		return url.origin;
 	} catch {
 		console.warn(`[app-params] Ignoring invalid server URL: ${sanitized}`);

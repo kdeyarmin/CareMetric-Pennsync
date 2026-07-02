@@ -1,5 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+async function sha256Hex(input) {
+  const data = new TextEncoder().encode(String(input));
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /**
  * submitSignerSignature — the ONLY authorized path for an external signer to
  * record a signature from the public /signer portal.
@@ -22,9 +28,17 @@ Deno.serve(async (req) => {
     }
 
     // 1) Validate the token (mirror validateSignerToken): exists, active, unexpired.
-    const tokenRecords = await base44.asServiceRole.entities.DocumentPackageToken.filter(
-      { token }, '-created_date', 1
+    //    Tokens are stored hashed; look up by hash, fall back to plaintext for
+    //    legacy tokens issued before hashing.
+    const tokenHash = await sha256Hex(token);
+    let tokenRecords = await base44.asServiceRole.entities.DocumentPackageToken.filter(
+      { token: tokenHash }, '-created_date', 1
     );
+    if (!tokenRecords || tokenRecords.length === 0) {
+      tokenRecords = await base44.asServiceRole.entities.DocumentPackageToken.filter(
+        { token }, '-created_date', 1
+      );
+    }
     const tokenRecord = tokenRecords?.[0];
     if (!tokenRecord || tokenRecord.is_active === false) {
       return Response.json({ error: 'Invalid or inactive token' }, { status: 401 });
