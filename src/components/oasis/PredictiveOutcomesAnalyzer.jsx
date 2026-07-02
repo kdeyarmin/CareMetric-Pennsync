@@ -76,10 +76,12 @@ export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, 
     if (history.oasisData?.length >= 2) {
       const recent = history.oasisData.slice(0, 2);
       if (recent[0]?.pdgm_data?.functional_level && recent[1]?.pdgm_data?.functional_level) {
+        // functional_level is an IMPAIRMENT level ('high' = more functional
+        // points = more dependent), so a rising index means the patient declined.
         const levels = ['low', 'medium', 'high'];
         const current = levels.indexOf(recent[0].pdgm_data.functional_level);
         const previous = levels.indexOf(recent[1].pdgm_data.functional_level);
-        trends.functional_trend = current > previous ? 'improving' : current < previous ? 'declining' : 'stable';
+        trends.functional_trend = current > previous ? 'declining' : current < previous ? 'improving' : 'stable';
       }
     }
 

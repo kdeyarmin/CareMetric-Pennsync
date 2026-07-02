@@ -53,9 +53,16 @@ export default function VisualFieldEditor({ pdfUrl, onFieldsChange, initialField
     event.dataTransfer.dropEffect = "move";
   };
 
-  const handleDrop = (event, fieldId) => {
+  const handleDrop = (event) => {
     event.preventDefault();
     if (!containerRef.current) {
+      return;
+    }
+
+    // Resolve the dragged field from dataTransfer (the drop lands on the
+    // container, not on a specific field tile).
+    const fieldId = event.dataTransfer.getData("fieldId");
+    if (!fieldId) {
       return;
     }
 
@@ -104,6 +111,7 @@ export default function VisualFieldEditor({ pdfUrl, onFieldsChange, initialField
             ref={containerRef}
             className="relative w-full rounded-lg border-2 border-slate-300 overflow-hidden bg-white min-h-[720px]"
             onDragOver={handleDragOver}
+            onDrop={handleDrop}
           >
             {pdfUrl ? (
               <>
@@ -126,7 +134,6 @@ export default function VisualFieldEditor({ pdfUrl, onFieldsChange, initialField
                   key={field.id}
                   draggable
                   onDragStart={(event) => handleDragStart(event, field.id)}
-                  onDrop={(event) => handleDrop(event, field.id)}
                   onClick={() => setSelectedFieldId(field.id)}
                   className={`absolute bg-white/95 border-2 rounded cursor-move transition-all shadow-sm ${
                     selectedFieldId === field.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-400 hover:border-slate-600'

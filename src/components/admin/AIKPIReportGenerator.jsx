@@ -90,8 +90,8 @@ DATA SUMMARY:
 
 TOP DIAGNOSES (from visits):
 ${[...new Set(recentVisits.map(v => visits.find(all => all.id === v.id)).filter(v => v?.nurse_notes).map(v => {
-  const match = v.nurse_notes.match(/diagnosis|dx|condition:?\s*([^.]+)/i);
-  return match ? match[1].trim() : null;
+  const match = v.nurse_notes.match(/(?:diagnosis|dx|condition):?\s*([^.\n]+)/i);
+  return match?.[1] ? match[1].trim() : null;
 }).filter(Boolean))].slice(0, 5).map((dx, i) => `${i + 1}. ${dx}`).join('\n') || 'Not available'}
 
 Analyze and provide:

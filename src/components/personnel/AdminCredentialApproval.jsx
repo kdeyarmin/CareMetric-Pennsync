@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
+import { isAdminLike } from "@/lib/superAdmin";
 
 // Guarded date formatter: format(parseISO(undefined)) throws a RangeError, which
 // would white-screen the whole approvals card if any credential has a null date.
@@ -50,16 +51,26 @@ export default function AdminCredentialApproval() {
 
   const approveMutation = useMutation({
     mutationFn: async (credential) => {
-      // Mark old credential as expired if it exists
-      const oldCredentials = await base44.entities.PersonnelCredential.filter({
+      // Approve the new credential FIRST. If this write fails we bail out before
+      // touching anything else, so we never expire the employee's prior valid
+      // credential and leave them with no approved replacement.
+      await base44.entities.PersonnelCredential.update(credential.id, {
+        status: 'approved',
+        approved_by: currentUser?.email,
+        approved_at: new Date().toISOString()
+      });
+
+      // Now supersede any previously approved credentials of the same title
+      // (excluding the one we just approved).
+      const approvedForTitle = await base44.entities.PersonnelCredential.filter({
         user_id: credential.user_id,
         title: credential.title,
         status: 'approved'
       });
-
-      if (oldCredentials.length > 0) {
+      const superseded = approvedForTitle.filter(old => old.id !== credential.id);
+      if (superseded.length > 0) {
         await Promise.all(
-          oldCredentials.map(old =>
+          superseded.map(old =>
             base44.entities.PersonnelCredential.update(old.id, {
               status: 'expired',
               notes: (old.notes || '') + `\n[Superseded by renewal on ${format(new Date(), 'yyyy-MM-dd')}]`
@@ -68,18 +79,13 @@ export default function AdminCredentialApproval() {
         );
       }
 
-      // Approve new credential
-      await base44.entities.PersonnelCredential.update(credential.id, {
-        status: 'approved',
-        approved_by: currentUser?.email,
-        approved_at: new Date().toISOString()
-      });
-
-      // Notify employee
-      await base44.integrations.Core.SendEmail({
-        to: credential.user_id,
-        subject: `✅ Credential Approved - ${credential.title}`,
-        body: `Dear ${credential.user_name},
+      // Notify employee — best-effort. A mail failure must not surface as
+      // "Failed to approve" when the credential is already approved.
+      try {
+        await base44.integrations.Core.SendEmail({
+          to: credential.user_id,
+          subject: `✅ Credential Approved - ${credential.title}`,
+          body: `Dear ${credential.user_name},
 
 Your credential renewal has been approved:
 
@@ -92,15 +98,22 @@ Your personnel file has been updated. You can view your current credentials in t
 
 Thank you,
 Credential Management System`
-      });
+        });
+      } catch {
+        // Non-fatal: the approval succeeded even if notification failed.
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pendingCredentials'] });
-      queryClient.invalidateQueries({ queryKey: ['userCredentials'] });
       toast.success("Credential approved and employee notified");
     },
     onError: () => {
       toast.error("Failed to approve credential");
+    },
+    // Refresh regardless of outcome so a partial/mail failure never masks an
+    // already-written approval by leaving the item looking still-pending.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['pendingCredentials'] });
+      queryClient.invalidateQueries({ queryKey: ['userCredentials'] });
     }
   });
 
@@ -161,7 +174,12 @@ Credential Management System`
     });
   };
 
-  if (currentUser?.role !== 'admin') {
+  // Match the hosting page's Approvals-tab gate (isAgencyAdmin): any admin-like
+  // account, not only role === 'admin'. NOTE: the PersonnelCredential RLS read
+  // rule still only recognizes role 'admin', so agency_admin/super_admin accounts
+  // whose role is 'user' will see an empty list until the read is moved behind a
+  // backend function / the RLS policy is widened.
+  if (!isAdminLike(currentUser)) {
     return null;
   }
 

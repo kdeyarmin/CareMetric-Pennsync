@@ -30,7 +30,12 @@ const GROUPS = {
   nitrate: ["nitroglycerin", "isosorbide", "nitrate"],
   pde5: ["sildenafil", "tadalafil", "vardenafil", "avanafil"],
   ace_arb: ["lisinopril", "enalapril", "ramipril", "benazepril", "captopril", "quinapril", "losartan", "valsartan", "olmesartan", "candesartan", "irbesartan", "telmisartan"],
-  potassium_sparing: ["spironolactone", "eplerenone", "triamterene", "amiloride", "potassium chloride", "potassium", "klor con"],
+  // Bare "potassium" is intentionally EXCLUDED: it whole-token-matches salt-form
+  // drug names ("Losartan Potassium", "Diclofenac Potassium", "Penicillin V
+  // Potassium"), which are NOT potassium-sparing agents, and would fire a false
+  // "life-threatening hyperkalemia" interaction with any ACE/ARB. The genuine
+  // potassium supplements are matched by the multi-word phrases below.
+  potassium_sparing: ["spironolactone", "eplerenone", "triamterene", "amiloride", "potassium chloride", "klor con"],
   statin_cyp3a4: ["simvastatin", "lovastatin", "atorvastatin"],
   strong_cyp3a4_inhibitor: ["clarithromycin", "erythromycin", "itraconazole", "ketoconazole", "ritonavir", "cobicistat"],
   digoxin: ["digoxin", "lanoxin"],

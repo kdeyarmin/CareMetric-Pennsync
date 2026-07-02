@@ -211,7 +211,7 @@ export default function LearningPathProgress({ planId, userId }) {
                                                             <span className="text-slate-500">({daysUntil}d)</span>
                                                         )}
                                                     </div>
-                                                    {assignment.score_percentage !== null && (
+                                                    {assignment.score_percentage != null && (
                                                         <div className="flex items-center gap-1">
                                                             <CheckCircle2 className="h-4 w-4" />
                                                             <span>Score: {assignment.score_percentage}%</span>

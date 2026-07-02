@@ -112,12 +112,20 @@ export default function FaxTemplateManager({ onApplyTemplate }) {
   };
 
   const handleApply = async (tpl) => {
-    // Increment use count
-    base44.entities.FaxTemplate.update(tpl.id, { use_count: (tpl.use_count || 0) + 1 })
-      .catch((e) => console.warn("Failed to increment template use_count:", e?.message));
-    queryClient.invalidateQueries({ queryKey: ["fax-templates"] });
+    // Apply immediately — this is the primary action.
     if (onApplyTemplate) onApplyTemplate(tpl);
     toast.success(`Template "${tpl.name}" applied`);
+    // Then bump the (non-clinical) usage counter. Await before invalidating so the
+    // refetch can't race ahead of the write and briefly show the stale count.
+    // NOTE: this remains a client-side read-modify-write, so concurrent applies can
+    // still lose an increment — a fully correct fix needs an atomic server-side
+    // increment (a base44 function), which can't be added from src/.
+    try {
+      await base44.entities.FaxTemplate.update(tpl.id, { use_count: (tpl.use_count || 0) + 1 });
+    } catch (e) {
+      console.warn("Failed to increment template use_count:", e?.message);
+    }
+    queryClient.invalidateQueries({ queryKey: ["fax-templates"] });
   };
 
   return (

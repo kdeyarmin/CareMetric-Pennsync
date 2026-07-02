@@ -117,8 +117,13 @@ export default function ProactiveClinicalTaskGenerator({
 
   const handleApproveAll = async () => {
     setCreatingTasks(true);
+    // Create only the tasks the user still sees (exclude dismissed ones). A task
+    // dismissed just before clicking still lingers in suggestedTasks during the
+    // 300ms removal delay, so iterating suggestedTasks would re-create it and
+    // over-count against the button's "Approve All (N)" label.
+    const tasksToCreate = suggestedTasks.filter(task => !dismissedTasks.has(task));
     try {
-      for (const task of suggestedTasks) {
+      for (const task of tasksToCreate) {
         await base44.entities.Task.create({
           patient_id: patientId,
           title: task.title,
@@ -137,7 +142,7 @@ export default function ProactiveClinicalTaskGenerator({
       setSuggestedTasks([]);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       onTasksCreated?.();
-      toast.success(`Successfully created ${suggestedTasks.length} tasks!`);
+      toast.success(`Successfully created ${tasksToCreate.length} tasks!`);
     } catch (error) {
       console.error('Failed to create tasks:', error);
       toast.error('Some tasks failed to create. Please try again.');

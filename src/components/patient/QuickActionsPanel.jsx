@@ -35,7 +35,7 @@ export default function QuickActionsPanel({
       label: todayVisit ? "Document Today's Visit" : "Quick Documentation",
       description: todayVisit ? `${todayVisit.visit_type}` : "Add clinical notes",
       color: "bg-green-500 hover:bg-green-600",
-      link: todayVisit ? `${createPageUrl("VisitScribe")}?visitId=${todayVisit.id}` : null,
+      link: todayVisit ? `${createPageUrl("VisitScribe")}?visitId=${todayVisit.id}` : createPageUrl("VisitScribe"),
       badge: todayVisit ? "Today" : null
     },
     {

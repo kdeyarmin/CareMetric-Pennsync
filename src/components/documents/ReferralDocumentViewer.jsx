@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FileText, ExternalLink, Send } from "lucide-react";
 import { format } from "date-fns";
+import { parseLocalDate } from "@/lib/dateLocal";
+import { openExternalUrl } from "@/components/utils/security";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +58,7 @@ export default function ReferralDocumentViewer({ patientId }) {
         patient_id: patientId,
         thread_id: `referral-doc-${selectedReferral.id}`,
         subject: `Referral Document: ${selectedReferral.patient_name || 'Patient'}`,
-        message_text: messageText || `${selectedReferral.documentUrl === selectedReferral.processed_document_url ? 'AI-processed admission packet' : 'Referral document'} for ${selectedReferral.patient_name}.\n\nReferral Date: ${selectedReferral.referral_date ? format(new Date(selectedReferral.referral_date), 'MM/dd/yyyy') : 'N/A'}\nSource: ${selectedReferral.referral_source || 'N/A'}`,
+        message_text: messageText || `${selectedReferral.documentUrl === selectedReferral.processed_document_url ? 'AI-processed admission packet' : 'Referral document'} for ${selectedReferral.patient_name}.\n\nReferral Date: ${selectedReferral.referral_date ? format(parseLocalDate(selectedReferral.referral_date), 'MM/dd/yyyy') : 'N/A'}\nSource: ${selectedReferral.referral_source || 'N/A'}`,
         sender_name: currentUser?.full_name || 'System',
         sender_email: currentUser?.email,
         recipients: [recipientEmail],
@@ -123,7 +125,7 @@ export default function ReferralDocumentViewer({ patientId }) {
                 </div>
                 <div className="space-y-1 text-xs text-slate-600">
                   <p>Source: {referral.referral_source || 'N/A'}</p>
-                  <p>Date: {referral.referral_date ? format(new Date(referral.referral_date), 'MMM d, yyyy') : 'N/A'}</p>
+                  <p>Date: {referral.referral_date ? format(parseLocalDate(referral.referral_date), 'MMM d, yyyy') : 'N/A'}</p>
                   {referral.assigned_to && (
                     <p>Assigned to: {users.find(u => u.email === referral.assigned_to)?.full_name || referral.assigned_to}</p>
                   )}
@@ -135,7 +137,7 @@ export default function ReferralDocumentViewer({ patientId }) {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => window.open(documentUrl, '_blank')}
+                      onClick={() => openExternalUrl(documentUrl)}
                     >
                       <ExternalLink className="w-4 h-4 mr-1" />
                       {isProcessed ? 'View Processed' : 'View'}
@@ -144,7 +146,7 @@ export default function ReferralDocumentViewer({ patientId }) {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => window.open(referral.document_url, '_blank')}
+                        onClick={() => openExternalUrl(referral.document_url)}
                       >
                         Original
                       </Button>

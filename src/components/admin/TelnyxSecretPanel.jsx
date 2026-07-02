@@ -60,10 +60,19 @@ export default function TelnyxSecretPanel() {
   // API key must start with "KEY" and be at least 16 chars.
   const keyTrimmed = apiKey.trim();
   const keyValid = keyTrimmed.toUpperCase().startsWith("KEY") && keyTrimmed.length >= 16;
-  const canSave = keyValid;
+  const advancedProvided =
+    showAdvanced &&
+    Boolean(publicKey.trim() || messagingProfileId.trim() || voiceConnectionId.trim() || faxConnectionId.trim());
+  // Allow saving either a valid key, or an advanced-fields-only update when the
+  // key field is left blank (the key is already configured and never shown again).
+  // A non-empty but invalid key still blocks save so a mistyped key isn't dropped.
+  const canSave = keyValid || (keyTrimmed === "" && advancedProvided);
 
   const handleSave = () => {
-    const payload = { api_key: keyTrimmed };
+    const payload = {};
+    // Include the API key only when it's valid; a blank key means "keep the
+    // existing one" and the backend does an advanced-fields-only update.
+    if (keyValid) payload.api_key = keyTrimmed;
     if (showAdvanced) {
       // Only include advanced fields the admin actually typed — an omitted field
       // is left unchanged on the backend (an explicit "" would clear it).

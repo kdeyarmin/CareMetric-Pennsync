@@ -39,8 +39,12 @@ const handleStaleChunk = (err) => {
   }
   sessionStorage.setItem(key, String(attempts + 1));
   // Hard navigation with cache-buster so the browser fetches fresh chunk URLs
-  // instead of serving the stale cached response that caused the error.
-  window.location.href = window.location.href.split('?')[0] + '?_r=' + Date.now();
+  // instead of serving the stale cached response that caused the error. Set only
+  // the _r param on a parsed URL so existing query params (?id=, ?tab=, and the
+  // /join and /signer capability tokens) and any #hash survive the recovery reload.
+  const url = new URL(window.location.href);
+  url.searchParams.set('_r', String(Date.now()));
+  window.location.href = url.toString();
   return true;
 };
 window.addEventListener('error', (e) => handleStaleChunk(e.error));

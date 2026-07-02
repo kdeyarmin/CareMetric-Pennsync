@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { DEFAULT_CLINICAL_PHRASES, phrasesToSeed } from "./defaultClinicalPhrases";
+import { fetchAllClinicalTemplates } from "./fetchAllClinicalTemplates";
 
 // Admin-only control to load the bundled starter quick phrases as agency-wide
 // templates, so nurses have common Medicare documentation blocks to trigger from
@@ -17,7 +18,7 @@ export default function ClinicalPhraseSeeder({ currentUserEmail }) {
 
   const { data: existing = [] } = useQuery({
     queryKey: ["clinical-templates"],
-    queryFn: () => base44.entities.ClinicalLibraryTemplate.list("-usage_count", 200),
+    queryFn: fetchAllClinicalTemplates,
     initialData: [],
   });
 

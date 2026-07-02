@@ -164,7 +164,12 @@ export default function SignatureRequestCreator({ onCancel }) {
         required: true
       }));
 
-      // 3. Create DocumentSignature record
+      // 3. Create DocumentSignature record.
+      // Persist the placed fields (position/size/signerId/type/label) so the
+      // Step-3 placement isn't discarded. NOTE: the DocumentSignature entity has
+      // no signature_fields attribute yet — this requires adding the field to
+      // base44/entities/DocumentSignature, and the signer portal / PDF stamping
+      // must be updated to render these positions for the fix to be end-to-end.
       const docSig = await base44.entities.DocumentSignature.create({
         document_title: finalFileName,
         document_type: 'custom_request',
@@ -173,6 +178,7 @@ export default function SignatureRequestCreator({ onCancel }) {
         patient_id: "none",
         status: "pending",
         signers: mappedSigners,
+        signature_fields: fields,
         created_by_email: 'system',
         sent_date: new Date().toISOString()
       });
@@ -396,7 +402,7 @@ export default function SignatureRequestCreator({ onCancel }) {
                 </div>
                 {remindersEnabled && (
                   <div className="flex items-center gap-3 text-sm pt-2">
-                    <span className="text-slate-600">Remind every</span>
+                    <span className="text-slate-600">Send reminder</span>
                     <Select value={reminderInterval} onValueChange={setReminderInterval}>
                       <SelectTrigger className="w-24 bg-white">
                         <SelectValue />
@@ -408,7 +414,7 @@ export default function SignatureRequestCreator({ onCancel }) {
                         <SelectItem value="7">7 days</SelectItem>
                       </SelectContent>
                     </Select>
-                    <span className="text-slate-600">until signed</span>
+                    <span className="text-slate-600">before due date</span>
                   </div>
                 )}
               </CardContent>

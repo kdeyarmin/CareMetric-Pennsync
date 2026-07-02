@@ -19,13 +19,13 @@ import PDFAnnotator from "./PDFAnnotator";
 export default function DocumentFaxSender({ patientId, prefilledData }) {
   const [selectedDocId, setSelectedDocId] = useState("");
   const [toNumber, setToNumber] = useState(prefilledData?.recipient_fax_number || "");
+  const [toName, setToName] = useState("");
 
   React.useEffect(() => {
     if (prefilledData?.recipient_fax_number) setToNumber(prefilledData.recipient_fax_number);
   }, [prefilledData]);
   const [isSending, setIsSending] = useState(false);
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
-  const [ocrMeta, setOcrMeta] = useState(null);
   const [coverSheetUrl, setCoverSheetUrl] = useState(null);
   const [showAnnotator, setShowAnnotator] = useState(false);
   const [annotatedUrl, setAnnotatedUrl] = useState(null);
@@ -73,13 +73,13 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
         to_number: toNumber,
         document_name: doc.title,
         patient_id: patientId,
-        to_name: ocrMeta?.patient_name || undefined
+        to_name: toName || undefined
       });
       toast.success("Fax sent successfully!");
       setSelectedDocId("");
       setToNumber("");
+      setToName("");
       setSignatureDataUrl(null);
-      setOcrMeta(null);
       setCoverSheetUrl(null);
       setAnnotatedUrl(null);
     } catch (error) {
@@ -94,7 +94,16 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
       <CardContent className="p-6 space-y-5">
         <div className="space-y-2">
           <Label className="text-sm font-semibold text-slate-700">Select Document</Label>
-          <Select value={selectedDocId} onValueChange={setSelectedDocId}>
+          <Select
+            value={selectedDocId}
+            onValueChange={(id) => {
+              // Reset any per-document artifacts so the previously annotated PDF /
+              // stale OCR / cover sheet can't be faxed under the new document's name.
+              setSelectedDocId(id);
+              setAnnotatedUrl(null);
+              setCoverSheetUrl(null);
+            }}
+          >
             <SelectTrigger className="h-11">
               <SelectValue placeholder="Choose a PDF document" />
             </SelectTrigger>
@@ -115,7 +124,7 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
           if (!doc?.file_url) return null;
           return (
             <>
-              <FaxOCRExtractor fileUrl={doc.file_url} onExtracted={(meta) => setOcrMeta(meta)} />
+              <FaxOCRExtractor fileUrl={doc.file_url} />
 
               {/* Annotate button */}
               <div className="flex items-center gap-2">
@@ -155,10 +164,10 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
             type="tel"
             placeholder="+1234567890"
             value={toNumber}
-            onChange={(e) => setToNumber(e.target.value)}
+            onChange={(e) => { setToNumber(e.target.value); setToName(""); }}
             className="h-11"
           />
-          <FaxAddressBook onSelectContact={(c) => setToNumber(c.fax_number)} />
+          <FaxAddressBook onSelectContact={(c) => { setToNumber(c.fax_number); setToName(c.name || ""); }} />
         </div>
 
         <FaxSignaturePanel onSignatureReady={setSignatureDataUrl} />
@@ -167,7 +176,7 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
           patientId={patientId}
           documentId={selectedDocId || undefined}
           recipientNumber={toNumber}
-          recipientName={ocrMeta?.patient_name || undefined}
+          recipientName={toName || undefined}
           pageCount={1}
           onCoverSheetReady={(url) => setCoverSheetUrl(url)}
         />

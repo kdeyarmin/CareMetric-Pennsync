@@ -193,7 +193,7 @@ export default function PatientDetails() {
         icon={Users}
         eyebrow="Patient Care"
         title={`${sanitizeInput(patient.first_name)} ${sanitizeInput(patient.last_name)}`}
-        description={`MRN: ${sanitizeInput(patient.medical_record_number) || 'N/A'} · DOB: ${patient.date_of_birth && isValid(new Date(patient.date_of_birth)) ? format(new Date(patient.date_of_birth), 'MM/dd/yyyy') : 'N/A'}`}
+        description={`MRN: ${sanitizeInput(patient.medical_record_number) || 'N/A'} · DOB: ${patient.date_of_birth && isValid(parseISO(patient.date_of_birth)) ? format(parseISO(patient.date_of_birth), 'MM/dd/yyyy') : 'N/A'}`}
         favoritePage="PatientDetails"
         actions={
           <Button

@@ -479,10 +479,25 @@ For each area, provide:
         visit_id: resolvedVisitId,
         nurse_email: currentUser?.email || 'system',
         patient_id: patientId,
+        // Without audit_date the record is silently excluded from the Medicare
+        // compliance report (ComplianceReportGenerator drops rows lacking it).
+        // Mirror AIProactiveOASISAssistant.jsx which sets it explicitly.
+        audit_date: new Date().toISOString(),
         compliance_score: result.overall_compliance_score,
-        status: result.compliance_level === 'compliant' ? 'passed' : 
+        status: result.compliance_level === 'compliant' ? 'passed' :
                 result.compliance_level === 'critical_issues' ? 'critical' : 'flagged',
-        issues: [...(result.critical_findings || []), ...(result.minor_findings || [])],
+        // Map findings to the ComplianceAudit.issues schema shape
+        // ({element, severity, problem, suggestion}); the raw finding shape
+        // ({category, regulation, issue, risk_level, ...}) is not what the
+        // report reads (it keys gaps/critical issues off issue.element/severity).
+        issues: [...(result.critical_findings || []), ...(result.minor_findings || [])].map((f) => ({
+          element: f.category,
+          severity: f.risk_level,
+          problem: f.issue,
+          suggestion: Array.isArray(f.actionable_steps) && f.actionable_steps.length
+            ? f.actionable_steps.join('; ')
+            : (f.required_state || '')
+        })),
         compliant_elements: result.compliance_strengths || [],
         audit_type: 'automated'
       });

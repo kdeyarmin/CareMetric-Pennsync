@@ -19,6 +19,14 @@ export default function PatientSummaryGenerator({ patient, visits, incidents }) 
     try {
       const recentVisits = visits.slice(0, 5);
       const recentIncidents = incidents.slice(0, 3);
+      // Actual count of visits within the last 30 days, so the "(last 30 days)"
+      // prompt labels match the number rather than the first 5 array entries.
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const visitsLast30Days = visits.filter(v => {
+        const d = new Date(v.visit_date);
+        return !Number.isNaN(d.getTime()) && d >= thirtyDaysAgo;
+      }).length;
 
       let prompt = '';
       let schema = {};
@@ -30,7 +38,7 @@ Patient: ${patient.first_name} ${patient.last_name}
 Primary Diagnosis: ${patient.primary_diagnosis || 'Not specified'}
 Secondary Diagnoses: ${patient.secondary_diagnoses?.join(', ') || 'None'}
 Current Medications: ${patient.current_medications?.length || 0} medications
-Recent Visits: ${recentVisits.length} (last 30 days)
+Recent Visits: ${visitsLast30Days} (last 30 days)
 Recent Incidents: ${recentIncidents.length}
 
 Provide a brief snapshot focusing on current status, key concerns, and immediate priorities.`;
@@ -67,7 +75,7 @@ MEDICAL HISTORY:
 ${patient.past_medical_history?.join(', ') || 'No past medical history documented'}
 
 RECENT CLINICAL ACTIVITY:
-- Visits (last 30 days): ${recentVisits.length}
+- Visits (last 30 days): ${visitsLast30Days}
 - Recent Incidents: ${recentIncidents.length}
 ${recentIncidents.map(i => `  • ${i.incident_type} on ${i.incident_date}`).join('\n')}
 

@@ -56,14 +56,15 @@ export default function ManagerSkillGapDashboard() {
       areaEntry.courses.add(attempt.course_id);
       if (attempt.pass_fail_result === "failed" || attempt.passed === false) areaEntry.failed += 1;
       (attempt.answers_json || []).forEach((answer) => {
+        const missKey = `${category}__${answer.prompt}`;
+        const missEntry = missedMap.get(missKey) || { category, prompt: answer.prompt, missCount: 0, seen: 0 };
+        // Count every occurrence of the question so missRate = misses / times-seen.
+        missEntry.seen += 1;
         if (answer.correct === false || (answer.points_earned ?? 0) < (answer.points_possible ?? 1)) {
-          const missKey = `${category}__${answer.prompt}`;
-          const missEntry = missedMap.get(missKey) || { category, prompt: answer.prompt, missCount: 0, seen: 0 };
           missEntry.missCount += 1;
-          missEntry.seen += 1;
-          missedMap.set(missKey, missEntry);
           if (!areaEntry.topIssue) areaEntry.topIssue = answer.prompt;
         }
+        missedMap.set(missKey, missEntry);
       });
       areaMap.set(category, areaEntry);
     });
@@ -71,7 +72,7 @@ export default function ManagerSkillGapDashboard() {
     const people = [...peopleMap.values()].map((person) => ({ ...person, averageScore: Math.round(person.scores.reduce((sum, score) => sum + score, 0) / Math.max(person.scores.length, 1)) })).filter((person) => person.averageScore < 80 || person.failedAttempts > 0).sort((a, b) => a.averageScore - b.averageScore);
     stats.followUpCount = people.length;
     const areas = [...areaMap.values()].map((area) => ({ name: area.name, averageScore: Math.round(area.scores.reduce((sum, score) => sum + score, 0) / Math.max(area.scores.length, 1)), failureRate: Math.round((area.failed / Math.max(area.attemptCount, 1)) * 100), attemptCount: area.attemptCount, courseCount: area.courses.size, topIssue: area.topIssue })).sort((a, b) => a.averageScore - b.averageScore);
-    const missedTopics = [...missedMap.values()].map((topic) => ({ ...topic, missRate: Math.min(100, Math.round((topic.missCount / Math.max(topic.seen, 1)) * 100)) })).sort((a, b) => b.missCount - a.missCount).slice(0, 10);
+    const missedTopics = [...missedMap.values()].filter((topic) => topic.missCount > 0).map((topic) => ({ ...topic, missRate: Math.min(100, Math.round((topic.missCount / Math.max(topic.seen, 1)) * 100)) })).sort((a, b) => b.missCount - a.missCount).slice(0, 10);
     return { stats, areas, people, missedTopics, assignmentCount: teamAssignments.length };
   }, [teamMembers, assignments, attempts, courses]);
 

@@ -32,7 +32,10 @@ export default function FaxSearchInterface({ onSelectFaxForAI }) {
       filtered = filtered.filter(log => log.status === statusFilter);
     }
     if (startDate) {
-      filtered = filtered.filter(log => new Date(log.created_date) >= new Date(startDate));
+      // Parse the start bound as LOCAL midnight (matching the local end bound) —
+      // a bare 'YYYY-MM-DD' is otherwise parsed as UTC midnight, shifting the range
+      // by the timezone offset.
+      filtered = filtered.filter(log => new Date(log.created_date) >= new Date(startDate + 'T00:00:00'));
     }
     if (endDate) {
       filtered = filtered.filter(log => new Date(log.created_date) <= new Date(endDate + 'T23:59:59'));

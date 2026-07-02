@@ -13,9 +13,10 @@ import {
   ChevronUp,
   Calendar
 } from "lucide-react";
-import { format, differenceInDays } from "date-fns";
+import { differenceInDays } from "date-fns";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { formatEastern } from "@/components/utils/timezone";
 
 export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
   const [expanded, setExpanded] = useState(!compact);
@@ -156,7 +157,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
 
                     <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
                       <Calendar className="w-3 h-3" />
-                      Effective: {update.effective_date ? format(new Date(update.effective_date), 'MMM d, yyyy') : 'Now'}
+                      Effective: {update.effective_date ? formatEastern(update.effective_date, 'MMM d, yyyy') : 'Now'}
                     </div>
                   </div>
                 </div>

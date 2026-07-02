@@ -136,6 +136,10 @@
         }
       ]
     },
-    "write": {}
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
   }
 }

@@ -206,7 +206,7 @@ export default function FolderTreeView({
         <Folder className="w-4 h-4 text-slate-600" />
         <span className="text-sm flex-1">All Templates</span>
         <span className="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-          {templatesCount.uncategorized || 0}
+          {templatesCount.all || 0}
         </span>
       </div>
 

@@ -24,6 +24,9 @@ export default function DischargeReportUploader() {
 
   const handleFileUpload = async (event) => {
     const selectedFile = event.target.files[0];
+    // Reset the input so re-selecting the same file (e.g. after a failed parse or
+    // via "Upload Another Report") still fires onChange.
+    event.target.value = '';
     if (!selectedFile) return;
 
     setFile(selectedFile);

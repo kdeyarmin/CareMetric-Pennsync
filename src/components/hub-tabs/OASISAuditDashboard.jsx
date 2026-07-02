@@ -303,7 +303,10 @@ export default function OASISAuditDashboard() {
               className={`hover:shadow-md transition-shadow cursor-pointer ${
                 audit.priority === 'critical' ? 'border-red-300' : ''
               }`}
-              onClick={() => setSelectedAudit(audit)}
+              onClick={() => {
+                setReviewNotes(audit.auditor_findings || '');
+                setSelectedAudit(audit);
+              }}
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
@@ -354,7 +357,7 @@ export default function OASISAuditDashboard() {
       )}
 
       {/* Audit Detail Dialog */}
-      <Dialog open={!!selectedAudit && !showReportDialog} onOpenChange={() => setSelectedAudit(null)}>
+      <Dialog open={!!selectedAudit && !showReportDialog} onOpenChange={() => { setSelectedAudit(null); setReviewNotes(""); }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           {selectedAudit && (
             <>
@@ -444,7 +447,7 @@ export default function OASISAuditDashboard() {
                 <div>
                   <p className="text-sm font-semibold mb-2">Auditor Findings</p>
                   <Textarea
-                    value={reviewNotes || selectedAudit.auditor_findings || ''}
+                    value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
                     placeholder="Enter your audit findings and recommendations..."
                     className="min-h-[100px]"
@@ -509,7 +512,7 @@ export default function OASISAuditDashboard() {
               </div>
 
               <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => setSelectedAudit(null)}>
+                <Button variant="outline" onClick={() => { setSelectedAudit(null); setReviewNotes(""); }}>
                   Close
                 </Button>
                 <Button 

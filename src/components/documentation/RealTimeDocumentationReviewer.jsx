@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,11 @@ export default function RealTimeDocumentationReviewer({
   const ai = useAICall();
   const [analysis, setAnalysis] = useState(null);
   const [_complianceScore, setComplianceScore] = useState(0);
+  // Monotonic id of the latest analysis request. The debounced auto-analyze can
+  // dispatch overlapping LLM calls for different note versions; if an older call
+  // resolves last it would overwrite the panel with stale compliance guidance
+  // for a note that has since changed. We apply only the newest request's result.
+  const requestIdRef = useRef(0);
 
   const analyzeDocumentation = useCallback(async () => {
     if (!noteContent || noteContent.length < 50) {
@@ -38,6 +43,7 @@ export default function RealTimeDocumentationReviewer({
       return;
     }
 
+    const requestId = ++requestIdRef.current;
 
     try {
       const result = await ai.run({
@@ -235,6 +241,9 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
         }
       });
 
+      // Ignore a stale response: a newer analysis was requested while this one
+      // was in flight, so this result describes an older version of the note.
+      if (requestId !== requestIdRef.current) return;
       setAnalysis(result);
       setComplianceScore(result.scores?.compliance_score || 0);
     } catch (error) {

@@ -33,6 +33,55 @@ import { format } from "date-fns";
 import AIContactExtractor from "@/components/fax/AIContactExtractor";
 import { toCsvRows } from "@/components/admin/csvExport";
 
+/**
+ * Minimal quote-aware RFC 4180 CSV parser. Handles quoted fields containing
+ * embedded commas, escaped quotes ("" -> "), and embedded CR/LF, so a value like
+ * "Smith, Jones & Co" does not shift subsequent columns. Returns an array of row
+ * arrays (fields are not trimmed here — the caller trims as needed).
+ */
+function parseCsv(input) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (input[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',') {
+      row.push(field);
+      field = "";
+    } else if (char === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (char === '\r') {
+      // Ignore stray CR outside quotes; the following LF terminates the row.
+    } else {
+      field += char;
+    }
+  }
+  // Flush the trailing field/row (files may omit a final newline).
+  row.push(field);
+  rows.push(row);
+
+  // Drop rows that are entirely empty (e.g. a trailing blank line).
+  return rows.filter((r) => r.some((cell) => cell.trim() !== ""));
+}
+
 export default function FaxContactsPage() {
   const confirm = useConfirm();
   const [searchTerm, setSearchTerm] = useState("");
@@ -117,14 +166,14 @@ export default function FaxContactsPage() {
 
     try {
       const text = await file.text();
-      const lines = text.split('\n').filter(line => line.trim());
-      
-      if (lines.length < 2) {
+      const rows = parseCsv(text);
+
+      if (rows.length < 2) {
         toast.error("CSV file is empty or invalid");
         return;
       }
 
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const headers = rows[0].map(h => h.trim().toLowerCase());
       const nameIndex = headers.findIndex(h => h.includes('name'));
       const faxIndex = headers.findIndex(h => h.includes('fax') || h.includes('number'));
       const orgIndex = headers.findIndex(h => h.includes('org') || h.includes('company') || h.includes('facility'));
@@ -135,13 +184,20 @@ export default function FaxContactsPage() {
         return;
       }
 
+      // Strip the leading apostrophe our export adds to neutralize spreadsheet
+      // formula injection (e.g. "'+12155550100" round-trips back to "+12155550100").
+      const normalizeFax = (raw) => (raw || "").replace(/^'/, "").trim();
+
       const contactsToAdd = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim());
-        if (values[nameIndex] && values[faxIndex]) {
+      for (let i = 1; i < rows.length; i++) {
+        const values = rows[i].map(v => v.trim());
+        const faxNumber = normalizeFax(values[faxIndex]);
+        // Require a name and a fax number that actually contains digits so a
+        // mangled/blank column can't persist a garbage contact.
+        if (values[nameIndex] && /\d/.test(faxNumber)) {
           contactsToAdd.push({
             name: values[nameIndex],
-            fax_number: values[faxIndex],
+            fax_number: faxNumber,
             organization: orgIndex !== -1 ? values[orgIndex] || "" : "",
             notes: notesIndex !== -1 ? values[notesIndex] || "" : ""
           });

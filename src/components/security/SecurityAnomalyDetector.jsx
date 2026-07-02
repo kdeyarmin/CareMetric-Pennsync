@@ -77,11 +77,13 @@ export default function SecurityAnomalyDetector() {
       // 2. Check for unusual access patterns
       const accessByHour = Array(24).fill(0);
       recentActivities.forEach(activity => {
-        const hour = new Date(activity.created_date).getHours();
-        accessByHour[hour]++;
+        // Bucket by the Eastern-Time hour (not the browser's local zone) so the
+        // off-hours window is consistent regardless of the client's timezone.
+        const hour = Number(formatEastern(activity.created_date, 'H'));
+        if (hour >= 0 && hour < 24) accessByHour[hour]++;
       });
       accessByHour.forEach((count, hour) => {
-        if ((hour < 6 || hour > 22) && count > 10) {
+        if ((hour < 6 || hour >= 22) && count > 10) {
           detectedAnomalies.push({
             type: 'after_hours_activity',
             severity: 'warning',

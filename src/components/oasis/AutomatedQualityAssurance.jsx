@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,7 @@ import {
   Target
 } from "lucide-react";
 import { severityBadgeClass } from "@/lib/severityStyles";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 export default function AutomatedQualityAssurance({
   oasisData,
@@ -29,6 +30,7 @@ export default function AutomatedQualityAssurance({
 }) {
   const ai = useAICall();
   const [qaResults, setQaResults] = useState(null);
+  const autoRanRef = useRef(false);
 
   const runQualityAssurance = useCallback(async () => {
     if (!oasisData) return;
@@ -211,7 +213,8 @@ For each failure, provide:
   // runQualityAssurance a new identity each parent render, and without this guard
   // the effect would re-run and overwrite results / spam the model on each one.
   useEffect(() => {
-    if (autoRun && oasisData && !qaResults && !ai.loading) {
+    if (autoRun && oasisData && !qaResults && !ai.loading && !autoRanRef.current) {
+      autoRanRef.current = true;
       runQualityAssurance();
     }
   }, [autoRun, oasisData?.id, oasisData, qaResults, ai.loading, runQualityAssurance]);
@@ -382,9 +385,9 @@ For each failure, provide:
                                 </p>
                                 <p className="text-xs text-indigo-800 mb-1">{error.cms_guideline}</p>
                                 {error.cms_reference_link && (
-                                  <a 
-                                    href={error.cms_reference_link} 
-                                    target="_blank" 
+                                  <a
+                                    href={isSafeExternalUrl(error.cms_reference_link) ? error.cms_reference_link : undefined}
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-xs text-indigo-600 underline hover:text-indigo-800 flex items-center gap-1"
                                   >
@@ -490,9 +493,9 @@ For each failure, provide:
                               </p>
                               <p className="text-xs text-indigo-800 mb-1">{gap.cms_guideline}</p>
                               {gap.cms_reference_link && (
-                                <a 
-                                  href={gap.cms_reference_link} 
-                                  target="_blank" 
+                                <a
+                                  href={isSafeExternalUrl(gap.cms_reference_link) ? gap.cms_reference_link : undefined}
+                                  target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-xs text-indigo-600 underline hover:text-indigo-800 flex items-center gap-1"
                                 >
@@ -585,9 +588,9 @@ For each failure, provide:
                                 </p>
                                 <p className="text-xs text-indigo-800 mb-1">{issue.cms_regulation}</p>
                                 {issue.cms_reference_link && (
-                                  <a 
-                                    href={issue.cms_reference_link} 
-                                    target="_blank" 
+                                  <a
+                                    href={isSafeExternalUrl(issue.cms_reference_link) ? issue.cms_reference_link : undefined}
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-xs text-indigo-600 underline hover:text-indigo-800 flex items-center gap-1"
                                   >

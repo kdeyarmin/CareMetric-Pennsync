@@ -33,6 +33,13 @@ export const PATIENT_RELATED_ENTITIES = [
   "FaxDraft", "Message",
 ];
 
+// Page size for reassigning related records. `filter` with no explicit limit
+// silently caps at the SDK default of 50, so a long-tenured patient's 51st+
+// visit/OASIS/etc. would be stranded on the archived duplicate. Page at the
+// SDK's documented 5000/request maximum so the full clinical history follows
+// the patient.
+const REASSIGN_PAGE_SIZE = 5000;
+
 /**
  * Merge one duplicate patient into a surviving (primary) record:
  *   1. Reassign every related record (visits, alerts, pending updates) from the
@@ -62,17 +69,32 @@ export async function mergePatientInto(primaryId, duplicateId, { mergedBy = null
     if (!api?.filter || !api?.update) continue;
     let moved = 0;
     try {
-      const records = (await api.filter({ patient_id: duplicateId })) || [];
-      for (const record of records) {
-        try {
-          await api.update(record.id, { patient_id: primaryId });
-          moved += 1;
-        } catch (err) {
-          // Best-effort: a single record the caller can't write (RLS) is left on the
-          // archived duplicate (recoverable via merged_into_id) rather than aborting
-          // the whole merge.
-          console.error(`mergePatientInto: could not reassign ${entityName} ${record.id}:`, err?.message);
+      // Reassign in pages until every related record has followed the patient.
+      // Each successful update moves the record OFF `duplicateId`, so reassigned
+      // rows drop out of the next filter — re-querying from the top walks the
+      // whole set without an explicit skip offset. Stop on a short (final) page,
+      // or when a page yields no writable record (e.g. all RLS-blocked) so a
+      // permanently-failing row can't loop forever.
+      let fetched = REASSIGN_PAGE_SIZE;
+      while (fetched === REASSIGN_PAGE_SIZE) {
+        const records = (await api.filter({ patient_id: duplicateId }, undefined, REASSIGN_PAGE_SIZE)) || [];
+        fetched = records.length;
+        let movedThisPage = 0;
+        for (const record of records) {
+          try {
+            await api.update(record.id, { patient_id: primaryId });
+            moved += 1;
+            movedThisPage += 1;
+          } catch (err) {
+            // Best-effort: a single record the caller can't write (RLS) is left on the
+            // archived duplicate (recoverable via merged_into_id) rather than aborting
+            // the whole merge.
+            console.error(`mergePatientInto: could not reassign ${entityName} ${record.id}:`, err?.message);
+          }
         }
+        // No record in this page was writable — stop rather than re-querying the
+        // same stuck rows forever.
+        if (movedThisPage === 0) break;
       }
     } catch (err) {
       // Entity not readable for this caller (RLS) — skip; the merged_into_id pointer

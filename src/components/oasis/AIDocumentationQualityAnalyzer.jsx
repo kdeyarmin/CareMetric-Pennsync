@@ -210,10 +210,10 @@ Return JSON:
 
   // Auto-analyze when results are available
   useEffect(() => {
-    if (analysisResults && !qualityAnalysis && !ai.loading) {
+    if (analysisResults && !qualityAnalysis && !ai.loading && !error) {
       runQualityAnalysis();
     }
-  }, [analysisResults, qualityAnalysis, ai.loading, runQualityAnalysis]);
+  }, [analysisResults, qualityAnalysis, ai.loading, error, runQualityAnalysis]);
 
   const copyToClipboard = (text, exampleKey) => {
     navigator.clipboard.writeText(text);

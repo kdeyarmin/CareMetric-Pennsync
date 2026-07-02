@@ -105,6 +105,10 @@ export default function SmsThreadView({
   if (!thread) return null;
 
   const handleSend = () => {
+    // Guard the keyboard (Enter) path too: the Send button is disabled while a
+    // request is in flight, but without this a second quick Enter would fire a
+    // duplicate send (the backend has no dedupe, so the patient is texted twice).
+    if (sendMutation.isPending) return;
     if (!draft.trim()) return;
     sendMutation.mutate(draft.trim());
   };

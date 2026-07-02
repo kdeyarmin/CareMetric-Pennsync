@@ -61,7 +61,6 @@ export default function ClinicalEventsTimeline({ patientId, limit = 20 }) {
       
       return allEvents;
     },
-    initialData: [],
     enabled: !!patientId
   });
 

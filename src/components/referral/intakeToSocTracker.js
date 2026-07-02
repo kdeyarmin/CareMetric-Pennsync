@@ -27,6 +27,30 @@ function daysBetween(a, b) {
   return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+// Parse a date-only ("YYYY-MM-DD") value as LOCAL midnight (matching
+// src/lib/dateLocal.js); other values fall through to the platform parser. Kept
+// inline so this module stays dependency-free and `node --test`-runnable.
+function toLocalDate(v) {
+  if (!v) return null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(v).trim());
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Whole calendar days between two dates, comparing LOCAL calendar components so a
+// date-only referral_date (local midnight) isn't differenced against a wall-clock
+// "now" — which could otherwise flip the aging bucket by a day for users behind UTC.
+function calendarDaysBetween(a, b) {
+  if (!a || !b) return null;
+  const dayA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const dayB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((dayB - dayA) / (1000 * 60 * 60 * 24));
+}
+
 function agingBucket(ageDays) {
   if (ageDays == null) return null;
   if (ageDays < TIMELY_INITIATION_DAYS) return AGING_BUCKET.ON_TRACK;
@@ -48,7 +72,7 @@ function agingBucket(ageDays) {
  * }}
  */
 export function computeTurnaround(referral = {}, opts = {}) {
-  const asOf = opts.asOf ? new Date(opts.asOf) : new Date();
+  const asOf = opts.asOf ? toLocalDate(opts.asOf) : new Date();
   const referralDate = toDate(referral.referral_date);
   const socDate = toDate(referral.soc_date || referral.first_visit_date);
   const orderedSoc = toDate(referral.estimated_start_date);
@@ -76,7 +100,7 @@ export function computeTurnaround(referral = {}, opts = {}) {
 
   // Still open — no SOC yet.
   const closed = CLOSED_STATUSES.has(String(referral.status || "").toLowerCase());
-  const ageDays = daysBetween(referralDate, asOf);
+  const ageDays = calendarDaysBetween(toLocalDate(referral.referral_date), asOf);
   return {
     completed: false,
     open: !closed,
@@ -104,6 +128,9 @@ export function buildAgingBoard(referrals = [], opts = {}) {
   for (const referral of referrals) {
     const t = computeTurnaround(referral, opts);
     if (!t.open) continue; // completed or closed — not on the aging board
+    // Open but no referral_date → age can't be computed and there's no bucket to
+    // file it under; skip rather than crash on buckets[null].push(...).
+    if (!t.aging_bucket) continue;
     const entry = {
       id: referral.id,
       patient_name: referral.patient_name,

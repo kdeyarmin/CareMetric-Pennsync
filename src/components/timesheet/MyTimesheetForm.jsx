@@ -180,7 +180,19 @@ export default function MyTimesheetForm({
     () => payPeriodDays(form.pay_period_start, form.pay_period_end),
     [form.pay_period_start, form.pay_period_end]
   );
-  const dailyEntries = useMemo(() => dailyStateToEntries(form.daily), [form.daily]);
+  // Only the days visible in the currently selected period are submitted/rolled
+  // up. Cells left in state from a previously selected period (form.daily is
+  // keyed by date and never pruned when the period changes) are excluded so they
+  // can't leak into this period's totals/points/payload. The pure helper stays
+  // unchanged — we just feed it the in-period subset.
+  const dailyEntries = useMemo(() => {
+    const inPeriod = new Set(days);
+    const scoped = {};
+    for (const [date, cell] of Object.entries(form.daily || {})) {
+      if (inPeriod.has(date)) scoped[date] = cell;
+    }
+    return dailyStateToEntries(scoped);
+  }, [form.daily, days]);
   const rollup = useMemo(() => sumDailyEntries(dailyEntries), [dailyEntries]);
 
   // Effective visit counts drive the live points total for whichever mode is active.

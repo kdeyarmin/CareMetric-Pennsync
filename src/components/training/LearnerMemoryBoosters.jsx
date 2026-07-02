@@ -36,6 +36,10 @@ function MicroQuiz({ questions, onComplete, submitting }) {
   const [graded, setGraded] = useState(null);
 
   const isCorrect = (q, val) => {
+    // An unanswered question is never correct. Without this guard an unanswerable
+    // question type (scenario/short-answer, with correct_answer_json {}) would
+    // grade String(undefined) === String(undefined) → true and inflate the score.
+    if (val == null || (Array.isArray(val) && val.length === 0)) return false;
     const correct = q.correct_answer_json?.answer;
     if (Array.isArray(correct)) {
       const set = new Set((val || []).map(String));
@@ -165,7 +169,10 @@ export default function LearnerMemoryBoosters() {
     setLoadingQuestions(true);
     try {
       const qs = await base44.entities.TrainingQuestion.filter({ course_id: courseId, active: true }, "order_index", 50);
-      setBoosterQuestions(sample(qs, 3));
+      // MicroQuiz can only render/grade these types. Scenario/short-answer/matching
+      // questions have no answerable inputs here, so exclude them before sampling.
+      const renderable = qs.filter((q) => ["mcq", "multi_select", "true_false"].includes(q.type));
+      setBoosterQuestions(sample(renderable, 3));
     } catch (err) {
       toast.error("Could not load review questions");
       console.error(err);

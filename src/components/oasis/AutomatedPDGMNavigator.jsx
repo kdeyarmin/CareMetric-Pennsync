@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { invokeLLM } from "@/lib/invokeLLM";
@@ -59,6 +59,8 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
   const [_showCostSettings, _setShowCostSettings] = useState(false);
   const [patientForecasts, setPatientForecasts] = useState(null);
   const [isLoadingForecasts, setIsLoadingForecasts] = useState(false);
+  const [forecastError, setForecastError] = useState(null);
+  const forecastAttemptedRef = useRef(false);
   
   // Fetch agency settings for cost analysis
   const { data: agencySettings } = useQuery({
@@ -206,6 +208,7 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
     if (!navigation || !pdgmData) return;
 
     setIsLoadingForecasts(true);
+    setForecastError(null);
     try {
       // Get historical trends from similar patients
       const similarPatients = allPatients.filter(p => 
@@ -380,13 +383,17 @@ PREDICT:
       setPatientForecasts(result);
     } catch (error) {
       console.error('Forecasting error:', error);
+      setForecastError('Failed to generate patient forecasts. Please try again.');
     }
     setIsLoadingForecasts(false);
   }, [navigation, pdgmData, allPatients]);
 
-  // Auto-generate forecasts when navigation completes
+  // Auto-generate forecasts when navigation completes (one-shot: the ref latch
+  // stops the effect from re-firing on failure, which would otherwise loop the
+  // paid LLM call every time isLoadingForecasts flips back to false).
   useEffect(() => {
-    if (navigation && !patientForecasts && !isLoadingForecasts) {
+    if (navigation && !patientForecasts && !isLoadingForecasts && !forecastAttemptedRef.current) {
+      forecastAttemptedRef.current = true;
       generatePatientForecasts();
     }
   }, [navigation, patientForecasts, isLoadingForecasts, generatePatientForecasts]);
@@ -1757,6 +1764,18 @@ PREDICT:
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
                 <p className="text-sm text-blue-700">Generating predictive forecasts for patient outcomes...</p>
               </div>
+            )}
+
+            {forecastError && !patientForecasts && !isLoadingForecasts && (
+              <Alert className="bg-red-50 border-red-300">
+                <AlertTriangle className="w-4 h-4 text-red-600" />
+                <AlertDescription className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-red-800">{forecastError}</span>
+                  <Button size="sm" variant="outline" onClick={generatePatientForecasts}>
+                    Try Again
+                  </Button>
+                </AlertDescription>
+              </Alert>
             )}
 
             {/* Key Drivers Summary */}

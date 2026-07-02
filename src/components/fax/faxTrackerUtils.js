@@ -6,11 +6,17 @@ export const filterRecentFaxLogs = (logs = [], now = Date.now(), rangeMs = TWENT
   return logs.filter((log) => new Date(log.created_date).getTime() > cutoff);
 };
 
+// Equivalent statuses collapse into the same summary bucket: a successfully
+// transmitted fax ('sent') counts as delivered, and an in-progress 'sending' fax
+// counts as queued — otherwise both would fall through to 'pending'.
+const STATUS_GROUP = { sent: 'delivered', sending: 'queued' };
+
 export const getStatusCounts = (logs = []) => {
   const counts = { delivered: 0, failed: 0, pending: 0, queued: 0 };
 
   logs.forEach((log) => {
-    const status = log.status?.toLowerCase() || 'pending';
+    const raw = log.status?.toLowerCase() || 'pending';
+    const status = STATUS_GROUP[raw] || raw;
     if (status in counts) {
       counts[status] += 1;
     } else {

@@ -7,6 +7,7 @@ import {
   Clock
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { formatLocalDate } from "@/lib/dateLocal";
 
 export default function RecentActivityFeed({ visits, alerts, patients }) {
   // Combine and sort activities
@@ -89,7 +90,7 @@ export default function RecentActivityFeed({ visits, alerts, patients }) {
                 {activity.type === 'visit' && (
                   <p className="text-xs text-slate-600">
                     {activity.data.visit_type?.replace('_', ' ')} - {
-                      activity.data.visit_date ? new Date(activity.data.visit_date).toLocaleDateString() : 'Date not set'
+                      activity.data.visit_date ? formatLocalDate(activity.data.visit_date) : 'Date not set'
                     }
                   </p>
                 )}

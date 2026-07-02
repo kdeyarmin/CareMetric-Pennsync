@@ -14,6 +14,14 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
+// Filter buttons map to groups of terminal/transient statuses so that, e.g., the
+// 'Sent' filter also shows the terminal 'delivered' status and 'Queued' shows 'sending'.
+const STATUS_GROUPS = {
+  sent: ['sent', 'delivered'],
+  queued: ['queued', 'sending'],
+  failed: ['failed'],
+};
+
 export default function FaxLogsDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
@@ -32,8 +40,9 @@ export default function FaxLogsDashboard() {
       log.to_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       log.document_name?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesStatus = selectedStatus === "all" || log.status === selectedStatus;
-    
+    const statusGroup = STATUS_GROUPS[selectedStatus];
+    const matchesStatus = selectedStatus === "all" || (statusGroup ? statusGroup.includes(log.status) : log.status === selectedStatus);
+
     return matchesSearch && matchesStatus;
   });
 

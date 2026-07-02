@@ -9,7 +9,11 @@
 // `.js` modules with explicit extensions (never `.jsx`).
 import { extractMedications, CLINICAL_PATTERNS } from "./factExtraction.js";
 
-const NO_ALLERGY = /\b(nkda|nka|none|no known)\b/i;
+// Only treat the allergy field as "no allergies" when the WHOLE field is a
+// negation (NKDA / none / "no known [drug|food|environmental] allergies"). A
+// mixed value like "Penicillin; no known food allergies" must still run the
+// per-medication conflict scan, so this is anchored ^…$ rather than a substring.
+const NO_ALLERGY = /^\s*(nkda|nka|none|no known(?:\s+(?:drug|food|environmental))?\s+allergies?)\s*\.?\s*$/i;
 
 /**
  * @param {string} noteText the note being written (rough draft or final)

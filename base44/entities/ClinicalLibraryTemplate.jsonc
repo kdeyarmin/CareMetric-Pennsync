@@ -94,6 +94,11 @@
         { "user_condition": { "role": "admin" } }
       ]
     },
-    "write": {}
+    "write": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
   }
 }

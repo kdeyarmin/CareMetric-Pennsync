@@ -40,12 +40,22 @@ export default function DocumentDraftManager({
     setCurrentVersion(versions.length);
   }, [versions.length]);
 
-  // Initialize first version
+  // Initialize the first version, and record subsequent regenerations. When the
+  // parent regenerates while this manager stays mounted, generatedContent changes
+  // to a value not yet captured as a version; push it and point currentVersion at
+  // it so Preview/Copy/Download reflect the latest generation. The
+  // `some(content === ...)` guard also prevents double-adding a manually saved
+  // edit that the parent echoes back through generatedContent.
   useEffect(() => {
-    if (generatedContent && versions.length === 0) {
+    if (!generatedContent) return;
+    if (versions.length === 0) {
       saveVersion(generatedContent, "Initial AI Generation");
+      return;
     }
-  }, [generatedContent, versions.length, saveVersion]);
+    if (!versions.some(v => v.content === generatedContent)) {
+      saveVersion(generatedContent, "Regenerated");
+    }
+  }, [generatedContent, versions, saveVersion]);
 
   // Update edited content when generatedContent changes
   useEffect(() => {

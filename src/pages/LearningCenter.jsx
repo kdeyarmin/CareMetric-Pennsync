@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { isAdminView } from '@/lib/roles';
+import { parseLocalDate } from '@/lib/dateLocal';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import EmbeddedPage from '@/components/ui/embeddedPage';
@@ -156,7 +157,7 @@ function RateStars({ value, onRate, disabled }) {
 }
 const daysUntil = (date) => {
   if (!date) return Infinity;
-  const target = new Date(date);
+  const target = parseLocalDate(date) || new Date(date);
   const now = new Date();
   // Compare dates only, ignoring time to avoid timezone edge cases
   target.setHours(23, 59, 59, 999);

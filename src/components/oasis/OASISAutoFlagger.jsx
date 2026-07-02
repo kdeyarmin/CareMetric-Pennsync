@@ -1,5 +1,6 @@
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 // Threshold configuration
 const THRESHOLDS = {
@@ -133,7 +134,13 @@ function useAutoFlagOASIS() {
         });
         
         if (existing.length === 0) {
-          return await base44.entities.OASISAudit.create(auditRecord);
+          const me = await base44.auth.me();
+          const summary = `Auto-flagged (${auditRecord.flag_reason}) at ${auditRecord.priority} priority — accuracy ${auditRecord.accuracy_score ?? 'N/A'}%, compliance ${auditRecord.compliance_score ?? 'N/A'}%, overall ${auditRecord.overall_score ?? 'N/A'}%.`;
+          return await base44.entities.OASISAudit.create({
+            ...auditRecord,
+            user_email: me?.email,
+            summary
+          });
         }
         return existing[0];
       }
@@ -141,6 +148,10 @@ function useAutoFlagOASIS() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['oasisAudits'] });
+    },
+    onError: (error) => {
+      console.error('Auto-flag OASIS error:', error);
+      toast.error("Couldn't flag this assessment for audit review. Please try again.");
     }
   });
 }

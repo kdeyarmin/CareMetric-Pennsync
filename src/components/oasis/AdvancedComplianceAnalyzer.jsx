@@ -15,7 +15,7 @@ export default function AdvancedComplianceAnalyzer({ analysisResults, pdgmData, 
   const [autoAnalyze, setAutoAnalyze] = useState(false);
 
   // Fetch historical OASIS data for pattern analysis
-  const { data: historicalOASIS = [] } = useQuery({
+  const { data: historicalOASIS = [], isSuccess: historicalOASISLoaded } = useQuery({
     queryKey: ['historicalOASIS', patientId],
     queryFn: () => {
       if (patientId) {
@@ -27,7 +27,7 @@ export default function AdvancedComplianceAnalyzer({ analysisResults, pdgmData, 
   });
 
   // Fetch historical compliance audits
-  const { data: historicalAudits = [] } = useQuery({
+  const { data: historicalAudits = [], isSuccess: historicalAuditsLoaded } = useQuery({
     queryKey: ['complianceAudits'],
     queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 100),
     enabled: !!analysisResults
@@ -229,13 +229,24 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [analysisResults, pdgmData, historicalOASIS, historicalAudits]);
 
-  // Auto-analyze when data is available
+  // Auto-analyze only once the historical queries have actually resolved and
+  // pdgmData is present, so the 'HISTORICAL PATTERN ANALYSIS' section is built
+  // from real data rather than the empty defaults (a vacuous length >= 0 check
+  // previously latched the run before the data loaded).
   useEffect(() => {
-    if (analysisResults && !complianceReport && !ai.loading && !autoAnalyze && historicalOASIS.length >= 0) {
+    if (
+      analysisResults &&
+      pdgmData &&
+      historicalOASISLoaded &&
+      historicalAuditsLoaded &&
+      !complianceReport &&
+      !ai.loading &&
+      !autoAnalyze
+    ) {
       setAutoAnalyze(true);
       analyzeCompliance();
     }
-  }, [analysisResults, historicalOASIS, complianceReport, ai.loading, autoAnalyze, analyzeCompliance]);
+  }, [analysisResults, pdgmData, historicalOASISLoaded, historicalAuditsLoaded, complianceReport, ai.loading, autoAnalyze, analyzeCompliance]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {

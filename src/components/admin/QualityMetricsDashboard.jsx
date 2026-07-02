@@ -86,7 +86,7 @@ export default function QualityMetricsDashboard() {
 
   const { data: allUsers } = useQuery({
     queryKey: ['allUsersMetrics'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list('-created_date', 1000),
     initialData: [],
   });
 

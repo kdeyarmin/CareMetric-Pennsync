@@ -22,7 +22,11 @@ export const formatEastern = (date, formatStr = 'MMM d, yyyy HH:mm') => {
         utcDate = new Date(date.trim() + 'T12:00:00Z');
       } else {
         // Datetime strings: ensure they're treated as UTC before converting.
-        utcDate = new Date(date + (date.includes('Z') ? '' : 'Z'));
+        // Only append 'Z' when the string carries no zone info at all — a
+        // trailing 'Z' or a numeric offset (e.g. +00:00, -04:00) is already
+        // zone-anchored, and appending 'Z' would produce an Invalid Date.
+        const hasZone = /[zZ]$/.test(date) || /[+-]\d{2}:?\d{2}$/.test(date);
+        utcDate = new Date(hasZone ? date : date + 'Z');
       }
     } else {
       utcDate = new Date(date);

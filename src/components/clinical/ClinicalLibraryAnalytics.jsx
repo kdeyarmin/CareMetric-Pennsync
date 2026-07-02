@@ -1,14 +1,14 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BarChart3, TrendingUp, Users, Calendar } from "lucide-react";
+import { fetchAllClinicalTemplates } from "./fetchAllClinicalTemplates";
 
 export default function ClinicalLibraryAnalytics() {
   const { data: templates = [] } = useQuery({
     queryKey: ['clinical-templates'],
-    queryFn: () => base44.entities.ClinicalLibraryTemplate.list('-usage_count', 200),
+    queryFn: fetchAllClinicalTemplates,
     initialData: []
   });
 

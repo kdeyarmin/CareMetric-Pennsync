@@ -58,9 +58,21 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
         reader.onloadend = () => resolve(reader.result);
         reader.readAsDataURL(blob);
       });
+      // Load the image to read its natural size and aspect-fit it onto the page
+      // (centered) instead of stretching it to the full A4, which distorts the
+      // faxed document.
+      const img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = dataUrl;
+      });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      pdf.addImage(dataUrl, 'JPEG', 0, 0, pageWidth, pageHeight);
+      const ratio = Math.min(pageWidth / img.width, pageHeight / img.height);
+      const w = img.width * ratio;
+      const h = img.height * ratio;
+      pdf.addImage(dataUrl, 'JPEG', (pageWidth - w) / 2, (pageHeight - h) / 2, w, h);
       isFirstPage = false;
     }
     const pdfBlob = pdf.output('blob');

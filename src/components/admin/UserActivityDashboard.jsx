@@ -56,7 +56,7 @@ export default function UserActivityDashboard() {
         cutoffDate.setDate(cutoffDate.getDate() - 30);
       }
 
-      const allActivities = await base44.asServiceRole.entities.UserActivity.list('-created_date', 500);
+      const allActivities = await base44.entities.UserActivity.list('-created_date', 500);
       return allActivities.filter(a => new Date(a.created_date) >= cutoffDate);
     },
     refetchInterval: 10000 // Refresh every 10 seconds

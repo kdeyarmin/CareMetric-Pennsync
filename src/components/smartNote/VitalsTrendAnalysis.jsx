@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { formatLocalDate } from "@/lib/dateLocal";
 import { useQuery } from "@tanstack/react-query";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +21,7 @@ export default function VitalsTrendAnalysis({ patientId }) {
       .filter(v => v.vital_signs && Object.keys(v.vital_signs).length > 0)
       .sort((a, b) => new Date(a.visit_date) - new Date(b.visit_date))
       .map(v => ({
-        date: new Date(v.visit_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        date: formatLocalDate(v.visit_date, { month: "short", day: "numeric" }),
         bp_systolic: v.vital_signs.blood_pressure_systolic,
         bp_diastolic: v.vital_signs.blood_pressure_diastolic,
         heart_rate: v.vital_signs.heart_rate,
@@ -31,25 +32,25 @@ export default function VitalsTrendAnalysis({ patientId }) {
     return extracted;
   }, [visits]);
 
-  // Calculate statistics
+  // Calculate statistics. Average/latest/trend are computed over ONLY the rows
+  // that actually recorded each metric — a visit that charted just HR must not
+  // count as a 0 in the systolic/SpO2 average (which would grossly understate
+  // them), and the trend must span the first/last rows that have the metric so it
+  // is never NaN when an endpoint row omitted it.
   const stats = useMemo(() => {
     if (chartData.length === 0) return null;
+    const summarize = (key) => {
+      const vals = chartData.map(d => d[key]).filter(Number.isFinite);
+      return {
+        latest: vals.length ? vals[vals.length - 1] : null,
+        avg: vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null,
+        trend: vals.length > 1 ? vals[vals.length - 1] - vals[0] : 0,
+      };
+    };
     return {
-      bp_systolic: {
-        latest: chartData[chartData.length - 1].bp_systolic,
-        avg: Math.round(chartData.reduce((sum, d) => sum + (d.bp_systolic || 0), 0) / chartData.length),
-        trend: chartData.length > 1 ? chartData[chartData.length - 1].bp_systolic - chartData[0].bp_systolic : 0,
-      },
-      heart_rate: {
-        latest: chartData[chartData.length - 1].heart_rate,
-        avg: Math.round(chartData.reduce((sum, d) => sum + (d.heart_rate || 0), 0) / chartData.length),
-        trend: chartData.length > 1 ? chartData[chartData.length - 1].heart_rate - chartData[0].heart_rate : 0,
-      },
-      oxygen: {
-        latest: chartData[chartData.length - 1].oxygen,
-        avg: Math.round(chartData.reduce((sum, d) => sum + (d.oxygen || 0), 0) / chartData.length),
-        trend: chartData.length > 1 ? chartData[chartData.length - 1].oxygen - chartData[0].oxygen : 0,
-      },
+      bp_systolic: summarize("bp_systolic"),
+      heart_rate: summarize("heart_rate"),
+      oxygen: summarize("oxygen"),
     };
   }, [chartData]);
 
@@ -104,7 +105,7 @@ export default function VitalsTrendAnalysis({ patientId }) {
                       <span className={`text-sm font-semibold ${trendColor}`}>{trendIcon}</span>
                     </div>
                     <div className="text-xs text-slate-500 mt-2">
-                      <span>Avg: <strong>{data.avg}</strong> | Normal: {metric.normal}</span>
+                      <span>Avg: <strong>{data.avg ?? "—"}</strong> | Normal: {metric.normal}</span>
                     </div>
                   </CardContent>
                 </Card>

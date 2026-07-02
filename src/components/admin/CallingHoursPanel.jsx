@@ -37,6 +37,15 @@ const guessTimeZone = () => {
   }
 };
 
+// Parse the free-text holidays textarea into an array of well-formed YYYY-MM-DD
+// dates. Only run this on blur/save — never per keystroke — so partially-typed
+// dates aren't stripped out from under the cursor.
+const parseHolidays = (text) =>
+  String(text || "")
+    .split(/[\n,]/)
+    .map((s) => s.trim())
+    .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s));
+
 /**
  * CallingHoursPanel — global "calling & texting hours" for the agency. Outside
  * these hours, inbound calls auto-transfer (or go to voicemail) and inbound
@@ -71,6 +80,10 @@ export default function CallingHoursPanel() {
     tcpa_quiet_end_hour: 21,
   });
 
+  // Raw text backing the holidays textarea. Kept separate from the parsed array
+  // so typing a partial date doesn't get filtered away mid-keystroke.
+  const [holidaysText, setHolidaysText] = useState("");
+
   useEffect(() => {
     if (!settings) return;
     setForm({
@@ -91,6 +104,9 @@ export default function CallingHoursPanel() {
       tcpa_quiet_start_hour: settings.tcpa_quiet_start_hour ?? 8,
       tcpa_quiet_end_hour: settings.tcpa_quiet_end_hour ?? 21,
     });
+    setHolidaysText(
+      (Array.isArray(settings.business_hours_holidays) ? settings.business_hours_holidays : []).join("\n"),
+    );
   }, [settings]);
 
   // One-time, idempotent backfill: existing agencies that never configured TCPA
@@ -111,7 +127,9 @@ export default function CallingHoursPanel() {
 
   const save = useMutation({
     mutationFn: () => {
-      const payload = { ...form };
+      // Parse the raw holidays text at save time so the saved array always
+      // matches what's in the textarea, even if it never lost focus.
+      const payload = { ...form, business_hours_holidays: parseHolidays(holidaysText) };
       return settings?.id
         ? base44.entities.AgencySettings.update(settings.id, payload)
         : base44.entities.AgencySettings.create(payload);
@@ -246,15 +264,10 @@ export default function CallingHoursPanel() {
               <Textarea
                 rows={2}
                 placeholder={"One date per line, YYYY-MM-DD\n2026-12-25\n2027-01-01"}
-                value={(form.business_hours_holidays || []).join("\n")}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    business_hours_holidays: e.target.value
-                      .split(/[\n,]/)
-                      .map((s) => s.trim())
-                      .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s)),
-                  }))
+                value={holidaysText}
+                onChange={(e) => setHolidaysText(e.target.value)}
+                onBlur={() =>
+                  setForm((f) => ({ ...f, business_hours_holidays: parseHolidays(holidaysText) }))
                 }
                 className="mt-1 resize-none font-mono text-xs"
               />

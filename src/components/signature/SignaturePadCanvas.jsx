@@ -89,25 +89,24 @@ export default function SignaturePadCanvas({ onSignatureCapture, disabled = fals
   };
 
   // --- Touch (proxied to the mouse handlers) ---
+  // Call the handlers directly: dispatching a synthetic MouseEvent on the canvas
+  // never reaches React's root-delegated (bubble-phase) listeners because
+  // MouseEvent defaults to bubbles:false, so touch drawing would be a no-op.
   const handleTouchStart = (e) => {
     if (disabled) return;
     const touch = e.touches[0];
-    canvasRef.current?.dispatchEvent(
-      new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY })
-    );
+    handleMouseDown({ clientX: touch.clientX, clientY: touch.clientY });
   };
 
   const handleTouchMove = (e) => {
     e.preventDefault();
     if (disabled) return;
     const touch = e.touches[0];
-    canvasRef.current?.dispatchEvent(
-      new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY })
-    );
+    handleMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
   };
 
   const handleTouchEnd = () => {
-    canvasRef.current?.dispatchEvent(new MouseEvent('mouseup', {}));
+    handleMouseUp();
   };
 
   // --- Typed signature (keyboard-accessible) ---

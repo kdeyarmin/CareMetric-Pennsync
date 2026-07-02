@@ -166,6 +166,17 @@
         }
       ]
     },
-    "write": {}
+    "write": {
+      "$or": [
+        {
+          "performed_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
   }
 }

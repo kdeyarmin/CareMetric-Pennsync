@@ -140,6 +140,7 @@ export default function DocumentSignatures() {
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1">
               <SearchablePatientSelect
+                patients={patients}
                 value={selectedPatient}
                 onChange={setSelectedPatient}
                 placeholder="Filter by patient (optional)"

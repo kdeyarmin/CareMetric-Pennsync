@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,10 +51,7 @@ export default function PatientEducationPortal() {
 
   const generateEducationMutation = useMutation({
     mutationFn: (patientId) =>
-      invokeLLM({
-        model: "claude_sonnet_4_6",
-        prompt: `Generate personalized education for patient ${patientId}`,
-      }),
+      base44.functions.invoke("generatePatientEducation", { patientId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patient-education", selectedPatientId] });
       toast.success("Education materials generated");
@@ -261,22 +257,31 @@ function EducationMaterialCard({
 }) {
   const [deliveryMethod, setDeliveryMethod] = useState("in_person");
   const [teachBackNotes, setTeachBackNotes] = useState("");
+  const [teachBackConfirmed, setTeachBackConfirmed] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const handleMarkDelivered = async () => {
     setUpdatingStatus(true);
     try {
+      let deliveredBy = "";
+      try {
+        const currentUser = await base44.auth.me();
+        deliveredBy = currentUser?.email || "";
+      } catch {
+        deliveredBy = "";
+      }
       await onUpdate(material.id, {
         delivery_status: "delivered",
         delivery_method: deliveryMethod,
-        delivered_by: "current_user",
+        delivered_by: deliveredBy,
         delivery_date: new Date().toISOString(),
         teach_back_notes: teachBackNotes,
-        teach_back_confirmation: true,
-        patient_understood: true,
+        teach_back_confirmation: teachBackConfirmed,
+        patient_understood: teachBackConfirmed,
       });
       setDeliveryMethod("in_person");
       setTeachBackNotes("");
+      setTeachBackConfirmed(true);
     } finally {
       setUpdatingStatus(false);
     }
@@ -357,7 +362,11 @@ function EducationMaterialCard({
                 </div>
 
                 <div className="flex items-center gap-2 p-2 bg-blue-50 rounded border border-blue-200">
-                  <Checkbox id={`teach-back-${material.id}`} defaultChecked />
+                  <Checkbox
+                    id={`teach-back-${material.id}`}
+                    checked={teachBackConfirmed}
+                    onCheckedChange={(checked) => setTeachBackConfirmed(checked === true)}
+                  />
                   <label
                     htmlFor={`teach-back-${material.id}`}
                     className="text-xs text-slate-700"
