@@ -55,7 +55,7 @@ export default function Help() {
       title: "Smart Notes",
       description: "AI-powered clinical documentation",
       icon: Sparkles,
-      topics: ["Creating notes", "Voice recording", "AI enhancement", "Best practices"]
+      topics: ["Creating notes", "Voice recording", "AI enhancement", "Quick phrases (type /)", "Facility requirements checklist"]
     },
     {
       title: "Patient Management",
@@ -80,6 +80,12 @@ export default function Help() {
       description: "Voice-to-text documentation",
       icon: Phone,
       topics: ["Audio recording", "Auto transcription", "Clinical extraction"]
+    },
+    {
+      title: "Timesheets",
+      description: "Pay-period timesheets and payroll",
+      icon: ClipboardList,
+      topics: ["Submitting your timesheet", "Pay periods & paydays", "PTO & mileage", "Approvals & payroll export (admin)"]
     }
   ];
 
@@ -115,6 +121,22 @@ export default function Help() {
     {
       q: "What happens to flagged compliance issues?",
       a: "Flagged notes appear in the Compliance Dashboard. Review them, use AI suggestions to fix issues, and re-save. System tracks improvements over time."
+    },
+    {
+      q: "How do I use a quick phrase while writing a note?",
+      a: "Type “/” in the observations box to open the Quick Phrases picker, type a saved “.shortcut” code, or tap the Quick Phrase button. Phrases bound to a specific patient only appear while charting that patient, and inserted text still goes through compliance review before you save."
+    },
+    {
+      q: "Why is Save blocked by a facility documentation requirement?",
+      a: "Your administrator defined a critical documentation rule that applies to this patient (for example, an SpO₂ reading for a patient on oxygen). Add the missing detail — the checklist clears automatically — or check the acknowledgment box to save without it. Acknowledged overrides are recorded."
+    },
+    {
+      q: "When is my timesheet due, and when is payday?",
+      a: "Pay periods are biweekly (Sunday through Saturday). Timesheets are due before noon on the Monday after the period ends, and payday is normally the Friday after the period ends — moved to Thursday when that Friday is a bank holiday, and occasionally adjusted for a specific period when payroll confirms it. The timesheet form shows the authoritative due date and payday for the period you pick."
+    },
+    {
+      q: "What is the AI-content responsibility agreement I accepted at sign-in?",
+      a: "A one-time acknowledgment (re-shown only if the wording changes) that AI-generated content may contain errors and that you are responsible for reviewing and approving anything you submit. Your acceptance is recorded with your name, the date, and the agreement version."
     }
   ];
 
