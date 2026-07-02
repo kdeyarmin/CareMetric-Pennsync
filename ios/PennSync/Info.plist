@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>PennSync</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+
+	<!--
+	  Camera / microphone usage strings.
+	  These are surfaced by iOS the first time the WKWebView requests
+	  getUserMedia (telehealth video visits, visit audio recording /
+	  Whisper transcription) or the camera-fax document scanner.
+	  App Store review rejects binaries that access these APIs without
+	  a purpose string, so keep them specific to the clinical features.
+	-->
+	<key>NSCameraUsageDescription</key>
+	<string>PennSync uses the camera for telehealth video visits, scanning documents with Camera Fax, and capturing incident or wound photos for the patient chart.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PennSync uses the microphone for telehealth video visits and to record visit audio for SmartNote clinical documentation and transcription.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>PennSync accesses your photo library so you can attach existing photos of documents, wounds, or incidents to the patient chart and Camera Fax.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>PennSync saves captured document scans and exported files to your photo library when you choose to keep a copy on this device.</string>
+
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+</dict>
+</plist>
