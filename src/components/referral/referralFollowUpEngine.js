@@ -254,7 +254,10 @@ export function buildFollowUpPlan(extractedData, opts = {}) {
         hint: "The most recent problem list or discharge summary diagnosis section works.",
       },
     }));
-  } else if (!coding.primary) {
+  } else if (!coding.primary && !coding.sequenced.some((d) => d.acceptablePrimary)) {
+    // Only a PROVIDER problem when no RTP-acceptable candidate exists at all.
+    // An acceptable-but-unmapped/unweighted candidate is an AGENCY table gap
+    // (PDGM Rate Settings), reported via internal_notes below instead.
     const rtpCodes = coding.sequenced.filter((d) => !d.acceptablePrimary);
     items.push(item({
       rule: "no_acceptable_primary",
@@ -370,7 +373,21 @@ export function buildFollowUpPlan(extractedData, opts = {}) {
     }));
   }
 
-  return { items, counts: countFollowUpItems(items), coding, f2f };
+  // Agency-side notes: real gaps, but NOT provider requests — they never go on
+  // the provider form. Currently: an RTP-acceptable principal candidate that
+  // the sequencer couldn't weight because the agency's ICD→clinical-group map
+  // or weight table doesn't cover it.
+  const internalNotes = [];
+  if (!coding.primary) {
+    const unweightedAcceptable = coding.sequenced.filter((d) => d.acceptablePrimary);
+    if (unweightedAcceptable.length > 0) {
+      internalNotes.push(
+        `Acceptable principal candidate(s) ${unweightedAcceptable.map((d) => d.displayCode).join(", ")} could not be weighted — missing from the agency's ICD-10 → clinical-group map or weight table. Fix on the PDGM Rate Settings page; no provider action needed.`
+      );
+    }
+  }
+
+  return { items, counts: countFollowUpItems(items), coding, f2f, internal_notes: internalNotes };
 }
 
 /** Severity/category tallies for any item set (also used for user-selected subsets). */
@@ -387,13 +404,15 @@ export function countFollowUpItems(items = []) {
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2 };
 
-/** Items sorted for display/form: severity first, then compliance before reimbursement. */
+/** Items sorted for display/form: severity first, then compliance before
+ *  reimbursement. Items without a `seq` (e.g. AI-suggested additions) sort
+ *  AFTER rule items of the same severity/category, keeping numbering stable. */
 export function sortFollowUpItems(items) {
   return [...(items || [])].sort(
     (a, b) =>
       (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9) ||
       (a.category === b.category ? 0 : a.category === "compliance" ? -1 : 1) ||
-      (a.seq ?? 0) - (b.seq ?? 0)
+      (a.seq ?? Number.MAX_SAFE_INTEGER) - (b.seq ?? Number.MAX_SAFE_INTEGER)
   );
 }
 

@@ -91,6 +91,19 @@ test("symptom-code-only referral asks for a definitive principal diagnosis", () 
   assert.match(it.needed, /R26\.9/);
 });
 
+test("acceptable-but-unmapped primary is an agency note, not a provider request", () => {
+  // I63.9 is RTP-acceptable but absent from this replace-semantics agency map:
+  // the fix is the PDGM Rate Settings page, so no provider item may fire.
+  const plan = buildFollowUpPlan(
+    { ...COMPLETE_REFERRAL, diagnoses: { ...COMPLETE_REFERRAL.diagnoses, secondary_diagnoses: [] } },
+    { icdGroups: { Q99: "MMTA_Other" } }
+  );
+  assert.ok(!ids(plan).includes("no_acceptable_primary"), JSON.stringify(ids(plan)));
+  assert.equal(plan.internal_notes.length, 1);
+  assert.match(plan.internal_notes[0], /PDGM Rate Settings/);
+  assert.match(plan.internal_notes[0], /I69\.354/);
+});
+
 test("uncoded diagnoses become a comorbidity-capture request naming each dx", () => {
   const plan = buildFollowUpPlan({
     ...COMPLETE_REFERRAL,
@@ -177,6 +190,26 @@ test("sortFollowUpItems orders severity first, compliance before reimbursement",
       `${a.id} should sort before ${b.id}`
     );
   }
+});
+
+test("items without seq (AI additions) sort after rule items in the same band", () => {
+  const plan = buildFollowUpPlan({});
+  const firstCritical = sortFollowUpItems(plan.items).find((i) => i.severity === "critical");
+  const aiItem = {
+    id: "ai_0",
+    source: "ai",
+    category: firstCritical.category,
+    severity: "critical",
+    title: "AI addition",
+    needed: "x",
+    why: "y",
+    citation: "z",
+    impact: "w",
+    provider_request: { question: "q", response_type: "text", hint: "" },
+  };
+  const sorted = sortFollowUpItems([aiItem, ...plan.items]);
+  const band = sorted.filter((i) => i.severity === "critical" && i.category === firstCritical.category);
+  assert.equal(band[band.length - 1].id, "ai_0"); // appended, not jumped ahead
 });
 
 // ── provider form ──

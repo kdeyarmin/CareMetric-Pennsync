@@ -64,12 +64,18 @@ export default function ReferralFollowUp() {
     [rateConfig]
   );
 
-  // Referrals that have been processed (extraction exists) and are still in an
-  // actionable intake state.
+  // Referrals that finished FULL processing and are still in an actionable
+  // intake state. `analysis_results` is written only by the full-extraction
+  // path (handleProcessingComplete); quick-scan uploads persist a partial
+  // extracted_data while status is still "new", and reviewing that shape would
+  // fire false "missing F2F/orders/meds" provider requests.
   const reviewable = useMemo(
     () =>
       (referrals || []).filter(
-        (r) => r.extracted_data && !["declined", "soc_completed"].includes(r.status)
+        (r) =>
+          r.extracted_data &&
+          r.analysis_results &&
+          !["declined", "soc_completed"].includes(r.status)
       ),
     [referrals]
   );
@@ -165,6 +171,9 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
         .filter((a) => a?.title && !existingTitles.has(a.title.toLowerCase()))
         .map((a, idx) => ({
           id: `ai_${idx}_${a.title.slice(0, 24).replace(/\W+/g, "_")}`,
+          // Explicit seq AFTER every rule item so AI additions append within
+          // their severity/category band instead of jumping ahead.
+          seq: 10000 + idx,
           source: "ai",
           category: a.category === "reimbursement" ? "reimbursement" : "compliance",
           severity: ["critical", "high", "medium"].includes(a.severity) ? a.severity : "medium",
@@ -384,6 +393,20 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                     ))}
                   </CardContent>
                 </Card>
+
+                {selectedPlan.internal_notes?.length > 0 && (
+                  <Alert className="bg-slate-50 border-slate-300">
+                    <AlertTriangle className="w-4 h-4 text-slate-600" />
+                    <AlertDescription className="text-sm text-slate-700">
+                      <p className="font-semibold mb-1">Agency-side notes (not sent to the provider):</p>
+                      <ul className="space-y-0.5">
+                        {selectedPlan.internal_notes.map((note, i) => (
+                          <li key={i}>• {note}</li>
+                        ))}
+                      </ul>
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 {aiAssessment && (
                   <Alert className="bg-purple-50 border-purple-300">

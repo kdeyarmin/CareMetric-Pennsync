@@ -1230,17 +1230,21 @@ Actions available:
                           <Badge
                             variant="outline"
                             className={`text-xs mt-1 ${
-                              referral.diagnosis_coding.has_acceptable_primary
+                              referral.diagnosis_coding.has_pdgm_primary
                                 ? 'bg-indigo-50 text-indigo-700'
                                 : 'bg-amber-50 text-amber-700'
                             }`}
                           >
-                            {referral.diagnosis_coding.has_acceptable_primary
+                            {/* sequenced[0] is the chosen primary only when the
+                                sequencer picked one (has_pdgm_primary) */}
+                            {referral.diagnosis_coding.has_pdgm_primary
                               ? `PDGM: ${referral.diagnosis_coding.sequenced[0].code}${
                                   referral.diagnosis_coding.sequenced.length > 1
                                     ? ` +${referral.diagnosis_coding.sequenced.length - 1}`
                                     : ''
                                 }`
+                              : referral.diagnosis_coding.has_acceptable_primary
+                              ? 'PDGM primary unmapped'
                               : 'No PDGM primary'}
                           </Badge>
                         )}
@@ -1296,7 +1300,9 @@ Actions available:
                       </TableCell>
                       <TableCell>
                        <div className="flex flex-col gap-2 min-w-[120px]">
-                         {referral.extracted_data && (
+                         {/* Follow-Up review requires the FULL extraction; quick-scan
+                             uploads carry a partial extracted_data until processed */}
+                         {referral.extracted_data && referral.analysis_results && (
                            <Link to={`/ReferralFollowUp?id=${referral.id}`}>
                              <Button
                                size="sm"
