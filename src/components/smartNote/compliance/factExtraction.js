@@ -42,9 +42,13 @@ export function extractVitals(text) {
   const vitals = {};
   if (!text) return vitals;
 
-  // Anchor the systolic/diastolic groups with digit lookarounds so a typo like
-  // "1148/90" can't be silently read as 148/90 (dropping the leading digit).
-  const bpMatch = text.match(/bp\s*(?<!\d)(\d{2,3})\/(\d{2,3})(?!\d)/i) || text.match(/(?<!\d)(\d{2,3})\/(\d{2,3})(?!\d)/);
+  // Anchor the systolic/diastolic groups with digit boundaries so a typo like
+  // "1148/90" can't be silently read as 148/90 (dropping the leading digit). The
+  // leading boundary is expressed by CONSUMING an optional non-digit (or start of
+  // string) rather than a lookbehind — lookbehind throws a SyntaxError in Safari
+  // < 16.4 (see MEASUREMENT_PATTERNS below), which would fail this whole module at
+  // parse time. Group 1 = systolic, group 2 = diastolic in both patterns.
+  const bpMatch = text.match(/bp\s*(\d{2,3})\/(\d{2,3})(?!\d)/i) || text.match(/(?:^|\D)(\d{2,3})\/(\d{2,3})(?!\d)/);
   if (bpMatch) {
     const sys = parseInt(bpMatch[1]);
     const dia = parseInt(bpMatch[2]);

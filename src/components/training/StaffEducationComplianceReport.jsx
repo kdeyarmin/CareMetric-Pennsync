@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { formatEastern } from "../utils/timezone";
 import { exportToPDF } from "../utils/pdfExporter";
+import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from 'sonner';
 
 export default function StaffEducationComplianceReport() {
@@ -109,7 +110,10 @@ export default function StaffEducationComplianceReport() {
 
   const exportCSV = () => {
     const headers = ['Staff Member', 'Email', 'Completed', 'Total', 'Avg Score (%)', 'Overdue', 'Status'];
-    const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    // Use the shared escaper so user-controlled name/email cells beginning with
+    // = + - @ are neutralized against spreadsheet formula injection (RFC quoting
+    // alone does not prevent Excel/Sheets from evaluating them).
+    const escape = escapeCsvField;
     const rows = complianceData.staffMetrics.map((s) =>
       [s.name || '', s.email || '', s.completed, s.total, s.avgScore, s.overdue, statusLabel(s)].map(escape).join(',')
     );

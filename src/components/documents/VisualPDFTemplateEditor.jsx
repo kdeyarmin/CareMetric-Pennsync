@@ -275,6 +275,7 @@ export default function VisualPDFTemplateEditor({
         <TabsContent value="properties" className="space-y-4">
           {selectedElement ? (
             <ElementPropertiesPanel
+              key={selectedElement.id}
               element={selectedElement}
               allElements={templateElements}
               onUpdate={(updates) => handleUpdateElement(selectedElement.id, updates)}

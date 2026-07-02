@@ -119,11 +119,17 @@ Please review this incident in the Incident Reporting Dashboard.`
       
       return incident;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       setShowReportDialog(false);
       resetForm();
-      toast.success("Incident reported successfully. Clinical managers have been notified.");
+      // A manager alert only fires for high-severity incidents (see mutationFn), so
+      // only claim managers were notified when that actually happened.
+      toast.success(
+        variables?.severity === 'high'
+          ? "Incident reported successfully. Clinical managers have been notified."
+          : "Incident reported successfully."
+      );
     },
     onError: () => {
       toast.error("Failed to submit incident report");

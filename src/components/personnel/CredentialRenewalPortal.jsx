@@ -26,7 +26,7 @@ import { format, parseISO, differenceInDays, addMonths } from "date-fns";
 
 export default function CredentialRenewalPortal({ userId }) {
   const [selectedCredential, setSelectedCredential] = useState(null);
-  const [_showUploadDialog, setShowUploadDialog] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [renewalData, setRenewalData] = useState({
     uploaded_file_url: "",
     uploaded_file_name: "",
@@ -138,8 +138,15 @@ export default function CredentialRenewalPortal({ userId }) {
   const expiredCredentials = credentials.filter(cred => {
     // A pending_approval record is a renewal-in-flight (typically with a future
     // expiration), not a credential the user needs to re-renew — exclude it so it
-    // never surfaces as "Expired / Renew Now".
-    if (!cred.expiration_date || cred.status === 'pending_approval') return false;
+    // never surfaces as "Expired / Renew Now". A 'expired' record is one that was
+    // superseded by an approved renewal, and 'rejected' is a dead submission —
+    // neither should reappear as needing renewal (mirrors expiringCredentials).
+    if (
+      !cred.expiration_date ||
+      cred.status === 'pending_approval' ||
+      cred.status === 'expired' ||
+      cred.status === 'rejected'
+    ) return false;
     const expDate = parseISO(cred.expiration_date);
     return expDate < today;
   });
@@ -247,12 +254,31 @@ export default function CredentialRenewalPortal({ userId }) {
                           Expired {daysOverdue} days ago on {format(parseISO(cred.expiration_date), 'MMM d, yyyy')}
                         </p>
                       </div>
-                      <Dialog>
+                      <Dialog
+                        open={showUploadDialog && selectedCredential?.id === cred.id}
+                        onOpenChange={(open) => {
+                          setShowUploadDialog(open);
+                          if (!open) setSelectedCredential(null);
+                        }}
+                      >
                         <DialogTrigger asChild>
                           <Button
                             size="sm"
                             className="bg-red-600 hover:bg-red-700"
-                            onClick={() => setSelectedCredential(cred)}
+                            onClick={() => {
+                              setSelectedCredential(cred);
+                              setShowUploadDialog(true);
+                              // Reset shared renewalData so a file/dates left over
+                              // from a previously opened dialog can't be submitted
+                              // as this credential's renewal.
+                              setRenewalData({
+                                uploaded_file_url: "",
+                                uploaded_file_name: "",
+                                issued_date: format(new Date(), 'yyyy-MM-dd'),
+                                expiration_date: format(addMonths(new Date(), 12), 'yyyy-MM-dd'),
+                                credential_number: ""
+                              });
+                            }}
                           >
                             <Upload className="w-4 h-4 mr-2" />
                             Renew Now
@@ -318,7 +344,10 @@ export default function CredentialRenewalPortal({ userId }) {
                               <Button
                                 type="button"
                                 variant="outline"
-                                onClick={() => setShowUploadDialog(false)}
+                                onClick={() => {
+                                  setShowUploadDialog(false);
+                                  setSelectedCredential(null);
+                                }}
                               >
                                 Cancel
                               </Button>
@@ -359,13 +388,20 @@ export default function CredentialRenewalPortal({ userId }) {
                           Expires: {format(parseISO(cred.expiration_date), 'MMM d, yyyy')}
                         </p>
                       </div>
-                      <Dialog>
+                      <Dialog
+                        open={showUploadDialog && selectedCredential?.id === cred.id}
+                        onOpenChange={(open) => {
+                          setShowUploadDialog(open);
+                          if (!open) setSelectedCredential(null);
+                        }}
+                      >
                         <DialogTrigger asChild>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => {
                               setSelectedCredential(cred);
+                              setShowUploadDialog(true);
                               setRenewalData({
                                 uploaded_file_url: "",
                                 uploaded_file_name: "",
@@ -439,7 +475,10 @@ export default function CredentialRenewalPortal({ userId }) {
                               <Button
                                 type="button"
                                 variant="outline"
-                                onClick={() => setShowUploadDialog(false)}
+                                onClick={() => {
+                                  setShowUploadDialog(false);
+                                  setSelectedCredential(null);
+                                }}
                               >
                                 Cancel
                               </Button>

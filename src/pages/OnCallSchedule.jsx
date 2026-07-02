@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { startOfMonth, endOfMonth, format } from "date-fns";
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, format } from "date-fns";
 import { toast } from "sonner";
 import { ShieldCheck } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
@@ -28,8 +28,11 @@ export default function OnCallSchedule() {
   const { data: shifts = [] } = useQuery({
     queryKey: ["onCallShifts", monthKey],
     queryFn: () => {
-      const from = format(startOfMonth(cursor), "yyyy-MM-dd");
-      const to = format(endOfMonth(cursor), "yyyy-MM-dd");
+      // Match the calendar's rendered grid, which spills into the trailing days
+      // of the prior month and the leading days of the next — otherwise shifts on
+      // those visible spillover cells load as "Unassigned".
+      const from = format(startOfWeek(startOfMonth(cursor), { weekStartsOn: 0 }), "yyyy-MM-dd");
+      const to = format(endOfWeek(endOfMonth(cursor), { weekStartsOn: 0 }), "yyyy-MM-dd");
       return base44.entities.OnCallShift.filter({
         shift_date: { $gte: from, $lte: to },
       });
@@ -40,7 +43,7 @@ export default function OnCallSchedule() {
   // Staff list for the assign dropdown (admins only — User list is admin-scoped).
   const { data: staff = [] } = useQuery({
     queryKey: ["onCallStaff"],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list('-created_date', 5000),
     initialData: [],
     enabled: isAdmin,
   });

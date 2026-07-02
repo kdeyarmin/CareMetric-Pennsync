@@ -513,7 +513,7 @@ For each issue found, provide:
                     <div key={idx} className="border-2 border-blue-300 rounded-lg p-3 bg-blue-50">
                       <h4 className="font-semibold mb-2">{qm.quality_measure}</h4>
                       <div className="text-sm space-y-1 mb-2">
-                        <p><strong>Affected Items:</strong> {qm.affected_m_items.join(', ')}</p>
+                        <p><strong>Affected Items:</strong> {qm.affected_m_items?.join(', ')}</p>
                         <p><strong>Current Impact:</strong> {qm.current_score_impact}</p>
                         <p className="text-green-700"><strong>Improvement:</strong> {qm.improvement_opportunity}</p>
                       </div>
@@ -599,7 +599,7 @@ For each issue found, provide:
                       <div className="bg-white rounded p-2">
                         <p className="font-medium text-xs mb-1">Mitigation Steps:</p>
                         <ul className="list-disc list-inside text-xs space-y-1">
-                          {risk.mitigation_steps.map((step, sidx) => (
+                          {risk.mitigation_steps?.map((step, sidx) => (
                             <li key={sidx}>{step}</li>
                           ))}
                         </ul>

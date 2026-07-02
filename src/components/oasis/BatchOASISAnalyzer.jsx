@@ -27,7 +27,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { processOASISBatch } from "@/functions/processOASISBatch";
-import OASISComparisonView from "./OASISComparisonView";
+import EnhancedMultiReportComparison from "./EnhancedMultiReportComparison";
 
 export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }) {
   const [files, setFiles] = useState([]);
@@ -47,7 +47,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
   const [error, setError] = useState(null);
   const [showComparison, setShowComparison] = useState(false);
   const [groupBy, setGroupBy] = useState('none'); // none, patient, issue_type, score
-  const [processingStartTime, setProcessingStartTime] = useState(null);
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(null);
 
   const handleFileSelect = (e) => {
@@ -97,7 +96,9 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
     setError(null);
     setBatchResults(null);
     setOverallProgress(0);
-    setProcessingStartTime(Date.now());
+    // Local start time — a setState value wouldn't be visible in this closure,
+    // so the elapsed-time estimate below must read this local, not state.
+    const startTime = Date.now();
 
     const updatedFiles = [...files];
     const uploadedUrls = [];
@@ -124,7 +125,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
 
         // Estimate time remaining
         if (i > 0) {
-          const elapsed = Date.now() - processingStartTime;
+          const elapsed = Date.now() - startTime;
           const avgTimePerFile = elapsed / i;
           const remaining = (files.length - i) * avgTimePerFile;
           setEstimatedTimeRemaining(Math.round(remaining / 1000));
@@ -735,9 +736,15 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
 
         {/* Comparison View */}
         {showComparison && successCount >= 2 && (
-          <OASISComparisonView 
-            availableReports={files.filter(f => f.status === 'success')}
-            onClose={() => setShowComparison(false)}
+          <EnhancedMultiReportComparison
+            savedReports={files
+              .filter(f => f.status === 'success' && f.result)
+              .map(f => ({
+                ...f.result,
+                fileName: f.name,
+                pdgm_data: f.result?.pdgm_data,
+                timestamp: new Date().toISOString()
+              }))}
           />
         )}
 

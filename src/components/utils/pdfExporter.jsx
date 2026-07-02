@@ -154,7 +154,7 @@ export const exportToPDF = async (options = {}) => {
           // Calculate max height needed for this row
           let maxHeight = 0;
           const cellLines = row.map((cell, _i) => {
-            const cellText = String(cell || '');
+            const cellText = String(cell ?? '');
             const lines = doc.splitTextToSize(cellText, colWidth - 4);
             maxHeight = Math.max(maxHeight, lines.length);
             return lines;

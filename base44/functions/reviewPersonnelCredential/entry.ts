@@ -183,7 +183,17 @@ Deno.serve(async (req) => {
     let superseded = 0;
 
     if (action === 'approve') {
-      // A renewal replaces the previous approved copy of the same credential —
+      // Approve the new credential FIRST. If this write fails we bail out
+      // before touching anything else, so we never expire the employee's prior
+      // valid credential and leave them with no approved replacement.
+      await base44.asServiceRole.entities.PersonnelCredential.update(credential.id, {
+        status: 'approved',
+        approved_by: user.email,
+        approved_at: nowIso,
+        rejection_reason: null,
+      });
+
+      // Now supersede any previously approved copy of the same credential —
       // mark it expired so compliance reports don't count both.
       const oldCredentials = await base44.asServiceRole.entities.PersonnelCredential.filter({
         user_id: credential.user_id,
@@ -198,13 +208,6 @@ Deno.serve(async (req) => {
         }).catch(() => {});
         superseded++;
       }
-
-      await base44.asServiceRole.entities.PersonnelCredential.update(credential.id, {
-        status: 'approved',
-        approved_by: user.email,
-        approved_at: nowIso,
-        rejection_reason: null,
-      });
     } else {
       await base44.asServiceRole.entities.PersonnelCredential.update(credential.id, {
         status: 'rejected',

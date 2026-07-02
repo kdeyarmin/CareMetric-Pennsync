@@ -45,10 +45,16 @@ export function optionsForItem(itemKey) {
   return scaleOptions(OASIS_ITEM_MAX[String(itemKey).toLowerCase()]);
 }
 
-/** M1242 Pain frequency is a distinct 0–3 scale with its own labels. */
+/**
+ * M1242 Frequency of Pain is a distinct OASIS-E 0–4 scale with its own labels.
+ * Code 1 ("pain that does not interfere with activity or movement") is a real
+ * CMS level; omitting it (the prior 0–3 list did) shifted every subsequent
+ * response one code below its true value.
+ */
 export const PAIN_FREQUENCY_OPTIONS = [
-  { value: '0', label: '0 – No pain' },
-  { value: '1', label: '1 – Less than daily' },
-  { value: '2', label: '2 – Daily, not constantly' },
-  { value: '3', label: '3 – All the time' },
+  { value: '0', label: '0 – Patient has no pain' },
+  { value: '1', label: '1 – Pain does not interfere with activity or movement' },
+  { value: '2', label: '2 – Less often than daily' },
+  { value: '3', label: '3 – Daily, but not constantly' },
+  { value: '4', label: '4 – All of the time' },
 ];

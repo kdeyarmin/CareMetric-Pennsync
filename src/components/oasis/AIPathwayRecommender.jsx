@@ -199,10 +199,11 @@ Return JSON:
 
       setRecommendations(result);
       
-      // Auto-select high priority pathways
-      const highPriority = result.recommended_pathways
-        ?.filter(p => p.priority === 'critical' || p.priority === 'high')
-        ?.map((p, idx) => idx) || [];
+      // Auto-select high priority pathways (indices into the full
+      // recommended_pathways array, which is how selectedPathways is consumed)
+      const highPriority = (result.recommended_pathways || [])
+        .map((p, idx) => idx)
+        .filter((idx) => ['critical', 'high'].includes(result.recommended_pathways[idx].priority));
       setSelectedPathways(highPriority);
 
       // Log activity

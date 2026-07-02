@@ -49,7 +49,8 @@ Deno.serve(async (req) => {
 
     const today = new Date();
     let created = 0;
-    const notifications = [];
+    let failed = 0;
+    const failures = [];
 
     // Prefetch existing acks for this (policy, version) once and check membership
     // in memory — avoids an N+1 filter() per candidate that could time out on
@@ -61,26 +62,39 @@ Deno.serve(async (req) => {
     );
     const alreadyAssigned = new Set(existingAcks.map((a) => a.user_id));
 
+    // Wrap each ack create in try/catch and notify the user immediately after
+    // their ack succeeds (mirrors deletePatientsMissingFirstName). A single
+    // failed create (validation/transient) — or a timeout on a large cohort — no
+    // longer aborts the whole distribution with nobody notified and no audit
+    // trail: every successfully-assigned user is already notified, and the audit
+    // log below records the actual created/failed counts even on partial runs.
     for (const user of candidates) {
       if (alreadyAssigned.has(user.email)) continue;
 
-      await svc.PolicyAcknowledgment.create({
-        policy_id: policyId,
-        policy_title: policy.title,
-        policy_number: policy.policy_number || '',
-        policy_version: version,
-        doc_url: policy.doc_url || '',
-        user_id: user.email,
-        user_name: user.full_name,
-        distributed_by: me.email,
-        assigned_date: today.toISOString(),
-        due_date: dueDate || null,
-        status: 'assigned',
-        acknowledged: false,
-      });
+      try {
+        await svc.PolicyAcknowledgment.create({
+          policy_id: policyId,
+          policy_title: policy.title,
+          policy_number: policy.policy_number || '',
+          policy_version: version,
+          doc_url: policy.doc_url || '',
+          user_id: user.email,
+          user_name: user.full_name,
+          distributed_by: me.email,
+          assigned_date: today.toISOString(),
+          due_date: dueDate || null,
+          status: 'assigned',
+          acknowledged: false,
+        });
+      } catch (err) {
+        failed++;
+        failures.push({ user: user.email, error: err?.message });
+        console.error('PolicyAcknowledgment create failed for', user.email, err?.message);
+        continue;
+      }
       created++;
 
-      notifications.push({
+      await svc.Notification.create({
         user_email: user.email,
         title: 'Policy acknowledgment required',
         message: `Please review and acknowledge "${policy.title}" (v${version})${dueDate ? ` by ${new Date(dueDate).toLocaleDateString()}` : ''}.`,
@@ -89,7 +103,7 @@ Deno.serve(async (req) => {
         action_url: '/LearningCenter?tab=policies',
         action_label: 'Review policy',
         metadata: { policy_id: policyId, policy_version: version },
-      });
+      }).catch((err) => console.error('Notification failed:', err));
     }
 
     await svc.TrainingAuditLog.create({
@@ -98,17 +112,12 @@ Deno.serve(async (req) => {
       action: 'assignment_created',
       entity_type: 'PolicyLibrary',
       entity_id: policyId,
-      after_json: { policy_title: policy.title, policy_version: version, distributed: created, filters },
+      after_json: { policy_title: policy.title, policy_version: version, distributed: created, failed, filters },
       reason: 'policy_distributed',
       severity: 'info',
     }).catch((err) => console.error('Audit log failed:', err));
 
-    for (let i = 0; i < notifications.length; i += 50) {
-      const batch = notifications.slice(i, i + 50);
-      await Promise.all(batch.map((n) => svc.Notification.create(n).catch((err) => console.error('Notification failed:', err))));
-    }
-
-    return Response.json({ success: true, policy_version: version, distributed: created, candidates: candidates.length });
+    return Response.json({ success: true, policy_version: version, distributed: created, failed, failures, candidates: candidates.length });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toCsvRows } from "@/components/admin/csvExport";
+import { endOfDay, parseISO } from "date-fns";
 
 const COLORS = ['#3557b0', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#0d9488', '#06b6d4', '#84cc16'];
 
@@ -79,8 +80,10 @@ export default function PDGMTrendDashboard() {
       );
     }
     if (dateRange.end) {
-      filtered = filtered.filter(u => 
-        new Date(u.created_date) <= new Date(dateRange.end)
+      // endOfDay keeps the selected end date inclusive; new Date('yyyy-MM-dd')
+      // is midnight, which would drop everything recorded later that day.
+      filtered = filtered.filter(u =>
+        new Date(u.created_date) <= endOfDay(parseISO(dateRange.end))
       );
     }
 
@@ -142,7 +145,9 @@ export default function PDGMTrendDashboard() {
       const group = u.pdgm_data.clinical_group || 'Unknown';
       groupDist[group] = (groupDist[group] || 0) + 1;
     });
-    const groupDistData = Object.entries(groupDist).map(([name, value]) => ({ name, value }));
+    const groupDistData = Object.entries(groupDist)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
 
     // Functional level distribution
     const funcDist = {};
@@ -150,7 +155,9 @@ export default function PDGMTrendDashboard() {
       const level = u.pdgm_data.functional_level || 'Unknown';
       funcDist[level] = (funcDist[level] || 0) + 1;
     });
-    const funcDistData = Object.entries(funcDist).map(([name, value]) => ({ name, value }));
+    const funcDistData = Object.entries(funcDist)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
 
     // Top diagnoses
     const diagDist = {};

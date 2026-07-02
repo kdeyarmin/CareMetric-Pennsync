@@ -37,15 +37,27 @@ export default function PatientVerificationStep({
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [isConfirming, setIsConfirming] = useState(false);
 
-  const { data: allPatients = [] } = useQuery({
-    queryKey: ['all-patients'],
-    queryFn: () => base44.entities.Patient.list('-created_date', 500),
-    initialData: [],
-  });
-
   const extractedData = referral.extracted_data;
   const matchAnalysis = referral.match_analysis;
   const suggestions = referral.match_suggestions || [];
+
+  // Resolve the suggested (and best-match) patients directly by id rather than
+  // paging the newest 500 — otherwise a match against an older chart is silently
+  // dropped, steering staff to create a duplicate record.
+  const matchPatientIds = [
+    ...suggestions.map((s) => s.patient_id),
+    ...(matchAnalysis?.best_match_id ? [matchAnalysis.best_match_id] : []),
+  ].filter(Boolean);
+
+  const { data: allPatients = [] } = useQuery({
+    queryKey: ['verification-patients', matchPatientIds],
+    queryFn: () =>
+      matchPatientIds.length
+        ? base44.entities.Patient.filter({ id: { $in: matchPatientIds } })
+        : [],
+    enabled: matchPatientIds.length > 0,
+    initialData: [],
+  });
 
   // Get suggested patients
   const suggestedPatients = suggestions.map(sug => {

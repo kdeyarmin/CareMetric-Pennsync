@@ -26,6 +26,14 @@ export default function AIPatientAnalyzer({ patient, visits, incidents }) {
       // Prepare comprehensive patient data
       const recentVisits = (visits || []).slice(0, 10);
       const recentIncidents = (incidents || []).slice(0, 5);
+      // Actual count of visits within the last 30 days, so the prompt's
+      // "(Last 30 days)" label matches the number (not just the 10 most recent).
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const visitsLast30Days = (visits || []).filter(v => {
+        const d = new Date(v.visit_date);
+        return !Number.isNaN(d.getTime()) && d >= thirtyDaysAgo;
+      }).length;
 
       const prompt = `Analyze this home health patient's comprehensive medical record and provide clinical insights:
 
@@ -38,7 +46,7 @@ PATIENT PROFILE:
 - Allergies: ${patient.allergies || 'NKDA'}
 
 RECENT CLINICAL DATA:
-- Total Visits (Last 30 days): ${recentVisits.length}
+- Total Visits (Last 30 days): ${visitsLast30Days}
 - Recent Incidents: ${recentIncidents.length}
 ${recentIncidents.length > 0 ? `- Incident Types: ${recentIncidents.map(i => i.incident_type).join(', ')}` : ''}
 

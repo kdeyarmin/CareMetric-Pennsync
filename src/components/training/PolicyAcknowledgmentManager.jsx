@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileCheck2, Loader2, Download, ClipboardList } from "lucide-react";
 import AssignmentWizard from "@/components/training/AssignmentWizard";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
+import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from "sonner";
 
 export default function PolicyAcknowledgmentManager() {
@@ -84,7 +85,10 @@ export default function PolicyAcknowledgmentManager() {
       toast.error("No acknowledgments to export yet");
       return;
     }
-    const escape = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    // Use the shared escaper so user-controlled name/signed-name cells beginning
+    // with = + - @ are neutralized against spreadsheet formula injection (RFC
+    // quoting alone does not prevent Excel/Sheets from evaluating them).
+    const escape = escapeCsvField;
     const header = ["Staff", "Email", "Version", "Status", "Signed Name", "Acknowledged At", "Due Date"];
     const lines = stats.rows.map((r) =>
       [r.user_name || "", r.user_id || "", r.policy_version || "", r.acknowledged ? "Acknowledged" : (r.due_date && new Date(r.due_date) < new Date() ? "Overdue" : "Pending"), r.signed_name || "", r.acknowledged_at ? new Date(r.acknowledged_at).toISOString() : "", r.due_date || ""].map(escape).join(",")

@@ -221,8 +221,25 @@ Return detailed JSON analysis.`,
 
       setReviewResults(result);
 
+      // Guard against duplicating recommendations when the same visit is reviewed
+      // again (the "Run Review Again" button and autoReview both re-invoke this):
+      // if we've already recorded recommendations for this visit from this
+      // reviewer, don't insert a second set.
+      let alreadyRecorded = false;
+      if (visitId) {
+        try {
+          const existing = await base44.entities.TrainingRecommendation.filter({
+            visit_id: visitId,
+            source: 'automatic_document_review'
+          });
+          alreadyRecorded = existing?.length > 0;
+        } catch (error) {
+          console.error('Error checking existing training recommendations:', error);
+        }
+      }
+
       // If note is exemplary, flag it for training
-      if (result.is_exemplary && result.overall_score >= 90) {
+      if (result.is_exemplary && result.overall_score >= 90 && !alreadyRecorded) {
         try {
           // Could create a training module or flag for review
           await base44.entities.TrainingRecommendation.create({
@@ -246,7 +263,7 @@ Return detailed JSON analysis.`,
       }
 
       // Track issues for training recommendations
-      if (result.recommended_training?.length > 0) {
+      if (result.recommended_training?.length > 0 && !alreadyRecorded) {
         for (const training of result.recommended_training) {
           try {
             await base44.entities.TrainingRecommendation.create({

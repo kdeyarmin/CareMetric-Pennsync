@@ -173,7 +173,7 @@ export default function PDFTemplateManager() {
           <h2 className="text-2xl font-bold text-slate-900">PDF Template Library</h2>
           <p className="text-slate-600">Manage reusable PDF templates with custom field mappings</p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
+        <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" />
           New Template
         </Button>
@@ -279,7 +279,15 @@ export default function PDFTemplateManager() {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          // Reset edit state on any close (X / Escape / overlay), so a later
+          // "New Template" doesn't reopen in Edit mode and overwrite a template.
+          if (!open) resetForm();
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>

@@ -97,7 +97,7 @@ export default function UserManagement() {
 
   const { data: allUsers = [], isLoading } = useQuery({
     queryKey: ['allUsersManagement'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list('-created_date', 5000),
     enabled: isAdminView(currentUser),
   });
 
@@ -113,7 +113,7 @@ export default function UserManagement() {
     // "pending" invitation showing for someone who had just signed up.
     queryKey: ['userInvitations', allUsers.length],
     queryFn: async () => {
-      const allInvitations = await base44.entities.UserInvitation.list('-created_date');
+      const allInvitations = await base44.entities.UserInvitation.list('-created_date', 5000);
       // Filter out invitations where user has already signed up
       const userEmails = new Set(allUsers.map(u => (u.email || '').toLowerCase()).filter(Boolean));
       return allInvitations.filter(inv => !userEmails.has((inv.email || '').toLowerCase()));

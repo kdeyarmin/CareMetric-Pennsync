@@ -212,9 +212,12 @@ Deno.serve(async (req) => {
     }
   } catch (error) {
     console.error('User management error:', error);
-    return Response.json({ 
-      error: 'Internal server error', 
-      details: error.message 
+    // Return a generic message and keep the detail server-side only (matches
+    // validateSignerToken / resetUserPassword) — the top-level catch wraps the
+    // whole handler including pre-authorization failures, so leaking error.message
+    // here would aid reconnaissance.
+    return Response.json({
+      error: 'Internal server error'
     }, { status: 500 });
   }
 });

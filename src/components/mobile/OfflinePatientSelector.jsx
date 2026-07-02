@@ -118,10 +118,18 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
       let existingCache = [];
       try { existingCache = JSON.parse(localStorage.getItem('offline_patient_data') || '[]'); } catch {}
       const mergedCache = [...cachedData];
-      
-      // Remove duplicates, keep newest
+
+      // Carry forward previously cached patients, but PURGE stale PHI: drop any
+      // prior entry older than the retention window so plaintext PHI can't
+      // linger indefinitely on the device (the logout/idle purge —
+      // clearCachedPHI — handles the rest). Entries written just above are
+      // always fresh, so this only ages out old carry-overs.
+      const OFFLINE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+      const now = Date.now();
       existingCache.forEach(old => {
-        if (!mergedCache.find(c => c.patient.id === old.patient.id)) {
+        const cachedAtMs = old?.cachedAt ? new Date(old.cachedAt).getTime() : 0;
+        const isFresh = Number.isFinite(cachedAtMs) && (now - cachedAtMs) < OFFLINE_CACHE_TTL_MS;
+        if (isFresh && !mergedCache.find(c => c.patient.id === old.patient.id)) {
           mergedCache.push(old);
         }
       });

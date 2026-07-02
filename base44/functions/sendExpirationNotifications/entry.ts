@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
     // ones off the tail — exactly the records that needed a warning.
     const assignments = await base44.asServiceRole.entities.TrainingAssignment.filter({
       status: 'completed'
-    }, 'due_date', 500);
+    }, 'renewal_due_date', 500);
 
     const credentials = await base44.asServiceRole.entities.PersonnelCredential.filter({
       status: 'approved'

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +25,7 @@ import {
   Plus,
   History
 } from "lucide-react";
-import { format, differenceInDays, isValid } from "date-fns";
+import { format, differenceInDays, isValid, parseISO } from "date-fns";
 import PatientRiskStratification from "./PatientRiskStratification";
 
 export default function AIPatientHistorySummary({
@@ -40,6 +40,10 @@ export default function AIPatientHistorySummary({
   const ai = useAICall();
   const [isExpanded, setIsExpanded] = useState(true);
   const [copied, setCopied] = useState(false);
+  // Tracks the currently-displayed patient so an in-flight AI call that resolves
+  // after the user has switched patients can't write another patient's summary
+  // into this (persistent, not remounted) component — a wrong-patient PHI hazard.
+  const patientIdRef = useRef(patient?.id);
 
   const calculateAge = useCallback((dob) => {
     const today = new Date();
@@ -52,6 +56,7 @@ export default function AIPatientHistorySummary({
 
   const generateSummary = useCallback(async () => {
     if (!patient) return;
+    const requestedPatientId = patient.id;
 
     try {
       const completedVisits = visits.filter(v => v.status === 'completed');
@@ -180,13 +185,24 @@ Return JSON:
         }
       });
 
-      setSummary(result);
+      // Drop the result if the user has navigated to a different patient while
+      // this call was in flight — otherwise B's chart would show A's summary.
+      if (patientIdRef.current === requestedPatientId) {
+        setSummary(result);
+      }
     } catch (error) {
       console.error("Error generating patient history summary:", error);
       toast.error("The AI request didn't complete. Please try again.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [patient, visits, incidents, calculateAge]);
+
+  // On patient change, point the guard at the new patient and drop the previous
+  // patient's summary so a stale one can never render against the new chart.
+  useEffect(() => {
+    patientIdRef.current = patient?.id;
+    setSummary(null);
+  }, [patient?.id]);
 
   // Auto-generate on patient selection
   useEffect(() => {
@@ -339,7 +355,7 @@ Return JSON:
               </div>
               <div className="bg-white p-2 rounded-lg border text-center">
                 <FileText className="w-4 h-4 mx-auto mb-1 text-green-500" />
-                <p className="text-sm font-bold text-slate-900">{summary.stats?.last_visit_date && isValid(new Date(summary.stats.last_visit_date)) ? format(new Date(summary.stats.last_visit_date), 'MM/dd') : '—'}</p>
+                <p className="text-sm font-bold text-slate-900">{summary.stats?.last_visit_date && isValid(parseISO(summary.stats.last_visit_date)) ? format(parseISO(summary.stats.last_visit_date), 'MM/dd') : '—'}</p>
                 <p className="text-xs text-slate-500">Last Visit</p>
               </div>
             </div>

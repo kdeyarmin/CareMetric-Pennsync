@@ -321,13 +321,13 @@ export default function PatientQuickActions({ onActionComplete }) {
               onClick={() => {
                 const patient = patients.find(p => p.id === newDiagnosis.patient_id);
                 if (patient) {
-                  updatePatientDiagnosisMutation.mutate({
-                    id: patient.id,
-                    data: {
-                      primary_diagnosis: newDiagnosis.diagnosis,
-                      clinical_notes: newDiagnosis.notes
-                    }
-                  });
+                  // Only send clinical_notes when the user actually entered some;
+                  // sending '' would wipe the patient's existing chart notes.
+                  const data = { primary_diagnosis: newDiagnosis.diagnosis };
+                  if (newDiagnosis.notes?.trim()) {
+                    data.clinical_notes = newDiagnosis.notes;
+                  }
+                  updatePatientDiagnosisMutation.mutate({ id: patient.id, data });
                 }
               }}
               disabled={!newDiagnosis.patient_id || !newDiagnosis.diagnosis || updatePatientDiagnosisMutation.isPending}

@@ -8,6 +8,7 @@ import { AlertTriangle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toCsvRows } from "@/components/admin/csvExport";
+import { parseLocalDate } from "@/lib/dateLocal";
 
 const WINDOW_OPTIONS = [
   { value: "all", label: "All (including future)" },
@@ -34,25 +35,33 @@ export default function CredentialComplianceReport() {
 
   const complianceData = useMemo(() => {
     const now = new Date();
-    const thirtyDaysOut = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const sixtyDaysOut = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-    const ninetyDaysOut = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    // expiration_date is a date-only value; compare on LOCAL calendar days so a
+    // credential is valid THROUGH the end of its expiration_date instead of being
+    // flagged expired a day early for users behind UTC.
+    const dayMs = 24 * 60 * 60 * 1000;
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const thirtyDaysOut = new Date(startOfToday.getTime() + 30 * dayMs);
+    const sixtyDaysOut = new Date(startOfToday.getTime() + 60 * dayMs);
+    const ninetyDaysOut = new Date(startOfToday.getTime() + 90 * dayMs);
 
     const staffStatus = users.map(user => {
       const userCreds = credentials.filter(c => c.user_id === user.email);
-      
-      const expired = userCreds.filter(c => new Date(c.expiration_date) < now);
+
+      const expired = userCreds.filter(c => {
+        const exp = parseLocalDate(c.expiration_date);
+        return exp && exp < startOfToday;
+      });
       const expiring30 = userCreds.filter(c => {
-        const exp = new Date(c.expiration_date);
-        return exp >= now && exp <= thirtyDaysOut;
+        const exp = parseLocalDate(c.expiration_date);
+        return exp && exp >= startOfToday && exp <= thirtyDaysOut;
       });
       const expiring60 = userCreds.filter(c => {
-        const exp = new Date(c.expiration_date);
-        return exp > thirtyDaysOut && exp <= sixtyDaysOut;
+        const exp = parseLocalDate(c.expiration_date);
+        return exp && exp > thirtyDaysOut && exp <= sixtyDaysOut;
       });
       const expiring90 = userCreds.filter(c => {
-        const exp = new Date(c.expiration_date);
-        return exp > sixtyDaysOut && exp <= ninetyDaysOut;
+        const exp = parseLocalDate(c.expiration_date);
+        return exp && exp > sixtyDaysOut && exp <= ninetyDaysOut;
       });
 
       return {
@@ -83,15 +92,19 @@ export default function CredentialComplianceReport() {
   // can run "specific or all items" expiration reports.
   const reportItems = useMemo(() => {
     const now = new Date();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     return credentials
       .filter(c => c.expiration_date)
       .filter(c => itemType === "all" || c.item_type === itemType)
       .map(c => {
-        const exp = new Date(c.expiration_date);
-        const daysUntil = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+        // Local-day difference: 0 means expires today (still valid), negative is expired.
+        const exp = parseLocalDate(c.expiration_date);
+        const daysUntil = exp ? Math.round((exp - startOfToday) / dayMs) : NaN;
         return { ...c, daysUntil };
       })
       .filter(c => {
+        if (Number.isNaN(c.daysUntil)) return false;
         if (windowFilter === "all") return true;
         if (windowFilter === "expired") return c.daysUntil < 0;
         return c.daysUntil >= 0 && c.daysUntil <= Number(windowFilter);

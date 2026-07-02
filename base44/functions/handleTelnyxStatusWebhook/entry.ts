@@ -561,6 +561,13 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
 }
 
 // ============================ FAX ============================
+// Monotonic rank so a late/out-of-order or re-delivered fax webhook can't regress
+// a terminal state (e.g. a stale 'sending' from media.processed arriving after
+// 'delivered', which would re-open the fax and re-poll/re-send a delivered PHI
+// document). Mirrors the SMS_RANK/CALL_RANK guards. 'delivered' and 'failed' are
+// both terminal and share the top rank so neither can overwrite the other.
+const FAX_RANK = { queued: 1, sending: 2, sent: 3, delivered: 4, failed: 4 };
+
 async function handleFaxEvent(base44, payload) {
   const providerId = payload?.id;
   const mapped = mapFaxStatus(payload?.status);
@@ -570,9 +577,13 @@ async function handleFaxEvent(base44, payload) {
   const rows = await base44.asServiceRole.entities.FaxLog.filter({ telnyx_fax_id: providerId }).catch(() => []);
   if (!rows.length) return Response.json({ success: false, message: 'FaxLog not found' });
   const faxLog = rows[0];
-  // Idempotency: Telnyx re-delivers webhooks. If the status is unchanged, ack
-  // without re-running side effects (critically, without re-bumping retry_count).
-  if (mapped === faxLog.status) return Response.json({ success: true, status: mapped, deduped: true });
+  // Idempotency + forward-only: ignore an unchanged or out-of-order (lower-rank)
+  // transition. Telnyx re-delivers webhooks and can deliver them out of order, so
+  // this ack's without re-running side effects (critically, without re-bumping
+  // retry_count or re-scheduling a send for an already-terminal fax).
+  if ((FAX_RANK[mapped] || 0) <= (FAX_RANK[faxLog.status] || 0)) {
+    return Response.json({ success: true, status: faxLog.status, deduped: true });
+  }
 
   const update = {
     status: mapped,

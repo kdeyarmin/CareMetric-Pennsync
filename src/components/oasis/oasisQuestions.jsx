@@ -407,12 +407,15 @@ export const OASIS_SECTIONS = [
         label: "M1242 — Frequency of Pain",
         description: "What is the frequency of patient-reported pain?",
         type: "radio",
-        alert: { threshold: 2, message: "Frequent pain — pain management interventions required." },
+        // OASIS-E M1242 is a 0–4 scale; threshold 3 alerts on daily-or-constant
+        // pain (was 2 on the prior mislabeled 0–3 list, which omitted CMS code 1).
+        alert: { threshold: 3, message: "Frequent pain — pain management interventions required." },
         options: [
-          { value: 0, label: "0 — No pain" },
-          { value: 1, label: "1 — Pain less often than daily" },
-          { value: 2, label: "2 — Daily but not constantly" },
-          { value: 3, label: "3 — Constant pain" },
+          { value: 0, label: "0 — Patient has no pain" },
+          { value: 1, label: "1 — Pain does not interfere with activity or movement" },
+          { value: 2, label: "2 — Less often than daily" },
+          { value: 3, label: "3 — Daily, but not constantly" },
+          { value: 4, label: "4 — All of the time" },
         ],
       },
       {

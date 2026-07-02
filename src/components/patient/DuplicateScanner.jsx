@@ -47,6 +47,10 @@ const completenessScore = (p) => SURVIVOR_FIELDS.reduce((n, k) => n + (nonEmpty(
 // deduplicatePatients survivor rule so UI and server merges agree).
 const pickSurvivor = (patients) =>
   [...patients].sort((a, b) => {
+    // Never let an archived/merged record win as survivor — merging a live chart
+    // into an already-archived record would hide it from every roster.
+    const archived = (a.is_archived ? 1 : 0) - (b.is_archived ? 1 : 0);
+    if (archived !== 0) return archived;
     const active = (a.status === "active" ? 1 : 0) - (b.status === "active" ? 1 : 0);
     if (active !== 0) return -active;
     return completenessScore(b) - completenessScore(a);
@@ -170,15 +174,21 @@ export default function DuplicateScanner() {
         // Phase 1: Identify duplicate groups (no API calls). allPatients is
         // ordered by -created_date; grouping is order-independent — the survivor is
         // chosen by completeness in Phase 2, not by position in the list.
+        // Exclude already-archived/merged records from the scan. A previously
+        // merged duplicate keeps its MRN and would otherwise re-match (MRN=100) on
+        // every rescan — inflating "Records Merged", back-filling the survivor from
+        // stale data, and (via pickSurvivor) potentially being chosen as survivor,
+        // merging a live chart into an archived, roster-invisible record.
+        const scanRoster = allPatients.filter(p => !p.is_archived && p.status !== 'merged');
         const processedIds = new Set();
         const groups = [];
-        for (let i = 0; i < allPatients.length; i++) {
-          const primary = allPatients[i];
+        for (let i = 0; i < scanRoster.length; i++) {
+          const primary = scanRoster[i];
           if (processedIds.has(primary.id)) continue;
 
           const matched = [];
-          for (let j = i + 1; j < allPatients.length; j++) {
-            const candidate = allPatients[j];
+          for (let j = i + 1; j < scanRoster.length; j++) {
+            const candidate = scanRoster[j];
             if (processedIds.has(candidate.id)) continue;
             const { isMatch, score, reasons } = evaluateAdvancedMatch(primary, candidate, advancedOptions);
             if (isMatch) {

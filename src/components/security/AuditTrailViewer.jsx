@@ -39,6 +39,13 @@ import { formatEastern } from "../utils/timezone";
 import { toCsvRows } from "@/components/admin/csvExport";
 import { getSeverityBadge } from "@/components/security/auditSeverityBadge";
 
+// UserActivity has no top-level `severity` field — auditLogger stores it inside
+// the free-form `details` object (as `severity`), and anomaly SecurityLogs store
+// it as `details.anomaly_severity`. Read it from wherever it actually lives,
+// falling back to 'info' so filtering, counting and display stay consistent.
+const getLogSeverity = (log) =>
+  log?.severity ?? log?.details?.severity ?? log?.details?.anomaly_severity ?? 'info';
+
 export default function AuditTrailViewer({ filterType = "all" }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
@@ -87,7 +94,7 @@ export default function AuditTrailViewer({ filterType = "all" }) {
          user_email: log.user_email,
          user_name: log.user_email?.split('@')[0],
          details: log.details,
-         severity: 'critical'
+         severity: getLogSeverity(log)
        }))]
     : auditLogs;
 
@@ -109,7 +116,7 @@ export default function AuditTrailViewer({ filterType = "all" }) {
     const matchesAction = actionFilter === 'all' || log.action === actionFilter;
     const matchesEntity = entityFilter === 'all' || log.entity_type === entityFilter;
     const matchesUser = userFilter === 'all' || log.user_email === userFilter;
-    const matchesSeverity = severityFilter === 'all' || log.severity === severityFilter;
+    const matchesSeverity = severityFilter === 'all' || getLogSeverity(log) === severityFilter;
     
     const logDate = new Date(log.created_date || log.timestamp);
     const daysAgo = parseInt(dateFilter);
@@ -129,7 +136,7 @@ export default function AuditTrailViewer({ filterType = "all" }) {
         log.action || '',
         log.entity_type || '',
         log.entity_id || '',
-        log.severity || 'info',
+        getLogSeverity(log),
         log.ip_address || '',
         JSON.stringify(log.details || {})
       ])
@@ -176,7 +183,7 @@ export default function AuditTrailViewer({ filterType = "all" }) {
     );
   }
 
-  const criticalCount = sortedLogs.filter(l => l.severity === 'critical').length;
+  const criticalCount = sortedLogs.filter(l => getLogSeverity(l) === 'critical').length;
   const securityEventsCount = sortedLogs.filter(l => 
     securityActions.some(action => l.action?.toLowerCase().includes(action.toLowerCase()))
   ).length;
@@ -387,7 +394,7 @@ export default function AuditTrailViewer({ filterType = "all" }) {
                           )}
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
-                          {getSeverityBadge(log.severity)}
+                          {getSeverityBadge(getLogSeverity(log))}
                         </TableCell>
                         <TableCell className="text-xs hidden xl:table-cell">
                           {log.ip_address && (

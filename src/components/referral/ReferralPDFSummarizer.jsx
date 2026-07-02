@@ -80,6 +80,10 @@ export default function ReferralPDFSummarizer({
   const progressIntervalRef = useRef(null);
   // Remember the last document we processed so "Try again" can re-run without re-upload.
   const lastProcessedRef = useRef({ url: externalFileUrl, mime: "application/pdf" });
+  // Track the externalFileUrl we've already auto-processed so a persistent
+  // extraction failure can't re-fire the (billed, 120s) extraction in a loop —
+  // retries go through the explicit "Try Again" button instead.
+  const autoProcessedUrlRef = useRef(null);
 
   // Real per-section AI confidence (0-100) self-reported by the extraction model,
   // falling back to a neutral default for older data that predates the field.
@@ -266,9 +270,15 @@ export default function ReferralPDFSummarizer({
     }
   }, [onDataExtracted, onExtractionComplete, buildAdmissionPacket]);
 
-  // Auto-process if fileUrl is provided externally
+  // Auto-process if fileUrl is provided externally (at most once per URL).
   React.useEffect(() => {
-    if (externalFileUrl && !extractedData && !isProcessing) {
+    if (
+      externalFileUrl &&
+      !extractedData &&
+      !isProcessing &&
+      autoProcessedUrlRef.current !== externalFileUrl
+    ) {
+      autoProcessedUrlRef.current = externalFileUrl;
       setFileUrl(externalFileUrl);
       lastProcessedRef.current = { url: externalFileUrl, mime: "application/pdf" };
       processReferral(externalFileUrl);

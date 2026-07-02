@@ -32,8 +32,13 @@ export default function SignatureCanvas({ onSave, onCancel, signerName, isInitia
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
-    const x = e.clientX ? e.clientX - rect.left : e.touches[0].clientX - rect.left;
-    const y = e.clientY ? e.clientY - rect.top : e.touches[0].clientY - rect.top;
+    // Scale client coords to the canvas's intrinsic 500x200 resolution (it is
+    // displayed responsively, so rect.width !== canvas.width). Use !== undefined
+    // so a mouse event at clientX===0 (viewport left edge) isn't treated as touch.
+    const clientX = e.clientX !== undefined ? e.clientX : e.touches[0].clientX;
+    const clientY = e.clientY !== undefined ? e.clientY : e.touches[0].clientY;
+    const x = (clientX - rect.left) * (canvas.width / rect.width);
+    const y = (clientY - rect.top) * (canvas.height / rect.height);
 
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -49,8 +54,11 @@ export default function SignatureCanvas({ onSave, onCancel, signerName, isInitia
     const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext("2d");
 
-    const x = e.clientX ? e.clientX - rect.left : e.touches[0].clientX - rect.left;
-    const y = e.clientY ? e.clientY - rect.top : e.touches[0].clientY - rect.top;
+    // Scale client coords to the canvas's intrinsic resolution (see startDrawing).
+    const clientX = e.clientX !== undefined ? e.clientX : e.touches[0].clientX;
+    const clientY = e.clientY !== undefined ? e.clientY : e.touches[0].clientY;
+    const x = (clientX - rect.left) * (canvas.width / rect.width);
+    const y = (clientY - rect.top) * (canvas.height / rect.height);
 
     ctx.lineTo(x, y);
     ctx.stroke();

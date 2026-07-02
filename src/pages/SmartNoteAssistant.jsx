@@ -144,7 +144,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const isHospice = careScope === "hospice";
   const serviceLine = isHospice ? "hospice" : "home_health";
   const { data: patients = [] } = useQuery({
-    queryKey: ["patients"],
+    queryKey: ["patients", "active-200"],
     queryFn: async () => {
         try {
             return await base44.entities.Patient.filter({ status: "active" }, "first_name", 200);

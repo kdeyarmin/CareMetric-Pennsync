@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { todayEastern } from "@/components/utils/timezone";
 import { Video, Copy, Calendar, MessageSquare } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,7 +92,9 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
     setActiveSession({ ...session, participant_list: participants, started_at: new Date().toISOString() });
   };
 
-  const endSession = async () => {
+  // Memoized so the identity passed as VideoRoom's onDisconnect is stable across
+  // renders (participant-list updates re-render this component frequently).
+  const endSession = useCallback(async () => {
     // Guard against the End button + Telnyx "disconnected" event both firing.
     if (!activeSession || endingRef.current) return;
     endingRef.current = true;
@@ -104,7 +107,8 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
     });
     setActiveSession({ ...activeSession, ended_at: endedAt.toISOString(), duration_minutes: duration, participant_list: participantList });
     setShowDocumentation(true);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- updateMutation.mutateAsync is a stable reference; deps limited to values that affect behavior.
+  }, [activeSession, participantList]);
 
   const saveDocumentation = async (docData) => {
     if (!activeSession) return;
@@ -123,7 +127,10 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
 
     const visit = await createVisitMutation.mutateAsync({
       patient_id: patient.id,
-      visit_date: new Date().toISOString().slice(0, 10),
+      // Agency-local (Eastern) calendar date so it matches the local visit_time
+      // below; toISOString() would yield the UTC date and chart the visit a day
+      // ahead for late-evening ET visits.
+      visit_date: todayEastern(),
       visit_time: new Date().toTimeString().slice(0, 5),
       visit_type: visitTypes[activeSession.visit_type]?.visitType || "routine_visit",
       status: "completed",

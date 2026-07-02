@@ -44,7 +44,10 @@ export default function StructuredNoteDrafter({ onDraftReady }) {
 
   const setVital = (k, v) => setVitals(prev => ({ ...prev, [k]: v }));
 
-  const hasContent = symptoms.trim() || Object.values(vitals).some(v => v.trim());
+  // generate() assembles lines from ALL five text fields plus the vitals grid, so
+  // the gate must too — otherwise a teaching-only / intervention-only visit (only
+  // interventions/education/plan filled) leaves the button disabled and strands input.
+  const hasContent = [symptoms, interventions, education, plan].some(s => s.trim()) || Object.values(vitals).some(v => v.trim());
 
   // Deterministically assemble the nurse's structured input into a rough draft.
   // No LLM and no fabricated defaults for blank fields — the compliant narrative

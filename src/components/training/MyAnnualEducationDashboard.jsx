@@ -49,7 +49,7 @@ export default function MyAnnualEducationDashboard() {
     queryKey: ["annual-plan-enrollments", currentUser?.email],
     queryFn: async () => {
       const all = await base44.entities.PlanEnrollment.filter({ user_id: currentUser?.email }, '-enrolled_at', 100);
-      return all.filter((enrollment) => enrollment.plan_name?.includes(String(currentYear)) || enrollment.status);
+      return all.filter((enrollment) => enrollment.plan_name?.includes(String(currentYear)));
     },
     enabled: !!currentUser?.email,
     initialData: []

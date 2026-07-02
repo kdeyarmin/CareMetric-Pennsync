@@ -94,7 +94,7 @@ export default function OASISReview() {
   });
 
   const pendingReviews = reviewItems.filter(i => i.status === 'pending');
-  const needsApproval = reviewItems.filter(i => i.approvedCount > 0 && !isAdmin);
+  const needsApproval = reviewItems.filter(i => i.approvedCount > 0);
 
   return (
     <div className="space-y-4 sm:space-y-6">

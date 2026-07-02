@@ -67,7 +67,7 @@ export default function BulkDocumentPackageCreator() {
 
     try {
       setIsSubmitting(true);
-      await base44.asServiceRole.functions.invoke('bulkCreateDocumentPackages', {
+      await base44.functions.invoke('bulkCreateDocumentPackages', {
         patient_ids: selectedPatients,
         template_ids: selectedTemplates,
         due_date: dueDate,

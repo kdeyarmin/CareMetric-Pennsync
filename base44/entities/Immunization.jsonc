@@ -99,9 +99,6 @@
           "created_by": "{{user.email}}"
         },
         {
-          "patient_id": "{{user.email}}"
-        },
-        {
           "provider_email": "{{user.email}}"
         },
         {

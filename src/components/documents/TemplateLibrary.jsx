@@ -32,6 +32,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { openExternalUrl } from "@/components/utils/security";
 
 export default function TemplateLibrary() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -237,7 +238,7 @@ export default function TemplateLibrary() {
                         size="sm"
                         variant="outline"
                         className="flex-1"
-                        onClick={() => window.open(template.template_file_url, '_blank')}
+                        onClick={() => openExternalUrl(template.template_file_url)}
                       >
                         <FileText className="w-4 h-4" />
                       </Button>
@@ -311,7 +312,7 @@ export default function TemplateLibrary() {
                         size="sm"
                         variant="outline"
                         className="flex-1"
-                        onClick={() => window.open(doc.file_url, '_blank')}
+                        onClick={() => openExternalUrl(doc.file_url)}
                       >
                         <FileText className="w-4 h-4" />
                       </Button>

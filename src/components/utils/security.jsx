@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify';
+import { formatInTimeZone } from 'date-fns-tz';
 import { base44 } from '@/api/base44Client';
 import { logError } from './activityLogger';
 
@@ -269,12 +270,14 @@ async function detectAndAlertAnomalies(action, user, details) {
       });
     }
     
-    // Check for after-hours access (outside 6am-10pm ET)
-    const hour = new Date().getHours();
-    if (hour < 6 || hour > 22) {
+    // Check for after-hours access (outside 6am-10pm ET). Compute the hour in
+    // Eastern Time (not the browser's local zone) so the window is consistent
+    // regardless of the client machine's timezone.
+    const hour = Number(formatInTimeZone(new Date(), 'America/New_York', 'H'));
+    if (hour < 6 || hour >= 22) {
       anomalies.push({
         type: 'after_hours_access',
-        message: `After-hours system access at ${new Date().toLocaleTimeString()}`,
+        message: `After-hours system access at ${formatInTimeZone(new Date(), 'America/New_York', 'h:mm a')} ET`,
         severity: 'warning'
       });
     }

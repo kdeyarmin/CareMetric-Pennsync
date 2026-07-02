@@ -23,7 +23,8 @@ const isAdminLike = (u) => !!u && (
 
 // ── inlined outcome-measure engine (mirror of outcomeMeasureEngine.js) ────────
 const IMPROVEMENT_MEASURES = [
-  { key: 'ambulation', item: 'm1860', label: 'Improvement in Ambulation/Locomotion', startMax: 5, excludeStart: [0], excludeEither: [], metricField: 'ambulation_improved' },
+  // M1860 is a 0–6 scale (6 = bedfast); all levels are ratable, so startMax is 6 (mirror of outcomeMeasureEngine.js).
+  { key: 'ambulation', item: 'm1860', label: 'Improvement in Ambulation/Locomotion', startMax: 6, excludeStart: [0], excludeEither: [], metricField: 'ambulation_improved' },
   { key: 'bed_transfer', item: 'm1850', label: 'Improvement in Bed Transferring', startMax: 5, excludeStart: [0], excludeEither: [], metricField: 'transferring_improved' },
   { key: 'bathing', item: 'm1830', label: 'Improvement in Bathing', startMax: 6, excludeStart: [0], excludeEither: [6], metricField: 'bathing_improved' },
   { key: 'dyspnea', item: 'm1400', label: 'Improvement in Dyspnea', startMax: 4, excludeStart: [0], excludeEither: [], metricField: 'dyspnea_improved' },

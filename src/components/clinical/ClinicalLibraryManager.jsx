@@ -19,6 +19,7 @@ import FolderTreeView from "./FolderTreeView";
 import ClinicalLibraryIntro from "./ClinicalLibraryIntro";
 import ClinicalPhraseSeeder from "./ClinicalPhraseSeeder";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
+import { fetchAllClinicalTemplates } from "./fetchAllClinicalTemplates";
 
 export default function ClinicalLibraryManager() {
   const confirm = useConfirm();
@@ -51,7 +52,7 @@ export default function ClinicalLibraryManager() {
 
   const { data: templates = [] } = useQuery({
     queryKey: ['clinical-templates'],
-    queryFn: () => base44.entities.ClinicalLibraryTemplate.list('-usage_count', 200),
+    queryFn: fetchAllClinicalTemplates,
     initialData: []
   });
 
@@ -157,7 +158,12 @@ export default function ClinicalLibraryManager() {
     const payload = {
       ...formData,
       phrase: formData.phrase.toLowerCase().trim(),
-      created_by: currentUser?.email,
+      // Stamp created_by only on create. Reassigning it on update would hand
+      // ownership to whoever edited the template and, per the entity RLS
+      // (read = is_agency_wide OR created_by == user OR admin), revoke the
+      // original owner's access to their own phrase. On update the field is
+      // omitted so the stored owner is preserved.
+      ...(editingTemplate ? {} : { created_by: currentUser?.email }),
       // Normalize the optional patient binding. Use null (not undefined) so that
       // clearing a previously-bound phrase actually unsets the field on update —
       // JSON serialization drops undefined, which would leave the old binding.
@@ -214,14 +220,33 @@ export default function ClinicalLibraryManager() {
 
   const handleDeleteFolder = async (folderId) => {
     const templatesInFolder = templates.filter(t => t.folder_id === folderId);
-    if (templatesInFolder.length > 0) {
-      if (!(await confirm({ title: "Delete folder?", description: `This folder contains ${templatesInFolder.length} template(s). Delete anyway? Templates will be moved to uncategorized.`, confirmText: "Delete anyway", destructive: true }))) {
+    // Child folders must be reparented, otherwise they (and any templates filed
+    // in them) become permanently unreachable in the tree, which renders folders
+    // strictly by parent_folder_id chained from null.
+    const childFolders = folders.filter(f => f.parent_folder_id === folderId);
+    const parentId = folders.find(f => f.id === folderId)?.parent_folder_id ?? null;
+
+    if (templatesInFolder.length > 0 || childFolders.length > 0) {
+      const parts = [];
+      if (templatesInFolder.length > 0) parts.push(`${templatesInFolder.length} template(s)`);
+      if (childFolders.length > 0) parts.push(`${childFolders.length} subfolder(s)`);
+      if (!(await confirm({ title: "Delete folder?", description: `This folder contains ${parts.join(' and ')}. Delete anyway? Templates will be moved to uncategorized and subfolders moved up one level.`, confirmText: "Delete anyway", destructive: true }))) {
         return;
       }
-      // Move templates to uncategorized
-      templatesInFolder.forEach(t => {
-        updateMutation.mutate({ id: t.id, data: { folder_id: null } });
-      });
+      try {
+        // Relocate contents with direct calls (not updateMutation) so we don't
+        // fire a "Template updated" toast + resetForm() per record; invalidate
+        // the template cache once afterward.
+        await Promise.all([
+          ...templatesInFolder.map(t => base44.entities.ClinicalLibraryTemplate.update(t.id, { folder_id: null })),
+          ...childFolders.map(f => base44.entities.ClinicalLibraryFolder.update(f.id, { parent_folder_id: parentId })),
+        ]);
+        queryClient.invalidateQueries({ queryKey: ['clinical-templates'] });
+      } catch (err) {
+        console.error('Failed to relocate folder contents:', err);
+        toast.error('Could not move the folder contents. Folder not deleted.');
+        return;
+      }
       deleteFolderMutation.mutate(folderId);
       if (selectedFolderId === folderId) {
         setSelectedFolderId(null);
@@ -286,7 +311,9 @@ export default function ClinicalLibraryManager() {
   }, [userTemplates, selectedFolderId]);
 
   const templatesCount = useMemo(() => {
-    const counts = { uncategorized: userTemplates.filter(t => !t.folder_id).length };
+    // `all` backs the "All Templates" row (which lists every accessible template);
+    // `uncategorized` is only the folder-less subset.
+    const counts = { all: userTemplates.length, uncategorized: userTemplates.filter(t => !t.folder_id).length };
     userFolders.forEach(folder => {
       counts[folder.id] = userTemplates.filter(t => t.folder_id === folder.id).length;
     });

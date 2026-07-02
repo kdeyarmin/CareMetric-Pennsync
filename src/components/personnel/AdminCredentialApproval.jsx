@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
+import { isAdminLike } from "@/lib/superAdmin";
 
 // Guarded date formatter: format(parseISO(undefined)) throws a RangeError, which
 // would white-screen the whole approvals card if any credential has a null date.
@@ -60,12 +61,16 @@ export default function AdminCredentialApproval() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pendingCredentials'] });
-      queryClient.invalidateQueries({ queryKey: ['userCredentials'] });
       toast.success("Credential approved and employee notified");
     },
     onError: () => {
       toast.error("Failed to approve credential");
+    },
+    // Refresh regardless of outcome so a partial/mail failure never masks an
+    // already-written approval by leaving the item looking still-pending.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['pendingCredentials'] });
+      queryClient.invalidateQueries({ queryKey: ['userCredentials'] });
     }
   });
 
@@ -103,7 +108,12 @@ export default function AdminCredentialApproval() {
     });
   };
 
-  if (currentUser?.role !== 'admin') {
+  // Match the hosting page's Approvals-tab gate (isAgencyAdmin): any admin-like
+  // account, not only role === 'admin'. NOTE: the PersonnelCredential RLS read
+  // rule still only recognizes role 'admin', so agency_admin/super_admin accounts
+  // whose role is 'user' will see an empty list until the read is moved behind a
+  // backend function / the RLS policy is widened.
+  if (!isAdminLike(currentUser)) {
     return null;
   }
 

@@ -77,7 +77,22 @@ export default function AgencySettings() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    saveMutation.mutate(formData);
+    // Numeric fields are stored as raw strings while editing so that 0 and
+    // partial decimals (e.g. a sub-1.0 wage index typed as "0.85") are not
+    // clobbered per keystroke. Coerce and apply defaults only at save time.
+    const toNum = (v, def) => {
+      const n = parseFloat(v);
+      return Number.isNaN(n) ? def : n;
+    };
+    saveMutation.mutate({
+      ...formData,
+      wage_index: toNum(formData.wage_index, 1.0),
+      avg_staff_hourly_rate: toNum(formData.avg_staff_hourly_rate, 45),
+      training_cost_per_hour: toNum(formData.training_cost_per_hour, 35),
+      documentation_time_per_episode: toNum(formData.documentation_time_per_episode, 0.5),
+      audit_staff_hourly_rate: toNum(formData.audit_staff_hourly_rate, 50),
+      avg_episodes_per_year: toNum(formData.avg_episodes_per_year, 50),
+    });
   };
 
   if (isLoading) {
@@ -191,7 +206,7 @@ export default function AgencySettings() {
                   step="0.0001"
                   placeholder="1.0000"
                   value={formData.wage_index}
-                  onChange={(e) => handleChange('wage_index', parseFloat(e.target.value) || 1.0)}
+                  onChange={(e) => handleChange('wage_index', e.target.value)}
                 />
                 <p className="text-xs text-slate-500">
                   Find your wage index at{' '}
@@ -234,7 +249,7 @@ export default function AgencySettings() {
                     type="number"
                     step="0.01"
                     value={formData.avg_staff_hourly_rate}
-                    onChange={(e) => handleChange('avg_staff_hourly_rate', parseFloat(e.target.value) || 45)}
+                    onChange={(e) => handleChange('avg_staff_hourly_rate', e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -244,7 +259,7 @@ export default function AgencySettings() {
                     type="number"
                     step="0.01"
                     value={formData.training_cost_per_hour}
-                    onChange={(e) => handleChange('training_cost_per_hour', parseFloat(e.target.value) || 35)}
+                    onChange={(e) => handleChange('training_cost_per_hour', e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -254,7 +269,7 @@ export default function AgencySettings() {
                     type="number"
                     step="0.1"
                     value={formData.documentation_time_per_episode}
-                    onChange={(e) => handleChange('documentation_time_per_episode', parseFloat(e.target.value) || 0.5)}
+                    onChange={(e) => handleChange('documentation_time_per_episode', e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -264,7 +279,7 @@ export default function AgencySettings() {
                     type="number"
                     step="0.01"
                     value={formData.audit_staff_hourly_rate}
-                    onChange={(e) => handleChange('audit_staff_hourly_rate', parseFloat(e.target.value) || 50)}
+                    onChange={(e) => handleChange('audit_staff_hourly_rate', e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -273,7 +288,7 @@ export default function AgencySettings() {
                     id="avg_episodes_per_year"
                     type="number"
                     value={formData.avg_episodes_per_year}
-                    onChange={(e) => handleChange('avg_episodes_per_year', parseInt(e.target.value) || 50)}
+                    onChange={(e) => handleChange('avg_episodes_per_year', e.target.value)}
                   />
                 </div>
               </div>

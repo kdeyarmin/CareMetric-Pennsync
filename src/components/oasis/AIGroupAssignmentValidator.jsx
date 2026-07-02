@@ -196,6 +196,10 @@ PROVIDE:
       return await base44.entities.OASISAudit.create({
         oasis_upload_id: oasisData.id,
         patient_id: patientId,
+        // user_email and summary are schema-required; without them the create
+        // is rejected and the override is never persisted.
+        user_email: currentUser.email,
+        summary: `Group assignment override: clinical group ${pdgmData?.clinical_group ?? 'N/A'} -> ${overrideData.clinical_group ?? 'N/A'}, functional level ${pdgmData?.functional_level ?? 'N/A'} -> ${overrideData.functional_level ?? 'N/A'}.`,
         reviewed_by: currentUser.email,
         reviewed_at: new Date().toISOString(),
         // 'manual_flag' is the valid flag_reason enum member for a human override;

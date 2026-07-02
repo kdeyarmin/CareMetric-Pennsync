@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Brain, CheckCircle2, Clock, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { optionsForItem, PAIN_FREQUENCY_OPTIONS } from "@/components/oasis/oasisScales";
+import { todayEastern, formatEastern } from "@/components/utils/timezone";
 
 // Each OASIS-E item uses its OWN valid range (M1810/M1845 = 0–3, M1850 = 0–5,
 // M1830/M1860 = 0–6) — see oasisScales.js. A single flat list either truncated the
@@ -63,7 +64,10 @@ export default function OASISQuickUpdate({ patient }) {
       await base44.entities.OASISAssessment.create({
         patient_id: patient.id,
         visit_type: visitType,
-        assessment_date: new Date().toISOString().split("T")[0],
+        // Record the Eastern calendar day, not the UTC one — an evening ET save
+        // (after 8 PM EDT / 7 PM EST) would otherwise stamp tomorrow's date on a
+        // field that drives Medicare assessment-timing windows.
+        assessment_date: todayEastern(),
         oasis_items: oasisItems,
         clinical_summary: clinicalNote,
         status: "draft",
@@ -101,7 +105,7 @@ export default function OASISQuickUpdate({ patient }) {
               <div key={a.id} className="flex items-center justify-between text-sm rounded-lg border p-3 bg-slate-50">
                 <div>
                   <span className="font-medium text-slate-800">
-                    {new Date(a.assessment_date || a.created_date).toLocaleDateString()}
+                    {formatEastern(a.assessment_date || a.created_date, 'M/d/yyyy')}
                   </span>
                   <span className="text-slate-500 ml-2">by {a.completed_by || a.created_by || "clinician"}</span>
                   {a.clinical_summary && <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{a.clinical_summary}</p>}

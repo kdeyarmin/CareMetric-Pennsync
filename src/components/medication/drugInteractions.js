@@ -30,7 +30,14 @@ const GROUPS = {
   nitrate: ["nitroglycerin", "isosorbide", "nitrate"],
   pde5: ["sildenafil", "tadalafil", "vardenafil", "avanafil"],
   ace_arb: ["lisinopril", "enalapril", "ramipril", "benazepril", "captopril", "quinapril", "losartan", "valsartan", "olmesartan", "candesartan", "irbesartan", "telmisartan"],
-  potassium_sparing: ["spironolactone", "eplerenone", "triamterene", "amiloride", "potassium chloride", "potassium", "klor con"],
+  // Potassium supplements + potassium-sparing diuretics (hyperkalemia risk with
+  // ACE/ARB). A BARE "potassium" token is matched only as the LEADING token
+  // ("^potassium"): genuine supplements are named "Potassium <salt/strength>"
+  // ("Potassium Citrate", "Potassium 20 mEq", "Potassium ER"), whereas salt-form
+  // drugs carry it as a trailing counterion ("Losartan Potassium", "Diclofenac
+  // Potassium", "Penicillin V Potassium") and must NOT fire this rule. Brand-name
+  // supplements that don't contain the word are listed as phrases.
+  potassium_sparing: ["spironolactone", "eplerenone", "triamterene", "amiloride", "^potassium", "klor con", "k dur", "micro k", "effer k", "k tab"],
   statin_cyp3a4: ["simvastatin", "lovastatin", "atorvastatin"],
   strong_cyp3a4_inhibitor: ["clarithromycin", "erythromycin", "itraconazole", "ketoconazole", "ritonavir", "cobicistat"],
   digoxin: ["digoxin", "lanoxin"],
@@ -88,6 +95,12 @@ function groupsFor(name) {
   const tokens = n.split(/[^a-z0-9]+/).filter(Boolean);
   const tokenSet = new Set(tokens);
   const matchesFragment = (f) => {
+    if (f.startsWith("^")) {
+      // Positional: match only when this word is the LEADING token of the name.
+      // Distinguishes a supplement ("Potassium Citrate") from a salt-form drug
+      // whose counterion is a trailing token ("Losartan Potassium").
+      return tokens[0] === f.slice(1);
+    }
     if (f.includes(" ")) {
       // Multi-word phrase: require all its words to appear as consecutive tokens.
       const words = f.split(/\s+/).filter(Boolean);

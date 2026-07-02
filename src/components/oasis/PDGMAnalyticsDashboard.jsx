@@ -32,7 +32,7 @@ import {
   CheckCircle2,
   Loader2
 } from "lucide-react";
-import { format, subMonths, isWithinInterval, parseISO } from "date-fns";
+import { format, subMonths, isWithinInterval, parseISO, endOfDay } from "date-fns";
 
 const COLORS = ['#10b981', '#3557b0', '#f59e0b', '#ef4444', '#8b5cf6'];
 
@@ -63,7 +63,9 @@ export default function PDGMAnalyticsDashboard() {
         const itemDate = parseISO(item.created_date);
         return isWithinInterval(itemDate, {
           start: parseISO(dateRange.startDate),
-          end: parseISO(dateRange.endDate)
+          // endOfDay keeps the selected end date inclusive; parseISO alone is
+          // midnight, which would drop everything recorded later that day.
+          end: endOfDay(parseISO(dateRange.endDate))
         });
       } catch {
         return false;
@@ -133,7 +135,9 @@ export default function PDGMAnalyticsDashboard() {
         const itemDate = parseISO(item.created_date);
         return isWithinInterval(itemDate, {
           start: parseISO(dateRange.startDate),
-          end: parseISO(dateRange.endDate)
+          // endOfDay keeps the selected end date inclusive; parseISO alone is
+          // midnight, which would drop everything recorded later that day.
+          end: endOfDay(parseISO(dateRange.endDate))
         });
       } catch {
         return false;

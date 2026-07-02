@@ -141,7 +141,7 @@ export default function Messages() {
     );
     const latestMessage = sortedMessages[0];
     const unreadCount = threadMessages.filter(m =>
-      !m.read_by?.includes(currentUser?.email)
+      m.sender_email !== currentUser?.email && !m.read_by?.includes(currentUser?.email)
     ).length;
 
     return {
@@ -207,6 +207,9 @@ export default function Messages() {
       ...newMessage,
       sender_name: currentUser?.full_name,
       sender_email: currentUser?.email,
+      // The author has implicitly "read" their own message, so seed read_by to
+      // keep it out of their own unread count.
+      read_by: currentUser?.email ? [currentUser.email] : [],
       thread_id: null
     });
   };
@@ -235,6 +238,7 @@ export default function Messages() {
       message_text: replyText.trim(),
       sender_name: currentUser?.full_name,
       sender_email: me,
+      read_by: me ? [me] : [],
       recipients,
       // A reply inherits the thread's priority, but the nurse can escalate this
       // specific reply to urgent (e.g. a status change the recipient must see).
@@ -246,7 +250,13 @@ export default function Messages() {
     // onSuccess so a failed send preserves the nurse's typed reply for retry.
   };
 
-  const unreadCount = threads.filter(t => t.unreadCount > 0).length;
+  // Total unread across the user's own threads (participant-scoped), independent
+  // of the active priority/read/search view filters — otherwise selecting the
+  // "Read" filter (or a search) would zero out the global header badge even
+  // though unread messages still exist.
+  const unreadCount = threads.filter(
+    t => (t.isRecipient || t.isMyMessage) && t.unreadCount > 0
+  ).length;
 
   return (
     <PageContainer>

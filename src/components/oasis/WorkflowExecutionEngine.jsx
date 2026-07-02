@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Zap, CheckCircle2, XCircle, AlertTriangle, Play, Info } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { format, addDays } from "date-fns";
 import { deriveActionTypes, evaluateRuleTrigger } from "@/components/oasis/workflowEngineUtils";
 
 const ACTION_LABELS = {
@@ -47,7 +48,9 @@ export default function WorkflowExecutionEngine({
   const [currentRunId, setCurrentRunId] = useState("");
   const queryClient = useQueryClient();
 
-  // Generate deterministic idempotency key from all relevant fields
+  // Generate deterministic idempotency key. Keyed on the upload/patient rather
+  // than the full analysis JSON so a re-run of the LLM analysis for the same
+  // upload maps to the same key instead of minting a fresh one.
   const generateIdempotencyKey = useCallback(() => {
     if (!analysisResults && !pdgmData) return null;
 
@@ -55,20 +58,14 @@ export default function WorkflowExecutionEngine({
     if (oasisUploadId) parts.push(`upload:${oasisUploadId}`);
     if (patientId) parts.push(`patient:${patientId}`);
 
-    // Include stable hash of analysisResults (treating 0 as distinct)
-    if (analysisResults) {
-      const analysisHash = JSON.stringify({
+    // Without an upload/patient anchor, fall back to a compact analysis
+    // fingerprint so ad-hoc analyses still get a key.
+    if (parts.length === 0 && analysisResults) {
+      parts.push(`analysis:${JSON.stringify({
         overall_score: analysisResults.overall_score ?? null,
         accuracy_score: analysisResults.accuracy_score ?? null,
-        // Include other relevant fields that affect execution
-        key_fields: analysisResults
-      });
-      parts.push(`analysis:${analysisHash}`);
-    }
-
-    // Include pdgmData
-    if (pdgmData) {
-      parts.push(`pdgm:${JSON.stringify(pdgmData)}`);
+        compliance_score: analysisResults.compliance_score ?? null
+      })}`);
     }
 
     return parts.join('|');
@@ -122,7 +119,9 @@ export default function WorkflowExecutionEngine({
             type: config.task_type || "other",
             priority: config.task_priority || "medium",
             due_date: config.due_in_days
-              ? new Date(Date.now() + config.due_in_days * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+              // Local calendar date: toISOString() would give the UTC date,
+              // which is already "tomorrow" for evening users in US timezones.
+              ? format(addDays(new Date(), config.due_in_days), "yyyy-MM-dd")
               : null,
             source: "ai_generated",
             ai_reason: triggerContext.reason || "Automation rule triggered"
@@ -252,7 +251,9 @@ export default function WorkflowExecutionEngine({
     const idempotencyKey = generateIdempotencyKey();
     if (!idempotencyKey) return;
 
-    // Check if this execution has already been performed (using queryClient cache as persistent storage)
+    // Fast path: skip if this session already ran this key. The query cache is
+    // in-memory only, so the persisted OASISWorkflowExecution records below are
+    // the real cross-reload dedupe.
     const executedWorkflows = queryClient.getQueryData(['executedWorkflows']) || {};
     if (executedWorkflows[idempotencyKey]) {
       return;
@@ -268,13 +269,30 @@ export default function WorkflowExecutionEngine({
     const results = [];
 
     try {
+      // Server-side dedupe: skip rules that already have a persisted execution
+      // for this upload, so reloads/re-analyses don't create duplicate
+      // Tasks/PatientAlerts/executions.
+      let executedRuleIds = new Set();
+      if (oasisUploadId) {
+        try {
+          const previousExecutions = await base44.entities.OASISWorkflowExecution.filter({
+            oasis_upload_id: oasisUploadId
+          });
+          executedRuleIds = new Set(
+            previousExecutions.map((execution) => execution.automation_rule_id).filter(Boolean)
+          );
+        } catch (error) {
+          console.error("Failed to load previous workflow executions:", error);
+        }
+      }
+
       const totalRules = automationRules.length;
       let processedRules = 0;
 
       for (const rule of automationRules) {
         const triggerResult = evaluateRule(rule, analysisResults, pdgmData);
 
-        if (triggerResult.triggered) {
+        if (triggerResult.triggered && !executedRuleIds.has(rule.id)) {
           const workflowResult = {
             rule_id: rule.id,
             rule_name: rule.rule_name,
@@ -351,7 +369,8 @@ export default function WorkflowExecutionEngine({
       });
       setProgress(100);
 
-      // Store idempotency key to prevent duplicate executions
+      // Remember this run in-session; cross-reload dedupe relies on the
+      // persisted OASISWorkflowExecution records checked above.
       const updatedExecutedWorkflows = { ...executedWorkflows, [idempotencyKey]: true };
       queryClient.setQueryData(['executedWorkflows'], updatedExecutedWorkflows);
     } catch (error) {

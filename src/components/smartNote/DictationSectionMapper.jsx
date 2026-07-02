@@ -77,10 +77,11 @@ Rules:
 
       setMapping(result);
       setEditedSections({});
-      
-      if (onSectionsMapped) {
-        onSectionsMapped(result);
-      }
+      // NOTE: we deliberately do NOT emit onSectionsMapped here. Emitting the raw
+      // mapping the instant it returns inserted the note before the nurse could
+      // review/correct the per-section textareas, so any later edit was silently
+      // dropped. The nurse now inserts explicitly via "Insert into Note", which
+      // carries the edited content.
     } catch (err) {
       console.error("Section mapping error:", err);
       toast.error("Failed to map sections. Please try again.");
@@ -96,6 +97,18 @@ Rules:
 
   const getSectionContent = (section) => {
     return editedSections[section] !== undefined ? editedSections[section] : (mapping?.[section] || "");
+  };
+
+  // Emit the CURRENT (edited) per-section content so the nurse's corrections reach
+  // the note instead of the raw AI mapping. Called only on explicit user action.
+  const insertIntoNote = () => {
+    if (!onSectionsMapped || !mapping) return;
+    const keys = [...Object.keys(SECTION_LABELS), "unmapped"];
+    const merged = {};
+    for (const key of keys) merged[key] = getSectionContent(key);
+    if (!Object.values(merged).some((v) => v?.trim())) return;
+    onSectionsMapped(merged);
+    toast.success("Sections inserted into the note.");
   };
 
   const getSectionDisplay = (section) => {
@@ -200,6 +213,16 @@ Rules:
                 </div>
               )}
             </div>
+          )}
+
+          {onSectionsMapped && (
+            <Button
+              onClick={insertIntoNote}
+              size="sm"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-xs h-9 gap-2"
+            >
+              Insert into Note
+            </Button>
           )}
 
           <Button

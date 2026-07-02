@@ -237,7 +237,7 @@ Return JSON:
             {/* Summary Alert */}
             <Alert className={`${getPriorityColor(suggestions.priority_level).bg} border-2 ${getPriorityColor(suggestions.priority_level).border}`}>
               <Sparkles className="w-4 h-4 text-navy-600" />
-              <AlertDescription className={suggestions.priority_level.text}>
+              <AlertDescription className={getPriorityColor(suggestions.priority_level).text}>
                 <p className="font-semibold mb-1">{suggestions.summary}</p>
                 <p className="text-sm">{suggestions.overall_recommendation}</p>
               </AlertDescription>

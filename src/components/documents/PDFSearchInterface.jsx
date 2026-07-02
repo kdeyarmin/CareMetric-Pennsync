@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { escapeHtml } from "@/lib/escapeHtml";
+import { openExternalUrl } from "@/components/utils/security";
 
 export default function PDFSearchInterface() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,7 +36,9 @@ export default function PDFSearchInterface() {
   const { data: indexedCount = 0 } = useQuery({
     queryKey: ['pdf-index-count'],
     queryFn: async () => {
-      const docs = await base44.entities.PDFIndex.list('-created_date', 1);
+      // Second arg is the SDK `limit`; use a realistic cap so the badge reflects
+      // the true indexed count instead of being capped at 1.
+      const docs = await base44.entities.PDFIndex.list('-created_date', 1000);
       return docs.length;
     }
   });
@@ -243,7 +246,7 @@ export default function PDFSearchInterface() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => window.open(result.pdf_url, '_blank')}
+                        onClick={() => openExternalUrl(result.pdf_url)}
                       >
                         <Eye className="w-4 h-4 mr-1" />
                         View

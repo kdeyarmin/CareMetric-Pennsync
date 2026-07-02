@@ -61,11 +61,16 @@ export default function KPIDashboard({ dateRange }) {
     initialData: [],
   });
 
-  // Filter by date range
+  // Filter by date range. Parse BOTH bounds on the same (local) clock: a
+  // date-only string parses as UTC midnight while a date-time string parses as
+  // local, so an asymmetric pair shifted the start boundary into the prior
+  // evening for any negative-UTC-offset zone and miscounted boundary records.
+  const rangeStart = new Date(dateRange.start + 'T00:00:00');
+  const rangeEnd = new Date(dateRange.end + 'T23:59:59.999');
   const filterByDate = (items, dateField) => {
     return items.filter(item => {
       const itemDate = new Date(item[dateField]);
-      return itemDate >= new Date(dateRange.start) && itemDate <= new Date(dateRange.end + 'T23:59:59.999');
+      return itemDate >= rangeStart && itemDate <= rangeEnd;
     });
   };
 
@@ -91,11 +96,11 @@ export default function KPIDashboard({ dateRange }) {
   // Calculate trends by comparing each metric against the immediately-preceding
   // period of equal length. Returns null when there's no baseline to compare to, so
   // the card can omit the trend badge rather than show a fabricated number.
-  const periodMs = new Date(dateRange.end + 'T23:59:59.999') - new Date(dateRange.start);
-  const previousStart = new Date(new Date(dateRange.start).getTime() - periodMs);
+  const periodMs = rangeEnd - rangeStart;
+  const previousStart = new Date(rangeStart.getTime() - periodMs);
   const inPreviousPeriod = (items, dateField) => items.filter(item => {
     const date = new Date(item[dateField]);
-    return date >= previousStart && date < new Date(dateRange.start);
+    return date >= previousStart && date < rangeStart;
   });
   const pctTrend = (current, previous) => {
     if (!(previous > 0)) return null;

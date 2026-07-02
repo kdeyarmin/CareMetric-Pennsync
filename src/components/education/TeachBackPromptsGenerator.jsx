@@ -209,14 +209,22 @@ Return JSON:
       timestamp: new Date().toISOString()
     };
 
-    const updatedResponses = [...responses, newResponse];
+    // Upsert by promptId so re-recording a question (e.g. after using Previous)
+    // replaces its entry instead of appending a duplicate, which would corrupt
+    // the count, the Good/Fair/Poor tallies, and the copied documentation.
+    const existingIdx = responses.findIndex((r) => r.promptId === newResponse.promptId);
+    const updatedResponses = existingIdx >= 0
+      ? responses.map((r, i) => (i === existingIdx ? newResponse : r))
+      : [...responses, newResponse];
     setResponses(updatedResponses);
 
     // Move to next or complete
     if (currentPromptIdx < prompts.prompts.length - 1) {
+      const nextPromptId = prompts.prompts[currentPromptIdx + 1]?.prompt_id;
+      const storedNext = updatedResponses.find((r) => r.promptId === nextPromptId);
       setCurrentPromptIdx(currentPromptIdx + 1);
-      setCurrentResponse("");
-      setCurrentLevel("");
+      setCurrentResponse(storedNext?.patientResponse || "");
+      setCurrentLevel(storedNext?.understandingLevel || "");
       setShowFollowUp(false);
       setFollowUpPrompt(null);
     } else {
@@ -489,9 +497,11 @@ Nurse Signature: _______________________`;
                 <Button
                   variant="outline"
                   onClick={() => {
+                    const prevPromptId = prompts.prompts[currentPromptIdx - 1]?.prompt_id;
+                    const storedPrev = responses.find((r) => r.promptId === prevPromptId);
                     setCurrentPromptIdx(currentPromptIdx - 1);
-                    setCurrentResponse("");
-                    setCurrentLevel("");
+                    setCurrentResponse(storedPrev?.patientResponse || "");
+                    setCurrentLevel(storedPrev?.understandingLevel || "");
                     setShowFollowUp(false);
                     setFollowUpPrompt(null);
                   }}

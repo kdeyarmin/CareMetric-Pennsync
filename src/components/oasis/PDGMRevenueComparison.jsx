@@ -26,7 +26,7 @@ import {
   GitCompare
 } from "lucide-react";
 import { calculatePDGM } from "@/functions/calculatePDGM";
-import { generatePDGMComparisonPDF } from "@/functions/generatePDGMComparisonPDF";
+import { base44 } from "@/api/base44Client";
 import { Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import PDGMWhatIfBuilder from "./PDGMWhatIfBuilder";
 import TopOptimizationOpportunities from "./TopOptimizationOpportunities";
@@ -667,13 +667,19 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
 
     setIsDownloading(true);
     try {
-      const response = await generatePDGMComparisonPDF({
-        revenueData,
-        analysisResults,
-        pdgmData
+      // Fetch the PDF as binary. The axios-based functions.invoke wrapper uses
+      // responseType 'json' and decodes the PDF bytes as UTF-8 text, which
+      // corrupts the binary (replacement characters shift xref offsets).
+      const response = await base44.functions.fetch('generatePDGMComparisonPDF', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ revenueData, analysisResults, pdgmData })
       });
+      if (!response.ok) {
+        throw new Error(`PDF generation failed (${response.status})`);
+      }
 
-      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const blob = new Blob([await response.arrayBuffer()], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

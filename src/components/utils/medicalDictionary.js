@@ -55,7 +55,6 @@ export const MEDICAL_TERMS = {
   common_mishears: {
     "metforman": "Metformin",
     "lesinopril": "Lisinopril",
-    "statin": "atorvastatin",
     "amlodipin": "Amlodipine",
     "omeprozole": "Omeprazole",
     "levothyroxen": "Levothyroxine",
@@ -70,7 +69,7 @@ export const MEDICAL_TERMS = {
     "insulin": "Insulin",
     "coumadin": "Warfarin",
     "plavix": "Clopidogrel",
-    "prilosec": "Pantoprazole",
+    "prilosec": "Omeprazole",
     "zantac": "Ranitidine",
     "neurontin": "Gabapentin",
     "tramadol": "Tramadol",

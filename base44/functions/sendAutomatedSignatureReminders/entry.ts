@@ -134,10 +134,15 @@ Deno.serve(async (req) => {
 
     console.log('Starting automated signature reminders...');
 
-    // Get all pending signatures
-    const pendingSignatures = await base44.asServiceRole.entities.DocumentSignature.filter({ 
-      status: 'pending' 
-    });
+    // Get all pending signatures, OLDEST first with an explicit cap. Without a
+    // sort/limit the SDK returns only its default first page, so in an agency with
+    // more pending signatures than that page every run reprocesses the same page
+    // and the rest never get reminded. Sort ASCENDING on created_date so the
+    // oldest/most-overdue are within the cap, matching the sibling reminder crons
+    // (sendRenewalReminders / sendCredentialRenewalReminders).
+    const pendingSignatures = await base44.asServiceRole.entities.DocumentSignature.filter({
+      status: 'pending'
+    }, 'created_date', 5000);
 
     console.log(`Found ${pendingSignatures.length} pending signatures`);
 

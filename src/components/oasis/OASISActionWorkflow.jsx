@@ -77,6 +77,12 @@ export default function OASISActionWorkflow({
     queryFn: () => base44.entities.User.list()
   });
 
+  // Current user, for the reviewed_by audit trail
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me()
+  });
+
   // Create action mutation
   const createActionMutation = useMutation({
     mutationFn: (actionData) => base44.entities.OASISActionItem.create(actionData),
@@ -279,11 +285,15 @@ export default function OASISActionWorkflow({
   };
 
   const handleReview = (action, decision) => {
+    if (!currentUser?.email) {
+      toast.error("Couldn't identify the current user. Please try again.");
+      return;
+    }
     updateActionMutation.mutate({
       id: action.id,
       data: {
         status: decision,
-        reviewed_by: 'current_user', // Would use actual user email
+        reviewed_by: currentUser.email,
         reviewed_at: new Date().toISOString(),
         review_notes: reviewNotes,
         assigned_to: assignTo || action.assigned_to

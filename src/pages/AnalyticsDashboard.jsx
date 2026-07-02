@@ -61,7 +61,7 @@ export default function AnalyticsDashboard() {
   // Fetch all users for admin
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list('-created_date', 10000),
     enabled: isAdmin,
   });
 
@@ -73,7 +73,7 @@ export default function AnalyticsDashboard() {
     queryFn: () => base44.entities.NoteConversion.list('-created_date', 10000),
     select: (data) => data.filter(nc => {
       const ncDate = new Date(nc.created_date);
-      const inDateRange = ncDate >= new Date(startDate) && ncDate <= new Date(endDate + 'T23:59:59.999');
+      const inDateRange = ncDate >= new Date(startDate + 'T00:00:00') && ncDate <= new Date(endDate + 'T23:59:59.999');
       const userMatch = selectedUser === 'all' || nc.nurse_email === selectedUser;
       return inDateRange && userMatch;
     }),
@@ -85,7 +85,7 @@ export default function AnalyticsDashboard() {
     queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 10000),
     select: (data) => data.filter(ca => {
       const caDate = new Date(ca.audit_date || ca.created_date);
-      const inDateRange = caDate >= new Date(startDate) && caDate <= new Date(endDate + 'T23:59:59.999');
+      const inDateRange = caDate >= new Date(startDate + 'T00:00:00') && caDate <= new Date(endDate + 'T23:59:59.999');
       const userMatch = selectedUser === 'all' || ca.nurse_email === selectedUser;
       return inDateRange && userMatch;
     }),
@@ -97,7 +97,7 @@ export default function AnalyticsDashboard() {
     queryFn: () => base44.entities.UserActivity.list('-created_date', 10000),
     select: (data) => data.filter(ua => {
       const uaDate = new Date(ua.created_date);
-      const inDateRange = uaDate >= new Date(startDate) && uaDate <= new Date(endDate + 'T23:59:59.999');
+      const inDateRange = uaDate >= new Date(startDate + 'T00:00:00') && uaDate <= new Date(endDate + 'T23:59:59.999');
       const userMatch = selectedUser === 'all' || ua.user_email === selectedUser;
       return inDateRange && userMatch;
     }),
@@ -119,8 +119,8 @@ export default function AnalyticsDashboard() {
     const aiActions = userActivities.filter(ua => 
       ['note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)
     );
-    const totalActions = userActivities.filter(ua => 
-      ['visit_document', 'note_enhanced', 'note_ai_generated'].includes(ua.action)
+    const totalActions = userActivities.filter(ua =>
+      ['visit_document', 'note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)
     );
     const aiUtilizationRate = totalActions.length > 0 
       ? (aiActions.length / totalActions.length) * 100 
@@ -184,8 +184,8 @@ export default function AnalyticsDashboard() {
   // Prepare trend data
   const trendData = useMemo(() => {
     const days = {};
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T00:00:00');
     
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dateKey = format(d, 'yyyy-MM-dd');
@@ -218,7 +218,7 @@ export default function AnalyticsDashboard() {
         if (['note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)) {
           days[dateKey].aiUsage++;
         }
-        if (['visit_document', 'note_enhanced', 'note_ai_generated'].includes(ua.action)) {
+        if (['visit_document', 'note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)) {
           days[dateKey].totalActions++;
         }
       }

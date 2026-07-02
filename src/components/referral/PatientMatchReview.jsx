@@ -17,9 +17,12 @@ export default function PatientMatchReview({ referral, onConfirmMatch, onCreateN
     queryKey: ['suggestedPatients', referral.match_suggestions],
     queryFn: async () => {
       if (!referral.match_suggestions?.length) return [];
-      const patientIds = referral.match_suggestions.map(m => m.patient_id);
-      const allPatients = await base44.entities.Patient.list('-created_date', 500);
-      return allPatients.filter(p => patientIds.includes(p.id));
+      // Resolve suggested patients directly by id — paging the newest 500 would
+      // drop matches against older charts, degrading their cards to anonymous
+      // "Match Option N" with no identifying detail to confirm the match.
+      const patientIds = referral.match_suggestions.map(m => m.patient_id).filter(Boolean);
+      if (!patientIds.length) return [];
+      return base44.entities.Patient.filter({ id: { $in: patientIds } });
     },
     enabled: !!referral.match_suggestions?.length,
     initialData: []

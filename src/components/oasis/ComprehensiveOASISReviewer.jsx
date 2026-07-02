@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 export default function ComprehensiveOASISReviewer({
   oasisData,
@@ -392,7 +393,7 @@ Return detailed JSON with all findings.`;
                               <p className="text-sm text-indigo-800 mb-2">{risk.cms_regulation}</p>
                               {risk.cms_guideline_link && (
                                 <a
-                                  href={risk.cms_guideline_link}
+                                  href={isSafeExternalUrl(risk.cms_guideline_link) ? risk.cms_guideline_link : undefined}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-sm text-indigo-600 hover:text-indigo-800 underline flex items-center gap-1"
@@ -513,7 +514,7 @@ Return detailed JSON with all findings.`;
                                 <p className="font-semibold text-xs text-indigo-900">CMS Quality Reporting</p>
                               </div>
                               <a
-                                href={measure.cms_quality_reporting_link}
+                                href={isSafeExternalUrl(measure.cms_quality_reporting_link) ? measure.cms_quality_reporting_link : undefined}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-sm text-indigo-600 hover:text-indigo-800 underline flex items-center gap-1"
@@ -664,7 +665,7 @@ Return detailed JSON with all findings.`;
                                 <p className="text-sm text-indigo-800 mb-2">{inconsistency.cms_guidance}</p>
                                 {inconsistency.cms_guidance_link && (
                                   <a
-                                    href={inconsistency.cms_guidance_link}
+                                    href={isSafeExternalUrl(inconsistency.cms_guidance_link) ? inconsistency.cms_guidance_link : undefined}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-sm text-indigo-600 hover:text-indigo-800 underline flex items-center gap-1"

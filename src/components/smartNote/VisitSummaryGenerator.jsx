@@ -62,12 +62,14 @@ export default function VisitSummaryGenerator({ patientId }) {
   const [selectedSections, setSelectedSections] = useState(new Set(SECTIONS.map(s => s.key)));
   const [showSectionPicker, setShowSectionPicker] = useState(false);
 
+  // Scope the visit picker to the selected patient. Without a patient, DON'T fall
+  // back to every patient's recent visits — the picker labels show only date +
+  // type, so a cross-patient list let a nurse summarize (and send to the LLM) the
+  // wrong patient's note with no way to tell whose chart it was.
   const { data: visits = [] } = useQuery({
     queryKey: ["patient-visits-for-summary", patientId],
-    queryFn: () => patientId
-      ? base44.entities.Visit.filter({ patient_id: patientId }, "-visit_date", 20)
-      : base44.entities.Visit.list("-visit_date", 20),
-    enabled: true,
+    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, "-visit_date", 20),
+    enabled: !!patientId,
   });
 
   const { data: patient } = useQuery({
@@ -182,6 +184,12 @@ Return JSON with these keys:
         <Badge className="bg-navy-100 text-navy-700 text-xs">AI</Badge>
       </div>
       <p className="text-xs text-slate-500">Select a completed visit to generate a structured summary from its transcript.</p>
+
+      {!patientId && (
+        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Select a patient above to load their visits and generate a summary.
+        </div>
+      )}
 
       {/* Visit selector */}
       <Select value={selectedVisitId} onValueChange={setSelectedVisitId}>
