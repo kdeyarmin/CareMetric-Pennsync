@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, CheckCircle2, Copy, Send, Sparkles, Loader2, BarChart3, Shield } from "lucide-react";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { base44 } from "@/api/base44Client";
-import { generateTrainingCourse } from "@/functions/generateTrainingCourse";
+import { generateTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
 import { assignInService } from "@/functions/assignInService";
 import { assignAnnualLearningPlan } from "@/functions/assignAnnualLearningPlan";
 import { duplicateInService } from "@/functions/duplicateInService";
@@ -54,6 +54,8 @@ export default function AnnualMandatoryEducationHub() {
   });
   const [manualDraft, setManualDraft] = useState({ title: "", description: "", category: "compliance", business_line_scope: "all", passing_score: 80 });
   const [generating, setGenerating] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState(null);
+  const [generateError, setGenerateError] = useState("");
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState(null);
   const [enrollingAll, setEnrollingAll] = useState(false);
@@ -141,11 +143,24 @@ export default function AnnualMandatoryEducationHub() {
 
   const generateAnnualModule = async () => {
     setGenerating(true);
+    setGenerateError("");
     try {
-      await generateTrainingCourse({ ...generator, training_type: 'annual_mandatory', annual_cycle_year: year, status: 'draft' });
+      await generateTrainingCourseStepwise(
+        { ...generator, training_type: 'annual_mandatory', annual_cycle_year: year, status: 'draft' },
+        setGenerateProgress
+      );
       queryClient.invalidateQueries({ queryKey: ["annual-courses"] });
+    } catch (err) {
+      const base = configNotReadyMessage(err) || err?.message || "AI generation failed. Please try again.";
+      setGenerateError(
+        err?.course_id
+          ? `${base} A draft ("${err.course_title || 'Untitled'}") was created with partial content — you can finish or delete it in the course list.`
+          : base
+      );
+      if (err?.course_id) queryClient.invalidateQueries({ queryKey: ["annual-courses"] });
     } finally {
       setGenerating(false);
+      setGenerateProgress(null);
     }
   };
 
@@ -285,6 +300,17 @@ export default function AnnualMandatoryEducationHub() {
               <Button className="w-full" onClick={generateAnnualModule} disabled={generating || !generator.topic.trim()}>
                 {generating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating...</> : <>Generate annual education module</>}
               </Button>
+              {generating && (
+                <p className="text-sm text-slate-500">
+                  {generateProgress
+                    ? `Step ${generateProgress.step} of ${generateProgress.totalSteps}: ${generateProgress.label}`
+                    : "Starting generation…"}{" "}
+                  This can take a few minutes — keep this page open.
+                </p>
+              )}
+              {generateError && (
+                <p className="text-sm text-red-600">{generateError}</p>
+              )}
             </CardContent>
           </Card>
 
