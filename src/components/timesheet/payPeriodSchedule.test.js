@@ -33,6 +33,13 @@ test("previous period steps back exactly 14 days", () => {
   assert.equal(p.payday, "2026-06-19");
 });
 
+test("New Year's period 12/13–12/26: payday shifts from Fri 1/1 to Thu 12/31", () => {
+  const p = payPeriodByIndex(13);
+  assert.equal(p.start, "2026-12-13");
+  assert.equal(p.end, "2026-12-26");
+  assert.equal(p.payday, "2026-12-31");
+});
+
 test("payday is the Friday after the period ends, except holiday overrides", () => {
   const dow = (iso) => {
     const [y, m, d] = iso.split("-").map(Number);

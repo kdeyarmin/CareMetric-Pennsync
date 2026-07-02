@@ -34,6 +34,8 @@ const DAY_MS = 86400000;
 const PAYDAY_OVERRIDES = {
   // Fri 2026-07-03 is the observed Independence Day holiday; pay lands Sat 7/4.
   "2026-07-03": "2026-07-04",
+  // Fri 2027-01-01 is New Year's Day; pay lands the business day before, Thu 12/31.
+  "2027-01-01": "2026-12-31",
 };
 
 function addDays(iso, n) {
