@@ -71,7 +71,31 @@ const sanitizeServerUrl = (value) => {
 	}
 };
 
-const getAppParamValue = (paramName, { defaultValue = undefined, removeFromUrl = false, sanitize = sanitizeValue } = {}) => {
+// Referrer gate for accepting a session token from the URL. A `?access_token=`
+// handoff is how the platform's hosted-login flows (OTP / sign-up / captcha /
+// password-reset completion) return an authenticated session, so we can't drop
+// it — but an unsolicited phishing link carrying `?access_token=<attacker's
+// session>` is otherwise persisted verbatim and silently switches the victim
+// into the attacker's account (login CSRF / session fixation). Reject the URL
+// value ONLY when we can positively tell it arrived from a foreign origin; fail
+// OPEN on a same-origin / trusted-Base44 / absent referrer so the legitimate
+// handoff (whose hosted page may set Referrer-Policy: no-referrer) never breaks.
+// NOTE: an attacker who redirects with no referrer still bypasses this — fully
+// closing login CSRF needs a backend-issued state/nonce echoed on return.
+const trustedTokenReferrer = () => {
+	if (isNode) return true;
+	const ref = document.referrer;
+	if (!ref) return true;
+	try {
+		const refHost = new URL(ref).host.toLowerCase();
+		if (refHost === window.location.host.toLowerCase()) return true;
+		return isTrustedBackendHost(refHost);
+	} catch {
+		return true;
+	}
+};
+
+const getAppParamValue = (paramName, { defaultValue = undefined, removeFromUrl = false, sanitize = sanitizeValue, acceptUrlValue = undefined } = {}) => {
 	if (isNode) {
 		return sanitize(defaultValue);
 	}
@@ -84,8 +108,15 @@ const getAppParamValue = (paramName, { defaultValue = undefined, removeFromUrl =
 		window.history.replaceState({}, document.title, newUrl);
 	}
 	if (searchParam) {
-		setStoredItem(storageKey, searchParam);
-		return searchParam;
+		// A URL value may be gated (e.g. a session token must not come from a
+		// foreign referrer). When rejected, don't persist it — fall through to any
+		// already-stored value / default so the caller keeps their own session.
+		if (acceptUrlValue && !acceptUrlValue()) {
+			console.warn(`[app-params] Ignoring ${paramName} supplied from an untrusted referrer.`);
+		} else {
+			setStoredItem(storageKey, searchParam);
+			return searchParam;
+		}
 	}
 	const storedValue = sanitize(storage.getItem(storageKey));
 	if (storedValue) {
@@ -128,7 +159,7 @@ const getAppParams = () => {
 	return {
 		appId,
 		serverUrl,
-		token: getAppParamValue('access_token', { removeFromUrl: true }),
+		token: getAppParamValue('access_token', { removeFromUrl: true, acceptUrlValue: trustedTokenReferrer }),
 		fromUrl: getAppParamValue('from_url', { defaultValue: currentUrl }),
 		functionsVersion: getAppParamValue('functions_version')
 	};
