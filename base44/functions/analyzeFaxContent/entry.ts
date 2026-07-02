@@ -20,7 +20,13 @@ Deno.serve(async (req) => {
 
     const fax = faxLog[0];
     // Ownership: only the sender (or an admin) may analyze a fax's PHI content.
-    if (fax.sent_by && fax.sent_by !== user.email && user.role !== 'admin') {
+    // Fail CLOSED on a missing sender: a legacy/system fax with no sent_by must
+    // not be readable by any authenticated user who guesses its id — treat an
+    // unknown owner as not-this-caller and require admin.
+    const isAdmin = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    if (!isAdmin && fax.sent_by !== user.email) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     const ocrText = fax.ocr_text || '';

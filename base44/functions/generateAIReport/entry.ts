@@ -144,13 +144,23 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
-    const { 
+    const {
       report_type,
-      date_range_days = 30,
+      date_range_days: rawDateRangeDays = 30,
       recipients = [],
       include_ai_insights = true,
       metrics = ['all']
     } = await req.json();
+
+    if (!report_type) {
+      return Response.json({ error: 'report_type is required' }, { status: 400 });
+    }
+
+    // Clamp the range to 1..365 days. calculateDailyTrend / the PDF build a
+    // per-day bucket, so an unbounded/huge value (e.g. 1e8) would loop for
+    // ~100M iterations → timeout/OOM, and a negative value inverts the range
+    // into an empty report.
+    const date_range_days = Math.min(Math.max(Math.floor(Number(rawDateRangeDays) || 30), 1), 365);
 
     const endDate = new Date();
     const startDate = new Date(endDate);
@@ -486,17 +496,20 @@ function generatePDFReport(config) {
   if (aiInsights) {
     addSection('🤖 AI-POWERED EXECUTIVE SUMMARY');
     doc.setFontSize(9);
-    const summaryLines = doc.splitTextToSize(aiInsights.executive_summary, 170);
+    // The LLM output is best-effort (no strict schema enforcement), so guard the
+    // promised string/array fields — a response missing any of them must not
+    // 500 the whole report after all the entity fetches + LLM call were paid for.
+    const summaryLines = doc.splitTextToSize(aiInsights.executive_summary || 'No summary available.', 170);
     summaryLines.forEach(line => addText(line, 9));
     y += 5;
 
     addSection('✨ PERFORMANCE HIGHLIGHTS');
-    aiInsights.performance_highlights.forEach((highlight, i) => {
+    (aiInsights.performance_highlights || []).forEach((highlight, i) => {
       addText(`${i + 1}. ${highlight}`, 9);
     });
 
     addSection('⚠️ PRIORITY ACTIONS');
-    aiInsights.priority_actions.slice(0, 3).forEach((action, i) => {
+    (aiInsights.priority_actions || []).slice(0, 3).forEach((action, i) => {
       addText(`${i + 1}. ${action.action}`, 9, true);
       addText(`   Rationale: ${action.rationale}`, 8);
       addText(`   Expected Impact: ${action.expected_impact}`, 8);

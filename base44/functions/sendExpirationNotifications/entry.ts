@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     // Reminder tiers (days before expiration). Fire when the count is AT or
     // BELOW a tier that hasn't been sent yet, rather than on an exact-day match.
     // A missed cron run no longer skips the tier permanently; per-record
-    // `reminder_offsets_sent` tracking prevents re-sending a tier already fired.
+    // `expiration_note_offsets_sent` tracking prevents re-sending a tier already fired.
     const reminderOffsets = [30, 14, 7, 3];
 
     // Process training assignments with renewal dates
@@ -56,9 +56,12 @@ Deno.serve(async (req) => {
       const renewalDate = new Date(assignment.renewal_due_date);
       const daysUntilExpiration = Math.ceil((renewalDate - today) / (1000 * 60 * 60 * 24));
 
-      const remindersSent = assignment.reminder_offsets_sent || [];
+      // Dedicated marker for THIS job's in-app expiration note — sendRenewalReminders
+      // uses TrainingAssignment.reminder_offsets_sent with a different tier set, and
+      // sharing it meant whichever ran first suppressed the other's reminders.
+      const remindersSent = assignment.expiration_note_offsets_sent || [];
       const dueOffsets = reminderOffsets.filter(
-        (offset) => daysUntilExpiration <= offset && !remindersSent.includes(offset)
+        (offset) => daysUntilExpiration >= 0 && daysUntilExpiration <= offset && !remindersSent.includes(offset)
       );
 
       if (dueOffsets.length > 0) {
@@ -86,7 +89,7 @@ Deno.serve(async (req) => {
         // Record every newly-crossed tier so it is never re-sent — deferred until
         // after the notifications are actually created (see markerUpdates above).
         markerUpdates.push(() => base44.asServiceRole.entities.TrainingAssignment.update(assignment.id, {
-          reminder_offsets_sent: [...remindersSent, ...dueOffsets]
+          expiration_note_offsets_sent: [...remindersSent, ...dueOffsets]
         }));
       }
     }
@@ -98,9 +101,12 @@ Deno.serve(async (req) => {
       const expirationDate = new Date(credential.expiration_date);
       const daysUntilExpiration = Math.ceil((expirationDate - today) / (1000 * 60 * 60 * 24));
 
-      const remindersSent = credential.reminder_offsets_sent || [];
+      // Dedicated marker for THIS job — sendCredentialRenewalReminders and
+      // sendPersonnelExpirationNotifications key off other fields on the same
+      // PersonnelCredential, so a shared marker cross-suppressed their reminders.
+      const remindersSent = credential.expiration_note_offsets_sent || [];
       const dueOffsets = reminderOffsets.filter(
-        (offset) => daysUntilExpiration <= offset && !remindersSent.includes(offset)
+        (offset) => daysUntilExpiration >= 0 && daysUntilExpiration <= offset && !remindersSent.includes(offset)
       );
 
       if (dueOffsets.length > 0) {
@@ -129,7 +135,7 @@ Deno.serve(async (req) => {
         // Record every newly-crossed tier so it is never re-sent — deferred until
         // after the notifications are actually created (see markerUpdates above).
         markerUpdates.push(() => base44.asServiceRole.entities.PersonnelCredential.update(credential.id, {
-          reminder_offsets_sent: [...remindersSent, ...dueOffsets]
+          expiration_note_offsets_sent: [...remindersSent, ...dueOffsets]
         }));
       }
     }

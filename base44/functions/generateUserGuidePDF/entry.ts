@@ -478,8 +478,13 @@ Comprehensive guide covering all features of the PennSync Healthcare platform:
 - Feedback submission`
     };
 
-    // Get the appropriate prompt
-    const promptText = guidePrompts[guide_type] || guidePrompts.all_features;
+    // Resolve to a KNOWN guide type up front so an unknown/crafted guide_type
+    // can neither silently mislabel the download nor inject into the
+    // Content-Disposition header (it flows into the filename below).
+    const resolvedGuideType = Object.prototype.hasOwnProperty.call(guidePrompts, guide_type)
+      ? guide_type
+      : 'all_features';
+    const promptText = guidePrompts[resolvedGuideType];
 
     // Generate guide content using AI
     const guideContent = await base44.integrations.Core.InvokeLLM({
@@ -684,7 +689,7 @@ Keep language simple and non-technical. Include specific button names and field 
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${guide_type}_guide.pdf"`
+        'Content-Disposition': `attachment; filename="${resolvedGuideType}_guide.pdf"`
       }
     });
 

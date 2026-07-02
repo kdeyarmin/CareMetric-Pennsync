@@ -70,7 +70,7 @@ RECENT INCIDENTS:
 ${incidents.map(i => `${i.incident_date}: ${i.incident_type}`).join('\n')}
 
 CONVERSATION CONTEXT:
-${threadMessages.map(m => `${m.sender_name}: ${m.message_text.substring(0, 200)}`).join('\n')}
+${threadMessages.map(m => `${m.sender_name}: ${String(m.message_text || '').substring(0, 200)}`).join('\n')}
 
 ${current_message ? `CURRENT MESSAGE:\n${current_message}` : ''}
 
@@ -129,10 +129,10 @@ async function summarizeThread(base44, params) {
   const result = await base44.integrations.Core.InvokeLLM({
     prompt: `Summarize this care team message thread.
 
-SUBJECT: ${messages[0].subject}${patientContext}
+SUBJECT: ${messages[0].subject || '(no subject)'}${patientContext}
 
 MESSAGES (${messages.length}):
-${messages.map((m, i) => `[${i + 1}] ${m.sender_name} (${new Date(m.created_date).toLocaleString()}):\n${m.message_text}`).join('\n\n')}
+${messages.map((m, i) => `[${i + 1}] ${m.sender_name} (${new Date(m.created_date).toLocaleString()}):\n${String(m.message_text || '')}`).join('\n\n')}
 
 Provide: brief summary (2-3 sentences), key points, decisions made, action items, open questions.`,
     response_json_schema: {

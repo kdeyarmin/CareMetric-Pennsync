@@ -125,9 +125,14 @@ function renderBrandedEmail(opts) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
 
-    if (user?.role !== 'admin') {
+    // Cron-invoked reminder sweep. Allow the platform's no-identity scheduler
+    // path (per docs/SECURITY-RLS-CHECKLIST.md §4) but reject any authenticated
+    // non-admin. The prior hard `role !== 'admin'` gate 403'd the scheduler, so
+    // overdue-signature reminders never went out. Mirrors checkExpiredInvitations.
+    const user = await base44.auth.me().catch(() => null);
+    const isAdmin = user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
+    if (user && !isAdmin) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
@@ -208,7 +213,7 @@ Deno.serve(async (req) => {
         ],
       });
 
-      await base44.integrations.Core.SendEmail({
+      await base44.asServiceRole.integrations.Core.SendEmail({
         to: patient.caregiver_email,
         subject,
         body,

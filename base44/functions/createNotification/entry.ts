@@ -212,6 +212,11 @@ Deno.serve(async (req) => {
       email_notifications_enabled: true,
       in_app_notifications_enabled: true,
       push_notifications_enabled: false,
+      // Default to instant delivery: shouldSendEmail requires digest_mode ===
+      // 'instant', so omitting it here made the email_notifications_enabled:true
+      // default unreachable — a user who never opened Notification Settings got
+      // NO emails at all, including priority:'critical' patient alerts.
+      digest_mode: 'instant',
       preferences: {}
     };
 

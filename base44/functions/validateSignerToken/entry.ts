@@ -1,5 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+async function sha256Hex(input) {
+  const data = new TextEncoder().encode(String(input));
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -13,12 +19,28 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Find token record
-    const tokenRecords = await base44.asServiceRole.entities.DocumentPackageToken.filter(
-      { token },
+    // Tokens are stored hashed (generateSignerToken). Look up by the hash of the
+    // presented token; fall back to a plaintext match for legacy tokens issued
+    // before hashing (they expire within their original window).
+    const tokenHash = await sha256Hex(token);
+    let tokenRecords = await base44.asServiceRole.entities.DocumentPackageToken.filter(
+      { token: tokenHash },
       '-created_date',
       1
     );
+    if (!tokenRecords || tokenRecords.length === 0) {
+      // Legacy-plaintext fallback — but ONLY for rows that are NOT hashed. A
+      // hashed row stores sha256(token) as its `token`, so submitting that stored
+      // hash verbatim would otherwise match here and let a leaked hash act as a
+      // bearer token. token_hashed:true rows are excluded so only genuine legacy
+      // plaintext tokens (pre-hashing) validate this way.
+      const legacy = await base44.asServiceRole.entities.DocumentPackageToken.filter(
+        { token },
+        '-created_date',
+        1
+      );
+      tokenRecords = (legacy || []).filter((r) => r?.token_hashed !== true);
+    }
 
     if (!tokenRecords || tokenRecords.length === 0) {
       return Response.json(

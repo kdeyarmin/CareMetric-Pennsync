@@ -166,7 +166,14 @@
       "items": {
         "type": "number"
       },
-      "description": "List of expiration reminder offsets already sent"
+      "description": "Renewal reminder offsets already sent by sendRenewalReminders"
+    },
+    "expiration_note_offsets_sent": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Expiration-note offsets already sent by sendExpirationNotifications (own marker so it doesn't collide with sendRenewalReminders)"
     },
     "completion_date": {
       "type": "string",

@@ -16,6 +16,21 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'URL is required' }, { status: 400 });
     }
 
+    // Validate the URL: must be a public https guideline page. Rejecting
+    // non-https / internal hosts stops a typo or crafted value from having the
+    // proxy fetch an internal/metadata address and storing its content as a
+    // "Medicare guideline".
+    let parsedUrl;
+    try { parsedUrl = new URL(String(url)); } catch { parsedUrl = null; }
+    const host = parsedUrl?.hostname?.toLowerCase() || '';
+    const isInternalHost = ['localhost', '0.0.0.0', '127.0.0.1', '::1', '169.254.169.254'].includes(host)
+      || host.endsWith('.internal') || host.endsWith('.local')
+      || /^(10|127)\./.test(host) || /^169\.254\./.test(host) || /^192\.168\./.test(host)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+    if (!parsedUrl || parsedUrl.protocol !== 'https:' || isInternalHost) {
+      return Response.json({ error: 'A public https URL is required' }, { status: 400 });
+    }
+
     // Fetch the webpage content
     const fetchResult = await fetch('https://api.base44.com/v1/fetch-website', {
       method: 'POST',
@@ -30,7 +45,9 @@ Deno.serve(async (req) => {
     });
 
     if (!fetchResult.ok) {
-      return Response.json({ error: 'Failed to fetch content from URL' }, { status: 500 });
+      // Client-supplied URL that couldn't be fetched is an upstream/gateway
+      // condition, not a server fault — return 502 so monitoring isn't polluted.
+      return Response.json({ error: 'Failed to fetch content from URL' }, { status: 502 });
     }
 
     const websiteData = await fetchResult.json();

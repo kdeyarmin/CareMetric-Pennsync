@@ -47,13 +47,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { 
+    const {
       query,
       document_type,
       patient_id,
       fuzzy = true,
-      limit = 50
+      limit: rawLimit = 50
     } = await req.json();
+
+    // Clamp the caller-supplied limit: it drives a `limit * 2` fetch cap, so an
+    // unbounded value (e.g. 500000) would pull the entire PDFIndex — with its
+    // extracted PHI text — into memory per request.
+    const limit = Math.min(Math.max(Math.floor(Number(rawLimit) || 50), 1), 200);
 
     if (!query || query.trim().length < 2) {
       return Response.json({ 
@@ -186,7 +191,10 @@ Deno.serve(async (req) => {
 });
 
 function extractSnippet(text, query, contextLength = 100) {
-  const queryLower = query.toLowerCase();
+  // A keywords-only index match can reach here with no extracted_text; coerce so
+  // .toLowerCase() doesn't throw a TypeError and 500 the whole search.
+  text = String(text || '');
+  const queryLower = String(query || '').toLowerCase();
   const textLower = text.toLowerCase();
   const index = textLower.indexOf(queryLower);
   

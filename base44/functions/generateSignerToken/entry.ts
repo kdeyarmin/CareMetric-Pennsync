@@ -30,15 +30,27 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Package not found' }, { status: 404 });
     }
 
-    // Generate secure token
+    // Generate secure token. Persist ONLY its SHA-256 hash (in the token field):
+    // the plaintext lives solely in the emailed signing link, so read access to
+    // DocumentPackageToken rows (RLS gap, export, backup) no longer yields live,
+    // PHI-bearing signing links. validateSignerToken/submitSignerSignature hash
+    // the presented token before lookup.
     const token = generateSecureToken();
+    const tokenHash = await sha256Hex(token);
 
+    // Clamp the lifetime so an admin UI bug / crafted call can't mint a decade-long
+    // signing link that keeps PHI reachable far past policy.
+    const days = Math.min(Math.max(Number(expires_in_days) || 30, 1), 90);
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + expires_in_days);
+    expiresAt.setDate(expiresAt.getDate() + days);
 
     const tokenRecord = await base44.entities.DocumentPackageToken.create({
       package_id,
-      token,
+      token: tokenHash,
+      // Marks this row as storing a HASH (not plaintext). Validators use it to
+      // refuse the legacy-plaintext fallback for hashed rows — otherwise a leaked
+      // stored hash could itself be replayed as a bearer token.
+      token_hashed: true,
       signer_email,
       signer_name: signer_name || signer_email,
       token_created_at: new Date().toISOString(),
@@ -64,6 +76,12 @@ Deno.serve(async (req) => {
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
+
+async function sha256Hex(input) {
+  const data = new TextEncoder().encode(String(input));
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 function generateSecureToken() {
   const charset =

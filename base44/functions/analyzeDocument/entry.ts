@@ -48,6 +48,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Document has an invalid or disallowed file URL' }, { status: 400 });
     }
     const docResponse = await fetch(document.file_url);
+    if (!docResponse.ok) {
+      // A 403/404/expired-signature error body must not be fed to the LLM and
+      // then persisted as a real "analysis" with a confidence score.
+      return Response.json({ error: 'Failed to fetch document content' }, { status: 502 });
+    }
     const docText = await docResponse.text();
 
     // Analyze with AI
