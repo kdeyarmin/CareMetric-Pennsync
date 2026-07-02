@@ -132,7 +132,7 @@ export default function Help() {
     },
     {
       q: "When is my timesheet due, and when is payday?",
-      a: "Pay periods are biweekly (Sunday through Saturday). Timesheets are due before noon on the Monday after the period ends, and payday is the Friday after the period ends — moved to Thursday when that Friday is a bank holiday. The timesheet form shows the exact due date and payday for the period you pick."
+      a: "Pay periods are biweekly (Sunday through Saturday). Timesheets are due before noon on the Monday after the period ends, and payday is normally the Friday after the period ends — moved to Thursday when that Friday is a bank holiday, and occasionally adjusted for a specific period when payroll confirms it. The timesheet form shows the authoritative due date and payday for the period you pick."
     },
     {
       q: "What is the AI-content responsibility agreement I accepted at sign-in?",

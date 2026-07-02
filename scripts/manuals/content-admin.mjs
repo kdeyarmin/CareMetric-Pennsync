@@ -235,7 +235,7 @@ export const adminBlocks = [
         ['Export the files', 'Home Health and Hospice export as separate files, each as <strong>Excel (CSV)</strong> or <strong>PDF</strong>. Home Health includes point columns (Regular Points, Emerg Visit Pts) plus hours, PTO, miles, and reimbursements; Hospice is hourly with on-call visits. Totals and rate notes (e.g. mileage at $0.45/mile) are included.'],
       ])}
       <p>The <strong>Reports</strong> tab adds a flexible hours-and-points report — group by pay period, employee, or service line; filter by status (approved only, submitted + approved, or all); export to CSV.</p>
-      ${callout('note', 'The payroll calendar', '<p>Pay periods are biweekly, Sunday through Saturday. Timesheets are due before <strong>noon on the Monday</strong> after the period ends, and payday is the <strong>Friday after the period ends</strong> — moved to the Thursday before when that Friday is a bank holiday (New Year’s Day, Juneteenth, Independence Day, Veterans Day, Christmas).</p>')}
+      ${callout('note', 'The payroll calendar', '<p>Pay periods are biweekly, Sunday through Saturday. Timesheets are due before <strong>noon on the Monday</strong> after the period ends, and payday is normally the <strong>Friday after the period ends</strong> — moved to the Thursday before when that Friday is a bank holiday (New Year’s Day, Juneteenth, Independence Day, Veterans Day, Christmas). A specific period can also carry a payroll-confirmed one-off payday; whatever the schedule resolves to is what staff see on the timesheet form, which is always the authoritative date.</p>')}
 
       <h3 id="at-setup"><span class="h3-eyebrow">Configure once</span>Payroll setup</h3>
       ${table(['Card', 'What you configure'], [
