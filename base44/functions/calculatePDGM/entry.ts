@@ -295,8 +295,9 @@ function mapDiagnosisToClinicalGroup(primaryDiagnosis, icd10Code, icdMap = ICD10
     return 'MMTA_Infectious_Disease';
   }
 
-  // GI/GU
-  if (diagnosis.includes('gi') || diagnosis.includes('bowel') || diagnosis.includes('kidney') ||
+  // GI/GU. Match 'gi' only as a whole word (\bgi\b) — a bare substring flags
+  // "angina", "surgical", "meningitis", etc. and mis-groups them as GI/GU.
+  if (/\bgi\b/.test(diagnosis) || diagnosis.includes('bowel') || diagnosis.includes('kidney') ||
       diagnosis.includes('renal') || diagnosis.includes('bladder') || diagnosis.includes('gastrointestinal')) {
     return 'MMTA_GI_GU';
   }
@@ -307,8 +308,10 @@ function mapDiagnosisToClinicalGroup(primaryDiagnosis, icd10Code, icdMap = ICD10
     return 'MMTA_Behavioral_Health';
   }
 
-  // Complex Nursing
-  if (diagnosis.includes('complex') || diagnosis.includes('iv') || diagnosis.includes('infusion') ||
+  // Complex Nursing. Match 'iv' only as a whole word (\biv\b) — a bare substring
+  // flags "diverticulitis", "arrival", "survival", etc. and inflates them to the
+  // higher-weighted Complex Nursing group.
+  if (diagnosis.includes('complex') || /\biv\b/.test(diagnosis) || diagnosis.includes('infusion') ||
       diagnosis.includes('trach') || diagnosis.includes('ventilator') || diagnosis.includes('tube feeding')) {
     return 'MMTA_Complex_Nursing';
   }

@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
     // key, so de-dupe on a recent identical (recipient + document + sender) send.
     const recentCutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
     const recent = await base44.asServiceRole.entities.FaxLog
-      .filter({ to_number, document_url: file_url, sent_by: user.email }, '-created_date', 5)
+      .filter({ to_number: faxDest, document_url: file_url, sent_by: user.email }, '-created_date', 5)
       .catch(() => []);
     const dupe = (recent || []).find((f) => f.created_date && f.created_date >= recentCutoff && f.status !== 'failed');
     if (dupe) {
@@ -110,7 +110,10 @@ Deno.serve(async (req) => {
 
     const faxLog = await base44.entities.FaxLog.create({
       from_number: fromNumber,
-      to_number,
+      // Store and send the NORMALIZED E.164 destination (what was validated),
+      // not the raw user input — Telnyx rejects/misroutes non-E164 numbers and a
+      // raw-vs-normalized mismatch weakened the dedupe key. Mirrors sendBatchFax.
+      to_number: faxDest,
       to_name: to_name || null,
       document_url: file_url,
       document_name: document_name || 'Fax',
@@ -132,7 +135,7 @@ Deno.serve(async (req) => {
     const payload = {
       connection_id: faxConnectionId,
       from: fromNumber,
-      to: to_number,
+      to: faxDest,
       media_url: file_url,
       quality: 'high',
     };

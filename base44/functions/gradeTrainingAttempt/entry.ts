@@ -135,7 +135,11 @@ Deno.serve(async (req) => {
     }
 
     const [course] = await base44.asServiceRole.entities.TrainingCourse.filter({ id: assignment.course_id });
-    const questions = await base44.asServiceRole.entities.TrainingQuestion.filter({ course_id: assignment.course_id }, 'order_index', 500);
+    // Grade only ACTIVE questions — the player (getCoursePlayerQuestions) serves
+    // only active:true, so including inactive ones here made the "all questions
+    // answered" check below reject every submission the moment an admin
+    // deactivated any question in the course.
+    const questions = await base44.asServiceRole.entities.TrainingQuestion.filter({ course_id: assignment.course_id, active: true }, 'order_index', 500);
     const attempts = await base44.asServiceRole.entities.TrainingAttempt.filter({ assignment_id: assignmentId, user_id: assignment.assigned_to_user_id }, '-created_date', 100);
     const assignmentNotes = parseAssignmentNotes(assignment.notes);
 

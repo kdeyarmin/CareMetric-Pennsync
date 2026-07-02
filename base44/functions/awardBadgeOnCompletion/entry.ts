@@ -29,6 +29,21 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Badges/points/streak belong to the attempt's OWNER, never the caller. When
+    // an admin (re)processes someone else's attempt, keying the awards to
+    // `user.email` credited the ADMIN's leaderboard and left the nurse's attempt
+    // stamped as processed so they could never earn it. Resolve the owner once
+    // and use it for every UserBadge/Leaderboard/Notification write below.
+    const ownerEmail = attemptData.user_id;
+    if (!ownerEmail) {
+      return Response.json({ error: 'Attempt has no owner (user_id)' }, { status: 400 });
+    }
+    let ownerName = user.full_name;
+    if (ownerEmail !== user.email) {
+      const owners = await base44.asServiceRole.entities.User.filter({ email: ownerEmail }).catch(() => []);
+      ownerName = owners?.[0]?.full_name || ownerEmail;
+    }
+
     // Idempotency (complete): once an attempt has been processed, re-running is a
     // no-op — this covers attempts that earn NO badge too, which would otherwise
     // re-bump streak/courses on every replay. The UserBadge check below is a
@@ -36,8 +51,8 @@ Deno.serve(async (req) => {
     if (attemptData.badges_processed_at) {
       return Response.json({ success: true, already_awarded: true, badges_awarded: 0, badges: [] });
     }
-    const priorBadges = await base44.entities.UserBadge
-      .filter({ user_id: user.email }, '-earned_at', 500).catch(() => []);
+    const priorBadges = await base44.asServiceRole.entities.UserBadge
+      .filter({ user_id: ownerEmail }, '-earned_at', 500).catch(() => []);
     if (priorBadges.some((b) => b?.trigger_context?.attempt_id === attemptData.id)) {
       return Response.json({ success: true, already_awarded: true, badges_awarded: 0, badges: [] });
     }
@@ -56,11 +71,11 @@ Deno.serve(async (req) => {
     const badgesAwarded = [];
 
     // Get or create leaderboard entry
-    let leaderboard = await base44.entities.Leaderboard.filter({ user_id: user.email });
+    let leaderboard = await base44.asServiceRole.entities.Leaderboard.filter({ user_id: ownerEmail });
     if (!leaderboard || leaderboard.length === 0) {
-      leaderboard = [await base44.entities.Leaderboard.create({
-        user_id: user.email,
-        user_name: user.full_name,
+      leaderboard = [await base44.asServiceRole.entities.Leaderboard.create({
+        user_id: ownerEmail,
+        user_name: ownerName,
         total_points: 0,
         badges_earned: 0,
         courses_completed: 0,
@@ -87,9 +102,9 @@ Deno.serve(async (req) => {
     if (attemptData.score === 100) {
       const perfectBadge = allBadges.find(b => b.badge_type === 'perfect_score');
       if (perfectBadge) {
-        const userBadge = await base44.entities.UserBadge.create({
-          user_id: user.email,
-          user_name: user.full_name,
+        const userBadge = await base44.asServiceRole.entities.UserBadge.create({
+          user_id: ownerEmail,
+          user_name: ownerName,
           badge_id: perfectBadge.id,
           badge_name: perfectBadge.name,
           badge_type: perfectBadge.badge_type,
@@ -104,7 +119,7 @@ Deno.serve(async (req) => {
         badgesAwarded.push(userBadge);
 
         // Update leaderboard perfect scores
-        await base44.entities.Leaderboard.update(leaderboardEntry.id, {
+        await base44.asServiceRole.entities.Leaderboard.update(leaderboardEntry.id, {
           perfect_scores: (leaderboardEntry.perfect_scores || 0) + 1
         });
       }
@@ -115,9 +130,9 @@ Deno.serve(async (req) => {
     if (passed && attemptData.score >= 90 && attemptData.score < 100) {
       const highScoreBadge = allBadges.find(b => b.badge_type === 'high_score');
       if (highScoreBadge) {
-        const userBadge = await base44.entities.UserBadge.create({
-          user_id: user.email,
-          user_name: user.full_name,
+        const userBadge = await base44.asServiceRole.entities.UserBadge.create({
+          user_id: ownerEmail,
+          user_name: ownerName,
           badge_id: highScoreBadge.id,
           badge_name: highScoreBadge.name,
           badge_type: highScoreBadge.badge_type,
@@ -143,9 +158,9 @@ Deno.serve(async (req) => {
       if (daysEarly > 0) {
         const earlyBadge = allBadges.find(b => b.badge_type === 'early_completion');
         if (earlyBadge) {
-          const userBadge = await base44.entities.UserBadge.create({
-            user_id: user.email,
-            user_name: user.full_name,
+          const userBadge = await base44.asServiceRole.entities.UserBadge.create({
+            user_id: ownerEmail,
+            user_name: ownerName,
             badge_id: earlyBadge.id,
             badge_name: earlyBadge.name,
             badge_type: earlyBadge.badge_type,
@@ -177,9 +192,9 @@ Deno.serve(async (req) => {
     if (passed && streakMilestones.includes(newStreak)) {
       const streakBadge = allBadges.find(b => b.badge_type === 'streak');
       if (streakBadge) {
-        const userBadge = await base44.entities.UserBadge.create({
-          user_id: user.email,
-          user_name: user.full_name,
+        const userBadge = await base44.asServiceRole.entities.UserBadge.create({
+          user_id: ownerEmail,
+          user_name: ownerName,
           badge_id: streakBadge.id,
           badge_name: `${newStreak} Course Streak`,
           badge_type: streakBadge.badge_type,
@@ -197,7 +212,7 @@ Deno.serve(async (req) => {
     const totalPointsFromBadges = badgesAwarded.reduce((sum, badge) => sum + (badge.points_awarded || 0), 0);
 
     // Update leaderboard
-    await base44.entities.Leaderboard.update(leaderboardEntry.id, {
+    await base44.asServiceRole.entities.Leaderboard.update(leaderboardEntry.id, {
       total_points: (leaderboardEntry.total_points || 0) + totalPointsFromBadges,
       badges_earned: (leaderboardEntry.badges_earned || 0) + badgesAwarded.length,
       courses_completed: (leaderboardEntry.courses_completed || 0) + (passed ? 1 : 0),
@@ -208,8 +223,8 @@ Deno.serve(async (req) => {
 
     // Send notification for each badge earned
     for (const badge of badgesAwarded) {
-      await base44.entities.Notification.create({
-        user_email: user.email,
+      await base44.asServiceRole.entities.Notification.create({
+        user_email: ownerEmail,
         title: '🎉 New Badge Earned!',
         message: `Congratulations! You earned the "${badge.badge_name}" badge and ${badge.points_awarded} points!`,
         type: 'info',

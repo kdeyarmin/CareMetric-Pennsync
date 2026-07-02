@@ -4,6 +4,26 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // secret was retired). console.error/warn remain ungated for visibility.
 const debugLog = (..._args) => {};
 
+// SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
+// internal IPs / metadata. Mirrors analyzeDocument/extractClinicalDocument — any
+// function that hands a user-supplied URL to a provider integration must gate it.
+const FILE_URL_ALLOWED_HOSTS = ['qtrypzzcjebvfcihiynt.supabase.co', 'base44.app', 'base44.io'];
+function isSafeFetchUrl(raw) {
+  let u;
+  try { u = new URL(String(raw)); } catch { return false; }
+  if (u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  if (['localhost', '0.0.0.0', '127.0.0.1', '::1', '169.254.169.254'].includes(host)) return false;
+  if (host.endsWith('.internal') || host.endsWith('.local')) return false;
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = +m[1], b = +m[2];
+    if (a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false;
+  }
+  if (!FILE_URL_ALLOWED_HOSTS.some((h) => host === h || host.endsWith('.' + h))) return false;
+  return true;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -20,6 +40,10 @@ Deno.serve(async (req) => {
         { error: 'Missing required fields: audio_url, patient_id, visit_type' },
         { status: 400 }
       );
+    }
+
+    if (!isSafeFetchUrl(audio_url)) {
+      return Response.json({ error: 'audio_url is not an allowed file URL' }, { status: 400 });
     }
 
     // Fetch patient via the RLS-scoped client (NOT asServiceRole) so the

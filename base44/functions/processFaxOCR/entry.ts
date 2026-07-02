@@ -1,5 +1,24 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
+// internal IPs / metadata. Mirrors analyzeDocument.
+const FILE_URL_ALLOWED_HOSTS = ['qtrypzzcjebvfcihiynt.supabase.co', 'base44.app', 'base44.io'];
+function isSafeFetchUrl(raw) {
+  let u;
+  try { u = new URL(String(raw)); } catch { return false; }
+  if (u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  if (['localhost', '0.0.0.0', '127.0.0.1', '::1', '169.254.169.254'].includes(host)) return false;
+  if (host.endsWith('.internal') || host.endsWith('.local')) return false;
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = +m[1], b = +m[2];
+    if (a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false;
+  }
+  if (!FILE_URL_ALLOWED_HOSTS.some((h) => host === h || host.endsWith('.' + h))) return false;
+  return true;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -14,9 +33,9 @@ Deno.serve(async (req) => {
 
     const { fax_log_id, document_url, use_advanced_ocr = true } = await req.json();
 
-    if (!fax_log_id || !document_url) {
-      return Response.json({ 
-        error: 'Missing fax_log_id or document_url' 
+    if (!fax_log_id) {
+      return Response.json({
+        error: 'Missing fax_log_id'
       }, { status: 400 });
     }
 
@@ -29,6 +48,16 @@ Deno.serve(async (req) => {
     // analyzeFaxContent / retryFailedFax; the prior code had no ownership check.
     if (user.role !== 'admin' && existingFax.sent_by && existingFax.sent_by !== user.email) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // OCR the fax's OWN stored document, never an arbitrary caller-supplied URL:
+    // trusting the body's `document_url` let any caller feed unrelated content
+    // (or an attacker-hosted document) into this fax's permanent ocr_text, and
+    // point the service-role fetcher at any URL. Only fall back to the body URL
+    // for legacy faxes that have no stored document_url, and validate either way.
+    const ocrSourceUrl = existingFax.document_url || document_url;
+    if (!isSafeFetchUrl(ocrSourceUrl)) {
+      return Response.json({ error: 'Fax has no valid document URL to OCR' }, { status: 400 });
     }
     if (existingFax?.ocr_processed && existingFax?.ocr_text) {
       return Response.json({
@@ -60,7 +89,7 @@ CRITICAL INSTRUCTIONS:
 - For completely illegible text, use: [ILLEGIBLE]
 - Return a confidence score (0-100) based on clarity
 
-Document URL: ${document_url}
+Document URL: ${ocrSourceUrl}
 
 Return JSON with extracted text and confidence score.`;
     } else {
@@ -69,7 +98,7 @@ Return the complete text in a clean, readable format.
 Preserve structure where possible (paragraphs, lists, etc.).
 If you cannot read the text clearly, indicate sections with [UNCLEAR].
 
-Document URL: ${document_url}
+Document URL: ${ocrSourceUrl}
 
 Return JSON: {"text": "extracted text", "confidence": 0-100}`;
     }
@@ -79,7 +108,7 @@ Return JSON: {"text": "extracted text", "confidence": 0-100}`;
       ocrResult = await base44.asServiceRole.integrations.Core.InvokeLLM({
         model: "claude_opus_4_8",
         prompt: ocrPrompt,
-        file_urls: [document_url],
+        file_urls: [ocrSourceUrl],
         response_json_schema: {
           type: "object",
           properties: {

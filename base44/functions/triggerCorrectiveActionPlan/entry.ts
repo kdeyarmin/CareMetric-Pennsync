@@ -78,6 +78,17 @@ Rules:
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+
+    // Authorization: this entity-trigger does service-role writes, LLM course
+    // generation, and admin notification fan-out. Allow the platform's
+    // no-identity trigger invocation, but reject any authenticated non-admin so
+    // a nurse can't POST guessed attempt ids to spawn plans / LLM spend / spam.
+    const me = await base44.auth.me().catch(() => null);
+    const isAdmin = me?.role === 'admin' || me?.account_type === 'agency_admin' || me?.account_type === 'super_admin';
+    if (me && !isAdmin) {
+      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+    }
+
     const payload = await req.json();
     const posted = payload?.data || payload;
     if (!posted?.id) {

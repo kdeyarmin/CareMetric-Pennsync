@@ -189,7 +189,7 @@ Deno.serve(async (req) => {
         return await resendInvitation(base44, currentUser, params, isAdmin);
 
       case 'reset_password':
-        return await resetPassword(base44, currentUser, params, isAdmin);
+        return await resetPassword(base44, currentUser, params, isAdmin, callerIsSuperAdmin);
 
       case 'check_expired_invitations':
         // Gate like every other action: this reads all invitations and emails
@@ -369,7 +369,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   });
 }
 
-async function resetPassword(base44, currentUser, params, isAdmin) {
+async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuperAdmin) {
   if (!isAdmin) {
     return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
   }
@@ -379,18 +379,28 @@ async function resetPassword(base44, currentUser, params, isAdmin) {
     return Response.json({ error: 'User email is required' }, { status: 400 });
   }
 
-  // Generate a temporary password from a CSPRNG with a guaranteed length and
-  // character mix. `Math.random().toString(36).slice(-8)` is non-cryptographic
-  // and can yield far fewer than 8 chars (e.g. when the fraction is short),
-  // producing a weak, short credential.
-  const tempPassword = generateTempPassword();
-
   const users = await base44.asServiceRole.entities.User.filter({ email: userEmail });
   if (!users || users.length === 0) {
     return Response.json({ error: 'User not found' }, { status: 404 });
   }
 
   const targetUser = users[0];
+
+  // Privilege boundary: a facility admin must not be able to reset a privileged
+  // account's password (that would hand them a temp password and let them log in
+  // AS a super admin / peer admin — a side-door escalation the role-field guards
+  // in updateUser/fixUserAccount exist to prevent). Only a super admin may reset
+  // another admin's or a super admin's password.
+  const targetIsPrivileged = targetUser.account_type === 'super_admin' || targetUser.role === 'admin';
+  if (targetIsPrivileged && !callerIsSuperAdmin) {
+    return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
+  }
+
+  // Generate a temporary password from a CSPRNG with a guaranteed length and
+  // character mix. `Math.random().toString(36).slice(-8)` is non-cryptographic
+  // and can yield far fewer than 8 chars (e.g. when the fraction is short),
+  // producing a weak, short credential.
+  const tempPassword = generateTempPassword();
 
   // Update password
   await base44.asServiceRole.auth.updateUserPassword(userEmail, tempPassword);
@@ -525,6 +535,19 @@ async function updateUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   // (consistent with createUserWithTempPassword / fixUserAccount).
   if (role === 'admin' && !callerIsSuperAdmin) {
     return Response.json({ error: 'Only a super admin can grant the admin role.' }, { status: 403 });
+  }
+
+  // Privilege boundary: a facility admin must not be able to mutate a privileged
+  // account (demote a peer admin to 'user', or rewrite the super admin's record)
+  // — only a super admin may edit another admin's or a super admin's account.
+  const targetUsers = await base44.asServiceRole.entities.User.filter({ id: user_id });
+  const targetUser = targetUsers?.[0];
+  if (!targetUser) {
+    return Response.json({ error: 'User not found' }, { status: 404 });
+  }
+  const targetIsPrivileged = targetUser.account_type === 'super_admin' || targetUser.role === 'admin';
+  if (targetIsPrivileged && !callerIsSuperAdmin && targetUser.email !== currentUser.email) {
+    return Response.json({ error: 'Only a super admin can modify another administrator\'s account.' }, { status: 403 });
   }
 
   // Only include fields that were actually provided so we never wipe values.
