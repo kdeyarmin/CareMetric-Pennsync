@@ -1296,6 +1296,18 @@ Actions available:
                       </TableCell>
                       <TableCell>
                        <div className="flex flex-col gap-2 min-w-[120px]">
+                         {referral.extracted_data && (
+                           <Link to={`/ReferralFollowUp?id=${referral.id}`}>
+                             <Button
+                               size="sm"
+                               variant="outline"
+                               className="min-h-[36px] text-xs w-full"
+                             >
+                               <ClipboardCheck className="w-4 h-4 mr-1" />
+                               {referral.follow_up_requests?.status ? `Follow-Up (${referral.follow_up_requests.status})` : 'Follow-Up'}
+                             </Button>
+                           </Link>
+                         )}
                          {referral.requires_manual_review ? (
                            <Button
                              size="sm"
