@@ -49,10 +49,14 @@ export default function DiagnosisCodeGenerator({ referralData }) {
 
   if (!result) return null;
 
+  // With no acceptable primary, positions start at 1 on the first secondary —
+  // only offset the M1023 numbering when a primary occupies position 1.
+  const secondaryNumber = (dx) => dx.position - (result.primary ? 1 : 0);
+
   const copySequence = async () => {
     const lines = result.sequenced.map(
       (dx) =>
-        `${dx.role === "primary" ? "M1021 Primary" : `M1023 Secondary ${dx.position - 1}`}: ${dx.displayCode}${dx.description ? ` — ${dx.description}` : ""}`
+        `${dx.role === "primary" ? "M1021 Primary" : `M1023 Secondary ${secondaryNumber(dx)}`}: ${dx.displayCode}${dx.description ? ` — ${dx.description}` : ""}`
     );
     try {
       await navigator.clipboard.writeText(lines.join("\n"));
@@ -97,7 +101,7 @@ export default function DiagnosisCodeGenerator({ referralData }) {
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 <Badge className={dx.role === "primary" ? "bg-indigo-600 text-white" : "bg-slate-600 text-white"}>
-                  {dx.role === "primary" ? "M1021 Primary" : `M1023 #${dx.position - 1}`}
+                  {dx.role === "primary" ? "M1021 Primary" : `M1023 #${secondaryNumber(dx)}`}
                 </Badge>
                 <span className="font-mono font-bold text-slate-900">{dx.displayCode}</span>
                 {dx.description && <span className="text-sm text-slate-700">{dx.description}</span>}

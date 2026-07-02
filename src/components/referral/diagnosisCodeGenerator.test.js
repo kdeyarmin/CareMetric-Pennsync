@@ -19,6 +19,7 @@ test("isIcdCode accepts dotted, bare, and alphanumeric-category codes", () => {
   assert.equal(isIcdCode("i509"), true);
   assert.equal(isIcdCode("I10"), true);
   assert.equal(isIcdCode("C4A.10"), true);
+  assert.equal(isIcdCode("U07.1"), true); // U-chapter (COVID-19) is valid ICD-10-CM
   assert.equal(isIcdCode("CHF"), false);
   assert.equal(isIcdCode("U99999999"), false);
   assert.equal(isIcdCode(""), false);
@@ -34,6 +35,39 @@ test("extractIcdCodesFromText does not treat vitamin/room tokens as codes", () =
   // ...but a genuine bare code elsewhere in the same text is still found.
   const found = extractIcdCodesFromText("Vitamin B12 deficiency (E53.8)");
   assert.deepEqual(found.map((f) => f.code), ["E538"]);
+});
+
+test("extractIcdCodesFromText does not treat IV-fluid tokens as codes", () => {
+  assert.deepEqual(extractIcdCodesFromText("IV D5W at 75 mL/hr, then D5NS"), []);
+  // A real code alongside an infusion order is still found.
+  const found = extractIcdCodesFromText("Dehydration E86.0, IV D5W ordered");
+  assert.deepEqual(found.map((f) => f.code), ["E860"]);
+});
+
+test("extractIcdCodesFromText does not treat clinical abbreviations as codes", () => {
+  // T2DM/L4L5-style tokens are code-shaped but not codes — they must go to
+  // the coder queue, never be surfaced as ICD-10.
+  assert.deepEqual(extractIcdCodesFromText("Type 2 diabetes mellitus (T2DM), uncontrolled"), []);
+  assert.deepEqual(extractIcdCodesFromText("Laminectomy L4L5, s/p fall"), []);
+  // Alpha-category codes are still harvested in dotted form.
+  assert.deepEqual(extractIcdCodesFromText("Melanoma C4A.10").map((f) => f.code), ["C4A10"]);
+});
+
+test("U-chapter codes are harvested from text and dedicated fields", () => {
+  assert.deepEqual(extractIcdCodesFromText("COVID-19 pneumonia (U07.1)").map((f) => f.code), ["U071"]);
+  const { candidates } = harvestDiagnosisCandidates({
+    diagnoses: { primary_icd10: "U07.1" },
+  });
+  assert.deepEqual(candidates.map((c) => c.code), ["U071"]);
+});
+
+test("abbreviation-only diagnoses land in the coder queue, not the sequence", () => {
+  const result = generateDiagnosisCodes({
+    diagnoses: { primary_diagnosis: "Type 2 diabetes mellitus (T2DM)" },
+  });
+  assert.equal(result.hasCodes, false);
+  assert.equal(result.sequenced.length, 0);
+  assert.ok(result.uncoded.some((u) => /diabetes/i.test(u.description)));
 });
 
 test("formatIcd re-dots normalized codes for display", () => {

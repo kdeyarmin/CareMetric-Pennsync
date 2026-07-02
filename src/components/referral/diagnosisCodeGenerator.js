@@ -26,13 +26,16 @@ import {
 } from "../pdgm/pdgmRates.js";
 import { normalizeIcd, validatePrimaryDiagnosis } from "./intakeDiagnosisValidator.js";
 
-// Dotted ICD-10 (e.g. I50.9, C4A.10) — safe to harvest from free text.
-const ICD_DOTTED = /\b([A-TV-Z][0-9][0-9A-Z])\.([0-9A-Z]{1,4})\b/g;
-// Bare ICD-10 (e.g. I10, J449) — harvested from free text too, but guarded
-// against the classic false positive ("vitamin B12", "IV D5W" style tokens).
-const ICD_BARE = /\b([A-TV-Z][0-9][0-9A-Z][0-9A-Z]{0,4})\b/g;
+// Dotted ICD-10 (e.g. I50.9, C4A.10, U07.1) — safe to harvest from free text.
+const ICD_DOTTED = /\b([A-Z][0-9][0-9A-Z])\.([0-9A-Z]{1,4})\b/g;
+// Bare ICD-10 (e.g. I10, J449) harvested from free text. Stricter than the
+// dotted/dedicated-field shapes: positions 2-3 must be DIGITS, so clinical
+// abbreviations shaped like codes (T2DM, D5W, L4L5) are never mistaken for
+// one. The trade-off: alpha-category codes (C4A, M1A, Z3A) are only harvested
+// from prose in dotted form or from dedicated code fields.
+const ICD_BARE = /\b([A-Z][0-9]{2}[0-9A-Z]{0,4})\b/g;
 // Full-string validity check for dedicated code fields (dot optional).
-const ICD_EXACT = /^[A-TV-Z][0-9][0-9A-Z](?:\.?[0-9A-Z]{1,4})?$/;
+const ICD_EXACT = /^[A-Z][0-9][0-9A-Z](?:\.?[0-9A-Z]{1,4})?$/;
 
 /** True when `text`, as a whole trimmed field, is a single ICD-10 code. */
 export function isIcdCode(text) {
@@ -40,13 +43,16 @@ export function isIcdCode(text) {
 }
 
 // Words that precede a code-shaped token when it is NOT a diagnosis code.
-const NON_CODE_PRECEDING = /(?:vitamin|vit\.?|room|rm\.?|apt\.?|unit)\s*$/i;
+const NON_CODE_PRECEDING = /(?:vitamin|vit\.?|room|rm\.?|apt\.?|unit|iv)\s*$/i;
+// Code-shaped tokens that are never diagnosis codes (common IV fluids).
+const NON_CODE_TOKENS = new Set(["D5W", "D10W", "D5NS", "D5LR"]);
 
 /**
  * Extract ICD-10 codes from a free-text field. Dotted codes are always taken;
- * bare (dot-less) codes are taken unless the preceding words mark them as a
- * non-code token (vitamin B12, room B12...).
- * @returns {Array<{code:string, raw:string}>} normalized codes, in order found
+ * bare (dot-less) codes are taken unless the token or its preceding words mark
+ * it as a non-code (vitamin B12, room B12, IV D5W...).
+ * @returns {Array<{code:string, raw:string}>} deduped normalized codes —
+ *   dotted matches first (in text order), then bare matches (in text order)
  */
 export function extractIcdCodesFromText(text) {
   const s = String(text || "");
@@ -64,6 +70,7 @@ export function extractIcdCodesFromText(text) {
     // Skip the stem of a dotted code (the "I50" inside "I50.9") — the dotted
     // pass already captured the full code.
     if (/^\.[0-9A-Z]/.test(s.slice(m.index + m[0].length))) continue;
+    if (NON_CODE_TOKENS.has(m[0].toUpperCase())) continue;
     if (NON_CODE_PRECEDING.test(s.slice(0, m.index))) continue;
     push(m[0]);
   }
