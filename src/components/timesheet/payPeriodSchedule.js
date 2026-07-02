@@ -5,11 +5,14 @@
  *   • Pay period: two weeks, Sunday → Saturday (14 days inclusive).
  *   • Timesheets are due before NOON on the Monday after the period ends
  *     (period_end Saturday + 2 days).
- *   • Payday is the Saturday one week after the period ends (period_end + 7 days).
+ *   • Payday is the Friday after the period ends (period_end + 6 days — the
+ *     Friday of the week timesheets are due), unless a bank holiday shifts it
+ *     (see PAYDAY_OVERRIDES).
  *
- * Anchored to the known cycle: Sun 2026-06-14 → Sat 2026-06-27, due Mon
- * 2026-06-29 12:00 PM, payday Sat 2026-07-04 (the uploaded example files are
- * named for that 6/29 due date). Every other period is derived from this anchor.
+ * Anchored to the known cycle: Sun 2026-06-28 → Sat 2026-07-11, due Mon
+ * 2026-07-13 12:00 PM, payday Fri 2026-07-17. The prior period (6/14–6/27)
+ * pays 7/4 instead of Fri 7/3 because 7/3 is the observed Independence Day
+ * holiday. Every other period is derived from this cadence.
  *
  * Pure and unit-tested (payPeriodSchedule.test.js). Date math uses UTC-midpoint
  * differencing so DST transitions can't shift a period boundary.
@@ -22,6 +25,15 @@ import { payPeriodLabel } from "./timesheetUtils.js";
 export const ANCHOR_START = "2026-06-14";
 const PERIOD_DAYS = 14;
 const DAY_MS = 86400000;
+
+/**
+ * Paydays that fall on (or next to) a bank holiday and move off the normal
+ * Friday. Keyed by the scheduled Friday; value is the actual pay date.
+ */
+const PAYDAY_OVERRIDES = {
+  // Fri 2026-07-03 is the observed Independence Day holiday; pay lands Sat 7/4.
+  "2026-07-03": "2026-07-04",
+};
 
 function addDays(iso, n) {
   const d = parseISODate(iso);
@@ -49,7 +61,8 @@ export function payPeriodByIndex(index) {
   const start = addDays(ANCHOR_START, index * PERIOD_DAYS); // Sunday
   const end = addDays(start, PERIOD_DAYS - 1); // Saturday
   const dueDate = addDays(end, 2); // Monday
-  const payday = addDays(end, 7); // Saturday, one week after period end
+  const scheduledPayday = addDays(end, 6); // Friday of the due week
+  const payday = PAYDAY_OVERRIDES[scheduledPayday] ?? scheduledPayday;
   return {
     index,
     start,
@@ -104,7 +117,7 @@ export function dueLabel(period) {
   return `${d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })} · 12:00 PM`;
 }
 
-/** "Sat, Jul 4, 2026" — the payday. */
+/** "Fri, Jul 17, 2026" — the payday. */
 export function paydayLabel(period) {
   const d = parseISODate(period?.payday);
   if (!d) return "—";
