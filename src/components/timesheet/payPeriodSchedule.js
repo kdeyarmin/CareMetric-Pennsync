@@ -9,10 +9,11 @@
  *     Friday of the week timesheets are due), unless a bank holiday shifts it
  *     (see PAYDAY_OVERRIDES).
  *
- * Anchored to the known cycle: Sun 2026-06-28 → Sat 2026-07-11, due Mon
- * 2026-07-13 12:00 PM, payday Fri 2026-07-17. The prior period (6/14–6/27)
- * pays 7/4 instead of Fri 7/3 because 7/3 is the observed Independence Day
- * holiday. Every other period is derived from this cadence.
+ * Anchored at ANCHOR_START: Sun 2026-06-14 → Sat 2026-06-27, due Mon
+ * 2026-06-29 12:00 PM, payday Sat 2026-07-04 (shifted off Fri 7/3, the
+ * observed Independence Day holiday). Every other period is derived from that
+ * 14-day cadence — e.g. the next period runs Sun 2026-06-28 → Sat 2026-07-11,
+ * due Mon 2026-07-13 12:00 PM, payday Fri 2026-07-17.
  *
  * Pure and unit-tested (payPeriodSchedule.test.js). Date math uses UTC-midpoint
  * differencing so DST transitions can't shift a period boundary.
