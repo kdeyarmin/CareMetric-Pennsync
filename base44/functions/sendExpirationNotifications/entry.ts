@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
 
       const remindersSent = assignment.reminder_offsets_sent || [];
       const dueOffsets = reminderOffsets.filter(
-        (offset) => daysUntilExpiration <= offset && !remindersSent.includes(offset)
+        (offset) => daysUntilExpiration >= 0 && daysUntilExpiration <= offset && !remindersSent.includes(offset)
       );
 
       if (dueOffsets.length > 0) {
@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
 
       const remindersSent = credential.reminder_offsets_sent || [];
       const dueOffsets = reminderOffsets.filter(
-        (offset) => daysUntilExpiration <= offset && !remindersSent.includes(offset)
+        (offset) => daysUntilExpiration >= 0 && daysUntilExpiration <= offset && !remindersSent.includes(offset)
       );
 
       if (dueOffsets.length > 0) {

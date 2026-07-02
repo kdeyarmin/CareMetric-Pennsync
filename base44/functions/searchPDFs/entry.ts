@@ -186,7 +186,10 @@ Deno.serve(async (req) => {
 });
 
 function extractSnippet(text, query, contextLength = 100) {
-  const queryLower = query.toLowerCase();
+  // A keywords-only index match can reach here with no extracted_text; coerce so
+  // .toLowerCase() doesn't throw a TypeError and 500 the whole search.
+  text = String(text || '');
+  const queryLower = String(query || '').toLowerCase();
   const textLower = text.toLowerCase();
   const index = textLower.indexOf(queryLower);
   

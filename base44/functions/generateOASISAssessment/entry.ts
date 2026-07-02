@@ -21,6 +21,13 @@ Deno.serve(async (req) => {
     if (patient_id) {
       const patients = await base44.entities.Patient.filter({ id: patient_id });
       patientData = patients[0];
+      // Fail closed when a patient_id was given but is missing/unauthorized (the
+      // read is RLS-scoped): otherwise contextData falls through to undefined and
+      // the prompt embeds the literal string "undefined", fabricating an
+      // assessment. Mirrors generateNoteFromRecording / generateFollowUpTasks.
+      if (!patientData) {
+        return Response.json({ error: 'Patient not found' }, { status: 404 });
+      }
     }
 
     const contextData = referral_data || patientData;

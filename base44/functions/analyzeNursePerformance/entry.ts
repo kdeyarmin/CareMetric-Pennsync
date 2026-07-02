@@ -35,12 +35,14 @@ Deno.serve(async (req) => {
     dateThreshold.setDate(dateThreshold.getDate() - date_range_days);
 
     // Fetch all relevant data
-    const [activities, recommendations, audits, visits, patients, incidents] = await Promise.all([
+    // Note: patient counts are derived from this nurse's visits below, so we do
+    // NOT bulk-read the whole Patient table (a needless 5000-record PHI fetch
+    // that was fetched and never used).
+    const [activities, recommendations, audits, visits, incidents] = await Promise.all([
       base44.asServiceRole.entities.UserActivity.filter({ user_email: targetEmail }),
       base44.asServiceRole.entities.TrainingRecommendation.filter({ nurse_email: targetEmail }),
       base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }),
       base44.asServiceRole.entities.Visit.filter({ created_by: targetEmail }),
-      base44.asServiceRole.entities.Patient.list('-created_date', 5000),
       base44.asServiceRole.entities.Incident.list('-created_date', 5000)
     ]);
 
@@ -89,7 +91,12 @@ Deno.serve(async (req) => {
       const totalMinutes = visitsWithDuration.reduce((sum, v) => {
         const start = new Date(`2000-01-01T${v.start_time}`);
         const end = new Date(`2000-01-01T${v.end_time}`);
-        return sum + ((end - start) / (1000 * 60));
+        let minutes = (end - start) / (1000 * 60);
+        // An overnight visit (e.g. 22:00 → 01:00) would otherwise contribute a
+        // large negative duration and drag the average below zero. Wrap past
+        // midnight rather than counting it as negative time.
+        if (minutes < 0) minutes += 24 * 60;
+        return sum + minutes;
       }, 0);
       metrics.avg_visit_duration = Math.round(totalMinutes / visitsWithDuration.length);
     }

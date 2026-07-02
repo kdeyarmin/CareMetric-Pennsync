@@ -21,9 +21,11 @@ Deno.serve(async (req) => {
 
     // Fetch nurse performance data
     const [recommendations, audits, activities] = await Promise.all([
-      base44.asServiceRole.entities.TrainingRecommendation.filter({ 
-        nurse_email: targetEmail,
-        addressed: false 
+      // Fetch ALL recommendations (not just addressed:false) so the acceptance
+      // rate below is real — filtering to addressed:false first made
+      // `filter(r => r.addressed)` always empty, pinning the rate at 0%.
+      base44.asServiceRole.entities.TrainingRecommendation.filter({
+        nurse_email: targetEmail
       }),
       base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }),
       base44.asServiceRole.entities.UserActivity.filter({ user_email: targetEmail })

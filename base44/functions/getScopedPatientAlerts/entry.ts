@@ -20,7 +20,13 @@ Deno.serve(async (req) => {
 
     const { patient_id, limit } = await req.json().catch(() => ({}));
     const cap = Math.min(Number(limit) || 100, 500);
-    const isAdmin = user.role === 'admin';
+    // Include account_type admins — a super_admin/agency_admin who isn't yet
+    // role:'admin' would otherwise be denied the all-patients view (or 403'd on
+    // a single patient). Mirrors getDashboardData's admin predicate.
+    const isAdmin =
+      user.role === 'admin' ||
+      user.account_type === 'agency_admin' ||
+      user.account_type === 'super_admin';
 
     // Single-patient view: authorize against assignment (or admin).
     if (patient_id) {
