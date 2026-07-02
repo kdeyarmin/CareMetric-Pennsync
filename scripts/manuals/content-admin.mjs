@@ -28,6 +28,7 @@ export const adminBlocks = [
         ['<strong>User Management</strong>', 'Invite staff, assign roles, edit profiles, revoke access, and export the roster.'],
         ['<strong>Personnel &amp; Credentials</strong>', 'Personnel files, credential approvals, and agency-wide expiration/compliance tracking.'],
         ['<strong>Performance</strong>', 'Nurse-performance and skill-gap dashboards.'],
+        ['<strong>Timesheets &amp; Payroll</strong>', 'Approve staff timesheets, configure visit points and payroll profiles, and export per-service-line payroll for the accountant.'],
       ])}
 
       <h3 id="af-office"><span class="h3-eyebrow">Office &amp; back-office</span>Front-office workflows</h3>
@@ -42,6 +43,7 @@ export const adminBlocks = [
       ${table(['Tool', 'What it does'], [
         ['<strong>Training Management</strong>', 'Assign courses and learning plans, auto-generate AI in-services, and track completion.'],
         ['<strong>Compliance Center</strong>', 'Real-time monitoring, regulatory tracking, and security/audit logs.'],
+        ['<strong>Facility Documentation Rules</strong>', 'Define agency charting requirements (e.g. SpO₂ for oxygen patients) enforced live in every Smart Note.'],
         ['<strong>Reports &amp; Analytics</strong>', 'KPI, performance, OASIS/PDGM, predictive analytics, and documentation-impact ROI.'],
         ['<strong>Data Management</strong>', 'Patient import/export, duplicate merge, and bulk discharge.'],
       ])}
@@ -180,6 +182,7 @@ export const adminBlocks = [
         ['Generate the admission note', 'Move through Processor and Admission Note steps to complete the intake.'],
       ])}
       <p>Use <strong>Referral Triage</strong> to prioritize incoming referrals by urgency and route them to the right team.</p>
+      ${callout('note', 'Face-to-Face compliance is checked automatically', '<p>When a referral includes a Face-to-Face encounter, the analyzer shows a <strong>Face-to-Face Encounter</strong> badge — <strong>Compliant</strong>, <strong>Non-compliant</strong>, or <strong>Needs review</strong> (per 42 CFR 424.22) — with the specific reasons: encounter present, eligible certifying practitioner, the 90-days-before / 30-days-after-SOC timing window, and diagnosis linkage. It’s a deterministic check of the extracted referral data, shown only to intake/admin staff.</p>')}
 
       <h3 id="of-incidents"><span class="h3-eyebrow">Safety follow-through</span>Incident review</h3>
       ${navpath(['Sidebar', 'Office', 'Incident Review'])}
@@ -198,6 +201,48 @@ export const adminBlocks = [
       <h3 id="of-templates"><span class="h3-eyebrow">Standardize documentation</span>Template management</h3>
       ${navpath(['Admin Console', 'Data & Documents', 'Template Management'])}
       <p>Create and maintain reusable templates: clinical note/visit/assessment templates and custom PDF forms and letters. Standard templates keep documentation consistent and compliant across your team. (The document-template editor is admin-only; the PDF template library is available to all staff.)</p>
+      ${callout('tip', 'Seed and share quick phrases', '<p>In the <strong>Clinical Library</strong>, administrators can one-click <strong>Add starter phrases</strong> — six ready-made, agency-wide quick phrases (diabetic education, fall risk assessment, homebound status, medication reconciliation, wound care provided, pain assessment). It’s safe to click repeatedly; only missing phrases are added. Only administrators can mark a phrase <strong>agency-wide</strong>; any user can create their own and can bind a phrase to a specific patient.</p>')}
+    `,
+  },
+
+  /* D2 ── Timesheets & Payroll ────────────────────────────────────────────── */
+  {
+    id: 'admin-timesheets',
+    title: 'Timesheets, Approvals & Payroll',
+    sub: [
+      { id: 'at-approve', title: 'Approving timesheets' },
+      { id: 'at-export', title: 'Payroll export & reports' },
+      { id: 'at-setup', title: 'Payroll setup' },
+    ],
+    html: `
+      <p class="sec-intro">Staff submit biweekly timesheets from Tools ▸ Timesheets; you review them, export payroll per service line for the accountant, and configure how each employee is paid. PennSync tracks hours, visit points, PTO, miles, and reimbursements — never pay rates or wages.</p>
+      ${roleLine('Facility Admin')}
+      ${navpath(['Sidebar', 'Tools', 'Timesheets'])}
+      <p>As an approver you see extra tabs alongside <strong>My Timesheet</strong>: <strong>Approvals</strong> (admins and managers), plus admin-only <strong>Payroll Export</strong>, <strong>Reports</strong>, and <strong>Payroll Setup</strong>. The Timesheets item in the sidebar shows a badge counting sheets awaiting <em>your</em> review — managers see their direct reports, admins see all submitted sheets.</p>
+
+      <h3 id="at-approve"><span class="h3-eyebrow">Review &amp; sign off</span>Approving timesheets</h3>
+      ${steps([
+        ['Open Approvals', 'The queue lists submitted timesheets oldest first. Each card shows the employee, service line, period, a full breakdown (Regular / OT / Holiday / On-call / PTO / points or visits), any auto-carried PTO, and the employee’s notes.'],
+        ['Approve or return', 'Use <strong>Approve</strong> (optional note) or <strong>Return</strong> for changes (note recommended — it’s shown to the employee). With several pending, <strong>Approve all</strong> handles the batch with one shared note.'],
+        ['PennSync notifies the employee', 'Approval and return each trigger an in-app notification and a branded email. Approved sheets lock and flow into the payroll export.'],
+      ])}
+      ${callout('important', 'Approval guardrails', '<p>Only an administrator or the employee’s assigned manager can review a sheet, and <strong>no one can approve their own timesheet</strong> — not even an admin. Approved sheets can no longer be edited by the employee; if something must change, return it before approving, or have the employee submit a correction through you. Editing or resubmitting a returned sheet clears the prior review and re-notifies the approver.</p>')}
+
+      <h3 id="at-export"><span class="h3-eyebrow">To the accountant</span>Payroll export &amp; reports</h3>
+      ${steps([
+        ['Pick the pay period', 'Payroll Export shows the period’s due date and payday, and how many approved timesheets it contains. <strong>Only approved timesheets are included.</strong>'],
+        ['Check coverage', 'A coverage strip per service line shows who’s <em>approved</em>, who’s <em>awaiting approval</em>, and — in red — active employees who have <em>not submitted</em>, so no one is silently left off payroll.'],
+        ['Export the files', 'Home Health and Hospice export as separate files, each as <strong>Excel (CSV)</strong> or <strong>PDF</strong>. Home Health includes point columns (Regular Points, Emerg Visit Pts) plus hours, PTO, miles, and reimbursements; Hospice is hourly with on-call visits. Totals and rate notes (e.g. mileage at $0.45/mile) are included.'],
+      ])}
+      <p>The <strong>Reports</strong> tab adds a flexible hours-and-points report — group by pay period, employee, or service line; filter by status (approved only, submitted + approved, or all); export to CSV.</p>
+      ${callout('note', 'The payroll calendar', '<p>Pay periods are biweekly, Sunday through Saturday. Timesheets are due before <strong>noon on the Monday</strong> after the period ends, and payday is the <strong>Friday after the period ends</strong> — moved to the Thursday before when that Friday is a bank holiday (New Year’s Day, Juneteenth, Independence Day, Veterans Day, Christmas).</p>')}
+
+      <h3 id="at-setup"><span class="h3-eyebrow">Configure once</span>Payroll setup</h3>
+      ${table(['Card', 'What you configure'], [
+        ['<strong>Visit Point Values</strong>', 'The point value credited per visit type — SOC, ROC, Recert, Routine Visit, Discharge. Points are units of work; no dollar amounts.'],
+        ['<strong>Employee Payroll Setup</strong>', 'Per employee: company / service line (Home Health or Hospice), <em>Paid by points</em> (home-health field staff only — office and all hospice staff are hourly), a standing phone reimbursement/pay amount, and an Applied (active) toggle.'],
+      ])}
+      ${callout('best', 'Set the payroll profile at onboarding', '<p>An employee’s service line and points eligibility drive what their timesheet form shows. Set their payroll profile when you create their account so their very first timesheet is right.</p>')}
     `,
   },
 
@@ -241,7 +286,10 @@ export const adminBlocks = [
   {
     id: 'admin-compliance',
     title: 'Compliance & Quality',
-    sub: [{ id: 'cq-center', title: 'The Compliance Center' }],
+    sub: [
+      { id: 'cq-center', title: 'The Compliance Center' },
+      { id: 'cq-docrules', title: 'Facility Documentation Rules' },
+    ],
     html: `
       <p class="sec-intro">Monitor documentation quality, regulatory alignment, and security from a single hub — and stay audit-ready year round.</p>
       ${roleLine('Facility Admin')}
@@ -254,6 +302,18 @@ export const adminBlocks = [
         ['<strong>Security</strong>', 'Access and change audit logs, security policy management, and policy acknowledgment enforcement.'],
       ])}
       ${callout('important', 'Turn flags into fixes', '<p>Compliance flags are only useful if they’re closed. Review the dashboard regularly, work the flagged items with your team, and use corrective-action tracking so nothing slips.</p>')}
+
+      <h3 id="cq-docrules"><span class="h3-eyebrow">Your rules, enforced at the point of care</span>Facility Documentation Rules</h3>
+      ${navpath(['Sidebar', 'Administration', 'Facility Doc Rules'])}
+      <p>Facility Documentation Rules turn agency policy and state-survey findings into live checklist items inside every Smart Note: <em>if the patient matches condition X, the note must contain Y</em>. Matching clinicians see a <strong>Facility Documentation Requirements</strong> panel that checks itself off as they type.</p>
+      ${steps([
+        ['Start from a preset or a blank rule', 'Use the one-click <strong>Quick add</strong> presets — “Oxygen patients require SpO2”, “Diabetic patients require blood sugar”, “Wounds require measurements” — or choose <strong>New Rule</strong>.'],
+        ['Define who it applies to', 'Pick a condition: every patient, diagnosis contains…, medication contains…, has an active wound, or care type (Home Health / Hospice) — with comma-separated condition keywords where relevant. Optionally limit it to specific visit types (none selected = all visits).'],
+        ['Define what the note must contain', 'Write the requirement text the nurse sees, then list the <strong>required-in-the-note keywords</strong>. If <em>any one</em> keyword appears in the note, the requirement is satisfied. Leave the keywords empty to make it an advisory, confirm-manually item.'],
+        ['Set severity and provenance', 'Only <strong>critical</strong> rules block saving; high/medium/low are advisory. Use <strong>Source</strong> (e.g. “PA State Survey 2025”) so the team knows why the rule exists, and the <strong>Active</strong> toggle to retire a rule without deleting it.'],
+      ])}
+      ${callout('important', 'List every synonym', '<p>Keyword matching is literal (case-insensitive). For an SpO₂ rule, list all the ways nurses write it — <em>spo2, o2 sat, oxygen saturation, pulse ox</em> — or compliant notes will be flagged as missing it.</p>')}
+      ${callout('note', 'How the save gate works', '<p>Unmet requirements nudge the nurse while drafting; on the final note, an unmet <strong>critical</strong> requirement disables Save until the detail is documented or the nurse explicitly acknowledges saving without it. Every acknowledged override is recorded in the audit log — review them to tune your rules.</p>')}
     `,
   },
 
@@ -282,7 +342,7 @@ export const adminBlocks = [
 
       <h3 id="ra-more"><span class="h3-eyebrow">Look ahead</span>Predictive, agency & impact views</h3>
       ${grid2([
-        { h: 'Predictive Analytics', p: 'AI risk scoring (readmission, deterioration) and population trends.' },
+        { h: 'Predictive Analytics', p: 'AI risk scoring (readmission, deterioration) and population trends. The Rehospitalization tab now leads with a PPH Prevention Worklist — patients ranked by preventable-hospitalization risk (urgent / high / moderate / watch), flagged when inside the 31-day post-discharge window, with recommended interventions. Risk-list rows link straight to the patient chart.' },
         { h: 'Agency Analytics', p: 'Operational KPIs: census, utilization, and outcome benchmarking.' },
         { h: 'Documentation Impact', p: 'How stronger documentation lifts PDGM case-mix weight and estimated reimbursement (before vs. after). Financial figures are admin-only.' },
         { h: 'User Activity Report', p: 'A detailed, exportable audit log of user actions.' },
@@ -302,7 +362,7 @@ export const adminBlocks = [
       <h3 id="dm-tools"><span class="h3-eyebrow">Bulk & cleanup</span>Import, merge & bulk operations</h3>
       ${table(['Tool', 'What it does', 'Where'], [
         ['<strong>Data Management</strong>', 'Import and export patient data with validation and column mapping; archive and restore patients.', 'Admin Console → Data & Documents'],
-        ['<strong>Duplicate Patients</strong>', 'Find and merge duplicate records — consolidating visits, medications, and history.', 'Patients → Duplicate Patients'],
+        ['<strong>Duplicate Patients</strong>', 'Find and merge duplicate records — consolidating visits, medications, and history. Detection now also surfaces near-miss dates of birth (off-by-a-day data-entry errors) and lists weakly linked records (e.g. a shared phone number) alongside their duplicate cluster for review — nothing is ever merged automatically.', 'Patients → Duplicate Patients'],
         ['<strong>Bulk Discharge Import</strong>', 'Batch-discharge patients and close episodes from a CSV/Excel file, with validation.', 'Admin Console → Data & Documents'],
       ])}
       ${callout('important', 'Validate before you import', '<p>Bulk operations touch many records at once. Always review the validation results before confirming an import, and merge duplicates deliberately — merges combine visit history and medications.</p>')}
@@ -385,10 +445,12 @@ export const adminBlocks = [
       ${steps([
         ['Invite the user', 'Users → invite with email, name, and the clinical-user role.'],
         ['Set their care scope', 'Confirm Home Health, Hospice, or Both on their profile.'],
+        ['Set their payroll profile', 'Timesheets → Payroll Setup: service line (Home Health / Hospice), paid-by-points where applicable, and any standing phone reimbursement — so their first timesheet is right.'],
         ['Record credentials', 'Add licenses/certifications with expiration dates in their personnel file and approve them.'],
         ['Assign onboarding training', 'Assign a learning plan and any annual mandatory education.'],
         ['Add to coverage', 'Place them into the on-call rotation as appropriate.'],
       ])}
+      ${callout('note', 'First sign-in includes a recorded sign-off', '<p>Before first use, every user must accept the <strong>AI-Generated Content Responsibility</strong> agreement — an acknowledgment that AI-drafted material must be reviewed before it is used or submitted. Acceptance is recorded automatically (name, date, agreement version) on their account and in the audit log; no admin action is needed.</p>')}
 
       <h3 id="ck-monthly"><span class="h3-eyebrow">Every month</span>Monthly compliance rhythm</h3>
       ${steps([
@@ -425,6 +487,11 @@ export const adminBlocks = [
         { q: 'How do I export a report?', a: 'In Reports & Analytics, open the relevant tab or the Reports Center and export to PDF or CSV; you can also schedule recurring reports by email.' },
         { q: 'Where do I update Medicare PDGM rates?', a: 'Admin Console → System & Configuration → PDGM Rate Settings. Update the base rate, case-mix weights, thresholds, multipliers, and ICD-10 mappings when CMS publishes new rates.' },
         { q: 'How do I post an announcement to all staff?', a: 'Use the Announcements manager to publish an info, warning, or urgent message with optional scheduling and expiration; it appears on every user’s Dashboard.' },
+        { q: 'How do I create a facility documentation rule?', a: 'Administration → Facility Doc Rules. Start from a Quick add preset or New Rule: define who it applies to (diagnosis, medication, wound, care type, or everyone), the requirement text nurses see, the required-in-note keywords (list every synonym), and the severity — only critical rules block saving, and acknowledged overrides are audit-logged.' },
+        { q: 'How do I approve timesheets and run payroll?', a: 'Tools → Timesheets. The Approvals tab lists submitted sheets — approve or return each (or Approve all). Then in Payroll Export, pick the pay period and export Home Health and Hospice as separate CSV or PDF files. Only approved timesheets are included; the coverage strip flags anyone who hasn’t submitted.' },
+        { q: 'Why is an employee missing from the payroll export?', a: 'Their timesheet isn’t approved for that period — it’s still submitted (approve it), returned (they must resubmit), or never submitted. The coverage strip in Payroll Export names anyone expected who hasn’t submitted.' },
+        { q: 'Can an approved timesheet be changed?', a: 'No — approval locks the sheet, and the employee can’t submit a second one for the same period. Return a sheet for changes before approving it; the employee can edit only draft and returned sheets.' },
+        { q: 'How do I set what a visit is worth in points?', a: 'Tools → Timesheets → Payroll Setup → Visit Point Values: set the points credited per SOC, ROC, Recert, Routine Visit, and Discharge. Points are units of work — PennSync stores no pay rates or wages.' },
       ])}
       ${glossary([
         { term: 'Facility administrator', def: 'An agency-level administrator who can manage users, workflows, compliance, analytics, and configuration — everything scoped to your agency.' },

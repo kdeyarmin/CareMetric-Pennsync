@@ -72,7 +72,7 @@ export const userBlocks = [
         ['<strong>Patients</strong>', 'Your census with fuzzy search (name, MRN, phone, diagnosis) and filters for status, diagnosis, age, last visit, and insurance. Add patients, sort, favorite, and act in bulk.', 'Patient Care ▸ Patients'],
         ['<strong>Patient 360 record</strong>', 'One connected record per patient: overview and health history, vitals-trend charts, visits, documents, proactive tasks, and AI tools (risk, deterioration, history summary, compliance).', 'Patients ▸ (select) ▸ Patient Details'],
         ['<strong>Patient Alerts</strong>', 'A dedicated view of every clinical, risk, and deterioration alert for your patients — review, prioritize, and acknowledge.', 'Patient Care ▸ Patients ▸ Patient Alerts'],
-        ['<strong>OASIS Center</strong>', 'Complete OASIS-E with AI pre-fill and compliance hints, then analyze, review/approve, and validate — all as tabs of one hub.', 'Patient Care ▸ OASIS Center'],
+        ['<strong>OASIS Center</strong>', 'Complete OASIS-E with AI pre-fill and compliance hints — including pre-filling items from a pasted clinical note (with your attestation) — then analyze, review/approve, and validate, all as tabs of one hub.', 'Patient Care ▸ OASIS Center'],
         ['<strong>Incidents</strong>', 'Report safety events (falls, medication errors, injuries) with event type, severity, and AI severity scoring; automatic state-reportable detection; track each report to resolution.', 'Patient Care ▸ Incidents'],
         ['<strong>Patient Education</strong>', 'Generate personalized, plain-language handouts for common conditions, tuned to the patient’s history and reading level; email or print; document teach-back.', 'Patient Care ▸ Patient Education'],
       ])}
@@ -82,6 +82,8 @@ export const userBlocks = [
         ['<strong>Clinical Notes</strong>', 'The documentation hub for every visit — a clear choice between Smart Note and Visit Scribe, with structured vitals capture and automatic visit + compliance records.', 'Documentation ▸ Clinical Notes'],
         ['<strong>Smart Note</strong>', 'Type a few rough observations; AI checks Home Health / Hospice compliance and rewrites them into a complete, skilled note with medical-necessity and homebound language.', 'Clinical Notes ▸ Smart Note'],
         ['<strong>Visit Scribe</strong>', 'Document by voice — record or upload audio, or dictate live. AI transcribes and runs the same compliance review and polishing as a typed note.', 'Clinical Notes ▸ Visit Scribe'],
+        ['<strong>Quick Phrases</strong>', 'Type <strong>/</strong> (or a saved <strong>.shortcut</strong>) in a note to expand a stored phrase — including phrases bound to a specific patient — into full, compliant text.', 'Clinical Notes ▸ Smart Note'],
+        ['<strong>Facility Requirements</strong>', 'A live checklist of your agency’s documentation rules (e.g. SpO₂ for oxygen patients) that checks off as you type.', 'Clinical Notes ▸ Smart Note'],
         ['<strong>Offline Mode</strong>', 'Document a visit with no signal — notes and audio are saved on your device and sync automatically when you reconnect.', 'Tools ▸ Offline Mode'],
       ])}
 
@@ -106,6 +108,7 @@ export const userBlocks = [
         ['<strong>Settings</strong>', 'Your profile, care scope (Home Health / Hospice / Both), credentials with expiration reminders, and AI preferences.', 'Tools ▸ Settings'],
         ['<strong>Notifications</strong>', 'Choose which alerts you receive (messages, SMS, clinical alerts, approvals) and set quiet hours.', 'Settings ▸ Notification Settings'],
         ['<strong>Time Off</strong>', 'Request PTO/sick/vacation and track approvals; managers approve and view a team calendar.', 'Tools ▸ Time Off'],
+        ['<strong>Timesheets</strong>', 'Submit your biweekly pay-period timesheet — hours, visit points, PTO, mileage — and track it through approval to payroll.', 'Tools ▸ Timesheets'],
         ['<strong>On-Call Schedule</strong>', 'View holiday and overnight coverage so you always know who’s on (admins edit it).', 'Tools ▸ On-Call'],
         ['<strong>Help &amp; User Guides</strong>', 'Quick-start help, searchable FAQs, and downloadable manuals (including this one).', 'Tools ▸ Help'],
       ])}
@@ -130,11 +133,12 @@ export const userBlocks = [
       <h3 id="gs-signin"><span class="h3-eyebrow">Access</span>Signing in</h3>
       ${steps([
         ['Open PennSync', 'Go to your agency’s PennSync web address in any modern browser (Chrome, Safari, Edge) on a computer, tablet, or phone.'],
-        ['Enter your credentials', 'Sign in with the email and password from your welcome invitation. First time in, you may be asked to set a new password.'],
-        ['Land on your Dashboard', 'After sign-in you arrive on your Dashboard — your personalized home base for the day.'],
+        ['Enter your credentials', 'On the PennSync sign-in screen, enter the work email and password from your welcome invitation (the eye icon shows or hides your password as you type). First time in, you may be asked to set a new password.'],
+        ['Accept the AI responsibility agreement (first sign-in)', 'Before first use, PennSync asks you to acknowledge that AI-generated content is a starting point that you must review, edit, and approve before it is used or submitted. Check all three statements and choose <strong>I Agree &amp; Continue</strong> — your name, the date, and the agreement version are recorded. You’ll only be asked again if the agreement wording changes.'],
+        ['Land on your Dashboard', 'After sign-in you arrive on your Dashboard — your personalized home base for the day. Sign-in returns you to the exact page you were headed to, so links from emails and messages land where they should.'],
       ])}
-      ${callout('tip', 'Add PennSync to your home screen', '<p>On a phone or tablet, use your browser’s <strong>Add to Home Screen</strong> option. PennSync installs like an app, opens full-screen, and keeps you signed in.</p>')}
-      ${callout('important', 'Forgot your password?', '<p>Use the <strong>Forgot password</strong> link on the sign-in screen, or ask your facility administrator to send a reset. Never share your password — every action in PennSync is recorded under your name for HIPAA accountability.</p>')}
+      ${callout('tip', 'Add PennSync to your home screen', '<p>On a phone or tablet, use your browser’s <strong>Add to Home Screen</strong> option. PennSync installs like an app, opens full-screen, keeps you signed in — and can now open offline, showing your cached work even with no signal.</p>')}
+      ${callout('important', 'Forgot your password?', '<p>Choose <strong>Forgot password?</strong> next to the password field — enter your email and PennSync sends you a reset link. You can also ask your facility administrator to trigger a reset. Never share your password — every action in PennSync is recorded under your name for HIPAA accountability.</p>')}
 
       <h3 id="gs-workspace"><span class="h3-eyebrow">Navigation</span>Finding your way around</h3>
       <p>Every screen shares the same layout. The illustration below maps the four things you’ll use most to move around PennSync.</p>
@@ -225,6 +229,7 @@ export const userBlocks = [
         { h: 'Sort', p: 'Order by newest, oldest, last visit, or name (A–Z / Z–A).' },
         { h: 'Swipe (mobile)', p: 'Swipe a patient card to reveal quick actions like view or add a visit.' },
       ])}
+      <p>The summary cards at the top are <strong>one-tap filters</strong>: tap <strong>Active</strong> to see only active patients, <strong>New (30 days)</strong> for recent admissions, or <strong>Total</strong> to clear the status filter. Every active filter shows a removable chip above the list, so you can always see — and clear — exactly what is narrowing your results.</p>
       ${callout('tip', 'Open a patient in one step', '<p>Skip the list — press <strong>Cmd / Ctrl + K</strong> and type the patient’s name to jump straight to their record.</p>')}
 
       <h3 id="pat-add"><span class="h3-eyebrow">New patient</span>Adding a patient</h3>
@@ -276,6 +281,7 @@ export const userBlocks = [
         ['Review AI suggestions', 'PennSync highlights clinical pathway suggestions and flags responses that may create compliance or coding risk.'],
         ['Save as draft or submit', 'Save to finish later, or submit to send the assessment for review and sign-off.'],
       ])}
+      ${callout('tip', 'Pre-fill OASIS from a note', '<p>At the top of the Assessment tab, open <strong>Pre-fill OASIS from a Note</strong> and paste a recent clinical note. PennSync suggests answers for matching OASIS items, each with a confidence score and the exact sentence from your note it was drawn from. Nothing is written to the assessment until you attest — choose <strong>Attest &amp; apply</strong> per item, or <strong>Attest all ≥85%</strong> for the high-confidence set. Only blank items are filled; your existing answers are never overwritten.</p>')}
       ${callout('important', 'Always confirm AI answers', '<p>AI suggestions accelerate OASIS but never replace your clinical judgment. Review every item — especially those that drive the patient’s functional score and case mix — before submitting.</p>')}
 
       <h3 id="oasis-tabs"><span class="h3-eyebrow">Everything in one place</span>The OASIS Center</h3>
@@ -349,6 +355,8 @@ export const userBlocks = [
       { id: 'doc-choose', title: 'Two ways to document' },
       { id: 'doc-smart', title: 'Smart Note (typed)' },
       { id: 'doc-scribe', title: 'Visit Scribe (spoken)' },
+      { id: 'doc-phrases', title: 'Quick phrases (type “/”)' },
+      { id: 'doc-facility', title: 'Facility documentation requirements' },
       { id: 'doc-visit', title: 'Vitals & closing a scheduled visit' },
       { id: 'doc-offline', title: 'Documenting offline' },
     ],
@@ -399,6 +407,25 @@ export const userBlocks = [
       <p>Either way, PennSync selects the patient and visit type, captures vitals, transcribes your words, and runs the result through the same compliance review and polishing as a typed Smart Note before saving to the chart.</p>
       ${callout('tip', 'Save 10–15 minutes per visit', '<p>Speaking your note in Visit Scribe is often much faster than typing. Narrate the visit naturally — PennSync handles structure and skilled language for you.</p>')}
 
+      <h3 id="doc-phrases"><span class="h3-eyebrow">Reusable text, instantly</span>Quick phrases (type “/”)</h3>
+      <p>Quick phrases expand a short trigger into full, Medicare-compliant narrative right inside your note — wound-care language, diabetic education, homebound status, and anything you save yourself.</p>
+      ${steps([
+        ['Trigger the picker', 'In the observations box, type <strong>/</strong> to open the Quick Phrases picker, type a saved <strong>.shortcut</strong> code (for example <strong>.diabeticedu</strong>), or tap the <strong>Quick Phrase</strong> button in the header. Everyday clinical shorthand (120/80, c/o, N/V) never triggers it by accident.'],
+        ['Pick a phrase', 'Use the arrow keys and Enter (or tap) to choose. Badges show each phrase’s scope: <strong>Patient</strong> (bound to the selected patient), <strong>AI</strong> (personalized with patient details), or <strong>Agency</strong> (shared agency-wide).'],
+        ['Review the inserted text', 'The full expansion is inserted at your cursor. It’s treated as your own draft — it still flows through the same compliance review before you save.'],
+      ])}
+      <p>Create and manage your phrases in the <strong>Clinical Library</strong> (Learning &amp; Resources ▸ Library). When creating a phrase you can <strong>bind it to a specific patient</strong> — for example, that patient’s exact wound-care orders. A patient-bound phrase appears and expands only while you’re charting that patient, so it can never land in another patient’s note.</p>
+      ${callout('tip', 'Quick phrases work offline', '<p>The built-in starter phrases expand instantly with no connection, so “/” keeps working in a dead zone.</p>')}
+
+      <h3 id="doc-facility"><span class="h3-eyebrow">Your agency’s rules, checked live</span>Facility documentation requirements</h3>
+      <p>Your administrator can define agency documentation rules — for example, <em>oxygen patients need an SpO₂ reading</em>, <em>diabetic patients need a blood sugar</em>, <em>any wound needs measurements</em>. When the selected patient matches a rule, a <strong>Facility Documentation Requirements</strong> panel appears in Smart Note showing what this note must include.</p>
+      <ul class="feat">
+        <li>Each requirement starts amber and flips to a struck-through green check the moment you document it — the panel counts down live (“2 to document” → “All requirements met”).</li>
+        <li>While you’re drafting (Step 1), unmet requirements are a gentle reminder — you can always continue to review.</li>
+        <li>On the final note (Step 2), an unmet <strong>critical</strong> requirement blocks Save until you either add the missing detail or explicitly acknowledge saving without it. Acknowledged overrides are recorded for your agency’s audit trail.</li>
+      </ul>
+      ${callout('note', 'Where the rules come from', '<p>Requirements are written by your facility administrator, often from state-survey findings or agency policy. If a requirement seems wrong for a patient, document your clinical reasoning and let your administrator know.</p>')}
+
       <h3 id="doc-visit"><span class="h3-eyebrow">Close the loop</span>Vitals & closing a scheduled visit</h3>
       <p>When you document from a scheduled or overdue visit (for example, via a “Document this visit” link on the patient record or a compliance alert), PennSync loads that visit, pre-selects the patient and visit type, and <strong>completes the existing visit on save</strong> — so you’re not left with a duplicate and any related alert clears.</p>
       ${callout('note', 'Vitals travel with the note', '<p>Vitals you enter on a note are saved to the visit, so they appear on the chart, in the vitals trend, and in critical-vitals escalation. They reset when you switch patients, so one patient’s readings never land on another’s chart.</p>')}
@@ -427,6 +454,11 @@ export const userBlocks = [
       <h3 id="com-messages"><span class="h3-eyebrow">Team messaging</span>Messages</h3>
       ${navpath(['Sidebar', 'Communication', 'Messages'])}
       <p>Send secure internal messages to teammates, set a priority (Urgent, High, or Normal), and link a message to a specific patient for clean care coordination and handoffs. Filter your inbox by priority or read status; a badge shows unread messages.</p>
+      <ul class="feat">
+        <li><strong>Search your inbox</strong> by subject, sender, or message text to find a patient’s thread in seconds instead of scrolling.</li>
+        <li><strong>Escalate a single reply</strong> — when something in a routine thread turns urgent, flip the reply’s urgent toggle to raise just that reply above the thread’s normal priority.</li>
+        <li><strong>Your words are safe</strong> — if a send fails on flaky cellular, your typed message is preserved so you can retry, not retype.</li>
+      </ul>
 
       <h3 id="com-phone"><span class="h3-eyebrow">Calls & texts, protected</span>Phone Center</h3>
       ${navpath(['Sidebar', 'Communication', 'Phone Center'])}
@@ -539,11 +571,58 @@ export const userBlocks = [
         ['<strong>Document Visit</strong>', 'Write a Smart Note or capture audio offline, saved on your device.'],
         ['<strong>Pending Changes</strong>', 'Lists items queued to sync; retry any that failed once you’re back online.'],
       ])}
+      <p>You’ll always know when you’re working offline: a banner appears at the top of every page — <em>“You’re offline — viewing cached data; changes sync on reconnect”</em> — and disappears the moment your connection returns. Your patient roster is cached on the device, so the patient picker keeps working with no signal.</p>
+      <p>Offline visit notes get an instant, on-device <strong>compliance scan</strong> showing a coverage percentage and any missing required elements. If something required is missing, you can still save — review the gaps, tap <strong>Queue for review anyway</strong>, and the note is held as pending review; the full AI compliance check runs automatically when you reconnect.</p>
       ${callout('best', 'Best practice: prep before rural visits', '<p>Before heading somewhere with poor signal, open Offline Mode so your patients are cached. Document as usual; PennSync syncs everything automatically when you reconnect.</p>')}
     `,
   },
 
-  /* 12 ── Tips & Best Practices ───────────────────────────────────────────── */
+  /* 12 ── Timesheets ──────────────────────────────────────────────────────── */
+  {
+    id: 'timesheets',
+    title: 'Timesheets & Getting Paid',
+    sub: [
+      { id: 'ts-periods', title: 'Pay periods, deadlines & paydays' },
+      { id: 'ts-submit', title: 'Submitting your timesheet' },
+      { id: 'ts-track', title: 'Tracking, edits & approval' },
+    ],
+    html: `
+      <p class="sec-intro">Every staff member submits a timesheet for each pay period. PennSync tracks your hours, visit points, PTO, and mileage, routes the sheet to your approver, and feeds approved timesheets straight into payroll.</p>
+      ${roleLine('Nurse', 'Facility Admin')}
+      ${navpath(['Sidebar', 'Tools', 'Timesheets'])}
+
+      <h3 id="ts-periods"><span class="h3-eyebrow">The rhythm</span>Pay periods, deadlines &amp; paydays</h3>
+      <ul class="feat">
+        <li><strong>Pay periods are biweekly</strong> — two full weeks, Sunday through Saturday. The pay-period dropdown lists each scheduled period (e.g. “Jun 14 – Jun 27, 2026”).</li>
+        <li><strong>Timesheets are due before noon (12:00 PM) on the Monday</strong> after the period ends. Past the deadline, the form flags the period <strong>Past due</strong> in red.</li>
+        <li><strong>Payday is the Friday after the period ends.</strong> If that Friday is a bank holiday, payday moves to the day before (Thursday).</li>
+      </ul>
+      ${callout('note', 'No math required', '<p>When you pick a pay period, the form shows its exact <strong>Due</strong> date/time and <strong>Payday</strong> right below the dropdown — no need to memorize the schedule.</p>')}
+
+      <h3 id="ts-submit"><span class="h3-eyebrow">A few minutes, twice a month</span>Submitting your timesheet</h3>
+      ${steps([
+        ['Open My Timesheet', 'In Timesheets, the My Timesheet tab shows a New Timesheet form. Pick your pay period.'],
+        ['Check your service line', 'A read-only chip shows how you’re paid — <strong>Home Health</strong> (paid by points + hourly for field staff, or hourly) or <strong>Hospice</strong> (hourly). Your administrator sets this; if it looks wrong, tell them before submitting.'],
+        ['Choose an entry mode', '<strong>Bulk (period total)</strong> enters one total for the whole period; <strong>Daily entry</strong> gives you a row per day with automatic totals.'],
+        ['Enter visits & hours', 'Home-health field staff paid by points enter visit counts — SOC, ROC, Recert, Routine Visit, Discharge — with each type’s point value shown and a live total. Everyone enters Regular, Overtime, Holiday, and On-Call hours; hospice staff also enter On-Call Visits.'],
+        ['Confirm PTO & reimbursements', 'Approved Time Off overlapping the period is carried in automatically (a green “+N hrs from approved PTO (auto-added)” badge) — enter only <em>additional</em> PTO hours. Add your miles and any other reimbursement; a standing phone reimbursement is auto-added if your administrator has set one.'],
+        ['Submit', 'Pick your approver (or leave it unset to route to the administrators), add optional notes, then <strong>Save draft</strong> or <strong>Submit for approval</strong>. Your approver is notified automatically.'],
+      ])}
+
+      <h3 id="ts-track"><span class="h3-eyebrow">From submitted to paid</span>Tracking, edits &amp; approval</h3>
+      <p>The <strong>My Timesheets</strong> list shows each sheet’s period, totals, and status:</p>
+      ${table(['Status', 'What it means'], [
+        ['<strong>Draft</strong>', 'Saved but not submitted — keep editing any time.'],
+        ['<strong>Submitted</strong>', 'Waiting for your approver’s review.'],
+        ['<strong>Approved</strong>', 'Locked and included in the payroll export for that period.'],
+        ['<strong>Rejected</strong>', 'Returned for changes — the reviewer’s note tells you what to fix. Edit and resubmit.'],
+      ])}
+      ${callout('important', 'Approved timesheets are locked', '<p>Once approved, a timesheet can no longer be edited — and you can’t submit a second one for the same pay period. If something changed after approval, ask your approver or administrator to reopen it. You can edit only <strong>Draft</strong> and <strong>Rejected</strong> sheets; resubmitting clears the previous review and notifies your approver again.</p>')}
+      ${callout('note', 'Hours and points, not dollars', '<p>PennSync records what you worked — hours, visit points, miles, and reimbursements. Pay rates and wage amounts are handled by your agency’s accountant, outside the app.</p>')}
+    `,
+  },
+
+  /* 13 ── Tips & Best Practices ───────────────────────────────────────────── */
   {
     id: 'tips',
     title: 'Tips & Best Practices',
@@ -553,7 +632,8 @@ export const userBlocks = [
       ${callout('tip', 'Always select your patient in Smart Notes', '<p>AI personalizes documentation from the patient’s history — selecting them first makes every suggestion sharper.</p>')}
       ${callout('tip', 'Use voice for long visits', '<p>Visit Scribe can save 10–15 minutes per visit versus typing. Narrate naturally and let AI structure the note.</p>')}
       ${callout('tip', 'Favorite your frequent patients', '<p>Star the patients you see most for instant access from your roster.</p>')}
-      ${callout('tip', 'Build a template library', '<p>Create quick phrases in the Clinical Library for common documentation (wound care, diabetic teaching) and reuse them everywhere.</p>')}
+      ${callout('tip', 'Build a template library', '<p>Create quick phrases in the Clinical Library for common documentation (wound care, diabetic teaching), then expand them anywhere by typing <strong>/</strong> in a note. Bind a phrase to a specific patient for their exact orders.</p>')}
+      ${callout('tip', 'Submit timesheets before the Monday deadline', '<p>Timesheets are due before noon on the Monday after each pay period ends. Submitting on Friday after your last visit keeps payroll smooth and avoids the “Past due” flag.</p>')}
       ${callout('best', 'Review your compliance weekly', '<p>Glance at your documentation quality regularly and clear any flagged notes to keep your compliance rate high.</p>')}
       ${callout('important', 'Always review AI output', '<p>AI drafts documentation — you own it. Read every note before saving; edit anything that isn’t exactly right. PennSync learns from your corrections.</p>')}
     `,
@@ -572,7 +652,12 @@ export const userBlocks = [
         { q: 'How does AI enhance my clinical notes?', a: 'It expands your observations into skilled nursing language, adds medical-necessity justification, includes homebound documentation, and checks Medicare compliance — all while preserving your clinical intent.' },
         { q: 'What if AI generates something incorrect?', a: 'Always review AI-generated content. Edit it directly, regenerate, or add your own text. PennSync learns from your corrections over time.' },
         { q: 'How do I send a fax from my phone?', a: 'In Fax, use the camera to capture your document, add the recipient number, and send. PennSync can generate a professional cover page automatically.' },
-        { q: 'Can I create custom documentation templates?', a: 'Yes. Use the Clinical Library to create quick phrases that expand into full documentation, including patient-specific variables.' },
+        { q: 'Can I create custom documentation templates?', a: 'Yes. Use the Clinical Library to create quick phrases that expand into full documentation, including patient-specific variables. You can bind a phrase to one specific patient so it only appears while charting them.' },
+        { q: 'How do I use a quick phrase while writing a note?', a: 'Type “/” in the observations box to open the Quick Phrases picker, type a saved “.shortcut” code, or tap the Quick Phrase button. The expanded text is inserted at your cursor and still goes through compliance review before you save.' },
+        { q: 'Why is Save blocked by a “facility documentation requirement”?', a: 'Your administrator has defined a critical documentation rule that applies to this patient (for example, an SpO₂ reading for a patient on oxygen). Add the missing detail — the checklist clears automatically — or check the acknowledgment box to save without it; acknowledged overrides are recorded.' },
+        { q: 'When is my timesheet due, and when is payday?', a: 'Pay periods are biweekly (Sunday through Saturday). Timesheets are due before noon on the Monday after the period ends, and payday is the Friday after the period ends — moved to Thursday when that Friday is a bank holiday. The timesheet form shows the exact due date and payday for the period you pick.' },
+        { q: 'What is the AI-content responsibility agreement I saw at sign-in?', a: 'A one-time acknowledgment (re-shown only if the wording changes) that AI-generated content may contain errors and that you are responsible for reviewing and approving anything you submit. Your acceptance is recorded with your name, the date, and the agreement version.' },
+        { q: 'What does the “AI-generated — verify before clinical use” line mean?', a: 'It marks text that AI drafted (patient summaries, insights, incident narratives, and similar), often with a generated-at time. Treat it as a draft: read it, correct it, and only then rely on it or save it.' },
         { q: 'How do OASIS suggestions work?', a: 'AI analyzes patient history, recent notes, and diagnoses to suggest appropriate OASIS responses, highlight compliance risks, and optimize for PDGM case mix. You confirm every answer.' },
         { q: 'What happens to a flagged compliance issue?', a: 'Flagged notes appear where you can review them, apply AI suggestions to fix the issue, and re-save. PennSync tracks your improvement over time.' },
         { q: 'A feature in this manual isn’t in my sidebar — why?', a: 'Some tools are limited to facility administrators. If you don’t see it, your role doesn’t include it. Contact your administrator if you believe you need access.' },
@@ -595,6 +680,10 @@ export const userBlocks = [
         { term: 'HHA', def: 'Home Health Agency.' },
         { term: 'Homebound', def: 'A Medicare eligibility criterion: leaving home requires considerable effort. Documentation must support homebound status for skilled home-health coverage.' },
         { term: 'Skilled documentation', def: 'Notes written in professional clinical language that show medical necessity and the skilled nature of the care provided.' },
+        { term: 'Quick phrase', def: 'A saved trigger (opened with “/” or a “.shortcut” code) that expands into full documentation text. A phrase can be bound to one specific patient.' },
+        { term: 'Facility documentation rule', def: 'An agency-defined charting requirement (e.g. SpO₂ for oxygen patients) checked live in Smart Note; critical rules must be documented or explicitly acknowledged before saving.' },
+        { term: 'Pay period', def: 'The biweekly Sunday-through-Saturday window a timesheet covers. Timesheets are due by noon the following Monday; payday is the Friday after the period ends (Thursday when that Friday is a bank holiday).' },
+        { term: 'Visit points', def: 'Units of work credited per visit type (SOC, ROC, Recert, Routine, Discharge) for home-health field staff paid by the point. Point values are set by your administrator; no dollar amounts are stored in PennSync.' },
         { term: 'Smart Note', def: 'PennSync’s typed documentation tool that turns brief observations into a complete, compliant note with AI.' },
         { term: 'Visit Scribe', def: 'PennSync’s voice documentation tool that records or dictates a visit and transcribes it into a compliant note.' },
         { term: 'Teach-back', def: 'A method of confirming patient understanding by having them restate instructions in their own words.' },
