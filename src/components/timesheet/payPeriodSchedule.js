@@ -6,8 +6,9 @@
  *   • Timesheets are due before NOON on the Monday after the period ends
  *     (period_end Saturday + 2 days).
  *   • Payday is the Friday after the period ends (period_end + 6 days — the
- *     Friday of the week timesheets are due), unless a bank holiday shifts it
- *     (see PAYDAY_OVERRIDES).
+ *     Friday of the week timesheets are due). If that Friday IS a bank
+ *     holiday, payday is always the day prior (Thursday). One-off exceptions
+ *     confirmed by payroll live in PAYDAY_OVERRIDES.
  *
  * Anchored at ANCHOR_START: Sun 2026-06-14 → Sat 2026-06-27, due Mon
  * 2026-06-29 12:00 PM, payday Sat 2026-07-04 (shifted off Fri 7/3, the
@@ -28,14 +29,31 @@ const PERIOD_DAYS = 14;
 const DAY_MS = 86400000;
 
 /**
- * Paydays that fall on (or next to) a bank holiday and move off the normal
- * Friday. Keyed by the scheduled Friday; value is the actual pay date.
+ * When the scheduled Friday payday falls ON a bank holiday, pay is always the
+ * day prior (Thursday). Only fixed-date holidays can land on a Friday —
+ * Monday-observed holidays and Thanksgiving (Thursday) never do.
+ * Month/day pairs:
+ */
+const FRIDAY_HOLIDAYS = [
+  [1, 1], // New Year's Day
+  [6, 19], // Juneteenth
+  [7, 4], // Independence Day
+  [11, 11], // Veterans Day
+  [12, 25], // Christmas Day
+];
+
+function isBankHoliday(iso) {
+  const [, m, d] = iso.split("-").map(Number);
+  return FRIDAY_HOLIDAYS.some(([hm, hd]) => hm === m && hd === d);
+}
+
+/**
+ * One-off payday exceptions confirmed by payroll, keyed by the scheduled
+ * Friday. 2026-07-03 isn't itself a holiday (Independence Day is Sat 7/4,
+ * observed Fri 7/3), and payroll pays that period on Sat 7/4.
  */
 const PAYDAY_OVERRIDES = {
-  // Fri 2026-07-03 is the observed Independence Day holiday; pay lands Sat 7/4.
   "2026-07-03": "2026-07-04",
-  // Fri 2027-01-01 is New Year's Day; pay lands the business day before, Thu 12/31.
-  "2027-01-01": "2026-12-31",
 };
 
 function addDays(iso, n) {
@@ -65,7 +83,9 @@ export function payPeriodByIndex(index) {
   const end = addDays(start, PERIOD_DAYS - 1); // Saturday
   const dueDate = addDays(end, 2); // Monday
   const scheduledPayday = addDays(end, 6); // Friday of the due week
-  const payday = PAYDAY_OVERRIDES[scheduledPayday] ?? scheduledPayday;
+  const payday =
+    PAYDAY_OVERRIDES[scheduledPayday] ??
+    (isBankHoliday(scheduledPayday) ? addDays(scheduledPayday, -1) : scheduledPayday);
   return {
     index,
     start,

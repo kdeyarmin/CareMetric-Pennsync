@@ -26,28 +26,33 @@ test("next period: Sun 6/28 → Sat 7/11, due Mon 7/13, payday Fri 7/17", () => 
   assert.equal(p.payday, "2026-07-17");
 });
 
-test("previous period steps back exactly 14 days", () => {
+test("previous period steps back exactly 14 days; Juneteenth Fri 6/19 pays Thu 6/18", () => {
   const p = payPeriodByIndex(-1);
   assert.equal(p.start, "2026-05-31");
   assert.equal(p.end, "2026-06-13");
-  assert.equal(p.payday, "2026-06-19");
+  assert.equal(p.payday, "2026-06-18");
 });
 
-test("New Year's period 12/13–12/26: payday shifts from Fri 1/1 to Thu 12/31", () => {
-  const p = payPeriodByIndex(13);
-  assert.equal(p.start, "2026-12-13");
-  assert.equal(p.end, "2026-12-26");
-  assert.equal(p.payday, "2026-12-31");
+test("holiday-Friday paydays always move to the day prior", () => {
+  // New Year's Day: 12/13–12/26/2026 period, scheduled Fri 1/1/2027 → Thu 12/31.
+  const newYears = payPeriodByIndex(13);
+  assert.equal(newYears.start, "2026-12-13");
+  assert.equal(newYears.end, "2026-12-26");
+  assert.equal(newYears.payday, "2026-12-31");
 });
 
-test("payday is the Friday after the period ends, except holiday overrides", () => {
+test("payday is the Friday after the period ends, except holiday shifts", () => {
   const dow = (iso) => {
     const [y, m, d] = iso.split("-").map(Number);
     return new Date(y, m - 1, d).getDay();
   };
-  for (let i = -5; i <= 5; i++) {
+  for (let i = -5; i <= 13; i++) {
     const p = payPeriodByIndex(i);
-    if (i === 0) continue; // 7/3 → 7/4 Independence Day shift
+    if (i === 0) continue; // 7/3 → 7/4 Independence Day payroll exception
+    if (i === -1 || i === 13) {
+      assert.equal(dow(p.payday), 4, `${p.payday} should be the Thursday before a holiday Friday`);
+      continue;
+    }
     assert.equal(dow(p.payday), 5, `${p.payday} should be a Friday`);
   }
 });
