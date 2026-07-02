@@ -9,7 +9,10 @@ export const exportToPDF = async (options = {}) => {
     elementId = null,
     content = [],
     orientation = 'portrait',
-    includeTimestamp = true
+    includeTimestamp = true,
+    // 'save' downloads the file (default); 'blob' returns the PDF Blob instead
+    // (for callers that upload/fax the document rather than download it).
+    output = 'save'
   } = options;
 
   const doc = new jsPDF(orientation, 'mm', 'a4');
@@ -328,6 +331,9 @@ export const exportToPDF = async (options = {}) => {
     );
   }
 
+  if (output === 'blob') {
+    return doc.output('blob');
+  }
   doc.save(filename);
   return true;
 };

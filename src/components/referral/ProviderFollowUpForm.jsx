@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileDown, ClipboardCopy, Send, FileText } from "lucide-react";
+import { FileDown, ClipboardCopy, Send, FileText, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { exportToPDF } from "@/components/utils/pdfExporter";
 import { buildProviderForm, providerFormToText } from "./referralFollowUpEngine.js";
@@ -10,14 +10,48 @@ import { buildProviderForm, providerFormToText } from "./referralFollowUpEngine.
 const severityBadge = (severity) =>
   severity === "critical" ? "bg-red-600 text-white" : severity === "high" ? "bg-orange-500 text-white" : "bg-yellow-500 text-white";
 
+/** pdfExporter `content` sections for a provider form (shared by the
+ *  single-form download/fax path and the batch export on the page). */
+export function followUpFormPdfContent(form) {
+  return [
+    { type: "text", text: form.intro },
+    ...form.sections.flatMap((s) => [
+      { type: "heading", text: `${s.number}. [${s.severity.toUpperCase()}] ${s.title}`, size: 12 },
+      { type: "text", text: `REQUEST: ${s.request}` },
+      ...(s.hint ? [{ type: "text", text: `NOTE: ${s.hint}` }] : []),
+      { type: "text", text: `WHY WE NEED IT: ${s.why} (${s.citation})` },
+      {
+        type: "text",
+        text:
+          s.response_type === "document"
+            ? "RESPONSE:  [ ] Document attached    [ ] Written below:"
+            : "RESPONSE:",
+      },
+      { type: "text", text: "_________________________________________________________________" },
+      { type: "text", text: "_________________________________________________________________" },
+    ]),
+    { type: "heading", text: "Completion", size: 12 },
+    ...form.signatureBlock.map((t) => ({ type: "text", text: t })),
+  ];
+}
+
 /**
  * Provider-facing information-request form, built from the selected follow-up
  * items. The provider sees, per item: exactly what to send back, why it is
  * required (with the regulation / PDGM mechanism), and a response area — so
- * one fax round-trip completes the referral. Deterministic rendering of
- * referralFollowUpEngine output; no AI here.
+ * one round trip completes the referral. Deterministic rendering of
+ * referralFollowUpEngine output; no AI here, and deliberately NO dollar
+ * amounts anywhere (this document leaves the building).
  */
-export default function ProviderFollowUpForm({ header, items, onMarkSent, markSentDisabled }) {
+export default function ProviderFollowUpForm({
+  header,
+  items,
+  onMarkSent,
+  markSentDisabled,
+  onFax,
+  faxDisabled,
+  faxLabel,
+}) {
   const [busy, setBusy] = useState(false);
   const form = useMemo(() => buildProviderForm(header, items), [header, items]);
 
@@ -33,31 +67,11 @@ export default function ProviderFollowUpForm({ header, items, onMarkSent, markSe
   const downloadPdf = async () => {
     setBusy(true);
     try {
-      const content = [
-        { type: "text", text: form.intro },
-        ...form.sections.flatMap((s) => [
-          { type: "heading", text: `${s.number}. [${s.severity.toUpperCase()}] ${s.title}`, size: 12 },
-          { type: "text", text: `REQUEST: ${s.request}` },
-          ...(s.hint ? [{ type: "text", text: `NOTE: ${s.hint}` }] : []),
-          { type: "text", text: `WHY WE NEED IT: ${s.why} (${s.citation})` },
-          {
-            type: "text",
-            text:
-              s.response_type === "document"
-                ? "RESPONSE:  [ ] Document attached    [ ] Written below:"
-                : "RESPONSE:",
-          },
-          { type: "text", text: "_________________________________________________________________" },
-          { type: "text", text: "_________________________________________________________________" },
-        ]),
-        { type: "heading", text: "Completion", size: 12 },
-        ...form.signatureBlock.map((t) => ({ type: "text", text: t })),
-      ];
       await exportToPDF({
         filename: `referral-follow-up-${(header.patientName || "patient").replace(/\s+/g, "-").toLowerCase()}.pdf`,
         title: form.title,
         subtitle: `${header.patientName || ""}${header.patientDob ? ` — DOB ${header.patientDob}` : ""}`,
-        content,
+        content: followUpFormPdfContent(form),
       });
       toast.success("Provider form PDF downloaded.");
     } catch (error) {
@@ -86,22 +100,28 @@ export default function ProviderFollowUpForm({ header, items, onMarkSent, markSe
             <FileText className="w-5 h-5 text-navy-600" />
             Provider Information Request — Preview
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button type="button" variant="outline" size="sm" onClick={copyText}>
               <ClipboardCopy className="w-4 h-4 mr-1" /> Copy text
             </Button>
-            <Button type="button" size="sm" onClick={downloadPdf} disabled={busy}>
+            <Button type="button" variant="outline" size="sm" onClick={downloadPdf} disabled={busy}>
               <FileDown className="w-4 h-4 mr-1" /> {busy ? "Generating…" : "Download PDF"}
             </Button>
+            {onFax && (
+              <Button type="button" size="sm" onClick={onFax} disabled={faxDisabled}>
+                <Printer className="w-4 h-4 mr-1" /> {faxLabel || "Fax to provider"}
+              </Button>
+            )}
             {onMarkSent && (
               <Button
                 type="button"
                 size="sm"
-                className="bg-navy-600 hover:bg-navy-700"
+                variant="outline"
+                className="border-navy-400 text-navy-700"
                 onClick={onMarkSent}
                 disabled={markSentDisabled}
               >
-                <Send className="w-4 h-4 mr-1" /> Save &amp; mark sent
+                <Send className="w-4 h-4 mr-1" /> Mark sent manually
               </Button>
             )}
           </div>
