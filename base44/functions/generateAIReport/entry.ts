@@ -129,11 +129,9 @@ function renderBrandedEmail(opts) {
  */
 
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const SUPER_ADMIN_EMAIL = ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase();
-const sameEmail = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 const isAdminLike = (u) => !!u && (
   u.role === 'admin' || u.account_type === 'agency_admin' ||
-  u.account_type === 'super_admin' || (SUPER_ADMIN_EMAIL !== '' && sameEmail(u.email, SUPER_ADMIN_EMAIL))
+  u.account_type === 'super_admin'
 );
 // <<<END SHARED HELPER: isAdminLike>>>
 

@@ -122,10 +122,9 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
-// Operational logs are gated behind FUNCTIONS_DEBUG so they don't run in
-// production by default. console.error/warn remain ungated for visibility.
-const isDebugEnabled = () => !!Deno.env.get('FUNCTIONS_DEBUG');
-const debugLog = (...args) => { if (isDebugEnabled()) console.log(...args); };
+// Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG
+// secret was retired). console.error/warn remain ungated for visibility.
+const debugLog = (..._args) => {};
 
 // ── On-hire annual enrollment helpers ───────────────────────────────────────
 // A new hire should immediately receive the current-year required in-services
@@ -229,14 +228,6 @@ Deno.serve(async (req) => {
     if (!user || !user.email) {
       console.error('No user data provided');
       return Response.json({ error: 'No user data provided' }, { status: 400 });
-    }
-
-    // Opt-in webhook-secret gate: if SIGNUP_WEBHOOK_SECRET is set, require it so
-    // arbitrary HTTP callers can't forge signups / role escalation. Unset => no
-    // enforcement (so the platform trigger keeps working).
-    const signupSecret = Deno.env.get('SIGNUP_WEBHOOK_SECRET');
-    if (signupSecret && req.headers.get('x-webhook-secret') !== signupSecret) {
-      return Response.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
     // Check if user was invited. Match the invitation email case-insensitively:
@@ -405,20 +396,6 @@ Deno.serve(async (req) => {
         body: blockedSignupEmail(admin.full_name || 'Admin'),
       })
     );
-
-    // Optionally also alert an additional security contact, configurable per
-    // deployment via SECURITY_ALERT_EMAIL (admins are always alerted above).
-    const extraAlertEmail = Deno.env.get('SECURITY_ALERT_EMAIL');
-    if (extraAlertEmail) {
-      emailPromises.push(
-        base44.asServiceRole.integrations.Core.SendEmail({
-          to: extraAlertEmail,
-          subject: 'Security alert: blocked uninvited sign-up · PennSync by CareMetric',
-          from_name: 'PennSync by CareMetric',
-          body: blockedSignupEmail('there'),
-        })
-      );
-    }
 
     debugLog('Sending blocked-signup security alert to admins...');
     await Promise.all(emailPromises);

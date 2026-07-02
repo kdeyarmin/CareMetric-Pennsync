@@ -11,9 +11,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { PDFDocument, rgb } from 'npm:pdf-lib@1.17.1';
 
-// SSRF guard: only fetch https URLs on public hosts, never internal IPs /
-// metadata. Set FILE_URL_ALLOWED_HOSTS (comma-separated) to restrict to your
-// storage host(s). (Does not stop DNS rebinding — pair with the allowlist.)
+// SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
+// internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
+// rather than env-configured; add a host here if file storage ever moves.
+const FILE_URL_ALLOWED_HOSTS = ['qtrypzzcjebvfcihiynt.supabase.co', 'base44.app', 'base44.io'];
 function isSafeFetchUrl(raw) {
   let u;
   try { u = new URL(String(raw)); } catch { return false; }
@@ -26,11 +27,7 @@ function isSafeFetchUrl(raw) {
     const a = +m[1], b = +m[2];
     if (a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false;
   }
-  const allow = Deno.env.get('FILE_URL_ALLOWED_HOSTS');
-  if (allow) {
-    const hosts = allow.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
-    if (!hosts.some((h) => host === h || host.endsWith('.' + h))) return false;
-  }
+  if (!FILE_URL_ALLOWED_HOSTS.some((h) => host === h || host.endsWith('.' + h))) return false;
   return true;
 }
 

@@ -43,7 +43,7 @@ function extractJoinToken(inviteLink) {
 
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
-  let apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
+  let apiKey = null;
   if (!apiKey) {
     try {
       const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' });

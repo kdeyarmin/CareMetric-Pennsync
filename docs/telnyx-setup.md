@@ -45,21 +45,13 @@ only presence + the last 4 characters are shown. Functions:
 - `getTelnyxSecretStatus` — read whether each value is configured (no secrets returned).
 - `testTelnyxConnection` — read-only readiness report + a live `/v2/whoami` probe.
 
-### Option B — dashboard env (takes precedence)
+### Dashboard-env overrides — retired
 
-Set as backend function secrets (see `.env.example`). They are **not** `VITE_*`
-and must never reach the browser.
-
-| Secret | Purpose |
-|---|---|
-| `TELNYX_API_KEY` | Telnyx API key (starts with `KEY`) — authenticates all four channels |
-| `TELNYX_PUBLIC_KEY` | Ed25519 webhook **public** key (base64) — verifies inbound webhooks |
-| `TELNYX_MESSAGING_PROFILE_ID` | Messaging Profile id for outbound SMS/MMS |
-| `TELNYX_VOICE_CONNECTION_ID` | Call Control Application connection id (alias: `TELNYX_CONNECTION_ID`) |
-| `TELNYX_FAX_CONNECTION_ID` | Programmable Fax connection id |
-| `TELNYX_FAX_NUMBER` | E.164 Telnyx fax number on the fax connection |
-
-Env values override the in-app `IntegrationSecret` values when both are set.
+The `TELNYX_*` dashboard-env vars (`TELNYX_API_KEY`, `TELNYX_PUBLIC_KEY`,
+`TELNYX_MESSAGING_PROFILE_ID`, `TELNYX_VOICE_CONNECTION_ID` /
+`TELNYX_CONNECTION_ID`, `TELNYX_FAX_CONNECTION_ID`, `TELNYX_FAX_NUMBER`) are no
+longer read. The in-app `IntegrationSecret` row (plus `AgencySettings` for the
+office fax/main numbers) is the single source of Telnyx config.
 
 ## 3. Webhooks
 
@@ -71,15 +63,16 @@ https://<your-functions-base>/handleTelnyxStatusWebhook
 ```
 
 Outbound sends/calls also pass a per-request `webhook_url` pointing at the same
-function when `FUNCTIONS_BASE_URL` is set, so delivery/status updates flow back
-even before you finish the portal-level webhook configuration.
+function (derived automatically from each function's own request URL), so
+delivery/status updates flow back even before you finish the portal-level
+webhook configuration.
 
 ### Signature verification (fail-closed)
 
 `handleTelnyxStatusWebhook` verifies Telnyx's **Ed25519** signature:
 
 - signed message = `` `${telnyx-timestamp}|${rawBody}` ``
-- header `telnyx-signature-ed25519` (base64) verified against `TELNYX_PUBLIC_KEY`
+- header `telnyx-signature-ed25519` (base64) verified against the in-app Ed25519 public key
 - the `telnyx-timestamp` must be within a 5-minute replay window
 
 A webhook without a valid signature, or with a stale timestamp, is rejected `401`.
@@ -143,7 +136,7 @@ available number from the pool. (Or set them individually.) Add numbers to the
 pool with the in-app search/buy (`searchPurchaseTelnyxNumbers`).
 
 **Fax is shared.** Everyone faxes from the single office fax number
-(`AgencySettings.office_fax_number_e164`, else `TELNYX_FAX_NUMBER`), so the office
+(`AgencySettings.office_fax_number_e164`), so the office
 number is what recipients see and reply to — **incoming faxes go straight to the
 office**, never to an individual.
 

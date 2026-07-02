@@ -238,12 +238,11 @@ function resolveMatch(patient, existingByMrn, existingByNameDob) {
   };
 }
 
-// SSRF guard: only fetch https URLs on public hosts, never internal IPs /
-// metadata. Set FILE_URL_ALLOWED_HOSTS (comma-separated) to restrict to your
-// storage host(s). Set FILE_URL_STRICT=true to make that allowlist MANDATORY —
-// with strict on and no allowlist configured, all external fetches are rejected
-// (fully closes the SSRF surface) rather than allowing any public host.
+// SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
+// internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
+// rather than env-configured; add a host here if file storage ever moves.
 // (Allowlisting also mitigates DNS rebinding.)
+const FILE_URL_ALLOWED_HOSTS = ['qtrypzzcjebvfcihiynt.supabase.co', 'base44.app', 'base44.io'];
 function isSafeFetchUrl(raw) {
   let u;
   try { u = new URL(String(raw)); } catch { return false; }
@@ -256,14 +255,7 @@ function isSafeFetchUrl(raw) {
     const a = +m[1], b = +m[2];
     if (a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false;
   }
-  const allow = Deno.env.get('FILE_URL_ALLOWED_HOSTS');
-  const hosts = (allow || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
-  if (hosts.length > 0) {
-    if (!hosts.some((h) => host === h || host.endsWith('.' + h))) return false;
-  } else if (Deno.env.get('FILE_URL_STRICT') === 'true') {
-    // Strict mode with no allowlist configured: fail closed (allow nothing).
-    return false;
-  }
+  if (!FILE_URL_ALLOWED_HOSTS.some((h) => host === h || host.endsWith('.' + h))) return false;
   return true;
 }
 

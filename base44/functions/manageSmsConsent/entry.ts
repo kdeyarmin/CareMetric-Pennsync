@@ -43,8 +43,7 @@ Deno.serve(async (req) => {
 
     const isAdmin =
       user.role === 'admin' ||
-      user.account_type === 'super_admin' ||
-      String(user.email || '').trim().toLowerCase() === ((Deno.env.get('SUPER_ADMIN_EMAIL') || '').trim().toLowerCase() || null);
+      user.account_type === 'super_admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can manage SMS consent' }, { status: 403 });
     }

@@ -40,9 +40,10 @@ export const SHARED_HELPERS = {
 
   // SSRF guard used by every function that fetches or hands a user-supplied URL to
   // a provider integration. Keep in step with src/components/utils/security.
-  isSafeFetchUrl: `// SSRF guard: only fetch https URLs on public hosts, never internal IPs /
-// metadata. Set FILE_URL_ALLOWED_HOSTS (comma-separated) to restrict to your
-// storage host(s).
+  isSafeFetchUrl: `// SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
+// internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
+// rather than env-configured; add a host here if file storage ever moves.
+const FILE_URL_ALLOWED_HOSTS = ['qtrypzzcjebvfcihiynt.supabase.co', 'base44.app', 'base44.io'];
 function isSafeFetchUrl(raw) {
   let u;
   try { u = new URL(String(raw)); } catch { return false; }
@@ -55,27 +56,19 @@ function isSafeFetchUrl(raw) {
     const a = +m[1], b = +m[2];
     if (a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false;
   }
-  const allow = Deno.env.get('FILE_URL_ALLOWED_HOSTS');
-  if (allow) {
-    const hosts = allow.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
-    if (!hosts.some((h) => host === h || host.endsWith('.' + h))) return false;
-  }
+  if (!FILE_URL_ALLOWED_HOSTS.some((h) => host === h || host.endsWith('.' + h))) return false;
   return true;
 }`,
 
   // Admin-tier predicate. Mirrors src/lib/superAdmin.js isAdminLike — every admin
-  // surface accepts facility admin (role 'admin'), agency_admin/super_admin, and
-  // (OPT-IN) the platform owner email. The owner email is configured via the
-  // SUPER_ADMIN_EMAIL env var (mirrors VITE_SUPER_ADMIN_EMAIL on the frontend);
-  // when unset there is NO hard-coded owner — admin status is then determined
-  // solely by role/account_type. The `SUPER_ADMIN_EMAIL &&` guard ensures an
-  // unset (empty) override can never match a user (including one with no email).
-  // Keep in step with superAdmin.js.
-  isAdminLike: `const SUPER_ADMIN_EMAIL = ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase();
-const sameEmail = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
-const isAdminLike = (u) => !!u && (
+  // surface accepts facility admin (role 'admin') and agency_admin/super_admin.
+  // Admin status is determined solely by role/account_type; there is no
+  // owner-email override (the SUPER_ADMIN_EMAIL secret was retired — use
+  // ensureSuperAdmin / account_type promotion instead). Keep in step with
+  // superAdmin.js.
+  isAdminLike: `const isAdminLike = (u) => !!u && (
   u.role === 'admin' || u.account_type === 'agency_admin' ||
-  u.account_type === 'super_admin' || (SUPER_ADMIN_EMAIL !== '' && sameEmail(u.email, SUPER_ADMIN_EMAIL))
+  u.account_type === 'super_admin'
 );`,
 
   // Branded transactional-email builder. Produces the PennSync (navy + gold) HTML

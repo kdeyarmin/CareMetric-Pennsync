@@ -280,9 +280,9 @@ Deno.serve(async (req) => {
       // Send email if not in quiet hours or if critical priority
       if (!inQuietHours || safePriority === 'critical') {
         try {
-          // Deep-link the in-app action_url (a relative path) into an absolute URL so
-          // the email button actually works. APP_URL is the deployed app origin.
-          const appBase = (Deno.env.get('APP_URL') || 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932').replace(/\/+$/, '');
+          // Deep-link the in-app action_url (a relative path) into an absolute URL
+          // so the email button actually works.
+          const appBase = 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
           await base44.asServiceRole.integrations.Core.SendEmail({
             to: user_email,
             from_name: 'PennSync by CareMetric',

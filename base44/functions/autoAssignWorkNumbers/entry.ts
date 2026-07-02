@@ -37,8 +37,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const isAdmin =
       user.role === 'admin' ||
-      user.account_type === 'super_admin' ||
-      String(user.email || '').trim().toLowerCase() === ((Deno.env.get('SUPER_ADMIN_EMAIL') || '').trim().toLowerCase() || null);
+      user.account_type === 'super_admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can provision work numbers' }, { status: 403 });
     }

@@ -371,8 +371,7 @@ export default function PhoneProvisioningPanel() {
           </CardTitle>
           <CardDescription>
             Main office number, off-duty defaults, templates, and voicemail. The Telnyx API key is
-            set in the Telnyx Credentials card above (or via TELNYX_API_KEY in the dashboard env) —
-            not here.
+            set in the Telnyx Credentials card above — not here.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
