@@ -11,6 +11,7 @@
 //   node tools-sync-dedupe-engine.mjs --check    # exit 1 if out of sync (CI/test)
 
 import { readFile, writeFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
 
 const ENGINE_PATH = new URL('./src/components/patient/patientDuplicateUtils.js', import.meta.url);
 const ENTRY_PATH = new URL('./base44/functions/deduplicatePatients/entry.ts', import.meta.url);
@@ -46,7 +47,7 @@ export function extractEmbeddedEngine(entrySrc) {
 }
 
 // Run as a CLI (not when imported by the test).
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const check = process.argv.includes('--check');
   const next = await buildEntrySource();
   const current = await readFile(ENTRY_PATH, 'utf8');

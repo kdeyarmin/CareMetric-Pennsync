@@ -21,11 +21,15 @@ Deno.serve(async (req) => {
 
     const now = new Date().toISOString();
 
-    // Get scheduled faxes that are due
+    // Get scheduled faxes that are due, earliest-scheduled first with an explicit
+    // cap. Without a sort/limit the SDK returns only its default first page (~50)
+    // in arbitrary order, so under a >50 backlog the most-overdue faxes fall off
+    // and are never sent. Sort ASCENDING on scheduled_time so the page is the
+    // most-overdue rows, matching processScheduledFaxesByPriority.
     const scheduledFaxes = await base44.asServiceRole.entities.ScheduledFax.filter({
       status: 'pending',
       scheduled_time: { "$lte": now }
-    });
+    }, 'scheduled_time', 200);
 
     console.log(`Found ${scheduledFaxes.length} scheduled faxes to process`);
 

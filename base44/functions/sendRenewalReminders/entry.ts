@@ -55,6 +55,12 @@ Deno.serve(async (req) => {
     };
 
     const notifications = [];
+    // Deferred reminder-tier marker writes. These must run only AFTER the
+    // notifications are created — marking a tier "sent" before the create means a
+    // failed/timed-out create permanently suppresses that learner's nudge. A
+    // duplicate reminder on a later run is the safe failure direction (mirrors
+    // sendExpirationNotifications' markerUpdates).
+    const markerUpdates = [];
     let remindersSent = 0;
 
     for (const a of assignments) {
@@ -112,21 +118,29 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Mark every crossed tier as sent so a missed run doesn't replay old tiers.
-      await svc.TrainingAssignment.update(a.id, {
+      // Record the crossed tiers so a missed run doesn't replay old tiers — but
+      // DEFER the write until after the notifications are created (see above).
+      markerUpdates.push(() => svc.TrainingAssignment.update(a.id, {
         reminder_offsets_sent: Array.from(new Set([...alreadySent, ...crossed])),
         last_reminder_date: today.toISOString(),
         reminder_sent: true,
-      });
+      }));
       remindersSent++;
     }
 
-    // Batch-create notifications.
+    // Batch-create notifications FIRST. A create failure here propagates and
+    // skips the marker writes below, so the reminder replays next run rather than
+    // being silently lost.
     let notificationsCreated = 0;
     for (let i = 0; i < notifications.length; i += 50) {
       const batch = notifications.slice(i, i + 50);
-      await Promise.all(batch.map((n) => svc.Notification.create(n).catch((err) => console.error('Notification create failed:', err))));
+      await Promise.all(batch.map((n) => svc.Notification.create(n)));
       notificationsCreated += batch.length;
+    }
+
+    // Only now that the notifications are persisted, record the crossed tiers.
+    for (const applyMarker of markerUpdates) {
+      await applyMarker();
     }
 
     return Response.json({ success: true, date: todayIso, reminders_sent: remindersSent, notifications_created: notificationsCreated });

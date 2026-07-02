@@ -9,6 +9,21 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Agency admins are scoped to their OWN agency (mirrors
+    // getTeamTrainingReadiness / distributePolicyAcknowledgment): resolve the set
+    // of emails in the caller's agency and drop any row whose employee is outside
+    // it. Without this an agency_admin could pass another agency's
+    // employeeId/courseId/planId and export that tenant's certificates, scores and
+    // completion records. super_admin is not scoped.
+    let agencyEmails = null;
+    if (user.account_type === 'agency_admin' && user.agency_name) {
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
+      agencyEmails = new Set(
+        agencyUsers.filter((u) => u.agency_name === user.agency_name).map((u) => u.email)
+      );
+    }
+    const inAgency = (email) => agencyEmails === null || agencyEmails.has(email);
+
     const {
       reportType,
       businessLine,
@@ -39,10 +54,10 @@ Deno.serve(async (req) => {
 
     if (reportType === 'transcript') {
       // Employee transcript CSV
-      const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter(
+      const certificates = (await base44.asServiceRole.entities.TrainingCertificate.filter(
         { user_id: employeeId, revoked: false },
         '-issued_at'
-      );
+      )).filter(cert => inAgency(cert.user_id));
 
       headers = ['Completion Date', 'Course', 'Score', 'Pass', 'Certificate ID'];
       data = certificates.map(cert => ({
@@ -56,11 +71,15 @@ Deno.serve(async (req) => {
       // Course roster CSV
       const query = { course_id: courseId };
       if (businessLine && businessLine !== 'all') {
-        query.business_line = businessLine;
+        // TrainingAssignment's business-line field is `assigned_to_business_line`
+        // (there is no `business_line` field); filtering the wrong field silently
+        // returned wrong rows. Matches getTeamTrainingReadiness.
+        query.assigned_to_business_line = businessLine;
       }
 
-      const assignments = await base44.asServiceRole.entities.TrainingAssignment.filter(query, '-created_date');
-      
+      const assignments = (await base44.asServiceRole.entities.TrainingAssignment.filter(query, '-created_date'))
+        .filter(a => inAgency(a.assigned_to_user_id));
+
       headers = ['Employee', 'Assigned Date', 'Due Date', 'Status', 'Completion Date', 'Score', 'Attempts'];
       data = assignments.map(a => ({
         'Employee': a.assigned_to_user_id || 'N/A',
@@ -73,10 +92,10 @@ Deno.serve(async (req) => {
       }));
     } else if (reportType === 'plan-compliance') {
       // Learning plan compliance CSV
-      const enrollments = await base44.asServiceRole.entities.PlanEnrollment.filter(
+      const enrollments = (await base44.asServiceRole.entities.PlanEnrollment.filter(
         { plan_id: planId },
         '-enrolled_at'
-      );
+      )).filter(e => inAgency(e.user_id));
 
       headers = ['Employee', 'Enrollment Date', 'Status', 'Progress %', 'Completed / Total'];
       data = enrollments.map(e => ({
@@ -90,10 +109,12 @@ Deno.serve(async (req) => {
       // Overdue assignments CSV
       const query = { status: 'overdue' };
       if (businessLine && businessLine !== 'all') {
-        query.business_line = businessLine;
+        // See roster branch: TrainingAssignment uses `assigned_to_business_line`.
+        query.assigned_to_business_line = businessLine;
       }
 
-      const overdue = await base44.asServiceRole.entities.TrainingAssignment.filter(query, '-due_date');
+      const overdue = (await base44.asServiceRole.entities.TrainingAssignment.filter(query, '-due_date'))
+        .filter(a => inAgency(a.assigned_to_user_id));
 
       headers = ['Employee', 'Course', 'Due Date', 'Days Overdue'];
       data = overdue.map(a => ({
@@ -112,7 +133,8 @@ Deno.serve(async (req) => {
         query.business_line = businessLine;
       }
 
-      const expiring = await base44.asServiceRole.entities.TrainingCertificate.filter(query, 'expiration_date');
+      const expiring = (await base44.asServiceRole.entities.TrainingCertificate.filter(query, 'expiration_date'))
+        .filter(c => inAgency(c.user_id));
 
       headers = ['Employee', 'Course', 'Issued Date', 'Expiration Date', 'Days Until Expiry'];
       data = expiring.map(c => {

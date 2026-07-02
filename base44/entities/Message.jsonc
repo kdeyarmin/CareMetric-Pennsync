@@ -153,6 +153,11 @@
           "created_by": "{{user.email}}"
         },
         {
+          "recipients": {
+            "$contains": "{{user.email}}"
+          }
+        },
+        {
           "user_condition": {
             "role": "admin"
           }

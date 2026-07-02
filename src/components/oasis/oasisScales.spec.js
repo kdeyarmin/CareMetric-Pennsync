@@ -35,7 +35,7 @@ describe('oasisScales', () => {
     }
   });
 
-  it('pain frequency is its own 0–3 scale', () => {
-    expect(PAIN_FREQUENCY_OPTIONS.map((o) => o.value)).toEqual(['0', '1', '2', '3']);
+  it('pain frequency is its own 0–4 scale (OASIS-E M1242)', () => {
+    expect(PAIN_FREQUENCY_OPTIONS.map((o) => o.value)).toEqual(['0', '1', '2', '3', '4']);
   });
 });

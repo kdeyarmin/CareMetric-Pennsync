@@ -200,6 +200,23 @@ function isFaxRetryDue(fax, now, config) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+
+    // Authorization: opt-in lockdown for this privileged scheduled job (mirrors
+    // pollFaxStatuses / processScheduledFaxes). This reads FaxLog PHI and dispatches
+    // billable Telnyx fax sends under the service role. When INTERNAL_FN_SECRET is
+    // set, require an admin OR the internal-secret header; the no-identity cron path
+    // is allowed only while no secret is configured.
+    const me = await base44.auth.me().catch(() => null);
+    const isAdmin = me?.role === 'admin';
+    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
+    if (internalSecret) {
+      if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    } else if (me && !isAdmin) {
+      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+    }
+
     const runId = crypto.randomUUID();
 
     const cfgRows = await base44.asServiceRole.entities.FaxRetryConfig.list('-created_date', 1).catch(() => []);
@@ -297,18 +314,27 @@ Deno.serve(async (req) => {
         }
       } catch (err) {
         console.error(`Network error retrying fax ${fax.id}:`, err.message);
-        // Transient: restore to failed and reschedule (within budget) using the
-        // SAME config-aware, priority-scaled backoff as the webhook; otherwise
-        // exhaust + notify.
+        // Transient: the dispatch itself failed, so NOTHING was sent to Telnyx and
+        // no status webhook will ever fire to advance retry_count for this attempt.
+        // Consume a retry attempt HERE — otherwise a persistently-unreachable Telnyx
+        // leaves retry_count at 0, `within` permanently true, and the flat backoff
+        // re-queues this fax at the base interval forever, never reaching
+        // handleRetryExhausted. Reschedule (within budget) using the SAME
+        // config-aware, priority-scaled backoff as the webhook; otherwise exhaust +
+        // notify. Boundary mirrors the webhook (`plan.nextRetryCount < maxRetries`):
+        // isFaxRetryDue refuses any fax whose retry_count >= maxRetries, so a
+        // scheduled retry at the cap would strand forever — treat it as exhausted.
         const attempts = Number(fax.retry_count) || 0;
-        const within = attempts < c.maxRetries;
+        const nextCount = attempts + 1;
+        const within = nextCount < c.maxRetries;
         const delayMin = nextRetryDelayMinutes(attempts, cfg, fax.priority || 'normal');
         await base44.asServiceRole.entities.FaxLog.update(fax.id, {
           status: 'failed',
           retry_claimed_by: null,
+          retry_count: nextCount,
           next_retry_at: within ? new Date(now.getTime() + delayMin * 60000).toISOString() : null,
         }).catch(() => {});
-        if (!within) await handleRetryExhausted(base44, fax, err.message, c.maxRetries, c.notifyOnFinalFailure);
+        if (!within) await handleRetryExhausted(base44, { ...fax, retry_count: nextCount }, err.message, c.maxRetries, c.notifyOnFinalFailure);
       }
     }
 
