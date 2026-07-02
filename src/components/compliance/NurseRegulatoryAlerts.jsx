@@ -43,7 +43,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
   const handleAcknowledge = (updateId) => {
     const newAcknowledged = [...acknowledgedUpdates, updateId];
     setAcknowledgedUpdates(newAcknowledged);
-    try { localStorage.setItem(`acknowledged_updates_${nurseEmail}`, JSON.stringify(newAcknowledged)); } catch {}
+    try { localStorage.setItem(`acknowledged_updates_${nurseEmail}`, JSON.stringify(newAcknowledged)); } catch { /* no-op */ }
   };
 
   const getImpactColor = (level) => {

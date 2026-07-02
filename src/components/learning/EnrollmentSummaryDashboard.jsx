@@ -75,7 +75,7 @@ export default function EnrollmentSummaryDashboard() {
   const statusData = useMemo(() => {
     const statuses = { assigned: 0, in_progress: 0, completed: 0, overdue: 0 };
     assignments.forEach(a => {
-      if (statuses.hasOwnProperty(a.status)) {
+      if (Object.prototype.hasOwnProperty.call(statuses, a.status)) {
         statuses[a.status]++;
       }
     });

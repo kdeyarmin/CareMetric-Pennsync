@@ -138,7 +138,7 @@ export default function RealTimeDictationScribe({ currentUser }) {
     recognition.onend = () => {
       // Auto-restart if still supposed to be listening
       if (recognitionRef.current && recognitionRef.current._shouldBeListening) {
-        try { recognition.start(); } catch {}
+        try { recognition.start(); } catch { /* no-op */ }
       } else {
         setIsListening(false);
       }
@@ -150,7 +150,7 @@ export default function RealTimeDictationScribe({ currentUser }) {
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current._shouldBeListening = false;
-        try { recognitionRef.current.stop(); } catch {}
+        try { recognitionRef.current.stop(); } catch { /* no-op */ }
       }
     };
   }, []);

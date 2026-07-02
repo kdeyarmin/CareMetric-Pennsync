@@ -116,7 +116,7 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
 
       // Store in localStorage
       let existingCache = [];
-      try { existingCache = JSON.parse(localStorage.getItem('offline_patient_data') || '[]'); } catch {}
+      try { existingCache = JSON.parse(localStorage.getItem('offline_patient_data') || '[]'); } catch { /* no-op */ }
       const mergedCache = [...cachedData];
 
       // Carry forward previously cached patients, but PURGE stale PHI: drop any

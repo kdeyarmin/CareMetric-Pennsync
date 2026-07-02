@@ -14,7 +14,7 @@ const storage = (() => {
 			localStorage.removeItem('__test__');
 			return localStorage;
 		}
-	} catch {}
+	} catch { /* no-op */ }
 	return memoryStorageAdapter;
 })();
 

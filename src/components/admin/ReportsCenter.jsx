@@ -100,7 +100,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
         let reportTitle = '';
 
         switch (reportType) {
-          case 'productivity':
+          case 'productivity': {
             reportTitle = 'Productivity Report';
             const prodData = generateProductivityReportData(filteredVisits, allUsers);
             pdfContent = [
@@ -144,8 +144,9 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
               }
             ];
             break;
+          }
 
-          case 'quality':
+          case 'quality': {
             reportTitle = 'Quality Metrics Report';
             const qualityData = generateQualityReportData(filteredVisits, filteredIncidents, allPatients);
             pdfContent = [
@@ -177,8 +178,9 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
               }
             ];
             break;
+          }
 
-          case 'financial':
+          case 'financial': {
             reportTitle = 'Financial Report';
             const finData = generateDetailedFinancialData(filteredVisits, allPatients);
             pdfContent = [
@@ -208,8 +210,9 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
               }
             ];
             break;
+          }
 
-          case 'staff_comparison':
+          case 'staff_comparison': {
             reportTitle = 'Staff Performance Comparison';
             const staffData = generateStaffComparisonData(filteredVisits, allUsers);
             pdfContent = [
@@ -229,6 +232,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
               }
             ];
             break;
+          }
 
           default:
             reportTitle = 'PennSync by CareMetric Report';
