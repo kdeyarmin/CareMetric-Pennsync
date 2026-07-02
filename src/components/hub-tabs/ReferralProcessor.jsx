@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import ReferralPDFSummarizer from "@/components/referral/ReferralPDFSummarizer";
 import ReferralAnalyzer from "@/components/referral/ReferralAnalyzer";
+import { generateDiagnosisCodes, codeLabel } from "@/components/referral/diagnosisCodeGenerator";
 import AIAdmissionDocumentationAssistant from "@/components/clinical/AIAdmissionDocumentationAssistant";
 import AIGeneratedOASISAssessment from "@/components/oasis/AIGeneratedOASISAssessment";
 import { Card, CardContent } from "@/components/ui/card";
@@ -59,6 +60,20 @@ export default function ReferralProcessor() {
 
     setIsCreatingPatient(true);
     try {
+      // Deterministic PDGM-sequenced coding from the referral (codes only
+      // ever harvested from the referral, never generated) — the default
+      // diagnosis set when the user hasn't hand-picked one above.
+      let coding = null;
+      try {
+        const rateRows = await base44.entities.PDGMRateConfig.list('-created_date', 1).catch(() => []);
+        coding = generateDiagnosisCodes(extractedData, {
+          rates: rateRows?.[0]?.rates,
+          icdGroups: rateRows?.[0]?.icd10_clinical_groups,
+        });
+      } catch {
+        coding = generateDiagnosisCodes(extractedData);
+      }
+
       // Parse patient name intelligently from extracted data
       const fullName = extractedData.demographics?.full_name || '';
       const nameParts = fullName.trim().split(/\s+/);
@@ -77,8 +92,17 @@ export default function ReferralProcessor() {
         emergency_contact_relationship: extractedData.demographics?.emergency_relationship || null,
         physician_name: extractedData.demographics?.primary_care_physician || extractedData.demographics?.referring_physician || null,
         physician_phone: extractedData.demographics?.pcp_contact || extractedData.demographics?.referring_physician_contact || null,
-        primary_diagnosis: selectedPrimaryDx || extractedData.diagnoses?.primary_diagnosis || null,
-        secondary_diagnoses: selectedSecondaryDx.length > 0 ? selectedSecondaryDx : (extractedData.diagnoses?.secondary_diagnoses || []),
+        primary_diagnosis:
+          selectedPrimaryDx ||
+          (coding?.primary ? codeLabel(coding.primary) : null) ||
+          extractedData.diagnoses?.primary_diagnosis ||
+          null,
+        secondary_diagnoses:
+          selectedSecondaryDx.length > 0
+            ? selectedSecondaryDx
+            : coding?.secondaries?.length
+            ? coding.secondaries.map(codeLabel)
+            : (extractedData.diagnoses?.secondary_diagnoses || []),
         allergies: extractedData.diagnoses?.allergies || null,
         current_medications: extractedData.medications || [],
         admission_date: extractedData.admission_details?.admission_date || new Date().toISOString().split('T')[0],

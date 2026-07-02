@@ -348,3 +348,37 @@ export function formatIcd(code) {
   const norm = normalizeIcd(code);
   return norm.length > 3 ? `${norm.slice(0, 3)}.${norm.slice(3)}` : norm;
 }
+
+/** "I50.9 — Heart failure" label for chart/report text fields. */
+export function codeLabel(dx) {
+  if (!dx) return "";
+  return dx.description ? `${dx.displayCode} — ${dx.description}` : dx.displayCode;
+}
+
+/**
+ * Lean, persistence-ready shape of a generateDiagnosisCodes result for the
+ * top-level `Referral.diagnosis_coding` field. Kept OFF `extracted_data` on
+ * purpose: the referral→admission-note bridges prompt on the full
+ * extracted_data object, and coding/reimbursement mechanics must not leak
+ * into generated clinical notes. Evidence is reduced to field paths; the full
+ * quotes stay in the interactive UI only.
+ */
+export function toPersistedCoding(result) {
+  if (!result) return null;
+  return {
+    sequenced: result.sequenced.map((dx) => ({
+      position: dx.position,
+      role: dx.role,
+      code: dx.displayCode,
+      description: dx.description,
+      clinical_group: dx.clinicalGroupKey,
+      case_mix_weight: dx.caseMixWeight,
+      acceptable_primary: dx.acceptablePrimary,
+      evidence_paths: dx.evidence.map((e) => e.path),
+    })),
+    uncoded: result.uncoded.map((u) => ({ description: u.description, path: u.path })),
+    warnings: result.warnings,
+    scenario: { timing: result.scenario.timing, admission_source: result.scenario.admissionSource },
+    has_acceptable_primary: !!result.primary,
+  };
+}

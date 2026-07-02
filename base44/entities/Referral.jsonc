@@ -156,6 +156,10 @@
       "type": "object",
       "description": "Structured data extracted from the referral document (demographics, diagnoses, urgency, care needs)"
     },
+    "diagnosis_coding": {
+      "type": "object",
+      "description": "Deterministic PDGM-sequenced diagnosis coding produced by src/components/referral/diagnosisCodeGenerator.js (toPersistedCoding shape: sequenced[], uncoded[], warnings[], scenario, has_acceptable_primary). Codes are only ever harvested verbatim from the referral, never generated. Deliberately TOP-LEVEL (not inside extracted_data) so coding/reimbursement mechanics cannot leak into the referral→admission-note bridges that prompt on extracted_data."
+    },
     "follow_up_notes": {
       "type": "array",
       "items": {
