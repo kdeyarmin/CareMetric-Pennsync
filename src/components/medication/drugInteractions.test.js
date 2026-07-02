@@ -86,6 +86,30 @@ test("brand-name Klor-Con still matches potassium_sparing (hyphen tokenized)", (
   assert.ok(r.some((x) => x.severity === "major" && /hyperkalemia/i.test(x.description)));
 });
 
+test("leading 'Potassium ...' supplements fire hyperkalemia with ACE/ARB", () => {
+  // Genuine supplements are named "Potassium <salt/strength>" — a bare leading
+  // "potassium" token must still surface the ACE/ARB hyperkalemia risk.
+  for (const supp of ["Potassium Citrate", "Potassium Gluconate 99 mg", "Potassium Bicarbonate", "Potassium 20 mEq", "Potassium ER"]) {
+    const r = findDeterministicInteractions([{ name: supp }, { name: "losartan" }]);
+    assert.ok(
+      r.some((x) => x.severity === "major" && /hyperkalemia/i.test(x.description)),
+      `expected hyperkalemia interaction for "${supp}"`,
+    );
+  }
+});
+
+test("salt-form drug names with a trailing 'Potassium' counterion do NOT false-fire hyperkalemia", () => {
+  // "Losartan Potassium", "Diclofenac Potassium", "Penicillin V Potassium" carry
+  // potassium as a trailing counterion, not as a supplement — no hyperkalemia rule.
+  for (const salt of ["Losartan Potassium", "Diclofenac Potassium", "Penicillin V Potassium"]) {
+    const r = findDeterministicInteractions([{ name: salt }, { name: "lisinopril" }]);
+    assert.ok(
+      !r.some((x) => /hyperkalemia/i.test(x.description)),
+      `did not expect a hyperkalemia interaction for "${salt}"`,
+    );
+  }
+});
+
 test("token matching avoids substring false positives but keeps true matches", () => {
   // "mononitrate" must not match the bare "nitrate" fragment as a substring;
   // the nitrate group is still detected via the "isosorbide" token, so the

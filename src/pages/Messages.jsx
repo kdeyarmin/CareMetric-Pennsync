@@ -250,7 +250,13 @@ export default function Messages() {
     // onSuccess so a failed send preserves the nurse's typed reply for retry.
   };
 
-  const unreadCount = filteredThreads.filter(t => t.unreadCount > 0).length;
+  // Total unread across the user's own threads (participant-scoped), independent
+  // of the active priority/read/search view filters — otherwise selecting the
+  // "Read" filter (or a search) would zero out the global header badge even
+  // though unread messages still exist.
+  const unreadCount = threads.filter(
+    t => (t.isRecipient || t.isMyMessage) && t.unreadCount > 0
+  ).length;
 
   return (
     <PageContainer>
