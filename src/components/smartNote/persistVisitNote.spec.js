@@ -3,21 +3,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // ── Mock the chart backend so we can assert what gets written ──────────────────
 const visitCreate = vi.fn(async (p) => ({ id: "visit-1", ...p }));
 const visitUpdate = vi.fn(async () => ({}));
-const patientGet = vi.fn(async () => ({ enhanced_notes_history: [] }));
-const patientUpdate = vi.fn(async () => ({}));
 const noteConvCreate = vi.fn(async () => ({}));
 const auditCreate = vi.fn(async () => ({ id: "audit-1" }));
 const auditUpdate = vi.fn(async () => ({}));
+const functionsInvoke = vi.fn(async () => ({ data: { success: true } }));
 const addToSyncQueue = vi.fn(async () => {});
 
 vi.mock("@/api/base44Client", () => ({
   base44: {
     entities: {
       Visit: { create: (...a) => visitCreate(...a), update: (...a) => visitUpdate(...a) },
-      Patient: { get: (...a) => patientGet(...a), update: (...a) => patientUpdate(...a) },
       NoteConversion: { create: (...a) => noteConvCreate(...a) },
       ComplianceAudit: { create: (...a) => auditCreate(...a), update: (...a) => auditUpdate(...a) },
     },
+    functions: { invoke: (...a) => functionsInvoke(...a) },
   },
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -67,6 +66,12 @@ describe("persistVisitNote", () => {
     expect(noteConvCreate).toHaveBeenCalledTimes(1);
     expect(auditCreate).toHaveBeenCalledTimes(1);
     expect(visitUpdate).not.toHaveBeenCalled();
+    // The note-history entry is appended via the atomic backend function (a
+    // client-side read-modify-write lost entries on concurrent saves).
+    expect(functionsInvoke).toHaveBeenCalledWith("appendPatientNoteHistory", expect.objectContaining({
+      patient_id: "p1", mode: "append", clinical_notes: "Final note text",
+      entry: expect.objectContaining({ visit_id: "visit-1", note: "Final note text" }),
+    }));
   });
 
   it("completes an existing (deep-linked) visit instead of creating a duplicate", async () => {
@@ -85,6 +90,12 @@ describe("persistVisitNote", () => {
     expect(visitUpdate).toHaveBeenCalledWith("visit-9", expect.objectContaining({ vital_signs: { temperature: 99 } }));
     expect(auditUpdate).toHaveBeenCalledWith("audit-9", expect.anything());
     expect(visitCreate).not.toHaveBeenCalled();
+    // The re-save updates THIS visit's history entry (matched by visit_id
+    // server-side), never blindly the last array element.
+    expect(functionsInvoke).toHaveBeenCalledWith("appendPatientNoteHistory", expect.objectContaining({
+      patient_id: "p1", mode: "update",
+      entry: expect.objectContaining({ visit_id: "visit-9", note: "Final note text" }),
+    }));
   });
 
   it("queues an offline visit (with vitals + audit meta) when offline", async () => {
@@ -101,6 +112,9 @@ describe("persistVisitNote", () => {
     expect(payload.grounding_pending).toBe(true);
     expect(payload.__audit.status).toBe("pending_review");
     expect(visitCreate).not.toHaveBeenCalled();
+    // Offline saves never reach the history-append function — the queue drain
+    // handles the server writes on reconnect.
+    expect(functionsInvoke).not.toHaveBeenCalled();
   });
 
   it("queues UPDATE_VISIT (not a duplicate CREATE) when offline re-saving an existing visit", async () => {

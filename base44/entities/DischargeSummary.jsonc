@@ -275,5 +275,23 @@
     "patient_id",
     "discharge_date",
     "status"
-  ]
+  ],
+  // PHI read-scoping: with no read rule, ANY authenticated user could bulk-
+  // .list() every row (discharge summaries are full clinical narratives).
+  // Reads are scoped to the owning user (+ admin), matching the app's
+  // Patient/Visit/ComplianceAudit role model: non-admin staff see only their
+  // own rows on agency-wide report surfaces; admins see everything. "write": {}
+  // deliberately preserves the existing open write behavior — this change is
+  // read-scoping only (several write flows are legitimately cross-user), the
+  // same shape as the ClinicalLibraryTemplate read-scoping fix.
+  "rls": {
+    "read": {
+      "$or": [
+        { "generated_by": "{{user.email}}" },
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {}
+  }
 }

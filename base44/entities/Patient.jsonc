@@ -662,6 +662,14 @@
       "items": {
         "type": "object",
         "properties": {
+          "entry_id": {
+            "type": "string",
+            "description": "Unique id stamped by appendPatientNoteHistory; keys the verify-and-retry append"
+          },
+          "visit_id": {
+            "type": "string",
+            "description": "Visit this entry documents; re-saves target their entry by this id"
+          },
           "date": {
             "type": "string",
             "format": "date-time"
@@ -671,6 +679,19 @@
           },
           "diagnosis": {
             "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "compliance_score": {
+            "type": "number"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
           },
           "enhanced_note": {
             "type": "string"
@@ -689,7 +710,7 @@
           }
         }
       },
-      "description": "History of AI-enhanced notes for context building and documentation improvement"
+      "description": "History of AI-enhanced notes for context building and documentation improvement. Written ONLY via the appendPatientNoteHistory backend function (atomic append) — do not read-modify-write this array from the client."
     },
     "risk_assessment": {
       "type": "object",

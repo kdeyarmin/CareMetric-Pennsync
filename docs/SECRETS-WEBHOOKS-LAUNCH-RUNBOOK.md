@@ -113,7 +113,8 @@ platform restricts who can invoke function endpoints (**confirm that**).
 |---|---|---|
 | `processScheduledFaxes` **XOR** `processScheduledFaxesByPriority` | one of them, e.g. every 5 min | **Enable only ONE** — both running double-sends faxes. |
 | `dispatchScheduledSms` | one schedule, e.g. every 5 min | `pending→sending` claim is best-effort, not atomic — overlapping runs double-send a queued text. One schedule only. |
-| `sendAutomatedSignatureReminders` **+** `scheduleSignatureReminders` | per your reminder policy | Idempotency now guards on `last_reminder_sent_at` (schema field exists), so a tick won't re-email every run. |
+| `sendAutomatedSignatureReminders` | per your reminder policy | Idempotency now guards on `last_reminder_sent_at` (schema field exists), so a tick won't re-email every run. |
+| `dispatchScheduledSignatureReminders` | one schedule, e.g. every 15 min | Delivers `ScheduledSignatureReminder` rows queued by `scheduleSignatureReminders` (which is caller-invoked, not a cron). Claim + re-read guards overlapping runs; recipients are re-derived from the document's pending signers at send time. |
 | `sendExpirationNotifications` | daily | Document/credential expirations. |
 | `sendPersonnelExpirationNotifications` | daily | Personnel credential expirations. |
 | `monitorComplianceRisks` | daily/periodic | Compliance risk monitor. |

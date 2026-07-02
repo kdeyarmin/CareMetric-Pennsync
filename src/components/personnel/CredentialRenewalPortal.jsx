@@ -85,46 +85,23 @@ export default function CredentialRenewalPortal({ userId }) {
         throw new Error("Missing required data");
       }
 
-      // Create new credential record for renewal (pending approval)
-      await base44.entities.PersonnelCredential.create({
-        user_id: selectedCredential.user_id,
-        user_name: selectedCredential.user_name,
-        agency_name: selectedCredential.agency_name,
-        item_type: selectedCredential.item_type,
-        title: selectedCredential.title,
-        issuing_organization: selectedCredential.issuing_organization,
-        credential_number: renewalData.credential_number || selectedCredential.credential_number,
-        issued_date: renewalData.issued_date,
-        expiration_date: renewalData.expiration_date,
-        uploaded_file_url: renewalData.uploaded_file_url,
-        uploaded_file_name: renewalData.uploaded_file_name,
-        notes: `Renewal submission for credential ID: ${selectedCredential.id}`,
-        status: 'pending_approval'
+      // The renewal goes through submitPersonnelCredential — the entity's write
+      // RLS is admin-only, and the function pins status=pending_approval,
+      // stamps the renewal note on the old credential, and notifies the admins.
+      await base44.functions.invoke('submitPersonnelCredential', {
+        renews_credential_id: selectedCredential.id,
+        credential: {
+          item_type: selectedCredential.item_type,
+          title: selectedCredential.title,
+          issuing_organization: selectedCredential.issuing_organization,
+          credential_number: renewalData.credential_number || selectedCredential.credential_number,
+          issued_date: renewalData.issued_date,
+          expiration_date: renewalData.expiration_date,
+          uploaded_file_url: renewalData.uploaded_file_url,
+          uploaded_file_name: renewalData.uploaded_file_name,
+          notes: `Renewal submission for credential ID: ${selectedCredential.id}`,
+        },
       });
-
-      // Update old credential to show renewal submitted
-      await base44.entities.PersonnelCredential.update(selectedCredential.id, {
-        notes: (selectedCredential.notes || '') + `\n[Renewal submitted on ${format(new Date(), 'yyyy-MM-dd')}]`
-      });
-
-      // Notify admins
-      const admins = await base44.entities.User.filter({ role: 'admin' });
-      await Promise.all(
-        admins.map(admin =>
-          base44.integrations.Core.SendEmail({
-            to: admin.email,
-            subject: `📋 Credential Renewal Submitted - ${selectedCredential.title}`,
-            body: `A credential renewal has been submitted for approval:
-
-Employee: ${selectedCredential.user_name}
-Credential: ${selectedCredential.title}
-Type: ${selectedCredential.item_type}
-New Expiration: ${format(parseISO(renewalData.expiration_date), 'MMM d, yyyy')}
-
-Please review and approve in the Personnel File dashboard.`
-          })
-        )
-      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userCredentials'] });

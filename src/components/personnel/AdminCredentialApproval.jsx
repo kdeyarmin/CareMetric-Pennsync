@@ -49,59 +49,16 @@ export default function AdminCredentialApproval() {
     initialData: [],
   });
 
+  // Approval/rejection goes through the admin-gated reviewPersonnelCredential
+  // backend function (which supersedes old approved copies and notifies the
+  // employee) — the entity's write RLS is admin-only and the decision fields
+  // are stamped server-side.
   const approveMutation = useMutation({
     mutationFn: async (credential) => {
-      // Approve the new credential FIRST. If this write fails we bail out before
-      // touching anything else, so we never expire the employee's prior valid
-      // credential and leave them with no approved replacement.
-      await base44.entities.PersonnelCredential.update(credential.id, {
-        status: 'approved',
-        approved_by: currentUser?.email,
-        approved_at: new Date().toISOString()
+      await base44.functions.invoke('reviewPersonnelCredential', {
+        credential_id: credential.id,
+        action: 'approve',
       });
-
-      // Now supersede any previously approved credentials of the same title
-      // (excluding the one we just approved).
-      const approvedForTitle = await base44.entities.PersonnelCredential.filter({
-        user_id: credential.user_id,
-        title: credential.title,
-        status: 'approved'
-      });
-      const superseded = approvedForTitle.filter(old => old.id !== credential.id);
-      if (superseded.length > 0) {
-        await Promise.all(
-          superseded.map(old =>
-            base44.entities.PersonnelCredential.update(old.id, {
-              status: 'expired',
-              notes: (old.notes || '') + `\n[Superseded by renewal on ${format(new Date(), 'yyyy-MM-dd')}]`
-            })
-          )
-        );
-      }
-
-      // Notify employee — best-effort. A mail failure must not surface as
-      // "Failed to approve" when the credential is already approved.
-      try {
-        await base44.integrations.Core.SendEmail({
-          to: credential.user_id,
-          subject: `✅ Credential Approved - ${credential.title}`,
-          body: `Dear ${credential.user_name},
-
-Your credential renewal has been approved:
-
-Credential: ${credential.title}
-Type: ${credential.item_type}
-New Expiration: ${fmtDate(credential.expiration_date)}
-Approved By: ${currentUser?.full_name}
-
-Your personnel file has been updated. You can view your current credentials in the Personnel File section.
-
-Thank you,
-Credential Management System`
-        });
-      } catch {
-        // Non-fatal: the approval succeeded even if notification failed.
-      }
     },
     onSuccess: () => {
       toast.success("Credential approved and employee notified");
@@ -119,33 +76,10 @@ Credential Management System`
 
   const rejectMutation = useMutation({
     mutationFn: async ({ credential, reason }) => {
-      await base44.entities.PersonnelCredential.update(credential.id, {
-        status: 'rejected',
+      await base44.functions.invoke('reviewPersonnelCredential', {
+        credential_id: credential.id,
+        action: 'reject',
         rejection_reason: reason,
-        approved_by: currentUser?.email,
-        approved_at: new Date().toISOString()
-      });
-
-      // Notify employee
-      await base44.integrations.Core.SendEmail({
-        to: credential.user_id,
-        subject: `❌ Credential Renewal Requires Revision - ${credential.title}`,
-        body: `Dear ${credential.user_name},
-
-Your credential renewal submission requires revision:
-
-Credential: ${credential.title}
-Type: ${credential.item_type}
-
-Reason for rejection:
-${reason}
-
-Please re-upload a corrected document in your Personnel File.
-
-If you have questions, please contact your supervisor.
-
-Thank you,
-Credential Management System`
       });
     },
     onSuccess: () => {

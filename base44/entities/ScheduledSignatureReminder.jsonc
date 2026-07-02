@@ -1,0 +1,108 @@
+{
+  "name": "ScheduledSignatureReminder",
+  "type": "object",
+  "properties": {
+    "document_id": {
+      "type": "string",
+      "description": "Id of the DocumentSignature request this reminder is for"
+    },
+    "document_name": {
+      "type": "string",
+      "description": "Snapshot of the document name for display in queues"
+    },
+    "deadline_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Signature deadline the reminder message references"
+    },
+    "send_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the reminder notifications should be delivered"
+    },
+    "requested_by": {
+      "type": "string",
+      "description": "Email of the user who scheduled the reminder (rows are created via service role, so created_by is not the scheduler)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "sending",
+        "sent",
+        "failed",
+        "canceled"
+      ],
+      "default": "pending",
+      "description": "Scheduled reminder status"
+    },
+    "attempts": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of dispatch attempts made"
+    },
+    "claimed_by": {
+      "type": "string",
+      "description": "Per-run token claiming this row for dispatch (concurrency guard)"
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this row was claimed for dispatch"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the reminder notifications were actually created"
+    },
+    "reminder_count": {
+      "type": "number",
+      "description": "Number of signer notifications created when dispatched"
+    },
+    "failure_reason": {
+      "type": "string",
+      "description": "Reason for failure or cancellation if applicable"
+    },
+    "canceled_by": {
+      "type": "string",
+      "description": "Email of the user who canceled the scheduled reminder"
+    },
+    "canceled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the scheduled reminder was canceled"
+    }
+  },
+  "required": [
+    "document_id",
+    "send_at"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "requested_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    // Write is ADMIN-ONLY: rows are created by scheduleSignatureReminders and
+    // consumed by dispatchScheduledSignatureReminders, both via service role
+    // (RLS-bypassing). An owner write rule would let a non-admin create a row
+    // for an ARBITRARY document_id directly, and the dispatcher would then
+    // notify that document's signers — bypassing scheduleSignatureReminders'
+    // ownership/role checks.
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
