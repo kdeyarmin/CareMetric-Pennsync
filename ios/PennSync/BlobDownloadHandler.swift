@@ -75,15 +75,14 @@ init(presenter: UIViewController) {
     /// Strips path separators and falls back to a typed default name when the
     /// export produced no usable filename.
     private func sanitize(filename: String, response: URLResponse) -> String {
-        var name = filename
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "\\", with: "_")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+var name = (filename as NSString).lastPathComponent
+    .replacingOccurrences(of: "/", with: "_")
+    .replacingOccurrences(of: "\\", with: "_")
+    .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if name.isEmpty || name == "_" {
-            name = "export"
-        }
-
+if name.isEmpty || name == "_" || name == "." || name == ".." {
+    name = "export"
+}
         // Blob exports always set a MIME type (text/csv, application/pdf, …);
         // make sure the saved file keeps a matching extension so the share
         // sheet and Files app treat it correctly.
