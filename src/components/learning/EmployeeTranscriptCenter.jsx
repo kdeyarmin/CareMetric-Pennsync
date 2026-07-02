@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Award, Printer, Search } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { createCertificateBlobUrl } from "@/components/learning/certificatePdf";
@@ -39,7 +40,13 @@ export default function EmployeeTranscriptCenter() {
   const printCertificate = async (certificate) => {
     const url = await createCertificateBlobUrl(certificate);
     const printWindow = window.open(url, '_blank');
-    setTimeout(() => printWindow?.print(), 600);
+    // Popup blockers and installed-app webviews (iOS standalone/WKWebView)
+    // return null — surface a hint instead of failing silently.
+    if (!printWindow) {
+      toast.error('Unable to open the certificate. Please allow pop-ups, or use Download instead.');
+      return;
+    }
+    setTimeout(() => printWindow.print(), 600);
   };
 
   return (

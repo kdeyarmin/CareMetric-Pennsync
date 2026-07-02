@@ -1,13 +1,14 @@
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, RefreshCw, WifiOff } from "lucide-react";
 import { logger } from "@/lib/logger";
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, isStaleChunk: false };
+    this.state = { hasError: false, error: null, isStaleChunk: false, isOfflineChunk: false };
+    this.handleBackOnline = this.handleBackOnline.bind(this);
   }
 
   static getDerivedStateFromError(error) {
@@ -20,12 +21,33 @@ class ErrorBoundary extends React.Component {
     // a chunk URL the restarted server no longer serves. Some browsers phrase
     // it "Failed to fetch" and others "error loading" a dynamically imported
     // module, so match on the common "dynamically imported module" substring.
-    const isStaleChunk = error?.name === 'TypeError' &&
+    const isChunkError = error?.name === 'TypeError' &&
       /dynamically imported module/i.test(error?.message || '');
-    return { hasError: true, error, isStaleChunk };
+    // Same TypeError while OFFLINE is not a stale module graph — the network is
+    // gone and this route's chunk was never downloaded. Reloading can't fix
+    // that (it would only tear the app down), so show the offline card and
+    // auto-retry when connectivity returns.
+    const isOfflineChunk = isChunkError &&
+      typeof navigator !== 'undefined' && navigator.onLine === false;
+    return { hasError: true, error, isStaleChunk: isChunkError && !isOfflineChunk, isOfflineChunk };
+  }
+
+  handleBackOnline() {
+    // Chunk fetches are not retried by React.lazy, so a reload once the
+    // connection returns is the recovery path.
+    window.location.reload();
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('online', this.handleBackOnline);
   }
 
   componentDidCatch(error, errorInfo) {
+    if (this.state.isOfflineChunk) {
+      window.addEventListener('online', this.handleBackOnline);
+      logger.error('Route chunk unavailable offline:', error, errorInfo);
+      return;
+    }
     if (this.state.isStaleChunk) {
       const key = `vite-chunk-reloaded:${window.location.pathname}`;
       const attempts = parseInt(sessionStorage.getItem(key) || '0', 10);
@@ -48,6 +70,27 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      if (this.state.isOfflineChunk) {
+        return (
+          <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+            <Card className="max-w-md border-amber-300">
+              <CardContent className="p-8 text-center">
+                <WifiOff className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+                <h2 className="text-xl font-bold text-slate-900 mb-2">This page isn&rsquo;t available offline</h2>
+                <p className="text-sm text-slate-600 mb-4">
+                  You&rsquo;re offline and this page hasn&rsquo;t been downloaded to this
+                  device yet. It will open automatically when your connection
+                  returns. Anything you documented offline is saved and will sync.
+                </p>
+                <Button onClick={() => window.location.reload()} className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Try Again
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      }
       // While the stale-chunk reload is in flight, show a loading state instead
       // of the error card so the user doesn't see a flash of the error screen.
       if (this.state.isStaleChunk) {

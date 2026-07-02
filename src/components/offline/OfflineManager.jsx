@@ -20,6 +20,31 @@ export default function OfflineManager() {
   // the routed app, so no clinical data moves until the user has signed off.
   const canSync = isAuthenticated && hasAcceptedAiContentAgreement(user);
 
+  // Warm the offline-critical lazy chunks while the network is still up. The
+  // Offline Mode page and its tabs are code-split like every other route, so a
+  // nurse who loses connectivity and THEN opens Offline Mode (exactly the flow
+  // the Features page instructs) would otherwise hit a failed dynamic import —
+  // the chunk was never downloaded. Importing them here loads them into the
+  // session's module graph and, in production, the service worker's hashed
+  // /assets/ cache, so the offline workflow stays reachable after a restart.
+  // Idle-time + fire-and-forget: a failed prefetch just means the old behavior.
+  useEffect(() => {
+    if (!canSync || !navigator.onLine) return undefined;
+    const warm = () => {
+      Promise.allSettled([
+        import('@/pages/OfflineMode'),
+        import('@/components/hub-tabs/OfflineVisitDocumentation'),
+        import('@/components/hub-tabs/OfflineDocumentation'),
+      ]);
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(warm, { timeout: 10000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const t = setTimeout(warm, 3000);
+    return () => clearTimeout(t);
+  }, [canSync]);
+
   useEffect(() => {
     // Drains the canonical IndexedDB sync queue. Called both from the `online`
     // event AND once on mount when already online — otherwise a visit queued

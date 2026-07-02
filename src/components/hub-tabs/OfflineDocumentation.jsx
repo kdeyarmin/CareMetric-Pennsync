@@ -28,12 +28,15 @@ export default function OfflineDocumentation() {
           <div className="flex items-start gap-3">
             <Info className="w-5 h-5 text-blue-600 mt-0.5" />
             <div>
+              {/* Keep this copy honest: describe only what src/lib/offlineSync.js
+                  actually does. Overstated claims (30-second auto-save, retry
+                  backoff, conflict detection) previously listed here were never
+                  implemented and misled clinicians about data-loss risk. */}
               <h3 className="font-semibold text-blue-900 mb-1">How Offline Mode Works</h3>
               <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                <li>All documentation is saved locally to your device storage</li>
-                <li>Data automatically syncs when internet connection is restored</li>
-                <li>Auto-save every 30 seconds prevents data loss</li>
-                <li>Conflict detection ensures data integrity during sync</li>
+                <li>Documentation you submit while offline is saved locally on this device</li>
+                <li>Saved items sync automatically the next time the app is open with a connection</li>
+                <li>Items that fail to sync stay saved and are retried on the next sync</li>
                 <li>View pending items and sync status anytime</li>
               </ul>
             </div>
@@ -110,11 +113,11 @@ export default function OfflineDocumentation() {
           <CardTitle className="text-base">Storage & Sync Information</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-slate-600 space-y-2">
-          <p><strong>Storage Location:</strong> Browser Local Storage (persistent across sessions)</p>
-          <p><strong>Auto-Sync Trigger:</strong> Automatically syncs 2 seconds after connection is restored</p>
-          <p><strong>Retry Logic:</strong> Failed items retry up to 3 times with exponential backoff</p>
-          <p><strong>Conflict Resolution:</strong> Server version takes precedence; conflicts logged for review</p>
-          <p><strong>Data Retention:</strong> Offline data persists until successfully synced</p>
+          <p><strong>Storage Location:</strong> On-device browser storage (IndexedDB), persistent across sessions</p>
+          <p><strong>Sync Trigger:</strong> Runs when the connection is restored, and on app startup if items are pending</p>
+          <p><strong>Retry Logic:</strong> Items that fail to sync stay queued and are retried on the next sync</p>
+          <p><strong>Data Retention:</strong> Unsynced documentation persists until successfully synced — even across logout; cached patient data is purged on logout</p>
+          <p><strong>Note:</strong> Offline data is saved per device and per app — items queued in your phone&rsquo;s browser are separate from the installed app</p>
         </CardContent>
       </Card>
     </div>
