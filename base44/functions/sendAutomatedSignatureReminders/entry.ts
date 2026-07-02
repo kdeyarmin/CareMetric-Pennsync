@@ -125,10 +125,14 @@ function renderBrandedEmail(opts) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
 
-    // Admin-only function for scheduled task
-    if (!user || user.role !== 'admin') {
+    // Scheduled reminder task. Allow the platform's no-identity scheduler path
+    // (per docs/SECURITY-RLS-CHECKLIST.md §4) but reject any authenticated
+    // non-admin. The prior `!user` gate 403'd the scheduler, so the "automated"
+    // reminders only ran when an admin triggered them manually.
+    const user = await base44.auth.me().catch(() => null);
+    const isAdmin = user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
+    if (user && !isAdmin) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 

@@ -125,10 +125,14 @@ function renderBrandedEmail(opts) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
 
-    // Only admins can trigger reminders
-    if (user?.role !== 'admin') {
+    // Cron-invoked reminder sweep. Allow the platform's no-identity scheduler
+    // path (per docs/SECURITY-RLS-CHECKLIST.md §4) but reject any authenticated
+    // non-admin. The prior hard `role !== 'admin'` gate 403'd the scheduler, so
+    // these "automated" document reminders never ran. Mirrors checkExpiredInvitations.
+    const user = await base44.auth.me().catch(() => null);
+    const isAdmin = user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
+    if (user && !isAdmin) {
       return Response.json(
         { error: 'Forbidden: Admin access required' },
         { status: 403 }
@@ -138,11 +142,14 @@ Deno.serve(async (req) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Fetch all pending document packages
-    const pendingPackages = await base44.entities.DocumentPackage.filter({
+    // Fetch all pending document packages. Use asServiceRole (the cron path has
+    // no user context) and an explicit sort/limit — an unbounded filter returns
+    // only the SDK's default first page, so later packages never got reminders.
+    // Mirrors sendAutomatedSignatureReminders.
+    const pendingPackages = await base44.asServiceRole.entities.DocumentPackage.filter({
       status: 'pending',
       auto_reminder_enabled: true,
-    });
+    }, 'due_date', 5000);
 
     let sentCount = 0;
     let failureCount = 0;
@@ -197,7 +204,7 @@ Deno.serve(async (req) => {
           : [];
         const signatures = await Promise.all(
           signatureIds.map((id) =>
-            base44.entities.DocumentSignature.get(id).catch(() => null)
+            base44.asServiceRole.entities.DocumentSignature.get(id).catch(() => null)
           )
         );
 
@@ -218,8 +225,8 @@ Deno.serve(async (req) => {
           validSignatures.length
         );
 
-        // Send email
-        await base44.integrations.Core.SendEmail({
+        // Send email (service role: the cron path has no user context)
+        await base44.asServiceRole.integrations.Core.SendEmail({
           to: pkg.signer_email,
           from_name: 'PennSync by CareMetric',
           subject: reminderSubject,
@@ -227,7 +234,7 @@ Deno.serve(async (req) => {
         });
 
         // Log the reminder
-        await base44.entities.ReminderLog.create({
+        await base44.asServiceRole.entities.ReminderLog.create({
           package_id: pkg.id,
           package_name: pkg.package_name,
           signer_email: pkg.signer_email,
@@ -242,7 +249,7 @@ Deno.serve(async (req) => {
         });
 
         // Update last reminder sent timestamp
-        await base44.entities.DocumentPackage.update(pkg.id, {
+        await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
           last_reminder_sent_at: new Date().toISOString(),
         });
 
