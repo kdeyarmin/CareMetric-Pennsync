@@ -13,6 +13,7 @@ import {
   Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { base44 } from '@/api/base44Client';
 
 /**
  * AI-powered referral triage analyzer
@@ -43,25 +44,19 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
     setAnalysis(null);
 
     try {
-      const response = await fetch('/functions/triageReferralWithAI', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referralData: referralText }),
+      // Route through the authenticated Base44 function (attaches the auth token
+      // and targets the backend origin); a raw relative fetch never reaches it.
+      const response = await base44.functions.invoke('triageReferralWithAI', {
+        referralData: referralText,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Analysis failed');
-      }
-
-      const result = await response.json();
+      const result = response?.data || {};
 
       if (result.success && result.analysis) {
         setAnalysis(result.analysis);
         onTriageComplete?.(result.analysis);
         toast.success('Triage analysis complete');
       } else {
-        setError('Failed to analyze referral');
+        setError(result.error || 'Failed to analyze referral');
       }
     } catch (err) {
       setError(err.message || 'Analysis error');
@@ -99,7 +94,9 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
     const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
     const link = document.createElement('a');
     link.setAttribute('href', dataUri);
-    link.setAttribute('download', `triage-${analysis.patient_name}-${new Date().toISOString().split('T')[0]}.json`);
+    // Non-identifying filename — embedding the patient's name would leak PHI into
+    // browser download history and stored file metadata.
+    link.setAttribute('download', `triage-${Date.now()}.json`);
     link.click();
   };
 
@@ -139,7 +136,7 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt,.pdf,.rtf"
+              accept=".txt"
               onChange={handleFileUpload}
               className="hidden"
             />

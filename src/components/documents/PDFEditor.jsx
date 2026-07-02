@@ -75,20 +75,21 @@ export default function PDFEditor({ pdfUrl, onSave }) {
     annotations
       .filter(ann => ann.page === currentPage)
       .forEach(ann => {
+        // Annotations are stored in PDF-point space; scale to canvas pixels for display.
         if (ann.type === 'text') {
           context.font = `${ann.fontSize || 16}px Arial`;
           context.fillStyle = ann.color;
-          context.fillText(ann.text, ann.x, ann.y);
+          context.fillText(ann.text, ann.x * scale, ann.y * scale);
         } else if (ann.type === 'highlight') {
           context.fillStyle = ann.color + '40';
-          context.fillRect(ann.x, ann.y, ann.width, ann.height);
+          context.fillRect(ann.x * scale, ann.y * scale, ann.width * scale, ann.height * scale);
         } else if (ann.type === 'draw') {
           context.strokeStyle = ann.color;
           context.lineWidth = ann.lineWidth || 2;
           context.beginPath();
           ann.path.forEach((point, idx) => {
-            if (idx === 0) context.moveTo(point.x, point.y);
-            else context.lineTo(point.x, point.y);
+            if (idx === 0) context.moveTo(point.x * scale, point.y * scale);
+            else context.lineTo(point.x * scale, point.y * scale);
           });
           context.stroke();
         }
@@ -107,8 +108,10 @@ export default function PDFEditor({ pdfUrl, onSave }) {
 
   const handleCanvasClick = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Store in PDF-point space (canvas renders at `scale`) so saved coords match
+    // the backend, which applies annotation.x/y directly as PDF points.
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
 
     if (tool === 'text') {
       const text = prompt('Enter text:');
@@ -128,11 +131,12 @@ export default function PDFEditor({ pdfUrl, onSave }) {
 
   const handleMouseDown = (e) => {
     if (tool !== 'draw' && tool !== 'highlight') return;
-    
+
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
+    // Store in PDF-point space (canvas renders at `scale`).
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+
     setIsDrawing(true);
     setCurrentPath([{ x, y }]);
   };
@@ -141,17 +145,18 @@ export default function PDFEditor({ pdfUrl, onSave }) {
     if (!isDrawing) return;
     
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
+    // Store in PDF-point space (canvas renders at `scale`).
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+
     setCurrentPath(prev => [...prev, { x, y }]);
-    
-    // Live preview
+
+    // Live preview (draw in canvas-pixel space).
     const context = canvasRef.current.getContext('2d');
     if (tool === 'draw') {
       context.strokeStyle = color;
       context.lineWidth = 2;
-      context.lineTo(x, y);
+      context.lineTo(x * scale, y * scale);
       context.stroke();
     }
   };

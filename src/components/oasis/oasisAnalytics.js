@@ -5,6 +5,10 @@
 // the page left to do only rendering. Behaviour is intentionally identical to
 // the previous inline useMemo blocks.
 
+// Relative import (not the "@/" alias) so this pure module stays loadable by
+// the node --test runner, which doesn't resolve Vite aliases.
+import { formatLocalDate } from "../../lib/dateLocal.js";
+
 /**
  * Completed-years age from a date-of-birth string, accounting for whether the
  * birthday has occurred this year. Plain year-subtraction counts a pre-birthday
@@ -100,7 +104,9 @@ export function aggregateFunctionalScores(uploads = [], limit = 20) {
     .sort((a, b) => new Date(a.assessment_date) - new Date(b.assessment_date))
     .slice(-limit)
     .map((upload) => ({
-      date: new Date(upload.assessment_date).toLocaleDateString(),
+      // formatLocalDate avoids the UTC-midnight day-shift for bare ISO dates
+      // (the pitfall computeAge documents above).
+      date: formatLocalDate(upload.assessment_date),
       ambulation: upload.pdgm_data?.functional_scores?.m1860_ambulation || 0,
       transferring: upload.pdgm_data?.functional_scores?.m1850_transferring || 0,
       bathing: upload.pdgm_data?.functional_scores?.m1830_bathing || 0,
@@ -115,7 +121,7 @@ export function aggregatePaymentTrends(uploads = [], limit = 15) {
     .sort((a, b) => new Date(a.assessment_date) - new Date(b.assessment_date))
     .slice(-limit)
     .map((upload) => ({
-      date: new Date(upload.assessment_date).toLocaleDateString(),
+      date: formatLocalDate(upload.assessment_date),
       payment: upload.estimated_payment,
       patient: upload.patient_name?.substring(0, 15) || "Unknown",
     }));

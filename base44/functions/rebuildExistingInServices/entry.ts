@@ -133,6 +133,53 @@ Deno.serve(async (req) => {
 
       const existingModules = await base44.asServiceRole.entities.TrainingModule.filter({ course_id: course.id }, 'order_index', 100);
       const existingQuestions = await base44.asServiceRole.entities.TrainingQuestion.filter({ course_id: course.id }, 'order_index', 200);
+
+      // Create-then-swap: build ALL new modules/questions first, and only delete
+      // the originals once every create has succeeded. If a create throws mid-way,
+      // roll back the partially-created new rows and keep the original content —
+      // the course is never left with deleted-but-not-recreated content.
+      const createdModuleIds = [];
+      const createdQuestionIds = [];
+      try {
+        for (const [index, module] of (generated.modules || []).entries()) {
+          const createdModule = await base44.asServiceRole.entities.TrainingModule.create({
+            course_id: course.id,
+            title: module.title || `Module ${index + 1}`,
+            type: module.type || 'lesson',
+            content_json: module.content || {},
+            order_index: index,
+            estimated_minutes: Math.max(5, Math.floor((course.estimated_minutes || 30) / Math.max((generated.modules || []).length, 1))),
+            is_required: true,
+          });
+          createdModuleIds.push(createdModule.id);
+        }
+
+        for (const [index, question] of (generated.questions || []).entries()) {
+          const createdQuestion = await base44.asServiceRole.entities.TrainingQuestion.create({
+            course_id: course.id,
+            type: question.type || 'mcq',
+            prompt: question.prompt || `Question ${index + 1}`,
+            options_json: question.options || [],
+            correct_answer_json: { answer: question.correct_answer },
+            rationale: question.rationale || '',
+            rubric: question.rubric || '',
+            difficulty: question.difficulty || 'medium',
+            order_index: index,
+            points: 1,
+            active: true,
+          });
+          createdQuestionIds.push(createdQuestion.id);
+        }
+      } catch (createErr) {
+        // Roll back the new content so the original modules/questions remain the
+        // course's only content, then surface the failure to the per-course catch.
+        await Promise.all(createdModuleIds.map((id) => base44.asServiceRole.entities.TrainingModule.delete(id).catch(() => {})));
+        await Promise.all(createdQuestionIds.map((id) => base44.asServiceRole.entities.TrainingQuestion.delete(id).catch(() => {})));
+        throw createErr;
+      }
+
+      // All new content is durably written — now remove the originals and commit
+      // the course metadata.
       await Promise.all(existingModules.map((item) => base44.asServiceRole.entities.TrainingModule.delete(item.id)));
       await Promise.all(existingQuestions.map((item) => base44.asServiceRole.entities.TrainingQuestion.delete(item.id)));
 
@@ -146,34 +193,6 @@ Deno.serve(async (req) => {
         include_case_scenarios: true,
         include_key_takeaways: true,
       });
-
-      for (const [index, module] of (generated.modules || []).entries()) {
-        await base44.asServiceRole.entities.TrainingModule.create({
-          course_id: course.id,
-          title: module.title || `Module ${index + 1}`,
-          type: module.type || 'lesson',
-          content_json: module.content || {},
-          order_index: index,
-          estimated_minutes: Math.max(5, Math.floor((course.estimated_minutes || 30) / Math.max((generated.modules || []).length, 1))),
-          is_required: true,
-        });
-      }
-
-      for (const [index, question] of (generated.questions || []).entries()) {
-        await base44.asServiceRole.entities.TrainingQuestion.create({
-          course_id: course.id,
-          type: question.type || 'mcq',
-          prompt: question.prompt || `Question ${index + 1}`,
-          options_json: question.options || [],
-          correct_answer_json: { answer: question.correct_answer },
-          rationale: question.rationale || '',
-          rubric: question.rubric || '',
-          difficulty: question.difficulty || 'medium',
-          order_index: index,
-          points: 1,
-          active: true,
-        });
-      }
 
       await base44.asServiceRole.entities.TrainingAuditLog.create({
         actor_id: user.email,

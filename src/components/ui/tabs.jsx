@@ -7,7 +7,7 @@ const Tabs = TabsPrimitive.Root
 // Segmented-control styling: a clearly-bordered slate track holds the triggers,
 // so each inactive trigger reads as a distinct, clickable segment (rather than
 // bare text) and the active one lifts out as a white pill with navy text.
-const TabsList = React.forwardRef((props, ref) => (
+const TabsList = React.forwardRef(({ className, ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
     className={cn(
@@ -16,7 +16,7 @@ const TabsList = React.forwardRef((props, ref) => (
       // gap-2 spaces the buttons; flex-wrap lets many tabs wrap to a second row on
       // wide screens, and overflow-x-auto keeps them scrollable on narrow ones.
       "flex max-w-full flex-wrap items-center gap-2 overflow-x-auto scrollbar-hide bg-transparent p-0",
-      props.className
+      className
     )}
     {...props}
   />
@@ -66,12 +66,12 @@ const TabsTrigger = React.forwardRef((props, ref) => {
 })
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName
 
-const TabsContent = React.forwardRef((props, ref) => (
+const TabsContent = React.forwardRef(({ className, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
       "mt-2 ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2",
-      props.className
+      className
     )}
     {...props}
   />

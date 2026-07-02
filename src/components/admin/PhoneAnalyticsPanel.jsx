@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { BarChart3, MessageSquare, PhoneCall, ShieldCheck, Users, Download } from "lucide-react";
 import { summarizePhoneActivity, formatDuration } from "@/components/admin/phoneAnalytics";
+import { isAdminLike } from "@/lib/superAdmin";
 import { toCsv, exportTimestamp } from "@/components/admin/csvExport";
 import { downloadCsv } from "@/lib/downloadCsv";
 import { toast } from "sonner";
@@ -61,7 +62,7 @@ export default function PhoneAnalyticsPanel() {
   const [windowDays, setWindowDays] = useState(30);
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = isAdminLike(currentUser);
 
   const { data: smsMessages = [] } = useQuery({
     queryKey: ["analytics-sms"],

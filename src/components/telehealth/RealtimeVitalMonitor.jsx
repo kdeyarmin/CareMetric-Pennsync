@@ -120,10 +120,16 @@ export default function RealtimeVitalMonitor({ sessionId, patientId }) {
     }
 
     try {
-      // Merge into the session's vitals_captured object (the real, schema-defined
-      // store) and surface failures instead of silently swallowing them.
+      // Re-read the session immediately before writing so we merge against the
+      // latest persisted vitals rather than the (up to 15s) stale polled
+      // snapshot. Merging against `sessionRow` would drop any vital recorded
+      // since the last poll — including this nurse's own prior entries in the
+      // same window — silently losing them from the chart.
+      const fresh = await base44.entities.TelehealthSession
+        .filter({ id: sessionId })
+        .then(r => r?.[0] || null);
       const merged = {
-        ...(sessionRow?.vitals_captured || {}),
+        ...(fresh?.vitals_captured || {}),
         ...update,
         recorded_at: new Date().toISOString(),
       };
@@ -160,6 +166,10 @@ export default function RealtimeVitalMonitor({ sessionId, patientId }) {
         high: ['Assess for headache/symptoms', 'Review recent activity', 'Consider medication adjustment', 'Monitor for preeclampsia risk'],
         low: ['Check for dizziness/weakness', 'Ensure adequate hydration', 'Assess orthostatic changes'],
       },
+      blood_pressure_diastolic: {
+        high: ['Assess for headache/symptoms', 'Review recent activity/stress', 'Consider medication adjustment', 'Recheck after rest'],
+        low: ['Check for dizziness/weakness', 'Ensure adequate hydration', 'Assess orthostatic changes'],
+      },
       temperature: {
         high: ['Assess for fever signs', 'Check for infection', 'Encourage fluid intake', 'Consider antipyretic'],
         low: ['Check room temperature', 'Assess for hypothermia risk', 'Ensure adequate clothing/blankets'],
@@ -193,7 +203,9 @@ export default function RealtimeVitalMonitor({ sessionId, patientId }) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {criticalAlerts.map(({ field, value }) => (
+            {criticalAlerts.map(({ field, value }) => {
+              const suggestedActions = getAlertActions(field, value);
+              return (
               <div key={field} className="bg-white border border-red-200 rounded-lg p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="font-medium text-slate-900 capitalize">
@@ -201,19 +213,22 @@ export default function RealtimeVitalMonitor({ sessionId, patientId }) {
                   </p>
                   <Badge className="bg-red-100 text-red-800">Out of Range</Badge>
                 </div>
-                <div className="bg-blue-50 border border-blue-200 rounded p-2">
-                  <p className="text-xs font-semibold text-blue-900 mb-1">Suggested Actions:</p>
-                  <ul className="text-xs text-blue-800 space-y-0.5">
-                    {getAlertActions(field, value).map((action, idx) => (
-                      <li key={idx} className="flex items-start gap-1.5">
-                        <span className="text-blue-600 mt-0.5">•</span>
-                        <span>{action}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                {suggestedActions.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-200 rounded p-2">
+                    <p className="text-xs font-semibold text-blue-900 mb-1">Suggested Actions:</p>
+                    <ul className="text-xs text-blue-800 space-y-0.5">
+                      {suggestedActions.map((action, idx) => (
+                        <li key={idx} className="flex items-start gap-1.5">
+                          <span className="text-blue-600 mt-0.5">•</span>
+                          <span>{action}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}

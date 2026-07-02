@@ -66,6 +66,14 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
   const endedRef = useRef(false);
   const wasConnectedRef = useRef(false);
 
+  // Keep the latest onDisconnect in a ref so the connect effect doesn't depend on
+  // it. A parent that re-creates onDisconnect every render (e.g. an inline or
+  // unmemoized callback) would otherwise rebuild connectToRoom, tearing down and
+  // reconnecting the room — whose 'disconnected' event fires onDisconnect and
+  // prematurely ends the visit.
+  const onDisconnectRef = useRef(onDisconnect);
+  useEffect(() => { onDisconnectRef.current = onDisconnect; }, [onDisconnect]);
+
   // Append a chat message received over the room's message channel.
   const handleIncomingMessage = useCallback((raw, senderIdentity) => {
     let text = raw;
@@ -154,7 +162,7 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
         setStatus("disconnected");
         if (!endedRef.current) {
           endedRef.current = true;
-          onDisconnect && onDisconnect();
+          onDisconnectRef.current && onDisconnectRef.current();
         }
       });
       // Derive a "Reconnecting…" state from the room status without inventing
@@ -235,7 +243,10 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
       setError(friendly || err.message);
       setStatus("error");
     }
-  }, [roomName, identity, joinToken, videoDeviceId, audioDeviceId, onDisconnect, syncParticipants, subscribeRemote, handleIncomingMessage]);
+    // onDisconnect intentionally omitted: it's read through onDisconnectRef so a
+    // new callback identity from the parent doesn't rebuild (and prematurely tear
+    // down) the room.
+  }, [roomName, identity, joinToken, videoDeviceId, audioDeviceId, syncParticipants, subscribeRemote, handleIncomingMessage]);
 
   useEffect(() => {
     connectToRoom();
@@ -295,7 +306,7 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
       try { room.disconnect(); } catch { /* fall through */ }
     } else if (!endedRef.current) {
       endedRef.current = true;
-      onDisconnect && onDisconnect();
+      onDisconnectRef.current && onDisconnectRef.current();
     }
   };
 

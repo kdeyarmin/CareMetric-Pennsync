@@ -90,8 +90,8 @@ const RULES = [
     domain: "Psychosocial Assessment",
     triggers: [
       { questionId: "m1730", values: [1, 2], severity: "high" },  // depression
-      { questionId: "m1740", values: [1, 2, 3], severity: "medium" },  // anxiety
-      { questionId: "m1700", values: [1, 2, 3], severity: "medium" },  // cognitive function
+      { questionId: "m1740", values: [1, 2, 3, 4], severity: "medium" },  // anxiety (4 = physical aggression, most severe)
+      { questionId: "m1700", values: [1, 2, 3, 4], severity: "medium" },  // cognitive function (4 = totally dependent, most severe)
     ],
     reason: (ans) => {
       if (ans["m1730"] >= 1) return "Positive depression screening. Mental health follow-up and caregiver assessment required.";
@@ -103,8 +103,8 @@ const RULES = [
   {
     domain: "Patient Education",
     triggers: [
-      { questionId: "m1100", values: [1, 2, 3], severity: "medium" },  // living situation
-      { questionId: "m1800", values: [1, 2, 3, 4], severity: "low" },  // grooming
+      { questionId: "m1100", values: [0, 1, 2], severity: "medium" },  // living situation (0 = lives alone, no assistance, highest risk)
+      { questionId: "m1800", values: [1, 2, 3], severity: "low" },  // grooming (max stored value is 3)
     ],
     reason: () => "Patient and caregiver education on disease management and safety protocols is indicated.",
     interventionIds: ["pe-1", "pe-2", "pe-3"],

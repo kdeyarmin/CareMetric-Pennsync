@@ -39,6 +39,7 @@ import {
   Calendar
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatEastern } from "@/components/utils/timezone";
 
 export default function RegulatoryMonitor({ isAdmin = false }) {
   const queryClient = useQueryClient();
@@ -548,7 +549,7 @@ Return JSON:
               <div>
                 <p className="text-sm font-medium mb-1">Effective Date:</p>
                 <p className="text-sm text-slate-700">
-                  {selectedUpdate.effective_date ? format(new Date(selectedUpdate.effective_date), 'MMMM d, yyyy') : 'TBD'}
+                  {selectedUpdate.effective_date ? formatEastern(selectedUpdate.effective_date, 'MMMM d, yyyy') : 'TBD'}
                 </p>
               </div>
 
@@ -695,7 +696,7 @@ function RegulatoryUpdateCard({ update, isAdmin, onReview, getImpactColor, getSt
               {update.effective_date && (
                 <span className="text-xs text-slate-500 flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
-                  Effective: {format(new Date(update.effective_date), 'MMM d, yyyy')}
+                  Effective: {formatEastern(update.effective_date, 'MMM d, yyyy')}
                 </span>
               )}
             </div>

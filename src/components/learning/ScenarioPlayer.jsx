@@ -48,7 +48,15 @@ export default function ScenarioPlayer({ scenario, attemptId, onComplete }) {
         setCurrentNodeId(choice.nextNodeId);
         setShowFeedback(false);
       }, 2000);
-    } else if (!choice.isCorrect) {
+    } else if (choice.isCorrect) {
+      // A correct choice with no branch ends the scenario. Advance to the
+      // terminal sentinel so the Finish button becomes reachable instead of
+      // leaving showFeedback=true forever (which hides both choices and Finish).
+      setTimeout(() => {
+        setCurrentNodeId('node-end');
+        setShowFeedback(false);
+      }, 2000);
+    } else {
       setTimeout(() => {
         setShowFeedback(false);
       }, 3000);

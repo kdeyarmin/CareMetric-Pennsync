@@ -237,7 +237,7 @@ export const calculateNurseStats = (nurseEmail, data) => {
   }).length;
 
   const timeSavedMinutes = totalConversions * 20;
-  const timeSavedHours = Math.round(timeSavedMinutes / 60);
+  const timeSavedHours = Math.floor(timeSavedMinutes / 60);
 
   return {
     totalVisits: nurseVisits.length,

@@ -185,7 +185,15 @@ Deno.serve(async (req) => {
       if (dueOffsets.length === 0) continue;
 
       const employee = users.find((user) => user.email === item.user_id);
-      const agencyAdmins = users.filter((user) => user.account_type === 'agency_admin' && (!employee?.agency_name || user.agency_name === employee.agency_name));
+      // Only fan out to managers when the employee resolves to a known agency.
+      // The prior `!employee?.agency_name` fallback matched EVERY agency_admin
+      // across ALL tenants whenever the credential's user was deleted/renamed or
+      // had no agency set — broadcasting the employee's name/credential to
+      // unrelated agencies. Mirror sendTrainingCertificateEmail: no agency = no
+      // manager fan-out.
+      const agencyAdmins = employee?.agency_name
+        ? users.filter((user) => user.account_type === 'agency_admin' && user.agency_name === employee.agency_name)
+        : [];
 
       notificationsToCreate.push({
         user_email: item.user_id,

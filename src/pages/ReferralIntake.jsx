@@ -1266,7 +1266,7 @@ Actions available:
                               Verify Patient
                             </Button>
                          ) : referral.status === 'ready_for_admission' && referral.patient_id && referral.extracted_data ? (
-                           <Link to={`/SmartNoteAssistant?referral_id=${referral.id}`}>
+                           <Link to={`/ReferralIntake?tab=admission&referral_id=${referral.id}`}>
                              <Button
                                size="sm"
                                className="bg-emerald-600 hover:bg-emerald-700 text-white min-h-[36px] text-xs w-full"
@@ -1287,7 +1287,7 @@ Actions available:
                                {referral.analysis_results?.intake_analysis ? 'View Analysis' : 'Process'}
                              </Button>
                              {referral.patient_id && referral.extracted_data && (
-                              <Link to={`/SmartNoteAssistant?referral_id=${referral.id}`}>
+                              <Link to={`/ReferralIntake?tab=admission&referral_id=${referral.id}`}>
                                  <Button
                                    size="sm"
                                    className="bg-navy-600 hover:bg-navy-700 text-white min-h-[36px] text-xs w-full"
@@ -1346,11 +1346,11 @@ Actions available:
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t">
               <span className="text-sm text-slate-500">
-                Showing {(currentPage - 1) * REFERRALS_PER_PAGE + 1}-{Math.min(currentPage * REFERRALS_PER_PAGE, filteredReferrals.length)} of {filteredReferrals.length}
+                Showing {(safePage - 1) * REFERRALS_PER_PAGE + 1}-{Math.min(safePage * REFERRALS_PER_PAGE, filteredReferrals.length)} of {filteredReferrals.length}
               </span>
               <div className="flex gap-1">
-                <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>Previous</Button>
-                <Button variant="outline" size="sm" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)}>Next</Button>
+                <Button variant="outline" size="sm" disabled={safePage === 1} onClick={() => setCurrentPage(safePage - 1)}>Previous</Button>
+                <Button variant="outline" size="sm" disabled={safePage === totalPages} onClick={() => setCurrentPage(safePage + 1)}>Next</Button>
               </div>
             </div>
           )}

@@ -278,6 +278,7 @@ export default function OASISAnalyzer() {
       // revenue_uplift can't be saved against this new assessment before its own
       // PDGM revenue comparison recomputes.
       setRevenueData(null);
+      setOriginalPayment(null);
     } else {
       setError("Please select a valid PDF file.");
       setFile(null);
@@ -758,7 +759,7 @@ Return JSON:
         const comorbidities = output.comorbidities_text || 'NOT FOUND';
         
         // Enhanced patient name extraction with fallbacks
-        let extractedPatientName = output.patient_name_raw || output.patient_name || '';
+        extractedPatientName = output.patient_name_raw || output.patient_name || '';
         
         // Try to construct from first/last if full name not found
         if (!extractedPatientName && (output.patient_first_name || output.patient_last_name)) {
@@ -1146,9 +1147,7 @@ Return scores (0-100) and top 3-5 issues in each category.`,
       setPdgmData(finalPdgmData);
       
       // Store extracted data for clinical note mapper
-      if (!extractedData) {
-        setExtractedData({ status: 'success', output });
-      }
+      setExtractedData({ status: 'success', output });
     } catch (err) {
     console.error("Error analyzing OASIS:", err);
 
@@ -1356,11 +1355,11 @@ Return scores (0-100) and top 3-5 issues in each category.`,
                 setUploadedFileUrl(data.fileUrl);
                 setPatientName(data.extractedData.patient_name || "Unknown");
 
-                // Auto-trigger analysis with pre-filled data
+                // Switch back to the standard upload view with the confirmed data
                 setUseDataEntryAssistant(false);
 
                 // Show success message
-                toast.error("Data confirmed! Now analyzing with AI-extracted information...");
+                toast.success("Data confirmed! Click \"Analyze OASIS\" to run the AI analysis with the extracted information.");
               }}
             />
           ) : null}

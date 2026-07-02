@@ -16,6 +16,7 @@ import {
   TrendingUp
 } from "lucide-react";
 import { formatEastern } from "../utils/timezone";
+import { toast } from "sonner";
 
 export default function SecurityAuditScheduler() {
   const [runningAudit, setRunningAudit] = useState(false);
@@ -172,8 +173,15 @@ export default function SecurityAuditScheduler() {
 
       queryClient.invalidateQueries({ queryKey: ['securityAudits'] });
       queryClient.invalidateQueries({ queryKey: ['securityLogs'] });
+      toast.success(`Security audit complete — score ${Math.max(0, score)}%, ${findings.length} finding(s).`);
     } catch (error) {
+      // Without a service token the browser client's asServiceRole getter throws
+      // synchronously, so the audit can't run client-side; surface that instead
+      // of failing silently. NOTE: the real fix is a Base44 backend function
+      // (createClientFromRequest + admin check + asServiceRole) invoked here —
+      // that lives under base44/ and is out of scope for this change.
       console.error('Audit failed:', error);
+      toast.error('Security audit could not run. It must be executed server-side; please contact your administrator.');
     } finally {
       setRunningAudit(false);
     }

@@ -73,9 +73,12 @@ export default function PersonnelCredentialForm({ currentUser, existingItem, onD
         user_name: currentUser.full_name,
         agency_name: currentUser.agency_name || undefined,
         status: "pending_approval",
-        approved_by: undefined,
-        approved_at: undefined,
-        rejection_reason: undefined,
+        // Send empty strings (not undefined) — JSON serialization omits undefined
+        // keys, which would leave a prior approval/rejection's values in place on
+        // an update (same pitfall documented in submitTimesheet's clearedReview).
+        approved_by: "",
+        approved_at: "",
+        rejection_reason: "",
         reminder_offsets_sent: existingItem?.reminder_offsets_sent || [],
         last_reminder_sent_at: existingItem?.last_reminder_sent_at || undefined,
       };

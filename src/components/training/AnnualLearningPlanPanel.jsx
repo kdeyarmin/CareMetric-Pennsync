@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,27 @@ export default function AnnualLearningPlanPanel({ plans = [], courses = [], year
   const [selectedCourses, setSelectedCourses] = useState([]);
   const [planDraft, setPlanDraft] = useState({ name: `${year} Annual Mandatory Education`, business_line_scope: 'all', description: 'Annual education bundle' });
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId);
+
+  // Seed the checkboxes from the plan's persisted courses when a plan is
+  // selected. Without this, selectedCourses stays [] (or leaks the previous
+  // plan's ticks), and savePlanCourses would delete every saved row and
+  // recreate only the freshly-checked boxes — wiping the plan's saved modules.
+  useEffect(() => {
+    if (!selectedPlanId) {
+      setSelectedCourses([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await base44.entities.LearningPlanCourse.filter({ plan_id: selectedPlanId }, 'order_index', 200);
+        if (!cancelled) setSelectedCourses(rows.map((row) => row.course_id));
+      } catch {
+        if (!cancelled) setSelectedCourses([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedPlanId]);
 
   const createPlan = async () => {
     try {

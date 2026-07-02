@@ -186,7 +186,7 @@ Return detailed risk assessment:`,
       );
 
       for (const patientRisk of highRiskPatients) {
-        await base44.entities.PatientAlert.create({
+        const alertData = {
           patient_id: patientRisk.patient_id,
           alert_type: 'readmission_risk',
           severity: patientRisk.risk_level === 'critical' ? 'critical' : 'high',
@@ -196,7 +196,23 @@ Return detailed risk assessment:`,
             ? patientRisk.immediate_actions
             : ['Review patient immediately'],
           status: 'active'
-        }).catch(err => console.error('Failed to create hospitalization risk alert:', err));
+        };
+        try {
+          // Idempotent: update the patient's existing active readmission_risk
+          // alert rather than inserting a duplicate on every re-analysis.
+          const existing = await base44.entities.PatientAlert.filter({
+            patient_id: patientRisk.patient_id,
+            alert_type: 'readmission_risk',
+            status: 'active'
+          });
+          if (existing?.length > 0) {
+            await base44.entities.PatientAlert.update(existing[0].id, alertData);
+          } else {
+            await base44.entities.PatientAlert.create(alertData);
+          }
+        } catch (err) {
+          console.error('Failed to upsert hospitalization risk alert:', err);
+        }
       }
 
     } catch (error) {

@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Search, FileText, Download, Trash2, Eye, Calendar, User, Tag, Filter, Grid, List, Brain, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { parseLocalDate } from "@/lib/dateLocal";
+import { openExternalUrl } from "@/components/utils/security";
 import DocumentAIAnalysis from "./DocumentAIAnalysis";
 import {
   AlertDialog,
@@ -76,7 +78,7 @@ const DocumentCard = ({ doc, onDocumentClick, getPatientName, getCategoryLabel, 
           {doc.document_date && (
             <div className="flex items-center gap-1 text-sm text-slate-600">
               <Calendar className="w-3 h-3" />
-              {format(new Date(doc.document_date), 'MMM d, yyyy')}
+              {format(parseLocalDate(doc.document_date), 'MMM d, yyyy')}
             </div>
           )}
           {doc.tags?.length > 0 && (
@@ -109,7 +111,7 @@ const DocumentCard = ({ doc, onDocumentClick, getPatientName, getCategoryLabel, 
             variant="outline"
             size="sm"
             className="flex-1"
-            onClick={() => onDocumentClick ? onDocumentClick(doc) : window.open(doc.file_url, '_blank')}
+            onClick={() => onDocumentClick ? onDocumentClick(doc) : openExternalUrl(doc.file_url)}
           >
             <Eye className="w-4 h-4 mr-1" />
             View
@@ -163,7 +165,7 @@ const DocumentCard = ({ doc, onDocumentClick, getPatientName, getCategoryLabel, 
   );
 };
 
-export default function DocumentList({ patientId, showPatientInfo = true, onDocumentClick }) {
+export default function DocumentList({ patientId, showPatientInfo = true, onDocumentClick, assignment }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [viewMode, setViewMode] = useState("grid");
@@ -207,7 +209,12 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
 
     const matchesCategory = categoryFilter === "all" || doc.category === categoryFilter;
 
-    return matchesSearch && matchesCategory;
+    const matchesAssignment =
+      assignment === "with_patient" ? !!doc.patient_id
+        : assignment === "unassigned" ? !doc.patient_id
+        : true;
+
+    return matchesSearch && matchesCategory && matchesAssignment;
   });
 
   const getCategoryLabel = (category) => {

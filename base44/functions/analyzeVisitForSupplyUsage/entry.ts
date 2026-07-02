@@ -70,6 +70,20 @@ Return ONLY valid JSON array, no other text.`;
     const usageLogs = [];
     const alertsToCreate = [];
 
+    // Idempotency: a client retry after the slow LLM call (or a double-click) must
+    // not create duplicate SupplyUsageLog rows or double-decrement shared
+    // inventory. Skip any supply already logged for this visit.
+    const alreadyLoggedSupplyIds = new Set();
+    if (visitId) {
+      const existingUsageLogs = await base44.asServiceRole.entities.SupplyUsageLog.filter({ visit_id: visitId }, '', 5000);
+      for (const log of existingUsageLogs) alreadyLoggedSupplyIds.add(log.supply_id);
+    }
+
+    // Track the running quantity per supply so two extracted line items that match
+    // the SAME SupplyItem in one run both decrement from the latest value instead
+    // of the frozen snapshot (which would let the last write clobber the first).
+    const runningQuantities = {};
+
     for (const extracted of extractedSupplies) {
       // The LLM schema marks no field required, so guard against a missing name
       // or a non-numeric/zero quantity: an unchecked value would throw on
@@ -87,6 +101,10 @@ Return ONLY valid JSON array, no other text.`;
       );
 
       if (matchedSupply) {
+        // Already logged for this visit on a prior (retried) run — don't
+        // re-decrement inventory or duplicate the log.
+        if (alreadyLoggedSupplyIds.has(matchedSupply.id)) continue;
+
         // Create usage log
         const usageLog = await base44.asServiceRole.entities.SupplyUsageLog.create({
           supply_id: matchedSupply.id,
@@ -104,8 +122,13 @@ Return ONLY valid JSON array, no other text.`;
 
         usageLogs.push(usageLog);
 
-        // Update supply inventory
-        const newQuantity = Math.max(0, (Number(matchedSupply.current_quantity) || 0) - qty);
+        // Update supply inventory — decrement from the running quantity (which
+        // starts from the snapshot the first time this item is touched this run).
+        const baseQuantity = Object.prototype.hasOwnProperty.call(runningQuantities, matchedSupply.id)
+          ? runningQuantities[matchedSupply.id]
+          : (Number(matchedSupply.current_quantity) || 0);
+        const newQuantity = Math.max(0, baseQuantity - qty);
+        runningQuantities[matchedSupply.id] = newQuantity;
         await base44.asServiceRole.entities.SupplyItem.update(matchedSupply.id, {
           current_quantity: newQuantity,
           status: newQuantity === 0 ? 'out_of_stock' : 

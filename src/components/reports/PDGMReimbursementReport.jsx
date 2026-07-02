@@ -15,12 +15,21 @@ export default function PDGMReimbursementReport({ dateRange }) {
     initialData: [],
   });
 
+  // Parse both bounds on the same (local) clock so the start boundary isn't
+  // shifted into the prior evening (date-only strings parse as UTC midnight).
+  const rangeStart = new Date(dateRange.start + 'T00:00:00');
+  const rangeEnd = new Date(dateRange.end + 'T23:59:59.999');
   const filteredOASIS = oasisAssessments.filter(o => {
     const date = new Date(o.assessment_date);
-    return date >= new Date(dateRange.start) && date <= new Date(dateRange.end + 'T23:59:59.999');
+    return date >= rangeStart && date <= rangeEnd;
   });
 
-  // Simulate PDGM case mix groups
+  // ILLUSTRATIVE SAMPLE ONLY — these case-mix proportions and per-group dollar
+  // amounts are assumed placeholders, NOT derived from any patient's actual PDGM
+  // data. Real PDGM reimbursement must come from the backend calculatePDGM
+  // function using the agency's CMS case-mix data (see pdgmGrouper.js). These
+  // figures are labelled illustrative on screen and excluded from the exported
+  // PDF so they are never mistaken for authoritative reimbursement numbers.
   const caseMixData = [
     { group: 'LPTA', count: Math.floor(filteredOASIS.length * 0.25), avgReimbursement: 3200 },
     { group: 'LTA', count: Math.floor(filteredOASIS.length * 0.20), avgReimbursement: 2800 },
@@ -35,21 +44,20 @@ export default function PDGMReimbursementReport({ dateRange }) {
   const COLORS = ['#8b5cf6', '#3557b0', '#10b981', '#f59e0b', '#ef4444'];
 
   const handleExport = () => {
+    // Export ONLY truthful data (the real OASIS episode count). The case-mix
+    // distribution and reimbursement dollars shown on screen are illustrative
+    // placeholders (assumed proportions + placeholder rates), so they are
+    // deliberately excluded here — an exported "reimbursement" PDF must not
+    // present fabricated dollar amounts as authoritative.
     exportToPDF({
-      filename: `pdgm-reimbursement-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`,
-      title: 'PDGM Reimbursement Report',
-      subtitle: `Period: ${format(new Date(dateRange.start), 'MMM d, yyyy')} - ${format(new Date(dateRange.end + 'T23:59:59.999'), 'MMM d, yyyy')}`,
+      filename: `pdgm-episode-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`,
+      title: 'PDGM Episode Report',
+      subtitle: `Period: ${format(rangeStart, 'MMM d, yyyy')} - ${format(rangeEnd, 'MMM d, yyyy')}`,
       content: [
-        { type: 'heading', text: 'Reimbursement Summary' },
-        { type: 'text', text: `Total Estimated Revenue: $${totalReimbursement.toLocaleString()}` },
-        { type: 'text', text: `Average per Episode: $${avgReimbursement}` },
+        { type: 'heading', text: 'Episode Summary' },
+        { type: 'text', text: `Total OASIS Episodes: ${filteredOASIS.length}` },
         { type: 'spacer' },
-        { type: 'heading', text: 'Case Mix Distribution' },
-        { type: 'table', data: caseMixData, columns: [
-          { header: 'PDGM Group', key: 'group' },
-          { header: 'Count', key: 'count' },
-          { header: 'Avg Reimbursement', key: 'avgReimbursement' }
-        ]}
+        { type: 'text', text: 'Note: PDGM case-mix distribution and reimbursement estimates are illustrative sample figures only and are intentionally excluded from this report. Actual PDGM reimbursement must be derived from the agency’s CMS case-mix data.' }
       ]
     });
   };
@@ -57,11 +65,19 @@ export default function PDGMReimbursementReport({ dateRange }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="text-xl font-semibold text-slate-900">PDGM Reimbursement Analysis</h3>
+        <h3 className="text-xl font-semibold text-slate-900">PDGM Case-Mix Analysis (Illustrative)</h3>
         <Button onClick={handleExport} className="bg-emerald-600 hover:bg-emerald-700">
           <Download className="w-4 h-4 mr-2" />
           Export PDF
         </Button>
+      </div>
+
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <strong>Illustrative sample only — not for billing.</strong> The case-mix
+        distribution and reimbursement dollars below use assumed proportions and
+        placeholder per-group rates, not any patient&apos;s actual PDGM data.
+        Actual reimbursement must be derived from the agency&apos;s CMS case-mix
+        data. These figures are excluded from the exported PDF.
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -75,15 +91,17 @@ export default function PDGMReimbursementReport({ dateRange }) {
           <CardContent className="p-6">
             <div className="flex items-center gap-2 mb-1">
               <DollarSign className="w-5 h-5 text-emerald-600" />
-              <p className="text-sm text-slate-600">Estimated Revenue</p>
+              <p className="text-sm text-slate-600">Illustrative Revenue</p>
             </div>
             <p className="text-3xl font-bold text-emerald-600">${totalReimbursement.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">Sample estimate — not actual reimbursement</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
-            <p className="text-sm text-slate-600 mb-1">Avg per Episode</p>
+            <p className="text-sm text-slate-600 mb-1">Illustrative Avg / Episode</p>
             <p className="text-3xl font-bold text-blue-600">${avgReimbursement}</p>
+            <p className="text-xs text-slate-500 mt-1">Sample estimate — not actual reimbursement</p>
           </CardContent>
         </Card>
       </div>
@@ -91,7 +109,7 @@ export default function PDGMReimbursementReport({ dateRange }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Case Mix Distribution</CardTitle>
+            <CardTitle>Case Mix Distribution (Illustrative)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -118,7 +136,7 @@ export default function PDGMReimbursementReport({ dateRange }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Average Reimbursement by Group</CardTitle>
+            <CardTitle>Average Reimbursement by Group (Illustrative)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>

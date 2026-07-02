@@ -47,10 +47,21 @@ export default function CourseRosterReport() {
     enabled: !!selectedCourse
   });
 
-  // Apply status filter
-  const filteredRoster = filters.status === 'all'
-    ? roster
-    : roster.filter(a => a.status === filters.status);
+  // Apply status, employee-search, and date-range filters (the roster is already
+  // scoped to one course, so the Business Line input is hidden below rather than
+  // silently ignored). Both the table and the CSV/PDF exports read filteredRoster.
+  const filteredRoster = roster.filter((a) => {
+    if (filters.status !== 'all' && a.status !== filters.status) return false;
+    if (filters.employee && !(a.assigned_to_user_id || '').toLowerCase().includes(filters.employee.toLowerCase())) return false;
+    const activityDate = a.assigned_date || a.created_date;
+    if (filters.dateStart) {
+      if (!activityDate || new Date(activityDate) < new Date(filters.dateStart)) return false;
+    }
+    if (filters.dateEnd) {
+      if (!activityDate || new Date(activityDate) > new Date(`${filters.dateEnd}T23:59:59.999`)) return false;
+    }
+    return true;
+  });
 
   const selectedCourseTitle = courses.find(c => c.id === selectedCourse)?.title || '';
 
@@ -125,6 +136,7 @@ export default function CourseRosterReport() {
           { value: 'home_health', label: 'Home Health' },
           { value: 'hospice', label: 'Hospice' }
         ]}
+        showBusinessLine={false}
         showCourse={false}
         showPlan={false}
       />

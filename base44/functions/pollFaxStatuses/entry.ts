@@ -24,6 +24,49 @@ async function resolveTelnyxCreds(base44) {
   return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
 }
 
+// ---- fax retry policy (source of truth: src/components/fax/faxRetry.js). Copied
+// verbatim from handleTelnyxStatusWebhook so the poller and the DLR webhook plan a
+// failed fax's retry/exhaustion identically — the poller must NOT declare every
+// Telnyx-reported failure permanent while retries remain. ----
+const PERMANENT_FAILURE_PATTERNS = [
+  /invalid/i, /not a fax/i, /no fax machine/i, /incompatible/i, /unsupported/i,
+  /rejected/i, /blocked/i, /do not call/i, /unallocated/i, /disconnected/i,
+  /forbidden/i, /not in service/i, /no such number/i, /malformed/i,
+];
+function classifyFaxFailure(errorCode, errorMessage) {
+  const s = `${errorCode ?? ''} ${errorMessage ?? ''}`.trim();
+  if (!s) return 'transient';
+  return PERMANENT_FAILURE_PATTERNS.some((re) => re.test(s)) ? 'permanent' : 'transient';
+}
+function faxRetryConfig(config) {
+  const c = config || {};
+  return {
+    enabled: c.auto_retry_enabled !== false,
+    maxRetries: Number.isFinite(c.max_retries) ? Math.max(0, c.max_retries) : 3,
+    baseDelayMinutes: Number.isFinite(c.retry_delay_minutes) && c.retry_delay_minutes > 0 ? c.retry_delay_minutes : 15,
+    notifyOnFinalFailure: c.notify_on_final_failure !== false,
+    priorityMultiplier: c.priority_multiplier && typeof c.priority_multiplier === 'object' ? c.priority_multiplier : {},
+  };
+}
+function nextRetryDelayMinutes(attempt, config, priority = 'normal', factor = 2, maxMinutes = 360) {
+  const c = faxRetryConfig(config);
+  const a = Math.max(0, Number(attempt) || 0);
+  const mult = Number.isFinite(c.priorityMultiplier[priority]) ? c.priorityMultiplier[priority] : 1;
+  const minutes = c.baseDelayMinutes * factor ** a * mult;
+  return Math.max(1, Math.min(maxMinutes, Math.round(minutes)));
+}
+function planFaxRetry(opts) {
+  const { retryCount = 0, errorCode, errorMessage, priority = 'normal', config, now = Date.now() } = opts || {};
+  const c = faxRetryConfig(config);
+  const classification = classifyFaxFailure(errorCode, errorMessage);
+  const attempts = Number(retryCount) || 0;
+  if (!c.enabled || classification === 'permanent' || attempts >= c.maxRetries) {
+    return { willRetry: false, classification, exhausted: true, nextRetryAt: null, nextRetryCount: attempts, delayMinutes: 0 };
+  }
+  const delayMinutes = nextRetryDelayMinutes(attempts, config, priority);
+  return { willRetry: true, classification, exhausted: false, nextRetryAt: new Date(now + delayMinutes * 60000).toISOString(), nextRetryCount: attempts + 1, delayMinutes };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -64,6 +107,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Telnyx credentials not configured' }, { status: 400 });
     }
 
+    // Load the admin retry policy ONCE (shared across the parallel checks below) so
+    // a Telnyx-reported failure schedules a retry instead of being declared final.
+    const cfgRows = await base44.asServiceRole.entities.FaxRetryConfig.list('-created_date', 1).catch(() => []);
+    const cfg = cfgRows[0] || {};
+    const maxRetries = faxRetryConfig(cfg).maxRetries;
+
     let updated = 0;
 
     // Process all faxes in parallel instead of sequentially
@@ -92,9 +141,34 @@ Deno.serve(async (req) => {
           if (newStatus === 'delivered' && fax.sent_by && !fax.delivery_confirmation_sent) {
             update.delivery_confirmation_sent = true;
             notifyType = 'fax_delivered';
-          } else if (newStatus === 'failed' && fax.sent_by && !fax.final_failure_notified) {
-            update.final_failure_notified = true;
-            notifyType = 'fax_failed';
+          } else if (newStatus === 'failed') {
+            // Honor the admin FaxRetryConfig instead of declaring EVERY failure
+            // permanent. If the poller observes a failure before the DLR webhook,
+            // schedule a retry (next_retry_at + retry_count) that autoRetryFailedFaxes
+            // will honor while retries remain, and only set final_failure_notified +
+            // notify the sender once retries are truly exhausted. Mirrors
+            // handleTelnyxStatusWebhook.handleFaxEvent so the poller and the webhook
+            // can't disagree about when a fax is really dead (and so the poller can't
+            // suppress the webhook's later legitimate terminal notification).
+            const failureReason = faxData?.data?.failure_reason || fax.failure_reason || 'Fax delivery failed';
+            update.failure_reason = failureReason;
+            const plan = planFaxRetry({
+              retryCount: fax.retry_count || 0,
+              errorCode: faxData?.data?.failure_code || faxData?.data?.error_code,
+              errorMessage: failureReason,
+              priority: fax.priority || 'normal',
+              config: cfg,
+            });
+            // Only schedule a retry the cron will actually honor (isFaxRetryDue refuses
+            // retry_count >= maxRetries), matching the webhook's boundary handling.
+            if (plan.willRetry && plan.nextRetryCount < maxRetries) {
+              update.next_retry_at = plan.nextRetryAt;
+              update.retry_count = plan.nextRetryCount;
+            } else {
+              if (plan.willRetry) update.retry_count = plan.nextRetryCount;
+              if (fax.sent_by && !fax.final_failure_notified) notifyType = 'fax_failed';
+              update.final_failure_notified = true;
+            }
           }
           // 'sent' is a non-terminal progress state, not delivery — don't notify the
           // sender it was 'fax_delivered'. The delivered/failed branches above own the
@@ -107,7 +181,7 @@ Deno.serve(async (req) => {
               user_email: fax.sent_by,
               type: notifyType,
               title: notifyType === 'fax_failed' ? 'Fax Failed' : 'Fax Status Update',
-              message: getNotificationMessage(newStatus, fax),
+              message: getNotificationMessage(newStatus, { ...fax, ...update }),
               metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
               is_read: false
             }).catch(err => console.error(`Failed to create notification for fax ${fax.id}:`, err.message));

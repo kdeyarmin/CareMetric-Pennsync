@@ -18,6 +18,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/stat-card";
 import LoadingState from "@/components/ui/LoadingState";
+import { parseLocalDate } from "@/lib/dateLocal";
 import PatientSearchBar from "../components/dashboard/PatientSearchBar";
 import PatientQuickActions from "../components/dashboard/PatientQuickActions";
 import PatientOverviewCard from "../components/dashboard/PatientOverviewCard";
@@ -96,11 +97,13 @@ export default function PatientRecordDashboard() {
 
     // Date range filter
     if (filters.dateRange !== "all") {
-      const now = new Date();
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
       result = result.filter(p => {
         if (!p.admission_date) return false;
-        const admissionDate = new Date(p.admission_date);
-        const daysDiff = (now - admissionDate) / (1000 * 60 * 60 * 24);
+        const admissionDate = parseLocalDate(p.admission_date);
+        if (!admissionDate) return false;
+        const daysDiff = (startOfToday - admissionDate) / (1000 * 60 * 60 * 24);
 
         switch (filters.dateRange) {
           case "week":
@@ -124,10 +127,13 @@ export default function PatientRecordDashboard() {
   const stats = useMemo(() => {
     const activePatients = patients.filter(p => p.status === 'active').length;
     const criticalAlerts = alerts.filter(a => a.severity === 'critical').length;
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
     const recentVisits = visits.filter(v => {
       if (!v.visit_date) return false;
-      const visitDate = new Date(v.visit_date);
-      const daysDiff = (new Date() - visitDate) / (1000 * 60 * 60 * 24);
+      const visitDate = parseLocalDate(v.visit_date);
+      if (!visitDate) return false;
+      const daysDiff = (startOfToday - visitDate) / (1000 * 60 * 60 * 24);
       return daysDiff <= 7;
     }).length;
 

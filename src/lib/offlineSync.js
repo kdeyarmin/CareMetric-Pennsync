@@ -52,12 +52,27 @@ export async function drainSyncQueue(deps = {}) {
     const result = await inFlightDrain;
     return { ...result, coalesced: true };
   }
-  inFlightDrain = drainOnce(deps);
+  inFlightDrain = drainWithCrossTabLock(deps);
   try {
     return await inFlightDrain;
   } finally {
     inFlightDrain = null;
   }
+}
+
+// The per-tab `inFlightDrain` coalesces drains WITHIN a tab, but two tabs sharing
+// the same IndexedDB sync_queue can each start a drain and both pass the
+// read-then-write idempotency check (filter by client_request_id → create), writing
+// a duplicate clinical record. The Web Locks API serializes across all same-origin
+// tabs: an exclusive 'offline-drain' lock means only one tab drains the shared queue
+// at a time, so the loser waits and sees the winner's already-removed items. Guarded
+// for environments without the API (older browsers, non-secure contexts, jsdom under
+// test) — there it falls back to the per-tab coalescing alone.
+function drainWithCrossTabLock(deps) {
+  if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+    return navigator.locks.request('offline-drain', () => drainOnce(deps));
+  }
+  return drainOnce(deps);
 }
 
 async function drainOnce(deps) {

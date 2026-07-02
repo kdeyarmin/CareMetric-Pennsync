@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
@@ -27,14 +27,20 @@ export default function AIAuditRiskPredictor({ analysisResults, patientId }) {
   const ai = useAICall();
   const [expanded, setExpanded] = useState(false);
 
+  const hasRunRef = useRef(false);
+
   // Fetch historical audits for pattern analysis
-  const { data: historicalAudits = [] } = useQuery({
+  // Gate the one-shot auto-run on isFetched (settled — success OR error), not
+  // isSuccess: a failed historical fetch (RLS/permission/network) should let the
+  // prediction run with empty history, exactly as it did before, rather than
+  // suppressing the automatic run for the life of the mount.
+  const { data: historicalAudits = [], isFetched: historicalAuditsLoaded } = useQuery({
     queryKey: ['historicalAudits'],
     queryFn: () => base44.entities.OASISAudit.list('-created_date', 50),
   });
 
   // Fetch patient's previous OASIS uploads
-  const { data: patientOASIS = [] } = useQuery({
+  const { data: patientOASIS = [], isFetched: patientOASISLoaded } = useQuery({
     queryKey: ['patientOASISHistory', patientId],
     queryFn: () => patientId ? base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 10) : [],
     enabled: !!patientId
@@ -144,11 +150,16 @@ Return JSON:
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [analysisResults, historicalAudits, patientOASIS]);
 
+  // Fire the prediction exactly once, and only after the historical context
+  // queries have settled, so the single paid call carries real history instead
+  // of racing 2-3 concurrent calls (a stale empty-history one could otherwise win).
   useEffect(() => {
-    if (analysisResults && !prediction) {
+    const historyReady = historicalAuditsLoaded && (patientOASISLoaded || !patientId);
+    if (analysisResults && !prediction && !ai.loading && historyReady && !hasRunRef.current) {
+      hasRunRef.current = true;
       runPrediction();
     }
-  }, [analysisResults, prediction, runPrediction]);
+  }, [analysisResults, prediction, ai.loading, historicalAuditsLoaded, patientOASISLoaded, patientId, runPrediction]);
 
   const getRiskColor = (level) => {
     switch (level) {

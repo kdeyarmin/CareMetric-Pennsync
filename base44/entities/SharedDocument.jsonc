@@ -164,6 +164,17 @@
         }
       ]
     },
-    "write": {}
+    "write": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "owner_agency_code": "{{user.agency_code}}"
+        }
+      ]
+    }
   }
 }

@@ -369,6 +369,15 @@ export default function UserActivityReport() {
           </Button>
         </div>
 
+        {/* The activity fetch is capped at the 5,000 most recent rows. When the cap
+            is hit, totals below are undercounted for long ranges, so disclose it
+            rather than silently reporting wrong numbers on an audit surface. */}
+        {activities.length >= 5000 && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Showing the most recent 5,000 activities. Totals below may be undercounted for longer ranges — narrow the time range for complete figures.
+          </div>
+        )}
+
         {/* Overall Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <StatCard label="Total Users" value={overallStats.total_users} icon={User} tone="navy" />

@@ -34,6 +34,7 @@ import {
   Legend,
   ResponsiveContainer
 } from "recharts";
+import { endOfDay, parseISO } from "date-fns";
 
 const COLORS = ['#10b981', '#3557b0', '#f59e0b', '#ef4444', '#8b5cf6'];
 
@@ -70,7 +71,7 @@ export default function WorkflowMonitoringDashboard() {
       matches = false;
     }
 
-    if (dateRange.end && new Date(exec.created_date) > new Date(dateRange.end)) {
+    if (dateRange.end && new Date(exec.created_date) > endOfDay(parseISO(dateRange.end))) {
       matches = false;
     }
 

@@ -12,6 +12,44 @@ import { Plus, Upload, Search, Edit, Trash2, Building2, Phone, FileText } from "
 import { toast } from "sonner";
 import PhysicianSelector from '../physician/PhysicianSelector';
 import ProviderCsvImport from '../physician/ProviderCsvImport';
+import { normalizeE164 } from "@/components/voice/phoneUtils";
+
+// Minimal RFC-4180 CSV parser: honors quoted fields, escaped quotes ("") and
+// commas/newlines inside quotes. Returns an array of rows (arrays of strings).
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      row.push(field);
+      field = "";
+    } else if (ch === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (ch !== '\r') {
+      field += ch;
+    }
+  }
+  if (field !== "" || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
 
 export default function FaxAddressBook({ onSelectContact }) {
   const confirm = useConfirm();
@@ -91,11 +129,26 @@ export default function FaxAddressBook({ onSelectContact }) {
 
     try {
       const text = await file.text();
-      const lines = text.split('\n').filter(line => line.trim());
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const rows = parseCsvRows(text).filter(r => r.some(c => c.trim() !== ""));
+      if (rows.length < 2) {
+        toast.error("CSV has no data rows");
+        return;
+      }
+      const headers = rows[0].map(h => h.trim().toLowerCase());
 
-      const nameIndex = headers.findIndex(h => h.includes('name'));
-      const faxIndex = headers.findIndex(h => h.includes('fax') || h.includes('number'));
+      const nameIndex = (() => {
+        const exact = headers.findIndex(h => h === 'name' || h === 'full name' || h === 'contact name');
+        return exact !== -1 ? exact : headers.findIndex(h => h.includes('name'));
+      })();
+      // Prefer a real fax column; only fall back to a generic "number" column when
+      // no fax header exists, so a "phone number" column can't hijack the fax field.
+      const faxIndex = (() => {
+        const exact = headers.findIndex(h => ['fax', 'fax number', 'fax_number', 'faxnumber', 'fax #'].includes(h));
+        if (exact !== -1) return exact;
+        const containsFax = headers.findIndex(h => h.includes('fax'));
+        if (containsFax !== -1) return containsFax;
+        return headers.findIndex(h => h.includes('number'));
+      })();
       const orgIndex = headers.findIndex(h => h.includes('org') || h.includes('facility'));
 
       if (nameIndex === -1 || faxIndex === -1) {
@@ -104,22 +157,36 @@ export default function FaxAddressBook({ onSelectContact }) {
       }
 
       const contactsToAdd = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim());
-        if (values[nameIndex] && values[faxIndex]) {
-          contactsToAdd.push({
-            name: values[nameIndex],
-            fax_number: values[faxIndex],
-            organization: orgIndex !== -1 ? values[orgIndex] : ""
-          });
-        }
+      let skipped = 0;
+      for (let i = 1; i < rows.length; i++) {
+        const values = rows[i].map(v => v.trim());
+        const name = values[nameIndex];
+        const rawFax = values[faxIndex];
+        if (!name || !rawFax) continue;
+        // Validate/normalize before creating — a misaligned column would otherwise
+        // import a wrong fax number (a misdirected-PHI vector).
+        const fax = normalizeE164(rawFax);
+        if (!fax) { skipped++; continue; }
+        contactsToAdd.push({
+          name,
+          fax_number: fax,
+          organization: orgIndex !== -1 ? (values[orgIndex] || "") : ""
+        });
+      }
+
+      if (contactsToAdd.length === 0) {
+        toast.error(skipped ? "No valid fax numbers found in CSV" : "No contacts found in CSV");
+        return;
       }
 
       await base44.entities.FaxContact.bulkCreate(contactsToAdd);
       queryClient.invalidateQueries({ queryKey: ['fax-contacts'] });
-      toast.success(`Added ${contactsToAdd.length} contacts`);
+      toast.success(`Added ${contactsToAdd.length} contacts${skipped ? ` (${skipped} skipped: invalid fax number)` : ''}`);
     } catch (error) {
       toast.error("Failed to upload CSV: " + error.message);
+    } finally {
+      // Reset so re-selecting the same (corrected) file re-triggers onChange.
+      if (e.target) e.target.value = '';
     }
   };
 

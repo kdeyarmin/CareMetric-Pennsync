@@ -5,21 +5,25 @@ import { RefreshCw } from 'lucide-react';
  * Pull-to-refresh component for mobile scrollable areas
  * Triggers onRefresh when user pulls down past threshold
  */
-export default function PullToRefresh({ onRefresh, children, threshold = 80, containerRef: externalRef }) {
+export default function PullToRefresh({ onRefresh, children, threshold = 80, containerRef: _externalRef }) {
   const [pullDistance, setPullDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Always measure the element that actually scrolls — this component's own
+  // overflow-y-auto wrapper (internalRef). A caller-supplied containerRef
+  // previously pointed at a non-scrolling content div, so scrollTop was always
+  // 0 and the "only when scrolled to the top" guard never fired (a downward
+  // drag deep in the page still triggered a full refresh).
   const internalRef = useRef(null);
-  const containerRef = externalRef || internalRef;
   const startYRef = useRef(0);
   const scrollTopRef = useRef(0);
 
   const handleTouchStart = (e) => {
     startYRef.current = e.touches[0].clientY;
-    scrollTopRef.current = containerRef.current?.scrollTop || 0;
+    scrollTopRef.current = internalRef.current?.scrollTop || 0;
   };
 
   const handleTouchMove = (e) => {
-    if (!containerRef.current) return;
+    if (!internalRef.current) return;
     
     // Only trigger pull-to-refresh when at top of scroll
     if (scrollTopRef.current > 0) {

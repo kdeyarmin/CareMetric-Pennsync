@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { CheckSquare, ChevronDown, Tag, Trash2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
 
 export default function BulkPatientActions({ selectedPatients, onClearSelection }) {
@@ -34,42 +35,61 @@ export default function BulkPatientActions({ selectedPatients, onClearSelection 
   const [newStatus, setNewStatus] = useState("");
 
   const updateStatusMutation = useMutation({
+    // allSettled (not Promise.all): a single rejection with Promise.all would skip
+    // onSuccess entirely, leaving the already-committed writes invisible in a stale
+    // list. Settle every call, then always refresh and report partial failures.
     mutationFn: async (status) => {
-      const updates = selectedPatients.map(patient =>
-        base44.entities.Patient.update(patient.id, { status })
+      const results = await Promise.allSettled(
+        selectedPatients.map(patient =>
+          base44.entities.Patient.update(patient.id, { status })
+        )
       );
-      await Promise.all(updates);
+      return { total: results.length, failed: results.filter(r => r.status === 'rejected').length };
     },
-    onSuccess: () => {
+    onSuccess: ({ total, failed }) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       logActivity(ActivityActions.UPDATE, {
         entity_type: 'Patient',
         action: 'bulk_status_update',
-        count: selectedPatients.length,
+        count: total - failed,
         page: 'Patients'
       });
       setStatusDialogOpen(false);
       onClearSelection();
+      if (failed > 0) {
+        toast.error(`${total - failed} updated, ${failed} failed. Please retry the failed record(s).`);
+      } else {
+        toast.success(`${total} patient(s) updated.`);
+      }
     },
   });
 
   const deletePatientsMutation = useMutation({
+    // allSettled (not Promise.all): with Promise.all one failed delete aborts
+    // onSuccess, so the already-deleted patients would still show in the list.
     mutationFn: async () => {
-      const deletes = selectedPatients.map(patient =>
-        base44.entities.Patient.delete(patient.id)
+      const results = await Promise.allSettled(
+        selectedPatients.map(patient =>
+          base44.entities.Patient.delete(patient.id)
+        )
       );
-      await Promise.all(deletes);
+      return { total: results.length, failed: results.filter(r => r.status === 'rejected').length };
     },
-    onSuccess: () => {
+    onSuccess: ({ total, failed }) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       logActivity(ActivityActions.DELETE, {
         entity_type: 'Patient',
         action: 'bulk_delete',
-        count: selectedPatients.length,
+        count: total - failed,
         page: 'Patients'
       });
       setDeleteDialogOpen(false);
       onClearSelection();
+      if (failed > 0) {
+        toast.error(`${total - failed} deleted, ${failed} failed. Please retry the failed record(s).`);
+      } else {
+        toast.success(`${total} patient(s) deleted.`);
+      }
     },
   });
 

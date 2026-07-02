@@ -32,7 +32,12 @@ class ErrorBoundary extends React.Component {
       if (attempts < 3) {
         sessionStorage.setItem(key, String(attempts + 1));
         // Hard reload (bypasses cache) to ensure fresh module URLs are fetched.
-        window.location.href = window.location.href.split('?')[0] + '?_r=' + Date.now();
+        // Preserve the existing query string (e.g. ?id=, ?tab=) and hash so
+        // deep-link context survives the recovery reload — only add/replace the
+        // cache-busting _r param.
+        const reloadUrl = new URL(window.location.href);
+        reloadUrl.searchParams.set('_r', String(Date.now()));
+        window.location.href = reloadUrl.toString();
         return;
       }
       // Exhausted retries — clear key so a future navigation can try again.

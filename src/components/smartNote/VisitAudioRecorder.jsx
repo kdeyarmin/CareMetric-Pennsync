@@ -44,6 +44,11 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
   const startRecording = async () => {
     try {
       setError(null);
+      // Clear any prior result so a new recording starts clean — otherwise a stale
+      // SOAP preview / mapper from a previous take could linger under the new one.
+      setSoapPreview(null);
+      setTranscript(null);
+      setShowMapper(false);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       const mediaRecorder = new MediaRecorder(stream);
@@ -248,20 +253,6 @@ Plan: ${soap.plan || "N/A"}
             </Button>
           </div>
 
-          {soapPreview && (
-            <div className="border-t border-slate-200 pt-3 mt-3">
-              <p className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
-                <FileAudio className="w-3.5 h-3.5" /> AI SOAP structure — reference only (not saved)
-              </p>
-              <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md p-2 space-y-1 leading-relaxed">
-                {["subjective", "objective", "assessment", "plan"].map((k) => (
-                  <p key={k}><span className="font-semibold capitalize text-slate-700">{k}:</span> {soapPreview[k] || "N/A"}</p>
-                ))}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1">Your transcript was added to the note. Generate a verified note in the next step — every value is checked against what was said.</p>
-            </div>
-          )}
-
           {transcript && showMapper && (
             <div className="border-t border-slate-200 pt-3 mt-3">
               <p className="text-xs font-semibold text-slate-600 mb-2">📍 Auto-map transcription into note sections</p>
@@ -279,6 +270,23 @@ Plan: ${soap.plan || "N/A"}
               />
             </div>
           )}
+        </div>
+      )}
+
+      {/* Advisory SOAP structure. Rendered OUTSIDE the audioUrl branch: the SOAP
+          path deliberately never keeps the PHI audio blob (audioUrl stays null),
+          so if this card lived inside that branch it could never appear. */}
+      {soapPreview && (
+        <div className="border-t border-slate-200 pt-3 mt-3">
+          <p className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+            <FileAudio className="w-3.5 h-3.5" /> AI SOAP structure — reference only (not saved)
+          </p>
+          <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md p-2 space-y-1 leading-relaxed">
+            {["subjective", "objective", "assessment", "plan"].map((k) => (
+              <p key={k}><span className="font-semibold capitalize text-slate-700">{k}:</span> {soapPreview[k] || "N/A"}</p>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">Your transcript was added to the note. Generate a verified note in the next step — every value is checked against what was said.</p>
         </div>
       )}
     </div>

@@ -162,7 +162,7 @@ ${draftDocumentation.skilled_need_justification}
 ${draftDocumentation.goals_and_interventions?.map((g, i) => `
 Goal ${i + 1}: ${g.goal}
 Problem: ${g.problem}
-Interventions: ${g.interventions.join('; ')}
+Interventions: ${(g.interventions || []).join('; ')}
 Timeframe: ${g.timeframe}
 `).join('\n')}
 
@@ -373,7 +373,7 @@ ${draftDocumentation.caregiver_support}`;
                       <p className="text-sm font-medium text-navy-900 mb-1">{goal.goal}</p>
                       <p className="text-xs text-slate-600 mb-2">Problem: {goal.problem}</p>
                       <p className="text-xs text-slate-700 mb-1">
-                        <strong>Interventions:</strong> {goal.interventions.join('; ')}
+                        <strong>Interventions:</strong> {(goal.interventions || []).join('; ')}
                       </p>
                       <p className="text-xs text-slate-500">Timeframe: {goal.timeframe}</p>
                     </div>

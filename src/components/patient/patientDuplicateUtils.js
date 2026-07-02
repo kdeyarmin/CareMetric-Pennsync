@@ -835,6 +835,11 @@ export function findDuplicateGroups(patients, opts = {}) {
       for (const link of links.get(idx)) {
         const j = link.idx;
         if (memberSet.has(j) || memberOf[j] !== -1) continue;
+        // Skip records that belong to their OWN strong cluster (>= 2 members):
+        // they will be reported as members of that cluster's group, so attaching
+        // them here as a weak link would emit the same patient in two groups,
+        // violating the documented "at most one group" invariant.
+        if ((strongClusters.get(find(j))?.length ?? 0) >= 2) continue;
         attachedWeak.add(j);
       }
     }

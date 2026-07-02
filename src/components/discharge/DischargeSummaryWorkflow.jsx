@@ -151,7 +151,10 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
           signature_data: signatureData,
           signed_by: currentUser?.email,
           signed_by_name: currentUser?.full_name,
-          signed_by_credentials: 'RN',
+          // Record the signer's ACTUAL credential (PT/OT/SW/LPN/etc. all sign
+          // discharge summaries) rather than assuming 'RN' — this is a locked
+          // legal document. Fall back to a neutral value when unknown.
+          signed_by_credentials: currentUser?.credential_type || 'Unknown',
           signed_date: new Date().toISOString(),
           ip_address: 'System'
         }

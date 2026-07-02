@@ -321,7 +321,18 @@ Deno.serve(async (req) => {
       data: buildRowObject(headers, cols),
     }));
 
-    const existingPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 2000);
+    // Build the dedup source from ALL patients, not just the newest page. A
+    // returning patient whose record isn't in the fetched window would otherwise
+    // miss the match and be re-created as a duplicate chart. Page through in
+    // 5000-row chunks (the SDK per-request max) until a short page ends the roster.
+    const PATIENT_PAGE = 5000;
+    const existingPatients = [];
+    for (let skip = 0; ; skip += PATIENT_PAGE) {
+      const page = await base44.asServiceRole.entities.Patient.list('-created_date', PATIENT_PAGE, skip);
+      if (!Array.isArray(page) || page.length === 0) break;
+      existingPatients.push(...page);
+      if (page.length < PATIENT_PAGE) break;
+    }
     const { existingByMrn, existingByNameDob } = buildExistingLookups(existingPatients);
 
     const results = {

@@ -29,7 +29,7 @@ import { toast } from "sonner";
 export default function CareTeamMessaging({ patientId, relatedEventId, relatedEventType }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [selectedThread, setSelectedThread] = useState(null);
+  const [selectedThreadId, setSelectedThreadId] = useState(null);
   const [newMessage, setNewMessage] = useState("");
   const [newSubject, setNewSubject] = useState("");
   const [priority, setPriority] = useState("normal");
@@ -72,6 +72,11 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
       unreadCount: msgs.filter(m => !m.read_by?.includes(user?.email)).length
     }));
   }, [messages, user?.email]);
+
+  // Derive the open thread from the freshly-grouped threads each render (keyed by
+  // id) so sent replies and incoming messages show immediately, instead of
+  // rendering a stale snapshot captured at click time.
+  const selectedThread = threads.find(t => t.threadId === selectedThreadId) || null;
 
   const sendMessageMutation = useMutation({
     mutationFn: async (messageData) => {
@@ -197,7 +202,7 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
               size="sm"
               onClick={() => {
                 setShowNewThread(true);
-                setSelectedThread(null);
+                setSelectedThreadId(null);
                 setThreadSummary(null);
               }}
               className="bg-blue-600 hover:bg-blue-700"
@@ -214,7 +219,7 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
               <div
                 key={thread.threadId}
                 onClick={() => {
-                  setSelectedThread(thread);
+                  setSelectedThreadId(thread.threadId);
                   setShowNewThread(false);
                   setThreadSummary(null);
                 }}

@@ -121,9 +121,11 @@ export default function BreachDetectionSystem() {
       const afterHoursAccess = userActivities.filter(activity => {
         const activityDate = new Date(activity.created_date);
         if (activityDate < last24h) return false;
-        
-        const hour = activityDate.getHours();
-        return hour < 6 || hour > 22;
+
+        // Evaluate the hour in Eastern Time (not the browser's local zone) so
+        // the 6am-10pm ET business-hours window is applied consistently.
+        const hour = Number(formatEastern(activityDate, 'H'));
+        return hour < 6 || hour >= 22;
       });
       
       if (afterHoursAccess.length > 20) {

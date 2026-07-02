@@ -123,10 +123,10 @@ export default function DocumentManagement() {
               <DocumentList showPatientInfo={true} />
             </TabsContent>
             <TabsContent value="with-patient" className="mt-6">
-              <DocumentList showPatientInfo={true} />
+              <DocumentList showPatientInfo={true} assignment="with_patient" />
             </TabsContent>
             <TabsContent value="unassigned" className="mt-6">
-              <DocumentList showPatientInfo={false} />
+              <DocumentList showPatientInfo={false} assignment="unassigned" />
             </TabsContent>
           </Tabs>
         </CardContent>

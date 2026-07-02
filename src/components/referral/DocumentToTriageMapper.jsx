@@ -43,6 +43,14 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
     setError(null);
     setResult(null);
 
+    // Nothing to create without a patient name to key the record on — surface it
+    // instead of silently doing nothing (no result, no error, no feedback).
+    if (mapping.createPatient && !extractedData.patient?.last_name) {
+      setError("No patient last name was extracted — select an existing patient or enter the name manually.");
+      setProcessing(false);
+      return;
+    }
+
     try {
       let patientId = mapping.patientId;
 
@@ -66,6 +74,15 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
 
         const newPatient = await base44.entities.Patient.create(patientData);
         patientId = newPatient.id;
+        // Persist the created patient immediately so a retry after a later failure
+        // (e.g. Referral.create below) reuses this record instead of creating a
+        // duplicate patient chart.
+        setMapping((prev) => ({
+          ...prev,
+          createPatient: false,
+          updatePatient: true,
+          patientId: newPatient.id,
+        }));
       } else if (mapping.updatePatient && patientId && extractedData.clinical) {
         await base44.entities.Patient.update(patientId, {
           primary_diagnosis: extractedData.clinical.primary_diagnosis || undefined,
@@ -128,6 +145,10 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
         if (onTriageCreated) {
           onTriageCreated({ patientId, referralId: referral.id, extractedData });
         }
+      } else if ((mapping.createTriage || mapping.createReferral) && !patientId) {
+        // Referral/triage was requested but no patient could be resolved — don't
+        // stop silently with no feedback.
+        setError("No patient record was available to attach the referral to. Select or create a patient first.");
       }
     } catch (err) {
       setError(err.message || "Failed to process document mapping");

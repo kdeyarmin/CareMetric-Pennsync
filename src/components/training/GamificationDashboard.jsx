@@ -187,13 +187,13 @@ export default function GamificationDashboard({ userId }) {
                   {leaderboard?.current_streak || 0} / 10
                 </span>
               </div>
-              <Progress 
-                value={((leaderboard?.current_streak || 0) / 10) * 100} 
+              <Progress
+                value={Math.min(100, ((leaderboard?.current_streak || 0) / 10) * 100)}
                 className="h-2 bg-navy-200"
               />
             </div>
             <p className="text-sm text-navy-700">
-              Complete {10 - (leaderboard?.current_streak || 0)} more courses to earn the "Dedicated Learner" badge!
+              Complete {Math.max(0, 10 - (leaderboard?.current_streak || 0))} more courses to earn the "Dedicated Learner" badge!
             </p>
           </div>
         </CardContent>

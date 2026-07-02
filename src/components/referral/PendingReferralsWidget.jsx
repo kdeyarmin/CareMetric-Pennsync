@@ -1,4 +1,3 @@
-import React from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,20 +21,18 @@ export default function PendingReferralsWidget() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: allReferrals = [] } = useQuery({
-    queryKey: ['pendingReferrals'],
+  // Filter to the current user's assigned referrals server-side so an assigned
+  // (even urgent) referral can't fall outside the newest-10 page and vanish.
+  const { data: referrals = [] } = useQuery({
+    queryKey: ['pendingReferrals', currentUser?.email],
     queryFn: () => base44.entities.Referral.filter({
-      status: { $in: ['new', 'awaiting_info'] }
+      status: { $in: ['new', 'awaiting_info'] },
+      assigned_to: currentUser.email
     }, '-created_date', 10),
     initialData: [],
+    enabled: !!currentUser?.email,
     refetchInterval: 60000, // Refresh every minute
   });
-
-  // Filter to only show referrals assigned to current user
-  const referrals = React.useMemo(() => {
-    if (!currentUser?.email) return [];
-    return allReferrals.filter(r => r.assigned_to === currentUser.email);
-  }, [allReferrals, currentUser]);
 
   const urgentReferrals = referrals.filter(r => r.priority === 'urgent' || r.priority === 'high');
   const awaitingInfo = referrals.filter(r => r.status === 'awaiting_info');

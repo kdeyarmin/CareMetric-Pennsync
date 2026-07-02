@@ -38,8 +38,12 @@ export const IMPROVEMENT_MEASURES = [
   {
     key: "ambulation",
     item: "m1860",
+    // M1860 Ambulation/Locomotion is a 0–6 scale (see oasisScales.js); 6 = bedfast,
+    // unable to ambulate. All 0–6 are real functional levels (no unratable code),
+    // so a documented 6 must stay in the denominator (e.g. 6→3 improves) — mirroring
+    // the m1850 treatment below.
     label: "Improvement in Ambulation/Locomotion",
-    startMax: 5,
+    startMax: 6,
     excludeStart: [0],
     excludeEither: [],
     metricField: "ambulation_improved",

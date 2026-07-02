@@ -21,15 +21,14 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
     queryKey: showAllPatients ? ['allPatientRiskAlerts'] : ['patientRiskAlerts', patientId],
     queryFn: async () => {
       if (showAllPatients) {
-        // Fetch all active high-risk alerts across patients
-        const allAlerts = await base44.entities.PatientAlert.filter(
-          { status: 'active' },
+        // Filter for high/critical severity SERVER-SIDE (via $in) so the
+        // severity selection happens before any row cap — otherwise a low
+        // row limit could truncate away the exact critical alerts this widget
+        // exists to surface. Cap raised well above expected active-alert volume.
+        return await base44.entities.PatientAlert.filter(
+          { status: 'active', severity: { $in: ['high', 'critical'] } },
           '-created_date',
-          50
-        );
-        // Filter for high/critical severity
-        return allAlerts.filter(a => 
-          a.severity === 'high' || a.severity === 'critical'
+          5000
         );
       } else {
         return patientId 

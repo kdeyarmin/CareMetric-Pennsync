@@ -165,15 +165,22 @@ export default function SearchablePatientSelect({
       return aName.localeCompare(bName);
     });
 
-    const favorites = filtered.filter(p => favoritedPatients.includes(p.id));
-    const recentIds = new Set(recentPatients);
-    const recent = filtered
-      .filter(p => recentIds.has(p.id) && !favoritedPatients.includes(p.id))
-      .slice(0, 3);
-    
     const favoriteIds = new Set(favoritedPatients);
-    const all = filtered.filter(p => 
-      !favoriteIds.has(p.id) && !recentIds.has(p.id)
+    const favorites = filtered.filter(p => favoriteIds.has(p.id));
+
+    // Order Recent by most-recently-used (recentPatients is prepended on select),
+    // not alphabetically, and cap at 3.
+    const recent = recentPatients
+      .map(id => filtered.find(p => p.id === id))
+      .filter(p => p && !favoriteIds.has(p.id))
+      .slice(0, 3);
+
+    // Only exclude the recents actually shown above from "All Patients" —
+    // excluding every recent id would drop a 4th/5th recent patient from both
+    // groups, hiding them from the picker entirely.
+    const shownRecentIds = new Set(recent.map(p => p.id));
+    const all = filtered.filter(p =>
+      !favoriteIds.has(p.id) && !shownRecentIds.has(p.id)
     );
 
     return {

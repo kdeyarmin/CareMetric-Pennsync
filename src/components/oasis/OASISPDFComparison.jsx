@@ -30,6 +30,7 @@ export default function OASISPDFComparison({
 }) {
   const [editingField, setEditingField] = useState(null);
   const [editValues, setEditValues] = useState({});
+  const [originalValues, setOriginalValues] = useState({});
   const [discrepancies, setDiscrepancies] = useState([]);
   const [showPDF, setShowPDF] = useState(true);
   const queryClient = useQueryClient();
@@ -70,6 +71,9 @@ export default function OASISPDFComparison({
         m1242_pain_freq: pdgmData?.clinical_items?.pain_frequency ?? '',
       };
       setEditValues(initialValues);
+      // Snapshot the original (pre-edit) values so save/cancel compare against
+      // the extracted data, not the value the Input's onChange just wrote.
+      setOriginalValues(initialValues);
     }
   }, [extractedData, pdgmData]);
 
@@ -106,29 +110,20 @@ export default function OASISPDFComparison({
 
   const handleSaveField = (fieldKey) => {
     const newValue = editValues[fieldKey];
-    const oldValue = getFieldValue(fieldKey);
-    
+    const oldValue = originalValues[fieldKey] ?? '';
+
     if (newValue !== oldValue) {
       handleFlagDiscrepancy(fieldKey, oldValue, newValue);
-      
+      // Track the saved value as the new baseline for any subsequent edit.
+      setOriginalValues(prev => ({ ...prev, [fieldKey]: newValue }));
+
       // Update the parent component
       if (onDataCorrected) {
         onDataCorrected({ [fieldKey]: newValue });
       }
     }
-    
-    setEditingField(null);
-  };
 
-  const getFieldValue = (fieldKey) => {
-    const path = fieldKey.split('.');
-    let value = pdgmData;
-    
-    for (const key of path) {
-      value = value?.[key];
-    }
-    
-    return value ?? editValues[fieldKey] ?? '';
+    setEditingField(null);
   };
 
   const renderEditableField = (label, fieldKey, type = 'text') => {
@@ -171,7 +166,7 @@ export default function OASISPDFComparison({
                   size="sm"
                   onClick={() => {
                     setEditingField(null);
-                    setEditValues(prev => ({ ...prev, [fieldKey]: getFieldValue(fieldKey) }));
+                    setEditValues(prev => ({ ...prev, [fieldKey]: originalValues[fieldKey] ?? '' }));
                   }}
                   className="h-7 px-2 text-red-600 hover:text-red-700"
                 >

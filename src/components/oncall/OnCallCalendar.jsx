@@ -5,6 +5,7 @@ import {
   startOfWeek,
   endOfWeek,
   eachDayOfInterval,
+  addMonths,
   format,
   isSameMonth,
   isToday,
@@ -49,11 +50,9 @@ export default function OnCallCalendar({ cursor, setCursor, shiftsByDate, isAdmi
     return eachDayOfInterval({ start: gridStart, end: gridEnd });
   }, [cursor]);
 
-  const move = (delta) => {
-    const next = new Date(cursor);
-    next.setMonth(next.getMonth() + delta);
-    setCursor(next);
-  };
+  // addMonths handles month-length overflow correctly (e.g. Jan 31 → Feb 28),
+  // unlike Date.setMonth which rolls over (Jan 31 → "Feb 31" → Mar 3).
+  const move = (delta) => setCursor(addMonths(cursor, delta));
 
   return (
     <Card className="shadow-sm">

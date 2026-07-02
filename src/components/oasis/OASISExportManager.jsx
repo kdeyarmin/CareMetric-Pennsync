@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 
 import { Download, FileDown, FileSpreadsheet, Loader2, CheckCircle2 } from "lucide-react";
-import { generateOASISReportPDF } from "@/functions/generateOASISReportPDF";
+import { base44 } from "@/api/base44Client";
 
 export default function OASISExportManager({ 
   analysisResults, 
@@ -188,11 +188,19 @@ export default function OASISExportManager({
     setExportType('pdf');
 
     try {
-      const response = await generateOASISReportPDF({
-        analysisResults
+      // Fetch the PDF as binary. The axios-based functions.invoke wrapper uses
+      // responseType 'json' and decodes the PDF bytes as UTF-8 text, which
+      // corrupts the binary (replacement characters shift xref offsets).
+      const response = await base44.functions.fetch('generateOASISReportPDF', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysisResults })
       });
+      if (!response.ok) {
+        throw new Error(`PDF generation failed (${response.status})`);
+      }
 
-      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const blob = new Blob([await response.arrayBuffer()], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

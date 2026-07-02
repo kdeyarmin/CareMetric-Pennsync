@@ -32,7 +32,12 @@ export default function QuickHealthOverview() {
     !u.phone || u.phone === '' || !u.care_scope
   ).length;
 
-  const usersWithoutCreds = users.length - new Set(credentials.map(c => c.user_id)).size;
+  // PersonnelCredential.user_id references a user's email. Count fetched users
+  // that lack any credential — filtering falsy ids and restricting to the loaded
+  // user set keeps the figure from being deflated (or negative) by stale/ownerless
+  // credential rows (e.g. ex-employees outside the current page).
+  const coveredUsers = new Set(credentials.map(c => c.user_id).filter(Boolean));
+  const usersWithoutCreds = users.filter(u => !coveredUsers.has(u.email)).length;
 
   const now = new Date();
   const expiredCreds = credentials.filter(c => new Date(c.expiration_date) < now).length;
