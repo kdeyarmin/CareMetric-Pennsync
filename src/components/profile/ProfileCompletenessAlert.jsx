@@ -51,7 +51,7 @@ export default function ProfileCompletenessAlert({ user }) {
           : "Upload your license, certifications, and insurance"}
       </p>
       <Link to="/UserSettings" className="flex-shrink-0">
-        <Button size="sm" variant="outline" className="gap-1.5 text-xs border-amber-500 text-amber-700 hover:bg-amber-100 h-8 px-3">
+        <Button size="sm" variant="outline" className="gap-1.5 text-xs h-8 px-3">
           Update
           <ArrowRight className="h-3 w-3" />
         </Button>

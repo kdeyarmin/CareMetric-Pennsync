@@ -466,7 +466,7 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
           <Button
             onClick={saveAssessment}
             disabled={isSaving || !patientId}
-            className="flex-1 bg-green-600 hover:bg-green-700"
+            className="flex-1"
           >
             {isSaving ? (
               <>

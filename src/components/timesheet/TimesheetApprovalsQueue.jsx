@@ -107,7 +107,6 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
             <Button
               size="sm"
               variant="outline"
-              className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
               onClick={() => {
                 setBulkNote("");
                 setBulkOpen(true);
@@ -181,7 +180,6 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
                       </Button>
                       <Button
                         size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700"
                         onClick={() => openReview(t, "approved")}
                       >
                         <Check className="w-4 h-4 mr-1" />
@@ -234,9 +232,7 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
               Cancel
             </Button>
             <Button
-              className={
-                review?.decision === "approved" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
-              }
+              variant={review?.decision === "approved" ? "default" : "destructive"}
               disabled={decide.isPending}
               onClick={() => review && decide.mutate(review)}
             >
@@ -274,7 +270,6 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
               Cancel
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
               disabled={bulkApprove.isPending}
               onClick={() => bulkApprove.mutate()}
             >

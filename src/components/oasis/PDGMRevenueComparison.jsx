@@ -731,7 +731,7 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
             <Button
               onClick={calculateRevenue}
               disabled={isCalculating || !pdgmData}
-              className="w-full bg-green-600 hover:bg-green-700"
+              className="w-full"
             >
               <Calculator className="w-4 h-4 mr-2" /> Calculate Revenue Impact
             </Button>

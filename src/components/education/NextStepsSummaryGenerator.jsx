@@ -289,7 +289,7 @@ Return JSON:
             <Button
               onClick={generateSummary}
               disabled={ai.loading}
-              className="w-full bg-green-600 hover:bg-green-700"
+              className="w-full"
             >
               {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Summary...</>

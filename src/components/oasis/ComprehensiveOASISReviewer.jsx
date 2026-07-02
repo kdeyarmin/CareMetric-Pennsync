@@ -396,7 +396,7 @@ Return detailed JSON with all findings.`;
                                   href={isSafeExternalUrl(risk.cms_guideline_link) ? risk.cms_guideline_link : undefined}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-sm text-indigo-600 hover:text-indigo-800 underline flex items-center gap-1"
+                                  className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
                                 >
                                   <ExternalLink className="w-3 h-3" />
                                   View Official CMS Guideline
@@ -517,7 +517,7 @@ Return detailed JSON with all findings.`;
                                 href={isSafeExternalUrl(measure.cms_quality_reporting_link) ? measure.cms_quality_reporting_link : undefined}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-sm text-indigo-600 hover:text-indigo-800 underline flex items-center gap-1"
+                                className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
                               >
                                 <ExternalLink className="w-3 h-3" />
                                 View Quality Measure Specifications
@@ -668,7 +668,7 @@ Return detailed JSON with all findings.`;
                                     href={isSafeExternalUrl(inconsistency.cms_guidance_link) ? inconsistency.cms_guidance_link : undefined}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-sm text-indigo-600 hover:text-indigo-800 underline flex items-center gap-1"
+                                    className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
                                   >
                                     <ExternalLink className="w-3 h-3" />
                                     View CMS Documentation Guidance

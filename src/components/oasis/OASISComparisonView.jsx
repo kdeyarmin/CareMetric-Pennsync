@@ -196,7 +196,7 @@ export default function OASISComparisonView({
                       />
                     </div>
                     <div className="flex gap-2">
-                      <Button onClick={handleSaveEdit} className="bg-green-600 hover:bg-green-700">
+                      <Button onClick={handleSaveEdit} >
                         <Save className="w-4 h-4 mr-1" />
                         Save Changes
                       </Button>
@@ -252,7 +252,7 @@ export default function OASISComparisonView({
                       <Button
                         size="sm"
                         onClick={() => handleApprove(itemNumber)}
-                        className="flex-1 bg-green-600 hover:bg-green-700"
+                        className="flex-1"
                         disabled={updateMutation.isPending}
                       >
                         <CheckCircle2 className="w-4 h-4 mr-1" />

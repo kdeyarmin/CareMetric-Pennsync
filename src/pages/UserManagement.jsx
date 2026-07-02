@@ -646,7 +646,7 @@ export default function UserManagement() {
                         variant="outline"
                         onClick={() => resendInvitationMutation.mutate(invitation.id)}
                         disabled={resendInvitationMutation.isPending}
-                        className="flex items-center gap-2 min-h-[44px] flex-1 sm:flex-none text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                        className="flex items-center gap-2 min-h-[44px] flex-1 sm:flex-none"
                       >
                         <Send className="w-4 h-4" />
                         Resend New Link
@@ -771,7 +771,7 @@ export default function UserManagement() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleResetPassword(user)}
-                              className="text-orange-600 hover:text-orange-700 min-h-[44px] w-10 sm:w-auto p-2"
+                              className="min-h-[44px] w-10 sm:w-auto p-2"
                               title="Reset password"
                             >
                               <Key className="w-4 h-4" />

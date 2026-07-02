@@ -303,7 +303,7 @@ export default function CourseManager() {
               <div className="flex justify-between items-center gap-2 pt-4 flex-wrap">
                 <div className="flex gap-2">
                   {hasCourseId && (
-                    <Link to={`${createPageUrl('TrainingCoursePlayer')}?courseId=${builderCourse.id}&preview=true`} target="_blank">
+                    <Link to={`${createPageUrl('TrainingCoursePlayer')}?courseId=${builderCourse.id}&preview=true`} target="_blank" rel="noopener noreferrer">
                       <Button variant="outline">
                         <Eye className="w-4 h-4 mr-1.5" /> Preview
                       </Button>

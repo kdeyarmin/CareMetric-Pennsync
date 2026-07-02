@@ -114,10 +114,8 @@ export default function TrainingQuestionRenderer({ question, index, value, onCha
                   onClick={() => onChange(option.value)}
                   className={`flex items-center justify-center gap-2 py-4 rounded-xl border-2 font-semibold text-sm transition-all ${
                     selected
-                      ? option.value === true
-                        ? "border-emerald-500 bg-emerald-500 text-white"
-                        : "border-red-500 bg-red-500 text-white"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                      ? "border-blue-500 bg-blue-600 text-white shadow-sm"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50"
                   }`}
                 >
                   {selected && <Check className="w-4 h-4" />}

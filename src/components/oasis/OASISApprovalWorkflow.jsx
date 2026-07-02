@@ -205,7 +205,7 @@ export default function OASISApprovalWorkflow({ pendingItems = [], onApprove }) 
                   <Button
                     onClick={() => handleApprove(item)}
                     disabled={approveMutation.isPending}
-                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    className="flex-1"
                   >
                     <CheckCircle2 className="w-4 h-4 mr-2" />
                     Approve All for Submission

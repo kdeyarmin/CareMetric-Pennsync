@@ -274,7 +274,7 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
                   <Button
                     onClick={() => handleSavePathway(pathway)}
                     size="sm"
-                    className="w-full bg-green-600 hover:bg-green-700"
+                    className="w-full"
                   >
                     <CheckCircle2 className="w-4 h-4 mr-2" />
                     Save This Pathway

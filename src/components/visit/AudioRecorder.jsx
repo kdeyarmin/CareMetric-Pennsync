@@ -106,7 +106,6 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
               {!isRecording && !audioBlob && (
                 <Button
                   onClick={startRecording}
-                  className="bg-gradient-to-r from-navy-600 to-gold-600 hover:from-navy-700 hover:to-gold-700"
                 >
                   <Mic className="w-4 h-4 mr-2" />
                   Start Recording
@@ -118,7 +117,6 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
                   <Button
                     onClick={stopRecording}
                     variant="destructive"
-                    className="bg-red-600 hover:bg-red-700"
                   >
                     <MicOff className="w-4 h-4 mr-2" />
                     Stop Recording
@@ -136,7 +134,6 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
                 <>
                   <Button
                     onClick={handleUpload}
-                    className="bg-green-600 hover:bg-green-700"
                   >
                     <Upload className="w-4 h-4 mr-2" />
                     Process with PennSync AI

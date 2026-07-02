@@ -539,7 +539,7 @@ export default function AIComplianceInServicesHub() {
                   <h3 className="font-semibold text-green-900 text-base sm:text-lg">Assignment Ready</h3>
                   <p className="text-sm text-green-700">Course will be assigned using the current wizard selection and retake settings.</p>
                 </div>
-                <Button disabled={!selectedCourseId || !dueDate} onClick={confirmAssignment} className="bg-green-600 hover:bg-green-700 min-h-[48px] w-full md:w-auto">
+                <Button disabled={!selectedCourseId || !dueDate} onClick={confirmAssignment} className="min-h-[48px] w-full md:w-auto">
                   <Send className="w-4 h-4 mr-2" />
                   Create Assignments
                 </Button>

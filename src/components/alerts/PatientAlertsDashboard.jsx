@@ -636,7 +636,6 @@ export default function PatientAlertsDashboard({ patientId = null, _showAllPatie
                     </Button>
                     <Button
                       onClick={handleResolve}
-                      className="bg-green-600 hover:bg-green-700"
                     >
                       <CheckCircle2 className="w-4 h-4 mr-1" /> Mark Resolved
                     </Button>

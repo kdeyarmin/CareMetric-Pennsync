@@ -22,7 +22,7 @@ export default function FinalNoteDisplay({ finalNote, setFinalNote, onCopy, copi
             {analysisScore}%
           </Badge>
         )}
-        <Button onClick={onCopy} className="bg-green-600 hover:bg-green-700 h-10 px-4 gap-2 font-semibold shrink-0">
+        <Button onClick={onCopy} className="h-10 px-4 gap-2 font-semibold shrink-0">
           {copied ? <><CheckCircle2 className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy</>}
         </Button>
       </div>
@@ -40,7 +40,7 @@ export default function FinalNoteDisplay({ finalNote, setFinalNote, onCopy, copi
           className="w-full min-h-[320px] font-mono text-sm border-0 px-4 py-3 focus:ring-0 bg-white resize-none outline-none"
         />
         <div className="flex gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50">
-          <Button onClick={onCopy} className="flex-1 bg-green-600 hover:bg-green-700 h-12 sm:h-10 gap-2 font-semibold">
+          <Button onClick={onCopy} className="flex-1 h-12 sm:h-10 gap-2 font-semibold">
             {copied ? <><CheckCircle2 className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy All</>}
           </Button>
           <SmartNotePDFExporterEnhanced finalNote={finalNote} patient={patient} visitType={visitType} analysisScore={analysisScore} currentUser={currentUser} signatureImage={signatureImage} analysis={analysis} />

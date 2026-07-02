@@ -1259,7 +1259,7 @@ Actions available:
                          {referral.requires_manual_review ? (
                            <Button
                              size="sm"
-                             className="bg-amber-500 hover:bg-amber-600 text-white min-h-[36px] text-xs"
+                             className="min-h-[36px] text-xs"
                              onClick={() => setVerificationReferral(referral)}
                            >
                               <UserCheck className="w-4 h-4 mr-1" />
@@ -1269,7 +1269,7 @@ Actions available:
                            <Link to={`/ReferralIntake?tab=admission&referral_id=${referral.id}`}>
                              <Button
                                size="sm"
-                               className="bg-emerald-600 hover:bg-emerald-700 text-white min-h-[36px] text-xs w-full"
+                               className="min-h-[36px] text-xs w-full"
                              >
                                <Sparkles className="w-4 h-4 mr-1" />
                                Start Admission Note
@@ -1290,7 +1290,7 @@ Actions available:
                               <Link to={`/ReferralIntake?tab=admission&referral_id=${referral.id}`}>
                                  <Button
                                    size="sm"
-                                   className="bg-navy-600 hover:bg-navy-700 text-white min-h-[36px] text-xs w-full"
+                                   className="min-h-[36px] text-xs w-full"
                                  >
                                    <Sparkles className="w-4 h-4 mr-1" />
                                    Create Note
@@ -1320,7 +1320,7 @@ Actions available:
                               size="sm"
                               variant="outline"
                               onClick={() => setReferralToReject(referral)}
-                              className="text-orange-600 hover:bg-orange-50 min-h-[36px] text-xs flex-1"
+                              className="min-h-[36px] text-xs flex-1"
                             >
                               <XCircle className="w-4 h-4 mr-1" />
                               Reject

@@ -247,7 +247,6 @@ export default function SignDocument() {
         <Button
           onClick={handleSubmitAll}
           disabled={updateSignatureMutation.isPending}
-          className="bg-emerald-600 hover:bg-emerald-700"
         >
           <CheckCircle2 className="w-4 h-4 mr-2" />
           {updateSignatureMutation.isPending ? "Submitting..." : "Submit All Signatures"}

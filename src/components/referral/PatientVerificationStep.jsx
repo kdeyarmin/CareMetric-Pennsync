@@ -285,7 +285,7 @@ export default function PatientVerificationStep({
         <Button
           onClick={handleConfirm}
           disabled={!selectedPatientId || isConfirming}
-          className="flex-1 bg-green-600 hover:bg-green-700 h-12"
+          className="flex-1 h-12"
           size="lg"
         >
           {isConfirming ? (

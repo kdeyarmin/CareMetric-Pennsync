@@ -185,7 +185,7 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
                     </Button>
                     <Button
                       size="sm"
-                      className="flex-1 h-7 text-xs bg-green-600 hover:bg-green-700"
+                      className="flex-1 h-7 text-xs"
                       onClick={() => resolveMutation.mutate(alert.id)}
                     >
                       <CheckCircle2 className="w-3 h-3 mr-1" /> Resolve

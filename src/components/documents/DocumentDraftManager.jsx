@@ -182,7 +182,6 @@ export default function DocumentDraftManager({
                   <Button
                     size="sm"
                     onClick={handleDownload}
-                    className="bg-green-600 hover:bg-green-700"
                   >
                     <Download className="w-4 h-4 mr-1" />
                     Download
@@ -200,7 +199,6 @@ export default function DocumentDraftManager({
                   <Button
                     size="sm"
                     onClick={handleSaveEdit}
-                    className="bg-green-600 hover:bg-green-700"
                   >
                     {saved ? (
                       <><CheckCircle2 className="w-4 h-4 mr-1" /> Saved</>

@@ -99,7 +99,7 @@ export default function MultiReferralDetector({ fileUrl, onDetectionComplete, on
             </Button>
             <Button
               onClick={() => onDetectionComplete(analysis, (referrals || []).map((r) => r.index))}
-              className="flex-1 bg-green-600 hover:bg-green-700"
+              className="flex-1"
             >
               Process Referral
             </Button>

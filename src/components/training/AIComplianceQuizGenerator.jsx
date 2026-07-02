@@ -480,7 +480,7 @@ Return JSON format:
                 key={index}
                 variant={index === currentQuestionIndex ? "default" : "outline"}
                 size="sm"
-                className={`w-10 h-10 ${userAnswers[index] !== undefined ? 'bg-green-100 border-green-300' : ''}`}
+                className={`w-10 h-10 ${userAnswers[index] !== undefined ? 'bg-navy-100 border-navy-300' : ''}`}
                 onClick={() => setCurrentQuestionIndex(index)}
               >
                 {index + 1}

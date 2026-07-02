@@ -389,7 +389,7 @@ For each failure, provide:
                                     href={isSafeExternalUrl(error.cms_reference_link) ? error.cms_reference_link : undefined}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-xs text-indigo-600 underline hover:text-indigo-800 flex items-center gap-1"
+                                    className="text-xs text-indigo-600 underline hover:text-indigo-700 flex items-center gap-1"
                                   >
                                     <ExternalLink className="w-3 h-3" />
                                     View Official CMS Documentation
@@ -497,7 +497,7 @@ For each failure, provide:
                                   href={isSafeExternalUrl(gap.cms_reference_link) ? gap.cms_reference_link : undefined}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-xs text-indigo-600 underline hover:text-indigo-800 flex items-center gap-1"
+                                  className="text-xs text-indigo-600 underline hover:text-indigo-700 flex items-center gap-1"
                                 >
                                   <ExternalLink className="w-3 h-3" />
                                   View Official CMS Guideline
@@ -592,7 +592,7 @@ For each failure, provide:
                                     href={isSafeExternalUrl(issue.cms_reference_link) ? issue.cms_reference_link : undefined}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-xs text-indigo-600 underline hover:text-indigo-800 flex items-center gap-1"
+                                    className="text-xs text-indigo-600 underline hover:text-indigo-700 flex items-center gap-1"
                                   >
                                     <ExternalLink className="w-3 h-3" />
                                     View Official CMS Regulation

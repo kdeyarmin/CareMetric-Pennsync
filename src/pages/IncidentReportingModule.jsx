@@ -633,8 +633,8 @@ Please review this incident in the Incident Reporting Dashboard.`
                           <a
                             href={incident.state_reportable_pdf_url}
                             target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 mt-2 text-sm text-blue-600 underline"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 mt-2 text-sm text-blue-600 underline hover:text-blue-700"
                           >
                             <FileText className="w-4 h-4" /> View PDF report
                           </a>

@@ -134,7 +134,6 @@ export default function PendingApprovalsQueue({ requests = [], allRequests = [] 
                       </Button>
                       <Button
                         size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700"
                         onClick={() => openReview(r, "approved")}
                       >
                         <Check className="w-4 h-4 mr-1" />
@@ -187,9 +186,7 @@ export default function PendingApprovalsQueue({ requests = [], allRequests = [] 
               Cancel
             </Button>
             <Button
-              className={
-                review?.decision === "approved" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
-              }
+              variant={review?.decision === "approved" ? "default" : "destructive"}
               disabled={decide.isPending}
               onClick={() => review && decide.mutate(review)}
             >

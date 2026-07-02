@@ -389,7 +389,6 @@ Return JSON:
                   initSimulationScores();
                 }
               }}
-              className={simulationMode ? "bg-orange-600 hover:bg-orange-700" : ""}
             >
               <Sliders className="w-4 h-4 mr-2" />
               {simulationMode ? "Exit" : "Simulate"} Changes
@@ -461,7 +460,7 @@ Return JSON:
             <Button
               onClick={runSimulation}
               disabled={isSimulating || !simulatedScores}
-              className="w-full bg-orange-600 hover:bg-orange-700"
+              className="w-full"
             >
               {isSimulating ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Calculating Impact...</>

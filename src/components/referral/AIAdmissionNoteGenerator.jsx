@@ -343,7 +343,7 @@ Generate a complete, detailed admission note that a skilled nurse would write af
                 }}>
                   Cancel
                 </Button>
-                <Button size="sm" onClick={handleSaveEdit} className="bg-green-600 hover:bg-green-700">
+                <Button size="sm" onClick={handleSaveEdit} >
                   <Save className="w-4 h-4 mr-1" />
                   Save
                 </Button>

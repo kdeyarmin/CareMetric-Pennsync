@@ -63,7 +63,6 @@ export default function ValidationOverrideDialog({
           <Button 
             onClick={handleOverride}
             disabled={!justification.trim()}
-            className="bg-amber-600 hover:bg-amber-700"
           >
             Override Warning
           </Button>

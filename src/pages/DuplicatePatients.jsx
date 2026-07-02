@@ -265,7 +265,7 @@ export default function DuplicatePatients() {
               <Button
                 onClick={handleMergeAll}
                 disabled={isMergingAll}
-                className="bg-emerald-600 hover:bg-emerald-700 whitespace-nowrap"
+                className="whitespace-nowrap"
               >
                 {isMergingAll ? (
                   <>
@@ -408,7 +408,7 @@ export default function DuplicatePatients() {
                               size="sm"
                               onClick={() => handleMergeGroup(group, groupKey, patient)}
                               disabled={isMerging}
-                              className="bg-emerald-600 hover:bg-emerald-700 whitespace-nowrap"
+                              className="whitespace-nowrap"
                             >
                               {isMerging ? (
                                 <Loader2 className="w-4 h-4 mr-1 animate-spin" />

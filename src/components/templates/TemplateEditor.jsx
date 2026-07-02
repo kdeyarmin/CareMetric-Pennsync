@@ -226,7 +226,7 @@ Return the enhanced, complete clinical note ready for documentation. Keep all fa
             <Button
               onClick={handleEnhanceWithAI}
               disabled={ai.loading}
-              className="w-full bg-gradient-to-r from-navy-600 to-gold-600 hover:from-navy-700 hover:to-gold-700"
+              className="w-full"
             >
               {ai.loading ? (
                 <>

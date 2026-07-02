@@ -132,7 +132,6 @@ Return 5-10 most relevant codes, prioritized by relevance and specificity.`,
                 <Button
                   size="sm"
                   onClick={applySelectedCodes}
-                  className="bg-green-600 hover:bg-green-700"
                 >
                   <CheckCircle2 className="w-3 h-3 mr-1" />
                   Apply Codes

@@ -154,7 +154,7 @@ export default function TemplateLibrary() {
                     </Button>
                     <Button
                       onClick={handleUseInVisit}
-                      className="bg-emerald-600 hover:bg-emerald-700 gap-2"
+                      className="gap-2"
                     >
                       <FileText className="w-4 h-4" />
                       Use in Visit Documentation

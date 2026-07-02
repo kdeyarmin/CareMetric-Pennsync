@@ -424,7 +424,7 @@ export default function ReferralPDFSummarizer({
                     Admission Packet PDF
                   </Button>
                   {onUseForAdmission && (
-                    <Button size="sm" onClick={() => onUseForAdmission(extractedData)} className="bg-green-600 hover:bg-green-700">
+                    <Button size="sm" onClick={() => onUseForAdmission(extractedData)} >
                       <ArrowRight className="w-4 h-4 mr-1" />
                       Use for Admission
                     </Button>

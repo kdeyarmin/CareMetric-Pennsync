@@ -119,7 +119,6 @@ export default function PotentialDuplicateDialog({ open, onOpenChange, matches =
           </Button>
           <Button
             variant="outline"
-            className="text-amber-700 border-amber-300 hover:bg-amber-50"
             onClick={() => {
               onOpenChange(false);
               onProceedAnyway?.();

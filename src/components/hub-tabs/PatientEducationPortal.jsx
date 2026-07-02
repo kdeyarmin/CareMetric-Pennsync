@@ -378,7 +378,7 @@ function EducationMaterialCard({
                 <Button
                   onClick={handleMarkDelivered}
                   disabled={updatingStatus || !teachBackNotes.trim()}
-                  className="w-full bg-green-600 hover:bg-green-700"
+                  className="w-full"
                 >
                   {updatingStatus ? (
                     <>

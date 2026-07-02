@@ -503,7 +503,7 @@ export default function MedicareGuidelinesLibrary() {
                     href={selectedGuideline.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-700 text-sm flex items-center gap-1"
+                    className="text-blue-600 hover:text-blue-700 hover:underline text-sm flex items-center gap-1"
                   >
                     View Original on CMS.gov
                     <ExternalLink className="w-3 h-3" />

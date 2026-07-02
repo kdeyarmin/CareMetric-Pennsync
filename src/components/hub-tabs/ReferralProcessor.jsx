@@ -273,7 +273,7 @@ export default function ReferralProcessor() {
                   <Button
                     onClick={createPatientFromReferral}
                     disabled={isCreatingPatient || createdPatientId}
-                    className="bg-green-600 hover:bg-green-700 w-full min-h-[44px]"
+                    className="w-full min-h-[44px]"
                   >
                     {createdPatientId ? (
                       <>

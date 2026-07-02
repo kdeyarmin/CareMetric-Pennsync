@@ -557,7 +557,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
                   size="sm"
                   variant="outline"
                   onClick={handlePause}
-                  className="text-orange-600 border-orange-300 hover:bg-orange-50"
                 >
                   <Pause className="w-4 h-4 mr-1" />
                   Pause
@@ -567,7 +566,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
                   size="sm"
                   variant="outline"
                   onClick={handleResume}
-                  className="text-green-600 border-green-300 hover:bg-green-50"
                 >
                   <Play className="w-4 h-4 mr-1" />
                   Resume
@@ -603,7 +601,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
                         size="sm" 
                         variant="outline"
                         onClick={downloadCSVReport}
-                        className="border-green-300 text-green-700 hover:bg-green-50"
                       >
                         <FileSpreadsheet className="w-4 h-4 mr-1" />
                         Export CSV
@@ -621,7 +618,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
                       </Button>
                     )}
                     {successCount > 0 && (
-                      <Button size="sm" onClick={downloadAllReports} className="bg-green-600 hover:bg-green-700">
+                      <Button size="sm" onClick={downloadAllReports} >
                         <Download className="w-4 h-4 mr-1" />
                         Download ZIP
                       </Button>

@@ -318,12 +318,11 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
                     <Button
                       onClick={handleCheckAnswer}
                       disabled={selectedAnswers[quizStep] === undefined}
-                      className="bg-green-600 hover:bg-green-700"
                     >
                       Submit Answer
                     </Button>
                   ) : (
-                    <Button onClick={handleNextStep} className="bg-green-600 hover:bg-green-700">
+                    <Button onClick={handleNextStep} >
                       {quizStep < content.quiz.length - 1 ? 'Next Question' : 'Complete Training'}
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>

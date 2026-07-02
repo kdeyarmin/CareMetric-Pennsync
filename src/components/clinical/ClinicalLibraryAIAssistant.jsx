@@ -329,7 +329,7 @@ ${response}`,
                     <Button
                       onClick={handleApply}
                       size="sm"
-                      className="bg-green-600 hover:bg-green-700 w-full"
+                      className="w-full"
                     >
                       Apply This Template
                     </Button>

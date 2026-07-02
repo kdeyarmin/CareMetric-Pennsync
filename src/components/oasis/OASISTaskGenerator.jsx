@@ -289,7 +289,7 @@ export default function OASISTaskGenerator({
             <Button
               onClick={handleCreateTasks}
               disabled={isCreating || selectedTasks.length === 0}
-              className="w-full bg-amber-600 hover:bg-amber-700"
+              className="w-full"
             >
               {isCreating ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating Tasks...</>

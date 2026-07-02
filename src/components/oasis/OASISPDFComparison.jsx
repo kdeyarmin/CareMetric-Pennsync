@@ -258,7 +258,6 @@ export default function OASISPDFComparison({
                   variant="outline"
                   size="sm"
                   onClick={clearAllDiscrepancies}
-                  className="text-yellow-700"
                 >
                   <RotateCcw className="w-3 h-3 mr-1" />
                   Clear Flags

@@ -134,7 +134,6 @@ export default function PDFTools() {
                   <Button
                     onClick={() => window.open(resultUrl, '_blank')}
                     variant="outline"
-                    className="border-emerald-600 text-emerald-700 hover:bg-emerald-100"
                   >
                     View PDF
                   </Button>
@@ -145,7 +144,6 @@ export default function PDFTools() {
                       link.download = `processed-${Date.now()}.pdf`;
                       link.click();
                     }}
-                    className="bg-emerald-600 hover:bg-emerald-700"
                   >
                     Download PDF
                   </Button>

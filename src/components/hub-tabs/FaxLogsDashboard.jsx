@@ -169,7 +169,6 @@ Provide actionable insights in a structured format with clear sections.`,
         <Button
           onClick={generateAIInsights}
           disabled={ai.loading || failedLogs.length === 0}
-          className="bg-gradient-to-r from-navy-600 to-indigo-600"
         >
           <Brain className="w-4 h-4 mr-2" />
           {ai.loading ? "Analyzing..." : "Generate AI Insights"}
