@@ -16,6 +16,7 @@ import PageNotFound from './lib/PageNotFound';
 import PageLoader from '@/components/ui/PageLoader';
 import SignerPortal from '@/pages/SignerPortal';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import SignInScreen from '@/components/auth/SignInScreen';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AIContentResponsibilityAgreement from '@/components/compliance/AIContentResponsibilityAgreement';
 import Layout from '@/components/Layout';
@@ -74,7 +75,7 @@ const RoutePageLoader = () => (
 
 const AuthenticatedApp = () => {
   const location = useLocation();
-  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, navigateToLogin } = useAuth();
+  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated } = useAuth();
   // Three-tier role model (see lib/roles.js): super_admin > facility_admin > nurse.
   // The platform super admin (owner email or super_admin account_type) reaches
   // admin routes even before their `role` is `admin`. This is what lets the
@@ -118,9 +119,10 @@ const AuthenticatedApp = () => {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
-      // Redirect to login automatically
-      navigateToLogin();
-      return null;
+      // Branded in-app sign-in (replaces the redirect to the unbranded
+      // platform-hosted /login page). Rendering in place preserves the URL,
+      // so deep links survive sign-in.
+      return <SignInScreen />;
     }
   }
 
@@ -128,8 +130,7 @@ const AuthenticatedApp = () => {
   // authError, so without this an unauthenticated user would render every
   // route and fire PHI queries. Never rely on authError alone here.
   if (!isAuthenticated) {
-    navigateToLogin();
-    return null;
+    return <SignInScreen />;
   }
 
   // Responsibility gate: before using the software, every user must sign off
