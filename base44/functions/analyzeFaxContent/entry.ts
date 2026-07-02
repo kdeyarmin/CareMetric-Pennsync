@@ -23,7 +23,9 @@ Deno.serve(async (req) => {
     // Fail CLOSED on a missing sender: a legacy/system fax with no sent_by must
     // not be readable by any authenticated user who guesses its id — treat an
     // unknown owner as not-this-caller and require admin.
-    const isAdmin = user.role === 'admin';
+    const isAdmin = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
     if (!isAdmin && fax.sent_by !== user.email) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }

@@ -47,6 +47,10 @@ Deno.serve(async (req) => {
     const tokenRecord = await base44.entities.DocumentPackageToken.create({
       package_id,
       token: tokenHash,
+      // Marks this row as storing a HASH (not plaintext). Validators use it to
+      // refuse the legacy-plaintext fallback for hashed rows — otherwise a leaked
+      // stored hash could itself be replayed as a bearer token.
+      token_hashed: true,
       signer_email,
       signer_name: signer_name || signer_email,
       token_created_at: new Date().toISOString(),

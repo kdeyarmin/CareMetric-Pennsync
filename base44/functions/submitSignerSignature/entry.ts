@@ -35,9 +35,12 @@ Deno.serve(async (req) => {
       { token: tokenHash }, '-created_date', 1
     );
     if (!tokenRecords || tokenRecords.length === 0) {
-      tokenRecords = await base44.asServiceRole.entities.DocumentPackageToken.filter(
+      // Legacy-plaintext fallback, excluding hashed rows so a leaked stored hash
+      // can't be replayed as a bearer token (see validateSignerToken).
+      const legacy = await base44.asServiceRole.entities.DocumentPackageToken.filter(
         { token }, '-created_date', 1
       );
+      tokenRecords = (legacy || []).filter((r) => r?.token_hashed !== true);
     }
     const tokenRecord = tokenRecords?.[0];
     if (!tokenRecord || tokenRecord.is_active === false) {

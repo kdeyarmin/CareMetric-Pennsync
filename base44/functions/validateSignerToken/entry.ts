@@ -29,11 +29,17 @@ Deno.serve(async (req) => {
       1
     );
     if (!tokenRecords || tokenRecords.length === 0) {
-      tokenRecords = await base44.asServiceRole.entities.DocumentPackageToken.filter(
+      // Legacy-plaintext fallback — but ONLY for rows that are NOT hashed. A
+      // hashed row stores sha256(token) as its `token`, so submitting that stored
+      // hash verbatim would otherwise match here and let a leaked hash act as a
+      // bearer token. token_hashed:true rows are excluded so only genuine legacy
+      // plaintext tokens (pre-hashing) validate this way.
+      const legacy = await base44.asServiceRole.entities.DocumentPackageToken.filter(
         { token },
         '-created_date',
         1
       );
+      tokenRecords = (legacy || []).filter((r) => r?.token_hashed !== true);
     }
 
     if (!tokenRecords || tokenRecords.length === 0) {

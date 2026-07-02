@@ -10,6 +10,10 @@
       "type": "string",
       "description": "SHA-256 hash of the secure access token. The plaintext token exists only in the emailed signing link; validators hash the presented token before lookup. (Legacy rows may still hold a plaintext token until they expire.)"
     },
+    "token_hashed": {
+      "type": "boolean",
+      "description": "True when the token field stores a SHA-256 hash (not plaintext). Validators refuse the legacy-plaintext fallback for hashed rows so a leaked stored hash can't be replayed as a bearer token."
+    },
     "signer_email": {
       "type": "string",
       "description": "Email of authorized signer"

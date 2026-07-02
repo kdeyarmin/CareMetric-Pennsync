@@ -391,7 +391,9 @@ async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuper
   // AS a super admin / peer admin — a side-door escalation the role-field guards
   // in updateUser/fixUserAccount exist to prevent). Only a super admin may reset
   // another admin's or a super admin's password.
-  const targetIsPrivileged = targetUser.account_type === 'super_admin' || targetUser.role === 'admin';
+  const targetIsPrivileged = targetUser.account_type === 'super_admin'
+    || targetUser.account_type === 'agency_admin'
+    || targetUser.role === 'admin';
   if (targetIsPrivileged && !callerIsSuperAdmin) {
     return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
   }
@@ -545,7 +547,9 @@ async function updateUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   if (!targetUser) {
     return Response.json({ error: 'User not found' }, { status: 404 });
   }
-  const targetIsPrivileged = targetUser.account_type === 'super_admin' || targetUser.role === 'admin';
+  const targetIsPrivileged = targetUser.account_type === 'super_admin'
+    || targetUser.account_type === 'agency_admin'
+    || targetUser.role === 'admin';
   if (targetIsPrivileged && !callerIsSuperAdmin && targetUser.email !== currentUser.email) {
     return Response.json({ error: 'Only a super admin can modify another administrator\'s account.' }, { status: 403 });
   }
