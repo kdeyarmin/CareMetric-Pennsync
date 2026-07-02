@@ -8,13 +8,21 @@ import SearchablePatientSelect from '@/components/ui/SearchablePatientSelect';
 import OfflineSyncStatus from '@/components/offline/OfflineSyncStatus';
 import OfflineVisitDocumentation from '@/components/offline/OfflineVisitDocumentation';
 import { FileText, Upload, AlertCircle, Info, UserSearch } from 'lucide-react';
+import { withOfflineRosterFallback } from '@/lib/offlinePatients';
 
 export default function OfflineDocumentation() {
   const [selectedPatientId, setSelectedPatientId] = useState(null);
 
+  // Dedicated key (not the shared ['patients','active']) so THIS observer's
+  // networkMode/fallback governs the fetch; 'always' + the roster fallback keep
+  // the patient picker usable while offline (the default networkMode pauses
+  // the queryFn offline, leaving nothing to document against).
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'active'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }),
+    queryKey: ['patients', 'offline-roster'],
+    networkMode: 'always',
+    queryFn: () => withOfflineRosterFallback(
+      () => base44.entities.Patient.filter({ status: 'active' })
+    ),
   });
 
   return (

@@ -109,7 +109,27 @@ and production builds strip `console.*`, so tapping the button did nothing.
 **Fixed:** the toggle now detects missing support and toasts "Screen sharing isn't
 supported on this device", and non-user-cancel failures surface a visible error.
 
-### 10. Offline UI promised features that don't exist
+### 10. Offline patient pickers were empty exactly when offline
+The Offline Mode "Document Visit" tab and the Offline Documentation hub tab load
+their patient lists with plain network queries. Worse, React Query's default
+`networkMode: 'online'` **pauses** the query function while offline — so even
+SmartNoteAssistant's existing IndexedDB fallback could never execute in the one
+situation it exists for. Offline, a nurse had no patient to document against.
+**Fixed:** new `src/lib/offlinePatients.js` helper (`withOfflineRosterFallback`,
+unit-tested) serves the IndexedDB roster cached by OfflineManager when the fetch
+fails while offline (online API errors still surface); both offline tabs use it
+with `networkMode: 'always'`, and SmartNoteAssistant's query got the same
+`networkMode` fix.
+
+### 11. Non-functional "Push Notifications" settings
+`NotificationPreferences.jsx` rendered a master Push toggle plus a per-type Push
+column that only persisted booleans — there is no Web Push subscription or native
+push pipeline (the backend merely echoes the flag). Store reviewers flag settings
+that visibly do nothing. **Fixed:** the dead controls are removed (with a comment
+explaining how to restore them alongside a real delivery pipeline); the entity
+fields remain so no migration is needed later.
+
+### 12. Offline UI promised features that don't exist
 The "How Offline Mode Works" / "Storage & Sync Information" cards claimed
 30-second auto-save, 3-attempt exponential-backoff retry, conflict detection, and
 2-second auto-sync — none of which are implemented in `src/lib/offlineSync.js`.
@@ -168,10 +188,9 @@ packages and submits the app.
 
 ### Both stores
 - **Privacy policy URL** and support contact must exist and match the listing.
-- **Push notifications:** the "Push Notifications" toggle in
-  `NotificationPreferences.jsx` only persists a boolean — there is no Push API
-  subscription or native push. Either wire real push in the wrapper or relabel the
-  toggle before store review (reviewers flag non-functional settings).
+- **Push notifications:** there is no Push API subscription or native push
+  pipeline. The dead settings toggles were removed in this pass (Part 1 #11);
+  if push is wanted, it must be built in the wrapper + backend together.
 - **Storage partitioning:** an installed app has its OWN storage partition —
   tokens, the offline queue, and cached patients do not carry over from the
   browser. Users must log in again after installing, and any visits queued
@@ -188,9 +207,10 @@ packages and submits the app.
    the latter, and only `SmartNoteAssistant` reads the former. Unifying them is a
    worthwhile follow-up refactor.
 2. **React Query offline reads:** default `networkMode: 'online'` pauses queries
-   offline; most pages show empty/loading states rather than cached data (only
-   SmartNoteAssistant has an explicit IndexedDB fallback). The offline story is
-   scoped to the documented Offline Mode flows.
+   offline; most pages show empty/loading states rather than cached data. The
+   dedicated offline surfaces (Offline Mode tabs, SmartNote patient picker) now
+   have working IndexedDB fallbacks (Part 1 #10); general pages remain
+   online-first by design.
 3. **Internal `<Link target="_blank">` course previews** (`CourseManager`,
    `SMEReviewQueue`) break out of the installed shell; left alone because they're
    desktop admin authoring tools.

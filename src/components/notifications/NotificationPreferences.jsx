@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Mail, Clock, Check, Smartphone, Volume2 } from "lucide-react";
+import { Bell, Mail, Clock, Check, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function NotificationPreferences({ currentUser }) {
@@ -215,27 +215,13 @@ export default function NotificationPreferences({ currentUser }) {
             />
           </div>
 
-          <div className="flex items-center justify-between py-3">
-            <div className="flex items-center gap-3">
-              <Smartphone className="w-5 h-5 text-navy-600" />
-              <div>
-                <Label htmlFor="push-toggle" className="text-base font-medium">
-                  Push Notifications
-                </Label>
-                <p className="text-sm text-slate-500">
-                  Browser push notifications (requires permission)
-                </p>
-              </div>
-            </div>
-            <Switch
-              id="push-toggle"
-              checked={preferences?.push_notifications_enabled}
-              onCheckedChange={(value) => {
-                const updatedPrefs = { ...preferences, push_notifications_enabled: value };
-                savePreferencesMutation.mutate(updatedPrefs);
-              }}
-            />
-          </div>
+          {/* NOTE: no Push Notifications toggle. There is no Web Push
+              subscription or native push pipeline behind the
+              push_notifications_enabled field — the backend only echoes it —
+              and a setting that visibly does nothing is an app-store review
+              flag. The entity fields are kept so wiring real push later needs
+              no migration; re-add the toggle (and the per-type Push column
+              below) together with the actual delivery pipeline. */}
 
           <div className="flex items-center justify-between py-3 border-t">
             <div className="flex items-center gap-3">
@@ -290,12 +276,6 @@ export default function NotificationPreferences({ currentUser }) {
                       <span className="hidden sm:inline">Email</span>
                     </div>
                   </th>
-                  <th className="text-center px-2 py-2 font-medium">
-                    <div className="flex items-center justify-center gap-1">
-                      <Smartphone className="w-4 h-4" />
-                      <span className="hidden sm:inline">Push</span>
-                    </div>
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -329,13 +309,6 @@ export default function NotificationPreferences({ currentUser }) {
                           checked={pref.email !== false}
                           onCheckedChange={(value) => handleToggle(type.key, 'email', value)}
                           disabled={!preferences?.email_notifications_enabled}
-                        />
-                      </td>
-                      <td className="text-center px-2">
-                        <Switch
-                          checked={pref.push === true}
-                          onCheckedChange={(value) => handleToggle(type.key, 'push', value)}
-                          disabled={!preferences?.push_notifications_enabled}
                         />
                       </td>
                     </tr>
