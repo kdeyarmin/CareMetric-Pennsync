@@ -24,7 +24,6 @@ export default function AIPatientAnalyzer({ patient, visits, incidents }) {
   const runAnalysis = async () => {
     try {
       // Prepare comprehensive patient data
-      const recentVisits = (visits || []).slice(0, 10);
       const recentIncidents = (incidents || []).slice(0, 5);
       // Actual count of visits within the last 30 days, so the prompt's
       // "(Last 30 days)" label matches the number (not just the 10 most recent).

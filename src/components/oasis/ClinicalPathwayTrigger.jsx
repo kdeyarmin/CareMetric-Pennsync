@@ -56,10 +56,10 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
     const valueLower = (value || '').toLowerCase();
 
     switch (type) {
-      case 'diagnosis_code':
+      case 'diagnosis_code': {
         const primaryCode = (data.primary_diagnosis_code || '').toLowerCase();
         const allCodes = (data.comorbidities || []).map(c => c.toLowerCase());
-        
+
         if (operator === 'equals') {
           return primaryCode === valueLower || allCodes.some(c => c.includes(valueLower));
         } else if (operator === 'starts_with') {
@@ -68,32 +68,37 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
           return primaryCode.includes(valueLower) || allCodes.some(c => c.includes(valueLower));
         }
         break;
+      }
 
-      case 'diagnosis_keyword':
+      case 'diagnosis_keyword': {
         const primaryDx = (data.primary_diagnosis || data.primary_diagnosis_description || '').toLowerCase();
         const comorbidityText = (data.comorbidities || []).join(' ').toLowerCase();
         const searchText = primaryDx + ' ' + comorbidityText;
-        
-        return searchText.includes(valueLower);
 
-      case 'clinical_condition':
+        return searchText.includes(valueLower);
+      }
+
+      case 'clinical_condition': {
         const clinicalItems = JSON.stringify(data.clinical_items || {}).toLowerCase();
         return clinicalItems.includes(valueLower);
+      }
 
-      case 'functional_score':
+      case 'functional_score': {
         const functionalScores = data.functional_scores || {};
         const totalScore = Object.values(functionalScores).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
-        
+
         if (operator === 'greater_than') {
           return totalScore > parseInt(value);
         } else if (operator === 'less_than') {
           return totalScore < parseInt(value);
         }
         break;
+      }
 
-      case 'comorbidity':
+      case 'comorbidity': {
         const comorbidities = (data.comorbidities || []).map(c => c.toLowerCase());
         return comorbidities.some(c => c.includes(valueLower));
+      }
 
       default:
         return false;

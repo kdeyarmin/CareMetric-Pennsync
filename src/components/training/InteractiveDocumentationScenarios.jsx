@@ -129,7 +129,7 @@ export default function InteractiveDocumentationScenarios({ nurseEmail, _recomme
         handleStartScenario(scenario);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- run-once auto-select per initialScenarioId; a ref latch prevents re-fire when selection is cleared
+  // Run-once auto-select per initialScenarioId; a ref latch prevents re-fire when selection is cleared
   }, [initialScenarioId]);
 
   const savePracticeMutation = useMutation({

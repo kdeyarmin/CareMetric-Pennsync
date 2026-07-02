@@ -249,7 +249,7 @@ export default function Layout({ children, currentPageName }) {
         details: { logout_time: new Date().toISOString(), user_role: currentUser?.role },
         user_agent: navigator.userAgent,
       });
-    } catch {}
+    } catch { /* no-op */ }
     // HIPAA: purge cached PHI before logging out (shared-device safety). Await
     // the storage purge so the IndexedDB clear isn't abandoned by the redirect.
     try { queryClientInstance.clear(); } catch { /* no-op */ }

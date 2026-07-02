@@ -222,7 +222,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
         const parsed = JSON.parse(saved);
         if (parsed.patientId) setPatientId(parsed.patientId);
         if (parsed.visitType) setVisitType(parsed.visitType);
-      } catch {}
+      } catch { /* no-op */ }
     }
   }, [queryPatientId, queryVisitType]);
 

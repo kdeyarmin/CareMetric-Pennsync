@@ -66,7 +66,7 @@ export default function RegulatoryMonitor({ isAdmin = false }) {
     try {
       const cached = localStorage.getItem('last_regulatory_scan');
       if (cached) setLastScanDate(new Date(cached));
-    } catch {}
+    } catch { /* no-op */ }
   }, []);
 
   const createUpdateMutation = useMutation({
@@ -183,7 +183,7 @@ Return JSON:
         });
       }
 
-      try { localStorage.setItem('last_regulatory_scan', new Date().toISOString()); } catch {}
+      try { localStorage.setItem('last_regulatory_scan', new Date().toISOString()); } catch { /* no-op */ }
       setLastScanDate(new Date());
 
     } catch (error) {

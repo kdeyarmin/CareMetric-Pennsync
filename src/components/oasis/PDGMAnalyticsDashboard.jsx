@@ -153,7 +153,7 @@ export default function PDGMAnalyticsDashboard() {
     };
 
     filtered.forEach(item => {
-      if (item.status && statusCounts.hasOwnProperty(item.status)) {
+      if (item.status && Object.prototype.hasOwnProperty.call(statusCounts, item.status)) {
         statusCounts[item.status] += 1;
       }
     });

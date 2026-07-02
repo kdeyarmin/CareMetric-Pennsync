@@ -40,7 +40,7 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
       try { localStorage.setItem(`visit_draft_${formData.visit_id}`, JSON.stringify({
         ...formData,
         lastSaved: new Date().toISOString()
-      })); } catch {}
+      })); } catch { /* no-op */ }
       setLastSaved(new Date());
     }
   }, [isOnline, formData]);
