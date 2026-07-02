@@ -25,9 +25,10 @@ final class BlobDownloadHandler: NSObject, WKDownloadDelegate {
     /// Destination URLs keyed by download, so we know what to share on finish.
     private var destinations = [WKDownload: URL]()
 
-    init(presenter: UIViewController) {
-        self.presenter = presenter
-    }
+init(presenter: UIViewController) {
+    self.presenter = presenter
+    super.init()
+}
 
     // MARK: - WKDownloadDelegate
 
