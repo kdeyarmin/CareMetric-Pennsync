@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from 'sonner';
 import { referralToF2FInput, validateFaceToFace } from "./faceToFaceValidator.js";
+import DiagnosisCodeGenerator from "./DiagnosisCodeGenerator.jsx";
 
 export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
   const [analysis, setAnalysis] = useState(null);
@@ -183,26 +184,34 @@ Referral Data: ${JSON.stringify(referralData)}`,
   }, [referralData, analyzeReferral]);
 
   if (!analysis) {
+    // The diagnosis-code generator is deterministic (no LLM), so it renders
+    // immediately — even while the AI analysis is still running or has failed.
     if (analysisError) {
       return (
-        <Card className="border-2 border-red-300">
-          <CardContent className="p-8 text-center">
-            <XCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
-            <p className="text-slate-700 mb-4">Couldn't analyze this referral.</p>
-            <Button type="button" onClick={analyzeReferral}>
-              Retry analysis
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <DiagnosisCodeGenerator referralData={referralData} />
+          <Card className="border-2 border-red-300">
+            <CardContent className="p-8 text-center">
+              <XCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
+              <p className="text-slate-700 mb-4">Couldn't analyze this referral.</p>
+              <Button type="button" onClick={analyzeReferral}>
+                Retry analysis
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       );
     }
     return (
-      <Card className="border-2 border-blue-300">
-        <CardContent className="p-8 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-slate-600">Analyzing referral with AI...</p>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <DiagnosisCodeGenerator referralData={referralData} />
+        <Card className="border-2 border-blue-300">
+          <CardContent className="p-8 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+            <p className="text-slate-600">Analyzing referral with AI...</p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -227,6 +236,10 @@ Referral Data: ${JSON.stringify(referralData)}`,
 
   return (
     <div className="space-y-4">
+      {/* Diagnosis codes found in the referral, sequenced per the PDGM model —
+          deterministic, never AI-generated */}
+      <DiagnosisCodeGenerator referralData={referralData} />
+
       {/* Urgency Header */}
       <Alert className={`border-2 ${analysis.urgency_analysis?.priority_level === 'STAT' || analysis.urgency_analysis?.priority_level === 'High' ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'}`}>
         <TrendingUp className="w-5 h-5" />
