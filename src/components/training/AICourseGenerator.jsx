@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Sparkles, Loader2, AlertTriangle, Film, ChevronDown, ChevronUp } from "lucide-react";
 import { generateTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
+import PresenterPicker from "@/components/training/PresenterPicker";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { toast } from "sonner";
 
@@ -269,29 +270,16 @@ export default function AICourseGenerator({ onGenerated }) {
               </span>
             </label>
             {form.generate_videos && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pl-8">
-                <div>
-                  <Label htmlFor="ai-avatar-id" className="text-xs font-semibold">Avatar ID (optional)</Label>
-                  <Input
-                    id="ai-avatar-id"
-                    value={form.video_avatar_id}
-                    onChange={(e) => set({ video_avatar_id: e.target.value })}
-                    placeholder="Default avatar"
-                    className="h-9 mt-1"
-                    disabled={loading}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ai-voice-id" className="text-xs font-semibold">Voice ID (optional)</Label>
-                  <Input
-                    id="ai-voice-id"
-                    value={form.video_voice_id}
-                    onChange={(e) => set({ video_voice_id: e.target.value })}
-                    placeholder="Default voice"
-                    className="h-9 mt-1"
-                    disabled={loading}
-                  />
-                </div>
+              <div className="mt-3 pl-8">
+                <PresenterPicker
+                  avatarId={form.video_avatar_id}
+                  voiceId={form.video_voice_id}
+                  onAvatarChange={(v) => set({ video_avatar_id: v })}
+                  onVoiceChange={(v) => set({ video_voice_id: v })}
+                  disabled={loading}
+                  idPrefix="ai-course"
+                  notConfiguredHint="The course will still generate — presenter videos will just be skipped."
+                />
               </div>
             )}
           </div>

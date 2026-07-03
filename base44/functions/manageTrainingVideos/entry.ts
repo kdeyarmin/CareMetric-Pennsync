@@ -7,7 +7,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // off a HeyGen job and stamp the module video_status='processing' + video_job_id,
 // then return immediately. `status` polls each processing job ONCE (no waiting
 // loop) and finalizes finished modules. The admin UI calls `status` on an
-// interval to watch progress.
+// interval to watch progress. `options` lists the account's avatars/voices so
+// the UIs can offer pickers instead of raw HeyGen IDs.
+//
+// buildNarrationScript / truncateAtSentence / normalizeHeyGenAvatars /
+// normalizeHeyGenVoices are inline copies of the unit-tested source in
+// src/components/training/videoNarration.js — keep them identical
+// (base44/functions/trainingVideosInlineParity.test.js guards against drift).
 // ───────────────────────────────────────────────────────────────────────────
 
 const HEYGEN_BASE = 'https://api.heygen.com';
@@ -31,21 +37,93 @@ async function heygen(path, method, body, apiKey) {
   return res.json();
 }
 
+// HeyGen's /v2/video/generate rejects input_text over 5000 characters.
+const NARRATION_CHAR_LIMIT = 5000;
+
+const TRUNCATION_SUFFIX = ' That covers the key points for this module.';
+
+// Cut a too-long script at the last sentence boundary that leaves room for the
+// wrap-up suffix, so the narration never stops mid-word or mid-sentence.
+function truncateAtSentence(script, limit = NARRATION_CHAR_LIMIT) {
+  if (script.length <= limit) return script;
+  const budget = limit - TRUNCATION_SUFFIX.length;
+  const head = script.slice(0, budget);
+  const lastStop = Math.max(head.lastIndexOf('. '), head.lastIndexOf('! '), head.lastIndexOf('? '));
+  // No usable sentence boundary (one giant run-on) — fall back to a hard cut.
+  const kept = lastStop > 0 ? head.slice(0, lastStop + 1) : `${head.slice(0, budget - 3)}...`;
+  return kept + TRUNCATION_SUFFIX;
+}
+
+// Turn a lesson module's content_json into a spoken narration script. Follows
+// the on-screen lesson order: intro, sections (with pro tips and warnings),
+// key takeaways, clinical pearl, summary.
 function buildNarrationScript(moduleTitle, content) {
+  const c = content || {};
   const parts = [`Welcome to this module: ${moduleTitle}.`];
-  if (content.intro) parts.push(String(content.intro));
-  const sections = content.sections || [];
-  for (const section of sections) {
+  if (c.intro) parts.push(String(c.intro));
+  for (const section of Array.isArray(c.sections) ? c.sections : []) {
+    if (!section || typeof section !== 'object') continue;
     if (section.heading) parts.push(`Let's talk about: ${section.heading}.`);
     if (section.body) parts.push(String(section.body));
     if (section.pro_tip) parts.push(`Here's a pro tip: ${section.pro_tip}`);
     if (section.warning) parts.push(`Important warning: ${section.warning}`);
   }
-  if (content.clinical_pearl) parts.push(`Clinical pearl: ${content.clinical_pearl}`);
-  if (content.summary) parts.push(String(content.summary));
+  const takeaways = (Array.isArray(c.key_takeaways) ? c.key_takeaways : [])
+    .map((t) => String(t).trim())
+    .filter(Boolean);
+  if (takeaways.length) {
+    parts.push(`Before we wrap up, remember these key takeaways. ${takeaways.map((t) => (/[.!?]$/.test(t) ? t : `${t}.`)).join(' ')}`);
+  }
+  if (c.clinical_pearl) parts.push(`Clinical pearl: ${c.clinical_pearl}`);
+  if (c.summary) parts.push(String(c.summary));
   parts.push("That wraps up this module. Let's move on.");
-  const script = parts.join(' ');
-  return script.length > 5000 ? script.slice(0, 4950) + '... That covers the key points for this module.' : script;
+  return truncateAtSentence(parts.join(' '));
+}
+
+// Bounded, UI-ready avatar list from HeyGen GET /v2/avatars. Drops entries
+// without an id, dedupes, and caps the list so the response (and the dropdown)
+// stays a manageable size.
+function normalizeHeyGenAvatars(rawAvatars, cap = 150) {
+  const seen = new Set();
+  const out = [];
+  for (const a of Array.isArray(rawAvatars) ? rawAvatars : []) {
+    const id = a && typeof a === 'object' ? String(a.avatar_id || '').trim() : '';
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      avatar_id: id,
+      name: String(a.avatar_name || id),
+      gender: a.gender ? String(a.gender) : '',
+      preview_image_url: a.preview_image_url ? String(a.preview_image_url) : '',
+    });
+    if (out.length >= cap) break;
+  }
+  return out.sort((x, y) => x.name.localeCompare(y.name));
+}
+
+// Bounded, UI-ready voice list from HeyGen GET /v2/voices. The full catalog is
+// 1000+ voices across dozens of languages; English voices are listed first
+// (this app's learners are US healthcare staff), then others, capped.
+function normalizeHeyGenVoices(rawVoices, cap = 150) {
+  const seen = new Set();
+  const all = [];
+  for (const v of Array.isArray(rawVoices) ? rawVoices : []) {
+    const id = v && typeof v === 'object' ? String(v.voice_id || '').trim() : '';
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    all.push({
+      voice_id: id,
+      name: String(v.name || id),
+      language: v.language ? String(v.language) : '',
+      gender: v.gender ? String(v.gender) : '',
+      preview_audio_url: v.preview_audio ? String(v.preview_audio) : '',
+    });
+  }
+  const isEnglish = (v) => /english/i.test(v.language);
+  const byName = (x, y) => x.name.localeCompare(y.name);
+  const english = all.filter(isEnglish).sort(byName);
+  const other = all.filter((v) => !isEnglish(v)).sort(byName);
+  return [...english, ...other].slice(0, cap);
 }
 
 async function createVideo(script, title, avatarId, voiceId, apiKey) {
@@ -103,6 +181,29 @@ Deno.serve(async (req) => {
     const { action = 'status', course_id, module_id, avatar_id, voice_id } = await req.json();
     const heygenApiKey = getHeyGenApiKey();
     const svc = base44.asServiceRole.entities;
+
+    // ── OPTIONS: list the account's avatars & voices for the UI pickers ─────
+    // Needs no course/module. Missing key is a normal state (feature not
+    // configured), not an error — the UIs use heygen_configured to explain it.
+    if (action === 'options') {
+      if (!heygenApiKey) {
+        return Response.json({
+          heygen_configured: false, avatars: [], voices: [],
+          default_avatar_id: DEFAULT_AVATAR_ID, default_voice_id: DEFAULT_VOICE_ID,
+        });
+      }
+      const [avatarsRes, voicesRes] = await Promise.all([
+        heygen('/v2/avatars', 'GET', null, heygenApiKey).catch(() => null),
+        heygen('/v2/voices', 'GET', null, heygenApiKey).catch(() => null),
+      ]);
+      return Response.json({
+        heygen_configured: true,
+        avatars: normalizeHeyGenAvatars(avatarsRes?.data?.avatars),
+        voices: normalizeHeyGenVoices(voicesRes?.data?.voices),
+        default_avatar_id: DEFAULT_AVATAR_ID,
+        default_voice_id: DEFAULT_VOICE_ID,
+      });
+    }
 
     let modules = [];
     if (module_id) {

@@ -7,10 +7,10 @@ import {
 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { manageTrainingVideos } from "@/functions/manageTrainingVideos";
+import PresenterPicker from "@/components/training/PresenterPicker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -152,17 +152,16 @@ export default function TrainingVideoStudio() {
                 <Settings2 className="w-3.5 h-3.5" /> Presenter options {showAdvanced ? "▲" : "▼"}
               </button>
               {showAdvanced && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2 rounded-xl border bg-slate-50 p-3">
-                  <div>
-                    <Label className="text-xs text-slate-500">Avatar ID</Label>
-                    <Input value={avatarId} onChange={(e) => setAvatarId(e.target.value)} placeholder="Daisy-inskirt-20220818 (default)" className="h-9" />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-slate-500">Voice ID</Label>
-                    <Input value={voiceId} onChange={(e) => setVoiceId(e.target.value)} placeholder="Elizabeth – Friendly (default)" className="h-9" />
-                  </div>
-                  <p className="sm:col-span-2 text-xs text-slate-400">
-                    Leave blank to use the default friendly presenter. Find avatar &amp; voice IDs in your HeyGen account.
+                <div className="mt-2 rounded-xl border bg-slate-50 p-3 space-y-2">
+                  <PresenterPicker
+                    avatarId={avatarId}
+                    voiceId={voiceId}
+                    onAvatarChange={setAvatarId}
+                    onVoiceChange={setVoiceId}
+                    idPrefix="video-studio"
+                  />
+                  <p className="text-xs text-slate-400">
+                    Applies to videos you generate from this page. Leave on the defaults for the standard friendly presenter.
                   </p>
                 </div>
               )}
