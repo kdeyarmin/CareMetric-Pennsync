@@ -51,6 +51,7 @@ export function formatLocalDate(value, opts) {
  * Whole-year age from a date of birth, computed on local calendar components so
  * it never flips a day early at the Medicare-band boundary.
  * @param {string|number|Date} dob
+ * @param {Date} [now] reference date (defaults to today); injectable for testing
  * @returns {number|null} null when the value is empty or unparseable
  */
 export function calculateAge(dob, now = new Date()) {
