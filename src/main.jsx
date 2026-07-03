@@ -40,8 +40,13 @@ const safeStorage = (storage) => ({
   },
 });
 
-const safeLocalStorage = safeStorage(window.localStorage);
-const safeSessionStorage = safeStorage(window.sessionStorage);
+let localStorageRef = null;
+let sessionStorageRef = null;
+try { localStorageRef = window.localStorage; } catch {}
+try { sessionStorageRef = window.sessionStorage; } catch {}
+
+const safeLocalStorage = safeStorage(localStorageRef);
+const safeSessionStorage = safeStorage(sessionStorageRef);
 
 const savedTheme = safeLocalStorage.getItem('theme')
 const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
