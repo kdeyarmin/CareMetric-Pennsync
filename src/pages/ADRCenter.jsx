@@ -24,6 +24,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -36,10 +37,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { base44 } from "@/api/base44Client";
 import AdrLetterAnalyzer from "../components/adr/AdrLetterAnalyzer";
 import AdrChecklistPanel from "../components/adr/AdrChecklistPanel";
 import AdrPacketVerifier from "../components/adr/AdrPacketVerifier";
+import AdrSubmissionPanel from "../components/adr/AdrSubmissionPanel";
 import { AUDIT_TYPES } from "../components/adr/adrRequirements";
 
 const AUDIT_TYPE_LABELS = Object.fromEntries(AUDIT_TYPES.map((t) => [t.id, t.label]));
@@ -82,6 +87,14 @@ export default function ADRCenter() {
   const { data: cases = [], isLoading } = useQuery({
     queryKey: ["adrCases"],
     queryFn: () => base44.entities.AdrAuditCase.list("-created_date", 200),
+    initialData: [],
+  });
+
+  // Patient roster for chart linking — loaded only once a case is open.
+  const { data: patients = [] } = useQuery({
+    queryKey: ["adrPatients"],
+    queryFn: () => base44.entities.Patient.list("-created_date", 500),
+    enabled: !!selectedCaseId,
     initialData: [],
   });
 
@@ -381,6 +394,33 @@ export default function ADRCenter() {
                   <span className="text-red-600 font-medium">{safeDate(selectedCase.response_due_date)}</span>
                 </p>
               </div>
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                <Label htmlFor="adr-patient-link" className="text-sm font-medium text-slate-500 shrink-0">
+                  Patient chart:
+                </Label>
+                <div className="w-full sm:w-72">
+                  <SearchablePatientSelect
+                    id="adr-patient-link"
+                    patients={patients}
+                    value={selectedCase.patient_id || ""}
+                    onValueChange={async (patientId) => {
+                      try {
+                        await base44.entities.AdrAuditCase.update(selectedCase.id, { patient_id: patientId || "" });
+                        refresh();
+                        toast.success(patientId ? "Case linked to the patient chart." : "Patient link removed.");
+                      } catch (err) {
+                        toast.error(err?.message || "Failed to link the patient.");
+                      }
+                    }}
+                    placeholder="Link to a patient chart..."
+                  />
+                </div>
+                {selectedCase.patient_id && (
+                  <Button asChild variant="outline" size="sm" className="min-h-[36px]">
+                    <Link to={`${createPageUrl("PatientDetails")}?id=${selectedCase.patient_id}`}>Open chart</Link>
+                  </Button>
+                )}
+              </div>
               {selectedCase.letter_analysis?.letter_summary && (
                 <Alert className="bg-slate-50 border-slate-200 mt-3">
                   <FileText className="w-4 h-4 text-slate-500" />
@@ -404,6 +444,13 @@ export default function ADRCenter() {
               Step 2 — Verify the assembled packet &amp; generate the response
             </h3>
             <AdrPacketVerifier adrCase={selectedCase} onUpdated={refresh} />
+          </section>
+
+          <section aria-label="Submission and outcome">
+            <h3 className="text-base font-semibold text-slate-900 mb-2 mt-6">
+              Step 3 — Submit &amp; track the decision
+            </h3>
+            <AdrSubmissionPanel adrCase={selectedCase} onUpdated={refresh} />
           </section>
         </div>
       )}

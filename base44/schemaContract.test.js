@@ -199,6 +199,12 @@ const ENUM_USAGE = {
     'letter_uploaded', 'checklist_ready', 'packet_uploaded', 'packet_verified',
     'packet_generated', 'submitted', 'closed',
   ],
+  // AdrAuditCase.outcome — written by the outcome tracker in
+  // src/components/adr/AdrSubmissionPanel.jsx (OUTCOME_LABELS keys).
+  'AdrAuditCase.outcome': [
+    'pending', 'paid_in_full', 'partially_denied', 'fully_denied',
+    'appealed', 'appeal_favorable', 'appeal_unfavorable',
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -260,6 +266,14 @@ const FIELD_USAGE = {
     'visit_id', 'patient_id', 'suggestion_type', 'oasis_item', 'original_suggestion',
     'user_action', 'modified_text', 'feedback_reason', 'reimbursement_impact_accuracy',
     'clinical_accuracy', 'helpfulness_rating',
+  ],
+  // AdrAuditCase — written by the ADR Center flow (ADRCenter.jsx,
+  // AdrPacketVerifier.jsx, AdrSubmissionPanel.jsx), generateAdrPacket, and the
+  // checkAdrDeadlines reminder job.
+  AdrAuditCase: [
+    'verification_summary', 'final_packet_url', 'final_packet_pages',
+    'deadline_reminders', 'submission_faxes', 'outcome', 'decision_date',
+    'appeal_due_date', 'outcome_notes',
   ],
 };
 

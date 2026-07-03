@@ -139,6 +139,56 @@
         }
       },
       "description": "Chronological case notes"
+    },
+    "deadline_reminders": {
+      "type": "object",
+      "properties": {
+        "last_notified_date": { "type": "string" },
+        "last_days_left": { "type": "number" }
+      },
+      "description": "Idempotency marker for the checkAdrDeadlines scheduled job (one reminder notification per case per calendar day)"
+    },
+    "submission_faxes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string" },
+          "to_number": { "type": "string" },
+          "to_name": { "type": "string" },
+          "fax_id": { "type": "string" },
+          "sent_by": { "type": "string" }
+        }
+      },
+      "description": "Record of final-packet fax submissions queued through sendFax (delivery status lives on FaxLog)"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "paid_in_full",
+        "partially_denied",
+        "fully_denied",
+        "appealed",
+        "appeal_favorable",
+        "appeal_unfavorable"
+      ],
+      "default": "pending",
+      "description": "Audit decision outcome, recorded after the contractor responds"
+    },
+    "decision_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the contractor's review decision"
+    },
+    "appeal_due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Deadline for the next appeal level (e.g. redetermination is 120 days from the initial determination)"
+    },
+    "outcome_notes": {
+      "type": "string",
+      "description": "Denial reasons / decision details recorded by staff"
     }
   },
   // Cases are always created from the ADR Center with a letter in hand, but no
