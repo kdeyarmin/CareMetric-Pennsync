@@ -12,11 +12,19 @@ import {
   Users,
   Calendar,
   MapPin,
-  Phone
+  Phone,
+  ShieldCheck,
+  Info
 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { format, isValid } from "date-fns";
+import {
+  validateMbi,
+  findMbiCandidates,
+  looksLikeMedicare,
+  looksLikeMedicareAdvantage,
+} from "./mbiValidator";
 
 // A suggested patient's stored date_of_birth may be a malformed string (patients
 // auto-created from referrals persist the raw AI-extracted DOB). date-fns format()
@@ -26,6 +34,23 @@ const safeDOB = (value) => {
   if (!value) return "N/A";
   const d = new Date(value);
   return isValid(d) ? format(d, "MM/dd/yyyy") : String(value);
+};
+
+// Describe what the referral packet says about one coverage slot. Format-only
+// companion info — statements about the packet contents, never an eligibility
+// verdict. For Medicare-looking coverage, MBI-shaped IDs are pulled from the
+// slot text + the extracted policy_numbers string and format-checked (the MBI
+// has no checksum, so this is pattern validation only).
+const describeCoverage = (insuranceText, policyNumbers) => {
+  if (!insuranceText || !looksLikeMedicare(insuranceText)) return null;
+  const candidates = findMbiCandidates(`${insuranceText} ${policyNumbers || ""}`);
+  const results = candidates.map((raw) => ({ raw, ...validateMbi(raw) }));
+  const validResult = results.find((r) => r.valid) || null;
+  return {
+    maHint: looksLikeMedicareAdvantage(insuranceText),
+    validResult,
+    invalidResults: validResult ? [] : results,
+  };
 };
 
 export default function PatientVerificationStep({ 
@@ -159,6 +184,66 @@ export default function PatientVerificationStep({
               <p className="text-xs text-slate-500">Referring Physician</p>
               <p className="font-semibold">{extractedData?.demographics?.referring_physician || 'Not extracted'}</p>
             </div>
+          </div>
+
+          {/* Insurance Verification Strip — what the referral packet contains */}
+          <div className="mt-4 p-3 bg-slate-50 rounded-lg border">
+            <p className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-slate-600" />
+              Insurance Listed in Referral Packet
+            </p>
+            <div className="space-y-3">
+              {[
+                { label: "Primary", text: extractedData?.demographics?.insurance_primary },
+                { label: "Secondary", text: extractedData?.demographics?.insurance_secondary },
+              ].map(({ label, text }) => {
+                const coverage = describeCoverage(text, extractedData?.demographics?.policy_numbers);
+                return (
+                  <div key={label}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-slate-500 w-20 shrink-0">{label}</span>
+                      <span className="text-sm font-semibold">{text || 'Not listed in packet'}</span>
+                      {coverage && coverage.validResult && (
+                        <Badge className="bg-green-100 text-green-800">
+                          MBI format valid: <span className="font-mono ml-1">{coverage.validResult.raw}</span>
+                        </Badge>
+                      )}
+                      {coverage && !coverage.validResult && coverage.invalidResults.length > 0 && (
+                        <Badge className="bg-red-100 text-red-800">MBI format issue in packet</Badge>
+                      )}
+                      {coverage && !coverage.validResult && coverage.invalidResults.length === 0 && (
+                        <Badge variant="outline" className="text-slate-600">No MBI-format ID in packet</Badge>
+                      )}
+                    </div>
+                    {coverage && coverage.invalidResults.length > 0 && (
+                      <ul className="mt-1 sm:ml-[5.5rem] text-xs text-red-700 list-disc list-inside">
+                        {coverage.invalidResults.map((r) => (
+                          <li key={r.raw}>
+                            <span className="font-mono">{r.raw}</span>: {r.errors[0]}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {coverage?.maHint && (
+                      <p className="mt-1 sm:ml-[5.5rem] text-xs text-blue-700 flex items-start gap-1">
+                        <Info className="w-3 h-3 mt-0.5 shrink-0" />
+                        Packet wording suggests a Medicare Advantage-type plan (advantage/HMO/PPO). The ID
+                        in the packet may be a plan member ID rather than an MBI.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-slate-500 w-20 shrink-0">Policy #s</span>
+                <span className="text-sm font-semibold">
+                  {extractedData?.demographics?.policy_numbers || 'Not listed in packet'}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mt-3 italic">
+              Format check of what the referral packet contains — not an eligibility or coverage verification.
+            </p>
           </div>
 
           {/* Match Analysis Summary */}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,13 +7,18 @@ import { ArrowRight, CheckCircle2, Clock, AlertCircle, Filter } from 'lucide-rea
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import ReferralTriageAnalyzer from '../components/referral/ReferralTriageAnalyzer';
+import { todayEastern } from '@/components/utils/timezone';
 import { toast } from 'sonner';
+
+// Triage urgency levels → Referral.priority enum (low/normal/high/urgent).
+const URGENCY_TO_PRIORITY = { CRITICAL: 'urgent', HIGH: 'high', MEDIUM: 'normal', LOW: 'low' };
 
 /**
  * AI-Powered Referral Triage Workflow
  * Parse incoming unstructured clinical data to triage and onboard referrals.
  */
 export default function ReferralTriage() {
+  const queryClient = useQueryClient();
   const [lastAnalysis, setLastAnalysis] = useState(null);
   const [showCreatePatient, setShowCreatePatient] = useState(false);
 
@@ -51,7 +56,32 @@ export default function ReferralTriage() {
         clinical_notes: lastAnalysis.clinical_summary,
       };
 
-      await base44.entities.Patient.create(patientData);
+      const patient = await base44.entities.Patient.create(patientData);
+
+      // Create the linked Referral record so triage admissions appear in the
+      // referral queue / QA / metrics (same payload shape as
+      // DocumentToTriageMapper). Deliberately NOT best-effort: a failure here
+      // must stop and tell the user, or we silently regress to the old
+      // patient-only flow where triage admissions were invisible downstream.
+      try {
+        await base44.entities.Referral.create({
+          patient_id: patient.id,
+          patient_name: lastAnalysis.patient_name || '',
+          diagnosis: lastAnalysis.primary_diagnosis || '',
+          referral_source: lastAnalysis.referral_source || 'Manual triage',
+          referral_date: todayEastern(),
+          document_type: 'manual',
+          priority: URGENCY_TO_PRIORITY[lastAnalysis.urgency_level] || 'normal',
+          status: 'ready_for_admission',
+        });
+      } catch (referralError) {
+        console.error('Error creating referral from triage:', referralError);
+        queryClient.invalidateQueries({ queryKey: ['patients'] });
+        toast.error(
+          `Patient ${lastAnalysis.patient_name} was created, but the referral queue record failed. Add the referral manually from Referral Intake.`
+        );
+        return;
+      }
 
       // Create a referral intake task
       const dueTimeframe = lastAnalysis.urgency_level === 'CRITICAL' ? '24_hours' : 'this_week';
@@ -70,7 +100,9 @@ export default function ReferralTriage() {
 
       setShowCreatePatient(false);
       setLastAnalysis(null);
-      toast.success(`Patient ${lastAnalysis.patient_name} created successfully!`);
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['referrals'] });
+      toast.success(`Patient ${lastAnalysis.patient_name} created and added to the referral queue.`);
     } catch (error) {
       console.error('Error creating patient:', error);
       toast.error('Failed to create patient. Please try again.');
