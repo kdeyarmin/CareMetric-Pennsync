@@ -44,6 +44,11 @@
       "default": 50,
       "description": "Average similar episodes per year"
     },
+    "pennsync_is_system_of_record": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether PennSync is the agency's complete visit/assessment record. Default false (companion-EMR mode): absence-based compliance alerts in monitorComplianceRisks stay disabled so missing EMR-documented work is never flagged as overdue"
+    },
     "is_enterprise": {
       "type": "boolean",
       "default": false,
