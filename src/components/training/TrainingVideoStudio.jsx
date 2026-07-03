@@ -33,9 +33,18 @@ export default function TrainingVideoStudio() {
   const [voiceId, setVoiceId] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // Drafts are included (labeled) because the AI course generator kicks off
+  // videos on courses that are still drafts — admins need to watch those render
+  // and retry failures here BEFORE publishing, not after.
   const { data: courses = [] } = useQuery({
     queryKey: ["video-studio-courses"],
-    queryFn: () => base44.entities.TrainingCourse.filter({ status: "published" }, "-updated_date", 500),
+    queryFn: async () => {
+      const [published, drafts] = await Promise.all([
+        base44.entities.TrainingCourse.filter({ status: "published" }, "-updated_date", 500),
+        base44.entities.TrainingCourse.filter({ status: "draft" }, "-updated_date", 500),
+      ]);
+      return [...published, ...drafts];
+    },
     initialData: [],
   });
 
@@ -115,12 +124,14 @@ export default function TrainingVideoStudio() {
         <CardContent className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
             <div className="flex-1">
-              <Label className="text-xs text-slate-500">Published course</Label>
+              <Label className="text-xs text-slate-500">Course</Label>
               <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
                 <SelectTrigger><SelectValue placeholder="Select a course to add videos to" /></SelectTrigger>
                 <SelectContent>
                   {courses.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.title}{c.status === "draft" ? " — Draft" : ""}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -175,8 +186,11 @@ export default function TrainingVideoStudio() {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <CardTitle className="text-base">
+              <CardTitle className="text-base flex items-center gap-2">
                 Lessons in “{selectedCourse?.title}” ({modules.length})
+                {selectedCourse?.status === "draft" && (
+                  <Badge className="bg-slate-100 text-slate-600 text-xs font-medium">Draft</Badge>
+                )}
               </CardTitle>
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 {(isFetching || anyProcessing) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
