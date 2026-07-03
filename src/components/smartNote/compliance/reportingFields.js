@@ -22,7 +22,9 @@ const AUDIT_SEVERITY = { critical: "critical", warning: "high", info: "low" };
 const DENIAL_AUDIT_SEVERITY = { critical: "critical", high: "high", info: "low" };
 
 // The guardrail's cluster ids, humanized for audit issue rows / visit strings.
-const DENIAL_CLUSTER_LABELS = {
+// Exported as the single label source so the live reviewer UI and the persisted
+// compliance issues/tags name each cluster identically.
+export const DENIAL_CLUSTER_LABELS = {
   homebound_narrative: "Homebound narrative",
   skilled_need_specificity: "Skilled need specificity",
   face_to_face: "Face-to-Face encounter",

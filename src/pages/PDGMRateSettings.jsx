@@ -140,7 +140,7 @@ export default function PDGMRateSettings() {
   const queryClient = useQueryClient();
   const canEdit = isAdminLike(user);
 
-  const { data: config, isLoading } = useQuery({
+  const { data: config, isLoading, isFetching: configFetching, isError: configError } = useQuery({
     queryKey: ["pdgm-rate-config"],
     queryFn: async () => {
       const rows = await base44.entities.PDGMRateConfig.list("-created_date", 1);
@@ -426,15 +426,26 @@ export default function PDGMRateSettings() {
 
           {/* Official CMS case-mix weight table — reference for analysis only.
               Keyed on config arrival so the year field re-initializes from the
-              stored table once the saved config finishes loading. */}
+              stored table once the saved config finishes loading. Disabled until
+              the saved config has actually loaded: initialData:null keeps
+              isLoading false during the first fetch, and the persist payload
+              re-sends the SAVED config fields — persisting against a not-yet-
+              loaded (or failed) config would overwrite the stored rate set with
+              blanks. */}
           <CaseMixWeightsUpload
             key={config ? "config-loaded" : "config-pending"}
             storedTable={config?.case_mix_weight_table || null}
             onPersist={(tableOrNull) => weightTableMutation.mutateAsync(tableOrNull)}
             uploadedBy={user?.email || null}
             defaultYear={meta.effective_year}
-            disabled={isDirty || saveMutation.isPending}
-            disabledReason="You have unsaved rate edits — save or reset them first (storing the table reloads the saved rate set)."
+            disabled={configFetching || configError || isDirty || saveMutation.isPending || weightTableMutation.isPending}
+            disabledReason={
+              configError
+                ? "The saved rate set could not be loaded — reload the page before storing a table (persisting now would overwrite it with blanks)."
+                : configFetching
+                  ? "Loading the saved rate set…"
+                  : "You have unsaved rate edits — save or reset them first (storing the table reloads the saved rate set)."
+            }
           />
 
           {/* Safety rails: implausible cells / broken ICD mappings block Save. */}

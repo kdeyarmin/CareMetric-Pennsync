@@ -21,11 +21,22 @@ export default function PDGMReimbursementReport({ dateRange }) {
   // existing function DocumentationImpact uses. It strips financial fields
   // server-side for non-financial users, so estimated_payment only arrives for
   // admins (FinancialGate below is defense-in-depth on the rendered figures).
+  // Scoped server-side to the report's assessment-date range — date-filtering a
+  // newest-N page undercounts any period holding more than N uploads.
+  const UPLOADS_LIMIT = 1000;
   const { data: uploadsResp = {} } = useQuery({
-    queryKey: ["oasis-uploads-pdgm-report"],
-    queryFn: async () => (await base44.functions.invoke("listOASISUploads", { sort: "-created_date", limit: 200 }))?.data || {},
+    queryKey: ["oasis-uploads-pdgm-report", dateRange.start, dateRange.end],
+    queryFn: async () => (await base44.functions.invoke("listOASISUploads", {
+      sort: "-created_date",
+      limit: UPLOADS_LIMIT,
+      assessmentDateFrom: dateRange.start,
+      assessmentDateTo: dateRange.end,
+    }))?.data || {},
     initialData: {},
   });
+  // A full page means the range may hold more rows than the bounded fetch —
+  // say so rather than presenting a silently undercounted total.
+  const uploadsMaybeTruncated = (uploadsResp.uploads?.length || 0) >= UPLOADS_LIMIT;
 
   // Parse both bounds on the same (local) clock so the start boundary isn't
   // shifted into the prior evening (date-only strings parse as UTC midnight).
@@ -121,6 +132,11 @@ export default function PDGMReimbursementReport({ dateRange }) {
             <p className="text-3xl font-bold text-slate-900">{filteredOASIS.length}</p>
             {usingReal && (
               <p className="text-xs text-slate-500 mt-1">{analyzed.length} analyzed with a PDGM estimate</p>
+            )}
+            {uploadsMaybeTruncated && (
+              <p className="text-xs text-amber-700 mt-1">
+                Showing the newest {UPLOADS_LIMIT} analyzed assessments in this range — engine totals may undercount. Narrow the date range for complete figures.
+              </p>
             )}
           </CardContent>
         </Card>

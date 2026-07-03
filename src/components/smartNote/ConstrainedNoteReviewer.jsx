@@ -23,6 +23,7 @@ import NoteDiffView from "./NoteDiffView";
 import DictationButton from "./DictationButton";
 import { annotateProvenance } from "./compliance/provenance";
 import { detectNoteCriticalVitals } from "./compliance/noteEscalation";
+import { DENIAL_CLUSTER_LABELS } from "./compliance/reportingFields";
 import { withTimeout } from "./compliance/withTimeout";
 import { runDenialGuardrail } from "../compliance/denialGuardrailEngine";
 
@@ -66,12 +67,8 @@ const EMPTY_RULES = [];
 // ADVISORY: findings never hard-block. When `ack` is provided (the save step) and
 // a critical cluster fails, the nurse acknowledges before saving — the same
 // override pattern as the chart safety conflicts.
-const DENIAL_CLUSTER_LABELS = {
-  homebound_narrative: "Homebound narrative",
-  skilled_need_specificity: "Skilled need",
-  face_to_face: "Face-to-Face",
-  medical_necessity_linkage: "Medical necessity",
-};
+// Cluster names come from reportingFields' DENIAL_CLUSTER_LABELS so the live
+// panel and the persisted compliance issues/tags use identical wording.
 const DENIAL_SEVERITY_BADGE = {
   critical: "bg-red-100 text-red-800",
   high: "bg-orange-100 text-orange-800",

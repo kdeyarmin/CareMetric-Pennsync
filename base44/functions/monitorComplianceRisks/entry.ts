@@ -126,10 +126,9 @@ Deno.serve(async (req) => {
     // elsewhere. The absence-based rules below (RISK 1 high-risk dx not seen in
     // 7 days, RISK 3 missing vitals, RISK 6 missing Discharge OASIS plus the
     // discharged-patient sweep) therefore only run when the agency has
-    // explicitly marked PennSync as its system of record
-    // (AgencySettings.pennsync_is_system_of_record) — DEFAULT OFF. Until that
-    // field is added to AgencySettings.jsonc and set to true, the read resolves
-    // undefined and the rules stay off, which is the safe companion-mode
+    // explicitly set AgencySettings.pennsync_is_system_of_record to true
+    // (schema default: false). Anything short of an explicit true — false,
+    // unset, or no settings row — keeps them off, the safe companion-mode
     // default. Rules keyed to in-app artifacts (RISK 5: homebound wording
     // missing from a visit note that EXISTS in PennSync) always run.
     const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);

@@ -41,13 +41,30 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { patientId, sort = '-created_date', limit = 50 } = body || {};
+    const { patientId, sort = '-created_date', limit = 50, assessmentDateFrom, assessmentDateTo } = body || {};
+    // Bounded like the other service reads — an unbounded list would silently
+    // truncate at the SDK page default; a runaway limit would time out.
+    const boundedLimit = Math.min(Math.max(Number(limit) || 50, 1), 1000);
+
+    // Optional assessment-date range so report callers can scope server-side
+    // instead of date-filtering a newest-N page (which undercounts any period
+    // holding more than N uploads). Bounds compare lexicographically, which is
+    // correct for both "YYYY-MM-DD" and ISO datetime storage: the lower bound
+    // stays date-only (a date-only stored value sorts BEFORE "…T00:00:00"),
+    // the upper bound gets the end-of-day suffix so datetime values match.
+    const query = {};
+    if (patientId) query.patient_id = patientId;
+    if (assessmentDateFrom || assessmentDateTo) {
+      query.assessment_date = {};
+      if (assessmentDateFrom) query.assessment_date.$gte = String(assessmentDateFrom).slice(0, 10);
+      if (assessmentDateTo) query.assessment_date.$lte = `${String(assessmentDateTo).slice(0, 10)}T23:59:59.999`;
+    }
 
     // Reads run as the requesting user, so the entity's row-level access still
     // applies; this function only removes financial COLUMNS on top of that.
-    const records = patientId
-      ? await base44.entities.OASISUpload.filter({ patient_id: patientId }, sort, limit)
-      : await base44.entities.OASISUpload.list(sort, limit);
+    const records = Object.keys(query).length
+      ? await base44.entities.OASISUpload.filter(query, sort, boundedLimit)
+      : await base44.entities.OASISUpload.list(sort, boundedLimit);
 
     const allowed = canViewFinancials(user);
     const uploads = allowed ? records : (records || []).map(stripFinancial);
