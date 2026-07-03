@@ -30,6 +30,7 @@ import {
   SEVERITIES,
 } from "../components/referral/referralFollowUpEngine";
 import ProviderFollowUpForm, { followUpFormPdfContent } from "../components/referral/ProviderFollowUpForm";
+import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import { estimateFollowUpRevenueImpact, fmtUsd } from "../components/referral/followUpRevenueImpact";
 import { exportToPDF } from "@/components/utils/pdfExporter";
 
@@ -485,6 +486,10 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
           onSaved={() => queryClient.invalidateQueries({ queryKey: ["followUpRuleConfig"] })}
         />
       )}
+
+      {/* Intake→SOC aging at a glance — same board as Referral Intake, compact.
+          Reuses this page's ['referrals'] query data; no extra fetch. */}
+      {!isLoading && <ReferralAgingBoard referrals={referrals || []} compact className="mb-4" />}
 
       {isLoading ? (
         <LoadingState label="Loading referrals..." />

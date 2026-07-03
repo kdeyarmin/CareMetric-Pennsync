@@ -80,6 +80,10 @@ import ReferralPDFSummarizer from "../components/referral/ReferralPDFSummarizer"
 import { validateReferralFile, getDocumentType } from "../components/referral/referralUploadUtils";
 import { generateDiagnosisCodes, toPersistedCoding } from "../components/referral/diagnosisCodeGenerator";
 import { runReferralQuickScan } from "../components/referral/referralExtraction";
+import { markStartOfCareCompleted } from "../components/referral/intakeToSocTracker";
+import { referralToF2FInput, validateFaceToFace, toFaceToFaceEncounter } from "../components/referral/faceToFaceValidator";
+import { validateIntakeDiagnoses } from "../components/referral/intakeDiagnosisValidator";
+import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import PatientMatchReview from "../components/referral/PatientMatchReview";
 import PatientVerificationStep from "../components/referral/PatientVerificationStep";
 import MultiReferralDetector from "../components/referral/MultiReferralDetector";
@@ -133,6 +137,14 @@ export default function ReferralIntake() {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [extractedFormData, setExtractedFormData] = useState(null);
+  // Upload-time diagnosis guard (validateIntakeDiagnoses result); null when the
+  // quick scan surfaced no ICD-10 codes at all.
+  const [dxGuard, setDxGuard] = useState(null);
+  // "Mark SOC Complete" dialog state.
+  const [socReferral, setSocReferral] = useState(null);
+  const [socDate, setSocDate] = useState(todayEastern());
+  const [socFirstVisitDate, setSocFirstVisitDate] = useState("");
+  const [socSaving, setSocSaving] = useState(false);
   const [multiReferralDetection, setMultiReferralDetection] = useState(null);
   const [_processingMultipleReferrals, setProcessingMultipleReferrals] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -194,7 +206,18 @@ export default function ReferralIntake() {
       const extracted = await runReferralQuickScan(invokeLLM, { fileUrl: file_url });
 
       setExtractedFormData(extracted);
-      
+
+      // Upload-time diagnosis guard: pre-check the scanned ICD-10 codes for
+      // RTP-unacceptable principals and preview the PDGM clinical group. Only
+      // when the scan surfaced actual codes — a free-text-only extraction has
+      // nothing deterministic to check and must not nag.
+      const scannedIcdCodes = (extracted.icd10_codes || []).filter(Boolean);
+      setDxGuard(
+        scannedIcdCodes.length > 0
+          ? validateIntakeDiagnoses({ primary: scannedIcdCodes[0], secondaries: scannedIcdCodes.slice(1) })
+          : null
+      );
+
       // Auto-populate form with comprehensive extracted data
       if (extracted.patient_name) {
         setNewReferral(prev => ({
@@ -349,6 +372,7 @@ export default function ReferralIntake() {
       });
       setUploadedFile(null);
       setExtractedFormData(null);
+      setDxGuard(null);
 
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
     } catch (error) {
@@ -773,6 +797,32 @@ Actions available:
 
       await base44.entities.Referral.update(referralId, updates);
 
+      // Persist + validate the Face-to-Face encounter extracted from the
+      // referral packet (42 CFR 424.22). Best-effort exactly like the
+      // diagnosis-coding block above: F2F bookkeeping never blocks processing.
+      // A missing face_to_face block only means none was found in the uploaded
+      // packet — it is NOT evidence that no encounter happened (companion mode),
+      // so nothing is written or flagged in that case.
+      try {
+        const referralRecord = referrals.find((r) => r.id === referralId);
+        const f2fInput = referralToF2FInput({ ...referralRecord, ...updates });
+        if (f2fInput) {
+          const f2fValidation = validateFaceToFace(f2fInput);
+          const f2fPayload = toFaceToFaceEncounter(
+            { referralId, patientId: updates.patient_id || referralRecord?.patient_id || null, ...f2fInput },
+            f2fValidation
+          );
+          const existingF2F = await base44.entities.FaceToFaceEncounter.filter({ referral_id: referralId });
+          if (existingF2F?.length > 0) {
+            await base44.entities.FaceToFaceEncounter.update(existingF2F[0].id, f2fPayload);
+          } else {
+            await base44.entities.FaceToFaceEncounter.create(f2fPayload);
+          }
+        }
+      } catch (f2fError) {
+        console.error('F2F encounter persistence skipped:', f2fError);
+      }
+
       // Create comprehensive AI-generated tasks from multiple sources
       const allSuggestedTasks = [];
       
@@ -954,6 +1004,33 @@ Actions available:
     }
   };
 
+  const openSocDialog = (referral) => {
+    setSocReferral(referral);
+    setSocDate(todayEastern());
+    setSocFirstVisitDate("");
+  };
+
+  const handleMarkSocComplete = async () => {
+    if (!socReferral || !socDate) return;
+    setSocSaving(true);
+    try {
+      // Pure, tested transition — closes the intake→SOC clock.
+      const payload = markStartOfCareCompleted(socReferral, {
+        socDate,
+        firstVisitDate: socFirstVisitDate || undefined,
+        by: currentUser?.email,
+      });
+      await base44.entities.Referral.update(socReferral.id, payload);
+      queryClient.invalidateQueries({ queryKey: ['referrals'] });
+      toast.success(`Start of care recorded for ${socReferral.patient_name || 'referral'}.`);
+      setSocReferral(null);
+    } catch (error) {
+      console.error('Error marking SOC complete:', error);
+      toast.error('Failed to mark start of care complete. Please try again.');
+    }
+    setSocSaving(false);
+  };
+
   const handleCreateNewFromReview = async () => {
     try {
       const referralToUpdate = verificationReferral || matchReviewReferral;
@@ -1027,10 +1104,40 @@ Actions available:
       case 'processing': return 'bg-amber-500';
       case 'awaiting_info': return 'bg-orange-500';
       case 'ready_for_admission': return 'bg-emerald-500';
+      case 'soc_completed': return 'bg-teal-600';
       case 'archived': return 'bg-slate-500';
       case 'declined': return 'bg-red-500';
       default: return 'bg-slate-500';
     }
+  };
+
+  // F2F status chip for the queue row. Only computed once the FULL extraction
+  // ran (analysis_results is the full-processing marker); quick-scan uploads
+  // never carry a face_to_face block. Companion-mode wording: no F2F block in
+  // the packet means it wasn't FOUND there — never a claim that no encounter
+  // happened.
+  const renderF2FBadge = (referral) => {
+    if (!referral.extracted_data || !referral.analysis_results) return null;
+    const f2fInput = referralToF2FInput(referral);
+    if (!f2fInput) {
+      return (
+        <Badge variant="outline" className="bg-slate-50 text-slate-600 text-xs mt-1">
+          F2F not found in referral packet
+        </Badge>
+      );
+    }
+    const { status } = validateFaceToFace(f2fInput);
+    const chip =
+      status === 'valid'
+        ? { label: 'F2F valid', className: 'bg-emerald-50 text-emerald-700' }
+        : status === 'invalid'
+        ? { label: 'F2F non-compliant', className: 'bg-red-50 text-red-700' }
+        : { label: 'F2F needs review', className: 'bg-amber-50 text-amber-700' };
+    return (
+      <Badge variant="outline" className={`${chip.className} text-xs mt-1`}>
+        {chip.label}
+      </Badge>
+    );
   };
 
   const getPriorityColor = (priority) => {
@@ -1099,6 +1206,9 @@ Actions available:
         <StatCard label="Ready" value={statusCounts.ready_for_admission} icon={CheckCircle2} tone="emerald" />
       </div>
 
+      {/* Intake→SOC aging board (Timely Initiation of Care workflow) */}
+      <ReferralAgingBoard referrals={referrals} className="mb-4 sm:mb-6" />
+
       {/* Filters */}
       <Card className="mb-4 sm:mb-6">
         <CardContent className="p-3 sm:p-4">
@@ -1115,6 +1225,7 @@ Actions available:
                   <SelectItem value="processing">Processing</SelectItem>
                   <SelectItem value="awaiting_info">Awaiting Info</SelectItem>
                   <SelectItem value="ready_for_admission">Ready for Admission</SelectItem>
+                  <SelectItem value="soc_completed">SOC Completed</SelectItem>
                   <SelectItem value="archived">Archived</SelectItem>
                 </SelectContent>
               </Select>
@@ -1253,6 +1364,7 @@ Actions available:
                             {referral.diagnosis_coding.uncoded.length} uncoded dx
                           </Badge>
                         )}
+                        {renderF2FBadge(referral)}
                         {referral.analysis_results?.intake_analysis?.category?.primary && (
                           <Badge className="bg-navy-100 text-navy-700 text-xs mt-1">
                             {referral.analysis_results.intake_analysis.category.primary.replace(/_/g, ' ')}
@@ -1373,6 +1485,17 @@ Actions available:
                               )}
                             </>
                           )}
+                          {referral.status === 'ready_for_admission' && !referral.requires_manual_review && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openSocDialog(referral)}
+                              className="min-h-[36px] text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                            >
+                              <CheckCircle2 className="w-4 h-4 mr-1" />
+                              Mark SOC Complete
+                            </Button>
+                          )}
                           <div className="flex gap-2">
                             <Button
                               size="sm"
@@ -1458,7 +1581,43 @@ Actions available:
                     </AlertDescription>
                   </Alert>
                 )}
-                
+
+                {/* Upload-time diagnosis guard: RTP pre-check + PDGM clinical-group
+                    preview for the scanned ICD-10 codes. Renders nothing when the
+                    quick scan found no codes (free-text-only extraction). */}
+                {dxGuard && (
+                  <Alert className={dxGuard.acceptable ? "bg-emerald-50 border-emerald-300" : "bg-amber-50 border-amber-300"}>
+                    {dxGuard.acceptable ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-amber-600" />
+                    )}
+                    <AlertDescription className={`text-sm ${dxGuard.acceptable ? "text-emerald-900" : "text-amber-900"}`}>
+                      <strong>Diagnosis Check:</strong>{' '}
+                      {dxGuard.acceptable
+                        ? `${dxGuard.primary.code} is acceptable as a PDGM principal diagnosis.`
+                        : `${dxGuard.primary.code || 'Primary code'} — RTP risk detected.`}
+                      {dxGuard.findings.length > 0 && (
+                        <ul className="list-disc list-inside mt-2 text-xs space-y-1">
+                          {dxGuard.findings.map((finding, idx) => (
+                            <li key={idx}>
+                              {finding.message}
+                              {finding.remediation && (
+                                <span className="text-amber-800"> {finding.remediation}</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="mt-2 text-xs">
+                        <strong>Clinical group preview:</strong> {dxGuard.clinical_group_preview.clinical_group}
+                        {dxGuard.clinical_group_preview.confidence === 'low' && ' (low confidence)'}
+                        {dxGuard.secondary_count > 0 && ` · ${dxGuard.secondary_count} secondary code${dxGuard.secondary_count !== 1 ? 's' : ''}`}
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 {/* Suggested Tasks Preview */}
                 {extractedFormData.suggested_initial_tasks?.length > 0 && (
                   <Alert className="bg-navy-50 border-navy-300">
@@ -1783,6 +1942,70 @@ Actions available:
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Mark SOC Complete Dialog */}
+      <Dialog open={!!socReferral} onOpenChange={(open) => { if (!open) setSocReferral(null); }}>
+        <DialogContent className="max-w-[95vw] sm:max-w-md">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              Mark Start of Care Complete
+            </DialogTitle>
+            <p className="text-sm text-slate-600">
+              Record the completed start-of-care visit for {socReferral?.patient_name || 'this referral'}.
+              This closes the intake-to-SOC clock for timely-initiation tracking.
+            </p>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="soc-date" className="mb-1.5 block">SOC date</Label>
+              <Input
+                id="soc-date"
+                type="date"
+                value={socDate}
+                onChange={(e) => setSocDate(e.target.value)}
+                className="h-10"
+              />
+            </div>
+            <div>
+              <Label htmlFor="soc-first-visit-date" className="mb-1.5 block">First visit date (optional)</Label>
+              <Input
+                id="soc-first-visit-date"
+                type="date"
+                value={socFirstVisitDate}
+                onChange={(e) => setSocFirstVisitDate(e.target.value)}
+                className="h-10"
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setSocReferral(null)}
+              className="min-h-[44px] w-full sm:w-auto order-2 sm:order-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleMarkSocComplete}
+              disabled={socSaving || !socDate}
+              className="bg-emerald-600 hover:bg-emerald-700 min-h-[44px] w-full sm:w-auto order-1 sm:order-2"
+            >
+              {socSaving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  Confirm SOC Complete
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
         </TabsContent>
 
         <TabsContent value="process">
