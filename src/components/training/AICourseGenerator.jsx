@@ -99,7 +99,7 @@ export default function AICourseGenerator({ onGenerated }) {
       }
 
       if (data.video_generation_status === "generating") {
-        toast.success("Course generated. Presenter videos are rendering and will appear shortly — track them in the Video Studio.");
+        toast.info("Course generated. Presenter videos are rendering and will appear shortly — track them in the Video Studio.");
       } else if (data.video_generation_status === "skipped_no_api_key") {
         toast.warning("Course generated, but video generation is not configured, so no videos were created.");
       } else if (data.video_generation_status === "error") {

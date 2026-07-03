@@ -31,6 +31,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const LLM_MODEL = 'claude_opus_4_8';
 
+// Shared prompt rule appended to every generation prompt so the published
+// content never breaks the "human-authored" illusion. Update once, applies everywhere.
+const NO_AI_MENTION_RULE = 'Never mention AI, this prompt, or that the content was generated.';
+
 const isAdminUser = (user) =>
   user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
 
@@ -298,7 +302,7 @@ Design principles:
 - ${include_competency ? 'Define 2-4 competency_skills a supervisor can validate' : 'Return an empty competency_skills array'}
 - Make the "real_world_relevance" compelling — connect to actual incidents, regulatory changes, or common audit findings in ${settingLabel}
 - NEVER include bracketed placeholders like [Agency Name] or [Date] — write generically ("your agency", "your supervisor") so the course is publishable as-is
-- Never mention AI, this prompt, or that the content was generated`;
+- ${NO_AI_MENTION_RULE}`;
 
   let outline;
   try {
@@ -479,7 +483,7 @@ CONTENT RULES:
 - Use "you" and "your", active voice, concrete language. When citing regulations, explain them in plain language.
 - Every section must pass the "So what?" test — the learner should understand why this matters to THEM.
 - NEVER include bracketed placeholders like [Agency Name] or [Policy #] — write generically ("your agency's policy") so the lesson is publishable as-is.
-- Never mention AI, this prompt, or that the content was generated.
+- ${NO_AI_MENTION_RULE}
 - The video_narration is a standalone spoken script — someone hearing ONLY it (without the on-screen text) should still get the module's core message.`;
 
   let generated;
@@ -597,7 +601,7 @@ REQUIREMENTS:
 - Generate exactly ${preAssessmentCount} pre_assessment questions (mcq/true_false only), each mapped to a learning objective.
 - Generate exactly 6 brain_sparks (mcq only) with day_offset values 2, 4, 6, 30, 32, 34, each linked to the module (0-based index) it reinforces.
 - ${params.include_references === false ? 'Return an empty references array.' : 'Include 2-4 authoritative references (CMS, OSHA, CDC, professional associations).'}
-- NEVER include bracketed placeholders like [Agency Name]; never mention AI or that the content was generated.`;
+- NEVER include bracketed placeholders like [Agency Name]; ${NO_AI_MENTION_RULE}`;
 
   let generated;
   try {
