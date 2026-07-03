@@ -13,6 +13,7 @@ import {
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { toast } from 'sonner';
+import { formatAge } from "@/lib/age";
 
 export default function HospitalizationRiskWidget({ autoAnalyze = false }) {
   const [analyzing, setAnalyzing] = useState(false);
@@ -85,7 +86,7 @@ export default function HospitalizationRiskWidget({ autoAnalyze = false }) {
 PATIENT: ${patient.first_name} ${patient.last_name}
 PRIMARY DIAGNOSIS: ${patient.primary_diagnosis || 'Unknown'}
 SECONDARY DIAGNOSES: ${patient.secondary_diagnoses?.join(', ') || 'None'}
-AGE: ${patient.date_of_birth ? Math.floor((new Date() - new Date(patient.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : 'Unknown'}
+AGE: ${formatAge(patient.date_of_birth)}
 
 RECENT VITALS TRENDS (Last ${vitalsTrends.length} visits):
 ${vitalsTrends.map(v => `Date: ${v.date} | BP: ${v.bp_systolic}/${v.bp_diastolic} | HR: ${v.heart_rate} | Temp: ${v.temp} | O2: ${v.o2_sat}% | Weight: ${v.weight}`).join('\n')}

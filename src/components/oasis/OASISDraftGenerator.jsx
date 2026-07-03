@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -179,7 +180,7 @@ ${draftDocumentation.caregiver_support}`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `OASIS_Draft_${new Date().toISOString().split('T')[0]}.txt`;
+    a.download = `OASIS_Draft_${toLocalISODate()}.txt`;
     document.body.appendChild(a);
     a.click();
     URL.revokeObjectURL(url);

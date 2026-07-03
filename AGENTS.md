@@ -10,12 +10,12 @@ Those Deno functions are not runnable from this repo (no `deno.json`/local runne
 
 ### Running / building / testing
 Standard scripts are in `package.json` and `README.md`. Notable points:
-- `npm run dev` starts **only** the Vite dev server (default `http://localhost:5173`).
-- `npm test` runs `test:utils` (node `--test`) then `test:components` (Vitest/jsdom).
-- `npm run lint` currently reports warnings only (0 errors) — treat lint as passing.
-- `npm run typecheck` is an **informational baseline** in CI (`continue-on-error`); it
+- `pnpm run dev` starts **only** the Vite dev server (default `http://localhost:5173`).
+- `pnpm test` runs `test:utils` (node `--test`) then `test:components` (Vitest/jsdom).
+- `pnpm run lint` currently reports warnings only (0 errors) — treat lint as passing.
+- `pnpm run typecheck` is an **informational baseline** in CI (`continue-on-error`); it
   may report pre-existing errors and is not a gate.
-- CI uses Node 24 (latest LTS); the VM has Node 22. Both build/test/lint fine.
+- CI uses Node 24.18.0 (latest LTS) with pnpm 11.9.0. Use `.nvmrc`/`.node-version` plus Corepack when reproducing CI locally.
 
 ### Environment config (required for the app to actually render)
 - Copy `.env.example` to `.env`. The only vars the frontend reads are

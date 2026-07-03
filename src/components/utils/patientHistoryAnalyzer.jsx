@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { formatAge } from "@/lib/age";
 
 /**
  * Comprehensive Patient History Analyzer
@@ -197,7 +198,7 @@ COMPREHENSIVE PATIENT HISTORY & TRENDS:
 
 Patient Overview:
 - Name: ${patient?.first_name} ${patient?.last_name}
-- Age: ${patient?.date_of_birth ? new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear() : 'Unknown'}
+- Age: ${formatAge(patient?.date_of_birth)}
 - Length of Care: ${patient?.admission_date ? Math.floor((new Date() - new Date(patient.admission_date)) / (1000 * 60 * 60 * 24)) : 'Unknown'} days
 - Status: ${patient?.status}
 

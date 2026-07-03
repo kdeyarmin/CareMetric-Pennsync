@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toLocalISODate } from '@/lib/dateLocal';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -34,7 +35,7 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
   // action) open an already-generated summary directly at the review/sign step
   // instead of the generate screen, so it can't accidentally create a duplicate.
   const [currentStep, setCurrentStep] = useState(initialStep); // generate, review, sign, complete
-  const [dischargeDate, setDischargeDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dischargeDate, setDischargeDate] = useState(toLocalISODate());
   const [reviewNotes, setReviewNotes] = useState('');
   const [editedSummary, setEditedSummary] = useState(null);
   const [showSignaturePad, setShowSignaturePad] = useState(false);

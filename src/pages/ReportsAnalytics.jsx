@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { isAdminView } from "@/lib/roles";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
@@ -35,8 +36,8 @@ const tabLoader = (
 
 export default function ReportsAnalytics() {
   const [dateRange, _setDateRange] = useState({
-    start: new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0]
+    start: toLocalISODate(new Date(new Date().setMonth(new Date().getMonth() - 3))),
+    end: toLocalISODate()
   });
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],

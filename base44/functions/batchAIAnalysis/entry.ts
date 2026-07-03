@@ -17,6 +17,37 @@ function parseLLMJson(raw) {
   }
 }
 
+
+// <<<BEGIN SHARED HELPER: formatAge — generated, edit base44/_shared/backendHelpers.mjs>>>
+function parseLocalDate(value) {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(value).trim());
+  if (iso) {
+    const y = Number(iso[1]);
+    const mo = Number(iso[2]) - 1;
+    const day = Number(iso[3]);
+    const d = new Date(y, mo, day);
+    if (d.getFullYear() !== y || d.getMonth() !== mo || d.getDate() !== day) return null;
+    return d;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function calculateAge(dob, now = new Date()) {
+  const birth = parseLocalDate(dob);
+  const today = parseLocalDate(now);
+  if (!birth || !today) return null;
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+function formatAge(dob, now = new Date(), fallback = 'Unknown') {
+  const age = calculateAge(dob, now);
+  return age == null ? fallback : age;
+}
+// <<<END SHARED HELPER: formatAge>>>
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -67,7 +98,7 @@ Deno.serve(async (req) => {
 PATIENT DATA:
 ${patientData ? `- Name: ${patientData.first_name} ${patientData.last_name}
 - Primary Diagnosis: ${patientData.primary_diagnosis || diagnosis}
-- Age: ${patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : 'Unknown'}
+- Age: ${formatAge(patientData.date_of_birth)}
 - Allergies: ${patientData.allergies || 'None documented'}` : ''}
 
 VISIT DETAILS:

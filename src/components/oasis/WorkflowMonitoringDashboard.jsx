@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { toCsvRows } from "@/components/admin/csvExport";
@@ -147,7 +148,7 @@ export default function WorkflowMonitoringDashboard() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Workflow_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `Workflow_Report_${toLocalISODate()}.csv`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);

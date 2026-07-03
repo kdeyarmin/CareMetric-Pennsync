@@ -1,3 +1,4 @@
+import { toLocalISODate } from "@/lib/dateLocal";
 /**
  * Centralized Statistics Calculator
  * Ensures consistent stat calculations across all dashboards, reports, and analytics
@@ -19,7 +20,7 @@ export const calculateStats = (data) => {
   const today = new Date();
   const startDate = new Date(today);
   startDate.setDate(today.getDate() - dateRange);
-  const startDateString = startDate.toISOString().split('T')[0];
+  const startDateString = toLocalISODate(startDate);
 
   // ====================
   // VISIT STATISTICS

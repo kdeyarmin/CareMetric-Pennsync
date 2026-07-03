@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { Button } from "@/components/ui/button";
 import { toCsvRows } from "@/components/admin/csvExport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -167,7 +168,7 @@ export default function OASISExportManager({
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `OASIS_Analysis_${patientName?.replace(/\s+/g, '_') || 'Report'}_${new Date().toISOString().split('T')[0]}.csv`;
+      link.download = `OASIS_Analysis_${patientName?.replace(/\s+/g, '_') || 'Report'}_${toLocalISODate()}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -204,7 +205,7 @@ export default function OASISExportManager({
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `OASIS_Comprehensive_Report_${patientName?.replace(/\s+/g, '_') || 'Report'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      link.download = `OASIS_Comprehensive_Report_${patientName?.replace(/\s+/g, '_') || 'Report'}_${toLocalISODate()}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

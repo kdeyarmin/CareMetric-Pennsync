@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Loader2, TrendingUp, Activity, AlertTriangle, Target, Brain, Calendar, Clock, Shield } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { formatAge } from "@/lib/age";
 
 export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, patientId, onPredictionsComplete }) {
   const ai = useAICall();
@@ -136,7 +137,7 @@ ${JSON.stringify({
 }, null, 2)}
 
 PATIENT CONTEXT:
-- Age: ${patient?.date_of_birth ? Math.floor((Date.now() - new Date(patient.date_of_birth)) / 31557600000) : 'Unknown'}
+- Age: ${formatAge(patient?.date_of_birth)}
 - Past Hospitalizations: ${patient?.past_hospitalizations?.length || 0}
 - Living Situation: ${patient?.social_history?.living_situation || 'Unknown'}
 - Support System: ${patient?.social_history?.support_system || 'Unknown'}

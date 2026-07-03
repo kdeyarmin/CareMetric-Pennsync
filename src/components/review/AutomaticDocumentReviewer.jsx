@@ -26,6 +26,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { toast } from 'sonner';
+import { formatAge } from "@/lib/age";
 
 export default function AutomaticDocumentReviewer({
   noteContent,
@@ -80,7 +81,7 @@ ${noteContent}
 VISIT CONTEXT:
 - Visit Type: ${visitType || 'Unknown'}
 - Primary Diagnosis: ${diagnosis || 'Not specified'}
-- Patient Age: ${patientData?.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / 31557600000) : 'Unknown'}
+- Patient Age: ${formatAge(patientData?.date_of_birth)}
 - Vital Signs: ${vitalSigns ? JSON.stringify(vitalSigns) : 'Not documented'}
 
 MEDICARE COMPLIANCE REQUIREMENTS (42 CFR 484):

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Plus, User, ArrowUpDown, Users, UserCheck, CalendarPlus } from "lucide-react";
@@ -298,7 +299,7 @@ export default function Patients() {
         </button>
         <button
           type="button"
-          onClick={() => setFilters(prev => ({ ...prev, createdAfter: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10) }))}
+          onClick={() => setFilters(prev => ({ ...prev, createdAfter: toLocalISODate(new Date(Date.now() - 30 * 86400000)) }))}
           className="w-full text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
           aria-label="Filter to patients added in the last 30 days"
           title="Filter to patients added in the last 30 days"

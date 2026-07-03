@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseLocalDate, formatLocalDate, calculateAge } from "./dateLocal";
+import { parseLocalDate, formatLocalDate, calculateAge, toLocalISODate } from "./dateLocal";
 
 describe("parseLocalDate", () => {
   it("parses a date-only string as local calendar components (no UTC shift)", () => {
@@ -73,5 +73,17 @@ describe("calculateAge", () => {
       // December: skip the wrap edge; just assert a stable value.
       expect(nextMonth).toBeGreaterThan(0);
     }
+  });
+});
+
+
+describe("toLocalISODate", () => {
+  it("formats the local calendar day without UTC conversion", () => {
+    expect(toLocalISODate(new Date(2026, 6, 3, 23, 30))).toBe("2026-07-03");
+    expect(toLocalISODate(new Date(2026, 0, 5))).toBe("2026-01-05");
+  });
+
+  it("returns an empty string for invalid dates", () => {
+    expect(toLocalISODate(new Date("not-a-date"))).toBe("");
   });
 });

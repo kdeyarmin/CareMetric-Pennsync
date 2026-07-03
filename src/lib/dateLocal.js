@@ -53,12 +53,40 @@ export function formatLocalDate(value, opts) {
  * @param {string|number|Date} dob
  * @returns {number|null} null when the value is empty or unparseable
  */
-export function calculateAge(dob) {
+export function calculateAge(dob, now = new Date()) {
   const birth = parseLocalDate(dob);
-  if (!birth) return null;
-  const today = new Date();
+  const today = parseLocalDate(now);
+  if (!birth || !today) return null;
   let age = today.getFullYear() - birth.getFullYear();
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
   return age;
+}
+
+/**
+ * Display-safe whole-year age from a date of birth.
+ * @param {string|number|Date} dob
+ * @param {Date} [now]
+ * @param {string|null} [fallback]
+ * @returns {number|string|null}
+ */
+export function formatAge(dob, now = new Date(), fallback = "Unknown") {
+  const age = calculateAge(dob, now);
+  return age == null ? fallback : age;
+}
+
+/**
+ * Format a date-only value as a local calendar date string suitable for <input type="date">
+ * values and date-only entity fields. Unlike toISOString().slice(0, 10), this
+ * does not jump to tomorrow/ yesterday for users outside UTC.
+ * @param {string|number|Date} [date]
+ * @returns {string}
+ */
+export function toLocalISODate(date = new Date()) {
+  const d = parseLocalDate(date);
+  if (!d) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

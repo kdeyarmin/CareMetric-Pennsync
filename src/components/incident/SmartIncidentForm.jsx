@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { submitIncidentReport } from "@/functions/submitIncidentReport";
 import { submitStateReportableIncident } from "@/functions/submitStateReportableIncident";
 import { useAICall } from "@/hooks/useAICall";
@@ -29,7 +30,7 @@ import {
   getStateReportableCategory,
 } from "@/components/incident/stateReportableConfig";
 
-const getCurrentDate = () => new Date().toISOString().slice(0, 10);
+const getCurrentDate = () => toLocalISODate();
 const getCurrentTime = () => new Date().toTimeString().slice(0, 5);
 
 const blankForm = () => ({

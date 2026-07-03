@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toLocalISODate } from '@/lib/dateLocal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -95,7 +96,7 @@ export default function ReferralTriage() {
         status: 'pending',
         assigned_to: currentUser?.email,
         due_timeframe: dueTimeframe,
-        due_date: dueDate.toISOString().split('T')[0],
+        due_date: toLocalISODate(dueDate),
       });
 
       setShowCreatePatient(false);

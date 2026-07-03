@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { generateDiagnosisCodes, codeLabel } from "@/components/referral/diagnosisCodeGenerator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -113,7 +114,7 @@ export default function AIGeneratedOASISAssessment({ patientId, visitId, visitTy
         patient_id: patientId,
         visit_id: visitId || null,
         visit_type: visitType,
-        assessment_date: new Date().toISOString().split('T')[0],
+        assessment_date: toLocalISODate(),
         oasis_items: updatedItems,
         clinical_summary: assessment.clinical_summary,
         estimated_pdgm_group: assessment.estimated_pdgm_group,

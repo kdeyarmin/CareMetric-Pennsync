@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toLocalISODate } from '@/lib/dateLocal';
 import { base44 } from '@/api/base44Client';
 import { addToSyncQueue } from '@/lib/indexedDB';
 import { useOfflineQueue } from '@/lib/offlineSync';
@@ -16,7 +17,7 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
   const [formData, setFormData] = useState({
     visit_id: visitId || `offline_visit_${Date.now()}`,
     patient_id: patientId,
-    visit_date: new Date().toISOString().split('T')[0],
+    visit_date: toLocalISODate(),
     visit_time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
     visit_type: 'routine_visit',
     nurse_notes: '',

@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { calculatePDGM } from "@/functions/calculatePDGM";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import PDGMWhatIfBuilder from "./PDGMWhatIfBuilder";
 import TopOptimizationOpportunities from "./TopOptimizationOpportunities";
@@ -683,7 +684,7 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `PDGM_Revenue_Comparison_${new Date().toISOString().split('T')[0]}.pdf`;
+      a.download = `PDGM_Revenue_Comparison_${toLocalISODate()}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
