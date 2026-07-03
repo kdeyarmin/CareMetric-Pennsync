@@ -58,6 +58,9 @@ function truncateAtSentence(script, limit = NARRATION_CHAR_LIMIT) {
 // Latin abbreviations are spoken forms, markdown markers are dropped.
 function sanitizeForSpeech(text) {
   return String(text)
+    // HTML-encoded content first, so "&amp;" never reaches the voice as "amp".
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s*&amp;\s*/gi, ' & ')
     .replace(/§+\s*/g, 'section ')
     .replace(/\be\.g\.,?\s*/gi, 'for example, ')
     .replace(/\bi\.e\.,?\s*/gi, 'that is, ')
@@ -150,9 +153,12 @@ function normalizeHeyGenAvatars(rawAvatars, cap = 150) {
   return out.sort((x, y) => x.name.localeCompare(y.name));
 }
 
-// Bounded, UI-ready voice list from HeyGen GET /v2/voices. The full catalog is
-// 1000+ voices across dozens of languages; English voices are listed first
-// (this app's learners are US healthcare staff), then others, capped.
+// Bounded, UI-ready voice list from HeyGen's voice catalog. Accepts both the
+// current v3 row shape (preview_audio_url) and the older v2 shape
+// (preview_audio) so merged/legacy responses normalize identically. The full
+// catalog is 1000+ voices across dozens of languages; English voices are
+// listed first (this app's learners are US healthcare staff), then others,
+// capped.
 function normalizeHeyGenVoices(rawVoices, cap = 150) {
   const seen = new Set();
   const all = [];
@@ -160,12 +166,13 @@ function normalizeHeyGenVoices(rawVoices, cap = 150) {
     const id = v && typeof v === 'object' ? String(v.voice_id || '').trim() : '';
     if (!id || seen.has(id)) continue;
     seen.add(id);
+    const preview = v.preview_audio_url || v.preview_audio;
     all.push({
       voice_id: id,
       name: String(v.name || id),
       language: v.language ? String(v.language) : '',
       gender: v.gender ? String(v.gender) : '',
-      preview_audio_url: v.preview_audio ? String(v.preview_audio) : '',
+      preview_audio_url: preview ? String(preview) : '',
     });
   }
   const isEnglish = (v) => /english/i.test(v.language);
@@ -243,14 +250,22 @@ Deno.serve(async (req) => {
           default_avatar_id: DEFAULT_AVATAR_ID, default_voice_id: DEFAULT_VOICE_ID,
         });
       }
-      const [avatarsRes, voicesRes] = await Promise.all([
+      // Voices: /v3/voices is the current documented catalog (array directly
+      // under data); /v2/voices (data.voices) is queried too as a fallback for
+      // older accounts. The normalizer dedupes by voice_id across both.
+      const [avatarsRes, voicesV3Res, voicesV2Res] = await Promise.all([
         heygen('/v2/avatars', 'GET', null, heygenApiKey).catch(() => null),
+        heygen('/v3/voices', 'GET', null, heygenApiKey).catch(() => null),
         heygen('/v2/voices', 'GET', null, heygenApiKey).catch(() => null),
       ]);
+      const rawVoices = [
+        ...(Array.isArray(voicesV3Res?.data) ? voicesV3Res.data : []),
+        ...(Array.isArray(voicesV2Res?.data?.voices) ? voicesV2Res.data.voices : []),
+      ];
       return Response.json({
         heygen_configured: true,
         avatars: normalizeHeyGenAvatars(avatarsRes?.data?.avatars),
-        voices: normalizeHeyGenVoices(voicesRes?.data?.voices),
+        voices: normalizeHeyGenVoices(rawVoices),
         default_avatar_id: DEFAULT_AVATAR_ID,
         default_voice_id: DEFAULT_VOICE_ID,
       });

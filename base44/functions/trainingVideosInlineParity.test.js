@@ -75,7 +75,7 @@ test("inline narration helpers match videoNarration.js", async () => {
   for (const s of ["short", "A. ".repeat(3000), "y".repeat(5100)]) {
     assert.equal(mod.truncateAtSentence(s), videoNarration.truncateAtSentence(s));
   }
-  for (const s of ["Per §484.60, e.g. now, i.e. today. A & B vs. C **bold**", "  spaced   out  "]) {
+  for (const s of ["Per §484.60, e.g. now, i.e. today. A & B vs. C **bold**", "  spaced   out  ", "P&amp;P review, same&nbsp;day"]) {
     assert.equal(mod.sanitizeForSpeech(s), videoNarration.sanitizeForSpeech(s));
   }
   for (const list of [[], ["One."], ["One", "Two:"], ["One", "Two", "Three"]]) {
@@ -96,6 +96,7 @@ test("inline narration helpers match videoNarration.js", async () => {
     { voice_id: "fr1", name: "Zoe", language: "French" },
     { voice_id: "en1", name: "Beth", language: "English (US)", gender: "female", preview_audio: "https://x/beth.mp3" },
     { voice_id: "en1", name: "dupe", language: "English" },
+    { voice_id: "en2", name: "Adam", language: "English", preview_audio_url: "https://x/adam.mp3" },
     { name: "no id" },
   ];
   assert.deepEqual(mod.normalizeHeyGenVoices(rawVoices), videoNarration.normalizeHeyGenVoices(rawVoices));

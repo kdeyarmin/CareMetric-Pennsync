@@ -80,6 +80,20 @@ describe("PresenterPicker", () => {
 
     fireEvent.change(screen.getByLabelText(/Voice ID/i), { target: { value: "custom-voice" } });
     expect(onVoiceChange).toHaveBeenCalledWith("custom-voice");
-    expect(screen.getByText(/Couldn’t load the avatar & voice catalog/)).toBeInTheDocument();
+    expect(screen.getByText(/Couldn’t load the full avatar & voice catalog/)).toBeInTheDocument();
+  });
+
+  it("falls back per side when only one catalog half is empty", async () => {
+    manageTrainingVideos.mockResolvedValue({ data: { ...CATALOG, avatars: [] } });
+    const onAvatarChange = vi.fn();
+    renderPicker({ onAvatarChange });
+
+    // Avatar half: raw-ID input; voice half: still the catalog dropdown.
+    const avatarInput = await screen.findByLabelText(/Avatar ID/i);
+    fireEvent.change(avatarInput, { target: { value: "pasted-avatar" } });
+    expect(onAvatarChange).toHaveBeenCalledWith("pasted-avatar");
+    expect(screen.getByText(/Default voice \(Elizabeth — friendly\)/)).toBeInTheDocument();
+    expect(screen.getAllByRole("combobox")).toHaveLength(1);
+    expect(screen.getByText(/Couldn’t load the full avatar & voice catalog/)).toBeInTheDocument();
   });
 });

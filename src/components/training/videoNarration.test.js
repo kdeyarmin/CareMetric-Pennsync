@@ -108,6 +108,12 @@ test('sanitizeForSpeech handles vs. and collapses whitespace', () => {
   assert.equal(sanitizeForSpeech('Sterile vs. clean   technique'), 'Sterile versus clean technique');
 });
 
+test('sanitizeForSpeech decodes HTML-encoded ampersands and non-breaking spaces', () => {
+  assert.equal(sanitizeForSpeech('Policies &amp; procedures'), 'Policies and procedures');
+  assert.equal(sanitizeForSpeech('P&amp;P review'), 'P and P review');
+  assert.equal(sanitizeForSpeech('same&nbsp;day'), 'same day');
+});
+
 test('long scripts truncate at a sentence boundary under the HeyGen limit', () => {
   const sentence = 'This sentence pads the script toward the provider character limit. ';
   const script = buildNarrationScript('Long', { intro: sentence.repeat(200) });
@@ -142,16 +148,18 @@ test('normalizeHeyGenAvatars dedupes, drops idless rows, caps, and sorts by name
   assert.deepEqual(normalizeHeyGenAvatars(undefined), []);
 });
 
-test('normalizeHeyGenVoices lists English voices first and caps the total', () => {
+test('normalizeHeyGenVoices lists English voices first, caps the total, and reads both v2/v3 preview fields', () => {
   const raw = [
     { voice_id: 'fr1', name: 'Zoe', language: 'French' },
     { voice_id: 'en2', name: 'Beth', language: 'English (US)', gender: 'female', preview_audio: 'https://x/beth.mp3' },
-    { voice_id: 'en1', name: 'Adam', language: 'english' },
+    { voice_id: 'en1', name: 'Adam', language: 'english', preview_audio_url: 'https://x/adam.mp3' },
     { voice_id: 'en2', name: 'Beth dupe', language: 'English' },
     { name: 'No id', language: 'English' },
   ];
   const voices = normalizeHeyGenVoices(raw);
   assert.deepEqual(voices.map((v) => v.name), ['Adam', 'Beth', 'Zoe']);
+  // v3 rows use preview_audio_url; v2 rows use preview_audio — both normalize.
+  assert.equal(voices[0].preview_audio_url, 'https://x/adam.mp3');
   assert.equal(voices[1].preview_audio_url, 'https://x/beth.mp3');
   assert.deepEqual(normalizeHeyGenVoices(raw, 1).map((v) => v.name), ['Adam']);
 });

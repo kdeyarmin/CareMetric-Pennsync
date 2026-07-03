@@ -43,7 +43,10 @@ export default function TrainingVideoStudio() {
         base44.entities.TrainingCourse.filter({ status: "published" }, "-updated_date", 500),
         base44.entities.TrainingCourse.filter({ status: "draft" }, "-updated_date", 500),
       ]);
-      return [...published, ...drafts];
+      // Re-sort the merged list so recency ordering holds across both statuses.
+      return [...published, ...drafts].sort(
+        (a, b) => new Date(b.updated_date || 0) - new Date(a.updated_date || 0)
+      );
     },
     initialData: [],
   });

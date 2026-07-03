@@ -24,6 +24,9 @@ export function truncateAtSentence(script, limit = NARRATION_CHAR_LIMIT) {
 // Latin abbreviations are spoken forms, markdown markers are dropped.
 export function sanitizeForSpeech(text) {
   return String(text)
+    // HTML-encoded content first, so "&amp;" never reaches the voice as "amp".
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s*&amp;\s*/gi, ' & ')
     .replace(/§+\s*/g, 'section ')
     .replace(/\be\.g\.,?\s*/gi, 'for example, ')
     .replace(/\bi\.e\.,?\s*/gi, 'that is, ')
@@ -116,9 +119,12 @@ export function normalizeHeyGenAvatars(rawAvatars, cap = 150) {
   return out.sort((x, y) => x.name.localeCompare(y.name));
 }
 
-// Bounded, UI-ready voice list from HeyGen GET /v2/voices. The full catalog is
-// 1000+ voices across dozens of languages; English voices are listed first
-// (this app's learners are US healthcare staff), then others, capped.
+// Bounded, UI-ready voice list from HeyGen's voice catalog. Accepts both the
+// current v3 row shape (preview_audio_url) and the older v2 shape
+// (preview_audio) so merged/legacy responses normalize identically. The full
+// catalog is 1000+ voices across dozens of languages; English voices are
+// listed first (this app's learners are US healthcare staff), then others,
+// capped.
 export function normalizeHeyGenVoices(rawVoices, cap = 150) {
   const seen = new Set();
   const all = [];
@@ -126,12 +132,13 @@ export function normalizeHeyGenVoices(rawVoices, cap = 150) {
     const id = v && typeof v === 'object' ? String(v.voice_id || '').trim() : '';
     if (!id || seen.has(id)) continue;
     seen.add(id);
+    const preview = v.preview_audio_url || v.preview_audio;
     all.push({
       voice_id: id,
       name: String(v.name || id),
       language: v.language ? String(v.language) : '',
       gender: v.gender ? String(v.gender) : '',
-      preview_audio_url: v.preview_audio ? String(v.preview_audio) : '',
+      preview_audio_url: preview ? String(preview) : '',
     });
   }
   const isEnglish = (v) => /english/i.test(v.language);
