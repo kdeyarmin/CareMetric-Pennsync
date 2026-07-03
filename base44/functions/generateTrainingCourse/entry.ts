@@ -296,7 +296,9 @@ Design principles:
 - Assessment blueprint must cover EVERY learning objective at least once
 - ${include_policy_section ? `Include 2-4 regulatory_crosswalk entries mapping to CMS CoPs, OSHA, HIPAA, or state rules for ${settingLabel}` : 'Return an empty regulatory_crosswalk array'}
 - ${include_competency ? 'Define 2-4 competency_skills a supervisor can validate' : 'Return an empty competency_skills array'}
-- Make the "real_world_relevance" compelling — connect to actual incidents, regulatory changes, or common audit findings in ${settingLabel}`;
+- Make the "real_world_relevance" compelling — connect to actual incidents, regulatory changes, or common audit findings in ${settingLabel}
+- NEVER include bracketed placeholders like [Agency Name] or [Date] — write generically ("your agency", "your supervisor") so the course is publishable as-is
+- Never mention AI, this prompt, or that the content was generated`;
 
   let outline;
   try {
@@ -464,7 +466,8 @@ Return JSON only — the content object for this single module:
     "key_takeaways": ["3-5 actionable, memorable takeaways staff can immediately apply"],
     "check_your_understanding": ["2-3 quick self-check questions (not graded)"],
     "clinical_pearl": "One memorable insight experienced practitioners wish they had learned earlier (omit if not applicable)",
-    "summary": "2-3 sentence recap — what to remember above all else"
+    "summary": "2-3 sentence recap — what to remember above all else",
+    "video_narration": "A 250-450 word presenter script for this module's video, written for the EAR, to be read aloud VERBATIM by an on-camera presenter. Warm, conversational, short sentences, plain words. Open with the hook, walk through each section's core message with smooth spoken transitions, and close by reinforcing the key takeaways. No citations, no bullets, no markdown, no stage directions, no headings."
   }
 }
 
@@ -474,7 +477,10 @@ CONTENT RULES:
 - ${params.include_key_takeaways === false ? 'Return an empty key_takeaways array.' : 'Include 3-5 key takeaways.'}
 - Do NOT repeat material covered by the other modules listed above — stay on this module's focus.
 - Use "you" and "your", active voice, concrete language. When citing regulations, explain them in plain language.
-- Every section must pass the "So what?" test — the learner should understand why this matters to THEM.`;
+- Every section must pass the "So what?" test — the learner should understand why this matters to THEM.
+- NEVER include bracketed placeholders like [Agency Name] or [Policy #] — write generically ("your agency's policy") so the lesson is publishable as-is.
+- Never mention AI, this prompt, or that the content was generated.
+- The video_narration is a standalone spoken script — someone hearing ONLY it (without the on-screen text) should still get the module's core message.`;
 
   let generated;
   try {
@@ -590,7 +596,8 @@ REQUIREMENTS:
 - MCQ distractors must be plausible — each wrong answer should represent a real mistake someone might make.
 - Generate exactly ${preAssessmentCount} pre_assessment questions (mcq/true_false only), each mapped to a learning objective.
 - Generate exactly 6 brain_sparks (mcq only) with day_offset values 2, 4, 6, 30, 32, 34, each linked to the module (0-based index) it reinforces.
-- ${params.include_references === false ? 'Return an empty references array.' : 'Include 2-4 authoritative references (CMS, OSHA, CDC, professional associations).'}`;
+- ${params.include_references === false ? 'Return an empty references array.' : 'Include 2-4 authoritative references (CMS, OSHA, CDC, professional associations).'}
+- NEVER include bracketed placeholders like [Agency Name]; never mention AI or that the content was generated.`;
 
   let generated;
   try {
