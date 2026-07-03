@@ -46,6 +46,31 @@ const getVisitTypes = (careScope) => {
 // patient's in-progress note.
 const draftKeyFor = (pid) => `smart_note_draft_v2:${pid || "unassigned"}`;
 
+// Real findings for the exported PDF's "Compliance Report & Findings" section
+// ({ severity, issue, suggestion } — the shape SmartNotePDFExporterEnhanced
+// renders): the elements the note honestly reports as not documented, plus any
+// failing denial-guardrail clusters — so a printed/faxed note carries its own
+// gap summary instead of an always-empty findings list.
+const buildExportFindings = (result) => {
+  if (!result) return [];
+  const answered = new Set(result.answeredIds || []);
+  const negated = new Set(result.confirmedNegativeIds || []);
+  const present = new Set((result.presence || []).filter((p) => p.present).map((p) => p.id));
+  const missing = (result.required || [])
+    .filter((e) => !present.has(e.id) && !answered.has(e.id) && !negated.has(e.id))
+    .map((e) => ({
+      // Critical elements can't reach the final note unanswered (the reviewer
+      // hard-gates them), so these are almost always the non-critical gaps.
+      severity: e.severity === "critical" ? "critical" : "medium",
+      issue: e.notDocumentedPhrase || `${e.label} was not documented this visit.`,
+      suggestion: e.hint || e.question || "",
+    }));
+  const denial = (result.denialGuardrail?.findings || [])
+    .filter((f) => f.status === "fail")
+    .map((f) => ({ severity: f.severity, issue: f.message, suggestion: f.remediation || "" }));
+  return [...missing, ...denial];
+};
+
 import StepIndicator from "../components/smartNote/StepIndicator";
 import SmartNoteTabs from "../components/smartNote/SmartNoteTabs";
 import PageContainer from "@/components/ui/PageContainer";
@@ -374,6 +399,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
     }
     if (api.chartRisk?.hasUnacknowledgedCritical) {
       toast.error("Acknowledge the chart safety conflict before saving to the chart.");
+      return;
+    }
+    if (api.denialRisk?.hasUnacknowledgedCritical) {
+      toast.error("Acknowledge the denial-risk findings before saving to the chart.");
       return;
     }
     setSaving(true);
@@ -806,7 +835,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     patient={patient}
                     visitType={visitType}
                     analysisScore={api.coverage}
-                    analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: [] }}
+                    analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: buildExportFindings(api.result) }}
                     currentUser={currentUser}
                     signatureImage={signatureImage}
                     setSignatureImage={setSignatureImage}
@@ -829,7 +858,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     }}
                     saving={saving}
                     saved={saved && !api.dirty}
-                    saveDisabled={saving || !!(api.fixRequired && !api.fixRequired.offlinePending) || !patientId || api.chartRisk?.hasUnacknowledgedCritical || facilityBlocked}
+                    saveDisabled={saving || !!(api.fixRequired && !api.fixRequired.offlinePending) || !patientId || api.chartRisk?.hasUnacknowledgedCritical || api.denialRisk?.hasUnacknowledgedCritical || facilityBlocked}
                   />
                 </>
                 );
