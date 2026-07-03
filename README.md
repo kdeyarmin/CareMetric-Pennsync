@@ -6,17 +6,17 @@ PennSync by CareMetric is an AI-powered home health documentation and analytics 
 
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, validation commands, and pull request expectations.
 - GitHub Actions CI runs workflow linting, app linting, tests, shared-helper checks, Base44 function syntax checks, and production builds on pull requests.
-- Dependabot is configured for npm and GitHub Actions updates.
+- Dependabot is configured for the pnpm/npm ecosystem and GitHub Actions updates.
 
 ## Scripts
 
-- `npm run dev` — start local dev server
-- `npm run build` — production build
-- `npm run preview` — preview production build
-- `npm run lint` — run ESLint
-- `npm run lint:fix` — auto-fix lint issues where possible
-- `npm run typecheck` — run TypeScript checker against `jsconfig.json`
-- `npm run check:updates` — dependency update audit script
+- `pnpm run dev` — start local dev server
+- `pnpm run build` — production build
+- `pnpm run preview` — preview production build
+- `pnpm run lint` — run ESLint
+- `pnpm run lint:fix` — auto-fix lint issues where possible
+- `pnpm run typecheck` — run TypeScript checker against `jsconfig.json`
+- `pnpm run check:updates` — dependency update audit script
 
 
 ## Environment variables

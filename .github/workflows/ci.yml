@@ -26,36 +26,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
-          cache: npm
+          node-version-file: '.nvmrc'
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint GitHub Actions workflows
-        run: npm run lint:actions
+        run: pnpm run lint:actions
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Run tests
-        run: npm test
+        run: pnpm test
 
       - name: Check generated shared helpers
-        run: npm run check:shared-helpers
+        run: pnpm run check:shared-helpers
 
       - name: Check Base44 function syntax
-        run: npm run check:backend-transpile
+        run: pnpm run check:backend-transpile
 
       - name: Typecheck informational baseline
-        run: npm run typecheck
+        run: pnpm run typecheck
         continue-on-error: true
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
         env:
           # The Base44 Vite plugin emits a proxy warning when this optional dev-server
           # target is unset. CI does not contact this URL during production builds;
@@ -63,5 +69,5 @@ jobs:
           VITE_BASE44_APP_BASE_URL: http://127.0.0.1:5173
 
       - name: Production audit informational baseline
-        run: npm run audit:prod
+        run: pnpm run audit:prod
         continue-on-error: true

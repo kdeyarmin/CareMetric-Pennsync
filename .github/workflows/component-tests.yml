@@ -13,7 +13,7 @@ on:
     paths:
       - 'src/**'
       - 'package.json'
-      - 'package-lock.json'
+      - 'pnpm-lock.yaml'
       - 'vitest.config.js'
       - '.github/workflows/component-tests.yml'
   push:
@@ -22,7 +22,7 @@ on:
     paths:
       - 'src/**'
       - 'package.json'
-      - 'package-lock.json'
+      - 'pnpm-lock.yaml'
       - 'vitest.config.js'
       - '.github/workflows/component-tests.yml'
 
@@ -39,17 +39,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
-          cache: npm
+          node-version-file: '.nvmrc'
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint (full repo)
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Run component & render tests
-        run: npm run test:components
+        run: pnpm run test:components
