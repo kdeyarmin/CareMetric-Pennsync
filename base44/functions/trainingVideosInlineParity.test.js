@@ -55,6 +55,12 @@ const CONTENTS = [
     summary: "Observe first.",
   },
   { sections: [{ heading: "Only one", body: "Single-section lead-in." }] },
+  {
+    intro: "Ignored when a script is authored.",
+    video_narration:
+      "Picture your first visit of the day. Before you knock, you are already assessing fall risk. Today we walk through what to look for, per §484.60, and how to document it the same day.",
+  },
+  { video_narration: "Too short.", sections: [{ heading: "Fallback", body: "Mechanical build runs." }] },
   { intro: "This sentence pads the script toward the provider limit. ".repeat(200) },
   { intro: "x".repeat(6000) },
 ];

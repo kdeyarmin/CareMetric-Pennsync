@@ -88,11 +88,21 @@ const sectionLead = (heading, index, total) => {
   return `Next, let's turn to ${h}.`;
 };
 
-// Turn a lesson module's content_json into a spoken narration script. Follows
-// the on-screen lesson order: intro, an overview of what's coming, sections
-// (with pro tips and warnings), key takeaways, clinical pearl, summary.
+// A purpose-written spoken script must be long enough to be a real script —
+// anything shorter is treated as absent and the mechanical builder runs.
+const MIN_AUTHORED_NARRATION_CHARS = 80;
+
+// Turn a lesson module's content_json into a spoken narration script. Prefers
+// a purpose-written script (content.video_narration, authored by the course
+// LLM for the ear) when present; otherwise assembles one from the on-screen
+// lesson order: intro, an overview of what's coming, sections (with pro tips
+// and warnings), key takeaways, clinical pearl, summary.
 function buildNarrationScript(moduleTitle, content) {
   const c = content || {};
+  const authored = typeof c.video_narration === 'string' ? c.video_narration.trim() : '';
+  if (authored.length >= MIN_AUTHORED_NARRATION_CHARS) {
+    return truncateAtSentence(sanitizeForSpeech(authored));
+  }
   const parts = [`Welcome to this module: ${moduleTitle}.`];
   if (c.intro) parts.push(String(c.intro));
   const sections = (Array.isArray(c.sections) ? c.sections : []).filter((s) => s && typeof s === 'object');
@@ -170,7 +180,9 @@ async function createVideo(script, title, avatarId, voiceId, apiKey) {
     video_inputs: [{
       character: { type: 'avatar', avatar_id: avatarId || DEFAULT_AVATAR_ID, avatar_style: 'normal' },
       voice: { type: 'text', voice_id: voiceId || DEFAULT_VOICE_ID, input_text: script, speed: 1.0, emotion: 'Friendly' },
-      background: { type: 'color', value: '#FFFFFF' },
+      // Brand navy-50 (tailwind.config.js) — a soft brand-tinted backdrop that
+      // keeps the presenter and captions legible, instead of stark white.
+      background: { type: 'color', value: '#EEF3FC' },
     }],
     dimension: { width: 1920, height: 1080 },
     caption: true,

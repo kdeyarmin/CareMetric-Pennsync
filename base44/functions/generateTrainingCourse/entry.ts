@@ -466,7 +466,8 @@ Return JSON only — the content object for this single module:
     "key_takeaways": ["3-5 actionable, memorable takeaways staff can immediately apply"],
     "check_your_understanding": ["2-3 quick self-check questions (not graded)"],
     "clinical_pearl": "One memorable insight experienced practitioners wish they had learned earlier (omit if not applicable)",
-    "summary": "2-3 sentence recap — what to remember above all else"
+    "summary": "2-3 sentence recap — what to remember above all else",
+    "video_narration": "A 250-450 word presenter script for this module's video, written for the EAR, to be read aloud VERBATIM by an on-camera presenter. Warm, conversational, short sentences, plain words. Open with the hook, walk through each section's core message with smooth spoken transitions, and close by reinforcing the key takeaways. No citations, no bullets, no markdown, no stage directions, no headings."
   }
 }
 
@@ -478,7 +479,8 @@ CONTENT RULES:
 - Use "you" and "your", active voice, concrete language. When citing regulations, explain them in plain language.
 - Every section must pass the "So what?" test — the learner should understand why this matters to THEM.
 - NEVER include bracketed placeholders like [Agency Name] or [Policy #] — write generically ("your agency's policy") so the lesson is publishable as-is.
-- Never mention AI, this prompt, or that the content was generated.`;
+- Never mention AI, this prompt, or that the content was generated.
+- The video_narration is a standalone spoken script — someone hearing ONLY it (without the on-screen text) should still get the module's core message.`;
 
   let generated;
   try {

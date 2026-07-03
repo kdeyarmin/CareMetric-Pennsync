@@ -77,6 +77,26 @@ test('narration is sanitized for speech (symbols, abbreviations, markdown)', () 
   assert.ok(!/[§*]/.test(script));
 });
 
+test('a purpose-written video_narration script is used verbatim (sanitized) over the mechanical build', () => {
+  const authored =
+    'Picture your first visit of the day. Before you knock, you are already assessing fall risk. ' +
+    'Today we walk through what to look for, per §484.60, and how to document it, e.g. same day.';
+  const script = buildNarrationScript('Falls Prevention', { ...CONTENT, video_narration: authored });
+  assert.ok(script.startsWith('Picture your first visit of the day.'));
+  assert.ok(script.includes('per section 484.60'));
+  assert.ok(script.includes('for example, same day'));
+  // The mechanical scaffolding is absent — the authored script stands alone.
+  assert.ok(!script.includes('Welcome to this module'));
+  assert.ok(!script.includes("we'll cover"));
+});
+
+test('a too-short or non-string video_narration falls back to the mechanical build', () => {
+  for (const bad of ['Too short.', '   ', 42, null]) {
+    const script = buildNarrationScript('Falls Prevention', { ...CONTENT, video_narration: bad });
+    assert.ok(script.startsWith('Welcome to this module: Falls Prevention.'), `fell through for ${JSON.stringify(bad)}`);
+  }
+});
+
 test('speakableList speaks one, two, and many items naturally', () => {
   assert.equal(speakableList([]), '');
   assert.equal(speakableList(['One.']), 'One');
