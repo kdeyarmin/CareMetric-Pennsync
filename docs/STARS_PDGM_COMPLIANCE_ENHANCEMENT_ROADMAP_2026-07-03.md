@@ -19,6 +19,18 @@ re-plans from here.
 > alerts for work that was completed — just in the EMR — creating a wall of false alarms that
 > trains staff to ignore alerts. Those items are **removed** (kept on record in §7). Every
 > surviving item obeys the design rule in §2.
+>
+> **Second revision (same day): enhance-existing orientation.** The agency is happy with the
+> feature set and prefers **deepening what exists over inventing new surfaces**. This revision
+> applies that lens: every item now lands inside an existing page, tab, panel, or report
+> (e.g., star measures become a section of the existing OASIS Center Quality tab rather than a
+> new tab; the referral-source scorecard becomes a fix to the existing Referral Volume Report,
+> with the new master-data entity deferred). §5 now also folds in the goal-relevant subset of the
+> existing enhancement backlog in
+> [`FEATURE_ENHANCEMENT_REVIEW_2026-07-01.md`](./FEATURE_ENHANCEMENT_REVIEW_2026-07-01.md),
+> instead of inventing a parallel list. Notable progress since 2026-07-01 that this revision
+> verified and credits: quick-phrase expansion (`QuickPhraseTextarea.jsx`) and note→OASIS
+> autofill (`NoteToOasisPrefill.jsx` in `SmartOASISAssessment.jsx`) are now live.
 
 **Goals key:** ⭐ = QoPC star rating · 💰 = PDGM revenue · ✅ = CMS compliance
 **Effort:** S = days · M = 1–2 wk · L = 2–4 wk (single developer, rough order of magnitude)
@@ -43,6 +55,7 @@ compliance — and then discards them.
 | Denial guardrail | `src/components/compliance/denialGuardrailEngine.js` | Pre-save check on the top denial clusters | ✅💰 |
 | F2F persistence | `toFaceToFaceEncounter` in `faceToFaceValidator.js` | An auditable `FaceToFaceEncounter` record (validation today is in-memory only) | ✅💰 |
 | HIPPS / case-mix grouper | `src/components/pdgm/pdgmGrouper.js` + `caseMixWeightsLoader.js` | HIPPS codes + official case-mix weights for revenue analysis (needs the CMS weight CSV) | 💰 |
+| Comorbidity reconciler | `src/components/oasis/comorbidityReconciler.js` | Missed comorbidity-adjustment capture during coding | 💰 |
 
 Because the engines and (in most cases) the entity schemas already exist, **Tier 1 of this roadmap
 is mostly wiring, not building** — low-risk, days-to-weeks each, and it starts exactly where the
@@ -198,7 +211,7 @@ stays with the EMR.
   always with the denominator shown ("of N referrals closed in PennSync").
 - **Ship 2.7 in the same sprint** (it is S) so triage-path admissions stop bypassing the queue.
 
-### 1.2 Star-measure dashboard + schedule `computeOutcomeMeasures` — ⭐ · M
+### 1.2 Outcome measures in the existing Quality tab + schedule `computeOutcomeMeasures` — ⭐ · M
 
 **Companion-mode framing:** a **dashboard, not an alert stream**, computed over episodes that have
 both SOC and Discharge OASIS **documented in PennSync**. It is an early-warning and coaching view
@@ -212,13 +225,15 @@ element, not a footnote.
   table). Add an admin "Recompute now" button using the existing
   `src/functions/computeOutcomeMeasures.js` invoker. The function only *reads* in-app OASIS rows
   and writes metric rows — it alerts no one, so partial coverage cannot create false alarms.
-- **Dashboard:** new admin `stars` hub tab in `OASISCenter.jsx` (add to `TAB_KEYS` line 39 and
-  `ADMIN_TABS` line 44; new lazy `src/components/hub-tabs/StarRatingDashboard.jsx`). Content: the
+- **Dashboard — inside the existing Quality tab, not a new tab:** `OASISCenter.jsx`'s Quality tab
+  (lines 168–183) already renders two titled sections ("Compliance Review", "Documentation
+  Review"); add an admin-gated third section, **"Outcome Measures"**, above them. Content: the
   five improvement measures + GG discharge function score from `AgencyKPI`
   (`metric_category: 'quality'`); episode counts front and center ("based on N complete episode
   pairs documented in PennSync"); the 20-episode / 5-measure floors shown as context for how CMS
   reads the same math; intake turnaround from 1.1; per-measure trend vs `benchmark_value`.
-  Secondary surface: summary card in `KPIDashboard.jsx` linking to the tab.
+  Secondary surface: summary card in the existing `KPIDashboard.jsx` linking to
+  `/OASISCenter?tab=quality`.
 - **Incomplete pairs** (SOC here, no discharge here) appear as a **data-coverage note on the
   dashboard** — never as patient-level alerts, since the discharge assessment most likely lives
   in the EMR.
@@ -307,36 +322,73 @@ support, and what documentation would support better?" — all computed from in-
   grouper output is labeled HIPPS/what-if until formally reconciled. Financials stay behind
   `canViewFinancials`.
 
+### 1.8 Wire the comorbidity reconciler into the existing coding flow — 💰 · S–M
+
+`src/components/oasis/comorbidityReconciler.js` (built, tested, imported only by its test)
+compares OASIS-documented conditions against the coded secondary-diagnosis list to catch missed
+comorbidity adjustments — a direct per-episode case-mix uplift on documentation the nurse already
+wrote. Surface its findings as a panel inside the existing PDGM coding surfaces (the
+`AutomatedPDGMNavigator.jsx` comorbidity section and/or the referral `DiagnosisCodeGenerator.jsx`
+card) — no new page, purely a smarter version of screens coders already use.
+
 ---
 
-## 5. Tier 2 — Referral-pipeline features (fully in-app data)
-
-| # | Feature | Goals | Effort | Depends on |
-|---|---|---|---|---|
-| 2.6 | Referral-source master data + scorecard | 💰 | M | 1.1 |
-| 2.7 | Unify ReferralTriage into the pipeline | ⭐✅ | S | ship with 1.1 |
-| 2.8 | Eligibility/insurance capture at intake | 💰 | M | — |
+## 5. Tier 2 — Deepen existing surfaces
 
 *(Numbering preserved from the first draft so removed items — 2.1–2.5 — remain traceable in §7.)*
 
-- **2.6 Referral-source master data + scorecard** — new `ReferralSource` entity (name, type,
-  contacts, NPI); typeahead on the intake dialog's `referral_source` field with
-  backfill-by-string-match; rewrite `ReferralVolumeReport.jsx` to compute real per-source
-  turnaround via `computeTurnaround` (replacing the hardcoded "2.3d"/"Normal") plus
+### Referral pipeline (fully in-app data)
+
+| # | Feature | Goals | Effort | Depends on |
+|---|---|---|---|---|
+| 2.6 | Real metrics in the existing Referral Volume Report | 💰 | S | 1.1 |
+| 2.7 | Unify ReferralTriage into the pipeline | ⭐✅ | S | ship with 1.1 |
+| 2.8 | Eligibility checks inside the existing intake verification step | 💰 | S–M | — |
+
+- **2.6 Real metrics in the existing Referral Volume Report** — replace
+  `ReferralVolumeReport.jsx`'s hardcoded values ("2.3d" avg processing at line 111; the literal
+  "Normal" per-source priority badge at line 187) with real computed numbers: per-source
+  turnaround via `computeTurnaround` (from 1.1's SOC dates), actual priority mix, and
   conversion-to-SOC rate. Referrals live entirely in PennSync, so this scorecard is accurate by
   construction — and it is where PDGM revenue *growth* (not just capture) comes from.
+  *Deferred (new-surface):* a `ReferralSource` master-data entity with intake typeahead would fix
+  the free-text-source fragmentation ("same referrer, five spellings") — revisit only if the
+  report's string-grouped numbers prove too noisy to act on.
 - **2.7 Unify ReferralTriage** — in `handleCreatePatientFromTriage`, create a `Referral` record
   alongside the Patient (reuse the payload shape at `DocumentToTriageMapper.jsx:130`; status
   `ready_for_admission`, linked `patient_id`, `document_type: 'manual'`). Trivial and
   load-bearing: without it, triage admissions are invisible to QA, follow-up, and every intake
-  metric.
-- **2.8 Eligibility/insurance capture** — structured fields on `Referral` (`payer_type`, `mbi`,
-  `medicare_advantage` flag, `eligibility_verified_by/at`); a pure `mbiValidator.js`
-  (format/check-digit rules, node --test pattern like the other engines); a verification
-  checklist step in `PatientVerificationStep.jsx`. This is a **user-driven checklist inside the
-  intake workflow** (validating what was typed, at the moment it's typed) — no absence-based
-  alerting. Catches the Medicare Advantage surprises the follow-up engine can only flag
-  advisorily today. Real-time 270/271 clearinghouse integration stays out of scope.
+  metric. A fix to an existing flow, not a new one.
+- **2.8 Eligibility checks inside the existing verification step** — `PatientVerificationStep.jsx`
+  already exists as the intake confirmation moment; add payer/MBI confirmation to it: MBI
+  format/check-digit validation (pure `mbiValidator.js`, node --test pattern like the other
+  engines) run against the already-extracted `insurance_primary`/`policy_numbers`, and a
+  Medicare-Advantage flag surfaced from the extraction the AI already performs. Validates what
+  is already captured, at the moment it's captured — no new workflow, no absence-based alerting.
+  Real-time 270/271 clearinghouse integration stays out of scope.
+
+### Goal-relevant items from the existing enhancement backlog
+
+[`FEATURE_ENHANCEMENT_REVIEW_2026-07-01.md`](./FEATURE_ENHANCEMENT_REVIEW_2026-07-01.md) already
+catalogs 202 enhancement opportunities in existing features (45 of them bugs), with many shipped.
+Rather than inventing new analysis, this roadmap adopts the not-yet-implemented subset that
+directly serves the three goals — all of them changes **inside screens staff already use**:
+
+| Backlog item (existing surface) | Why it matters here | Goals | Effort |
+|---|---|---|---|
+| **Assessment-reason (RFA) selector in `SmartOASISAssessment.jsx`** — save currently hardcodes `visit_type: 'Start of Care'` (line 248) | **Load-bearing for 1.2:** outcome measures pair SOC↔Discharge assessments; if every in-app assessment saves as SOC, `computeOutcomeMeasures` can never pair an episode. Fix before or with 1.2 | ⭐✅ | S |
+| **OASIS draft autosave + "required items still blank" pre-save checklist** (`SmartOASISAssessment.jsx`) | Fewer abandoned/incomplete assessments → more complete episode pairs for the measures; less rework | ⭐✅ | M |
+| **Carry the "not documented" gap list into the saved note + exported PDF** (Smart Note; `findings: []` dead code today) | A faxed/printed note shows exactly which Medicare-required elements are missing — the denial-prevention story on paper, where reviewers actually read it | ✅ | M |
+| **Critical-vital alerting on structured grid vitals in Step 1** (Smart Note) | Grid-entered critical BP/O2/HR currently bypasses the notify-physician prompt that note text triggers | ✅ | M |
+| **`DocumentationImpact.jsx` uses national CY2026 defaults + wage index 1.0 even after agency rates are saved** | The ROI simulator and the OASIS analyzer show different dollars for the same scenario — fix makes the existing revenue tool trustworthy | 💰 | M |
+| **PDGM Rate Settings safety rails** — unsaved-changes guard, confirm + provenance before overwriting official rates, plausibility validation on rate cells, ICD-prefix collision validation | These numbers drive every payment estimate; today a typo or accidental overwrite silently corrupts them agency-wide | 💰✅ | M |
+| **Replace `window.prompt` reject / free-text edit in OASIS Review with a proper dialog + code dropdown** | Reviewers can't save an invalid OASIS response code; the reject reason becomes a usable audit trail | ✅ | M |
+| **`PDGMReimbursementReport.jsx` shows self-labeled illustrative dollars** | Either feed it real per-patient PDGM data or move the illustrative framing into the report body — an admin skimming it today can mistake placeholders for actuals | 💰 | S–M |
+
+One backlog item is **rejected under the §2 companion-EMR rule rather than fixed**: the
+Dashboard's "No visit in N days" alert (the backlog proposes fixing its today-only data feed).
+In companion mode the fix would make it *fire* — wrongly, for every visit documented in the EMR.
+Remove or setting-gate it instead (fold into 1.6).
 
 ---
 
@@ -388,14 +440,17 @@ draft of this document (git history) contains their full implementation sketches
 
 | Sprint | Items | Theme |
 |---|---|---|
-| 1 | 1.1 + 2.7 → 1.4 → 1.5 → 1.6 | Referral pipeline complete: SOC lifecycle, aging board, F2F on file, dx guard, alert hygiene |
-| 2 | 1.2 → 1.3 | Star-measure dashboard visible; denial guardrail advisory on every in-app note |
-| 3 | 1.7 → 2.6 → 2.8 | Revenue analysis with official weights; referral-source scorecard; eligibility checklist |
-| 4+ | 3.1 → 3.3 → 3.4 | HHCAHPS import; QAPI evidence exports; survey-readiness reports |
+| 1 | 1.1 + 2.7 → 1.4 → 1.5 → 1.6 → 2.6 | Referral pipeline complete: SOC lifecycle, aging board, F2F on file, dx guard, alert hygiene, honest volume report |
+| 2 | RFA selector → 1.2 → 1.3 | Fix the SOC-hardcoding so episodes can pair; outcome measures in the existing Quality tab; denial guardrail advisory on every in-app note |
+| 3 | 1.7 → 1.8 → DocumentationImpact rates fix → PDGM Rate Settings safety rails | Revenue: official weights, comorbidity capture, trustworthy ROI tooling |
+| 4 | Remaining §5 backlog items (OASIS autosave/checklist, note-PDF gap list, grid-vitals alerting, review dialog, reimbursement-report labeling) → 2.8 | Documentation quality deepening inside existing screens |
+| 5+ | 3.1 → 3.3 → 3.4 | HHCAHPS import; QAPI evidence exports; survey-readiness reports |
 
 Rationale: Sprints 1–2 finish already-tested engines (lowest risk, immediate ⭐/✅ movement,
-starting from the referral process — the workflow PennSync fully owns). Everything downstream
-is analysis and imports, never deadline policing of the EMR's lane.
+starting from the referral process — the workflow PennSync fully owns). The RFA selector rides
+ahead of 1.2 because outcome measures cannot pair episodes while every assessment saves as
+"Start of Care." Everything downstream deepens existing screens — no new pages or entities
+anywhere in Sprints 1–4.
 
 ## 9. Do not rebuild
 
