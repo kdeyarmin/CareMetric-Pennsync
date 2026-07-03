@@ -39,7 +39,13 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { label, effective_year, is_official, notes, rates, icd10_clinical_groups } = body || {};
+    const { label, effective_year, is_official, notes, rates, icd10_clinical_groups, case_mix_weight_table } = body || {};
+
+    // Single-row config: update the most recent row if one exists, else create.
+    // The id is derived server-side (not trusted from the body), matching how the
+    // page loads `list('-created_date', 1)`.
+    const existing = await base44.asServiceRole.entities.PDGMRateConfig.list('-created_date', 1).catch(() => []);
+    const current = existing?.[0];
 
     // Persist only the known fields. The editor identity is taken from the
     // authenticated caller — never a posted `updated_by_email`. `rates` /
@@ -54,14 +60,16 @@ Deno.serve(async (req) => {
       notes: typeof notes === 'string' ? notes : '',
       rates: isPlainObject(rates) ? rates : {},
       icd10_clinical_groups: isPlainObject(icd10_clinical_groups) ? icd10_clinical_groups : {},
+      // REFERENCE-ONLY uploaded CMS case-mix weight table (see the entity schema):
+      // feeds the admin HIPPS reconciliation preview only — never a second payment
+      // figure. Preserve-unless-sent: a caller that omits the field keeps the
+      // stored table (so a rates-only save can't silently wipe it); an explicit
+      // null (or any non-object) clears it; an object replaces it.
+      case_mix_weight_table: case_mix_weight_table === undefined
+        ? (isPlainObject(current?.case_mix_weight_table) ? current.case_mix_weight_table : null)
+        : (isPlainObject(case_mix_weight_table) ? case_mix_weight_table : null),
       updated_by_email: user.email || null,
     };
-
-    // Single-row config: update the most recent row if one exists, else create.
-    // The id is derived server-side (not trusted from the body), matching how the
-    // page loads `list('-created_date', 1)`.
-    const existing = await base44.asServiceRole.entities.PDGMRateConfig.list('-created_date', 1).catch(() => []);
-    const current = existing?.[0];
     const saved = current?.id
       ? await base44.asServiceRole.entities.PDGMRateConfig.update(current.id, payload)
       : await base44.asServiceRole.entities.PDGMRateConfig.create(payload);

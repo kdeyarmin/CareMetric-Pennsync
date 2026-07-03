@@ -7,7 +7,21 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Download } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { exportToPDF } from "../utils/pdfExporter";
+import { computeTurnaround } from "../referral/intakeToSocTracker";
 import { format } from "date-fns";
+
+// Most-severe-first so dominant-priority ties resolve to the more urgent level.
+const PRIORITY_ORDER = ['urgent', 'high', 'normal', 'low'];
+const PRIORITY_BADGE_VARIANT = { urgent: 'destructive', high: 'warning', normal: 'info', low: 'secondary' };
+
+const dominantPriority = (priorities = {}) => {
+  let best = null;
+  for (const p of PRIORITY_ORDER) {
+    const count = priorities[p] || 0;
+    if (count > 0 && (best === null || count > (priorities[best] || 0))) best = p;
+  }
+  return best || 'normal';
+};
 
 export default function ReferralVolumeReport({ dateRange }) {
   const { data: referrals = [] } = useQuery({
@@ -22,17 +36,35 @@ export default function ReferralVolumeReport({ dateRange }) {
     return date >= new Date(dateRange.start) && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
-  // Analyze by source
+  // Analyze by source: volume, priority mix, and conversion to start of care.
   const sourceData = {};
   filteredReferrals.forEach(r => {
     const source = r.referral_source || 'Unknown';
-    sourceData[source] = (sourceData[source] || 0) + 1;
+    if (!sourceData[source]) sourceData[source] = { count: 0, socCompleted: 0, priorities: {} };
+    const s = sourceData[source];
+    s.count += 1;
+    if (r.status === 'soc_completed') s.socCompleted += 1;
+    const priority = r.priority || 'normal';
+    s.priorities[priority] = (s.priorities[priority] || 0) + 1;
   });
 
-  const sourceChartData = Object.entries(sourceData).map(([source, count]) => ({
+  const sourceChartData = Object.entries(sourceData).map(([source, data]) => ({
     source,
-    count
+    count: data.count,
+    socCompleted: data.socCompleted,
+    priorities: data.priorities,
+    conversion: `${((data.socCompleted / data.count) * 100).toFixed(0)}%`,
   }));
+
+  // Real referral→SOC turnaround (replaces the old hardcoded placeholder):
+  // averaged over referrals in the period that reached a start-of-care date.
+  const turnarounds = filteredReferrals
+    .filter(r => r.soc_date || r.first_visit_date)
+    .map(r => computeTurnaround(r))
+    .filter(t => t.completed && t.turnaround_days != null);
+  const avgTurnaroundDays = turnarounds.length > 0
+    ? Math.round((turnarounds.reduce((sum, t) => sum + t.turnaround_days, 0) / turnarounds.length) * 10) / 10
+    : null;
 
   // Analyze by priority
   const priorityData = [
@@ -54,11 +86,13 @@ export default function ReferralVolumeReport({ dateRange }) {
         { type: 'text', text: `Total Referrals: ${filteredReferrals.length}` },
         { type: 'text', text: `Urgent Priority: ${priorityData[0].count}` },
         { type: 'text', text: `Ready for Admission: ${filteredReferrals.filter(r => r.status === 'ready_for_admission').length}` },
+        { type: 'text', text: `Avg Referral-to-SOC Turnaround: ${avgTurnaroundDays != null ? `${avgTurnaroundDays} days` : 'no completed referrals yet'}` },
         { type: 'spacer' },
         { type: 'heading', text: 'Referral Sources' },
         { type: 'table', data: sourceChartData, columns: [
           { header: 'Source', key: 'source' },
-          { header: 'Count', key: 'count' }
+          { header: 'Count', key: 'count' },
+          { header: 'SOC Conversion', key: 'conversion' }
         ]},
         { type: 'spacer' },
         { type: 'heading', text: 'Priority Distribution' },
@@ -108,7 +142,14 @@ export default function ReferralVolumeReport({ dateRange }) {
         <Card>
           <CardContent className="p-6">
             <p className="text-sm text-slate-600 mb-1">Avg Processing Time</p>
-            <p className="text-3xl font-bold text-blue-600">2.3d</p>
+            <p className="text-3xl font-bold text-blue-600">
+              {avgTurnaroundDays != null ? `${avgTurnaroundDays}d` : '—'}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              {avgTurnaroundDays != null
+                ? `referral → start of care (${turnarounds.length} completed)`
+                : 'no completed referrals yet'}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -172,22 +213,37 @@ export default function ReferralVolumeReport({ dateRange }) {
                 <TableHead>Source</TableHead>
                 <TableHead>Count</TableHead>
                 <TableHead>Percentage</TableHead>
-                <TableHead>Avg Priority</TableHead>
+                <TableHead>Dominant Priority</TableHead>
+                <TableHead>SOC Conversion</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {[...sourceChartData].sort((a, b) => b.count - a.count).slice(0, 10).map((item) => (
-                <TableRow key={item.source}>
-                  <TableCell className="text-slate-900">{item.source}</TableCell>
-                  <TableCell className="text-slate-900">{item.count}</TableCell>
-                  <TableCell className="text-slate-900">
-                    {((item.count / filteredReferrals.length) * 100).toFixed(1)}%
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="info">Normal</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {[...sourceChartData].sort((a, b) => b.count - a.count).slice(0, 10).map((item) => {
+                const dominant = dominantPriority(item.priorities);
+                const mix = PRIORITY_ORDER.filter(p => item.priorities[p])
+                  .map(p => `${item.priorities[p]} ${p}`)
+                  .join(' · ');
+                const isMixed = Object.keys(item.priorities).length > 1;
+                return (
+                  <TableRow key={item.source}>
+                    <TableCell className="text-slate-900">{item.source}</TableCell>
+                    <TableCell className="text-slate-900">{item.count}</TableCell>
+                    <TableCell className="text-slate-900">
+                      {((item.count / filteredReferrals.length) * 100).toFixed(1)}%
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={PRIORITY_BADGE_VARIANT[dominant] || 'info'} className="capitalize">
+                        {dominant}
+                      </Badge>
+                      {isMixed && <p className="text-xs text-slate-500 mt-1">{mix}</p>}
+                    </TableCell>
+                    <TableCell className="text-slate-900">
+                      {item.conversion}
+                      <span className="text-xs text-slate-500 ml-1">({item.socCompleted}/{item.count})</span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>

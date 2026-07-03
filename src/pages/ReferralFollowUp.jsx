@@ -30,6 +30,7 @@ import {
   SEVERITIES,
 } from "../components/referral/referralFollowUpEngine";
 import ProviderFollowUpForm, { followUpFormPdfContent } from "../components/referral/ProviderFollowUpForm";
+import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import { estimateFollowUpRevenueImpact, fmtUsd } from "../components/referral/followUpRevenueImpact";
 import { exportToPDF } from "@/components/utils/pdfExporter";
 
@@ -486,6 +487,10 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
         />
       )}
 
+      {/* Intake→SOC aging at a glance — same board as Referral Intake, compact.
+          Reuses this page's ['referrals'] query data; no extra fetch. */}
+      {!isLoading && <ReferralAgingBoard referrals={referrals || []} compact className="mb-4" />}
+
       {isLoading ? (
         <LoadingState label="Loading referrals..." />
       ) : reviewable.length === 0 ? (
@@ -585,6 +590,29 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                       )}
                     </CardHeader>
                     <CardContent className="space-y-2">
+                      {tracking.fax_back && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                          <p className="font-semibold text-blue-900 flex items-center gap-1">
+                            <Printer className="w-4 h-4" /> Provider responded by fax
+                            <span className="text-xs font-normal text-blue-700">
+                              (auto-matched: {(tracking.fax_back.matched_signals || []).join(", ")})
+                            </span>
+                          </p>
+                          <p className="text-xs text-blue-800 mt-1">
+                            Review the faxed document and mark the answered items resolved below.
+                          </p>
+                          {tracking.fax_back.document_url && (
+                            <a
+                              href={tracking.fax_back.document_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-700 underline"
+                            >
+                              Open faxed response document
+                            </a>
+                          )}
+                        </div>
+                      )}
                       {(tracking.items || []).map((it) => (
                         <div key={it.id} className={`border rounded-lg p-3 ${it.item_status === "resolved" ? "bg-green-50 border-green-200" : it.item_status === "answered" ? "bg-blue-50 border-blue-200" : ""}`}>
                           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -595,7 +623,10 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                                 {it.item_status || "open"}
                               </Badge>
                             </div>
-                            {it.item_status === "answered" && (
+                            {/* Portal answers arrive per-item ("answered"); fax-backs
+                                arrive per-document, so any unresolved item is resolvable
+                                once the staff has the faxed response in hand. */}
+                            {it.item_status !== "resolved" && (tracking.fax_back || it.item_status === "answered") && (
                               <Button type="button" size="sm" variant="outline" onClick={() => markItemResolved(it.id)}>
                                 <CheckCircle2 className="w-4 h-4 mr-1" /> Mark resolved
                               </Button>

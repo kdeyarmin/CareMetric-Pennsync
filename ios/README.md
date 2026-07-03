@@ -23,8 +23,9 @@ template provides — it is **not** a complete Xcode project.
 2. Replace the generated `Info.plist` with `PennSync/Info.plist` (or merge the
    `NS*UsageDescription` keys into your existing plist).
 3. Add `WebViewController.swift` and `BlobDownloadHandler.swift` to the target.
-4. Set `appURL` in `WebViewController.swift` to the deployed PennSync frontend
-   origin.
+4. `appURL` in `WebViewController.swift` ships pre-set to the production
+   frontend origin (`https://caremetricai.base44.app`); change it only if the
+   deployed frontend moves.
 
 ## Why this glue is needed
 

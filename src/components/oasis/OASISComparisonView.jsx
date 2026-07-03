@@ -6,6 +6,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { OASIS_ITEM_MAX, optionsForItem, PAIN_FREQUENCY_OPTIONS } from "./oasisScales";
 import {
   CheckCircle2,
   XCircle,
@@ -15,6 +31,27 @@ import {
   FileText,
   Save
 } from "lucide-react";
+
+// Quick-fill starting points for the rejection reason (still editable — the
+// reviewer can refine before submitting).
+const REJECT_REASON_PRESETS = [
+  "Not supported by the source documentation",
+  "Contradicts the clinical assessment",
+  "Incorrect item or value extracted",
+];
+
+// Legal response codes for an item, where the per-item scale is known
+// (OASIS-E functional items M1800-M1860 + M1242 pain frequency, from
+// oasisScales). Returns null for items without a known scale, which keep
+// free-text editing.
+const responseOptionsForItem = (itemNumber) => {
+  const match = String(itemNumber || "").match(/m\s?(\d{4})/i);
+  if (!match) return null;
+  const key = `m${match[1]}`;
+  if (key === "m1242") return PAIN_FREQUENCY_OPTIONS;
+  if (key in OASIS_ITEM_MAX) return optionsForItem(key);
+  return null;
+};
 
 export default function OASISComparisonView({ 
   patient, 
@@ -27,6 +64,8 @@ export default function OASISComparisonView({
   const [editingItem, setEditingItem] = useState(null);
   const [editValue, setEditValue] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [rejectingItem, setRejectingItem] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const updateMutation = useMutation({
     mutationFn: async ({ itemNumber, action, value, notes }) => {
@@ -115,20 +154,33 @@ export default function OASISComparisonView({
     updateMutation.mutate({ itemNumber, action: 'approve', notes });
   };
 
-  const handleReject = (itemNumber, notes = "") => {
-    if (!notes) {
-      const reason = prompt("Please provide a reason for rejection:");
-      if (!reason) return;
-      notes = reason;
-    }
-    updateMutation.mutate({ itemNumber, action: 'reject', notes });
+  const handleReject = (itemNumber) => {
+    setRejectingItem(itemNumber);
+    setRejectReason("");
+  };
+
+  const handleConfirmReject = () => {
+    const notes = rejectReason.trim();
+    if (!notes || !rejectingItem) return;
+    updateMutation.mutate({ itemNumber: rejectingItem, action: 'reject', notes });
+    setRejectingItem(null);
+    setRejectReason("");
   };
 
   const handleEdit = (itemNumber) => {
     const current = aiSuggestions.find(([k]) => k === itemNumber);
     if (current) {
       setEditingItem(itemNumber);
-      setEditValue(current[1].value || "");
+      const options = responseOptionsForItem(itemNumber);
+      const raw = current[1].value ?? "";
+      if (options) {
+        // Pre-select the suggested code only if it is a legal response for
+        // this item; otherwise force an explicit choice.
+        const code = String(parseInt(String(raw), 10));
+        setEditValue(options.some((o) => o.value === code) ? code : "");
+      } else {
+        setEditValue(raw || "");
+      }
       setEditNotes("");
     }
   };
@@ -182,12 +234,27 @@ export default function OASISComparisonView({
                   <div className="space-y-3">
                     <div>
                       <p className="font-semibold text-sm mb-2">{itemNumber}</p>
-                      <Textarea
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        placeholder="Enter corrected value..."
-                        className="mb-2"
-                      />
+                      {responseOptionsForItem(itemNumber) ? (
+                        <Select value={editValue} onValueChange={setEditValue}>
+                          <SelectTrigger className="mb-2 bg-white">
+                            <SelectValue placeholder="Select corrected response code..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {responseOptionsForItem(itemNumber).map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Textarea
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          placeholder="Enter corrected value..."
+                          className="mb-2"
+                        />
+                      )}
                       <Textarea
                         value={editNotes}
                         onChange={(e) => setEditNotes(e.target.value)}
@@ -330,6 +397,77 @@ export default function OASISComparisonView({
           ))}
         </div>
       )}
+
+      {/* Reject Reason Dialog (replaces the old window.prompt flow — same
+          mutation + audit-trail write, on-brand required-reason capture). */}
+      <Dialog
+        open={!!rejectingItem}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRejectingItem(null);
+            setRejectReason("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <XCircle className="w-5 h-5 text-red-600" />
+              Reject AI Suggestion{rejectingItem ? `: ${rejectingItem}` : ""}
+            </DialogTitle>
+            <DialogDescription>
+              A reason is required and is recorded in the audit trail with your reviewer identity.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {REJECT_REASON_PRESETS.map((preset) => (
+                <Button
+                  key={preset}
+                  type="button"
+                  size="sm"
+                  variant={rejectReason === preset ? "default" : "outline"}
+                  className="text-xs"
+                  onClick={() => setRejectReason(preset)}
+                >
+                  {preset}
+                </Button>
+              ))}
+            </div>
+            <div>
+              <Label htmlFor="reject-reason">Reason for rejection *</Label>
+              <Textarea
+                id="reject-reason"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Explain why this suggestion is being rejected..."
+                className="mt-1 h-24"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setRejectingItem(null);
+                  setRejectReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleConfirmReject}
+                disabled={!rejectReason.trim() || updateMutation.isPending}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                <XCircle className="w-4 h-4 mr-1" />
+                Reject Suggestion
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -21,8 +21,10 @@ import WebKit
 ///    into a `WKDownload` handled by `BlobDownloadHandler`.
 final class WebViewController: UIViewController {
 
-    /// The hosted app URL. Point this at the deployed PennSync frontend.
-    private let appURL = URL(string: "https://pennsync.example.com")!
+    /// The hosted app URL — the deployed production frontend. Also the origin
+    /// `requestMediaCapturePermission` auto-grants getUserMedia to, so it must
+    /// match the origin the shell actually loads.
+    private let appURL = URL(string: "https://caremetricai.base44.app")!
 
     private var webView: WKWebView!
     private lazy var downloadHandler = BlobDownloadHandler(presenter: self)

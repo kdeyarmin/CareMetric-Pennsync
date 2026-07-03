@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { buildPdgmNavigatorCsv } from "./pdgmNavigatorExport";
+import { reconcileComorbidities } from "./comorbidityReconciler";
+import FinancialGate from "@/components/ui/FinancialGate";
 import { getConfidenceBadge, getSeverityBadge, getPriorityColor, getLevelColor, formatCurrency } from "./pdgmNavigatorHelpers";
 import { resolveAgencyCosts } from "./pdgmFinancialEngine";
 import { buildNavigationRequest, buildFinancialPredictionRequest, buildResolutionWorkflowRequest } from "./pdgmNavigatorPrompts";
@@ -72,6 +74,35 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
   });
 
   const agencyCosts = resolveAgencyCosts(agencySettings);
+
+  // Reconcile OASIS-documented condition indicators against the coded
+  // secondary-diagnosis list (comorbidityReconciler) to surface comorbidity
+  // adjustments the coding may have missed. Mirrors the module's
+  // deriveOasisConditions but reads the structured pdgmData this component
+  // receives instead of a flat answers map; deliberately conservative —
+  // diagnosis-bearing OASIS items only.
+  const comorbidityReconciliation = useMemo(() => {
+    if (!pdgmData) return null;
+    const documentedConditions = [];
+    const depression = parseInt(String(pdgmData.cognitive_status?.depression_phq2 ?? ""), 10);
+    if (Number.isFinite(depression) && depression >= 1) {
+      documentedConditions.push({ condition: "Depression", source: "M1730" });
+    }
+    if (pdgmData.clinical_items?.pressure_ulcer_present) {
+      documentedConditions.push({ condition: "Pressure Ulcer", source: "M1306" });
+    }
+    if (pdgmData.clinical_items?.stasis_ulcer) {
+      documentedConditions.push({ condition: "Stasis Ulcer", source: "M1322" });
+    }
+    if (pdgmData.clinical_items?.surgical_wound) {
+      documentedConditions.push({ condition: "Surgical Wound", source: "M1330" });
+    }
+    if (documentedConditions.length === 0) return null;
+    return reconcileComorbidities({
+      documentedConditions,
+      codedSecondaries: pdgmData.comorbidities || [],
+    });
+  }, [pdgmData]);
 
   const runPDGMNavigation = useCallback(async () => {
     if (!pdgmData) return;
@@ -832,6 +863,119 @@ PREDICT:
                             <li key={i}>• {opp}</li>
                           ))}
                         </ul>
+                      </div>
+                    )}
+
+                    {/* OASIS <-> coded-secondaries reconciliation (deterministic,
+                        from comorbidityReconciler — not the LLM analysis above) */}
+                    {comorbidityReconciliation && (
+                      <div className="bg-white p-3 rounded border border-green-200 space-y-2">
+                        <p className="text-xs font-medium text-slate-700 flex items-center gap-1">
+                          <FileText className="w-3 h-3" /> OASIS vs Coded Secondaries
+                          <Badge variant="outline" className="ml-auto text-xs">Advisory</Badge>
+                        </p>
+
+                        {comorbidityReconciliation.comorbidity_opportunities.length > 0 && (
+                          <div className="bg-yellow-50 p-2 rounded border border-yellow-200">
+                            <p className="text-xs font-medium text-yellow-800 mb-2 flex items-center gap-1">
+                              <Lightbulb className="w-3 h-3" />
+                              Documented in OASIS but not coded — {comorbidityReconciliation.potential_adjustment_count} potential comorbidity adjustment{comorbidityReconciliation.potential_adjustment_count !== 1 ? 's' : ''}
+                            </p>
+                            <div className="space-y-2">
+                              {comorbidityReconciliation.comorbidity_opportunities.map((opp, idx) => {
+                                const predKey = `comorb_${idx}`;
+                                return (
+                                  <div key={idx} className="bg-white p-2 rounded border border-yellow-200">
+                                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                                      <span className="text-xs font-semibold text-slate-800">{opp.condition}</span>
+                                      {opp.source && (
+                                        <Badge variant="outline" className="text-xs">{opp.source}</Badge>
+                                      )}
+                                      <Badge className="bg-yellow-200 text-yellow-800 text-xs">
+                                        {opp.subgroup} subgroup
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs text-slate-600">{opp.message}</p>
+
+                                    {/* Dollar figures stay behind the financial gate; the
+                                        clinical finding above renders for everyone. */}
+                                    <FinancialGate>
+                                      <div className="mt-2">
+                                        <Button
+                                          onClick={() => getFinancialPrediction({
+                                            area: "Comorbidity capture",
+                                            opportunity: opp.message,
+                                            condition: opp.condition,
+                                            subgroup: opp.subgroup,
+                                            source_item: opp.source,
+                                            action_required: `Add ${opp.condition} to the coded secondary diagnoses so the ${opp.subgroup} comorbidity subgroup is captured.`,
+                                          }, predKey, 'opportunity')}
+                                          disabled={loadingPrediction === predKey}
+                                          size="sm"
+                                          variant="outline"
+                                          className="w-full"
+                                        >
+                                          {loadingPrediction === predKey ? (
+                                            <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> Calculating...</>
+                                          ) : financialPredictions[predKey] ? (
+                                            <><DollarSign className="w-3 h-3 mr-2" /> View Financial Impact</>
+                                          ) : (
+                                            <><DollarSign className="w-3 h-3 mr-2" /> Predict Financial Impact</>
+                                          )}
+                                        </Button>
+                                        {financialPredictions[predKey] && !financialPredictions[predKey].error && (
+                                          <div className="mt-2 bg-gradient-to-r from-green-50 to-emerald-50 p-2 rounded border border-green-300 text-center">
+                                            <p className="text-xs text-slate-500">Annual Opportunity</p>
+                                            <p className="text-xl font-bold text-green-700">
+                                              {formatCurrency(financialPredictions[predKey].annual_projection?.total_opportunity)}
+                                            </p>
+                                            <p className="text-xs text-green-600">
+                                              +{formatCurrency(financialPredictions[predKey].per_episode?.gain_per_episode)} per episode
+                                            </p>
+                                          </div>
+                                        )}
+                                        {financialPredictions[predKey]?.error && (
+                                          <p className="mt-2 text-xs text-red-700">{financialPredictions[predKey].error}</p>
+                                        )}
+                                      </div>
+                                    </FinancialGate>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {comorbidityReconciliation.gaps.some((g) => !g.subgroup) && (
+                          <p className="text-xs text-slate-500">
+                            Documented but not coded (no PDGM comorbidity subgroup):{' '}
+                            {comorbidityReconciliation.gaps.filter((g) => !g.subgroup).map((g) => g.condition).join(', ')}
+                          </p>
+                        )}
+
+                        {comorbidityReconciliation.gaps.length === 0 && (
+                          <p className="text-xs text-green-700 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            All OASIS-documented conditions appear on the coded secondary-diagnosis list.
+                          </p>
+                        )}
+
+                        {comorbidityReconciliation.captured.length > 0 && (
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">Documented and already coded</p>
+                            <div className="flex flex-wrap gap-1">
+                              {comorbidityReconciliation.captured.map((c, i) => (
+                                <Badge key={i} className="bg-green-100 text-green-800 text-xs">
+                                  {c.condition}{c.source ? ` (${c.source})` : ''}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <p className="text-xs text-slate-500 italic">
+                          Advisory reconciliation of OASIS-documented conditions vs coded secondary diagnoses — verify clinically before changing any coding.
+                        </p>
                       </div>
                     )}
 

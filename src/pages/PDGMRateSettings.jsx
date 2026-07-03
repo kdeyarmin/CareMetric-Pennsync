@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { isAdminLike } from "@/lib/superAdmin";
 import { DEFAULT_PDGM_RATES, mergePdgmRates, DEFAULT_ICD10_CLINICAL_GROUPS, effectiveIcdGroups } from "@/components/pdgm/pdgmRates";
+import { validateRateNumbers, validateIcdMappings } from "@/components/pdgm/rateSettingsValidation";
+import CaseMixWeightsUpload from "@/components/pdgm/CaseMixWeightsUpload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,10 +15,11 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
-import { PieChart, Save, RotateCcw, Info, ShieldCheck, Plus, Trash2 } from "lucide-react";
+import { PieChart, Save, RotateCcw, Info, ShieldCheck, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 // Stable per-row key (not persisted — rowsToMap reads only prefix/group) so
@@ -40,6 +44,14 @@ const TABLES = [
 
 const prettify = (k) =>
   String(k).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+const INITIAL_META = { label: "", effective_year: "", is_official: false, notes: "" };
+
+// Canonical serialization of everything the Save button persists, used for the
+// dirty-state guard. Row _keys are editor-local and excluded so re-keying a row
+// doesn't read as an edit.
+const snapshotOf = (form, icdRows, meta) =>
+  JSON.stringify({ form, icd: (icdRows || []).map(({ prefix, group }) => ({ prefix, group })), meta });
 
 // Convert a rates object's numbers → strings for free-text editing.
 const ratesToForm = (rates) => {
@@ -128,7 +140,7 @@ export default function PDGMRateSettings() {
   const queryClient = useQueryClient();
   const canEdit = isAdminLike(user);
 
-  const { data: config, isLoading } = useQuery({
+  const { data: config, isLoading, isFetching: configFetching, isError: configError } = useQuery({
     queryKey: ["pdgm-rate-config"],
     queryFn: async () => {
       const rows = await base44.entities.PDGMRateConfig.list("-created_date", 1);
@@ -139,22 +151,49 @@ export default function PDGMRateSettings() {
   });
 
   const [form, setForm] = useState(() => ratesToForm(DEFAULT_PDGM_RATES));
-  const [meta, setMeta] = useState({ label: "", effective_year: "", is_official: false, notes: "" });
+  const [meta, setMeta] = useState(INITIAL_META);
   const [icdRows, setIcdRows] = useState(() => mapToRows(DEFAULT_ICD10_CLINICAL_GROUPS));
+  // Snapshot of the last SAVED (or freshly seeded) editor state, for the
+  // unsaved-edits guard. Starts as the defaults the editor initializes with.
+  const [savedSnapshot, setSavedSnapshot] = useState(() =>
+    snapshotOf(ratesToForm(DEFAULT_PDGM_RATES), mapToRows(DEFAULT_ICD10_CLINICAL_GROUPS), INITIAL_META));
 
   // Seed the editor from the saved config (merged over defaults) once it loads.
   useEffect(() => {
     if (config) {
-      setForm(ratesToForm(mergePdgmRates(config.rates)));
-      setIcdRows(mapToRows(effectiveIcdGroups(config.icd10_clinical_groups)));
-      setMeta({
+      const seededForm = ratesToForm(mergePdgmRates(config.rates));
+      const seededRows = mapToRows(effectiveIcdGroups(config.icd10_clinical_groups));
+      const seededMeta = {
         label: config.label || "",
         effective_year: config.effective_year || "",
         is_official: config.is_official === true,
         notes: config.notes || "",
-      });
+      };
+      setForm(seededForm);
+      setIcdRows(seededRows);
+      setMeta(seededMeta);
+      setSavedSnapshot(snapshotOf(seededForm, seededRows, seededMeta));
     }
   }, [config]);
+
+  const isDirty = useMemo(
+    () => snapshotOf(form, icdRows, meta) !== savedSnapshot,
+    [form, icdRows, meta, savedSnapshot],
+  );
+
+  // Dirty-state guard: warn before a refresh/close discards unsaved rate edits.
+  // The app mounts a plain <BrowserRouter> (no data router), so react-router's
+  // useBlocker isn't available for in-app navigation — beforeunload plus the
+  // visible "Unsaved changes" indicator in the save bar is the guard.
+  useEffect(() => {
+    if (!isDirty) return undefined;
+    const warn = (e) => {
+      e.preventDefault();
+      e.returnValue = ""; // required by Chrome to show the prompt
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isDirty]);
 
   const groupOptions = useMemo(() => Object.keys(form.clinicalGroupWeights || {}), [form.clinicalGroupWeights]);
   const updateIcdRow = (i, patch) => setIcdRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -167,12 +206,22 @@ export default function PDGMRateSettings() {
       [section]: { ...f[section], [row]: { ...f[section][row], [col]: value } },
     }));
 
+  // Plausibility rails, recomputed live: implausible rate cells and broken ICD
+  // mappings (colliding prefixes / weightless groups) block Save with a specific
+  // message; benign duplicates surface as warnings only.
+  const rateErrors = useMemo(() => validateRateNumbers(formToRates(form)), [form]);
+  const icdIssues = useMemo(() => validateIcdMappings(icdRows, groupOptions), [icdRows, groupOptions]);
+  const blockingErrors = useMemo(() => [...rateErrors, ...icdIssues.errors], [rateErrors, icdIssues]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       // PDGMRateConfig is service-role-write only, so writes go through the
       // savePDGMRateConfig function, which gates on isAdminLike (so an account_type
       // admin / the owner — whose `role` may not be literally 'admin' — can still
       // save) and stamps updated_by_email from the authenticated caller.
+      // case_mix_weight_table is deliberately omitted: the function preserves the
+      // stored reference table unless the field is explicitly sent (see the
+      // dedicated upload card below).
       const payload = {
         ...meta,
         rates: formToRates(form),
@@ -182,11 +231,66 @@ export default function PDGMRateSettings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pdgm-rate-config"] });
+      setSavedSnapshot(snapshotOf(form, icdRows, meta));
       toast.success("PDGM rates saved. New estimates use these numbers.");
     },
     onError: (err) => {
       console.error("Failed to save PDGM rates:", err);
       toast.error("Could not save PDGM rates. Please try again.");
+    },
+  });
+
+  const confirm = useConfirm();
+  const handleSave = async () => {
+    if (blockingErrors.length > 0) {
+      // Defense in depth — the Save button is disabled while errors exist.
+      toast.error(blockingErrors[0]);
+      return;
+    }
+    // Guard official rates: overwriting a config an admin flagged as official CMS
+    // numbers is deliberate, so show who last edited it and require confirmation.
+    if (config?.is_official) {
+      const editor = config.updated_by_email || "an unknown editor";
+      const when = config.updated_date
+        ? ` on ${format(new Date(config.updated_date), "MMM d, yyyy 'at' h:mm a")}`
+        : "";
+      const ok = await confirm({
+        title: "Overwrite official CMS rates?",
+        description: `The saved rate set is marked as OFFICIAL CMS rates — last edited by ${editor}${when}. Saving replaces it and applies to every PDGM payment estimate immediately.`,
+        confirmText: "Overwrite official rates",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    saveMutation.mutate();
+  };
+
+  // Persist ONLY the reference weight table, re-sending the SAVED config fields
+  // (never the in-progress form) so an upload can't silently commit unsaved rate
+  // edits. The upload card is disabled while the editor is dirty for the same
+  // reason (a save here refetches + reseeds the editor from the saved config).
+  const weightTableMutation = useMutation({
+    mutationFn: async (tableOrNull) => {
+      const payload = {
+        label: config?.label ?? "",
+        effective_year: config?.effective_year ?? "",
+        is_official: config?.is_official === true,
+        notes: config?.notes ?? "",
+        rates: config?.rates ?? {},
+        icd10_clinical_groups: config?.icd10_clinical_groups ?? {},
+        case_mix_weight_table: tableOrNull,
+      };
+      return base44.functions.invoke("savePDGMRateConfig", payload);
+    },
+    onSuccess: (_res, tableOrNull) => {
+      queryClient.invalidateQueries({ queryKey: ["pdgm-rate-config"] });
+      toast.success(tableOrNull
+        ? "CMS case-mix weight table stored — reference for analysis only; payment estimates remain from the PDGM engine."
+        : "Stored CMS case-mix weight table removed.");
+    },
+    onError: (err) => {
+      console.error("Failed to store the case-mix weight table:", err);
+      toast.error("Could not store the case-mix weight table. Please try again.");
     },
   });
 
@@ -320,8 +424,54 @@ export default function PDGMRateSettings() {
             </CardContent>
           </Card>
 
+          {/* Official CMS case-mix weight table — reference for analysis only.
+              Keyed on config arrival so the year field re-initializes from the
+              stored table once the saved config finishes loading. Disabled until
+              the saved config has actually loaded: initialData:null keeps
+              isLoading false during the first fetch, and the persist payload
+              re-sends the SAVED config fields — persisting against a not-yet-
+              loaded (or failed) config would overwrite the stored rate set with
+              blanks. */}
+          <CaseMixWeightsUpload
+            key={config ? "config-loaded" : "config-pending"}
+            storedTable={config?.case_mix_weight_table || null}
+            onPersist={(tableOrNull) => weightTableMutation.mutateAsync(tableOrNull)}
+            uploadedBy={user?.email || null}
+            defaultYear={meta.effective_year}
+            disabled={configFetching || configError || isDirty || saveMutation.isPending || weightTableMutation.isPending}
+            disabledReason={
+              configError
+                ? "The saved rate set could not be loaded — reload the page before storing a table (persisting now would overwrite it with blanks)."
+                : configFetching
+                  ? "Loading the saved rate set…"
+                  : "You have unsaved rate edits — save or reset them first (storing the table reloads the saved rate set)."
+            }
+          />
+
+          {/* Safety rails: implausible cells / broken ICD mappings block Save. */}
+          {(blockingErrors.length > 0 || icdIssues.warnings.length > 0) && (
+            <Alert className={blockingErrors.length > 0 ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}>
+              <AlertTriangle className={`h-4 w-4 ${blockingErrors.length > 0 ? "text-red-600" : "text-amber-600"}`} />
+              <AlertDescription className="text-sm">
+                {blockingErrors.length > 0 && (
+                  <>
+                    <p className="font-semibold text-red-800 mb-1">Fix before saving:</p>
+                    <ul className="list-disc pl-5 space-y-0.5 text-red-800">
+                      {blockingErrors.map((e, i) => <li key={i}>{e}</li>)}
+                    </ul>
+                  </>
+                )}
+                {icdIssues.warnings.length > 0 && (
+                  <ul className={`list-disc pl-5 space-y-0.5 text-amber-800 ${blockingErrors.length > 0 ? "mt-2" : ""}`}>
+                    {icdIssues.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                  </ul>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="flex flex-wrap items-center gap-3 sticky bottom-0 bg-white/80 backdrop-blur py-3 border-t">
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+            <Button onClick={handleSave} disabled={saveMutation.isPending || blockingErrors.length > 0}>
               <Save className="w-4 h-4 mr-2" />
               {saveMutation.isPending ? "Saving…" : "Save rates"}
             </Button>
@@ -329,6 +479,11 @@ export default function PDGMRateSettings() {
               <RotateCcw className="w-4 h-4 mr-2" />
               Reset to defaults
             </Button>
+            {isDirty && !saveMutation.isPending && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600">
+                <AlertTriangle className="w-3.5 h-3.5" /> Unsaved changes
+              </span>
+            )}
             <span className="text-xs text-slate-500">
               Base rate preview: ${Number(effectivePreview.basePaymentRate ?? DEFAULT_PDGM_RATES.basePaymentRate).toFixed(2)}
             </span>

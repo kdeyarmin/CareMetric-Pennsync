@@ -10,6 +10,7 @@ import { Brain, CheckCircle2, Clock, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { optionsForItem, PAIN_FREQUENCY_OPTIONS } from "@/components/oasis/oasisScales";
 import { todayEastern, formatEastern } from "@/components/utils/timezone";
+import { markStartOfCareCompleted } from "@/components/referral/intakeToSocTracker";
 
 // Each OASIS-E item uses its OWN valid range (M1810/M1845 = 0–3, M1850 = 0–5,
 // M1830/M1860 = 0–6) — see oasisScales.js. A single flat list either truncated the
@@ -25,8 +26,47 @@ const QUICK_FIELDS = [
 ];
 
 // OASISAssessment.visit_type is a required enum; an assessment must declare which
-// kind it is. These are the schema's valid values.
-const VISIT_TYPES = ["Start of Care", "Resumption of Care", "Recertification", "Discharge", "Transfer"];
+// kind it is. These are the schema's valid values. (Also consumed by
+// SmartOASISAssessment, which drives the same entity.)
+export const VISIT_TYPES = ["Start of Care", "Resumption of Care", "Recertification", "Discharge", "Transfer"];
+
+// Referral statuses still waiting on a start-of-care visit — everything before
+// the intake→SOC clock closes (intakeToSocTracker closes it at soc_completed /
+// declined). `active` is deliberately excluded: an active referral was already
+// admitted, so a new SOC OASIS shouldn't rewrite its SOC bookkeeping.
+const OPEN_REFERRAL_STATUSES = ["new", "pending", "processing", "awaiting_info", "ready_for_admission"];
+
+/**
+ * After a Start of Care OASIS is saved, close the intake→SOC clock on the
+ * patient's open referral via markStartOfCareCompleted (drives the CMS Timely
+ * Initiation of Care measure — see intakeToSocTracker.js).
+ *
+ * Positive evidence only: applies the update only when exactly ONE open
+ * referral matches the patient — zero means nothing to close, and more than
+ * one is an ambiguity a human should resolve, not guess at.
+ *
+ * Best-effort fire-and-forget (call WITHOUT await): resolves rather than
+ * throws, so referral bookkeeping can never block or fail the OASIS save —
+ * the same non-blocking pattern as the diagnosis-coding step in
+ * src/pages/ReferralIntake.jsx.
+ */
+export async function completeReferralSocForPatient(patientId, socDate) {
+  try {
+    if (!patientId) return;
+    const openReferrals = await base44.entities.Referral.filter({
+      patient_id: patientId,
+      status: { $in: OPEN_REFERRAL_STATUSES },
+    });
+    if (!Array.isArray(openReferrals) || openReferrals.length !== 1) return;
+    const me = await base44.auth.me().catch(() => null);
+    await base44.entities.Referral.update(
+      openReferrals[0].id,
+      markStartOfCareCompleted(openReferrals[0], { socDate, by: me?.email }),
+    );
+  } catch (err) {
+    console.error("Referral SOC completion skipped:", err);
+  }
+}
 
 export default function OASISQuickUpdate({ patient }) {
   const queryClient = useQueryClient();
@@ -61,17 +101,23 @@ export default function OASISQuickUpdate({ patient }) {
           ai_suggested: false,
           manually_edited: true,
         }));
+      // Record the Eastern calendar day, not the UTC one — an evening ET save
+      // (after 8 PM EDT / 7 PM EST) would otherwise stamp tomorrow's date on a
+      // field that drives Medicare assessment-timing windows.
+      const assessmentDate = todayEastern();
       await base44.entities.OASISAssessment.create({
         patient_id: patient.id,
         visit_type: visitType,
-        // Record the Eastern calendar day, not the UTC one — an evening ET save
-        // (after 8 PM EDT / 7 PM EST) would otherwise stamp tomorrow's date on a
-        // field that drives Medicare assessment-timing windows.
-        assessment_date: todayEastern(),
+        assessment_date: assessmentDate,
         oasis_items: oasisItems,
         clinical_summary: clinicalNote,
         status: "draft",
       });
+      if (visitType === "Start of Care") {
+        // Fire-and-forget (no await): close the referral's intake→SOC clock,
+        // never blocking or failing the quick-update save.
+        completeReferralSocForPatient(patient.id, assessmentDate);
+      }
       toast.success("OASIS quick update saved as draft");
       setValues({});
       setVisitType("");
