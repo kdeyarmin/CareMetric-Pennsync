@@ -192,6 +192,13 @@ const ENUM_USAGE = {
   // Visit.status — the offline capture queues 'pending_review' (grounding deferred
   // to reconnect); the sync worker / other flows write 'completed'.
   'Visit.status': ['completed', 'pending_review'],
+  // AdrAuditCase.status — the ADR Center workflow writes every stage transition
+  // (src/pages/ADRCenter.jsx + components); generateAdrPacket writes
+  // 'packet_generated'.
+  'AdrAuditCase.status': [
+    'letter_uploaded', 'checklist_ready', 'packet_uploaded', 'packet_verified',
+    'packet_generated', 'submitted', 'closed',
+  ],
 };
 
 // ---------------------------------------------------------------------------

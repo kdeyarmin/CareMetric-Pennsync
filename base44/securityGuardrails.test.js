@@ -135,6 +135,9 @@ test('expandClinicalPhrase re-authorizes patient-bound templates against patient
 //    ClinicalLibraryTemplate guard above.
 const PHI_READ_SCOPED_ENTITIES = {
   'OASISUpload': ['created_by'],
+  // ADR/audit cases carry beneficiary name + MBI + claim identifiers; reads are
+  // creator + admin only (office/admin workflow, no cross-user assignment).
+  'AdrAuditCase': ['created_by'],
   'OASISAssessment': ['created_by'],
   'OASISAudit': ['created_by', 'assigned_to'],
   'Referral': ['created_by', 'assigned_to'],
