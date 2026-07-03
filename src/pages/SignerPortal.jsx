@@ -18,6 +18,10 @@ export default function SignerPortal() {
   const validateToken = useCallback(async () => {
     try {
       setIsLoading(true);
+      setIsValid(false);
+      setPackageData(null);
+      setError(null);
+      setIsComplete(false);
       const response = await validateSignerToken({ token });
       // functions.invoke returns the full axios response (interceptResponses:false);
       // the body is under .data. Reading response.valid directly always failed
@@ -51,6 +55,9 @@ export default function SignerPortal() {
 
   useEffect(() => {
     if (!token) {
+      setIsValid(false);
+      setPackageData(null);
+      setIsComplete(false);
       setError('No access token provided. Please use the link from your email.');
       setIsLoading(false);
       return;

@@ -65,12 +65,28 @@ export default function TrainingCoursePlayer() {
   const [signedName, setSignedName] = useState("");
   const [result, setResult] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [startTime] = useState(() => Date.now());
+  const [startTime, setStartTime] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState(0);
   const [submitError, setSubmitError] = useState("");
   const topRef = useRef(null);
 
-  const startedAt = useMemo(() => new Date().toISOString(), []);
+  const [startedAt, setStartedAt] = useState(() => new Date().toISOString());
+
+  useEffect(() => {
+    setStep("objectives");
+    setCompletedModules([]);
+    setActiveModuleIndex(0);
+    setAnswers({});
+    setAttestationAccepted(false);
+    setSignedName("");
+    setResult(null);
+    setSubmitting(false);
+    setElapsed(0);
+    setSubmitError("");
+    const now = Date.now();
+    setStartTime(now);
+    setStartedAt(new Date(now).toISOString());
+  }, [assignmentId, courseId, previewMode]);
 
   useEffect(() => {
     if (assignmentId && !previewMode) startTrainingAssignment({ assignmentId });

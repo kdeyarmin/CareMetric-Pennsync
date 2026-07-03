@@ -39,6 +39,22 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
 // are hidden from the sidebar/palette for non-admins, but routes are reachable
 // by URL, so this is the client-side authorization gate (server RLS is the real
 // boundary). Rendered inside the layout so the user keeps their navigation.
+
+const ConfigurationErrorScreen = ({ message }) => (
+  <div className="fixed inset-0 flex items-center justify-center bg-slate-50 p-4">
+    <div className="max-w-lg rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
+      <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Configuration required</p>
+      <h1 className="mt-2 text-2xl font-bold text-slate-900">Base44 app settings are missing</h1>
+      <p className="mt-3 text-sm text-slate-700">
+        {message || 'Set VITE_BASE44_APP_ID and VITE_BASE44_BACKEND_URL before signing in.'}
+      </p>
+      <p className="mt-3 text-xs text-slate-500">
+        For local smoke testing without backend credentials, open /signer or /join to verify the SPA shell.
+      </p>
+    </div>
+  </div>
+);
+
 const AdminOnlyFallback = ({ superAdmin = false }) => (
   <div className="flex min-h-[60vh] flex-col items-center justify-center p-8 text-center">
     <h1 className="text-2xl font-bold text-slate-900">
@@ -99,10 +115,10 @@ const AuthenticatedApp = () => {
         </div>
       }>
         <Routes>
-          <Route path="/join" element={<JoinTelehealth />} />
-          <Route path="/signer" element={<SignerPortal />} />
+          <Route path="/join/*" element={<JoinTelehealth />} />
+          <Route path="/signer/*" element={<SignerPortal />} />
           {/* Provider follow-up response portal — token-gated, no app login */}
-          <Route path="/followup" element={<ProviderFollowUpPortal />} />
+          <Route path="/followup/*" element={<ProviderFollowUpPortal />} />
         </Routes>
       </Suspense>
     );
@@ -119,7 +135,9 @@ const AuthenticatedApp = () => {
 
   // Handle authentication errors
   if (authError) {
-    if (authError.type === 'user_not_registered') {
+    if (authError.type === 'configuration_error') {
+      return <ConfigurationErrorScreen message={authError.message} />;
+    } else if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
       // Branded in-app sign-in (replaces the redirect to the unbranded

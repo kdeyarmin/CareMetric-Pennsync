@@ -16,7 +16,34 @@ installAlertToToastShim()
 // Apply the native/web color scheme before React paints. Users can override by
 // setting localStorage.theme to "light" or "dark"; otherwise the OS preference
 // drives Tailwind's class-based dark mode.
-const savedTheme = localStorage.getItem('theme')
+const safeStorage = (storage) => ({
+  getItem(key) {
+    try {
+      return storage?.getItem(key) ?? null;
+    } catch {
+      return null;
+    }
+  },
+  setItem(key, value) {
+    try {
+      storage?.setItem(key, value);
+    } catch {
+      // Storage can be unavailable in privacy-restricted/embed contexts.
+    }
+  },
+  removeItem(key) {
+    try {
+      storage?.removeItem(key);
+    } catch {
+      // Storage can be unavailable in privacy-restricted/embed contexts.
+    }
+  },
+});
+
+const safeLocalStorage = safeStorage(window.localStorage);
+const safeSessionStorage = safeStorage(window.sessionStorage);
+
+const savedTheme = safeLocalStorage.getItem('theme')
 const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
 if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
   document.documentElement.classList.add('dark')
@@ -50,12 +77,12 @@ const handleStaleChunk = (err) => {
   // offline message instead; the user retries after reconnecting.
   if (navigator.onLine === false) return false;
   const key = `${VITE_CHUNK_KEY}:${window.location.pathname}`;
-  const attempts = parseInt(sessionStorage.getItem(key) || '0', 10);
+  const attempts = parseInt(safeSessionStorage.getItem(key) || '0', 10);
   if (attempts >= 3) {
-    sessionStorage.removeItem(key); // exhausted — let the error surface
+    safeSessionStorage.removeItem(key); // exhausted — let the error surface
     return false;
   }
-  sessionStorage.setItem(key, String(attempts + 1));
+  safeSessionStorage.setItem(key, String(attempts + 1));
   // Hard navigation with cache-buster so the browser fetches fresh chunk URLs
   // instead of serving the stale cached response that caused the error. Set only
   // the _r param on a parsed URL so existing query params (?id=, ?tab=, and the

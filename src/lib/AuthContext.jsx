@@ -1,7 +1,7 @@
 import { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
-import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
+import { createAxiosClient } from '@/lib/base44AxiosClient';
 import { queryClientInstance } from '@/lib/query-client';
 import { clearCachedPHI } from '@/lib/phiStorage';
 
