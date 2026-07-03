@@ -3,7 +3,12 @@ import path from 'node:path';
 import { createLinter } from 'actionlint';
 
 const workflowDir = '.github/workflows';
-const entries = await readdir(workflowDir, { withFileTypes: true });
+let entries = [];
+try {
+  entries = await readdir(workflowDir, { withFileTypes: true });
+} catch (err) {
+  if (err?.code !== 'ENOENT') throw err;
+}
 const workflowFiles = entries
   .filter((entry) => entry.isFile() && /\.ya?ml$/i.test(entry.name))
   .map((entry) => path.join(workflowDir, entry.name))
