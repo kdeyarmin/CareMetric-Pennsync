@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -468,7 +469,7 @@ Provide detailed, actionable recommendations that a home health nurse can immedi
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `oasis-analysis-${patient.first_name}-${patient.last_name}-${new Date().toISOString().split('T')[0]}.json`;
+                    a.download = `oasis-analysis-${patient.first_name}-${patient.last_name}-${toLocalISODate()}.json`;
                     a.click();
                   }}
                 >

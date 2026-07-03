@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toLocalISODate } from '@/lib/dateLocal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -47,7 +48,7 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
   const [visitData, setVisitData] = useState({
     patient_id: patient?.id,
     patient_name: patient ? `${patient.first_name} ${patient.last_name}` : '',
-    visit_date: new Date().toISOString().split('T')[0],
+    visit_date: toLocalISODate(),
     visit_type: 'Skilled Nursing',
     vitals: {
       blood_pressure_systolic: '',
@@ -212,7 +213,7 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
       setVisitData({
         patient_id: patient?.id,
         patient_name: patient ? `${patient.first_name} ${patient.last_name}` : '',
-        visit_date: new Date().toISOString().split('T')[0],
+        visit_date: toLocalISODate(),
         visit_type: 'Skilled Nursing',
         vitals: {
           blood_pressure_systolic: '',

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
+import { formatAge } from "@/lib/age";
 
 export default function PersonalizedEducationGenerator({ patient, complianceData, visits }) {
   const ai = useAICall();
@@ -33,7 +34,7 @@ export default function PersonalizedEducationGenerator({ patient, complianceData
 
 PATIENT INFORMATION:
 - Name: ${patient.first_name} ${patient.last_name}
-- Age: ${patient.date_of_birth ? new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear() : 'Unknown'}
+- Age: ${formatAge(patient.date_of_birth)}
 - Primary Diagnosis: ${patient.primary_diagnosis}
 - Secondary Diagnoses: ${patient.secondary_diagnoses?.join(', ') || 'None'}
 - Current Medications: ${patient.current_medications?.map(m => m.name).join(', ') || 'None'}

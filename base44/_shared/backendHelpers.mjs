@@ -197,4 +197,36 @@ function renderBrandedEmail(opts) {
 </table></td></tr></table>
 </body></html>\`;
 }`,
+
+  // Date-only age formatter for backend AI/context prompts. Mirrors src/lib/dateLocal.
+  // Base44 functions cannot import from src, so keep this generated into consumers.
+  formatAge: `function parseLocalDate(value) {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const iso = /^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/.exec(String(value).trim());
+  if (iso) {
+    const y = Number(iso[1]);
+    const mo = Number(iso[2]) - 1;
+    const day = Number(iso[3]);
+    const d = new Date(y, mo, day);
+    if (d.getFullYear() !== y || d.getMonth() !== mo || d.getDate() !== day) return null;
+    return d;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function calculateAge(dob, now = new Date()) {
+  const birth = parseLocalDate(dob);
+  const today = parseLocalDate(now);
+  if (!birth || !today) return null;
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+function formatAge(dob, now = new Date(), fallback = 'Unknown') {
+  const age = calculateAge(dob, now);
+  return age == null ? fallback : age;
+}`,
+
 };

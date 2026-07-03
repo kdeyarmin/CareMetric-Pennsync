@@ -42,7 +42,7 @@ import {
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { isAdminView } from '@/lib/roles';
-import { parseLocalDate } from '@/lib/dateLocal';
+import { parseLocalDate, toLocalISODate } from '@/lib/dateLocal';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import EmbeddedPage from '@/components/ui/embeddedPage';
@@ -365,7 +365,7 @@ export default function LearningCenter() {
     setDownloadingTranscript(true);
     try {
       const response = await generateLearningTranscriptPDF({ employeeId: user.email });
-      downloadBlob(`Training_Transcript_${new Date().toISOString().split('T')[0]}.pdf`, response.data, 'application/pdf');
+      downloadBlob(`Training_Transcript_${toLocalISODate()}.pdf`, response.data, 'application/pdf');
     } catch (error) {
       console.error('Failed to download transcript:', error);
     } finally {
@@ -375,7 +375,7 @@ export default function LearningCenter() {
 
   const exportRenewalsCalendar = (items) => {
     if (!items.length) return;
-    downloadBlob(`learning_renewals_${new Date().toISOString().split('T')[0]}.ics`, buildRenewalIcs(items), 'text/calendar;charset=utf-8;');
+    downloadBlob(`learning_renewals_${toLocalISODate()}.ics`, buildRenewalIcs(items), 'text/calendar;charset=utf-8;');
   };
 
   // Aggregate course ratings: average, count, and the current user's own rating

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,7 @@ export default function OfflineTaskManager({ patientId, patientName }) {
   const { pendingCount } = useOfflineQueue();
   const [taskType, setTaskType] = useState('note');
   const [formData, setFormData] = useState({
-    visit_date: new Date().toISOString().split('T')[0],
+    visit_date: toLocalISODate(),
     visit_type: 'routine_visit',
     incident_type: 'fall',
     severity: 'medium',
@@ -104,7 +105,7 @@ export default function OfflineTaskManager({ patientId, patientName }) {
         setSaved(false);
         // Reset form
         setFormData({
-          visit_date: new Date().toISOString().split('T')[0],
+          visit_date: toLocalISODate(),
           visit_type: 'routine_visit',
           incident_type: 'fall',
           severity: 'medium',

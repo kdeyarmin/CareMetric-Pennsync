@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,7 @@ export default function DocumentUploader({ patientId, onUploadComplete, open, on
     title: "",
     description: "",
     category: "",
-    document_date: new Date().toISOString().split('T')[0],
+    document_date: toLocalISODate(),
     tags: "",
     notes: "",
     is_sensitive: false,
@@ -110,7 +111,7 @@ export default function DocumentUploader({ patientId, onUploadComplete, open, on
       title: "",
       description: "",
       category: "",
-      document_date: new Date().toISOString().split('T')[0],
+      document_date: toLocalISODate(),
       tags: "",
       notes: "",
       is_sensitive: false,

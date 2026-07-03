@@ -1,5 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { calculatePatientMatchScore } from "@/components/oasis/patientMatchScore";
 import OASISAnalyticsDashboard from "@/components/oasis/OASISAnalyticsDashboard";
@@ -394,7 +395,7 @@ export default function OASISAnalyzer() {
         patient_name: patientFullName,
         file_url: uploadedFileUrl,
         file_name: file?.name || 'OASIS Document',
-        assessment_date: analysisResults.pdgm_data?.patient_info?.assessment_date || new Date().toISOString().split('T')[0],
+        assessment_date: analysisResults.pdgm_data?.patient_info?.assessment_date || toLocalISODate(),
         assessment_type: mapAssessmentType(analysisResults.pdgm_data?.patient_info?.assessment_type),
         analysis_id: analysisId,
         pdgm_data: cleanPdgmData,
@@ -1025,7 +1026,7 @@ Return JSON:
           dob: output?.patient_dob || "Not found",
           gender: output?.patient_gender || "Not specified",
           address: output?.patient_address || null,
-          assessment_date: output?.assessment_date || new Date().toISOString().split('T')[0], 
+          assessment_date: output?.assessment_date || toLocalISODate(),
           assessment_type: output?.assessment_type || "Unknown",
           assessment_reason: output?.assessment_reason || "Not specified"
         }
@@ -1193,7 +1194,7 @@ Return scores (0-100) and top 3-5 issues in each category.`,
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `OASIS_Analysis_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+      a.download = `OASIS_Analysis_Report_${toLocalISODate()}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

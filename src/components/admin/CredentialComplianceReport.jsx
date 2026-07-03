@@ -8,7 +8,7 @@ import { AlertTriangle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toCsvRows } from "@/components/admin/csvExport";
-import { parseLocalDate } from "@/lib/dateLocal";
+import { parseLocalDate, toLocalISODate } from "@/lib/dateLocal";
 
 const WINDOW_OPTIONS = [
   { value: "all", label: "All (including future)" },
@@ -130,7 +130,7 @@ export default function CredentialComplianceReport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `credential-compliance-report-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `credential-compliance-report-${toLocalISODate()}.csv`;
     a.click();
   };
 
@@ -152,7 +152,7 @@ export default function CredentialComplianceReport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `expiration-report-${itemType}-${windowFilter}-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `expiration-report-${itemType}-${windowFilter}-${toLocalISODate()}.csv`;
     a.click();
   };
 

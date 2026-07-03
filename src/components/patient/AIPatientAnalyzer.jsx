@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Brain, AlertTriangle, Target, TrendingUp, Loader2, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from 'sonner';
+import { formatAge } from "@/lib/age";
 
 export default function AIPatientAnalyzer({ patient, visits, incidents }) {
   const ai = useAICall();
@@ -38,7 +39,7 @@ export default function AIPatientAnalyzer({ patient, visits, incidents }) {
 
 PATIENT PROFILE:
 - Name: ${patient.first_name} ${patient.last_name}
-- Age: ${patient.date_of_birth ? Math.floor((new Date() - new Date(patient.date_of_birth)) / 31557600000) : 'Unknown'}
+- Age: ${formatAge(patient.date_of_birth)}
 - Primary Diagnosis: ${patient.primary_diagnosis || 'Not specified'}
 - Secondary Diagnoses: ${patient.secondary_diagnoses?.join(', ') || 'None'}
 - Current Medications: ${patient.current_medications?.map(m => `${m.name} ${m.dosage}`).join(', ') || 'None documented'}

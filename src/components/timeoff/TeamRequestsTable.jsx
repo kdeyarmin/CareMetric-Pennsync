@@ -1,3 +1,4 @@
+import { toLocalISODate } from "@/lib/dateLocal";
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -71,7 +72,7 @@ export default function TeamRequestsTable({ requests = [] }) {
             variant="outline"
             size="sm"
             disabled={rows.length === 0}
-            onClick={() => downloadCSV(`time-off-${new Date().toISOString().slice(0, 10)}.csv`, buildTimeOffCSV(rows))}
+            onClick={() => downloadCSV(`time-off-${toLocalISODate()}.csv`, buildTimeOffCSV(rows))}
           >
             <Download className="w-4 h-4 mr-1.5" />
             Export CSV
