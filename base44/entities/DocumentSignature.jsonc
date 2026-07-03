@@ -224,5 +224,51 @@
   "required": [
     "document_type",
     "patient_id"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "agency_admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "super_admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "agency_admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "super_admin"
+          }
+        }
+      ]
+    }
+  }
 }

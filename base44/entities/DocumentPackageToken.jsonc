@@ -72,29 +72,26 @@
     "read": {
       "$or": [
         {
-          "signer_email": "{{user.email}}"
+          "user_condition": {
+            "role": "admin"
+          }
         },
         {
           "user_condition": {
-            "role": "admin"
+            "account_type": "agency_admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "super_admin"
           }
         }
       ]
     },
     "write": {
-      "$or": [
-        {
-          "signer_email": "{{user.email}}"
-        },
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
     }
   }
 }

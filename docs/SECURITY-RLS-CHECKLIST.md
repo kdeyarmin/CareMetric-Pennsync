@@ -52,14 +52,38 @@ is always active. The dashboard-env secret list is therefore just:
 
 All `VITE_*` vars are public by design — never put secrets there.
 
-## 4. Scheduled / internal functions — confirm cron-only invocation
+## 4. Scheduled / internal functions — require shared scheduler auth
 
-These run privileged `asServiceRole` work with **no `auth.me()`** (correct only
-if the platform restricts who can invoke function endpoints — **confirm**):
-`processScheduledFaxes`, `sendExpirationNotifications`,
-`sendPersonnelExpirationNotifications`, `monitorComplianceRisks`,
-`scheduledGuidelineSync`, `autoApproveInvitedUser`, `deduplicatePatients`,
-`dispatchScheduledSms`.
+Base44's backend-function model answers the old open question here: deployed
+`Deno.serve` functions get plain HTTP endpoints for webhooks/external
+integrations, and the platform does **not** automatically block unauthenticated
+POSTs. A cron/internal function must therefore NOT rely on a gate like
+`if (user && !isAdmin) return 403`, because an unauthenticated caller can reach
+the endpoint and fall through to privileged `asServiceRole` work.
+
+The repo's scheduled/internal function family now uses one shared fail-closed
+gate:
+
+- **Admin session** may invoke the function manually.
+- **Unattended scheduler/internal caller** must send
+  `x-internal-secret: <INTERNAL_FN_SECRET>`.
+- If `INTERNAL_FN_SECRET` is unset, the function returns **500** rather than
+  running open.
+
+Apply that shared gate to the whole cron family, including:
+`autoApproveInvitedUser`, `autoEndDutyDay`, `autoEnrollAnnualPlans`,
+`autoRetryFailedFaxes`, `checkAdrDeadlines`, `checkExpiredInvitations`,
+`checkPendingSignatureRequests`, `checkStaleFollowUpRequests`,
+`computeOutcomeMeasures`, `dispatchScheduledSignatureReminders`,
+`dispatchScheduledSms`, `monitorComplianceRisks`, `pollFaxStatuses`,
+`processAnnualEducationRenewals`, `processInboundFaxes`,
+`processScheduledFaxes`, `processScheduledFaxesByPriority`,
+`processTrainingRenewals`, `redriveFailedSms`, `scheduledGuidelineSync`,
+`sendAutomatedSignatureReminders`, `sendCredentialRenewalReminders`,
+`sendDocumentReminderEmails`, `sendExpirationNotifications`,
+`sendPersonnelExpirationNotifications`, `sendRenewalReminders`,
+`sendTrainingNotifications`, `syncFaxStatuses`, `syncTrainingVideoStatuses`,
+`triggerCorrectiveActionPlan`.
 
 - Enable **only one** scheduled-fax processor (`processScheduledFaxes` **or**
   `processScheduledFaxesByPriority`) — both running double-sends.

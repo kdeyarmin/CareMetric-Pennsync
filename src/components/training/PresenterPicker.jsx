@@ -45,7 +45,8 @@ export default function PresenterPicker({
     audioRef.current = null;
     setPlaying(false);
   };
-  useEffect(() => stopPreview, []);
+  // Stop any playing preview audio on unmount.
+  useEffect(() => () => stopPreview(), []);
 
   if (isLoading) {
     return (

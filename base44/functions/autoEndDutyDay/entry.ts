@@ -1,5 +1,31 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
+const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
+function isSchedulerAdmin(user) {
+  return !!user && (
+    user.role === 'admin' || user.account_type === 'agency_admin' ||
+    user.account_type === 'super_admin'
+  );
+}
+function getSchedulerAuthError(req, user) {
+  if (isSchedulerAdmin(user)) return null;
+  const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expectedSecret) {
+    return Response.json(
+      { error: 'Server misconfigured: INTERNAL_FN_SECRET is required for scheduled/internal functions' },
+      { status: 500 },
+    );
+  }
+  const providedSecret = String(req.headers.get(SCHEDULER_SECRET_HEADER) || '').trim();
+  if (providedSecret === expectedSecret) return null;
+  return Response.json(
+    { error: user ? 'Forbidden: admin or scheduler secret required' : 'Unauthorized: scheduler secret required' },
+    { status: user ? 403 : 401 },
+  );
+}
+// <<<END SHARED HELPER: schedulerAuth>>>
+
 /**
  * autoEndDutyDay — scheduled end-of-day sweep. Flips every nurse who is still
  * toggled 'on_duty' back to 'off_duty', so the next morning everyone starts off
@@ -12,20 +38,19 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * even before this sweep runs — this function just persists that so the toggle
  * and the morning default reflect reality.
  *
- * Auth: runs as a scheduled job (service role). The no-identity cron path is
- * allowed; only an admin user may invoke it manually.
+ * Auth: runs as a scheduled job (service role). Admins may invoke it manually,
+ * and unattended scheduler runs must send `x-internal-secret`.
  */
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Zero-config scheduled job: the no-identity cron path is allowed (platform
-    // invocation restriction is the control); an authenticated non-admin may not
-    // trigger the sweep manually.
+    // Zero-config scheduled job: admins may trigger it manually, and unattended
+    // scheduler runs must send `x-internal-secret`.
     const user = await base44.auth.me().catch(() => null);
-    const isAdmin = user && (user.role === 'admin' || user.account_type === 'super_admin');
-    if (user && !isAdmin) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const authError = getSchedulerAuthError(req, user);
+    if (authError) return authError;
 
     // Find everyone still toggled on and flip them off.
     const onDuty = await base44.asServiceRole.entities.User.filter({ duty_status: 'on_duty' }).catch(() => []);

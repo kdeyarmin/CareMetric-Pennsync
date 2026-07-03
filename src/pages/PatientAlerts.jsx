@@ -61,7 +61,7 @@ export default function PatientAlerts() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Main Alerts Dashboard */}
         <div className="lg:col-span-2">
-          <PatientAlertsDashboard showAllPatients={true} />
+          <PatientAlertsDashboard patientId={selectedPatientId || null} />
         </div>
 
         {/* Sidebar - Analyzer & Quick Actions */}
