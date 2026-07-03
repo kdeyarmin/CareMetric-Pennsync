@@ -47,3 +47,24 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 Logging in and exercising patient/clinical workflows requires a real hosted Base44
 app: set `VITE_BASE44_APP_ID` + `VITE_BASE44_BACKEND_URL` to a live app and have
 valid login credentials. These are not present in the default cloud environment.
+
+## Codex Instructions
+
+### Debugging expectations
+When asked to debug, do not make a small isolated patch unless the user explicitly asks for one.
+
+Always:
+- Inspect the full feature path and related files.
+- Identify root causes before editing.
+- Create a complete bug inventory first.
+- Check for duplicated patterns elsewhere.
+- Run lint, typecheck, tests, and build when available.
+- Add or update tests when practical.
+- Review the final diff for regressions.
+
+### Done means
+A task is not complete until:
+- All known related bugs have been listed.
+- Safe fixes have been implemented.
+- Validation commands have been run or clearly explained if unavailable.
+- Remaining risks are documented.
