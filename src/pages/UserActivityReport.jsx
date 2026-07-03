@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -246,7 +247,7 @@ export default function UserActivityReport() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `user_activity_report_${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `user_activity_report_${toLocalISODate()}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (error) {
@@ -320,7 +321,7 @@ export default function UserActivityReport() {
         y += 3;
       });
       
-      doc.save(`user_activity_report_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`user_activity_report_${toLocalISODate()}.pdf`);
     } catch (error) {
       console.error('PDF export error:', error);
       toast.error('Failed to generate PDF report: ' + error.message);

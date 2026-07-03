@@ -1,3 +1,4 @@
+import { toLocalISODate } from "@/lib/dateLocal";
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -43,7 +44,7 @@ export default function PhysicianDirectory({ onSelectPhysician, mode = 'director
     mutationFn: ({ id, count }) => 
       base44.entities.Physician.update(id, { 
         referral_count: count + 1,
-        last_referral_date: new Date().toISOString().split('T')[0]
+        last_referral_date: toLocalISODate()
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['physicians'] });

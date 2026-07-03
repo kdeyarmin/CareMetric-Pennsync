@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { buildPdgmNavigatorCsv } from "./pdgmNavigatorExport";
 import { reconcileComorbidities } from "./comorbidityReconciler";
@@ -150,7 +151,7 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `PDGM_Navigator_Analysis_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `PDGM_Navigator_Analysis_${toLocalISODate()}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -168,7 +169,7 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `PDGM_Navigator_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `PDGM_Navigator_Report_${toLocalISODate()}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -446,7 +447,7 @@ PREDICT:
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `PDGM_Navigator_${new Date().toISOString().split('T')[0]}.pdf`;
+      a.download = `PDGM_Navigator_${toLocalISODate()}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

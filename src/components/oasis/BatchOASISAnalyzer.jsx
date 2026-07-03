@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { toCsvRows } from "@/components/admin/csvExport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -249,7 +250,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `OASIS_Batch_Reports_${new Date().toISOString().split('T')[0]}.zip`;
+    a.download = `OASIS_Batch_Reports_${toLocalISODate()}.zip`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -311,7 +312,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `OASIS_Batch_Results_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `OASIS_Batch_Results_${toLocalISODate()}.csv`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);

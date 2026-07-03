@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { useAICall } from "@/hooks/useAICall";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -149,7 +150,7 @@ Return recommendation with:
         recommended_actions: recommendation.suggested_agenda || [],
         team_meeting_suggested: true,
         meeting_attendees: recommendation.suggested_attendees?.map(a => a.role) || [],
-        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        due_date: toLocalISODate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
       });
 
       queryClient.invalidateQueries({ queryKey: ['careCoordinationAlerts'] });

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAICall } from "@/hooks/useAICall";
+import { formatAge } from "@/lib/age";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,14 +46,7 @@ export default function AIPatientHistorySummary({
   // into this (persistent, not remounted) component — a wrong-patient PHI hazard.
   const patientIdRef = useRef(patient?.id);
 
-  const calculateAge = useCallback((dob) => {
-    const today = new Date();
-    const birthDate = new Date(dob);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-    return age;
-  }, []);
+  const calculateAge = useCallback((dob) => formatAge(dob), []);
 
   const generateSummary = useCallback(async () => {
     if (!patient) return;

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -471,7 +472,7 @@ export default function SmartOASISAssessment() {
 
       const safeName =
         (patientName || "Patient").replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "") || "Patient";
-      const dateStr = new Date().toISOString().slice(0, 10);
+      const dateStr = toLocalISODate();
       await exportToPDF({
         filename: `OASIS_Guide_${safeName}_${dateStr}.pdf`,
         title: "OASIS Data Entry Guide",

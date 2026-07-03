@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAICall } from "@/hooks/useAICall";
+import { formatAge } from "@/lib/age";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,15 +47,7 @@ export default function PatientRiskStratification({
   const [isExpanded, setIsExpanded] = useState(!compact);
   const [lastCalculated, setLastCalculated] = useState(null);
 
-  const calculateAge = useCallback((dob) => {
-    if (!dob) return 'Unknown';
-    const today = new Date();
-    const birthDate = new Date(dob);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-    return age;
-  }, []);
+  const calculateAge = useCallback((dob) => formatAge(dob), []);
 
   const calculateRisk = useCallback(async () => {
     if (!patient) return;

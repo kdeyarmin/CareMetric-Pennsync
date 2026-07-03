@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -105,7 +106,7 @@ export default function ReferralProcessor() {
             : (extractedData.diagnoses?.secondary_diagnoses || []),
         allergies: extractedData.diagnoses?.allergies || null,
         current_medications: extractedData.medications || [],
-        admission_date: extractedData.admission_details?.admission_date || new Date().toISOString().split('T')[0],
+        admission_date: extractedData.admission_details?.admission_date || toLocalISODate(),
         admission_source: extractedData.admission_details?.admission_source || 'home',
         care_type: 'home_health',
         status: 'active'

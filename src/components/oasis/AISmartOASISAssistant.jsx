@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
+import { formatAge } from "@/lib/age";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,8 +46,7 @@ export default function AISmartOASISAssistant({
       const contextData = {
         patient: {
           demographics: {
-            age: patientData.date_of_birth ? 
-              Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+            age: formatAge(patientData.date_of_birth, new Date(), null),
             primary_diagnosis: patientData.primary_diagnosis,
             secondary_diagnoses: patientData.secondary_diagnoses,
             allergies: patientData.allergies,

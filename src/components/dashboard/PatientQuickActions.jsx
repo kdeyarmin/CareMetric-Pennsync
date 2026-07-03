@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, Calendar, Stethoscope } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -59,7 +60,7 @@ export default function PatientQuickActions({ onActionComplete }) {
   // New Visit Form
   const [newVisit, setNewVisit] = useState({
     patient_id: '',
-    visit_date: new Date().toISOString().split('T')[0],
+    visit_date: toLocalISODate(),
     visit_type: 'routine_visit',
     status: 'scheduled'
   });
@@ -71,7 +72,7 @@ export default function PatientQuickActions({ onActionComplete }) {
       setShowNewVisit(false);
       setNewVisit({
         patient_id: '',
-        visit_date: new Date().toISOString().split('T')[0],
+        visit_date: toLocalISODate(),
         visit_type: 'routine_visit',
         status: 'scheduled'
       });

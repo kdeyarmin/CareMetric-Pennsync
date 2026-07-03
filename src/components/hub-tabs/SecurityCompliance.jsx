@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { toLocalISODate } from "@/lib/dateLocal";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -353,7 +354,7 @@ export default function SecurityCompliance() {
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `security-report-${new Date().toISOString().split('T')[0]}.json`;
+                    a.download = `security-report-${toLocalISODate()}.json`;
                     document.body.appendChild(a);
                     a.click();
                     window.URL.revokeObjectURL(url);
