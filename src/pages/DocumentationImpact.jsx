@@ -10,8 +10,10 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TrendingUp, TrendingDown, Minus, Lock, ArrowRight, Database, FileText, ChevronUp, ChevronDown, Download, Trophy } from "lucide-react";
-import { DEFAULT_PDGM_RATES } from "@/components/pdgm/pdgmRates";
+import { format } from "date-fns";
+import { mergePdgmRates } from "@/components/pdgm/pdgmRates";
 import { computeImpact, normalizePdgmDataToScenario } from "@/components/pdgm/reimbursementImpact";
+import { reconcileScenario, storedWeightTableRows } from "@/components/pdgm/caseMixReconciliation";
 import { toCsv, exportTimestamp } from "@/components/admin/csvExport";
 import { downloadCsv } from "@/lib/downloadCsv";
 import { toast } from "sonner";
@@ -34,7 +36,6 @@ const CLINICAL_GROUP_LABELS = {
   MMTA_Musculoskeletal: "Musculoskeletal Rehabilitation",
   MMTA_Skin_Non_Surgical: "Skin (Non-Surgical)",
 };
-const CLINICAL_GROUPS = Object.keys(DEFAULT_PDGM_RATES.clinicalGroupWeights);
 const ADMISSION = [["community", "Community"], ["institutional", "Institutional"]];
 const TIMING = [["early", "Early (first 30-day period)"], ["late", "Late (subsequent periods)"]];
 const FUNCTIONAL = [["low", "Low impairment"], ["medium", "Medium impairment"], ["high", "High impairment"]];
@@ -75,6 +76,27 @@ export default function DocumentationImpact() {
   const [afterFn, setAfterFn] = useState("high");
   const [afterCo, setAfterCo] = useState("low");
   const [seededFrom, setSeededFrom] = useState("");
+
+  // The agency's saved PDGM rate set — the SAME PDGMRateConfig the backend
+  // calculatePDGM merges over its defaults — so the simulator shows the same
+  // "before" dollars as the OASIS analyzer instead of national defaults.
+  // (Readable by all authenticated users; write is service-role only.)
+  const { data: rateConfig = null } = useQuery({
+    queryKey: ["pdgm-rate-config"],
+    queryFn: () => base44.entities.PDGMRateConfig.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
+    initialData: null,
+  });
+  // Agency wage index (calculatePDGM applies AgencySettings.wage_index the same way).
+  const { data: agencySettings = null } = useQuery({
+    queryKey: ["agencySettings"],
+    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
+  });
+  const effectiveRates = useMemo(() => mergePdgmRates(rateConfig?.rates), [rateConfig]);
+  const wageIndex = Number.isFinite(agencySettings?.wage_index) ? agencySettings.wage_index : 1.0;
+  const clinicalGroupOptions = useMemo(
+    () => Object.keys(effectiveRates.clinicalGroupWeights || {}),
+    [effectiveRates],
+  );
 
   // Real analyzed OASIS assessments, via listOASISUploads — which strips financial
   // fields server-side for non-financial users, so estimated_payment is only present
@@ -208,7 +230,30 @@ export default function DocumentationImpact() {
   const impact = useMemo(() => computeImpact(
     { clinicalGroup, admissionSource, timing, functionalLevel: beforeFn, comorbidityLevel: beforeCo },
     { clinicalGroup, admissionSource, timing, functionalLevel: afterFn, comorbidityLevel: afterCo },
-  ), [clinicalGroup, admissionSource, timing, beforeFn, beforeCo, afterFn, afterCo]);
+    effectiveRates,
+    wageIndex,
+  ), [clinicalGroup, admissionSource, timing, beforeFn, beforeCo, afterFn, afterCo, effectiveRates, wageIndex]);
+
+  // Which rate set is in effect (shown on the estimate card so an admin can tell
+  // agency-saved numbers from the built-in national defaults at a glance).
+  const savedDate = rateConfig?.updated_date ? format(new Date(rateConfig.updated_date), "MMM d, yyyy") : null;
+  const rateBasisLabel = rateConfig
+    ? `Agency ${rateConfig.is_official ? "official CMS rates" : "saved rates — estimate"}${savedDate ? ` (saved ${savedDate})` : ""}`
+    : "National defaults (CY2026)";
+
+  // Admin-only HIPPS reconciliation against the stored official CMS case-mix
+  // weight table (uploaded on PDGM Rate Settings). Reference display ONLY — it
+  // never produces a second dollar figure (see pdgmGrouper.js header) and LUPA
+  // thresholds are informational (no visit counting, no alerts).
+  const storedWeightTable = rateConfig?.case_mix_weight_table || null;
+  const reconciliation = useMemo(() => {
+    if (!storedWeightTableRows(storedWeightTable)) return null;
+    const period = { clinicalGroup, admissionSource, timing };
+    return {
+      before: reconcileScenario({ ...period, functionalLevel: beforeFn, comorbidityLevel: beforeCo }, storedWeightTable),
+      after: reconcileScenario({ ...period, functionalLevel: afterFn, comorbidityLevel: afterCo }, storedWeightTable),
+    };
+  }, [storedWeightTable, clinicalGroup, admissionSource, timing, beforeFn, beforeCo, afterFn, afterCo]);
 
   const SortHead = ({ k, children, className = "" }) => (
     <TableHead className={`cursor-pointer select-none ${className}`} onClick={() => toggleSort(k)} aria-sort={sortKey === k ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
@@ -406,7 +451,7 @@ export default function DocumentationImpact() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <LabeledSelect label="Clinical Group" value={clinicalGroup} onChange={setClinicalGroup}
-            options={CLINICAL_GROUPS.map((k) => [k, CLINICAL_GROUP_LABELS[k] || k])} />
+            options={clinicalGroupOptions.map((k) => [k, CLINICAL_GROUP_LABELS[k] || k])} />
           <LabeledSelect label="Admission Source" value={admissionSource} onChange={setAdmissionSource} options={ADMISSION} />
           <LabeledSelect label="Timing" value={timing} onChange={setTiming} options={TIMING} />
         </CardContent>
@@ -461,7 +506,18 @@ export default function DocumentationImpact() {
         }
       >
         <Card className="modern-card">
-          <CardHeader className="pb-2"><CardTitle className="text-base">Estimated 30-day reimbursement impact</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-base">Estimated 30-day reimbursement impact</CardTitle>
+              <span
+                className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                  rateConfig ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"
+                }`}
+              >
+                Rates in effect: {rateBasisLabel}
+              </span>
+            </div>
+          </CardHeader>
           <CardContent>
             {!impact.complete ? (
               <p className="text-sm text-amber-600">This combination isn’t in the rate table — pick a valid clinical group, level, and comorbidity.</p>
@@ -490,14 +546,69 @@ export default function DocumentationImpact() {
                   </div>
                 </div>
                 <p className="text-xs text-slate-400 mt-4">
-                  Illustrative, using CY2026 national default rates ({money(DEFAULT_PDGM_RATES.basePaymentRate)} base, wage index 1.0) and the same
-                  case-mix formula as the agency’s PDGM calculation. Agency-specific rates/wage index refine the absolute figures; the documentation-driven
+                  Uses {rateConfig
+                    ? `the agency's ${rateConfig.is_official ? "official CMS rates" : "saved rates (still an estimate until marked official)"}`
+                    : "CY2026 national default rates"} — {money(effectiveRates.basePaymentRate)} base, wage index {wageIndex} — merged and applied with the
+                  same case-mix formula as the agency’s PDGM calculation, so the “before” dollars match the OASIS analyzer. The documentation-driven
                   <strong> delta</strong> is the point. Not a billing determination.
                 </p>
               </>
             )}
           </CardContent>
         </Card>
+
+        {/* HIPPS reconciliation preview — shown only once an admin has stored the
+            official CMS case-mix weight table (PDGM Rate Settings). Reference
+            display beside the engine estimate above; NEVER a second dollar figure. */}
+        {reconciliation && (
+          <Card className="modern-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="w-4 h-4 text-indigo-600" /> HIPPS reference — official CMS case-mix table
+              </CardTitle>
+              <p className="text-xs text-slate-500">
+                Looked up in the stored CMS weight table
+                {storedWeightTable.payment_year ? ` (CY${storedWeightTable.payment_year})` : ""} for this scenario.
+                Reference only — the payment estimate above remains from the PDGM engine.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[["Before", reconciliation.before], ["After", reconciliation.after]].map(([label, r]) => (
+                  <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
+                    {r.available ? (
+                      <dl className="mt-2 space-y-1 text-sm">
+                        <div className="flex justify-between gap-2">
+                          <dt className="text-slate-500">HIPPS code</dt>
+                          <dd className="font-mono font-semibold text-slate-800">{r.hipps || "not in table"}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt className="text-slate-500">Case-mix weight</dt>
+                          <dd className="tabular-nums font-semibold text-slate-800">{r.weight.toFixed(4)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt className="text-slate-500">LUPA threshold</dt>
+                          <dd className="tabular-nums text-slate-700">
+                            {r.lupaThreshold != null ? `${r.lupaThreshold} visits (informational)` : "not in table"}
+                          </dd>
+                        </div>
+                      </dl>
+                    ) : (
+                      <p className="text-sm text-amber-600 mt-2">Not available — {r.reason}. Nothing is guessed.</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-3">
+                Reference table for analysis — payment estimates remain from the PDGM engine. LUPA thresholds are
+                informational display only: this companion app does not count visits and raises no LUPA alerts. If a
+                reference weight disagrees with the engine’s weight above, reconcile the rate tables in PDGM Rate
+                Settings rather than quoting two figures.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </FinancialGate>
     </PageContainer>
   );

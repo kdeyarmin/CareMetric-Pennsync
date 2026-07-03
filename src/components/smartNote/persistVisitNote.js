@@ -44,20 +44,31 @@ export async function persistVisitNote({
   const {
     finalNote: finalText, coverageScore, draftScore, presence,
     answeredIds, confirmedNegativeIds, answers, chartFindings = [], sustainedTrends = [],
-    appliedRules = [],
+    appliedRules = [], denialGuardrail = null,
   } = result;
   const structured = deriveStructuredVisitFields(presence, { answeredIds, confirmedNegativeIds, textById: answers });
-  // Surface the deterministic chart conflicts + trends in the saved records so
-  // they reach the compliance dashboards, not just the live review UI.
-  const reportingFields = buildVisitReportingFields({ chartFindings, sustainedTrends });
-  // When a critical chart conflict was knowingly accepted, stamp who/when onto the
-  // override trail. Gate on `acknowledged` (not the object's mere presence): the
-  // reviewer builds it whenever critical findings exist, even before the nurse
-  // checks the box, so persisting it unconditionally could stamp a false ack trail.
-  const acknowledgment = result.acknowledgment?.acknowledged
-    ? { acknowledged_by: currentUser.email, acknowledged_at: new Date().toISOString(), justification: result.acknowledgment.justification, finding_ids: result.acknowledgment.finding_ids }
+  const denialFindings = denialGuardrail?.findings || [];
+  // Surface the deterministic chart conflicts + trends + denial-guardrail
+  // findings in the saved records so they reach the compliance dashboards, not
+  // just the live review UI.
+  const reportingFields = buildVisitReportingFields({ chartFindings, sustainedTrends, denialFindings });
+  // When a critical chart conflict — or a blocking denial-guardrail finding —
+  // was knowingly accepted, stamp who/when onto the override trail. Gate on
+  // `acknowledged` (not the object's mere presence): the reviewer builds these
+  // whenever critical findings exist, even before the nurse checks the box, so
+  // persisting them unconditionally could stamp a false ack trail. Both trails
+  // share the ComplianceAudit.acknowledgment field (denial findings carry
+  // namespaced `denial:<cluster>` ids, so the sources stay distinguishable).
+  const ackSources = [result.acknowledgment, result.denialAcknowledgment].filter((a) => a?.acknowledged);
+  const acknowledgment = ackSources.length
+    ? {
+        acknowledged_by: currentUser.email,
+        acknowledged_at: new Date().toISOString(),
+        justification: ackSources.map((a) => a.justification).filter(Boolean).join(" | "),
+        finding_ids: ackSources.flatMap((a) => a.finding_ids || []),
+      }
     : null;
-  const auditFields = buildAuditFields({ coverageScore, chartFindings, acknowledgment, appliedRules });
+  const auditFields = buildAuditFields({ coverageScore, chartFindings, acknowledgment, appliedRules, denialFindings });
 
   if (!navigator.onLine) {
     const { addToSyncQueue } = await import('@/lib/indexedDB');

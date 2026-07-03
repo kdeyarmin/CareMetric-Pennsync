@@ -2,6 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Activity, AlertTriangle } from "lucide-react";
+import VitalSignValidator, { useVitalValidation } from "@/components/smartNote/VitalSignValidator";
+import { formatVitalsSentence } from "@/components/smartNote/compliance/factExtraction";
 
 // Plausible entry ranges, deliberately wide. The goal is to catch data-entry and
 // unit mistakes (e.g. a Celsius temperature, a transposed BP) — not to second-guess
@@ -31,6 +33,15 @@ export default function VitalSignsForm({ vitalSigns, onChange }) {
       [field]: value ? parseFloat(value) : null
     });
   };
+
+  // Clinical alerting on the structured values as they're entered: the range
+  // check below only catches entry/unit mistakes, so a genuinely critical
+  // reading (BP 190/112, O2 84%) typed into the grid gets the same red "notify
+  // physician" alert the note-text scan raises. The canonical vitals are
+  // rendered through formatVitalsSentence — the exact spellings the validator's
+  // extraction already parses — so one rule set serves both entry paths.
+  const vitalsSentence = formatVitalsSentence(vitalSigns);
+  const { flags: clinicalFlags } = useVitalValidation(vitalsSentence);
 
   return (
     <Card>
@@ -70,6 +81,11 @@ export default function VitalSignsForm({ vitalSigns, onChange }) {
             );
           })}
         </div>
+        {clinicalFlags.length > 0 && (
+          <div className="mt-4">
+            <VitalSignValidator noteText={vitalsSentence} />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
