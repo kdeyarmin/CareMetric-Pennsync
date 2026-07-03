@@ -10,6 +10,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
 import ReferralVolumeReport from "@/components/reports/ReferralVolumeReport";
+import FollowUpAnalytics from "@/components/reports/FollowUpAnalytics";
 import NursePerformanceReport from "@/components/reports/NursePerformanceReport";
 import OASISComplianceReport from "@/components/reports/OASISComplianceReport";
 import PDGMReimbursementReport from "@/components/reports/PDGMReimbursementReport";
@@ -120,6 +121,7 @@ export default function ReportsAnalytics() {
 
         <TabsContent value="referrals">
           <ReferralVolumeReport dateRange={dateRange} />
+          <FollowUpAnalytics />
         </TabsContent>
 
         <TabsContent value="performance">

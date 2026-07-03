@@ -15,6 +15,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'r
 import PageNotFound from './lib/PageNotFound';
 import PageLoader from '@/components/ui/PageLoader';
 import SignerPortal from '@/pages/SignerPortal';
+import ProviderFollowUpPortal from '@/pages/ProviderFollowUpPortal';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import SignInScreen from '@/components/auth/SignInScreen';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
@@ -90,7 +91,7 @@ const AuthenticatedApp = () => {
   // gated by capability tokens in the link, not by an app login. This is
   // checked before the auth gate below so external users are never bounced to login.
   const normalizedPath = location.pathname.toLowerCase();
-  if (normalizedPath.startsWith('/join') || normalizedPath.startsWith('/signer')) {
+  if (normalizedPath.startsWith('/join') || normalizedPath.startsWith('/signer') || normalizedPath.startsWith('/followup')) {
     return (
       <Suspense fallback={
         <div className="fixed inset-0 flex items-center justify-center">
@@ -100,6 +101,8 @@ const AuthenticatedApp = () => {
         <Routes>
           <Route path="/join" element={<JoinTelehealth />} />
           <Route path="/signer" element={<SignerPortal />} />
+          {/* Provider follow-up response portal — token-gated, no app login */}
+          <Route path="/followup" element={<ProviderFollowUpPortal />} />
         </Routes>
       </Suspense>
     );

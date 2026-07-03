@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +23,14 @@ import { generateDiagnosisCodes } from "./diagnosisCodeGenerator.js";
  */
 export default function DiagnosisCodeGenerator({ referralData }) {
   const [rateConfig, setRateConfig] = useState(null);
+
+  // Case-mix weights are payment mechanics: by agency policy they render only
+  // for admin-level users. The clinical sequencing itself is role-neutral.
+  const { data: currentUser } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me(),
+  });
+  const adminView = isAdminView(currentUser);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,7 +118,7 @@ export default function DiagnosisCodeGenerator({ referralData }) {
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{dx.clinicalGroup}</Badge>
-                {dx.caseMixWeight !== null && (
+                {adminView && dx.caseMixWeight !== null && (
                   <Badge className="bg-blue-100 text-blue-800">weight {dx.caseMixWeight.toFixed(4)}</Badge>
                 )}
               </div>

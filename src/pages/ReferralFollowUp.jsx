@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
+import { isAdminView } from "@/lib/roles";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
@@ -13,29 +14,40 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ClipboardCheck, ShieldCheck, TrendingUp, Brain, Sparkles, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  ClipboardCheck, ShieldCheck, TrendingUp, Brain, Sparkles, CheckCircle2,
+  AlertTriangle, LinkIcon, Printer, Settings2, FileDown, DollarSign, Inbox,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   buildFollowUpPlan,
   sortFollowUpItems,
   countFollowUpItems,
   toPersistedFollowUp,
+  buildProviderForm,
+  FOLLOW_UP_RULES,
+  SEVERITIES,
 } from "../components/referral/referralFollowUpEngine";
-import ProviderFollowUpForm from "../components/referral/ProviderFollowUpForm";
+import ProviderFollowUpForm, { followUpFormPdfContent } from "../components/referral/ProviderFollowUpForm";
+import { estimateFollowUpRevenueImpact, fmtUsd } from "../components/referral/followUpRevenueImpact";
+import { exportToPDF } from "@/components/utils/pdfExporter";
 
 const severityBadge = (severity) =>
   severity === "critical" ? "bg-red-600 text-white" : severity === "high" ? "bg-orange-500 text-white" : "bg-yellow-500 text-white";
 
+const normName = (s) => String(s || "").toLowerCase().replace(/\bdr\.?\b/g, "").replace(/[^a-z]/g, "");
+
 /**
  * Referral Follow-Up — the intake QA worklist.
  *
- * For every processed referral, the deterministic follow-up engine (the
- * "30-year coder + QA nurse" rule set) lists what the PROVIDER still needs to
- * supply for full CMS compliance and maximum supportable PDGM reimbursement,
- * why each item matters (with the regulation / payment mechanism), and builds
- * a provider-ready information-request form (PDF / copyable text). An optional
- * AI pass, prompted with the same expert persona, can suggest additional
- * referral-specific gaps — clearly flagged and never auto-included.
+ * Deterministic coder/QA review of every fully processed referral, provider
+ * request generation (PDF, copy, one-click FAX with a secure online response
+ * link), response tracking with per-item resolution, and agency-tunable rules.
+ *
+ * VISIBILITY POLICY: revenue/dollar figures (followUpRevenueImpact) render
+ * ONLY for admin-level users (isAdminView) and are never persisted or put on
+ * the provider form. Nurses see the clinical/compliance review only.
  */
 export default function ReferralFollowUp() {
   const queryClient = useQueryClient();
@@ -46,8 +58,18 @@ export default function ReferralFollowUp() {
   const [aiAssessment, setAiAssessment] = useState("");
   const [contactBackFax, setContactBackFax] = useState("");
   const [contactBackPhone, setContactBackPhone] = useState("");
+  const [providerFax, setProviderFax] = useState("");
+  const [portalLink, setPortalLink] = useState("");
   const [saving, setSaving] = useState(false);
+  const [faxing, setFaxing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const ai = useAICall({ timeoutMs: 60000, retries: 1 });
+
+  const { data: currentUser } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me(),
+  });
+  const adminView = isAdminView(currentUser);
 
   const { data: referrals, isLoading } = useQuery({
     queryKey: ["referrals"],
@@ -59,9 +81,24 @@ export default function ReferralFollowUp() {
     queryFn: () => base44.entities.PDGMRateConfig.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
   });
 
+  const { data: ruleConfig } = useQuery({
+    queryKey: ["followUpRuleConfig"],
+    queryFn: () => base44.entities.FollowUpRuleConfig.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
+  });
+
+  const { data: agencySettings } = useQuery({
+    queryKey: ["agencySettings"],
+    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
+  });
+
+  const { data: physicians } = useQuery({
+    queryKey: ["physicians"],
+    queryFn: () => base44.entities.Physician.list("-created_date", 300).catch(() => []),
+  });
+
   const engineOpts = useMemo(
-    () => ({ rates: rateConfig?.rates, icdGroups: rateConfig?.icd10_clinical_groups }),
-    [rateConfig]
+    () => ({ rates: rateConfig?.rates, icdGroups: rateConfig?.icd10_clinical_groups, ruleConfig: ruleConfig || undefined }),
+    [rateConfig, ruleConfig]
   );
 
   // Referrals that finished FULL processing and are still in an actionable
@@ -80,8 +117,6 @@ export default function ReferralFollowUp() {
     [referrals]
   );
 
-  // Run the deterministic review for every reviewable referral (pure string
-  // work — cheap even for a couple hundred rows).
   const plans = useMemo(() => {
     const map = new Map();
     for (const r of reviewable) {
@@ -96,13 +131,46 @@ export default function ReferralFollowUp() {
 
   const selected = reviewable.find((r) => r.id === selectedId) || null;
   const selectedPlan = selected ? plans.get(selected.id) : null;
+  const tracking = selected?.follow_up_requests || null;
+
+  // Revenue impact — computed on demand, admin eyes only, never persisted.
+  const revenue = useMemo(
+    () => (adminView && selectedPlan ? estimateFollowUpRevenueImpact(selectedPlan, { rates: rateConfig?.rates }) : null),
+    [adminView, selectedPlan, rateConfig]
+  );
 
   // Reset per-referral working state when the selection changes.
   useEffect(() => {
     setExcludedItemIds(new Set());
     setAiItems([]);
     setAiAssessment("");
-  }, [selectedId]);
+    setPortalLink(selected?.follow_up_requests?.portal_link || "");
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps -- selected derives from selectedId
+
+  // Prefill return contact from AgencySettings once loaded (editable after).
+  useEffect(() => {
+    if (agencySettings) {
+      setContactBackFax((v) => v || agencySettings.office_fax_number_e164 || "");
+      setContactBackPhone((v) => v || agencySettings.main_office_number_e164 || "");
+    }
+  }, [agencySettings]);
+
+  // Prefill the provider's fax from the Physician directory (best name match).
+  // ALWAYS reset on selection change — a stale number from the previous
+  // referral must never survive into a new patient's send (wrong-recipient
+  // fax = PHI disclosure).
+  useEffect(() => {
+    const refName = selected ? normName(selected.extracted_data?.demographics?.referring_physician) : "";
+    if (!refName) {
+      setProviderFax("");
+      return;
+    }
+    const match = (physicians || []).find((p) => {
+      const n = normName(p.full_name);
+      return n && (n.includes(refName) || refName.includes(n));
+    });
+    setProviderFax(match?.fax_number || "");
+  }, [selected, physicians]);
 
   const allItems = useMemo(
     () => sortFollowUpItems([...(selectedPlan?.items || []), ...aiItems]),
@@ -171,8 +239,8 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
         .filter((a) => a?.title && !existingTitles.has(a.title.toLowerCase()))
         .map((a, idx) => ({
           id: `ai_${idx}_${a.title.slice(0, 24).replace(/\W+/g, "_")}`,
-          // Explicit seq AFTER every rule item so AI additions append within
-          // their severity/category band instead of jumping ahead.
+          // Explicit seq AFTER every rule/agency item so AI additions append
+          // within their severity/category band instead of jumping ahead.
           seq: 10000 + idx,
           source: "ai",
           category: a.category === "reimbursement" ? "reimbursement" : "compliance",
@@ -198,17 +266,88 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
     }
   };
 
+  const formHeader = selected
+    ? {
+        patientName: selected.patient_name || selected.extracted_data?.demographics?.full_name || "",
+        patientDob: selected.patient_dob || selected.extracted_data?.demographics?.date_of_birth || "",
+        referralDate: selected.referral_date || "",
+        providerName: selected.extracted_data?.demographics?.referring_physician || "",
+        agencyName: agencySettings?.office_name || "our agency",
+        contactBackFax,
+        contactBackPhone,
+        portalLink: portalLink || null,
+      }
+    : null;
+
+  // Mint a fresh portal token. The backend deactivates any prior active token
+  // for the referral, so every mint ROTATES the link — a re-send always
+  // invalidates a previously mailed/leaked link.
+  const mintPortalLink = async () => {
+    if (!selected) return null;
+    try {
+      const { data } = await base44.functions.invoke("generateFollowUpPortalToken", {
+        referral_id: selected.id,
+        provider_name: formHeader?.providerName || null,
+      });
+      if (data?.portalLink) {
+        setPortalLink(data.portalLink);
+        return data.portalLink;
+      }
+      toast.error("Couldn't generate the online response link.");
+      return null;
+    } catch (error) {
+      console.error("Portal link generation failed:", error);
+      toast.error("Couldn't generate the online response link.");
+      return null;
+    }
+  };
+
+  const persistRequest = async ({ status, sentVia, faxLogId, link }) => {
+    const persisted = toPersistedFollowUp(
+      { items: includedItems, counts: countFollowUpItems(includedItems) },
+      { generatedAt: new Date().toISOString(), status, sentVia, faxLogId, portalLink: link || portalLink || null }
+    );
+    // A re-send must not silently discard responses the provider already gave:
+    // carry answered/resolved state forward for items that survive the re-send.
+    if (tracking?.items?.length) {
+      const prior = new Map(tracking.items.map((it) => [it.id, it]));
+      persisted.items = persisted.items.map((it) => {
+        const old = prior.get(it.id);
+        return old && old.item_status !== "open"
+          ? { ...it, item_status: old.item_status, response: old.response, answered_at: old.answered_at }
+          : it;
+      });
+    }
+    await base44.entities.Referral.update(selected.id, { follow_up_requests: persisted });
+    queryClient.invalidateQueries({ queryKey: ["referrals"] });
+    return persisted;
+  };
+
+  // "Generate online response link" must leave a WORKING link behind:
+  // validateFollowUpToken rejects tokens whose referral carries no
+  // follow_up_requests items, so persist the request (status stays open —
+  // nothing has been sent yet) in the same action as the mint.
+  const generateAndPersistPortalLink = async () => {
+    const link = await mintPortalLink();
+    if (!link) return null;
+    try {
+      await persistRequest({ status: tracking?.status || "open", sentVia: tracking?.sent_via || null, faxLogId: tracking?.fax_log_id || null, link });
+    } catch (error) {
+      console.error("Persisting the portal link failed:", error);
+      toast.error("Link generated but not saved — re-generate before sending.");
+      return null;
+    }
+    return link;
+  };
+
   const saveAndMarkSent = async () => {
     if (!selected) return;
     setSaving(true);
     try {
-      const persisted = toPersistedFollowUp(
-        { items: includedItems, counts: countFollowUpItems(includedItems) },
-        { generatedAt: new Date().toISOString(), status: "sent" }
-      );
-      await base44.entities.Referral.update(selected.id, { follow_up_requests: persisted });
-      queryClient.invalidateQueries({ queryKey: ["referrals"] });
-      toast.success("Follow-up request saved and marked sent on the referral.");
+      // Always rotate the link on send (old links deactivate server-side).
+      const link = await mintPortalLink();
+      await persistRequest({ status: "sent", sentVia: "manual", faxLogId: null, link });
+      toast.success("Follow-up request saved and marked sent.");
     } catch (error) {
       console.error("Error saving follow-up request:", error);
       toast.error("Couldn't save the follow-up request.");
@@ -217,17 +356,102 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
     }
   };
 
-  const formHeader = selected
-    ? {
-        patientName: selected.patient_name || selected.extracted_data?.demographics?.full_name || "",
-        patientDob: selected.patient_dob || selected.extracted_data?.demographics?.date_of_birth || "",
-        referralDate: selected.referral_date || "",
-        providerName: selected.extracted_data?.demographics?.referring_physician || "",
-        agencyName: "our agency",
-        contactBackFax,
-        contactBackPhone,
+  const faxToProvider = async () => {
+    if (!selected || includedItems.length === 0) return;
+    const to = providerFax.trim();
+    if (!to) {
+      toast.error("Enter the provider's fax number first.");
+      return;
+    }
+    setFaxing(true);
+    try {
+      // Rotate the portal link on every send, and persist the request BEFORE
+      // faxing so the link on the outgoing form is live the moment the fax
+      // lands (a fax failure leaves a valid open request, which is harmless).
+      const link = await mintPortalLink();
+      await persistRequest({ status: "open", sentVia: null, faxLogId: null, link });
+      const form = buildProviderForm({ ...formHeader, portalLink: link }, includedItems);
+      const blob = await exportToPDF({
+        output: "blob",
+        title: form.title,
+        subtitle: `${formHeader.patientName}${formHeader.patientDob ? ` — DOB ${formHeader.patientDob}` : ""}`,
+        content: followUpFormPdfContent(form),
+      });
+      const file = new File([blob], "referral-follow-up-request.pdf", { type: "application/pdf" });
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { data } = await base44.functions.invoke("sendFax", {
+        file_url,
+        to_number: to,
+        to_name: formHeader.providerName || null,
+        document_name: `Follow-up request — ${formHeader.patientName || "referral"}`,
+        patient_id: selected.patient_id || null,
+      });
+      if (!data?.success) {
+        throw new Error(data?.error || "Fax send failed");
       }
-    : null;
+      await persistRequest({ status: "sent", sentVia: "fax", faxLogId: data.log_id || null, link });
+      toast.success("Faxed to the provider — delivery is tracked in the fax log.");
+    } catch (error) {
+      console.error("Fax to provider failed:", error);
+      toast.error(error?.message || "Couldn't fax the form. Download the PDF and send manually.");
+    } finally {
+      setFaxing(false);
+    }
+  };
+
+  const markItemResolved = async (itemId) => {
+    if (!selected || !tracking) return;
+    try {
+      const items = tracking.items.map((it) => (it.id === itemId ? { ...it, item_status: "resolved" } : it));
+      const allResolved = items.every((it) => it.item_status === "resolved");
+      await base44.entities.Referral.update(selected.id, {
+        follow_up_requests: { ...tracking, items, status: allResolved ? "resolved" : tracking.status },
+      });
+      queryClient.invalidateQueries({ queryKey: ["referrals"] });
+    } catch (error) {
+      console.error("Error resolving item:", error);
+      toast.error("Couldn't update the item.");
+    }
+  };
+
+  const batchDownloadCritical = async () => {
+    const critical = reviewable.filter((r) => (plans.get(r.id)?.counts.critical || 0) > 0);
+    if (critical.length === 0) {
+      toast.info("No referrals with critical follow-up items right now.");
+      return;
+    }
+    try {
+      const content = critical.flatMap((r, idx) => {
+        const plan = plans.get(r.id);
+        const form = buildProviderForm(
+          {
+            patientName: r.patient_name || r.extracted_data?.demographics?.full_name || "",
+            patientDob: r.patient_dob || "",
+            referralDate: r.referral_date || "",
+            agencyName: agencySettings?.office_name || "our agency",
+            contactBackFax,
+            contactBackPhone,
+          },
+          plan.items
+        );
+        return [
+          ...(idx > 0 ? [{ type: "pageBreak" }] : []),
+          { type: "heading", text: `${form.title} — ${r.patient_name || "Unknown patient"}`, size: 14 },
+          ...followUpFormPdfContent(form),
+        ];
+      });
+      await exportToPDF({
+        filename: "referral-follow-up-requests-critical.pdf",
+        title: "Provider Information Requests — Critical Referrals",
+        subtitle: `${critical.length} referral(s)`,
+        content,
+      });
+      toast.success(`Generated forms for ${critical.length} referral(s).`);
+    } catch (error) {
+      console.error("Batch form generation failed:", error);
+      toast.error("Couldn't generate the batch PDF.");
+    }
+  };
 
   return (
     <PageContainer>
@@ -235,8 +459,32 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
         icon={ClipboardCheck}
         eyebrow="Office"
         title="Referral Follow-Up"
-        description="Expert coder/QA review of each referral: what the provider still needs to send for full CMS compliance and maximum supportable PDGM reimbursement — with a ready-to-send request form"
+        description="Expert coder/QA review of each referral: what the provider still needs to send for full CMS compliance — with a ready-to-send request form and online provider response"
+        actions={
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={batchDownloadCritical}>
+              <FileDown className="w-4 h-4 mr-1" /> Batch: critical forms
+            </Button>
+            {adminView && (
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowSettings((s) => !s)}>
+                <Settings2 className="w-4 h-4 mr-1" /> Review settings
+              </Button>
+            )}
+          </div>
+        }
       />
+
+      {adminView && showSettings && (
+        <RuleSettingsCard
+          // Remount when the async config (or a save) lands so the local edit
+          // state re-seeds from the saved values — otherwise a card opened
+          // before the fetch resolves would save empty defaults over the
+          // agency's existing configuration.
+          key={ruleConfig ? `${ruleConfig.id}-${ruleConfig.updated_date || ""}` : "unloaded"}
+          ruleConfig={ruleConfig}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ["followUpRuleConfig"] })}
+        />
+      )}
 
       {isLoading ? (
         <LoadingState label="Loading referrals..." />
@@ -255,8 +503,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
             </CardHeader>
             <CardContent className="space-y-2">
               {reviewable.map((r) => {
-                const plan = plans.get(r.id);
-                const counts = plan?.counts;
+                const counts = plans.get(r.id)?.counts;
                 const sentStatus = r.follow_up_requests?.status;
                 return (
                   <button
@@ -288,7 +535,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                       {r.referral_date ? ` · ${r.referral_date}` : ""}
                     </p>
                     {sentStatus && (
-                      <Badge variant="outline" className="text-xs mt-1 bg-blue-50 text-blue-700">
+                      <Badge variant="outline" className={`text-xs mt-1 ${sentStatus === "received" ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"}`}>
                         Request {sentStatus}
                       </Badge>
                     )}
@@ -303,12 +550,73 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
             {!selected || !selectedPlan ? (
               <Card>
                 <CardContent className="p-8 text-center text-slate-600">
-                  Select a referral to see what it still needs — and generate the provider request form.
+                  Select a referral to see what it still needs — and send the provider request.
                 </CardContent>
               </Card>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-3">
+                {/* Request tracking: responses + per-item resolution */}
+                {tracking && (
+                  <Card className="border-2 border-blue-300">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center gap-2 flex-wrap">
+                        <Inbox className="w-5 h-5 text-blue-600" />
+                        Sent request — {tracking.status}
+                        {tracking.sent_via && <Badge variant="outline">via {tracking.sent_via}</Badge>}
+                        {tracking.generated_at && (
+                          <span className="text-xs font-normal text-slate-500">{new Date(tracking.generated_at).toLocaleString()}</span>
+                        )}
+                      </CardTitle>
+                      {tracking.portal_link && (
+                        <button
+                          type="button"
+                          className="text-xs text-blue-700 underline flex items-center gap-1 w-fit"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(tracking.portal_link);
+                              toast.success("Portal link copied.");
+                            } catch {
+                              toast.error("Couldn't copy the link.");
+                            }
+                          }}
+                        >
+                          <LinkIcon className="w-3 h-3" /> Copy provider response link
+                        </button>
+                      )}
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {(tracking.items || []).map((it) => (
+                        <div key={it.id} className={`border rounded-lg p-3 ${it.item_status === "resolved" ? "bg-green-50 border-green-200" : it.item_status === "answered" ? "bg-blue-50 border-blue-200" : ""}`}>
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm text-slate-900">{it.title}</span>
+                              <Badge className={severityBadge(it.severity)}>{it.severity}</Badge>
+                              <Badge variant="outline" className={it.item_status === "resolved" ? "text-green-700" : it.item_status === "answered" ? "text-blue-700" : "text-slate-600"}>
+                                {it.item_status || "open"}
+                              </Badge>
+                            </div>
+                            {it.item_status === "answered" && (
+                              <Button type="button" size="sm" variant="outline" onClick={() => markItemResolved(it.id)}>
+                                <CheckCircle2 className="w-4 h-4 mr-1" /> Mark resolved
+                              </Button>
+                            )}
+                          </div>
+                          {it.response?.text && (
+                            <div className="mt-2 bg-white border rounded p-2 text-sm text-slate-800">
+                              <p className="text-xs font-semibold text-slate-500 mb-1">
+                                Provider response{it.response.completed_by ? ` — ${it.response.completed_by}${it.response.credential ? `, ${it.response.credential}` : ""}` : ""}
+                                {it.answered_at ? ` · ${new Date(it.answered_at).toLocaleString()}` : ""}
+                              </p>
+                              {it.response.text}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                <div className={`grid ${adminView && revenue ? "grid-cols-3" : "grid-cols-2"} gap-3`}>
                   <Card className="border-red-200 bg-red-50">
                     <CardContent className="p-4 flex items-center gap-3">
                       <ShieldCheck className="w-6 h-6 text-red-600 flex-shrink-0" />
@@ -327,6 +635,25 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                       </div>
                     </CardContent>
                   </Card>
+                  {/* Revenue exposure — ADMIN ONLY by policy */}
+                  {adminView && revenue && (
+                    <Card className="border-emerald-200 bg-emerald-50">
+                      <CardContent className="p-4 flex items-center gap-3">
+                        <DollarSign className="w-6 h-6 text-emerald-600 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs font-semibold text-emerald-800 uppercase">Est. exposure (admin)</p>
+                          <p className="text-lg font-bold text-emerald-900">
+                            {revenue.totalAtRisk > 0 ? `${fmtUsd(revenue.totalAtRisk)} at risk` : "—"}
+                          </p>
+                          {revenue.totalUpsideHigh > 0 && (
+                            <p className="text-xs text-emerald-800">
+                              +{fmtUsd(revenue.totalUpsideLow)}–{fmtUsd(revenue.totalUpsideHigh)} upside
+                            </p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
 
                 {/* Item checklist */}
@@ -357,7 +684,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                       </p>
                     )}
                     {allItems.map((it) => (
-                      <div key={it.id} className={`border rounded-lg p-3 ${it.source === "ai" ? "border-purple-300 bg-purple-50" : ""}`}>
+                      <div key={it.id} className={`border rounded-lg p-3 ${it.source === "ai" ? "border-purple-300 bg-purple-50" : it.source === "agency" ? "border-teal-300 bg-teal-50" : ""}`}>
                         <div className="flex items-start gap-2">
                           <Checkbox
                             id={`item-${it.id}`}
@@ -371,6 +698,15 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                               <Badge className={severityBadge(it.severity)}>{it.severity}</Badge>
                               <Badge variant="outline">{it.category}</Badge>
                               {it.source === "ai" && <Badge className="bg-purple-600 text-white">AI-suggested — verify</Badge>}
+                              {it.source === "agency" && <Badge className="bg-teal-600 text-white">agency rule</Badge>}
+                              {/* Dollar figures: admin eyes only, by policy */}
+                              {adminView && revenue?.perItem[it.id] && (
+                                <Badge className="bg-emerald-100 text-emerald-800">
+                                  {revenue.perItem[it.id].type === "at_risk"
+                                    ? `${fmtUsd(revenue.perItem[it.id].high)} at risk`
+                                    : `+${fmtUsd(revenue.perItem[it.id].low)}${revenue.perItem[it.id].high !== revenue.perItem[it.id].low ? `–${fmtUsd(revenue.perItem[it.id].high)}` : ""} est.`}
+                                </Badge>
+                              )}
                             </Label>
                             <p className="text-sm text-slate-800 mt-1">
                               <span className="font-semibold">Needed:</span> {it.needed}
@@ -424,18 +760,35 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                   </Alert>
                 )}
 
-                {/* Return-contact details for the form */}
+                {/* Send details + the form */}
                 {includedItems.length > 0 && (
                   <>
                     <Card>
-                      <CardContent className="p-4 grid sm:grid-cols-2 gap-3">
-                        <div>
-                          <Label htmlFor="fu-fax" className="text-xs">Return fax number (shown on the form)</Label>
-                          <Input id="fu-fax" value={contactBackFax} onChange={(e) => setContactBackFax(e.target.value)} placeholder="(555) 555-0100" />
+                      <CardContent className="p-4 space-y-3">
+                        <div className="grid sm:grid-cols-3 gap-3">
+                          <div>
+                            <Label htmlFor="fu-provider-fax" className="text-xs flex items-center gap-1">
+                              <Printer className="w-3 h-3" /> Provider fax (from directory)
+                            </Label>
+                            <Input id="fu-provider-fax" value={providerFax} onChange={(e) => setProviderFax(e.target.value)} placeholder="+15555550123" />
+                          </div>
+                          <div>
+                            <Label htmlFor="fu-fax" className="text-xs">Return fax (on the form)</Label>
+                            <Input id="fu-fax" value={contactBackFax} onChange={(e) => setContactBackFax(e.target.value)} placeholder="(555) 555-0100" />
+                          </div>
+                          <div>
+                            <Label htmlFor="fu-phone" className="text-xs">Questions phone</Label>
+                            <Input id="fu-phone" value={contactBackPhone} onChange={(e) => setContactBackPhone(e.target.value)} placeholder="(555) 555-0101" />
+                          </div>
                         </div>
-                        <div>
-                          <Label htmlFor="fu-phone" className="text-xs">Questions phone number</Label>
-                          <Input id="fu-phone" value={contactBackPhone} onChange={(e) => setContactBackPhone(e.target.value)} placeholder="(555) 555-0101" />
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Button type="button" variant="outline" size="sm" onClick={generateAndPersistPortalLink}>
+                            <LinkIcon className="w-4 h-4 mr-1" />
+                            {portalLink ? "Rotate online response link" : "Generate online response link"}
+                          </Button>
+                          {portalLink && (
+                            <span className="text-xs text-slate-500 truncate max-w-[360px]">{portalLink}</span>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -445,6 +798,9 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                       items={includedItems}
                       onMarkSent={saveAndMarkSent}
                       markSentDisabled={saving}
+                      onFax={faxToProvider}
+                      faxDisabled={faxing || !providerFax.trim()}
+                      faxLabel={faxing ? "Faxing…" : "Fax to provider"}
                     />
                   </>
                 )}
@@ -454,5 +810,137 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
         </div>
       )}
     </PageContainer>
+  );
+}
+
+/** Admin settings: enable/disable rules, override severities, add agency items. */
+function RuleSettingsCard({ ruleConfig, onSaved }) {
+  const [disabled, setDisabled] = useState(new Set(ruleConfig?.disabled_rules || []));
+  const [overrides, setOverrides] = useState(ruleConfig?.severity_overrides || {});
+  const [customItems, setCustomItems] = useState(ruleConfig?.custom_items || []);
+  const [draft, setDraft] = useState({ title: "", question: "", category: "compliance", severity: "medium", why: "" });
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await base44.functions.invoke("saveFollowUpRuleConfig", {
+        disabled_rules: [...disabled],
+        severity_overrides: overrides,
+        custom_items: customItems,
+      });
+      if (!data?.success) throw new Error(data?.error || "Save failed");
+      toast.success("Review settings saved.");
+      onSaved?.();
+    } catch (error) {
+      console.error("Saving rule config failed:", error);
+      toast.error("Couldn't save the review settings.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="mb-4 border-2 border-slate-300">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Settings2 className="w-5 h-5 text-slate-600" /> Review settings (agency-wide)
+        </CardTitle>
+        <p className="text-xs text-slate-500">
+          The built-in rules are the compliance floor — disable only what genuinely doesn't apply to your agency.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid md:grid-cols-2 gap-2">
+          {FOLLOW_UP_RULES.map((rule) => (
+            <div key={rule.id} className="flex items-center justify-between gap-2 border rounded p-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Checkbox
+                  id={`rule-${rule.id}`}
+                  checked={!disabled.has(rule.id)}
+                  onCheckedChange={() =>
+                    setDisabled((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(rule.id)) next.delete(rule.id);
+                      else next.add(rule.id);
+                      return next;
+                    })
+                  }
+                />
+                <Label htmlFor={`rule-${rule.id}`} className="text-xs truncate cursor-pointer">{rule.label}</Label>
+              </div>
+              <Select
+                value={overrides[rule.id] || rule.defaultSeverity}
+                onValueChange={(v) =>
+                  setOverrides((prev) => {
+                    const next = { ...prev };
+                    if (v === rule.defaultSeverity) delete next[rule.id];
+                    else next[rule.id] = v;
+                    return next;
+                  })
+                }
+              >
+                <SelectTrigger className="w-[110px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SEVERITIES.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t pt-3 space-y-2">
+          <p className="text-xs font-semibold text-slate-700">Agency-defined request items</p>
+          {customItems.map((c, idx) => (
+            <div key={idx} className="flex items-center justify-between gap-2 text-xs bg-teal-50 border border-teal-200 rounded p-2">
+              <span className="truncate"><strong>{c.title}</strong> — {c.question}</span>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setCustomItems((prev) => prev.filter((_, i) => i !== idx))}>
+                Remove
+              </Button>
+            </div>
+          ))}
+          <div className="grid sm:grid-cols-2 gap-2">
+            <Input placeholder="Title (e.g. Wound photos)" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+            <Input placeholder="Provider question" value={draft.question} onChange={(e) => setDraft({ ...draft, question: e.target.value })} />
+            <Input placeholder="Why it's needed (shown on the form)" value={draft.why} onChange={(e) => setDraft({ ...draft, why: e.target.value })} className="sm:col-span-2" />
+            <Select value={draft.category} onValueChange={(v) => setDraft({ ...draft, category: v })}>
+              <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="compliance">compliance</SelectItem>
+                <SelectItem value="reimbursement">reimbursement</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={draft.severity} onValueChange={(v) => setDraft({ ...draft, severity: v })}>
+              <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SEVERITIES.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!draft.title.trim() || !draft.question.trim()}
+            onClick={() => {
+              setCustomItems((prev) => [...prev, draft]);
+              setDraft({ title: "", question: "", category: "compliance", severity: "medium", why: "" });
+            }}
+          >
+            Add item
+          </Button>
+        </div>
+
+        <Button type="button" onClick={save} disabled={saving} className="bg-navy-600 hover:bg-navy-700">
+          {saving ? "Saving…" : "Save review settings"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

@@ -1,0 +1,37 @@
+{
+  "name": "FollowUpRuleConfig",
+  "type": "object",
+  // Agency-editable configuration for the referral follow-up review engine
+  // (src/components/referral/referralFollowUpEngine.js — applyRuleConfig).
+  // The built-in rules are the floor; this lets an agency disable rules that
+  // don't apply to them, tighten severities, and add their own request items.
+  // Written ONLY through the admin-gated saveFollowUpRuleConfig function
+  // (service-role write), read by any authenticated user so the review runs
+  // consistently for everyone who can see the follow-up page.
+  "properties": {
+    "disabled_rules": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Rule ids (see FOLLOW_UP_RULES) the agency has turned off"
+    },
+    "severity_overrides": {
+      "type": "object",
+      "description": "Map of rule id -> severity (critical|high|medium) overriding the default"
+    },
+    "custom_items": {
+      "type": "array",
+      "description": "Agency-defined request items: { title, question, category (compliance|reimbursement), severity, why, citation?, impact?, hint?, response_type? }"
+    },
+    "updated_by_email": {
+      "type": "string",
+      "description": "Email of the admin who last saved this configuration"
+    }
+  },
+  "required": [],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": { "role": "__service_role_only__" }
+    }
+  }
+}

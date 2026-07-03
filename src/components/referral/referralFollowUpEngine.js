@@ -26,6 +26,61 @@ export const CATEGORIES = /** @type {const} */ ({
 
 export const SEVERITIES = ["critical", "high", "medium"];
 
+/** Catalog of the built-in rules — drives the admin "review settings" UI
+ *  (enable/disable + severity override per rule). Keep ids in sync with the
+ *  item(...) calls in buildFollowUpPlan. */
+export const FOLLOW_UP_RULES = [
+  { id: "f2f_missing", label: "Face-to-Face documentation missing", category: "compliance", defaultSeverity: "critical" },
+  { id: "f2f_invalid", label: "Face-to-Face non-compliant / needs clarification", category: "compliance", defaultSeverity: "critical" },
+  { id: "orders_missing", label: "No physician orders / ordered services", category: "compliance", defaultSeverity: "critical" },
+  { id: "frequency_missing", label: "Visit frequency and duration not specified", category: "compliance", defaultSeverity: "high" },
+  { id: "homebound_undocumented", label: "Homebound status not supported", category: "compliance", defaultSeverity: "high" },
+  { id: "certifier_missing", label: "Certifying practitioner not identified", category: "compliance", defaultSeverity: "critical" },
+  { id: "medications_missing", label: "No medication list", category: "compliance", defaultSeverity: "medium" },
+  { id: "insurance_missing", label: "Insurance / Medicare number missing", category: "compliance", defaultSeverity: "high" },
+  { id: "no_icd_codes", label: "No ICD-10 codes documented", category: "reimbursement", defaultSeverity: "critical" },
+  { id: "no_acceptable_primary", label: "No PDGM-acceptable principal diagnosis", category: "reimbursement", defaultSeverity: "critical" },
+  { id: "uncoded_diagnoses", label: "Documented diagnoses without ICD-10 codes", category: "reimbursement", defaultSeverity: "high" },
+  { id: "unspecified_primary", label: "Principal diagnosis coded 'unspecified'", category: "reimbursement", defaultSeverity: "medium" },
+  { id: "institutional_dates_missing", label: "Institutional stay not verifiable", category: "reimbursement", defaultSeverity: "high" },
+  { id: "comorbidities_uncaptured", label: "Chronic conditions without coded comorbidities", category: "reimbursement", defaultSeverity: "medium" },
+  { id: "functional_detail_missing", label: "Functional status detail is thin", category: "reimbursement", defaultSeverity: "medium" },
+];
+
+/**
+ * Apply the agency's saved rule configuration (FollowUpRuleConfig entity) to a
+ * generated item list: drop disabled rules, override severities, and append
+ * agency-defined custom items. Custom items get source "agency" and stable
+ * `custom_<n>` ids. Unknown/invalid overrides are ignored (never widen).
+ */
+export function applyRuleConfig(items, ruleConfig) {
+  if (!ruleConfig || typeof ruleConfig !== "object") return items;
+  const disabled = new Set(ruleConfig.disabled_rules || []);
+  const overrides = ruleConfig.severity_overrides || {};
+  const out = items
+    .filter((it) => !disabled.has(it.id))
+    .map((it) =>
+      SEVERITIES.includes(overrides[it.id]) ? { ...it, severity: overrides[it.id] } : it
+    );
+  (ruleConfig.custom_items || []).forEach((c, idx) => {
+    if (!c || !c.title || !c.question) return;
+    out.push({
+      id: `custom_${idx}`,
+      seq: 5000 + idx, // after built-in rules, before AI additions
+      source: "agency",
+      category: c.category === "reimbursement" ? "reimbursement" : "compliance",
+      severity: SEVERITIES.includes(c.severity) ? c.severity : "medium",
+      title: c.title,
+      needed: c.needed || c.question,
+      why: c.why || "Agency-defined intake requirement.",
+      citation: c.citation || "Agency policy",
+      impact: c.impact || "Required by agency policy",
+      provider_request: { question: c.question, response_type: c.response_type === "document" ? "document" : "text", hint: c.hint || "" },
+    });
+  });
+  return out;
+}
+
 const text = (v) => (typeof v === "string" ? v : "");
 const hasText = (v) => text(v).trim().length > 0 && !/^not documented/i.test(text(v).trim());
 
@@ -72,6 +127,8 @@ function item(fields) {
  * @param {object} [opts.rates]      saved PDGMRateConfig.rates
  * @param {object} [opts.icdGroups]  saved PDGMRateConfig.icd10_clinical_groups
  * @param {string} [opts.socDate]    anticipated SOC date (improves F2F window check)
+ * @param {object} [opts.ruleConfig] saved FollowUpRuleConfig (disabled_rules,
+ *                                   severity_overrides, custom_items)
  * @returns {{
  *   items: Array<{id, source, category, severity, title, needed, why, citation,
  *                 impact, provider_request:{question, response_type, hint}}>,
@@ -387,7 +444,8 @@ export function buildFollowUpPlan(extractedData, opts = {}) {
     }
   }
 
-  return { items, counts: countFollowUpItems(items), coding, f2f, internal_notes: internalNotes };
+  const configured = applyRuleConfig(items, opts.ruleConfig);
+  return { items: configured, counts: countFollowUpItems(configured), coding, f2f, internal_notes: internalNotes };
 }
 
 /** Severity/category tallies for any item set (also used for user-selected subsets). */
@@ -446,7 +504,10 @@ export function buildProviderForm(header = {}, items = []) {
       `Re: ${header.patientName || "(patient)"}${header.patientDob ? `, DOB ${header.patientDob}` : ""}. ` +
       `Thank you for your referral${header.referralDate ? ` dated ${header.referralDate}` : ""}. ` +
       `To admit this patient promptly and meet Medicare's documentation requirements, ${header.agencyName || "our agency"} needs the items below. ` +
-      `Each item lists exactly what is needed and why. Please complete the response lines or attach the noted documents and return by fax${header.contactBackFax ? ` to ${header.contactBackFax}` : ""}${header.contactBackPhone ? ` (questions: ${header.contactBackPhone})` : ""}.`,
+      `Each item lists exactly what is needed and why. Please complete the response lines or attach the noted documents and return by fax${header.contactBackFax ? ` to ${header.contactBackFax}` : ""}${header.contactBackPhone ? ` (questions: ${header.contactBackPhone})` : ""}.` +
+      (header.portalLink
+        ? ` PREFER TO RESPOND ONLINE? Complete this request securely in a few minutes at: ${header.portalLink}`
+        : ""),
     sections,
     signatureBlock: [
       "Provider/designee completing this form: ______________________________",
@@ -482,11 +543,17 @@ export function providerFormToText(form) {
  * Kept OFF extracted_data for the same isolation reason as diagnosis_coding
  * (coding/reimbursement mechanics must not leak into admission-note prompts).
  */
-export function toPersistedFollowUp(plan, { generatedAt, status = "open" } = {}) {
+export function toPersistedFollowUp(
+  plan,
+  { generatedAt, status = "open", sentVia = null, faxLogId = null, portalLink = null } = {}
+) {
   if (!plan) return null;
   return {
     status, // open | sent | received | resolved
     generated_at: generatedAt || null,
+    sent_via: sentVia, // "fax" | "manual" | null
+    fax_log_id: faxLogId,
+    portal_link: portalLink,
     counts: plan.counts,
     items: sortFollowUpItems(plan.items).map((it) => ({
       id: it.id,
@@ -499,6 +566,12 @@ export function toPersistedFollowUp(plan, { generatedAt, status = "open" } = {})
       citation: it.citation,
       impact: it.impact,
       provider_request: it.provider_request,
+      // Per-item lifecycle: open → answered (provider responded via portal) →
+      // resolved (staff verified). Responses are written by the
+      // submitFollowUpResponse backend function.
+      item_status: "open",
+      response: null,
+      answered_at: null,
     })),
   };
 }

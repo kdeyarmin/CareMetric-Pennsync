@@ -6,6 +6,8 @@ import {
   buildProviderForm,
   providerFormToText,
   toPersistedFollowUp,
+  applyRuleConfig,
+  FOLLOW_UP_RULES,
 } from "./referralFollowUpEngine.js";
 
 const ids = (plan) => plan.items.map((i) => i.id);
@@ -247,13 +249,83 @@ test("providerFormToText renders response lines and a signature block", () => {
   assert.match(txt, /Practitioner signature/);
 });
 
+// ── agency rule configuration ──
+
+test("FOLLOW_UP_RULES catalog matches the rule ids the engine can emit", () => {
+  const emitted = new Set(buildFollowUpPlan({}).items.map((i) => i.id));
+  const catalog = new Set(FOLLOW_UP_RULES.map((r) => r.id));
+  for (const id of emitted) assert.ok(catalog.has(id), `rule ${id} missing from catalog`);
+});
+
+test("ruleConfig disables rules, overrides severity, and appends custom items", () => {
+  const plan = buildFollowUpPlan({}, {
+    ruleConfig: {
+      disabled_rules: ["medications_missing"],
+      severity_overrides: { insurance_missing: "critical", bogus_rule: "high", homebound_undocumented: "not_a_severity" },
+      custom_items: [
+        { title: "Wound photos", question: "Please attach current wound photos.", category: "compliance", severity: "high", why: "Agency wound program requirement." },
+        { title: "", question: "ignored — no title" },
+      ],
+    },
+  });
+  const byId = Object.fromEntries(plan.items.map((i) => [i.id, i]));
+  assert.equal(byId.medications_missing, undefined);
+  assert.equal(byId.insurance_missing.severity, "critical");
+  assert.equal(byId.homebound_undocumented.severity, "high"); // invalid override ignored
+  assert.equal(byId.custom_0.source, "agency");
+  assert.equal(byId.custom_0.provider_request.question, "Please attach current wound photos.");
+  assert.equal(byId.custom_1, undefined); // titleless custom item dropped
+  // counts reflect the configured item set
+  assert.equal(plan.counts.total, plan.items.length);
+});
+
+test("applyRuleConfig is a no-op without a config", () => {
+  const items = buildFollowUpPlan({}).items;
+  assert.deepEqual(applyRuleConfig(items, null), items);
+});
+
+test("custom items sort after built-in rules but before AI additions", () => {
+  const plan = buildFollowUpPlan({}, {
+    ruleConfig: { custom_items: [{ title: "T", question: "Q", severity: "critical", category: "compliance" }] },
+  });
+  const ai = { id: "ai_0", source: "ai", severity: "critical", category: "compliance", title: "AI", needed: "n", why: "w", citation: "c", impact: "i", provider_request: { question: "q" } };
+  const sorted = sortFollowUpItems([ai, ...plan.items]).filter((i) => i.severity === "critical" && i.category === "compliance");
+  const idxCustom = sorted.findIndex((i) => i.id === "custom_0");
+  const idxAi = sorted.findIndex((i) => i.id === "ai_0");
+  const lastRule = Math.max(...sorted.map((i, idx) => (i.source === "rules" ? idx : -1)));
+  assert.ok(idxCustom > lastRule && idxCustom < idxAi);
+});
+
+// ── portal link on the provider form ──
+
+test("provider form advertises the online response portal when a link is supplied", () => {
+  const plan = buildFollowUpPlan({});
+  const form = buildProviderForm({ patientName: "M T", portalLink: "https://x.example/followup?token=abc" }, plan.items);
+  assert.match(form.intro, /RESPOND ONLINE/);
+  assert.match(form.intro, /token=abc/);
+  const withoutLink = buildProviderForm({ patientName: "M T" }, plan.items);
+  assert.ok(!/RESPOND ONLINE/.test(withoutLink.intro));
+});
+
 // ── persistence ──
 
 test("toPersistedFollowUp produces the lean sorted Referral shape", () => {
   const plan = buildFollowUpPlan({});
-  const persisted = toPersistedFollowUp(plan, { generatedAt: "2026-07-02T12:00:00Z", status: "sent" });
+  const persisted = toPersistedFollowUp(plan, {
+    generatedAt: "2026-07-02T12:00:00Z",
+    status: "sent",
+    sentVia: "fax",
+    faxLogId: "fx1",
+    portalLink: "https://x.example/followup?token=abc",
+  });
   assert.equal(persisted.status, "sent");
   assert.equal(persisted.generated_at, "2026-07-02T12:00:00Z");
+  assert.equal(persisted.sent_via, "fax");
+  assert.equal(persisted.fax_log_id, "fx1");
+  assert.equal(persisted.portal_link, "https://x.example/followup?token=abc");
+  // Per-item lifecycle starts open with no response.
+  assert.equal(persisted.items[0].item_status, "open");
+  assert.equal(persisted.items[0].response, null);
   assert.equal(persisted.items.length, plan.items.length);
   assert.deepEqual(persisted.counts, plan.counts);
   // Sorted: first item must be critical severity.
