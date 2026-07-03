@@ -1,5 +1,31 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
+const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
+function isSchedulerAdmin(user) {
+  return !!user && (
+    user.role === 'admin' || user.account_type === 'agency_admin' ||
+    user.account_type === 'super_admin'
+  );
+}
+function getSchedulerAuthError(req, user) {
+  if (isSchedulerAdmin(user)) return null;
+  const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expectedSecret) {
+    return Response.json(
+      { error: 'Server misconfigured: INTERNAL_FN_SECRET is required for scheduled/internal functions' },
+      { status: 500 },
+    );
+  }
+  const providedSecret = String(req.headers.get(SCHEDULER_SECRET_HEADER) || '').trim();
+  if (providedSecret === expectedSecret) return null;
+  return Response.json(
+    { error: user ? 'Forbidden: admin or scheduler secret required' : 'Unauthorized: scheduler secret required' },
+    { status: user ? 403 : 401 },
+  );
+}
+// <<<END SHARED HELPER: schedulerAuth>>>
+
 // computeOutcomeMeasures — the keystone quality cron.
 //
 // Pairs every Discharge OASIS with its matching SOC/ROC assessment, computes the
@@ -193,12 +219,10 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     // Auth gate (mirrors monitorComplianceRisks): reads every patient's OASIS
-    // PHI and writes quality metrics. The no-identity cron path is allowed; an
-    // authenticated non-admin is rejected.
+    // PHI and writes quality metrics. Admins can run it with session auth; scheduled/internal callers must send `x-internal-secret`; every other caller is rejected.
     const me = await base44.auth.me().catch(() => null);
-    if (me && !isAdminLike(me)) {
-      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
-    }
+    const authError = getSchedulerAuthError(req, me);
+    if (authError) return authError;
 
     let body = {};
     try { body = await req.json(); } catch { /* GET / cron invocation */ }

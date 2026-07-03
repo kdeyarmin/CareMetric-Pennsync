@@ -1,5 +1,31 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
+const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
+function isSchedulerAdmin(user) {
+  return !!user && (
+    user.role === 'admin' || user.account_type === 'agency_admin' ||
+    user.account_type === 'super_admin'
+  );
+}
+function getSchedulerAuthError(req, user) {
+  if (isSchedulerAdmin(user)) return null;
+  const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expectedSecret) {
+    return Response.json(
+      { error: 'Server misconfigured: INTERNAL_FN_SECRET is required for scheduled/internal functions' },
+      { status: 500 },
+    );
+  }
+  const providedSecret = String(req.headers.get(SCHEDULER_SECRET_HEADER) || '').trim();
+  if (providedSecret === expectedSecret) return null;
+  return Response.json(
+    { error: user ? 'Forbidden: admin or scheduler secret required' : 'Unauthorized: scheduler secret required' },
+    { status: user ? 403 : 401 },
+  );
+}
+// <<<END SHARED HELPER: schedulerAuth>>>
+
 /**
  * dispatchScheduledSms — cron job that sends due ScheduledSms rows. Configure a
  * schedule (e.g. every 5 minutes) for this function in the Base44 dashboard.
@@ -444,15 +470,10 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Authorization: privileged cron job (service-role reads/writes + billable
-    // Telnyx sends, no end user). A real scheduler runs unauthenticated and
-    // passes; a logged-in non-admin is always rejected (closing the "any
-    // logged-in user can force-dispatch queued SMS off-schedule" vector).
+    // Authorization: privileged cron job (service-role reads/writes + billable Telnyx sends, no end user). Only admins or the configured scheduler secret may invoke it.
     const me = await base44.auth.me().catch(() => null);
-    const isAdmin = me?.role === 'admin';
-    if (me && !isAdmin) {
-      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
-    }
+    const authError = getSchedulerAuthError(req, me);
+    if (authError) return authError;
 
     const { apiKey, messagingProfileId } = await resolveTelnyxCreds(base44);
     const { smsEnabled, settings } = await getAgencyConfig(base44);

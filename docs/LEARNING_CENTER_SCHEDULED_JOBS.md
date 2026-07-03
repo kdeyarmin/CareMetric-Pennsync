@@ -2,10 +2,11 @@
 
 These Deno functions are plain HTTP endpoints (`Deno.serve`). They have no
 in-repo cron schedule — **registration happens on the Base44 platform
-dashboard (Functions → schedule/trigger), not in this repo**. Each privileged
-job authorizes with the same opt-in lockdown: when `INTERNAL_FN_SECRET` is set,
-the scheduler must send it as the `x-internal-secret` header; an admin session
-also passes.
+dashboard (Functions → schedule/trigger), not in this repo**. Because Base44
+does not automatically block unauthenticated HTTP callers for sensitive
+functions, each privileged scheduled job must require the shared scheduler
+secret: the scheduler sends `x-internal-secret: <INTERNAL_FN_SECRET>`, and an
+admin session also passes.
 
 The table also carries the two clinical-quality jobs (`computeOutcomeMeasures`,
 `monitorComplianceRisks`) — they are not Learning Center functions, but they are

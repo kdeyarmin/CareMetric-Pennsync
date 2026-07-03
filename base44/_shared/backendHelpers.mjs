@@ -71,6 +71,33 @@ function isSafeFetchUrl(raw) {
   u.account_type === 'super_admin'
 );`,
 
+  // Shared scheduler/internal auth for privileged cron-style functions. Base44
+  // function URLs are plain HTTP endpoints, so these jobs must require either an
+  // admin session or the configured shared secret header.
+  schedulerAuth: `const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
+function isSchedulerAdmin(user) {
+  return !!user && (
+    user.role === 'admin' || user.account_type === 'agency_admin' ||
+    user.account_type === 'super_admin'
+  );
+}
+function getSchedulerAuthError(req, user) {
+  if (isSchedulerAdmin(user)) return null;
+  const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expectedSecret) {
+    return Response.json(
+      { error: 'Server misconfigured: INTERNAL_FN_SECRET is required for scheduled/internal functions' },
+      { status: 500 },
+    );
+  }
+  const providedSecret = String(req.headers.get(SCHEDULER_SECRET_HEADER) || '').trim();
+  if (providedSecret === expectedSecret) return null;
+  return Response.json(
+    { error: user ? 'Forbidden: admin or scheduler secret required' : 'Unauthorized: scheduler secret required' },
+    { status: user ? 403 : 401 },
+  );
+}`,
+
   // Branded transactional-email builder. Produces the PennSync (navy + gold) HTML
   // shell every outgoing email uses so the logo, wordmark, colors, and footer never
   // drift across functions (the from_name 'PennSync by CareMetric' is set at each

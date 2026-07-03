@@ -1,5 +1,31 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
+const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
+function isSchedulerAdmin(user) {
+  return !!user && (
+    user.role === 'admin' || user.account_type === 'agency_admin' ||
+    user.account_type === 'super_admin'
+  );
+}
+function getSchedulerAuthError(req, user) {
+  if (isSchedulerAdmin(user)) return null;
+  const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expectedSecret) {
+    return Response.json(
+      { error: 'Server misconfigured: INTERNAL_FN_SECRET is required for scheduled/internal functions' },
+      { status: 500 },
+    );
+  }
+  const providedSecret = String(req.headers.get(SCHEDULER_SECRET_HEADER) || '').trim();
+  if (providedSecret === expectedSecret) return null;
+  return Response.json(
+    { error: user ? 'Forbidden: admin or scheduler secret required' : 'Unauthorized: scheduler secret required' },
+    { status: user ? 403 : 401 },
+  );
+}
+// <<<END SHARED HELPER: schedulerAuth>>>
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -128,14 +154,11 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     // Authorization: this reads ALL pending invitations (PII), emails every admin,
-    // and mutates invitation state. The no-identity cron path is allowed
-    // (platform invocation restriction is the control, see
-    // docs/SECURITY-RLS-CHECKLIST.md §4); an authenticated non-admin is rejected.
+    // and mutates invitation state, so only admins or the configured scheduler
+    // secret may invoke it (see docs/SECURITY-RLS-CHECKLIST.md §4).
     const me = await base44.auth.me().catch(() => null);
-    const isAdmin = me?.role === 'admin' || me?.account_type === 'agency_admin' || me?.account_type === 'super_admin';
-    if (me && !isAdmin) {
-      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
-    }
+    const authError = getSchedulerAuthError(req, me);
+    if (authError) return authError;
 
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
