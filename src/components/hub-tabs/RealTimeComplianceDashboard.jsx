@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { isAdminView } from "@/lib/roles";
 import {
   Shield,
   TrendingUp,
@@ -547,7 +548,7 @@ export default function RealTimeComplianceDashboard() {
     );
   }
 
-  if (currentUser?.role !== 'admin') {
+  if (!isAdminView(currentUser)) {
     return (
       <div className="p-8 max-w-4xl mx-auto">
         <Card className="border-red-200 bg-red-50">

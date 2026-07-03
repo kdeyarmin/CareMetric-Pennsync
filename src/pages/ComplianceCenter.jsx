@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import ComplianceReportGenerator from "@/components/compliance/ComplianceReportGenerator";
 import AIComplianceAssistant from "@/components/compliance/AIComplianceAssistant";
 import MedicareRuleSeeder from "@/components/compliance/MedicareRuleSeeder";
+import { isAdminView } from "@/lib/roles";
 
 const RegulatoryCompliance = lazy(() => import("@/components/hub-tabs/RegulatoryCompliance"));
 const ComplianceMonitoringDashboard = lazy(() => import("@/components/hub-tabs/ComplianceMonitoringDashboard"));
@@ -135,7 +136,7 @@ export default function ComplianceCenter() {
     refetchInterval: 30000,
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   // Filter audits by time range
   const cutoffDate = subDays(new Date(), timeRange);

@@ -25,7 +25,7 @@ export default defineConfig(({ command }) => ({
           if (!id.includes('node_modules')) return;
           if (id.includes('pdfjs-dist')) return 'vendor-pdfjs';
           if (id.includes('jspdf') || id.includes('html2canvas')) return 'vendor-pdf-export';
-          if (id.includes('twilio-video')) return 'vendor-twilio';
+          if (id.includes('@telnyx/video')) return 'vendor-telnyx';
           if (id.includes('recharts') || id.includes('/d3-') || id.includes('victory-vendor')) return 'vendor-charts';
           if (id.includes('framer-motion')) return 'vendor-motion';
         },

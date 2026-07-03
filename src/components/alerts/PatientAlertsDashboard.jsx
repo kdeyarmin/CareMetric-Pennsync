@@ -45,8 +45,9 @@ import { getAlertIcon, getSeverityColor } from "@/components/alerts/alertPresent
 import { format, formatDistanceToNow } from "date-fns";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { isAdminView } from "@/lib/roles";
 
-export default function PatientAlertsDashboard({ patientId = null, _showAllPatients = true }) {
+export default function PatientAlertsDashboard({ patientId = null }) {
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState("");
@@ -65,7 +66,7 @@ export default function PatientAlertsDashboard({ patientId = null, _showAllPatie
     queryFn: () => base44.auth.me()
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   // Fetch alerts via a SERVER-SCOPED function so the browser only receives
   // alerts the caller is authorized for (assigned patients, or all for admins).
@@ -93,7 +94,7 @@ export default function PatientAlertsDashboard({ patientId = null, _showAllPatie
 
   // Fetch patients for lookup
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'lookup', 'alerts'],
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000)
   });
 
