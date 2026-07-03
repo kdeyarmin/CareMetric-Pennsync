@@ -75,7 +75,7 @@ export default function FaxCoverSheetGenerator({
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
     const W = 215.9;
     const margin = 20;
-    let y = margin;
+    let y = 26;
 
     // Header bar
     pdf.setFillColor(30, 64, 175); // indigo-800
@@ -84,8 +84,6 @@ export default function FaxCoverSheetGenerator({
     pdf.setFontSize(13);
     pdf.setFont("helvetica", "bold");
     pdf.text("CONFIDENTIAL FAX TRANSMISSION", W / 2, 12, { align: "center" });
-
-    y = 26;
 
     // Urgency badge
     const urgencyLabel = (data.urgency || "routine").toUpperCase();
