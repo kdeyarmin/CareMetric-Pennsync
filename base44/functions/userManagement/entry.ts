@@ -262,7 +262,7 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
 
   // Send invitation email
   try {
-    const signupUrl = 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
+    const signupUrl = 'https://caremetricai.base44.app';
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: email,
       subject: 'You’re invited to join PennSync by CareMetric',
@@ -329,7 +329,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   });
 
   // Resend email
-  const signupUrl = 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
+  const signupUrl = 'https://caremetricai.base44.app';
   await base44.asServiceRole.integrations.Core.SendEmail({
     to: invitation.email,
     subject: 'Reminder: your invitation to PennSync by CareMetric',

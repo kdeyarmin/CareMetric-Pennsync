@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, message: 'No pending invitations found' });
     }
 
-    const appUrl = 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
+    const appUrl = 'https://caremetricai.base44.app';
     let approvedCount = 0;
     let skippedCount = 0;
 

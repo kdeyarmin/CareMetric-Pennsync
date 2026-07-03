@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
       .slice(-1)[0] || signature.completed_date;
 
     const subject = `Document signed: ${documentTitle}`;
-    const appBase = 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
+    const appBase = 'https://caremetricai.base44.app';
     const body = renderBrandedEmail({
       preheader: `${documentTitle} has been signed by ${signedByText}.`,
       eyebrow: 'Document signed',

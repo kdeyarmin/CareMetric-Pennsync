@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
     // Update user password using service role
     await base44.asServiceRole.auth.updateUserPassword(userEmail, tempPassword);
 
-    const appUrl = `https://hub.base44.app/apps/68ee80d98929370f9e8f2932`;
+    const appUrl = `https://caremetricai.base44.app`;
 
     // Send email with temporary password
     await base44.asServiceRole.integrations.Core.SendEmail({
