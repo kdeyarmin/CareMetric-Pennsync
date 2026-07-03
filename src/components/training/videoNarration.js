@@ -20,16 +20,55 @@ export function truncateAtSentence(script, limit = NARRATION_CHAR_LIMIT) {
   return kept + TRUNCATION_SUFFIX;
 }
 
+// Rewrite text so a TTS voice reads it naturally: written-only symbols and
+// Latin abbreviations are spoken forms, markdown markers are dropped.
+export function sanitizeForSpeech(text) {
+  return String(text)
+    .replace(/§+\s*/g, 'section ')
+    .replace(/\be\.g\.,?\s*/gi, 'for example, ')
+    .replace(/\bi\.e\.,?\s*/gi, 'that is, ')
+    .replace(/\bvs\.\s*/gi, 'versus ')
+    .replace(/\s&\s/g, ' and ')
+    .replace(/[*_#`~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const stripTrailingPunctuation = (s) => String(s).trim().replace(/[.:;,!?]+$/, '');
+
+// "A", "A and B", or "A, B, and C" — for speaking a list of headings.
+export function speakableList(items) {
+  const list = items.map(stripTrailingPunctuation).filter(Boolean);
+  if (list.length <= 1) return list[0] || '';
+  if (list.length === 2) return `${list[0]} and ${list[1]}`;
+  return `${list.slice(0, -1).join(', ')}, and ${list[list.length - 1]}`;
+}
+
+// Presenter-style section lead-in: numbered transitions when there are several
+// sections, so the narration doesn't repeat the same phrase for every one.
+const sectionLead = (heading, index, total) => {
+  const h = stripTrailingPunctuation(heading);
+  if (total <= 1) return `Let's talk about ${h}.`;
+  if (index === 0) return `First, let's talk about ${h}.`;
+  if (index === total - 1) return `Finally, let's cover ${h}.`;
+  return `Next, let's turn to ${h}.`;
+};
+
 // Turn a lesson module's content_json into a spoken narration script. Follows
-// the on-screen lesson order: intro, sections (with pro tips and warnings),
-// key takeaways, clinical pearl, summary.
+// the on-screen lesson order: intro, an overview of what's coming, sections
+// (with pro tips and warnings), key takeaways, clinical pearl, summary.
 export function buildNarrationScript(moduleTitle, content) {
   const c = content || {};
   const parts = [`Welcome to this module: ${moduleTitle}.`];
   if (c.intro) parts.push(String(c.intro));
-  for (const section of Array.isArray(c.sections) ? c.sections : []) {
-    if (!section || typeof section !== 'object') continue;
-    if (section.heading) parts.push(`Let's talk about: ${section.heading}.`);
+  const sections = (Array.isArray(c.sections) ? c.sections : []).filter((s) => s && typeof s === 'object');
+  const headings = sections.map((s) => s.heading).filter(Boolean);
+  if (headings.length >= 2) {
+    parts.push(`In this module, we'll cover ${speakableList(headings)}.`);
+  }
+  let headingIndex = 0;
+  for (const section of sections) {
+    if (section.heading) parts.push(sectionLead(section.heading, headingIndex++, headings.length));
     if (section.body) parts.push(String(section.body));
     if (section.pro_tip) parts.push(`Here's a pro tip: ${section.pro_tip}`);
     if (section.warning) parts.push(`Important warning: ${section.warning}`);
@@ -43,7 +82,7 @@ export function buildNarrationScript(moduleTitle, content) {
   if (c.clinical_pearl) parts.push(`Clinical pearl: ${c.clinical_pearl}`);
   if (c.summary) parts.push(String(c.summary));
   parts.push("That wraps up this module. Let's move on.");
-  return truncateAtSentence(parts.join(' '));
+  return truncateAtSentence(sanitizeForSpeech(parts.join(' ')));
 }
 
 // Bounded, UI-ready avatar list from HeyGen GET /v2/avatars. Drops entries

@@ -33,7 +33,10 @@ async function loadInline(entryPath, names) {
 }
 
 const ENTRY = "./manageTrainingVideos/entry.ts";
-const NAMES = ["buildNarrationScript", "truncateAtSentence", "normalizeHeyGenAvatars", "normalizeHeyGenVoices"];
+const NAMES = [
+  "buildNarrationScript", "truncateAtSentence", "sanitizeForSpeech", "speakableList",
+  "normalizeHeyGenAvatars", "normalizeHeyGenVoices",
+];
 
 const CONTENTS = [
   undefined,
@@ -44,11 +47,14 @@ const CONTENTS = [
       { heading: "Risks", body: "Loose rugs and poor lighting.", pro_tip: "Scan the path.", warning: "Never leave patients standing." },
       null,
       {},
+      { heading: "Reporting:", body: "Per CMS CoP §484.60(a), report same day, e.g. before end of shift. Safety & quality **matter**." },
+      { heading: "Review", body: "Sterile vs. clean technique." },
     ],
     key_takeaways: ["Assess every visit", "Clear paths.", "  "],
     clinical_pearl: "Ask about near-falls.",
     summary: "Observe first.",
   },
+  { sections: [{ heading: "Only one", body: "Single-section lead-in." }] },
   { intro: "This sentence pads the script toward the provider limit. ".repeat(200) },
   { intro: "x".repeat(6000) },
 ];
@@ -62,6 +68,12 @@ test("inline narration helpers match videoNarration.js", async () => {
   }
   for (const s of ["short", "A. ".repeat(3000), "y".repeat(5100)]) {
     assert.equal(mod.truncateAtSentence(s), videoNarration.truncateAtSentence(s));
+  }
+  for (const s of ["Per §484.60, e.g. now, i.e. today. A & B vs. C **bold**", "  spaced   out  "]) {
+    assert.equal(mod.sanitizeForSpeech(s), videoNarration.sanitizeForSpeech(s));
+  }
+  for (const list of [[], ["One."], ["One", "Two:"], ["One", "Two", "Three"]]) {
+    assert.equal(mod.speakableList(list), videoNarration.speakableList(list));
   }
 
   const rawAvatars = [
