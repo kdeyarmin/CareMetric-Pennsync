@@ -1,7 +1,9 @@
+import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { IMPROVEMENT_MEASURES } from "@/components/oasis/outcomeMeasureEngine";
 import {
   TrendingUp,
   TrendingDown,
@@ -9,7 +11,9 @@ import {
   FileText,
   ClipboardCheck,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Star,
+  ArrowRight
 } from "lucide-react";
 
 const KPI_COLOR_CLASSES = {
@@ -61,6 +65,19 @@ export default function KPIDashboard({ dateRange }) {
     initialData: [],
   });
 
+  // Outcome-measure summary (QoPC star proxy). Deliberately NO initialData on
+  // these two: the summary card renders an explicit "—" while loading instead
+  // of a fabricated "0 of 0" mid-fetch.
+  const { data: qualityKpis } = useQuery({
+    queryKey: ['outcomeMeasureKpis'],
+    queryFn: () => base44.entities.AgencyKPI.filter({ metric_category: 'quality' }, '-period_end', 1000),
+  });
+  const { data: outcomeMetrics } = useQuery({
+    queryKey: ['patientOutcomeMetrics'],
+    queryFn: () => base44.entities.PatientOutcomeMetric.filter(
+      { outcome_measure_source: 'oasis_change_score' }, '-episode_end', 5000),
+  });
+
   // Filter by date range. Parse BOTH bounds on the same (local) clock: a
   // date-only string parses as UTC midnight while a date-time string parses as
   // local, so an asymmetric pair shifted the start boundary into the prior
@@ -92,6 +109,31 @@ export default function KPIDashboard({ dateRange }) {
   // Real (not hardcoded) Critical Alerts count: open alerts at critical severity.
   const isAlertOpen = (a) => a.status === 'active' || a.status === 'acknowledged';
   const criticalAlerts = patientAlerts.filter(a => a.severity === 'critical' && isAlertOpen(a)).length;
+
+  // Outcome-measure summary: latest AgencyKPI row per improvement measure
+  // (newest period_end wins), counted against its national benchmark where one
+  // is set. Coverage = complete episode pairs (SOC/ROC + Discharge OASIS)
+  // documented in PennSync — the full detail lives on the OASIS Center Quality tab.
+  const outcomeSummary = (() => {
+    if (!qualityKpis || !outcomeMetrics) return null; // still loading (or failed) — show "—"
+    const latestByLabel = new Map();
+    for (const row of qualityKpis) {
+      if (!IMPROVEMENT_MEASURES.some(m => m.label === row.metric_name)) continue;
+      const prev = latestByLabel.get(row.metric_name);
+      if (!prev || String(row.period_end || '') > String(prev.period_end || '')) {
+        latestByLabel.set(row.metric_name, row);
+      }
+    }
+    const rows = [...latestByLabel.values()];
+    const benchmarked = rows.filter(r => r.benchmark_value != null);
+    return {
+      measuresComputed: rows.length,
+      measuresTotal: IMPROVEMENT_MEASURES.length,
+      benchmarkedCount: benchmarked.length,
+      atOrAboveBenchmark: benchmarked.filter(r => r.metric_value >= r.benchmark_value).length,
+      episodePairs: outcomeMetrics.length,
+    };
+  })();
 
   // Calculate trends by comparing each metric against the immediately-preceding
   // period of equal length. Returns null when there's no baseline to compare to, so
@@ -226,6 +268,46 @@ export default function KPIDashboard({ dateRange }) {
         })}
       </div>
 
+      {/* Outcome-measures summary (QoPC star proxy) — computed nightly from
+          episode pairs documented in PennSync; full detail on the OASIS Center
+          Quality tab. Official CMS stars come from the EMR's submissions. */}
+      <Card className="border-l-4 border-l-amber-500">
+        <CardContent className="p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+                <Star className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-3xl font-bold text-slate-900 mb-1">
+                  {outcomeSummary
+                    ? (outcomeSummary.benchmarkedCount > 0
+                      ? `${outcomeSummary.atOrAboveBenchmark} of ${outcomeSummary.benchmarkedCount}`
+                      : `${outcomeSummary.measuresComputed} of ${outcomeSummary.measuresTotal}`)
+                    : '—'}
+                </p>
+                <p className="text-sm text-slate-600">
+                  {outcomeSummary && outcomeSummary.benchmarkedCount > 0
+                    ? 'Outcome measures at/above benchmark'
+                    : 'Outcome measures computed (no benchmark set)'}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Based on {outcomeSummary ? outcomeSummary.episodePairs : '—'} complete episode
+                  pair{outcomeSummary?.episodePairs === 1 ? '' : 's'} documented in PennSync —
+                  early-warning star proxy, not the official CMS rating.
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/OASISCenter?tab=quality"
+              className="inline-flex items-center gap-1 text-sm font-medium text-navy-700 hover:text-navy-900 whitespace-nowrap"
+            >
+              View outcome measures
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
 
     </div>
   );

@@ -1,5 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// Compliance-risk monitor. COMPANION-MODE AWARE: PennSync usually runs
+// alongside the agency's EMR, so rules that fire on the ABSENCE of EMR-owned
+// data (visits, vitals, Discharge OASIS) are gated behind
+// AgencySettings.pennsync_is_system_of_record (default OFF) — see the gate in
+// the handler. Rules keyed to artifacts that exist in-app always run.
+//
 // Discharge-OASIS completion enforcer (inlined mirror of the unit-tested
 // src/components/oasis/dischargeComplianceEnforcer.js — Deno cannot import from
 // src/). Flags episodes that ended without a completed Discharge OASIS, which
@@ -113,6 +119,22 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 
+    // Companion-EMR gate: PennSync typically runs ALONGSIDE the agency's EMR,
+    // so visits, vitals, and Discharge OASIS assessments may be documented only
+    // in the EMR. Alerting on the ABSENCE of that data in PennSync would flood
+    // the alert bell with false open items for work that was completed — just
+    // elsewhere. The absence-based rules below (RISK 1 high-risk dx not seen in
+    // 7 days, RISK 3 missing vitals, RISK 6 missing Discharge OASIS plus the
+    // discharged-patient sweep) therefore only run when the agency has
+    // explicitly marked PennSync as its system of record
+    // (AgencySettings.pennsync_is_system_of_record) — DEFAULT OFF. Until that
+    // field is added to AgencySettings.jsonc and set to true, the read resolves
+    // undefined and the rules stay off, which is the safe companion-mode
+    // default. Rules keyed to in-app artifacts (RISK 5: homebound wording
+    // missing from a visit note that EXISTS in PennSync) always run.
+    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+    const pennsyncIsSystemOfRecord = settingsRows?.[0]?.pennsync_is_system_of_record === true;
+
     // Service role for monitoring all patients (bounded — an unbounded list would
     // silently truncate at the SDK page default and time out at scale).
     const patients = await base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000);
@@ -133,13 +155,15 @@ Deno.serve(async (req) => {
       const daysSinceLastVisit = lastVisit ? 
         Math.floor((currentDate - new Date(lastVisit.visit_date)) / (1000 * 60 * 60 * 24)) : 999;
       
-      // RISK 1: High-risk diagnosis without recent documentation
+      // RISK 1: High-risk diagnosis without recent documentation.
+      // Absence-based (assumes every visit is documented in PennSync) — gated
+      // behind pennsync_is_system_of_record; see the companion-EMR note above.
       const highRiskDiagnoses = ['CHF', 'COPD', 'Diabetes', 'Stroke', 'Cancer', 'Heart Failure'];
-      const hasHighRiskDx = highRiskDiagnoses.some(dx => 
+      const hasHighRiskDx = highRiskDiagnoses.some(dx =>
         patient.primary_diagnosis?.toUpperCase().includes(dx.toUpperCase())
       );
-      
-      if (hasHighRiskDx && daysSinceLastVisit > 7) {
+
+      if (pennsyncIsSystemOfRecord && hasHighRiskDx && daysSinceLastVisit > 7) {
         patientAlerts.push({
           patient_id: patient.id,
           alert_type: 'care_gap',
@@ -162,12 +186,14 @@ Deno.serve(async (req) => {
         });
       }
       
-      // RISK 3: Missing vital signs in recent visits
-      const recentVisitsWithoutVitals = visits.slice(0, 3).filter(v => 
+      // RISK 3: Missing vital signs in recent visits.
+      // Absence-based (vitals may be charted in the EMR even when the visit is
+      // mirrored here) — gated behind pennsync_is_system_of_record.
+      const recentVisitsWithoutVitals = visits.slice(0, 3).filter(v =>
         !v.vital_signs || Object.keys(v.vital_signs).length === 0
       );
-      
-      if (recentVisitsWithoutVitals.length >= 2) {
+
+      if (pennsyncIsSystemOfRecord && recentVisitsWithoutVitals.length >= 2) {
         patientAlerts.push({
           patient_id: patient.id,
           alert_type: 'documentation_risk',
@@ -190,47 +216,16 @@ Deno.serve(async (req) => {
         });
       }
       
-      // RISK 4: Therapy utilization threshold for LUPA avoidance
-      const therapyVisits = visits.filter(v => 
-        v.visit_type?.toLowerCase().includes('therapy') || 
-        v.visit_type?.toLowerCase().includes('pt') ||
-        v.visit_type?.toLowerCase().includes('ot')
-      );
-      
-      // Gate ONLY the episode-day (LUPA) check on a valid admission_date — do not
-      // `continue`, or RISK 5/6 and the alert-persistence block below would be
-      // skipped for any patient missing/with an unparseable admission_date,
-      // silently discarding the RISK 1-3 alerts already queued for them.
-      const admissionDate = patient.admission_date ? new Date(patient.admission_date) : null;
-      if (admissionDate && !isNaN(admissionDate.getTime())) {
-        const daysInEpisode = Math.floor((currentDate - admissionDate) / (1000 * 60 * 60 * 24));
+      // RISK 4 (removed 2026-07-03): the "Potential LUPA Risk" alert counted
+      // therapy visits against the pre-PDGM "4 visits per 60-day episode" rule
+      // — under PDGM the LUPA threshold is per-HHRG (2–6 visits per 30-day
+      // period), so the rule was simply wrong — AND it was absence-based over
+      // visits that in companion mode live in the EMR. LUPA economics belong in
+      // the admin PDGM analysis views as reference information, not as alerts.
 
-        if (daysInEpisode < 60 && daysInEpisode > 7 && therapyVisits.length < 4) {
-          patientAlerts.push({
-            patient_id: patient.id,
-            alert_type: 'readmission_risk',
-            severity: 'high',
-            title: 'Potential LUPA Risk - Low Therapy Utilization',
-            message: `Only ${therapyVisits.length} therapy visits documented ${daysInEpisode} days into episode.`,
-            contributing_factors: [
-              `Episode day: ${daysInEpisode}`,
-              `Therapy visits: ${therapyVisits.length}`,
-              'Medicare LUPA threshold is typically 4 visits in 60-day episode',
-              'Low utilization may trigger payment adjustment'
-            ],
-            recommended_actions: [
-              'Review therapy orders and appropriateness',
-              'Schedule additional PT/OT visits if clinically indicated',
-              'Document medical necessity for therapy',
-              'Consider therapy consultation for assessment'
-            ],
-            risk_score: 75,
-            data_sources: { episode_day: daysInEpisode, therapy_visits: therapyVisits.length }
-          });
-        }
-      }
-      
-      // RISK 5: Homebound status not documented in recent notes
+      // RISK 5: Homebound status not documented in recent notes.
+      // Keyed to an in-app artifact (the visit note EXISTS in PennSync but its
+      // content lacks homebound wording), so it stays on in companion mode.
       if (lastVisit) {
         const noteMention = lastVisit.nurse_notes?.toLowerCase() || '';
         const homeboundKeywords = ['homebound', 'taxing', 'considerable effort', 'leaving home', 'ambulation'];
@@ -263,11 +258,16 @@ Deno.serve(async (req) => {
       // RISK 6: Episode ended without a completed Discharge OASIS. A missing
       // Discharge OASIS silently loses the patient's demonstrated improvement
       // and drags the agency below the star-rating eligibility floor.
-      const dischargeGap = detectMissingDischargeOASIS(
-        { patient, oasisAssessments, visits },
-        { asOf: currentDate },
-      );
-      if (dischargeGap) patientAlerts.push(dischargeGap);
+      // Absence-based (the discharge assessment most likely lives in the EMR)
+      // — gated behind pennsync_is_system_of_record; incomplete pairs surface
+      // as the coverage note on the Outcome Measures dashboard instead.
+      if (pennsyncIsSystemOfRecord) {
+        const dischargeGap = detectMissingDischargeOASIS(
+          { patient, oasisAssessments, visits },
+          { asOf: currentDate },
+        );
+        if (dischargeGap) patientAlerts.push(dischargeGap);
+      }
 
       // Create alerts that don't already exist (skips active 24h duplicates).
       await persistAlerts(base44, patientAlerts, currentDate, alerts);
@@ -276,22 +276,26 @@ Deno.serve(async (req) => {
     // Discharged-patient sweep: the main loop only iterates ACTIVE patients, so
     // separately catch recently-discharged patients whose episode closed without
     // a completed Discharge OASIS (the highest-value, critical-severity case).
-    const dischargedPatients = await base44.asServiceRole.entities.Patient.filter(
-      { status: 'discharged' }, '-updated_date', 2000,
-    );
-    for (const patient of dischargedPatients) {
-      const [visits, oasisAssessments] = await Promise.all([
-        base44.asServiceRole.entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
-        base44.asServiceRole.entities.OASISAssessment.filter({ patient_id: patient.id }, '-assessment_date', 20),
-      ]);
-      const gap = detectMissingDischargeOASIS({ patient, oasisAssessments, visits }, { asOf: currentDate });
-      if (gap) await persistAlerts(base44, [gap], currentDate, alerts);
+    // Same absence-based rule as RISK 6, so same companion-mode gate.
+    if (pennsyncIsSystemOfRecord) {
+      const dischargedPatients = await base44.asServiceRole.entities.Patient.filter(
+        { status: 'discharged' }, '-updated_date', 2000,
+      );
+      for (const patient of dischargedPatients) {
+        const [visits, oasisAssessments] = await Promise.all([
+          base44.asServiceRole.entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
+          base44.asServiceRole.entities.OASISAssessment.filter({ patient_id: patient.id }, '-assessment_date', 20),
+        ]);
+        const gap = detectMissingDischargeOASIS({ patient, oasisAssessments, visits }, { asOf: currentDate });
+        if (gap) await persistAlerts(base44, [gap], currentDate, alerts);
+      }
     }
 
     return Response.json({
       success: true,
       alerts_generated: alerts.length,
       patients_monitored: patients.length,
+      absence_based_rules_enabled: pennsyncIsSystemOfRecord,
       timestamp: currentDate.toISOString()
     });
     

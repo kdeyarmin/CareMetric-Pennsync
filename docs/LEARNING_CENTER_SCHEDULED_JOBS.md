@@ -1,10 +1,15 @@
 # Learning Center — Scheduled Jobs
 
 These Deno functions are plain HTTP endpoints (`Deno.serve`). They have no
-in-repo cron schedule — scheduling is registered on the **Base44 platform**
-(dashboard → Functions → schedule/trigger). Each privileged job authorizes with
-the same opt-in lockdown: when `INTERNAL_FN_SECRET` is set, the scheduler must
-send it as the `x-internal-secret` header; an admin session also passes.
+in-repo cron schedule — **registration happens on the Base44 platform
+dashboard (Functions → schedule/trigger), not in this repo**. Each privileged
+job authorizes with the same opt-in lockdown: when `INTERNAL_FN_SECRET` is set,
+the scheduler must send it as the `x-internal-secret` header; an admin session
+also passes.
+
+The table also carries the two clinical-quality jobs (`computeOutcomeMeasures`,
+`monitorComplianceRisks`) — they are not Learning Center functions, but they are
+registered the same way, on the platform dashboard.
 
 | Function | Purpose | Suggested cadence |
 |---|---|---|
@@ -13,6 +18,8 @@ send it as the `x-internal-secret` header; an admin session also passes.
 | `processTrainingRenewals` | Create renewal assignment + notification 30 days before a certificate expires (non-annual). | Daily (existing) |
 | `processAnnualEducationRenewals` | Same, for annual-cycle certificates (rolls to next `annual_cycle_year`). | Daily (existing) |
 | `syncTrainingVideoStatuses` | Finalize in-flight HeyGen presenter videos (modules stuck `video_status: 'processing'`) so they complete even when no admin has Video Studio open. No-op unless `HEYGEN_API_KEY` is set. | Every 10–15 min |
+| `computeOutcomeMeasures` | Pair every Discharge OASIS with its SOC/ROC, write a `PatientOutcomeMetric` per episode, and roll the CMS outcome measures up into `AgencyKPI` rows — the data behind the OASIS Center Quality tab "Outcome Measures" section and the Reports KPI summary card. Read/compute only, idempotent upserts: it alerts no one, so partial EMR coverage can't create false alarms. Admins can also run it on demand via the dashboard's "Recompute now" button. | Nightly |
+| `monitorComplianceRisks` | Patient compliance-risk sweep writing `PatientAlert`s. **Companion-mode gated:** the absence-based rules (high-risk dx not seen in 7 days, missing vitals, missing Discharge OASIS) only fire when `AgencySettings.pennsync_is_system_of_record` is true (default **off**) — in a companion-EMR deployment those data live in the EMR and alerting on their absence here would be false alarms. Rules keyed to in-app artifacts (e.g. homebound wording missing from a note that exists in PennSync) always run. The pre-PDGM LUPA alert was removed. | Daily |
 
 ## Registration steps (Base44 dashboard)
 1. Set `INTERNAL_FN_SECRET` in the app's function environment.

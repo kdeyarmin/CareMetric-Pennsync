@@ -29,6 +29,7 @@ const OASISDocumentationReview = lazy(() => import("@/components/hub-tabs/OASISD
 const OASISRevenueAnalysis = lazy(() => import("@/components/hub-tabs/OASISRevenueAnalysis"));
 const OASISAnalyticsDashboard = lazy(() => import("@/components/hub-tabs/OASISAnalyticsDashboard"));
 const OASISAuditDashboard = lazy(() => import("@/components/hub-tabs/OASISAuditDashboard"));
+const OutcomeMeasuresSection = lazy(() => import("@/components/oasis/OutcomeMeasuresSection"));
 
 // Tab keys, kept in sync with the TabsTrigger values below. Used to validate the
 // ?tab= deep-link so the retired standalone pages (Assessment, Analyzer, Review,
@@ -169,10 +170,16 @@ export default function OASISCenter() {
           <Suspense fallback={tabLoader}>
             <div className="space-y-6">
               {isAdmin && (
-                <section className="space-y-4">
-                  <h2 className="text-lg font-semibold text-slate-900">Compliance Review</h2>
-                  <OASISComplianceReview />
-                </section>
+                <>
+                  <section className="space-y-4">
+                    <h2 className="text-lg font-semibold text-slate-900">Outcome Measures</h2>
+                    <OutcomeMeasuresSection />
+                  </section>
+                  <section className="space-y-4">
+                    <h2 className="text-lg font-semibold text-slate-900">Compliance Review</h2>
+                    <OASISComplianceReview />
+                  </section>
+                </>
               )}
               <section className="space-y-4">
                 <h2 className="text-lg font-semibold text-slate-900">Documentation Review</h2>
