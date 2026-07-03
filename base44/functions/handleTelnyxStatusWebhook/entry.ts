@@ -568,6 +568,48 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
 // both terminal and share the top rank so neither can overwrite the other.
 const FAX_RANK = { queued: 1, sending: 2, sent: 3, delivered: 4, failed: 4 };
 
+// Inbound fax ingestion: Telnyx delivers a received fax as `fax.received` with
+// the media URL. Create an IncomingFax row (previously nothing ingested
+// inbound faxes at all) so the processInboundFaxes job can OCR it and
+// auto-match provider fax-backs to open referral follow-up requests.
+async function handleInboundFax(base44, payload) {
+  const providerId = payload?.id;
+  if (!providerId) return Response.json({ success: true, skipped: 'no fax id' });
+  // `fax.received` is inbound-only at Telnyx, but keep the direction check as
+  // a guard against provider payload quirks.
+  if (payload?.direction && payload.direction !== 'inbound') {
+    return Response.json({ success: true, skipped: 'not inbound' });
+  }
+  const mediaUrl = payload?.media_url || payload?.original_media_url;
+  if (!mediaUrl) return Response.json({ success: true, skipped: 'no media url' });
+
+  const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+  const settings = settingsRows[0];
+  if (!settings?.fax_receiving_enabled) {
+    return Response.json({ success: true, skipped: 'fax receiving disabled' });
+  }
+
+  // Idempotency: Telnyx re-delivers webhooks; one IncomingFax per provider fax id.
+  const existing = await base44.asServiceRole.entities.IncomingFax.filter({ telnyx_fax_id: providerId }).catch(() => []);
+  if (existing.length > 0) {
+    return Response.json({ success: true, deduped: true });
+  }
+
+  const record = await base44.asServiceRole.entities.IncomingFax.create({
+    // The office fax line is shared; route to whoever owns the agency settings
+    // (an admin) until the processing job matches it to a patient/referral.
+    user_email: settings.created_by || 'unassigned',
+    sender_fax_number: payload?.from || '',
+    received_at: new Date().toISOString(),
+    document_url: mediaUrl,
+    page_count: Number.isFinite(payload?.page_count) ? payload.page_count : undefined,
+    telnyx_fax_id: providerId,
+    processing_status: 'pending',
+    status: 'unread',
+  });
+  return Response.json({ success: true, incoming_fax_id: record.id });
+}
+
 async function handleFaxEvent(base44, payload) {
   const providerId = payload?.id;
   const mapped = mapFaxStatus(payload?.status);
@@ -1034,6 +1076,7 @@ Deno.serve(async (req) => {
 
     if (eventType === 'message.received') return await handleInboundMessage(base44, apiKey, messagingProfileId, payload);
     if (eventType.startsWith('message.')) return await handleOutboundMessageStatus(base44, payload);
+    if (eventType === 'fax.received') return await handleInboundFax(base44, payload);
     if (eventType.startsWith('fax.')) return await handleFaxEvent(base44, payload);
     if (eventType.startsWith('call.')) return await handleCallEvent(base44, apiKey, eventType, payload);
 
