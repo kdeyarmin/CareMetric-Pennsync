@@ -184,8 +184,12 @@ Deno.serve(async (req) => {
           updates.routed_at = new Date().toISOString();
           updates.routed_to = `ReferralFollowUp:${referral.id}`;
           updates.suggested_patient_id = referral.patient_id || null;
-          updates.ai_category = 'follow_up_response';
-          updates.confidence_score = match.score;
+          // ai_category is an ENUM (see IncomingFax.jsonc) — a fax-back is
+          // referral correspondence; the specifics live in `notes` (free text).
+          updates.ai_category = 'referral';
+          updates.notes = `Auto-matched to the follow-up request for ${cand.patientName || 'unknown patient'} (referral ${referral.id}; signals: ${signalNames.join(', ')}).`;
+          // confidence_score is documented 0-100; signals max out at 5.
+          updates.confidence_score = Math.min(100, match.score * 20);
           matched += 1;
           if (referral.created_by) {
             await base44.asServiceRole.entities.Notification.create({
@@ -201,8 +205,11 @@ Deno.serve(async (req) => {
           }
         } else {
           // Suggestion only — a human confirms before anything attaches.
-          updates.suggested_routing = `Possible fax-back for ${cand.patientName || 'unknown patient'} (referral ${referral.id}; signals: ${signalNames.join(', ')}${match.tied ? '; AMBIGUOUS - multiple referrals matched' : ''})`;
-          updates.confidence_score = match.score;
+          // suggested_routing is an ENUM queue value; the descriptive
+          // suggestion goes in `notes` (free text) so review staff see it.
+          updates.suggested_routing = 'admin';
+          updates.notes = `Possible fax-back for ${cand.patientName || 'unknown patient'} (referral ${referral.id}; signals: ${signalNames.join(', ')}${match.tied ? '; AMBIGUOUS - multiple referrals matched' : ''}). Review and attach manually if correct.`;
+          updates.confidence_score = Math.min(100, match.score * 20);
           if (referral.created_by) {
             await base44.asServiceRole.entities.Notification.create({
               user_email: referral.created_by,

@@ -60,7 +60,10 @@ export default function OverdueFollowUpsWidget() {
           kind: "response_in",
           overdue: false,
           age: fu.received_at ? daysSince(fu.received_at) : null,
-          openCount: (fu.items || []).filter((it) => it.item_status === "answered").length,
+          // Everything not yet resolved is pending review: portal answers
+          // arrive as "answered", but a fax-back leaves items "open" while
+          // still being resolvable from the document.
+          openCount: (fu.items || []).filter((it) => it.item_status !== "resolved").length,
         });
       }
     }
@@ -114,7 +117,7 @@ export default function OverdueFollowUpsWidget() {
             <div className="flex items-center gap-2 flex-shrink-0">
               {kind === "response_in" ? (
                 <Badge className="bg-blue-100 text-blue-800 flex items-center gap-1">
-                  <Inbox className="w-3 h-3" /> review {openCount} answer{openCount === 1 ? "" : "s"}
+                  <Inbox className="w-3 h-3" /> review {openCount} item{openCount === 1 ? "" : "s"}
                 </Badge>
               ) : (
                 <Badge className={`flex items-center gap-1 ${overdue ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>
