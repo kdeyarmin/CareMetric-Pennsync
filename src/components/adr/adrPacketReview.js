@@ -17,10 +17,18 @@
 // Pure + offline (unit-tested with `node --test`); no React, no SDK, no `@/`
 // imports.
 
-const STATUSES = ["found", "partial", "missing"];
+const STATUSES = ["found", "partial", "missing", "not_applicable"];
 const SEVERITIES = ["critical", "high", "medium"];
 
 const asStatus = (s) => (STATUSES.includes(s) ? s : "missing");
+
+/**
+ * "not_applicable" is honored ONLY for conditional CMS-baseline items (e.g.
+ * recertification on an initial episode, therapy reassessments when no therapy
+ * was billed). Always-required conditions of payment and anything the letter
+ * explicitly requested can never be N/A — the contractor asked for it.
+ */
+const canBeNotApplicable = (check) => check.source === "cms_baseline" && check.when !== "always";
 const asSeverity = (s, fallback = "medium") => (SEVERITIES.includes(s) ? s : fallback);
 
 /** Clamp AI-reported page numbers to real, unique, sorted 1-based pages. */
@@ -61,6 +69,17 @@ export function summarizePacketVerification({ checklist = [], verification = {},
         problem: i.problem.trim(),
         page: sanitizePages([i.page], pageCount)[0] ?? null,
       }));
+    // Fail closed on an out-of-bounds N/A claim: always-required and
+    // letter-requested items cannot be waived by the AI.
+    if (status === "not_applicable" && !canBeNotApplicable(check)) {
+      status = "missing";
+      issues.push({
+        severity: asSeverity(check.severity, "high"),
+        problem:
+          "The automated review marked this not applicable, but it is always required (or was explicitly requested by the letter) — locate the document or confirm the gap.",
+        page: null,
+      });
+    }
     if (!reported) {
       issues.push({
         severity: asSeverity(check.severity, "high"),
@@ -76,9 +95,12 @@ export function summarizePacketVerification({ checklist = [], verification = {},
       severity: check.severity,
       citation: check.citation,
       source: check.source,
+      when: check.when,
       status,
       pages,
       evidence: typeof reported?.evidence === "string" ? reported.evidence.trim() : "",
+      na_reason:
+        status === "not_applicable" && typeof reported?.na_reason === "string" ? reported.na_reason.trim() : "",
       issues,
       reviewer_note: typeof reported?.reviewer_note === "string" ? reported.reviewer_note.trim() : "",
       reviewed: Boolean(reported),
@@ -87,6 +109,8 @@ export function summarizePacketVerification({ checklist = [], verification = {},
 
   const missing = items.filter((it) => it.status === "missing");
   const partial = items.filter((it) => it.status === "partial");
+  const notApplicable = items.filter((it) => it.status === "not_applicable");
+  const found = items.filter((it) => it.status === "found");
 
   const followUps = [];
   for (const it of items) {
@@ -134,6 +158,7 @@ export function summarizePacketVerification({ checklist = [], verification = {},
 
   let score = 100;
   for (const it of items) {
+    if (it.status === "not_applicable") continue; // waived conditional item — no penalty
     const weight = it.severity === "critical" ? 25 : it.severity === "high" ? 12 : 5;
     if (it.status === "missing") score -= weight;
     else if (it.status === "partial") score -= Math.ceil(weight / 2);
@@ -174,7 +199,7 @@ export function summarizePacketVerification({ checklist = [], verification = {},
   // red attention frame + label on these so the reviewer lands on them fast.
   const keyByPage = new Map();
   for (const it of located) {
-    if (it.severity === "medium") continue;
+    if (it.severity === "medium" || it.status === "not_applicable") continue;
     const page = it.pages[0];
     if (!keyByPage.has(page)) keyByPage.set(page, []);
     keyByPage.get(page).push(`${it.title} — ${it.citation}`);
@@ -187,7 +212,8 @@ export function summarizePacketVerification({ checklist = [], verification = {},
     items,
     missing_count: missing.length,
     partial_count: partial.length,
-    found_count: items.length - missing.length - partial.length,
+    found_count: found.length,
+    na_count: notApplicable.length,
     follow_ups: followUps,
     readiness: { score, level, blocking },
     toc,
@@ -214,6 +240,7 @@ export function toPersistedVerification(summary) {
     found_count: summary.found_count,
     partial_count: summary.partial_count,
     missing_count: summary.missing_count,
+    na_count: summary.na_count,
     readiness: summary.readiness,
     items: summary.items,
     follow_ups: summary.follow_ups,

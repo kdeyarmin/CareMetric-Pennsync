@@ -38,6 +38,8 @@ const statusBadge = (status) => {
       return <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200">Included</Badge>;
     case "partial":
       return <Badge className="bg-amber-100 text-amber-700 border border-amber-200">Partial</Badge>;
+    case "not_applicable":
+      return <Badge className="bg-slate-100 text-slate-600 border border-slate-200">N/A</Badge>;
     default:
       return <Badge className="bg-red-100 text-red-700 border border-red-200">Missing</Badge>;
   }
@@ -95,6 +97,10 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
 
   const processPacket = async (file) => {
     if (!file) return;
+    if (isGenerating) {
+      toast.error("Wait for the final packet to finish generating before uploading a revised packet.");
+      return;
+    }
     if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name || "")) {
       toast.error("The packet must be a single PDF file. Combine your scans into one PDF first.");
       return;
@@ -216,7 +222,7 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
         type="file"
         accept=".pdf,application/pdf"
         onChange={handleFileUpload}
-        disabled={isProcessing}
+        disabled={isProcessing || isGenerating}
         className="sr-only"
         aria-label="Upload the assembled response packet PDF"
       />
@@ -229,11 +235,11 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        disabled={isProcessing}
+        disabled={isProcessing || isGenerating}
         aria-label="Upload the assembled response packet (single PDF)"
         className={`w-full rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
           isDragging ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-blue-400 hover:bg-slate-50"
-        } ${isProcessing ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+        } ${isProcessing || isGenerating ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
       >
         <Upload className="w-8 h-8 mx-auto mb-2 text-slate-400" />
         <p className="font-medium text-slate-700">
@@ -277,8 +283,9 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
             <Alert className="bg-emerald-50 border-emerald-300">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               <AlertDescription className="text-emerald-900">
-                <span className="font-semibold">All required items were located in the packet.</span>{" "}
-                {summary.found_count} of {summary.items.length} requirements found across{" "}
+                <span className="font-semibold">All applicable required items were located in the packet.</span>{" "}
+                {summary.found_count} of {summary.items.length} requirements found
+                {summary.na_count ? ` (${summary.na_count} not applicable to this claim)` : ""} across{" "}
                 {summary.page_count ?? adrCase.packet_page_count} pages.
               </AlertDescription>
             </Alert>
@@ -291,7 +298,8 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
                     ? "Not submission-ready: required documentation is missing or deficient."
                     : "Needs attention before submitting."}
                 </span>{" "}
-                {summary.found_count} included · {summary.partial_count} partial · {summary.missing_count} missing.
+                {summary.found_count} included · {summary.partial_count} partial · {summary.missing_count} missing
+                {summary.na_count ? ` · ${summary.na_count} N/A` : ""}.
                 {(readiness?.blocking || []).length > 0 && (
                   <ul className="list-disc pl-5 mt-1 space-y-0.5">
                     {readiness.blocking.map((b, i) => (
@@ -334,6 +342,9 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
                     )}
                   </div>
                   <p className="text-xs text-slate-500 mt-1">{item.citation}</p>
+                  {item.na_reason && (
+                    <p className="text-sm text-slate-600 mt-1">Not applicable: {item.na_reason}</p>
+                  )}
                   {item.evidence && <p className="text-sm text-slate-600 mt-1">{item.evidence}</p>}
                   {item.reviewer_note && (
                     <p className="text-sm text-slate-600 mt-1 italic">Reviewer note: {item.reviewer_note}</p>

@@ -77,7 +77,8 @@ test("verification prompt embeds the checklist and the honesty contract", () => 
 
 test("verification schema constrains statuses and issue severities", () => {
   const itemSchema = PACKET_VERIFICATION_SCHEMA.properties.items.items;
-  assert.deepEqual(itemSchema.properties.status.enum, ["found", "partial", "missing"]);
+  assert.deepEqual(itemSchema.properties.status.enum, ["found", "partial", "missing", "not_applicable"]);
+  assert.ok(itemSchema.properties.na_reason, "na_reason must be reportable for waived conditional items");
   assert.deepEqual(itemSchema.properties.issues.items.properties.severity.enum, ["critical", "high", "medium"]);
   assert.deepEqual(itemSchema.required, ["id", "status"]);
   assert.ok(PACKET_VERIFICATION_SCHEMA.required.includes("items"));

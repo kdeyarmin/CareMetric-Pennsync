@@ -82,7 +82,7 @@ const AUDIT_TYPE_LABELS = {
   other: 'Documentation request',
 };
 
-const STATUS_LABELS = { found: 'Included', partial: 'PARTIAL', missing: 'MISSING' };
+const STATUS_LABELS = { found: 'Included', partial: 'PARTIAL', missing: 'MISSING', not_applicable: 'N/A' };
 
 /**
  * Render the generated front matter into a jsPDF doc. `offset` is the number
@@ -167,7 +167,7 @@ function renderFrontMatter(doc, adrCase, summary, offset) {
   yPos += 4;
 
   const readiness = summary.readiness || {};
-  const counts = `${summary.found_count ?? 0} located · ${summary.partial_count ?? 0} partial · ${summary.missing_count ?? 0} missing of ${(summary.items || []).length} required items`;
+  const counts = `${summary.found_count ?? 0} located · ${summary.partial_count ?? 0} partial · ${summary.missing_count ?? 0} missing${summary.na_count ? ` · ${summary.na_count} N/A` : ''} of ${(summary.items || []).length} required items`;
   if (readiness.level === 'ready') {
     doc.setFillColor(239, 253, 244);
     doc.setDrawColor(134, 239, 172);
@@ -456,6 +456,22 @@ Deno.serve(async (req) => {
     const blob = new Blob([finalBytes], { type: 'application/pdf' });
     const file = new File([blob], `adr_response_packet_${Date.now()}.pdf`, { type: 'application/pdf' });
     const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file });
+
+    // Re-check the case before persisting: if a revised packet was uploaded
+    // while this assembly ran, writing 'packet_generated' would make the stale
+    // final PDF (built from the OLD file + summary) look current. Best-effort
+    // guard — Base44 has no transactions, but this closes the practical race.
+    const recheck = await base44.entities.AdrAuditCase.filter({ id: case_id });
+    const current = recheck && recheck[0];
+    if (
+      !current ||
+      current.packet_file_url !== adrCase.packet_file_url ||
+      !['packet_verified', 'packet_generated'].includes(current.status)
+    ) {
+      return Response.json({
+        error: 'The packet changed while the final packet was being generated — re-run verification, then generate again.',
+      }, { status: 409 });
+    }
 
     await base44.entities.AdrAuditCase.update(case_id, {
       final_packet_url: uploadResult.file_url,

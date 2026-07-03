@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { format, isValid, differenceInCalendarDays } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
+import { parseLocalDate } from "@/lib/dateLocal";
 import {
   FileSearch,
   Plus,
@@ -55,16 +56,18 @@ const STATUS_META = {
 
 const OPEN_STATUSES = ["letter_uploaded", "checklist_ready", "packet_uploaded", "packet_verified", "packet_generated"];
 
+// Letter dates are date-only strings — parseLocalDate avoids the UTC-midnight
+// day-shift that would render an ADR deadline one day early/late.
 const safeDate = (value) => {
   if (!value) return "—";
-  const d = new Date(value);
-  return isValid(d) ? format(d, "MM/dd/yyyy") : String(value);
+  const d = parseLocalDate(value);
+  return d ? format(d, "MM/dd/yyyy") : String(value);
 };
 
 const daysUntil = (value) => {
   if (!value) return null;
-  const d = new Date(value);
-  return isValid(d) ? differenceInCalendarDays(d, new Date()) : null;
+  const d = parseLocalDate(value);
+  return d ? differenceInCalendarDays(d, new Date()) : null;
 };
 
 export default function ADRCenter() {
@@ -187,7 +190,7 @@ export default function ADRCenter() {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <StatCard label="Open cases" value={stats.open} icon={FolderOpen} tone="sky" />
-            <StatCard label="Due within 7 days" value={stats.dueSoon} icon={CalendarClock} tone="orange" />
+            <StatCard label="Due ≤ 7 days / overdue" value={stats.dueSoon} icon={CalendarClock} tone="orange" />
             <StatCard label="Not submission-ready" value={stats.notReady} icon={ShieldAlert} tone="rose" />
             <StatCard label="Submitted / closed" value={stats.completed} icon={CheckCircle2} tone="emerald" />
           </div>

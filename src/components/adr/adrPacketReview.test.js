@@ -161,6 +161,47 @@ test("multiple key items on the same page share one frame entry", () => {
   assert.equal(page3.labels.length, 2);
 });
 
+test("not_applicable is honored for conditional baseline items and never blocks readiness", () => {
+  // recertification is conditional ("if the billed period is a recertification
+  // period") and cms_baseline here — a legitimate N/A on an initial episode.
+  const verification = {
+    items: checklist.map((it, i) =>
+      it.when !== "always" && it.source === "cms_baseline"
+        ? { id: it.id, status: "not_applicable", na_reason: "Initial episode; service not billed", pages: [] }
+        : { id: it.id, status: "found", pages: [i + 1] }
+    ),
+  };
+  const summary = summarizePacketVerification({ checklist, pageCount: 50, verification });
+  const recert = idOf(summary, "recertification");
+  assert.equal(recert.status, "not_applicable");
+  assert.equal(recert.na_reason, "Initial episode; service not billed");
+  assert.ok(summary.na_count > 0);
+  assert.equal(summary.missing_count, 0);
+  assert.equal(summary.readiness.level, "ready", "waived conditional items must not block readiness");
+  assert.equal(summary.readiness.score, 100, "N/A items must not be penalized");
+  assert.equal(summary.follow_ups.length, 0);
+  // N/A items never become key pages even if pages were reported.
+  assert.ok(!summary.key_pages.some((k) => k.labels.some((l) => /Recertification/i.test(l))));
+});
+
+test("not_applicable on always-required or letter-requested items fails closed to missing", () => {
+  const verification = {
+    items: checklist.map((it, i) =>
+      it.id === "face_to_face" || it.id === "plan_of_care"
+        ? { id: it.id, status: "not_applicable", na_reason: "n/a" }
+        : { id: it.id, status: "found", pages: [i + 1] }
+    ),
+  };
+  const summary = summarizePacketVerification({ checklist, pageCount: 50, verification });
+  // face_to_face is always-required baseline; plan_of_care was letter-requested.
+  for (const id of ["face_to_face", "plan_of_care"]) {
+    const item = idOf(summary, id);
+    assert.equal(item.status, "missing", `${id} must fail closed`);
+    assert.ok(item.issues.some((i) => /marked this not applicable/.test(i.problem)));
+  }
+  assert.equal(summary.readiness.level, "not_ready");
+});
+
 test("overall observations and unreadable pages are sanitized", () => {
   const summary = summarizePacketVerification({
     checklist,

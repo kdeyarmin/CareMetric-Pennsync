@@ -129,7 +129,8 @@ Review EVERY page of the attached packet against this required-item checklist:
 ${checklistForPrompt(checklist)}
 
 FOR EACH checklist item, report:
-1. status — "found" (clearly present and complete), "partial" (present but incomplete/questionable), or "missing" (not in the packet).
+1. status — "found" (clearly present and complete), "partial" (present but incomplete/questionable), "missing" (not in the packet), or "not_applicable" (ONLY for conditional items — see rules below).
+   NOT-APPLICABLE RULES: an item whose "Applies:" condition clearly does not apply to this claim (e.g. recertification when the packet documents an initial episode only, therapy reassessments when no therapy was billed, aide supervision when no aide services appear) may be reported "not_applicable" with a short na_reason grounded in what the packet shows. NEVER mark an always-required condition of payment or an item the letter explicitly requested as not_applicable — if you cannot find it, it is "missing".
 2. pages — the 1-based page numbers in THIS packet where the item's documentation appears (start page first). Empty when missing.
 3. evidence — one or two sentences describing exactly what you see on those pages (document title, dates, who signed).
 4. issues — every accuracy or compliance problem a Medicare reviewer would flag, each with a severity. Examples of what to check:
@@ -161,9 +162,10 @@ export const PACKET_VERIFICATION_SCHEMA = {
         type: "object",
         properties: {
           id: { type: "string", description: "The checklist item id being reported" },
-          status: { type: "string", enum: ["found", "partial", "missing"] },
+          status: { type: "string", enum: ["found", "partial", "missing", "not_applicable"] },
           pages: { type: "array", items: { type: "number" }, description: "1-based packet page numbers where this item appears" },
           evidence: { type: "string", description: "What is actually visible (titles, dates, signatures)" },
+          na_reason: { type: ["string", "null"], description: "For not_applicable only: why the condition does not apply, grounded in the packet" },
           issues: {
             type: "array",
             items: {
