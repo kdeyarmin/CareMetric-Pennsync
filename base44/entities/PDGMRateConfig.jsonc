@@ -23,6 +23,10 @@
       "type": "object",
       "description": "Editable ICD-10 (prefix) -> clinical-group map used to assign the PDGM clinical group from the principal diagnosis. Longest matching prefix wins. REPLACE semantics: when non-empty it is used verbatim (supports add/edit/remove); empty/unset falls back to the built-in default map (DEFAULT_ICD10_CLINICAL_GROUPS)."
     },
+    "case_mix_weight_table": {
+      "type": "object",
+      "description": "REFERENCE-ONLY official CMS 432-group case-mix weight table, parsed from the agency's CMS CSV by caseMixWeightsLoader.js (which reports unmappable rows and never guesses). Shape: { payment_year, source, uploaded_at, uploaded_by_email, groups, rows } where rows is the { [caseMixKey]: { weight, hipps?, lupaThreshold? } } map pdgmGrouper.js consumes. Per the pdgmGrouper header this table must NEVER produce a second reimbursement figure: it feeds only the admin-only HIPPS/weight reconciliation preview, payment estimates remain from calculatePDGM, and LUPA thresholds are informational display only (no visit counting, no alerts)."
+    },
     "notes": {
       "type": "string",
       "description": "Optional notes (source of the numbers, who verified them, etc.)."
