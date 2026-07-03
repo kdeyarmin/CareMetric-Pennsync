@@ -79,12 +79,12 @@ export function formatAge(dob, now = new Date(), fallback = "Unknown") {
  * Format a Date as a local calendar date string suitable for <input type="date">
  * values and date-only entity fields. Unlike toISOString().slice(0, 10), this
  * does not jump to tomorrow/ yesterday for users outside UTC.
- * @param {Date} [date]
+ * @param {string|number|Date} [date]
  * @returns {string}
  */
 export function toLocalISODate(date = new Date()) {
-  const d = date instanceof Date ? date : new Date(date);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = parseLocalDate(date);
+  if (!d) return "";
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
