@@ -1,5 +1,31 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
+const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
+function isSchedulerAdmin(user) {
+  return !!user && (
+    user.role === 'admin' || user.account_type === 'agency_admin' ||
+    user.account_type === 'super_admin'
+  );
+}
+function getSchedulerAuthError(req, user) {
+  if (isSchedulerAdmin(user)) return null;
+  const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expectedSecret) {
+    return Response.json(
+      { error: 'Server misconfigured: INTERNAL_FN_SECRET is required for scheduled/internal functions' },
+      { status: 500 },
+    );
+  }
+  const providedSecret = String(req.headers.get(SCHEDULER_SECRET_HEADER) || '').trim();
+  if (providedSecret === expectedSecret) return null;
+  return Response.json(
+    { error: user ? 'Forbidden: admin or scheduler secret required' : 'Unauthorized: scheduler secret required' },
+    { status: user ? 403 : 401 },
+  );
+}
+// <<<END SHARED HELPER: schedulerAuth>>>
+
 // checkAdrDeadlines — scheduled job that reminds ADR case owners of upcoming
 // and missed response deadlines. A blown ADR deadline is an automatic denial
 // (documentation not received is treated as missing), so open cases get an
@@ -11,8 +37,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // see docs/LEARNING_CENTER_SCHEDULED_JOBS.md for the registration steps).
 // Recommended cadence: daily.
 //
-// Auth follows the repo's cron convention: the no-identity cron path is
-// allowed, an authenticated NON-admin is rejected.
+// Auth requires either an admin session or the configured `x-internal-secret` scheduler header.
 //
 // The planner below is a verbatim copy of the canonical, unit-tested module at
 // src/components/adr/adrDeadlines.js (Deno functions cannot import from src/;
@@ -83,10 +108,8 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const me = await base44.auth.me().catch(() => null);
-    const isAdmin = me?.role === 'admin' || me?.account_type === 'agency_admin' || me?.account_type === 'super_admin';
-    if (me && !isAdmin) {
-      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
-    }
+    const authError = getSchedulerAuthError(req, me);
+    if (authError) return authError;
 
     const todayIso = new Date().toISOString().slice(0, 10);
     const cases = await base44.asServiceRole.entities.AdrAuditCase.list('-created_date', 300);

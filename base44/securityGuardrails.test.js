@@ -231,3 +231,57 @@ test('persistVisitNote appends note history via the atomic backend function', ()
     'persistVisitNote must not read-modify-write enhanced_notes_history from the client — concurrent saves lose entries.',
   );
 });
+
+// 11. Scheduled/internal functions run as service role and are exposed as plain
+//     HTTP endpoints. They must all use the shared scheduler-auth helper
+//     (admin session OR x-internal-secret), and must not regress to the old
+//     "reject authenticated non-admin only" fail-open gate.
+const SCHEDULER_AUTH_FILES = [
+  'base44/functions/autoApproveInvitedUser/entry.ts',
+  'base44/functions/autoEndDutyDay/entry.ts',
+  'base44/functions/autoEnrollAnnualPlans/entry.ts',
+  'base44/functions/autoRetryFailedFaxes/entry.ts',
+  'base44/functions/checkAdrDeadlines/entry.ts',
+  'base44/functions/checkExpiredInvitations/entry.ts',
+  'base44/functions/checkPendingSignatureRequests/entry.ts',
+  'base44/functions/checkStaleFollowUpRequests/entry.ts',
+  'base44/functions/computeOutcomeMeasures/entry.ts',
+  'base44/functions/dispatchScheduledSignatureReminders/entry.ts',
+  'base44/functions/dispatchScheduledSms/entry.ts',
+  'base44/functions/monitorComplianceRisks/entry.ts',
+  'base44/functions/pollFaxStatuses/entry.ts',
+  'base44/functions/processAnnualEducationRenewals/entry.ts',
+  'base44/functions/processInboundFaxes/entry.ts',
+  'base44/functions/processScheduledFaxes/entry.ts',
+  'base44/functions/processScheduledFaxesByPriority/entry.ts',
+  'base44/functions/processTrainingRenewals/entry.ts',
+  'base44/functions/redriveFailedSms/entry.ts',
+  'base44/functions/scheduledGuidelineSync/entry.ts',
+  'base44/functions/sendAutomatedSignatureReminders/entry.ts',
+  'base44/functions/sendCredentialRenewalReminders/entry.ts',
+  'base44/functions/sendDocumentReminderEmails/entry.ts',
+  'base44/functions/sendExpirationNotifications/entry.ts',
+  'base44/functions/sendPersonnelExpirationNotifications/entry.ts',
+  'base44/functions/sendRenewalReminders/entry.ts',
+  'base44/functions/sendTrainingNotifications/entry.ts',
+  'base44/functions/syncFaxStatuses/entry.ts',
+  'base44/functions/syncTrainingVideoStatuses/entry.ts',
+  'base44/functions/triggerCorrectiveActionPlan/entry.ts',
+];
+for (const file of SCHEDULER_AUTH_FILES) {
+  test(`${file} uses the shared scheduler auth helper`, () => {
+    const src = read(file);
+    assert.ok(
+      /<<<BEGIN SHARED HELPER: schedulerAuth/.test(src),
+      `${file} must use the shared schedulerAuth helper so the whole cron family stays in sync.`,
+    );
+    assert.ok(
+      /getSchedulerAuthError\(req,\s*(me|user)\)/.test(src),
+      `${file} must gate privileged cron/internal execution with getSchedulerAuthError(req, user).`,
+    );
+    assert.ok(
+      !/if \((me|user) && !isAdmin\)|if \(me && !isAdminLike\(me\)\)/.test(src),
+      `${file} must not rely on the old fail-open cron gate that only rejected authenticated non-admin callers.`,
+    );
+  });
+}

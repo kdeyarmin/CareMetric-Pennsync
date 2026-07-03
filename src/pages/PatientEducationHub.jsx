@@ -327,7 +327,7 @@ export default function PatientEducationHub() {
         window.URL.revokeObjectURL(url);
         a.remove();
       } catch (decodeError) {
-        throw new Error(`Failed to process PDF: ${decodeError.message}`);
+        throw new Error(`Failed to process PDF: ${decodeError.message}`, { cause: decodeError });
       }
 
       setSuccessMessage("Handout downloaded successfully!");

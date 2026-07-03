@@ -1,5 +1,31 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
+const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
+function isSchedulerAdmin(user) {
+  return !!user && (
+    user.role === 'admin' || user.account_type === 'agency_admin' ||
+    user.account_type === 'super_admin'
+  );
+}
+function getSchedulerAuthError(req, user) {
+  if (isSchedulerAdmin(user)) return null;
+  const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expectedSecret) {
+    return Response.json(
+      { error: 'Server misconfigured: INTERNAL_FN_SECRET is required for scheduled/internal functions' },
+      { status: 500 },
+    );
+  }
+  const providedSecret = String(req.headers.get(SCHEDULER_SECRET_HEADER) || '').trim();
+  if (providedSecret === expectedSecret) return null;
+  return Response.json(
+    { error: user ? 'Forbidden: admin or scheduler secret required' : 'Unauthorized: scheduler secret required' },
+    { status: user ? 403 : 401 },
+  );
+}
+// <<<END SHARED HELPER: schedulerAuth>>>
+
 // Compliance-risk monitor. COMPANION-MODE AWARE: PennSync usually runs
 // alongside the agency's EMR, so rules that fire on the ABSENCE of EMR-owned
 // data (visits, vitals, Discharge OASIS) are gated behind
@@ -114,10 +140,8 @@ Deno.serve(async (req) => {
     // patient's PHI and writes PatientAlerts. The no-identity cron path is
     // allowed; an authenticated non-admin is rejected.
     const me = await base44.auth.me().catch(() => null);
-    const isAdmin = me?.role === 'admin';
-    if (me && !isAdmin) {
-      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
-    }
+    const authError = getSchedulerAuthError(req, me);
+    if (authError) return authError;
 
     // Companion-EMR gate: PennSync typically runs ALONGSIDE the agency's EMR,
     // so visits, vitals, and Discharge OASIS assessments may be documented only

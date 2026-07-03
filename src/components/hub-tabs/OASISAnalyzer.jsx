@@ -501,7 +501,7 @@ export default function OASISAnalyzer() {
         ]);
         file_url = uploadResult.file_url;
       } catch (uploadErr) {
-        throw new Error(`File upload failed: ${uploadErr.message}. Please check your connection and try again.`);
+        throw new Error(`File upload failed: ${uploadErr.message}. Please check your connection and try again.`, { cause: uploadErr });
       }
       
       setUploadedFileUrl(file_url);
@@ -710,7 +710,7 @@ Return JSON:
               }
             };
           } else {
-            throw new Error("Text extraction also failed");
+            throw new Error("Text extraction also failed", { cause: extractErr });
           }
         } catch {
           throw new Error(`Unable to read PDF: ${extractErr.message}. Please ensure the PDF is not password-protected, corrupted, or scanned without OCR. Try re-saving the PDF or using a different file.`);
@@ -1084,7 +1084,7 @@ Return scores (0-100) and top 3-5 issues in each category.`,
           )
         ]);
       } catch (analysisErr) {
-        throw new Error(`AI analysis failed: ${analysisErr.message}. Please try uploading again.`);
+        throw new Error(`AI analysis failed: ${analysisErr.message}. Please try uploading again.`, { cause: analysisErr });
       }
 
       setUploadProgress(85);
