@@ -28,7 +28,7 @@ import {
   BarChart3, Settings, Brain, Bell, BookOpen, WifiOff,
   Mail, BookUser, Video, HelpCircle, AlertTriangle,
   Phone, Send, Heart, Database, Lock, Award,
-  Clipboard, ClipboardCheck, Filter, Globe,
+  Clipboard, ClipboardCheck, FileSearch, Filter, Globe,
   Monitor, PieChart, Radio, Search, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
 } from "lucide-react";
 
@@ -178,6 +178,21 @@ export const NAV_MANIFEST = [
     adminOnly: true,
     breadcrumbParent: "ReferralIntake",
     keywords: ["referral", "follow up", "provider", "request", "compliance", "pdgm", "reimbursement", "coder", "qa"],
+  },
+  {
+    // ADR / audit response workspace: analyze the contractor's ADR or audit
+    // letter into a CMS-grounded documentation checklist, verify the assembled
+    // response packet page by page, and generate the submission-ready packet
+    // (cover page, table of contents, page numbers, red key-item frames).
+    // Office/back-office workflow — admin-only, like ReferralIntake.
+    page: "ADRCenter",
+    label: "ADR & Audit Response",
+    navLabel: "ADR / Audits",
+    icon: FileSearch,
+    category: "Office",
+    adminOnly: true,
+    breadcrumbParent: null,
+    keywords: ["adr", "additional documentation request", "audit", "medicare audit", "mac", "tpe", "rcd", "upic", "smrc", "cert", "rac", "medical review", "denial", "packet", "audit letter"],
   },
   {
     // Admin-only incident review queue — staff report on /Incidents, admins

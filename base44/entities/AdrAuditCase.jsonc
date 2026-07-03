@@ -1,0 +1,217 @@
+{
+  "name": "AdrAuditCase",
+  "type": "object",
+  // One Medicare ADR / audit response case, end to end: the uploaded ADR
+  // letter, its AI analysis, the CMS-grounded requirement checklist
+  // (src/components/adr/adrRequirements.js), the uploaded response packet, the
+  // page-by-page verification summary (src/components/adr/adrPacketReview.js),
+  // and the generated submission-ready packet (base44/functions/
+  // generateAdrPacket). Created and driven by the admin-only ADR Center page
+  // (src/pages/ADRCenter.jsx).
+  "properties": {
+    "case_name": {
+      "type": "string",
+      "description": "Display name for the case, e.g. 'Palmetto TPE — J. Smith — DOS 01/2026'"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "letter_uploaded",
+        "checklist_ready",
+        "packet_uploaded",
+        "packet_verified",
+        "packet_generated",
+        "submitted",
+        "closed"
+      ],
+      "default": "letter_uploaded",
+      "description": "Workflow stage. letter_uploaded → checklist_ready (letter analyzed) → packet_uploaded → packet_verified → packet_generated (final packet built) → submitted/closed."
+    },
+    "audit_type": {
+      "type": "string",
+      "enum": [
+        "mac_adr",
+        "tpe",
+        "rcd",
+        "upic",
+        "smrc",
+        "cert",
+        "ra",
+        "managed_care",
+        "state_survey",
+        "other"
+      ],
+      "default": "other",
+      "description": "Review program, from adrRequirements.js AUDIT_TYPES"
+    },
+    "contractor_name": {
+      "type": "string",
+      "description": "Reviewing contractor/payer as named on the letter"
+    },
+    "patient_name": {
+      "type": "string",
+      "description": "Beneficiary name as printed on the letter"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Linked Patient entity id when the beneficiary is matched to a chart"
+    },
+    "medicare_number": {
+      "type": "string",
+      "description": "MBI / Medicare number from the letter"
+    },
+    "claim_number": {
+      "type": "string",
+      "description": "Claim number / DCN / ICN under review"
+    },
+    "dates_of_service": {
+      "type": "string",
+      "description": "Billed period under review as stated on the letter"
+    },
+    "letter_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date on the ADR/audit letter"
+    },
+    "response_due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Deadline to respond, from the letter"
+    },
+    "letter_file_url": {
+      "type": "string",
+      "description": "Uploaded ADR/audit letter file URL"
+    },
+    "letter_analysis": {
+      "type": "object",
+      "description": "AI letter extraction (adrAnalysis.js ADR_LETTER_SCHEMA shape: contractor, deadlines, submission_methods, special_instructions, requested_items[], unclear_fields[], confidence)"
+    },
+    "checklist": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "seq": { "type": "number" },
+          "source": { "type": "string" },
+          "title": { "type": "string" },
+          "letter_text": { "type": "string" },
+          "letter_details": { "type": "string" },
+          "category": { "type": "string" },
+          "severity": { "type": "string" },
+          "citation": { "type": "string" },
+          "what_to_include": { "type": "string" },
+          "verification_points": { "type": "array", "items": { "type": "string" } },
+          "when": { "type": "string" },
+          "audit_type": { "type": "string" }
+        }
+      },
+      "description": "Merged requirement checklist from adrRequirements.js buildAdrChecklist (letter items + CMS baseline, each with citation and reviewer verification points)"
+    },
+    "packet_file_url": {
+      "type": "string",
+      "description": "Uploaded assembled response packet (single PDF) awaiting verification"
+    },
+    "packet_page_count": {
+      "type": "number",
+      "description": "Page count of the uploaded packet (counted client-side at upload)"
+    },
+    "verification_summary": {
+      "type": "object",
+      "description": "Deterministic packet-review summary (adrPacketReview.js toPersistedVerification shape: items[], follow_ups[], readiness{score,level,blocking[]}, toc[], key_pages[], overall_observations[], unreadable_pages[])"
+    },
+    "final_packet_url": {
+      "type": "string",
+      "description": "Generated submission-ready packet (cover page + table of contents + follow-up sheet + stamped page numbers + red key-item frames), from generateAdrPacket"
+    },
+    "final_packet_pages": {
+      "type": "number",
+      "description": "Total page count of the generated packet"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string" },
+          "note": { "type": "string" },
+          "created_by": { "type": "string" }
+        }
+      },
+      "description": "Chronological case notes"
+    },
+    "deadline_reminders": {
+      "type": "object",
+      "properties": {
+        "last_notified_date": { "type": "string" },
+        "last_days_left": { "type": "number" }
+      },
+      "description": "Idempotency marker for the checkAdrDeadlines scheduled job (one reminder notification per case per calendar day)"
+    },
+    "submission_faxes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string" },
+          "to_number": { "type": "string" },
+          "to_name": { "type": "string" },
+          "fax_id": { "type": "string" },
+          "sent_by": { "type": "string" }
+        }
+      },
+      "description": "Record of final-packet fax submissions queued through sendFax (delivery status lives on FaxLog)"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "paid_in_full",
+        "partially_denied",
+        "fully_denied",
+        "appealed",
+        "appeal_favorable",
+        "appeal_unfavorable"
+      ],
+      "default": "pending",
+      "description": "Audit decision outcome, recorded after the contractor responds"
+    },
+    "decision_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the contractor's review decision"
+    },
+    "appeal_due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Deadline for the next appeal level (e.g. redetermination is 120 days from the initial determination)"
+    },
+    "outcome_notes": {
+      "type": "string",
+      "description": "Denial reasons / decision details recorded by staff"
+    }
+  },
+  // Cases are always created from the ADR Center with a letter in hand, but no
+  // field is universally required (metadata arrives from AI analysis after
+  // create), mirroring Referral's create-shape flexibility.
+  "required": [],
+  // PHI read-scoping: cases carry beneficiary name/MBI/claim identifiers, so an
+  // unscoped read would let any authenticated user bulk-.list() them (the
+  // guardrail-7 class). ADR response work is an office/admin workflow — reads
+  // are limited to the case creator and admins; writes the same (there is no
+  // cross-user assignment flow for ADR cases today, so no assigned_to clause).
+  "rls": {
+    "read": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
+}
