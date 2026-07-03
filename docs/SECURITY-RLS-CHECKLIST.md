@@ -52,14 +52,52 @@ is always active. The dashboard-env secret list is therefore just:
 
 All `VITE_*` vars are public by design — never put secrets there.
 
-## 4. Scheduled / internal functions — confirm cron-only invocation
+## 4. Scheduled / internal functions — scheduler authentication
 
-These run privileged `asServiceRole` work with **no `auth.me()`** (correct only
-if the platform restricts who can invoke function endpoints — **confirm**):
-`processScheduledFaxes`, `sendExpirationNotifications`,
-`sendPersonnelExpirationNotifications`, `monitorComplianceRisks`,
-`scheduledGuidelineSync`, `autoApproveInvitedUser`, `deduplicatePatients`,
-`dispatchScheduledSms`.
+**Resolved (2026-07): the platform does NOT restrict who can invoke function
+endpoints.** Per the Base44 docs, every backend function "gets its own HTTP
+endpoint for webhooks and external integrations" and authentication is enforced
+only by code inside the function (the documented pattern is an in-function
+`auth.me()` check) — there is no platform-level gate, so an arbitrary external
+POST can reach any function URL. The earlier assumption that "the platform
+restricts who can invoke function endpoints" is therefore **wrong**, and the
+cron family now carries its own network-auth signal.
+
+**The uniform gate (shared helper `requireSchedulerAuth`, generated into every
+cron-family function):**
+
+1. An authenticated **admin** may always invoke (manual "run now").
+2. An authenticated **non-admin** is rejected `403`.
+3. A **no-identity** caller (the scheduler path) is allowed **only if**
+   `INTERNAL_FN_SECRET` is unset (pre-provisioning window) **or** the request
+   carries a matching `x-internal-secret` header (constant-time compare).
+
+**Set `INTERNAL_FN_SECRET` at launch** and configure every scheduled trigger to
+send `x-internal-secret: <INTERNAL_FN_SECRET>`; until it is set, the anonymous
+path is open and these endpoints can be triggered externally (sweeps are
+idempotent and responses on that path must not echo PHI-adjacent data — e.g.
+`sendDocumentReminderEmails` returns counts only, no package ids / signer
+emails, to a no-identity caller).
+
+The cron family (all gated identically — do not hand-roll per-function drift):
+`processScheduledFaxes`, `processScheduledFaxesByPriority`,
+`sendExpirationNotifications`, `sendPersonnelExpirationNotifications`,
+`monitorComplianceRisks`, `scheduledGuidelineSync`, `autoApproveInvitedUser`,
+`dispatchScheduledSms`, `dispatchScheduledSignatureReminders`,
+`checkExpiredInvitations`, `checkPendingSignatureRequests`,
+`sendAutomatedSignatureReminders`, `sendCredentialRenewalReminders`,
+`sendDocumentReminderEmails`, `autoEndDutyDay`, `autoRetryFailedFaxes`,
+`pollFaxStatuses`, `syncFaxStatuses`, `redriveFailedSms`,
+`computeOutcomeMeasures`, `sendTrainingNotifications`, `sendRenewalReminders`,
+`autoEnrollAnnualPlans`, `processTrainingRenewals`,
+`processAnnualEducationRenewals`, `syncTrainingVideoStatuses`.
+
+**Exceptions:** entity-trigger functions (`triggerCorrectiveActionPlan`,
+`onDocumentSigned`, `notifyAdminOfSignedDocument`, `notifySignerOfPackage`,
+`autoAssignNurseToPatient`) must **not** use the secret gate — platform triggers
+cannot carry a custom header — and are hardened by canonical re-fetch instead.
+`deduplicatePatients` is not a cron: it keeps a hard admin gate (destructive
+merge, dry-run by default) and cannot run unattended.
 
 - Enable **only one** scheduled-fax processor (`processScheduledFaxes` **or**
   `processScheduledFaxesByPriority`) — both running double-sends.

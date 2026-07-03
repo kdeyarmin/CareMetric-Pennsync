@@ -122,6 +122,29 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// <<<BEGIN SHARED HELPER: requireSchedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Cron gate: anonymous callers must present x-internal-secret when
+// INTERNAL_FN_SECRET is set (docs/SECURITY-RLS-CHECKLIST.md §4). Returns a 403
+// Response to short-circuit with, or null to proceed. Comparison is
+// constant-time (SHA-256 digest XOR) so the secret can't be timing-probed.
+async function requireSchedulerAuth(req) {
+  const secret = Deno.env.get('INTERNAL_FN_SECRET') || '';
+  if (!secret) return null; // opt-in: unset = platform-trust window (set at launch)
+  const provided = req.headers.get('x-internal-secret') || '';
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(provided)),
+    crypto.subtle.digest('SHA-256', enc.encode(secret)),
+  ]);
+  const av = new Uint8Array(a);
+  const bv = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < av.length; i++) diff |= av[i] ^ bv[i];
+  if (diff === 0) return null;
+  return Response.json({ error: 'Forbidden' }, { status: 403 });
+}
+// <<<END SHARED HELPER: requireSchedulerAuth>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -137,6 +160,12 @@ Deno.serve(async (req) => {
         { error: 'Forbidden: Admin access required' },
         { status: 403 }
       );
+    }
+    // No identity: enforce the shared scheduler gate (opt-in INTERNAL_FN_SECRET /
+    // x-internal-secret header — see docs/SECURITY-RLS-CHECKLIST.md §4).
+    if (!user) {
+      const denied = await requireSchedulerAuth(req);
+      if (denied) return denied;
     }
 
     const today = new Date();
@@ -270,13 +299,16 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Per-package details (package ids, signer emails) go only to an
+    // authenticated admin. The scheduler path gets counts — the response body
+    // must not echo PHI-adjacent data to a no-identity caller.
     return Response.json({
       success: true,
       summary: {
         total_packages_checked: pendingPackages.length,
         reminders_sent: sentCount,
         failures: failureCount,
-        results,
+        ...(isAdmin ? { results } : {}),
       },
     });
   } catch (error) {

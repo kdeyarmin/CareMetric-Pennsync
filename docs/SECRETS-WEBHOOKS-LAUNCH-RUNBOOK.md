@@ -64,19 +64,21 @@ MUST be set or all inbound webhooks are rejected 401.**
 
 ## 3. Backend security secrets
 
-Set in the dashboard env (function secrets). There is only one — the file-fetch
+Set in the dashboard env (function secrets). There are two — the file-fetch
 SSRF allowlist is hardcoded in code (always-on, fail-closed on the app's own
 storage hosts), the `onUserSignup` re-fetch/email-match guard is always active
 (`SIGNUP_WEBHOOK_SECRET` retired), debug logging is compiled out
-(`FUNCTIONS_DEBUG` retired), and certificate issuance is protected structurally
-(`INTERNAL_FN_SECRET` retired): `issueCertificate` only trusts a passing
-`TrainingAttempt` row, which is written exclusively server-side by
-`gradeTrainingAttempt` (entity RLS allows admin writes only), and the scheduled
-functions always reject authenticated non-admin callers.
+(`FUNCTIONS_DEBUG` retired), and certificate issuance is protected structurally:
+`issueCertificate` only trusts a passing `TrainingAttempt` row, which is written
+exclusively server-side by `gradeTrainingAttempt` (entity RLS allows admin
+writes only). `INTERNAL_FN_SECRET` is **back** as the scheduler-authentication
+signal for the cron family (Base44 function endpoints are publicly invokable —
+see `SECURITY-RLS-CHECKLIST.md` §4).
 
 | Secret | Set at launch? | Effect if unset |
 |---|---|---|
 | `SIGNATURE_HMAC_SECRET` | **Yes** | Signature integrity MAC falls back to **unkeyed sha256** — detects corruption, **not** forgery. Set it so e-signature tamper-evidence is forgery-resistant. |
+| `INTERNAL_FN_SECRET` | **Yes** | The cron family's no-identity path stays **open** — anyone who can reach a function URL can trigger a privileged sweep. Set it, then configure every scheduled trigger to send `x-internal-secret: <INTERNAL_FN_SECRET>` (§5). |
 
 **Verify certificate issuance:** a direct `issueCertificate` call from a non-admin
 with no passing attempt is rejected; a legitimate completion via
@@ -97,8 +99,9 @@ of the app is unaffected.
 
 (Telehealth video tokens and outbound fax use the Telnyx config from §2, not these.)
 
-These three plus the §3 `SIGNATURE_HMAC_SECRET` are the **complete** backend
-secret list (four total) — nothing else is read from the dashboard env.
+These three plus the §3 `SIGNATURE_HMAC_SECRET` and `INTERNAL_FN_SECRET` are the
+**complete** backend secret list (five total) — nothing else is read from the
+dashboard env.
 
 **Verify:** with a key set, the corresponding feature runs; with it unset, it shows the
 not-configured notice rather than erroring.
@@ -107,8 +110,12 @@ not-configured notice rather than erroring.
 
 ## 5. Scheduled functions (crons) — enable exactly one of each duplicated pair
 
-These run privileged `asServiceRole` work with no `auth.me()` — correct only if the
-platform restricts who can invoke function endpoints (**confirm that**).
+Base44 function endpoints are **publicly invokable** (confirmed — see
+`SECURITY-RLS-CHECKLIST.md` §4), so every cron authorizes via the shared
+scheduler gate: authenticated admins pass; authenticated non-admins are 403'd;
+the no-identity path requires `x-internal-secret: <INTERNAL_FN_SECRET>` once
+the §3 secret is set. **Configure each scheduled trigger below to send that
+header.**
 
 | Function | Schedule | Notes |
 |---|---|---|
@@ -120,8 +127,10 @@ platform restricts who can invoke function endpoints (**confirm that**).
 | `sendPersonnelExpirationNotifications` | daily | Personnel credential expirations. |
 | `monitorComplianceRisks` | daily/periodic | Compliance risk monitor. |
 | `scheduledGuidelineSync` | periodic | Medicare guideline sync. |
-| `deduplicatePatients` | periodic | Patient dedupe. |
-| `autoApproveInvitedUser` | per platform trigger | Confirm cron-only / trigger-only invocation. |
+| `autoApproveInvitedUser` | every ~10 min | Approves invited pending users; same shared scheduler gate. |
+
+(`deduplicatePatients` is **not** schedulable: destructive merge, dry-run by
+default, hard admin gate — run it from the admin UI.)
 
 **Verify:** exactly one fax processor and one `dispatchScheduledSms` are enabled; send a
 test scheduled fax and a scheduled SMS and confirm a **single** delivery each.

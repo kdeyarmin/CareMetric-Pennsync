@@ -71,6 +71,36 @@ function isSafeFetchUrl(raw) {
   u.account_type === 'super_admin'
 );`,
 
+  // Scheduler-invocation gate for the cron-family functions. Base44 function
+  // endpoints are publicly reachable HTTP endpoints (auth is enforced only
+  // in-function — see docs/SECURITY-RLS-CHECKLIST.md §4), so the no-identity
+  // scheduler path needs its own network-auth signal. Opt-in lockdown: when
+  // INTERNAL_FN_SECRET is set, an anonymous caller must present it in the
+  // x-internal-secret header (configure the scheduled trigger to send it);
+  // when unset the no-identity path stays open so crons keep running before
+  // the secret is provisioned. Entity-trigger functions must NOT use this —
+  // platform triggers cannot carry a custom header.
+  requireSchedulerAuth: `// Cron gate: anonymous callers must present x-internal-secret when
+// INTERNAL_FN_SECRET is set (docs/SECURITY-RLS-CHECKLIST.md §4). Returns a 403
+// Response to short-circuit with, or null to proceed. Comparison is
+// constant-time (SHA-256 digest XOR) so the secret can't be timing-probed.
+async function requireSchedulerAuth(req) {
+  const secret = Deno.env.get('INTERNAL_FN_SECRET') || '';
+  if (!secret) return null; // opt-in: unset = platform-trust window (set at launch)
+  const provided = req.headers.get('x-internal-secret') || '';
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(provided)),
+    crypto.subtle.digest('SHA-256', enc.encode(secret)),
+  ]);
+  const av = new Uint8Array(a);
+  const bv = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < av.length; i++) diff |= av[i] ^ bv[i];
+  if (diff === 0) return null;
+  return Response.json({ error: 'Forbidden' }, { status: 403 });
+}`,
+
   // Branded transactional-email builder. Produces the PennSync (navy + gold) HTML
   // shell every outgoing email uses so the logo, wordmark, colors, and footer never
   // drift across functions (the from_name 'PennSync by CareMetric' is set at each

@@ -197,6 +197,29 @@ function isFaxRetryDue(fax, now, config) {
   return Number.isFinite(t) && now >= t;
 }
 
+// <<<BEGIN SHARED HELPER: requireSchedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Cron gate: anonymous callers must present x-internal-secret when
+// INTERNAL_FN_SECRET is set (docs/SECURITY-RLS-CHECKLIST.md §4). Returns a 403
+// Response to short-circuit with, or null to proceed. Comparison is
+// constant-time (SHA-256 digest XOR) so the secret can't be timing-probed.
+async function requireSchedulerAuth(req) {
+  const secret = Deno.env.get('INTERNAL_FN_SECRET') || '';
+  if (!secret) return null; // opt-in: unset = platform-trust window (set at launch)
+  const provided = req.headers.get('x-internal-secret') || '';
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(provided)),
+    crypto.subtle.digest('SHA-256', enc.encode(secret)),
+  ]);
+  const av = new Uint8Array(a);
+  const bv = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < av.length; i++) diff |= av[i] ^ bv[i];
+  if (diff === 0) return null;
+  return Response.json({ error: 'Forbidden' }, { status: 403 });
+}
+// <<<END SHARED HELPER: requireSchedulerAuth>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -210,6 +233,12 @@ Deno.serve(async (req) => {
     const isAdmin = me?.role === 'admin' || me?.account_type === 'agency_admin' || me?.account_type === 'super_admin';
     if (me && !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+    }
+    // No identity: enforce the shared scheduler gate (opt-in INTERNAL_FN_SECRET /
+    // x-internal-secret header — see docs/SECURITY-RLS-CHECKLIST.md §4).
+    if (!me) {
+      const denied = await requireSchedulerAuth(req);
+      if (denied) return denied;
     }
 
     const runId = crypto.randomUUID();

@@ -228,3 +228,49 @@ test('persistVisitNote appends note history via the atomic backend function', ()
     'persistVisitNote must not read-modify-write enhanced_notes_history from the client — concurrent saves lose entries.',
   );
 });
+
+// 11. Base44 function endpoints are publicly invokable (confirmed — see
+//     docs/SECURITY-RLS-CHECKLIST.md §4), so every cron-family function must
+//     gate its no-identity scheduler path through the shared
+//     requireSchedulerAuth helper (opt-in INTERNAL_FN_SECRET /
+//     x-internal-secret). This pins the WHOLE family so scheduler auth is one
+//     cross-cutting mechanism, not per-function drift. Entity-trigger
+//     functions (which cannot carry a custom header) are deliberately absent.
+test('every cron-family function enforces the shared scheduler gate', () => {
+  const CRON_FAMILY = [
+    'autoApproveInvitedUser', 'autoEndDutyDay', 'autoEnrollAnnualPlans',
+    'autoRetryFailedFaxes', 'checkExpiredInvitations',
+    'checkPendingSignatureRequests', 'computeOutcomeMeasures',
+    'dispatchScheduledSignatureReminders', 'dispatchScheduledSms',
+    'monitorComplianceRisks', 'pollFaxStatuses',
+    'processAnnualEducationRenewals', 'processScheduledFaxes',
+    'processScheduledFaxesByPriority', 'processTrainingRenewals',
+    'redriveFailedSms', 'scheduledGuidelineSync',
+    'sendAutomatedSignatureReminders', 'sendCredentialRenewalReminders',
+    'sendDocumentReminderEmails', 'sendExpirationNotifications',
+    'sendPersonnelExpirationNotifications', 'sendRenewalReminders',
+    'sendTrainingNotifications', 'syncFaxStatuses', 'syncTrainingVideoStatuses',
+  ];
+  for (const fn of CRON_FAMILY) {
+    const src = read(`base44/functions/${fn}/entry.ts`);
+    assert.ok(
+      /<<<BEGIN SHARED HELPER: requireSchedulerAuth/.test(src),
+      `${fn} must inline the shared requireSchedulerAuth helper (npm run sync:shared-helpers).`,
+    );
+    assert.ok(
+      /await requireSchedulerAuth\(req\)/.test(src),
+      `${fn} must call requireSchedulerAuth(req) on its no-identity path — the scheduler gate is a uniform, family-wide mechanism.`,
+    );
+  }
+});
+
+// 12. sendDocumentReminderEmails must not echo per-package details (package
+//     ids, signer emails) to a no-identity caller — the scheduler path gets
+//     counts only (Codex P1 from PR #46).
+test('sendDocumentReminderEmails returns per-package results to admins only', () => {
+  const src = read('base44/functions/sendDocumentReminderEmails/entry.ts');
+  assert.ok(
+    /\.\.\.\(isAdmin \? \{ results \} : \{\}\)/.test(src),
+    'sendDocumentReminderEmails must gate the detailed results array on isAdmin — the no-identity response must not include package ids / signer emails.',
+  );
+});
