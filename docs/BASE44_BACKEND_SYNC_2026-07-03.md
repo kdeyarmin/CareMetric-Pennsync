@@ -1,5 +1,16 @@
 # Base44 backend sync — what must be built on the platform (2026-07-03)
 
+> **RESOLVED (same day):** production is the **CareMetric AI** app
+> (`694ec16e72e01b60d22f7cbf`, https://caremetricai.base44.app), which is
+> GitHub-synced to this repo — NOT the older PENNSync app this doc originally
+> diffed against. All 8 entities and 16 functions below were verified present
+> on CareMetric AI, and the three §3 scheduled triggers were registered there
+> via the Base44 builder. The old hardcoded `hub.base44.app/apps/68ee80d9…`
+> (PENNSync) links in ten backend functions were repointed to
+> `https://caremetricai.base44.app`, and `base44/.app.jsonc` now carries the
+> CareMetric AI app id. The gap analysis below is kept for the record; §5's
+> drift numbers apply to the retired PENNSync app, not production.
+
 This repo is the source of truth for backend code, but the Deno functions and
 entity schemas only *run* on the hosted Base44 platform. This doc lists exactly
 what exists in the repo but **not** on the live PENNSync app, and provides a

@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
 
     // Send email notification
     const dueDate = pkg.due_date ? new Date(pkg.due_date).toLocaleDateString() : 'soon';
-    const signerPortalLink = `https://hub.base44.app/apps/68ee80d98929370f9e8f2932/signer?token=${tokenData.token}`;
+    const signerPortalLink = `https://caremetricai.base44.app/signer?token=${tokenData.token}`;
 
     const subject = `Documents ready for your signature — ${pkg.package_name}`;
     const body = renderBrandedEmail({

@@ -333,7 +333,7 @@ Deno.serve(async (req) => {
     // (public/manuals/*, served at the app origin root); the builder derives the
     // manual link from the app origin.
     try {
-      const appUrl = 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
+      const appUrl = 'https://caremetricai.base44.app';
       const { subject, body } = buildWelcomeEmail({
         fullName: full_name,
         email,

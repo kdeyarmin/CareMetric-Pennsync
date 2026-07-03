@@ -97,5 +97,5 @@ function generateSecureToken() {
 
 function getAppBaseUrl() {
   // Hardcoded app URL (matches the signer links built by notifySignerOfPackage).
-  return 'https://hub.base44.app/apps/68ee80d98929370f9e8f2932';
+  return 'https://caremetricai.base44.app';
 }
