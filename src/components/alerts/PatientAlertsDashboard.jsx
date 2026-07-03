@@ -47,7 +47,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { isAdminView } from "@/lib/roles";
 
-export default function PatientAlertsDashboard({ patientId = null, _showAllPatients = true }) {
+export default function PatientAlertsDashboard({ patientId = null }) {
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState("");
