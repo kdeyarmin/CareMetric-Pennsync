@@ -23,7 +23,7 @@ class ErrorBoundary extends React.Component {
     // module, so match on the common "dynamically imported module" substring.
     const isChunkError = (error?.name === 'TypeError' &&
       /dynamically imported module/i.test(error?.message || '')) ||
-      (error?.name === 'SyntaxError' && /invalid or unexpected token|unexpected token|failed to fetch dynamically imported module/i.test(error?.message || ''));
+      (error?.name === 'SyntaxError');
     // Same TypeError while OFFLINE is not a stale module graph — the network is
     // gone and this route's chunk was never downloaded. Reloading can't fix
     // that (it would only tear the app down), so show the offline card and

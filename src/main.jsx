@@ -72,10 +72,11 @@ if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
 // per-route ErrorBoundary (React render phase) — never clear each other's
 // flag. They catch different error propagation paths and are complementary.
 const VITE_CHUNK_KEY = 'vite-global-chunk-reloaded';
-const handleStaleChunk = (err) => {
+const handleStaleChunk = (err, fallbackMessage = '') => {
+  const msg = err?.message || fallbackMessage || '';
   const isStaleChunk = (err?.name === 'TypeError' &&
-    /dynamically imported module/i.test(err?.message || '')) ||
-    (err?.name === 'SyntaxError' && /invalid or unexpected token|unexpected token|failed to fetch dynamically imported module/i.test(err?.message || ''));
+    /dynamically imported module/i.test(msg)) ||
+    (err?.name === 'SyntaxError');
   if (!isStaleChunk) return false;
   // Offline is NOT a stale module graph: the chunk failed because the network
   // is gone, and a hard reload while offline just tears down the running app
@@ -98,9 +99,9 @@ const handleStaleChunk = (err) => {
   window.location.href = url.toString();
   return true;
 };
-window.addEventListener('error', (e) => handleStaleChunk(e.error));
+window.addEventListener('error', (e) => handleStaleChunk(e.error, e.message));
 window.addEventListener('unhandledrejection', (e) => {
-  if (handleStaleChunk(e.reason)) e.preventDefault();
+  if (handleStaleChunk(e.reason, typeof e.reason === 'string' ? e.reason : '')) e.preventDefault();
 });
 
 // Register the offline service worker (public/sw.js): network-first app shell
