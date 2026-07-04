@@ -181,11 +181,8 @@ export default function VisualEditAgent() {
 			return;
 		}
 
-		// Close parent editor dropdowns before selecting a new annotated element.
+		// Close dropdowns when clicking anywhere in iframe if a dropdown is open
 		if (isDropdownOpenRef.current) {
-			e.preventDefault();
-			e.stopPropagation();
-			e.stopImmediatePropagation();
 			window.parent.postMessage({ type: 'close-dropdowns' }, '*');
 			return;
 		}
