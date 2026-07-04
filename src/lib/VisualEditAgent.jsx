@@ -177,7 +177,7 @@ export default function VisualEditAgent() {
 		// <a>/<button> itself, so without this guard every sidebar Link is selected
 		// by the editor agent instead of navigating. Non-interactive annotated
 		// wrappers remain selectable for visual editing.
-		if (element.closest('a[href], button, [role="button"], input, select, textarea, label')) {
+		if (e.target.closest('a[href], button, [role="button"], input, select, textarea, label')) {
 			return;
 		}
 
