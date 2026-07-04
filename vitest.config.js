@@ -38,7 +38,7 @@ export default defineConfig({
     testTimeout: 30000,
     hookTimeout: 30000,
     // CI reliability for the documented parallel-load flake. The suite is
-    // deterministically green locally — verified on Node 20.20.2 (CI's version) +
+    // deterministically green locally — verified on Node 24.x (CI's version) +
     // clean `npm ci`, repeatedly and under full CPU saturation — but the real
     // GitHub runner still intermittently fails a render/async test. Two mitigations
     // that do NOT hide real bugs (a deterministic failure still fails every retry):
