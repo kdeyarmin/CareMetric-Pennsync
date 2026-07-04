@@ -156,6 +156,8 @@ export default function VisualEditAgent() {
 	const handleElementClick = useCallback((e) => {
 		if (!isVisualEditModeRef.current) return;
 
+		if (!(e.target instanceof Element)) return;
+
 		// Prevent clicking on SVG path elements. Let the parent interactive
 		// element receive the event so icons inside links/buttons still work.
 		if (e.target.tagName.toLowerCase() === 'path') {
