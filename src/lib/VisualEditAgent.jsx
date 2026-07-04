@@ -156,34 +156,45 @@ export default function VisualEditAgent() {
 	const handleElementClick = useCallback((e) => {
 		if (!isVisualEditModeRef.current) return;
 
-		// Close dropdowns when clicking anywhere in iframe if a dropdown is open
-		if (isDropdownOpenRef.current) {
-			e.preventDefault();
-			e.stopPropagation();
-			e.stopImmediatePropagation();
+		if (!(e.target instanceof Element)) return;
 
-			// Send message to parent to close all dropdowns
-			window.parent.postMessage({
-				type: 'close-dropdowns'
-			}, '*');
-			return;
-		}
-
-		// Prevent clicking on SVG path elements
+		// Prevent clicking on SVG path elements. Let the parent interactive
+		// element receive the event so icons inside links/buttons still work.
 		if (e.target.tagName.toLowerCase() === 'path') {
 			return;
 		}
 
-		// Prevent default behavior immediately when in visual edit mode
-		e.preventDefault();
-		e.stopPropagation();
-		e.stopImmediatePropagation();
-
-		// Support both data-source-location and data-visual-selector-id
+		// Support both data-source-location and data-visual-selector-id. The
+		// Base44 preview can run this agent in an iframe while users are trying to
+		// exercise normal navigation. Only consume clicks that actually target a
+		// selectable visual-edit element; otherwise links/buttons must keep their
+		// native React handlers.
 		const element = e.target.closest('[data-source-location], [data-visual-selector-id]');
 		if (!element) {
 			return;
 		}
+
+		// Preview navigation must win over visual selection for interactive
+		// controls. Base44's source-location instrumentation can annotate the
+		// <a>/<button> itself, so without this guard every sidebar Link is selected
+		// by the editor agent instead of navigating. Non-interactive annotated
+		// wrappers remain selectable for visual editing.
+		if (e.target.closest('a[href], button, [role="button"], input, select, textarea, label')) {
+			return;
+		}
+
+		// Close dropdowns when clicking anywhere in iframe if a dropdown is open
+		if (isDropdownOpenRef.current) {
+			window.parent.postMessage({ type: 'close-dropdowns' }, '*');
+			return;
+		}
+
+		// Prevent default behavior only after we know this is a visual-edit
+		// selection click. This avoids a capture-phase dead zone for unannotated
+		// links/buttons in Base44 preview.
+		e.preventDefault();
+		e.stopPropagation();
+		e.stopImmediatePropagation();
 
 		// Prefer data-source-location, fallback to data-visual-selector-id
 		const visualSelectorId = element.dataset.sourceLocation || element.dataset.visualSelectorId;
@@ -419,7 +430,11 @@ export default function VisualEditAgent() {
 
 			switch (message.type) {
 				case 'toggle-visual-edit-mode':
-					toggleVisualEditMode(message.data.enabled);
+					// Ignore malformed messages. A stray preview/host postMessage should not
+					// leave the app in a capture-phase mode that swallows navigation clicks.
+					if (typeof message.data?.enabled === 'boolean') {
+						toggleVisualEditMode(message.data.enabled);
+					}
 					break;
 
 				case 'update-classes':
