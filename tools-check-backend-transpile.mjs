@@ -90,7 +90,7 @@ await checkInvokedBackendFunctionsExist();
 await checkClientWrappersTargetMatchingBackendFunctions();
 
 if (failures.length) {
-  console.error(`✗ ${failures.length} transpile error(s) across ${checked} functions:\n`);
+  console.error(`✗ ${failures.length} backend compatibility validation failure(s) (${checked} backend entry file(s) checked):\n`);
   for (const f of failures) console.error("  " + f);
   process.exit(1);
 }
