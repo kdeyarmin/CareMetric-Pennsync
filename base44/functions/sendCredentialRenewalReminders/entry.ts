@@ -273,7 +273,7 @@ Deno.serve(async (req) => {
             offsets: dueOffsets
           });
           } catch (sendErr) {
-            console.error(`Failed to send renewal reminder for credential ${cred.id}:`, sendErr?.message || sendErr);
+            console.error('Failed to send renewal reminder for credential:', sendErr?.message || sendErr);
           }
         }
       }
@@ -311,7 +311,7 @@ Deno.serve(async (req) => {
           });
           adminDigestSent++;
         } catch (digestErr) {
-          console.error(`Failed to send admin digest to ${admin.email}:`, digestErr?.message || digestErr);
+          console.error('Failed to send admin digest:', digestErr?.message || digestErr);
         }
       }
     }

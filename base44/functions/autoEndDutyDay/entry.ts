@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     for (const u of onDuty) {
       const ok = await base44.asServiceRole.entities.User.update(u.id, { duty_status: 'off_duty', duty_on_since: null })
         .then(() => true)
-        .catch((err) => { console.error('autoEndDutyDay update failed for', u.id, err?.message); return false; });
+        .catch((err) => { console.error('autoEndDutyDay update failed:', err?.message); return false; });
       if (ok) flipped += 1;
     }
 

@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
         const patient = patients[0];
 
         if (!patient || !patient.email) {
-          console.log(`Skipping signature ${sig.id}: Patient email not found`);
+          console.log('Skipping signature: patient email not found');
           continue;
         }
 
@@ -278,7 +278,7 @@ Deno.serve(async (req) => {
           status: 'sent'
         });
 
-        console.log(`Reminder sent for signature ${sig.id} to ${patient.email}`);
+        console.log('Signature reminder sent');
 
       } catch (error) {
         errors++;
@@ -287,7 +287,7 @@ Deno.serve(async (req) => {
           status: 'error',
           error: error.message
         });
-        console.error(`Error sending reminder for signature ${sig.id}:`, error);
+        console.error('Error sending signature reminder:', error?.message || error);
       }
     }
 

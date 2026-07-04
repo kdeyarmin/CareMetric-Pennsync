@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
           });
           created++;
         } catch (err) {
-          console.error(`Notification create failed for ${row.id}:`, err);
+          console.error('Scheduled signature reminder notification create failed:', err?.message || err);
         }
       }
 

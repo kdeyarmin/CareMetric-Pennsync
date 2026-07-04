@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.CertificatePacketCache.delete(cache.id);
         deletedCount++;
       } catch (error) {
-        console.error(`Failed to delete cache entry ${cache.id}:`, error);
+        console.error('Failed to delete cache entry:', error?.message || error);
       }
     }
 

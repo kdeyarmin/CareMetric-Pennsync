@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.error(`appendPatientNoteHistory gave up after ${MAX_ATTEMPTS} attempts for patient ${patient_id}`);
+    console.error(`appendPatientNoteHistory gave up after ${MAX_ATTEMPTS} attempts`);
     return Response.json({ error: lastError }, { status: 503 });
   } catch (error) {
     console.error('appendPatientNoteHistory error:', error);

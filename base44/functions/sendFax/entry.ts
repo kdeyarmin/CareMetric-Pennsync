@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
     if (!telnyxResponse.ok) {
       const firstErr = Array.isArray(telnyxData?.errors) ? telnyxData.errors[0] : null;
       // Log provider detail server-side; never echo it (recipient number / URL is PHI).
-      console.error('Telnyx fax send error', { status: telnyxResponse.status, code: firstErr?.code, log_id: faxLog.id });
+      console.error('Telnyx fax send error', { status: telnyxResponse.status, code: firstErr?.code });
       await base44.entities.FaxLog.update(faxLog.id, {
         status: 'failed',
         failure_reason: firstErr?.detail || firstErr?.title || 'Fax send failed',

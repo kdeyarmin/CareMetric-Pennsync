@@ -330,16 +330,16 @@ Deno.serve(async (req) => {
             retry_claimed_by: null,
           });
           retriedCount++;
-          console.log(`Retry attempt ${fax.retry_count} dispatched for fax ${fax.id} → new fax id ${telnyxData?.data?.id}`);
+          console.log(`Fax retry attempt ${fax.retry_count} dispatched successfully`);
         } else {
           const errText = await telnyxResp.text();
-          console.error(`Telnyx error on retry for fax ${fax.id}:`, errText);
+          console.error('Telnyx error on fax retry:', errText);
           // Telnyx rejected the re-send — a permanent rejection, so stop now.
           await base44.asServiceRole.entities.FaxLog.update(fax.id, { status: 'failed', retry_claimed_by: null }).catch(() => {});
           await handleRetryExhausted(base44, fax, `Telnyx rejected retry: ${errText}`, c.maxRetries, c.notifyOnFinalFailure);
         }
       } catch (err) {
-        console.error(`Network error retrying fax ${fax.id}:`, err.message);
+        console.error('Network error retrying fax:', err.message);
         // Transient: the dispatch itself failed, so NOTHING was sent to Telnyx and
         // no status webhook will ever fire to advance retry_count for this attempt.
         // Consume a retry attempt HERE — otherwise a persistently-unreachable Telnyx

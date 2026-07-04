@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
       // false, leaving the invitation pending forever. Fail closed: treat a
       // malformed expiry as expired so it can't remain actionable indefinitely.
       if (Number.isNaN(expiresAt.getTime())) {
-        console.warn(`Invitation ${invitation.id} has invalid/missing expires_at; marking expired.`);
+        console.warn('Invitation has invalid/missing expires_at; marking expired.');
         expired.push(invitation);
         await base44.asServiceRole.entities.UserInvitation.update(invitation.id, { status: 'expired' });
         continue;
@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
             }),
           });
         } catch (emailError) {
-          console.error('Failed to send email to admin:', admin.email, emailError);
+          console.error('Failed to send email to admin:', emailError?.message || emailError);
         }
       }
     }

@@ -203,13 +203,13 @@ Deno.serve(async (req) => {
               message: getNotificationMessage(newStatus, { ...fax, ...update }),
               metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
               is_read: false
-            }).catch(err => console.error(`Failed to create notification for fax ${fax.id}:`, err.message));
+            }).catch(err => console.error('Failed to create fax notification:', err.message));
           }
 
           updated++;
         }
       } catch (error) {
-        console.error(`Error checking fax ${fax.id}:`, error.message);
+        console.error('Error checking fax status:', error.message);
       }
     }));
 

@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
 
         if (!telnyxResponse.ok) {
           const errorText = await telnyxResponse.text();
-          console.error(`Telnyx API error for fax ${faxLog.telnyx_fax_id}:`, errorText);
+          console.error('Telnyx API error during fax status sync:', errorText);
           continue;
         }
 
@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
         const newStatus = mapFaxStatus(currentTelnyxStatus, faxLog.status);
 
         if (newStatus !== faxLog.status) {
-          console.log(`Updating fax ${faxLog.id} from ${faxLog.status} to ${newStatus}`);
+          console.log(`Updating fax status from ${faxLog.status} to ${newStatus}`);
           const failureReason = telnyxData?.data?.failure_reason || 'Unknown failure';
           // When a missed webhook is reconciled to 'failed' here, the sender
           // previously got no notice at all. Notify once (guarded by the shared
@@ -125,12 +125,12 @@ Deno.serve(async (req) => {
               priority: 'high',
               metadata: { related_entity: 'FaxLog', related_entity_id: faxLog.id },
               is_read: false
-            }).catch((err) => console.error(`Failed to send fax failure notification for ${faxLog.id}:`, err.message));
+            }).catch((err) => console.error('Failed to send fax failure notification:', err.message));
           }
           updatedCount++;
         }
       } catch (error) {
-        console.error(`Error processing fax ${faxLog.id} (Telnyx fax id: ${faxLog.telnyx_fax_id}):`, error);
+        console.error('Error processing fax status:', error?.message || error);
       }
     }
 

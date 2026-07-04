@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
           status: 'processing', claimed_by: runId, claimed_at: new Date().toISOString(),
         });
       } catch (claimErr) {
-        console.error(`Could not claim scheduled fax ${scheduledFax.id}; skipping`, claimErr);
+        console.error('Could not claim scheduled fax; skipping', claimErr?.message || claimErr);
         continue;
       }
       const claimCheck = await base44.asServiceRole.entities.ScheduledFax
@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
         });
 
       } catch (error) {
-        console.error(`Failed to process scheduled fax ${scheduledFax.id}:`, error);
+        console.error('Failed to process scheduled fax:', error?.message || error);
         await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
           status: 'failed'
         });
