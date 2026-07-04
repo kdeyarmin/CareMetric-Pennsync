@@ -73,8 +73,9 @@ if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
 // flag. They catch different error propagation paths and are complementary.
 const VITE_CHUNK_KEY = 'vite-global-chunk-reloaded';
 const handleStaleChunk = (err) => {
-  const isStaleChunk = err?.name === 'TypeError' &&
-    /dynamically imported module/i.test(err?.message || '');
+  const isStaleChunk = (err?.name === 'TypeError' &&
+    /dynamically imported module/i.test(err?.message || '')) ||
+    (err?.name === 'SyntaxError' && /invalid or unexpected token|unexpected token|failed to fetch dynamically imported module/i.test(err?.message || ''));
   if (!isStaleChunk) return false;
   // Offline is NOT a stale module graph: the chunk failed because the network
   // is gone, and a hard reload while offline just tears down the running app

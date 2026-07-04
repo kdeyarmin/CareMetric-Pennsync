@@ -21,8 +21,9 @@ class ErrorBoundary extends React.Component {
     // a chunk URL the restarted server no longer serves. Some browsers phrase
     // it "Failed to fetch" and others "error loading" a dynamically imported
     // module, so match on the common "dynamically imported module" substring.
-    const isChunkError = error?.name === 'TypeError' &&
-      /dynamically imported module/i.test(error?.message || '');
+    const isChunkError = (error?.name === 'TypeError' &&
+      /dynamically imported module/i.test(error?.message || '')) ||
+      (error?.name === 'SyntaxError' && /invalid or unexpected token|unexpected token|failed to fetch dynamically imported module/i.test(error?.message || ''));
     // Same TypeError while OFFLINE is not a stale module graph — the network is
     // gone and this route's chunk was never downloaded. Reloading can't fix
     // that (it would only tear the app down), so show the offline card and
