@@ -74,9 +74,11 @@ if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
 const VITE_CHUNK_KEY = 'vite-global-chunk-reloaded';
 const handleStaleChunk = (err, fallbackMessage = '') => {
   const msg = err?.message || fallbackMessage || '';
-  const isStaleChunk = (err?.name === 'TypeError' &&
+  const name = err?.name || '';
+  const isStaleChunk = (name === 'TypeError' &&
     /dynamically imported module/i.test(msg)) ||
-    (err?.name === 'SyntaxError');
+    (name === 'SyntaxError') ||
+    /invalid or unexpected token|unexpected token/i.test(msg);
   if (!isStaleChunk) return false;
   // Offline is NOT a stale module graph: the chunk failed because the network
   // is gone, and a hard reload while offline just tears down the running app
@@ -102,6 +104,11 @@ const handleStaleChunk = (err, fallbackMessage = '') => {
 window.addEventListener('error', (e) => handleStaleChunk(e.error, e.message));
 window.addEventListener('unhandledrejection', (e) => {
   if (handleStaleChunk(e.reason, typeof e.reason === 'string' ? e.reason : '')) e.preventDefault();
+});
+// Vite native: fires when a preload link fails (stale hashed chunk after
+// redeploy). Reload to fetch the new chunk manifest.
+window.addEventListener('vite:preloadError', (e) => {
+  if (handleStaleChunk(e.payload, '')) e.preventDefault();
 });
 
 // Register the offline service worker (public/sw.js): network-first app shell
