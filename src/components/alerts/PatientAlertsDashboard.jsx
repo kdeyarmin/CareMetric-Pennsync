@@ -42,6 +42,7 @@ import {
   FileText
 } from "lucide-react";
 import { getAlertIcon, getSeverityColor } from "@/components/alerts/alertPresentation";
+import { buildSafetyHuddle, formatSlaTime } from "@/components/alerts/safetyHuddle";
 import { format, formatDistanceToNow } from "date-fns";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -151,6 +152,8 @@ export default function PatientAlertsDashboard({ patientId = null }) {
     medium: alerts.filter(a => a.severity === 'medium' && isOpen(a)).length,
     low: alerts.filter(a => a.severity === 'low' && isOpen(a)).length
   };
+
+  const safetyHuddle = React.useMemo(() => buildSafetyHuddle(alerts, new Date(), { limit: 3 }), [alerts]);
 
   const handleAcknowledge = (alert) => {
     updateAlertMutation.mutate({
@@ -265,6 +268,55 @@ export default function PatientAlertsDashboard({ patientId = null }) {
           </CardContent>
         </Card>
       </div>
+
+
+      {/* Closed-loop Safety Huddle */}
+      {safetyHuddle.summary.openCount > 0 && (
+        <Card className={`border-l-4 ${safetyHuddle.summary.status === 'escalate' ? 'border-l-red-600' : 'border-l-amber-500'}`}>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-base">
+              <span className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-navy-600" />
+                Closed-loop Safety Huddle
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <Badge className={safetyHuddle.summary.status === 'escalate' ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-800'}>
+                  {safetyHuddle.summary.status === 'escalate' ? 'Escalate now' : 'Huddle needed'}
+                </Badge>
+                <Badge variant="outline">{safetyHuddle.summary.overdueCount} overdue</Badge>
+                <Badge variant="outline">{safetyHuddle.summary.unassignedCount} unassigned</Badge>
+                <Badge variant="outline">{safetyHuddle.summary.unacknowledgedCount} unacknowledged</Badge>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Prioritized open alerts with owner, acknowledgement, SLA, and next-action gaps so high-risk alerts move from detection to documented resolution.
+            </p>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              {safetyHuddle.topItems.map((item) => (
+                <div key={item.id || item.title} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 line-clamp-1">{item.title}</p>
+                      <p className="text-xs text-slate-500">{item.owner || 'No owner assigned'}</p>
+                    </div>
+                    <Badge className={getSeverityColor(item.severity)}>{item.severity}</Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    <Badge variant="outline" className={item.isOverdue ? 'text-red-700 border-red-200' : ''}>
+                      {formatSlaTime(item.minutesUntilDue)}
+                    </Badge>
+                    {item.needsOwner && <Badge className="bg-orange-100 text-orange-800">assign owner</Badge>}
+                    {!item.isAcknowledged && <Badge className="bg-blue-100 text-blue-800">ack needed</Badge>}
+                  </div>
+                  <p className="text-xs text-slate-600">{item.nextAction}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>
