@@ -99,7 +99,11 @@ export function buildSafetyHuddle(alerts = [], now = new Date(), options = {}) {
 }
 
 export function formatSlaTime(minutes) {
-  if (minutes < 0) return `${Math.ceil(Math.abs(minutes) / 60)}h overdue`;
+  if (minutes < 0) {
+    const overdueMinutes = Math.abs(minutes);
+    if (overdueMinutes < 60) return `${overdueMinutes}m overdue`;
+    return `${Math.ceil(overdueMinutes / 60)}h overdue`;
+  }
   if (minutes < 60) return `${minutes}m left`;
   if (minutes < 1440) return `${Math.floor(minutes / 60)}h left`;
   return `${Math.floor(minutes / 1440)}d left`;
