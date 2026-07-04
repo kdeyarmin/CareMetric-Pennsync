@@ -1,5 +1,6 @@
 import { lazy } from 'react';
 import { NAV_MANIFEST } from '@/lib/nav.manifest';
+import { logger } from '@/lib/logger';
 
 // Single source of truth for the app's authenticated routes.
 //
@@ -51,10 +52,7 @@ export const ROUTES = [
       // Guard against a manifest entry whose page file does not exist (lazy()
       // would crash). Surface it in dev so the mismatch is fixed at the source.
       if (!entry.factory) {
-        if (import.meta.env?.DEV) {
-          // eslint-disable-next-line no-console
-          console.warn(`[routes] manifest page "${entry.name}" has no src/pages/${entry.name}.jsx — skipping route`);
-        }
+        logger.debug(`[routes] manifest page "${entry.name}" has no src/pages/${entry.name}.jsx — skipping route`);
         return false;
       }
       // De-dupe defensively in case a page appears twice in the manifest.

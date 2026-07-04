@@ -321,7 +321,7 @@ Deno.serve(async (req) => {
     // approved manually — the only path to access is an admin invitation.
     // Admins are sent a security alert so they can invite the person if the
     // attempt was legitimate.
-    console.warn('Blocked uninvited sign-up (invite-only app):', user.email);
+    console.warn('Blocked uninvited sign-up (invite-only app)');
 
     // Record the blocked attempt for the audit trail.
     try {

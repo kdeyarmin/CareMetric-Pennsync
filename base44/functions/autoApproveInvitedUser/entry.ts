@@ -233,10 +233,10 @@ Deno.serve(async (req) => {
               { note: 'If you have any questions, please reach out to your administrator.' },
             ],
           }),
-        }).catch(err => console.error('Email failed for', user.email, err));
+        }).catch(err => console.error('Auto-approval email failed:', err?.message || err));
 
         approvedCount++;
-        console.log('✓ Auto-approved:', user.email);
+        console.log('✓ Auto-approved invited user');
       } catch (itemError) {
         console.error('Error processing invitation:', itemError.message);
         skippedCount++;

@@ -500,7 +500,7 @@ async function checkExpiredInvitations(base44) {
           }),
         });
       } catch (emailError) {
-        console.error('Failed to send email to admin:', admin.email, emailError);
+        console.error('Failed to send email to admin:', emailError?.message || emailError);
       }
     }
   }

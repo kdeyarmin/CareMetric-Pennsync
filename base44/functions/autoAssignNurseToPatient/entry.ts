@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
     const nurse_email = visit.created_by;
 
     if (!patient_id || !nurse_email) {
-      console.error('Missing patient_id or created_by on Visit:', visitId);
+      console.error('Missing patient_id or created_by on Visit');
       return Response.json({ error: 'patient_id and nurse_email are required' }, { status: 400 });
     }
 

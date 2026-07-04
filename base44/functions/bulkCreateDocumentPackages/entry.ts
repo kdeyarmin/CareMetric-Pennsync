@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
 
           createdPackages.push(pkg);
         } catch (itemErr) {
-          console.error(`Failed to create package for patient ${patientId} / template ${templateId}:`, itemErr.message);
+          console.error('Failed to create document package:', itemErr.message);
           failures.push({ patient_id: patientId, template_id: templateId, error: itemErr.message });
         }
       }

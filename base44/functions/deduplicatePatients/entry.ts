@@ -1083,7 +1083,7 @@ Deno.serve(async (req) => {
             });
             removedFromGroup.push(entry);
           } catch (err) {
-            console.error(`Failed to archive ${patient.id}:`, err.message);
+            console.error('Failed to archive duplicate patient record:', err.message);
           }
         }
 

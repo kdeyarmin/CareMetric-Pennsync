@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       };
       if (target.duty_status === undefined || target.duty_status === null) update.duty_status = 'off_duty';
       const ok = await base44.asServiceRole.entities.User.update(target.id, update)
-        .then(() => true).catch((err) => { console.error('assign failed for', target.email, err?.message); return false; });
+        .then(() => true).catch((err) => { console.error('work number assignment failed:', err?.message); return false; });
       if (!ok) continue;
 
       await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {

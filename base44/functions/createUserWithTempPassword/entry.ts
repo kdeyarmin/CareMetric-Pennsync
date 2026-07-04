@@ -305,7 +305,7 @@ Deno.serve(async (req) => {
 
     // Use the platform's built-in invite (handles email delivery natively)
     await base44.users.inviteUser(email, userRole);
-    console.log('✓ Platform invite sent to:', email);
+    console.log('✓ Platform invite sent');
 
     // Store invitation record for onUserSignup auto-approval with extra metadata
     const now = new Date();
@@ -350,7 +350,7 @@ Deno.serve(async (req) => {
         subject,
         body,
       });
-      console.log('✓ Branded welcome email sent to:', email);
+      console.log('✓ Branded welcome email sent');
     } catch (emailError) {
       console.error('Welcome email failed (invite still succeeded):', emailError?.message || emailError);
     }

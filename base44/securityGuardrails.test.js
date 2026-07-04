@@ -285,3 +285,29 @@ for (const file of SCHEDULER_AUTH_FILES) {
     );
   });
 }
+
+// 12. Operational logs from backend service-role functions must not include
+//     direct patient/staff identifiers. Console output can be retained outside
+//     the app UI, so diagnostics should be aggregate/status-only unless a
+//     reviewed, redacted logging helper is introduced.
+test('backend service-role console logs do not include direct identifiers', () => {
+  const sensitiveConsoleLine =
+    /console\.(?:log|warn|error)\([^\n]*(?:\b\w+\.email\b|\$\{[^}]*\.(?:id|email|telnyx_fax_id)[^}]*\}|\$\{(?:patientId|templateId|patient_id|visitId)\}|log_id\s*:)/;
+
+  const offenders = walk(join(REPO, 'base44/functions'))
+    .filter((p) => p.endsWith('/entry.ts'))
+    .flatMap((p) => {
+      const rel = p.slice(REPO.length + 1).replace(/\\/g, '/');
+      return readFileSync(p, 'utf8')
+        .split('\n')
+        .map((line, idx) => ({ rel, line, lineNo: idx + 1 }))
+        .filter(({ line }) => sensitiveConsoleLine.test(line))
+        .map(({ rel: file, lineNo, line }) => `${file}:${lineNo}: ${line.trim()}`);
+    });
+
+  assert.deepEqual(
+    offenders,
+    [],
+    `Backend console logs must stay aggregate/status-only; direct emails, patient/fax/signature ids, and downstream provider ids can leak identifiers into retained logs.\n${offenders.join('\n')}`,
+  );
+});

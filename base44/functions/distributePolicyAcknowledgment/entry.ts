@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
       } catch (err) {
         failed++;
         failures.push({ user: user.email, error: err?.message });
-        console.error('PolicyAcknowledgment create failed for', user.email, err?.message);
+        console.error('PolicyAcknowledgment create failed:', err?.message);
         continue;
       }
       created++;

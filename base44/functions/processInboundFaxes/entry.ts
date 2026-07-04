@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
           },
         });
       } catch (error) {
-        console.error('Inbound fax OCR failed:', fax.id, error?.message);
+        console.error('Inbound fax OCR failed:', error?.message);
         await base44.asServiceRole.entities.IncomingFax.update(fax.id, { processing_status: 'failed' }).catch(() => {});
         continue;
       }
