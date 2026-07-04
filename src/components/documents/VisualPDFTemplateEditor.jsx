@@ -32,6 +32,7 @@ import {
 import { toast } from "sonner";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
+import { sanitizeHtml } from "@/components/utils/security";
 
 export default function VisualPDFTemplateEditor({ 
   templateElements = [], 
@@ -367,12 +368,18 @@ export default function VisualPDFTemplateEditor({
 }
 
 function ElementPropertiesPanel({ element, allElements, onUpdate, onDelete, onDuplicate, _onMove }) {
-  const [richTextValue, setRichTextValue] = useState(element.properties.defaultValue || '');
+  const [richTextValue, setRichTextValue] = useState(() =>
+    sanitizeHtml(element.properties.defaultValue || '')
+  );
 
   const handleRichTextChange = (value) => {
-    setRichTextValue(value);
+    // Quill's HTML export is vulnerable to XSS via unsanitized embeds
+    // (GHSA-v3m3-f69x-jf25); no patched quill release exists, so sanitize the
+    // exported HTML with DOMPurify before it enters app state / storage.
+    const sanitized = sanitizeHtml(value);
+    setRichTextValue(sanitized);
     onUpdate({
-      properties: { ...element.properties, defaultValue: value }
+      properties: { ...element.properties, defaultValue: sanitized }
     });
   };
 
