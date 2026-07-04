@@ -39,6 +39,11 @@ import {
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { toast } from 'sonner';
+import {
+  FEATURE_IMPROVEMENT_ROADMAP,
+  getFeatureEnhancementSuggestions,
+  summarizeImprovementRoadmap
+} from '@/lib/featureImprovementRoadmap';
 
 export default function FeaturesPage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -1263,6 +1268,9 @@ export default function FeaturesPage() {
     ? features 
     : features.filter(cat => cat.category.toLowerCase().includes(selectedCategory.toLowerCase()));
 
+  const improvementSummary = summarizeImprovementRoadmap();
+  const roadmapFeatureTargetCount = improvementSummary.uniqueFeatureTargets.size;
+
   // Soft, ringed icon-chip tints (the same premium chip language as StatCard),
   // keyed by the category's named color.
   const getCategoryColor = (color) => {
@@ -1363,6 +1371,63 @@ export default function FeaturesPage() {
           </Card>
         </div>
 
+
+      {/* Research-Backed Enhancement Roadmap */}
+      <Card className="mb-4 sm:mb-6 md:mb-8 border-navy-100 bg-gradient-to-br from-white via-navy-50/40 to-gold-50/50">
+        <CardHeader className="p-4 sm:p-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <Badge variant="info" className="mb-2">Research-backed roadmap</Badge>
+              <CardTitle className="text-xl sm:text-2xl text-slate-900">Next-generation feature enhancement plan</CardTitle>
+              <p className="mt-2 max-w-3xl text-sm text-slate-600">
+                This improvement layer reviews PennSync’s current feature inventory against CMS home health quality reporting, HIPAA security safeguards, ONC interoperability priorities, AHRQ safety practices, and field-clinician workflow needs.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center lg:min-w-[320px]">
+              <div className="rounded-xl bg-white/80 p-3 ring-1 ring-slate-200">
+                <p className="text-2xl font-bold text-navy-700">{improvementSummary.totalInitiatives}</p>
+                <p className="text-xs text-slate-500">initiatives</p>
+              </div>
+              <div className="rounded-xl bg-white/80 p-3 ring-1 ring-slate-200">
+                <p className="text-2xl font-bold text-gold-700">{improvementSummary.totalEnhancements}</p>
+                <p className="text-xs text-slate-500">enhancements</p>
+              </div>
+              <div className="rounded-xl bg-white/80 p-3 ring-1 ring-slate-200">
+                <p className="text-2xl font-bold text-emerald-700">{roadmapFeatureTargetCount}</p>
+                <p className="text-xs text-slate-500">features touched</p>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {FEATURE_IMPROVEMENT_ROADMAP.map((item) => (
+              <div key={item.id} className="rounded-xl border border-slate-200 bg-white/85 p-4 shadow-sm">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <Badge variant={getImpactBadge(item.tier)} className="capitalize">{item.tier}</Badge>
+                  <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{item.source}</span>
+                </div>
+                <h3 className="font-semibold text-slate-900">{item.pillar}</h3>
+                <p className="mt-1 text-sm text-slate-600">{item.why}</p>
+                <ul className="mt-3 space-y-2">
+                  {item.enhancements.slice(0, 2).map((enhancement) => (
+                    <li key={enhancement} className="flex gap-2 text-sm text-slate-700">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
+                      <span>{enhancement}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {item.featureTargets.map((target) => (
+                    <Badge key={target} variant="secondary" className="text-[11px]">{target}</Badge>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Category Filter */}
       <div className="mb-4 sm:mb-6 md:mb-8">
         <div className="flex flex-wrap gap-2 justify-center">
@@ -1406,6 +1471,8 @@ export default function FeaturesPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {category.items.map((feature) => {
                   const FeatureIcon = feature.icon;
+                  const upgradeSuggestions = getFeatureEnhancementSuggestions(feature.name, category.category);
+                  const topUpgrade = upgradeSuggestions[0];
                   return (
                     <Card key={feature.name} className="hover:shadow-lg transition-all duration-200">
                       <CardHeader className="p-3 sm:p-4 md:p-6 pb-2 sm:pb-3">
@@ -1435,6 +1502,18 @@ export default function FeaturesPage() {
                           <p className="text-xs font-semibold text-blue-800 mb-1">How to Use:</p>
                           <p className="text-xs text-blue-700">{feature.howToUse}</p>
                         </div>
+
+                        {topUpgrade && (
+                          <div className="p-2 bg-gold-50 rounded-lg border border-gold-200">
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <p className="text-xs font-semibold text-gold-900">Next Best Upgrade:</p>
+                              <Badge variant={getImpactBadge(topUpgrade.tier)} className="text-[10px] capitalize">
+                                {topUpgrade.tier}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-gold-800">{topUpgrade.enhancement}</p>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   );

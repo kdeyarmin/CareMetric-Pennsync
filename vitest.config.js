@@ -38,17 +38,18 @@ export default defineConfig({
     testTimeout: 30000,
     hookTimeout: 30000,
     // CI reliability for the documented parallel-load flake. The suite is
-    // deterministically green locally — verified on Node 20.20.2 (CI's version) +
+    // deterministically green locally — verified on Node 24.x (CI's version) +
     // clean `npm ci`, repeatedly and under full CPU saturation — but the real
     // GitHub runner still intermittently fails a render/async test. Two mitigations
     // that do NOT hide real bugs (a deterministic failure still fails every retry):
-    //   - maxForks: cap concurrent test processes so heavy jsdom files can't
+    //   - maxWorkers: cap concurrent test processes so heavy jsdom files can't
     //     oversubscribe a 2–4 core runner (the CPU contention that triggers it).
     //   - retry: re-run a failed test up to 2×, clearing a one-off timing flake.
-    // `pool` is set explicitly so the maxForks cap can't silently become a no-op
-    // if Vitest's default pool changes in a future release.
+    // `pool` is set explicitly so the maxWorkers cap can't silently become a no-op
+    // if Vitest's default pool changes in a future release. Vitest 4 removed
+    // `poolOptions`, so this must remain a top-level test option.
     pool: 'forks',
-    poolOptions: { forks: { maxForks: 2 } },
+    maxWorkers: 2,
     retry: 2,
   },
 });

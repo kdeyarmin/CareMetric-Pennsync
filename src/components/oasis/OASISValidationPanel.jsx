@@ -21,11 +21,14 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { buildOasisReadinessChecklist, groupReadinessItemsByCategory } from "./oasisReadinessChecklist";
 
 export default function OASISValidationPanel({ pdgmData, analysisResults }) {
   if (!pdgmData) return null;
 
   const validationChecks = performValidationChecks(pdgmData, analysisResults);
+  const readinessChecklist = buildOasisReadinessChecklist(pdgmData, analysisResults);
+  const readinessGroups = groupReadinessItemsByCategory(readinessChecklist.items);
   const { totalChecks, passedChecks, criticalIssues, warningIssues, infoIssues } = validationChecks.summary;
   const validationScore = totalChecks > 0
     ? Math.min(100, Math.max(0, Math.round((passedChecks / totalChecks) * 100)))
@@ -92,6 +95,70 @@ export default function OASISValidationPanel({ pdgmData, analysisResults }) {
             <Info className="w-5 h-5 text-blue-600 mx-auto mb-1" />
             <p className="text-2xl font-bold text-blue-700">{infoIssues}</p>
             <p className="text-xs text-blue-600">Info</p>
+          </div>
+        </div>
+
+
+        {/* Pre-submit OASIS Readiness Checklist */}
+        <div className="bg-white p-4 rounded-lg border border-navy-100">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-navy-600" />
+                <h3 className="font-semibold text-slate-900">Pre-submit Readiness Checklist</h3>
+              </div>
+              <p className="text-sm text-slate-600 mt-1">
+                Confirms required OASIS data, PDGM-critical fields, quality review, and reviewer sign-off before submission.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge className={`${
+                readinessChecklist.summary.status === 'ready' ? 'bg-green-600' :
+                readinessChecklist.summary.status === 'needs_review' ? 'bg-yellow-600' :
+                'bg-red-600'
+              } text-white`}>
+                {readinessChecklist.summary.readinessScore}% ready
+              </Badge>
+              <Badge variant="outline">{readinessChecklist.summary.blockingItems} blocking</Badge>
+              <Badge variant="outline">{readinessChecklist.summary.highPriorityItems} high-priority</Badge>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+            {readinessGroups.map((group) => {
+              const groupFailures = group.items.filter((item) => item.status !== 'complete');
+              return (
+                <div key={group.category} className="rounded-lg border border-slate-200 p-3 bg-slate-50/70">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-sm font-semibold text-slate-800">{group.category}</p>
+                    {groupFailures.length === 0 ? (
+                      <Badge className="bg-green-100 text-green-800">Complete</Badge>
+                    ) : (
+                      <Badge className="bg-orange-100 text-orange-800">{groupFailures.length} to review</Badge>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    {group.items.map((item) => (
+                      <div key={item.id} className="flex items-start gap-2 text-xs text-slate-700">
+                        {item.status === 'complete' ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 text-green-600 flex-shrink-0" />
+                        ) : item.blocksSubmission ? (
+                          <XCircle className="w-3.5 h-3.5 mt-0.5 text-red-600 flex-shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 text-yellow-600 flex-shrink-0" />
+                        )}
+                        <span>
+                          <span className="font-medium">{item.label}</span>
+                          {item.status !== 'complete' && (
+                            <span className="block text-slate-500">{item.action}</span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
