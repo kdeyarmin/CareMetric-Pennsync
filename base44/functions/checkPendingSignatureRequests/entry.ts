@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
     // service-role scope of sendAutomatedSignatureReminders.
     const packages = await base44.asServiceRole.entities.DocumentPackage.filter({
       status: { $in: ['pending', 'in_progress'] }
-    }, '-created_date', 500);
+    }, 'created_date', 500);
 
     if (!packages || packages.length === 0) {
       return Response.json({ 

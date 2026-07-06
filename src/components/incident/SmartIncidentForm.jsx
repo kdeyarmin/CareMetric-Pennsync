@@ -125,6 +125,7 @@ actions taken, and who was notified. Objective facts only. Return report text on
           followup_action: form.followup_action,
           submitted_by_name: currentUser?.full_name,
           source: "smart_incident_form",
+          photo_urls,
         });
       }
 

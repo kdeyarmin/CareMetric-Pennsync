@@ -21,19 +21,20 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
     queryKey: showAllPatients ? ['allPatientRiskAlerts'] : ['patientRiskAlerts', patientId],
     queryFn: async () => {
       if (showAllPatients) {
-        // Filter for high/critical severity SERVER-SIDE (via $in) so the
-        // severity selection happens before any row cap — otherwise a low
-        // row limit could truncate away the exact critical alerts this widget
-        // exists to surface. Cap raised well above expected active-alert volume.
-        return await base44.entities.PatientAlert.filter(
-          { status: 'active', severity: { $in: ['high', 'critical'] } },
-          '-created_date',
-          5000
-        );
+        // Fetch via the SERVER-SCOPED getScopedPatientAlerts function (same as
+        // PatientAlertsDashboard) so the browser only receives alerts the caller
+        // is authorized for — PatientAlert's own RLS is created_by-only and
+        // silently drops alerts for patients assigned to, but not created by,
+        // the caller. Severity/status filtering then happens client-side since
+        // the function doesn't take those as filters.
+        const res = await base44.functions.invoke('getScopedPatientAlerts', { limit: 5000 });
+        const scoped = res?.data?.alerts || [];
+        return scoped.filter(a => a.status === 'active' && ['high', 'critical'].includes(a.severity));
       } else {
-        return patientId 
-          ? await base44.entities.PatientAlert.filter({ patient_id: patientId, status: 'active' })
-          : [];
+        if (!patientId) return [];
+        const res = await base44.functions.invoke('getScopedPatientAlerts', { patient_id: patientId });
+        const scoped = res?.data?.alerts || [];
+        return scoped.filter(a => a.status === 'active');
       }
     },
     enabled: showAllPatients || !!patientId,

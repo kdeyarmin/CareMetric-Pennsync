@@ -21,7 +21,6 @@ import { toast } from 'sonner';
 export default function InterdisciplinaryTeamCoordinator({ 
   patientId,
   patientData,
-  carePlans,
   recentVisits,
   incidents,
   alerts,
@@ -39,7 +38,6 @@ export default function InterdisciplinaryTeamCoordinator({
       const complexityIndicators = {
         diagnoses_count: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])].filter(Boolean).length,
         medications_count: patientData.current_medications?.length || 0,
-        active_care_plans: carePlans?.filter(cp => cp.status === 'active').length || 0,
         recent_incidents: incidents?.filter(i => {
           const incidentDate = new Date(i.incident_date);
           const daysSince = (new Date() - incidentDate) / (1000 * 60 * 60 * 24);
@@ -67,7 +65,6 @@ PATIENT PROFILE:
 COMPLEXITY INDICATORS:
 - Total Diagnoses: ${complexityIndicators.diagnoses_count}
 - Active Medications: ${complexityIndicators.medications_count}
-- Active Care Plans: ${complexityIndicators.active_care_plans}
 - Recent Incidents (30d): ${complexityIndicators.recent_incidents}
 - Active Clinical Alerts: ${complexityIndicators.active_alerts}
 - Recent Hospitalizations (30d): ${complexityIndicators.recent_hospitalizations}
@@ -126,7 +123,7 @@ Return recommendation with:
       setRecommendation({ error: error.message });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
-  }, [patientData, carePlans, incidents, alerts, recentVisits]);
+  }, [patientData, incidents, alerts, recentVisits]);
 
   useEffect(() => {
     if (autoAnalyze && patientData) {

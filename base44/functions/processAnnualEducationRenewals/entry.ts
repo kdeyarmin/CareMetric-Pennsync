@@ -38,9 +38,9 @@ Deno.serve(async (req) => {
     if (authError) return authError;
 
     const today = new Date();
-    // Bound high enough that near-expiry certs aren't truncated (they sort last
-    // under '-expiration_date'); the 30-day window is applied per-cert below.
-    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false }, '-expiration_date', 5000);
+    // Bound high enough that near-expiry certs aren't truncated (they sort first
+    // under 'expiration_date'); the 30-day window is applied per-cert below.
+    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false }, 'expiration_date', 5000);
     let created = 0;
     const notificationsToCreate = [];
 

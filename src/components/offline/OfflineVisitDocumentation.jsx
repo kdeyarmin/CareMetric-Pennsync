@@ -36,6 +36,13 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
   const [savedOffline, setSavedOffline] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
+  // Re-sync patient_id whenever the patientId prop changes, so a parent that
+  // swaps patients without remounting this component doesn't keep writing to
+  // the previous patient's record.
+  useEffect(() => {
+    setFormData(prev => ({ ...prev, patient_id: patientId }));
+  }, [patientId]);
+
   const handleAutoSave = useCallback(() => {
     if (!isOnline && formData.nurse_notes) {
       try { localStorage.setItem(`visit_draft_${formData.visit_id}`, JSON.stringify({
@@ -75,12 +82,25 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
       const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      await addToSyncQueue('CREATE_VISIT', {
-        client_request_id: clientRequestId,
-        ...rest,
-        vital_signs: hasVitals ? rest.vital_signs : null,
-        status: 'completed',
-      });
+
+      // Update the existing visit when editing one, otherwise create it -
+      // mirrors saveOnline's visitId branching so an offline edit doesn't
+      // duplicate the visit on sync.
+      if (visitId) {
+        await addToSyncQueue('UPDATE_VISIT', {
+          visit_id: visitId,
+          ...rest,
+          vital_signs: hasVitals ? rest.vital_signs : null,
+          status: 'completed',
+        });
+      } else {
+        await addToSyncQueue('CREATE_VISIT', {
+          client_request_id: clientRequestId,
+          ...rest,
+          vital_signs: hasVitals ? rest.vital_signs : null,
+          status: 'completed',
+        });
+      }
       setSavedOffline(true);
       setLastSaved(new Date());
       toast.success('Saved offline - will sync when online', {

@@ -289,6 +289,15 @@ export default function ComplianceCenter() {
   const { filteredIssues, groupedByUser, criticalCount, highCount, affectedUsers, overdueTraining, expiringCreds } =
     deriveComplianceIssueStats(complianceIssues, { searchTerm, categoryFilter, severityFilter });
 
+  // Prune selections that fall out of view when filters change, so a stale
+  // selected email can't reach handleNotifySelected with no matching issue data.
+  useEffect(() => {
+    setSelectedUsers(prev => {
+      const next = new Set(Array.from(prev).filter(email => groupedByUser[email]));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [groupedByUser]);
+
   const sendNotificationMutation = useMutation({
     mutationFn: async ({ userEmails, message, subject }) => {
       return await Promise.all(

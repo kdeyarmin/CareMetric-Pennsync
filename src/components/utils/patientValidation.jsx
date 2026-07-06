@@ -1,5 +1,7 @@
 // Validation utilities for patient data
 
+import { calculateAge } from '@/lib/dateLocal';
+
 export const SEVERITY = {
   ERROR: 'error',
   WARNING: 'warning',
@@ -60,7 +62,7 @@ export const validateDateOfBirth = (dob) => {
     return VALIDATION_ERRORS.FUTURE_DOB;
   }
   
-  const age = today.getFullYear() - dobDate.getFullYear();
+  const age = calculateAge(dobDate, today);
   if (age > 125) {
     return VALIDATION_ERRORS.INVALID_AGE;
   }
@@ -132,7 +134,7 @@ export const validatePatient = (patient) => {
     } else {
       // Age warning for very young patients
       const dobDate = new Date(patient.date_of_birth + 'T00:00:00');
-      const age = new Date().getFullYear() - dobDate.getFullYear();
+      const age = calculateAge(dobDate);
       if (age < 18) {
         validationResults.push({
           field: 'date_of_birth',

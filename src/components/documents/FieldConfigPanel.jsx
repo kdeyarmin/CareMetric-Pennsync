@@ -217,11 +217,23 @@ export default function FieldConfigPanel({ onAdd, onCancel, initialData = null }
         <div className="p-3 bg-navy-50 rounded-lg space-y-2 text-sm">
           <div>
             <label htmlFor="field-conditional-name" className="block text-xs font-medium text-slate-700 mb-1">Show if field equals:</label>
-            <Input id="field-conditional-name" placeholder="Field name" className="text-xs" />
+            <Input
+              id="field-conditional-name"
+              placeholder="Field name"
+              value={formData.conditional?.field || ""}
+              onChange={(e) => setFormData({ ...formData, conditional: { ...formData.conditional, field: e.target.value } })}
+              className="text-xs"
+            />
           </div>
           <div>
             <label htmlFor="field-conditional-value" className="block text-xs font-medium text-slate-700 mb-1">Value:</label>
-            <Input id="field-conditional-value" placeholder="Value" className="text-xs" />
+            <Input
+              id="field-conditional-value"
+              placeholder="Value"
+              value={formData.conditional?.value || ""}
+              onChange={(e) => setFormData({ ...formData, conditional: { ...formData.conditional, value: e.target.value } })}
+              className="text-xs"
+            />
           </div>
         </div>
       )}

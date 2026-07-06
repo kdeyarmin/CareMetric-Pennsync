@@ -868,6 +868,7 @@ export function findDuplicateGroups(patients, opts = {}) {
   for (let i = 0; i < n; i++) {
     if (!links.has(i) || memberOf[i] !== -1) continue;
     for (const link of links.get(i)) {
+      if (memberOf[i] !== -1) break; // already placed in a weak group above
       const j = link.idx;
       if (memberOf[j] !== -1) continue; // partner already in a strong group
       const a = Math.min(i, j);
@@ -880,6 +881,7 @@ export function findDuplicateGroups(patients, opts = {}) {
         primary: patients[a],
         duplicates: [makeDuplicate(b, memberSet)],
       });
+      memberOf[a] = memberOf[b] = groups.length - 1;
     }
   }
 

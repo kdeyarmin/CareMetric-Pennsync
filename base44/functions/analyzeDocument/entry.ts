@@ -43,17 +43,10 @@ Deno.serve(async (req) => {
 
     const document = documents[0];
 
-    // Fetch document content
+    // Validate document file URL
     if (!isSafeFetchUrl(document.file_url)) {
       return Response.json({ error: 'Document has an invalid or disallowed file URL' }, { status: 400 });
     }
-    const docResponse = await fetch(document.file_url);
-    if (!docResponse.ok) {
-      // A 403/404/expired-signature error body must not be fed to the LLM and
-      // then persisted as a real "analysis" with a confidence score.
-      return Response.json({ error: 'Failed to fetch document content' }, { status: 502 });
-    }
-    const docText = await docResponse.text();
 
     // Analyze with AI
     const analysisPrompt = `Analyze this medical document and provide:
@@ -66,8 +59,6 @@ Deno.serve(async (req) => {
 
 Document title: ${document.title}
 Current category: ${document.category}
-Content:
-${docText.substring(0, 50000)}
 
 Return a JSON object with this structure:
 {
@@ -94,6 +85,7 @@ Return a JSON object with this structure:
     const aiResponse = await base44.integrations.Core.InvokeLLM({
       model: "claude_opus_4_8",
       prompt: analysisPrompt,
+      file_urls: [document.file_url],
       response_json_schema: {
         type: "object",
         properties: {

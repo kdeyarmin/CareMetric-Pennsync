@@ -77,8 +77,8 @@ const handleStaleChunk = (err, fallbackMessage = '') => {
   const name = err?.name || '';
   const isStaleChunk = (name === 'TypeError' &&
     /dynamically imported module/i.test(msg)) ||
-    (name === 'SyntaxError') ||
-    /invalid or unexpected token|unexpected token/i.test(msg);
+    (name === 'SyntaxError' &&
+    /invalid or unexpected token|unexpected token/i.test(msg));
   if (!isStaleChunk) return false;
   // Offline is NOT a stale module graph: the chunk failed because the network
   // is gone, and a hard reload while offline just tears down the running app

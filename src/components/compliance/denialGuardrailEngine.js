@@ -31,21 +31,21 @@ export const GUARD_STATUS = { PASS: "pass", FAIL: "fail", NOT_APPLICABLE: "not_a
 
 // ── homebound quality signals ───────────────────────────────────────────────
 // A medical REASON the patient is confined (or an explicit causal phrase).
-const HB_REASON = /\b(dyspnea|short(?:ness)? of breath|sob|weak(?:ness)?|cva|stroke|fracture|fx|pain|dizz(?:y|iness)|fall risk|falls?|wound|surg(?:ery|ical)|post[- ]?op|oxygen|\bo2\b|deconditio|unsteady|gait|amputat|paraly|bedbound|bedfast|edema|chf|copd|neuropath|contracture|non[- ]?weight[- ]?bearing|nwb)\b/i;
+const HB_REASON = /\b(dyspnea|short(?:ness)? of breath|sob|weak(?:ness)?|cva|stroke|fracture|fx|pain|dizz(?:y|iness)|fall risk|falls?|wound|surg(?:ery|ical)|post[- ]?op|oxygen|\bo2\b|deconditio\w*|unsteady|gait|amputat\w*|paraly\w*|bedbound|bedfast|edema|chf|copd|neuropath\w*|contracture|non[- ]?weight[- ]?bearing|nwb)\b/i;
 const HB_CAUSAL = /\b(due to|secondary to|because of|related to|as a result of|r\/t)\b/i;
 // Evidence that leaving home is a considerable and TAXING effort.
-const HB_EFFORT = /\b(taxing|considerable effort|requires? (?:the )?assist|assistance of|max(?:imal)? assist|moderate assist|min(?:imal)? assist|two[- ]person|one[- ]person|walker|wheelchair|w\/c|cane|crutch|unable to leave|unsafe to leave|cannot leave|exhaust|only .*(?:with help|steps)|supervision to ambulat|tolerates only)\b/i;
+const HB_EFFORT = /\b(taxing|considerable effort|requires? (?:the )?assist|assistance of|max(?:imal)? assist|moderate assist|min(?:imal)? assist|two[- ]person|one[- ]person|walker|wheelchair|w\/c|cane|crutch|unable to leave|unsafe to leave|cannot leave|exhaust\w*|only .*(?:with help|steps)|supervision to ambulat\w*|tolerates only)\b/i;
 const HB_MENTION = /\b(homebound|confined to (?:home|residence|the house)|leaving (?:the )?home)\b/i;
 
 // ── skilled-need quality signals ────────────────────────────────────────────
 // Vague / custodial-sounding statements that auditors treat as unskilled.
 const SN_VAGUE = /\b(provided|gave|rendered|performed|completed)\s+(?:the\s+)?(?:routine\s+)?(?:nursing|skilled)\s+(?:care|visit|services?)\b|\broutine (?:nursing )?visit (?:completed|done|performed)\b|\bnursing (?:visit|care) (?:provided|completed|given|done)\b|\bsnv (?:completed|done)\b/i;
 // A specific skilled service that requires professional judgment.
-const SN_SPECIFIC = /\b(wound care|dressing change|sterile|observation and assessment|skilled (?:observation|assessment)|assessment of (?:the |an? )?\w+|medication management|med (?:management|teaching|reconcil)|teach[- ]?back|catheter|foley|injection|insulin|\biv\b|infusion|titrat|ostomy|trach|lung ausc|edema (?:check|assessment)|gait training|venipuncture|picc|enteral|parenteral)\b/i;
+const SN_SPECIFIC = /\b(wound care|dressing change|sterile|observation and assessment|skilled (?:observation|assessment)|assessment of (?:the |an? )?\w+|medication management|med (?:management|teaching|reconcil\w*)|teach[- ]?back|catheter|foley|injection|insulin|\biv\b|infusion|titrat\w*|ostomy|trach|lung ausc\w*|edema (?:check|assessment)|gait training|venipuncture|picc|enteral|parenteral)\b/i;
 
 // ── medical-necessity linkage signals ───────────────────────────────────────
 const MN_LINK = /\b(for (?:the )?management of|to monitor|monitoring for|assess(?:ing|ment)? (?:for|of)|to evaluate|for evaluation of|due to|secondary to|related to|s\/p|post[- ]?op|for treatment of|management of|to manage)\b/i;
-const DX_HINT = /\b(diagnos|\bdx\b|chf|copd|diabet|dm2?|htn|hypertension|wound|ulcer|fracture|cva|stroke|cancer|dementia|parkinson|renal|failure|pneumonia|cellulitis|sepsis|afib|copd)\b/i;
+const DX_HINT = /\b(diagnos\w*|\bdx\b|chf|copd|diabet\w*|dm2?|htn|hypertension|wound|ulcer|fracture|cva|stroke|cancer|dementia|parkinson|renal|failure|pneumonia|cellulitis|sepsis|afib|copd)\b/i;
 
 function normalize(text) {
   return String(text || "").replace(/\s+/g, " ").trim();

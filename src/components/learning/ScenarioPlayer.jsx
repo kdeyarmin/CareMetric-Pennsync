@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { AlertCircle, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 
 export default function ScenarioPlayer({ scenario, attemptId, onComplete }) {
   const [currentNodeId, setCurrentNodeId] = useState('node-start');
@@ -74,11 +75,6 @@ export default function ScenarioPlayer({ scenario, attemptId, onComplete }) {
     const scorePercentage = distinct.length > 0 ? Math.round((correctDecisions / distinct.length) * 100) : 0;
     const hasPassed = scorePercentage >= scenario.passingScore;
 
-    setScore(scorePercentage);
-    setPassed(hasPassed);
-    setResultCounts({ correct: correctDecisions, total: distinct.length });
-    setScenarioComplete(true);
-
     // Save attempt
     try {
       const endTime = new Date();
@@ -98,9 +94,15 @@ export default function ScenarioPlayer({ scenario, attemptId, onComplete }) {
         time_spent_minutes: timeSpentMinutes
       });
 
+      setScore(scorePercentage);
+      setPassed(hasPassed);
+      setResultCounts({ correct: correctDecisions, total: distinct.length });
+      setScenarioComplete(true);
+
       if (onComplete) onComplete({ score: scorePercentage, passed: hasPassed });
     } catch (error) {
       console.error('Failed to save scenario attempt:', error);
+      toast.error('Failed to save your scenario results. Please try finishing the scenario again.');
     }
   };
 

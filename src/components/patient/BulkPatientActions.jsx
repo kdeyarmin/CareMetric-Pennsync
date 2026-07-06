@@ -65,12 +65,17 @@ export default function BulkPatientActions({ selectedPatients, onClearSelection 
   });
 
   const deletePatientsMutation = useMutation({
+    // Soft-archive rather than hard-delete: a plain Patient.delete() would leave every
+    // patient_id-linked record (Visit, OASISAssessment, Document, Medication, CallLog,
+    // etc. — see mergePatients.js's PATIENT_RELATED_ENTITIES) orphaned on a now-nonexistent
+    // patient. Archiving mirrors mergePatientInto's soft-delete, so the clinical history
+    // stays attached and recoverable (clear is_archived to restore).
     // allSettled (not Promise.all): with Promise.all one failed delete aborts
     // onSuccess, so the already-deleted patients would still show in the list.
     mutationFn: async () => {
       const results = await Promise.allSettled(
         selectedPatients.map(patient =>
-          base44.entities.Patient.delete(patient.id)
+          base44.entities.Patient.update(patient.id, { is_archived: true })
         )
       );
       return { total: results.length, failed: results.filter(r => r.status === 'rejected').length };
@@ -180,10 +185,10 @@ export default function BulkPatientActions({ selectedPatients, onClearSelection 
           </DialogHeader>
           <div className="py-4">
             <p className="text-sm text-slate-600">
-              Are you sure you want to delete {selectedPatients.length} patient(s)? This action cannot be undone and will remove all associated visits, care plans, and data.
+              Are you sure you want to delete {selectedPatients.length} patient(s)? They will be archived and removed from the roster; associated visits, care plans, and data are kept and recoverable.
             </p>
             <div className="bg-red-50 border border-red-200 rounded p-3 mt-3">
-              <p className="text-sm font-medium text-red-900">⚠️ Warning: This is permanent!</p>
+              <p className="text-sm font-medium text-red-900">⚠️ This will remove the patient(s) from active views.</p>
             </div>
           </div>
           <DialogFooter>

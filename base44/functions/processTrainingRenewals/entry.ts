@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     if (authError) return authError;
 
     const today = new Date();
-    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false }, '-expiration_date', 5000);
+    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false }, 'expiration_date', 5000);
     let renewalAssignmentsCreated = 0;
 
     for (const certificate of certificates) {

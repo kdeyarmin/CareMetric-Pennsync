@@ -33,7 +33,7 @@ export default function ReferralVolumeReport({ dateRange }) {
 
   const filteredReferrals = referrals.filter(r => {
     const date = new Date(r.referral_date);
-    return date >= new Date(dateRange.start) && date <= new Date(dateRange.end + 'T23:59:59.999');
+    return date >= new Date(dateRange.start + 'T00:00:00') && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
   // Analyze by source: volume, priority mix, and conversion to start of care.

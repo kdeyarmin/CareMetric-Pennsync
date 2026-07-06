@@ -94,10 +94,18 @@ Deno.serve(async (req) => {
       if (!certificate.expiration_date) continue;
       const expiration = new Date(certificate.expiration_date);
       const daysUntilExpiration = Math.ceil((expiration - today) / (1000 * 60 * 60 * 24));
+      // Fire AT or BELOW an unsent tier (not an exact-day match) so a missed cron
+      // run doesn't skip a tier permanently; renewal_reminder_offsets_sent dedups
+      // already-fired tiers.
+      const RENEWAL_TIERS = [30, 14, 7, 3, 1];
+      const sentRenewalOffsets = Array.isArray(certificate.renewal_reminder_offsets_sent) ? certificate.renewal_reminder_offsets_sent : [];
+      const renewalOffsets = daysUntilExpiration >= 0
+        ? RENEWAL_TIERS.filter((o) => daysUntilExpiration <= o && !sentRenewalOffsets.includes(o))
+        : [];
       // Same-day guard (the cert block previously had no dedup marker, so a
       // same-day cron re-run re-created every renewal notification).
       const certTodayKey = today.toISOString().slice(0, 10);
-      if ([30, 14, 7, 3, 1].includes(daysUntilExpiration) && certificate.last_renewal_reminder_date !== certTodayKey) {
+      if (renewalOffsets.length > 0 && certificate.last_renewal_reminder_date !== certTodayKey) {
         const notification = await base44.asServiceRole.entities.Notification.create({
           user_email: certificate.user_id,
           title: `Certificate renewal due in ${daysUntilExpiration} day${daysUntilExpiration > 1 ? 's' : ''}`,
@@ -110,6 +118,7 @@ Deno.serve(async (req) => {
         });
         notificationsSent.push(notification.id);
         await base44.asServiceRole.entities.TrainingCertificate.update(certificate.id, {
+          renewal_reminder_offsets_sent: [...sentRenewalOffsets, ...renewalOffsets],
           last_renewal_reminder_date: certTodayKey
         });
       }

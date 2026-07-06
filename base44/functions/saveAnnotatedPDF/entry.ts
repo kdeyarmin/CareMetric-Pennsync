@@ -34,6 +34,28 @@ function isSafeFetchUrl(raw) {
   return true;
 }
 
+// Fetch that re-validates every redirect hop against isSafeFetchUrl. With the
+// default redirect:'follow' the guard only checks the FIRST URL, so an
+// allowlisted host that 3xx-redirects to an internal/metadata IP would still be
+// fetched (SSRF). Returns null if a hop resolves to a disallowed host.
+async function safeFetchFollow(initialUrl) {
+  let response;
+  let nextUrl = initialUrl;
+  for (let hop = 0; hop < 4; hop++) {
+    response = await fetch(nextUrl, { redirect: 'manual' });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location) break;
+      const resolved = new URL(location, nextUrl).toString();
+      if (!isSafeFetchUrl(resolved)) return null;
+      nextUrl = resolved;
+      continue;
+    }
+    break;
+  }
+  return response;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -56,7 +78,10 @@ Deno.serve(async (req) => {
     }
     // Fetch original PDF. Guard response.ok so an expired/404 storage URL yields
     // a clean 400 instead of feeding an HTML error page into pdf-lib (opaque 500).
-    const pdfResponse = await fetch(original_pdf_url);
+    const pdfResponse = await safeFetchFollow(original_pdf_url);
+    if (!pdfResponse) {
+      return Response.json({ error: 'Redirect to a disallowed host blocked' }, { status: 400 });
+    }
     if (!pdfResponse.ok) {
       return Response.json({ error: 'Failed to fetch original PDF' }, { status: 400 });
     }

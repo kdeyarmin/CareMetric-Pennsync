@@ -22,9 +22,11 @@ Deno.serve(async (req) => {
     // reuse a packet cached for a different selection — skip the cache (and
     // regenerate) whenever explicit certificateIds are supplied.
     const hasExplicitIds = Array.isArray(certificateIds) && certificateIds.length > 0;
-    const cacheQuery = { user_id: employeeId };
-    if (dateRangeStart) cacheQuery.date_range_start = dateRangeStart;
-    if (dateRangeEnd) cacheQuery.date_range_end = dateRangeEnd;
+    const cacheQuery = {
+      user_id: employeeId,
+      date_range_start: dateRangeStart || null,
+      date_range_end: dateRangeEnd || null
+    };
 
     const existingCache = hasExplicitIds
       ? []

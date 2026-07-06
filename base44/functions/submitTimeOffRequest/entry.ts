@@ -213,7 +213,8 @@ Deno.serve(async (req) => {
       }
       const matches = await base44.asServiceRole.entities.User.filter({ email: manager_email });
       const mgr = matches && matches[0];
-      if (!mgr || !(mgr.role === 'admin' || mgr.is_manager === true)) {
+      const mgrIsAdmin = mgr && (mgr.role === 'admin' || mgr.account_type === 'super_admin' || mgr.account_type === 'agency_admin');
+      if (!mgr || !(mgrIsAdmin || mgr.is_manager === true)) {
         return Response.json({ error: 'The selected approver is not authorized to approve time off.' }, { status: 400 });
       }
       resolvedManagerEmail = mgr.email;
@@ -243,7 +244,7 @@ Deno.serve(async (req) => {
         recipients = [{ email: resolvedManagerEmail }];
       } else {
         const users = await base44.asServiceRole.entities.User.list('-created_date', 500);
-        recipients = users.filter((u) => u.role === 'admin' && u.email);
+        recipients = users.filter((u) => u.email && (u.role === 'admin' || u.account_type === 'super_admin' || u.account_type === 'agency_admin'));
       }
       const requesterName = user.full_name || user.email;
       const prettyType = request_type.replace(/_/g, ' ');

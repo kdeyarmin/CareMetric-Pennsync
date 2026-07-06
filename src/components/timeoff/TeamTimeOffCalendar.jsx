@@ -61,7 +61,7 @@ export default function TeamTimeOffCalendar({ requests = [] }) {
   };
 
   const selected = selectedDay
-    ? requestsCoveringDate(requests, selectedDay, { includePending: true }).sort((a, b) =>
+    ? requestsCoveringDate(requests, selectedDay, { includePending: showPending }).sort((a, b) =>
         (a.employee_name || "").localeCompare(b.employee_name || "")
       )
     : [];

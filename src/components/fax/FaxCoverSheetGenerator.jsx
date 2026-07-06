@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,25 @@ export default function FaxCoverSheetGenerator({
     urgent: "bg-yellow-100 text-yellow-700 border-yellow-200",
     stat: "bg-red-100 text-red-700 border-red-200",
   };
+
+  const prevRecipientRef = useRef({ recipientNumber, recipientName, pageCount });
+
+  // A generated cover sheet bakes recipientNumber/recipientName into a rendered
+  // PDF. If the parent's recipient selection changes afterward, that PDF is now
+  // stale and would misidentify the recipient it's actually being sent to — so
+  // invalidate the cached cover sheet and force the user to regenerate it.
+  useEffect(() => {
+    const prev = prevRecipientRef.current;
+    const changed = prev.recipientNumber !== recipientNumber ||
+      prev.recipientName !== recipientName ||
+      prev.pageCount !== pageCount;
+    prevRecipientRef.current = { recipientNumber, recipientName, pageCount };
+    if (changed && coverData) {
+      setCoverData(null);
+      onCoverSheetReady?.(null, null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- coverData/onCoverSheetReady intentionally omitted; this should only re-run when the recipient/page props change, not when the cover sheet it manages (or the callback) changes
+  }, [recipientNumber, recipientName, pageCount]);
 
   const generateCoverSheet = async () => {
     setIsGenerating(true);

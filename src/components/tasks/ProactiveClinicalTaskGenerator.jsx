@@ -137,9 +137,10 @@ export default function ProactiveClinicalTaskGenerator({
           ai_reason: task.clinical_rationale,
           status: 'pending'
         });
+
+        setSuggestedTasks(prev => prev.filter(t => t !== task));
       }
 
-      setSuggestedTasks([]);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       onTasksCreated?.();
       toast.success(`Successfully created ${tasksToCreate.length} tasks!`);

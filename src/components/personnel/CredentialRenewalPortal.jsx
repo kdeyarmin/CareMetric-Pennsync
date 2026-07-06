@@ -129,7 +129,7 @@ export default function CredentialRenewalPortal({ userId }) {
   const today = new Date();
 
   const expiringCredentials = credentials.filter(cred => {
-    if (!cred.expiration_date || cred.status === 'expired') return false;
+    if (!cred.expiration_date || cred.status === 'expired' || cred.status === 'pending_approval') return false;
     const expDate = parseISO(cred.expiration_date);
     const daysUntil = differenceInDays(expDate, today);
     return daysUntil <= 90 && daysUntil >= 0;

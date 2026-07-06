@@ -1,4 +1,4 @@
-import { toLocalISODate } from "@/lib/dateLocal";
+import { toLocalISODate, formatLocalDate } from "@/lib/dateLocal";
 import { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -280,7 +280,7 @@ export default function PhysicianDirectory({ onSelectPhysician, mode = 'director
                       {physician.referral_count > 0 && (
                         <div className="text-xs text-slate-500 pt-1">
                           {physician.referral_count} referral{physician.referral_count !== 1 ? 's' : ''}
-                          {physician.last_referral_date && ` • Last: ${new Date(physician.last_referral_date).toLocaleDateString()}`}
+                          {physician.last_referral_date && ` • Last: ${formatLocalDate(physician.last_referral_date)}`}
                         </div>
                       )}
                     </div>

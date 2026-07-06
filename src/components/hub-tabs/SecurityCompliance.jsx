@@ -52,6 +52,7 @@ import { logActivity } from "@/components/utils/activityLogger";
 import { formatEastern } from "@/components/utils/timezone";
 import { toCsvRows } from "@/components/admin/csvExport";
 import { getSeverityBadge } from "@/components/security/auditSeverityBadge";
+import { isAdminView } from "@/lib/roles";
 
 export default function SecurityCompliance() {
   const [selectedTab, setSelectedTab] = useState("overview");
@@ -67,7 +68,7 @@ export default function SecurityCompliance() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   const { data: securityLogs = [] } = useQuery({
     queryKey: ['securityLogs'],

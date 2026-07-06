@@ -163,7 +163,9 @@ export function summarizePacketVerification({ checklist = [], verification = {},
     if (it.status === "missing") score -= weight;
     else if (it.status === "partial") score -= Math.ceil(weight / 2);
     for (const issue of it.issues) {
-      if (!it.reviewed) continue; // synthetic issue already priced via status
+      // Synthetic issues (not-reviewed, or an N/A claim fail-closed to missing)
+      // are already priced via the status deduction above.
+      if (!it.reviewed || issue.problem.startsWith("The automated review marked this not applicable")) continue;
       score -= issue.severity === "critical" ? 10 : issue.severity === "high" ? 5 : 2;
     }
   }
