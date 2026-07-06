@@ -75,7 +75,11 @@ export default function BulkPatientActions({ selectedPatients, onClearSelection 
     mutationFn: async () => {
       const results = await Promise.allSettled(
         selectedPatients.map(patient =>
-          base44.entities.Patient.update(patient.id, { is_archived: true })
+          // status: 'archived' (in addition to is_archived) so the several
+          // call sites across the app that filter Patient.filter({status:
+          // 'active'}) without separately checking is_archived don't keep
+          // surfacing an archived patient as still active.
+          base44.entities.Patient.update(patient.id, { is_archived: true, status: 'archived' })
         )
       );
       return { total: results.length, failed: results.filter(r => r.status === 'rejected').length };

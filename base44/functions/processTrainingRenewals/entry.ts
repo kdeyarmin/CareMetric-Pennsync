@@ -37,7 +37,13 @@ Deno.serve(async (req) => {
     if (authError) return authError;
 
     const today = new Date();
-    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false }, 'expiration_date', 5000);
+    // Bound the fetch itself to the 30-day-or-already-expired window (matching
+    // the per-cert check below): without this, a tenant with a large backlog of
+    // long-expired-but-not-revoked certs would sort BEFORE near-expiry ones
+    // under ascending 'expiration_date' and could fill the 5000-row cap before
+    // the certs that actually need a renewal are ever reached.
+    const windowEnd = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false, expiration_date: { $lte: windowEnd } }, 'expiration_date', 5000);
     let renewalAssignmentsCreated = 0;
 
     for (const certificate of certificates) {

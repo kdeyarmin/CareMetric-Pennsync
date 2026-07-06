@@ -25,16 +25,20 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
         // PatientAlertsDashboard) so the browser only receives alerts the caller
         // is authorized for — PatientAlert's own RLS is created_by-only and
         // silently drops alerts for patients assigned to, but not created by,
-        // the caller. Severity/status filtering then happens client-side since
-        // the function doesn't take those as filters.
-        const res = await base44.functions.invoke('getScopedPatientAlerts', { limit: 5000 });
-        const scoped = res?.data?.alerts || [];
-        return scoped.filter(a => a.status === 'active' && ['high', 'critical'].includes(a.severity));
+        // the caller. status/severity are passed through so the function's
+        // 500-row cap is applied AFTER narrowing, not before — otherwise older
+        // or lower-severity alerts could push authorized active high/critical
+        // alerts out of the capped page.
+        const res = await base44.functions.invoke('getScopedPatientAlerts', {
+          limit: 500,
+          status: 'active',
+          severity: ['high', 'critical'],
+        });
+        return res?.data?.alerts || [];
       } else {
         if (!patientId) return [];
-        const res = await base44.functions.invoke('getScopedPatientAlerts', { patient_id: patientId });
-        const scoped = res?.data?.alerts || [];
-        return scoped.filter(a => a.status === 'active');
+        const res = await base44.functions.invoke('getScopedPatientAlerts', { patient_id: patientId, status: 'active' });
+        return res?.data?.alerts || [];
       }
     },
     enabled: showAllPatients || !!patientId,

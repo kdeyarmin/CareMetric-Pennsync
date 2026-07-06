@@ -88,7 +88,8 @@ Deno.serve(async (req) => {
         priority: matchedRule.priority,
         reason: `Matched rule: ${matchedRule.name}`,
         rule_id: matchedRule.id,
-        notify_users: matchedRule.notify || false
+        notify: matchedRule.notify || false,
+        notify_users: []
       });
     }
 
@@ -128,7 +129,8 @@ Respond with JSON: {"priority": "urgent|high|normal|low", "reason": "brief expla
       priority: aiResponse.priority || 'normal',
       reason: aiResponse.reason || 'AI analysis',
       confidence: aiResponse.confidence || 50,
-      notify_users: aiResponse.priority === 'urgent' ? [] : []
+      notify: aiResponse.priority === 'urgent',
+      notify_users: []
     });
 
   } catch (error) {

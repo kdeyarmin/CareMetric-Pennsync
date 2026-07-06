@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { toLocalISODate } from '@/lib/dateLocal';
+import { toLocalISODate, formatLocalDate } from '@/lib/dateLocal';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -30,7 +30,7 @@ import {
 import DigitalSignaturePad from './DigitalSignaturePad';
 import { toast } from 'sonner';
 
-const formatPdfDate = (value) => value ? new Date(value).toLocaleDateString() : '—';
+const formatPdfDate = (value) => value ? formatLocalDate(value) : '—';
 
 export default function DischargeSummaryWorkflow({ patientId, summaryId = null, initialStep = 'generate', onClose, onComplete }) {
   // initialStep lets a caller (e.g. the Discharge Summaries list "Review & Sign"

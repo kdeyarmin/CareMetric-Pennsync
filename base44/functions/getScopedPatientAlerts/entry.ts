@@ -11,6 +11,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * This is defense-in-depth; entity-level row security in the Base44 dashboard
  * remains the primary control. The client may still apply a favorites filter
  * on top for UX, but it is no longer an access boundary.
+ *
+ * Optional `status` (string) and `severity` (string[]) params narrow the
+ * result server-side, BEFORE `limit`/500 cap is applied, so narrowing a large
+ * result set to (e.g.) active+high/critical can't have those rows pushed out
+ * of the capped page by rows the caller was going to discard anyway.
  */
 Deno.serve(async (req) => {
   try {
@@ -18,8 +23,16 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { patient_id, limit } = await req.json().catch(() => ({}));
+    const { patient_id, limit, status, severity } = await req.json().catch(() => ({}));
     const cap = Math.min(Number(limit) || 100, 500);
+    // Optional narrowing applied server-side, BEFORE the row cap above — so a
+    // caller filtering to (e.g.) active+high/critical can't have those rows
+    // pushed out of the capped page by older/lower-severity alerts that would
+    // just be discarded client-side anyway.
+    const extraFilter = {};
+    if (status) extraFilter.status = status;
+    if (Array.isArray(severity) && severity.length > 0) extraFilter.severity = { $in: severity };
+    const hasExtraFilter = Object.keys(extraFilter).length > 0;
     // Include account_type admins — a super_admin/agency_admin who isn't yet
     // role:'admin' would otherwise be denied the all-patients view (or 403'd on
     // a single patient). Mirrors getDashboardData's admin predicate.
@@ -37,13 +50,15 @@ Deno.serve(async (req) => {
           || (Array.isArray(patient?.assigned_nurses) && patient.assigned_nurses.includes(user.email));
         if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
-      const alerts = await base44.asServiceRole.entities.PatientAlert.filter({ patient_id }, '-created_date', cap);
+      const alerts = await base44.asServiceRole.entities.PatientAlert.filter({ patient_id, ...extraFilter }, '-created_date', cap);
       return Response.json({ alerts });
     }
 
     // All-alerts view.
     if (isAdmin) {
-      const alerts = await base44.asServiceRole.entities.PatientAlert.list('-created_date', cap);
+      const alerts = hasExtraFilter
+        ? await base44.asServiceRole.entities.PatientAlert.filter(extraFilter, '-created_date', cap)
+        : await base44.asServiceRole.entities.PatientAlert.list('-created_date', cap);
       return Response.json({ alerts });
     }
 
@@ -61,7 +76,7 @@ Deno.serve(async (req) => {
     if (allowedIds.length === 0) return Response.json({ alerts: [] });
 
     const alerts = await base44.asServiceRole.entities.PatientAlert
-      .filter({ patient_id: { $in: allowedIds } }, '-created_date', cap).catch(() => []);
+      .filter({ patient_id: { $in: allowedIds }, ...extraFilter }, '-created_date', cap).catch(() => []);
     return Response.json({ alerts });
   } catch (error) {
     console.error('getScopedPatientAlerts error:', error?.message);
