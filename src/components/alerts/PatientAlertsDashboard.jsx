@@ -111,9 +111,14 @@ export default function PatientAlertsDashboard({ patientId = null }) {
     return acc;
   }, {});
 
-  // Update alert mutation
+  // Update alert mutation — routed through updateScopedPatientAlert (not a
+  // direct entity update): PatientAlert's own RLS only allows created_by/admin,
+  // but this dashboard already shows alerts for patients assigned to, not
+  // created by, the caller (via getScopedPatientAlerts above), and a direct
+  // entity write would be silently rejected for those.
   const updateAlertMutation = useMutation({
-    mutationFn: ({ alertId, data }) => base44.entities.PatientAlert.update(alertId, data),
+    mutationFn: ({ alertId, action, resolution_notes }) =>
+      base44.functions.invoke('updateScopedPatientAlert', { alert_id: alertId, action, resolution_notes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patientAlerts'] });
       setDetailsDialogOpen(false);
@@ -156,41 +161,20 @@ export default function PatientAlertsDashboard({ patientId = null }) {
   const safetyHuddle = React.useMemo(() => buildSafetyHuddle(alerts, new Date(), { limit: 3 }), [alerts]);
 
   const handleAcknowledge = (alert) => {
-    updateAlertMutation.mutate({
-      alertId: alert.id,
-      data: {
-        status: 'acknowledged',
-        acknowledged_by: currentUser?.email,
-        acknowledged_at: new Date().toISOString()
-      }
-    });
+    updateAlertMutation.mutate({ alertId: alert.id, action: 'acknowledge' });
   };
 
   const handleFlagUrgent = (alert) => {
-    updateAlertMutation.mutate({
-      alertId: alert.id,
-      data: {
-        flagged_urgent: !alert.flagged_urgent
-      }
-    });
+    updateAlertMutation.mutate({ alertId: alert.id, action: 'toggle_flagged_urgent' });
   };
 
   const handleResolve = () => {
     if (!selectedAlert) return;
-    updateAlertMutation.mutate({
-      alertId: selectedAlert.id,
-      data: {
-        status: 'resolved',
-        resolution_notes: resolutionNotes
-      }
-    });
+    updateAlertMutation.mutate({ alertId: selectedAlert.id, action: 'resolve', resolution_notes: resolutionNotes });
   };
 
   const handleDismiss = (alert) => {
-    updateAlertMutation.mutate({
-      alertId: alert.id,
-      data: { status: 'dismissed' }
-    });
+    updateAlertMutation.mutate({ alertId: alert.id, action: 'dismiss' });
   };
 
   const getSeverityBorderColor = (severity) => {

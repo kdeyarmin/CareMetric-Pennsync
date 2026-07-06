@@ -44,29 +44,23 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
     enabled: showAllPatients || !!patientId,
   });
 
+  // Routed through updateScopedPatientAlert (not a direct entity update):
+  // PatientAlert's own RLS only allows created_by/admin, but a nurse can see
+  // (via getScopedPatientAlerts) alerts for patients assigned to, not created
+  // by, them — a direct entity write would be silently rejected for those.
   const acknowledgeMutation = useMutation({
-    mutationFn: async (alertId) => {
-      // base44.auth.me() is async — awaiting it here records the actual user
-      // email. Previously the unresolved Promise was stored as acknowledged_by,
-      // losing the audit trail of who acknowledged the alert.
-      const user = await base44.auth.me();
-      return base44.entities.PatientAlert.update(alertId, {
-        status: 'acknowledged',
-        acknowledged_by: user?.email,
-        acknowledged_at: new Date().toISOString()
-      });
-    },
+    mutationFn: (alertId) => base44.functions.invoke('updateScopedPatientAlert', { alert_id: alertId, action: 'acknowledge' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ 
-        queryKey: showAllPatients ? ['allPatientRiskAlerts'] : ['patientRiskAlerts', patientId] 
+      queryClient.invalidateQueries({
+        queryKey: showAllPatients ? ['allPatientRiskAlerts'] : ['patientRiskAlerts', patientId]
       });
     }
   });
 
   const resolveMutation = useMutation({
-    mutationFn: (alertId) => base44.entities.PatientAlert.update(alertId, { status: 'resolved' }),
+    mutationFn: (alertId) => base44.functions.invoke('updateScopedPatientAlert', { alert_id: alertId, action: 'resolve' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: showAllPatients ? ['allPatientRiskAlerts'] : ['patientRiskAlerts', patientId] 
       });
     }
