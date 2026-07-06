@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { format, parseISO, differenceInDays } from "date-fns";
-import { isAdminView } from "@/lib/roles";
 
 export default function ComplianceMonitoringDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -298,7 +297,7 @@ Compliance Management System`;
     }
   };
 
-  if (!isAdminView(currentUser)) {
+  if (currentUser?.role !== 'admin') {
     return (
       <div className="p-8 max-w-2xl mx-auto text-center">
         <AlertTriangle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />

@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     const user = await base44.auth.me();
-    if (!user || (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin')) {
+    if (!user || user.role !== 'admin') {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 

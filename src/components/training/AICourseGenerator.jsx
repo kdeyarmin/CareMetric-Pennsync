@@ -53,7 +53,6 @@ export default function AICourseGenerator({ onGenerated }) {
   });
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const isAdminUser = currentUser?.role === "admin" || currentUser?.account_type === "agency_admin" || currentUser?.account_type === "super_admin";
 
   const set = (patch) => setForm((prev) => ({ ...prev, ...patch }));
 
@@ -315,7 +314,7 @@ export default function AICourseGenerator({ onGenerated }) {
             </Alert>
           )}
 
-          {!isAdminUser && currentUser && (
+          {!(currentUser?.role === "admin" || currentUser?.account_type === "agency_admin" || currentUser?.account_type === "super_admin") && currentUser && (
             <Alert className="border-slate-200 bg-slate-50">
               <AlertDescription className="text-slate-600 text-sm">
                 Only administrators can generate courses.
@@ -324,7 +323,7 @@ export default function AICourseGenerator({ onGenerated }) {
           )}
 
           <div className="flex items-center gap-3 pt-1">
-            <Button onClick={handleGenerate} disabled={loading || !form.topic.trim() || !isAdminUser}>
+            <Button onClick={handleGenerate} disabled={loading || !form.topic.trim()}>
               {loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating…</>
               ) : (

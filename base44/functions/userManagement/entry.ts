@@ -174,9 +174,7 @@ Deno.serve(async (req) => {
 
     // Verify admin for most actions
     const currentUser = await base44.auth.me();
-    const isAdmin = currentUser?.role === 'admin'
-      || currentUser?.account_type === 'agency_admin'
-      || currentUser?.account_type === 'super_admin';
+    const isAdmin = currentUser?.role === 'admin';
     // Granting the privileged 'admin' (facility admin) role requires super admin,
     // matching the hardened sibling functions (createUserWithTempPassword,
     // fixUserAccount): a plain facility admin must not be able to mint another
