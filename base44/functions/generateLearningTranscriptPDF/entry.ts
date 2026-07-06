@@ -24,6 +24,10 @@ Deno.serve(async (req) => {
     }
     const employee = employees[0];
 
+    if (user.account_type === 'agency_admin' && employee.agency_name !== user.agency_name) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Get certificates for this employee
     let query = { user_id: employeeId, revoked: false };
     if (dateStart || dateEnd) {

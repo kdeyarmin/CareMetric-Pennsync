@@ -96,7 +96,7 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
 
       // Process incidents
       for (const incident of incidents) {
-        if (incident.ai_tags) {
+        if (hasSemanticTags(incident.ai_tags)) {
           processed++;
           continue;
         }

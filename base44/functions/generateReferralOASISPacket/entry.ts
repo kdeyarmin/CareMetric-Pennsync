@@ -1053,7 +1053,7 @@ PLAN:
     // Fracture-related care plan
     if (dx.primary_diagnosis?.toLowerCase().includes('fracture')) {
       carePlans.push({
-        problem: 'Impaired Physical Mobility related to pelvic fracture',
+        problem: `Impaired Physical Mobility related to ${dx.primary_diagnosis}`,
         goal: 'Patient will ambulate 50 feet with walker and minimal assistance within 60 days',
         interventions: [
           'Assess mobility status and fall risk each visit',
@@ -1102,7 +1102,7 @@ PLAN:
         goal: 'Patient will report improved mood and engagement in activities within 60 days',
         interventions: [
           'Screen for depression using standardized tool (PHQ-2/PHQ-9)',
-          'Monitor medication compliance with Sertraline',
+          'Monitor antidepressant medication compliance',
           'Assess social isolation and encourage family engagement',
           'Provide emotional support and active listening',
           'Collaborate with MD if symptoms worsen'
@@ -1111,13 +1111,13 @@ PLAN:
     }
 
     // Pain management care plan
-    if (func.pain) {
+    if (func.pain && dx.primary_diagnosis?.toLowerCase().includes('fracture')) {
       carePlans.push({
-        problem: 'Acute Pain related to pelvic fracture',
+        problem: `Acute Pain related to ${dx.primary_diagnosis}`,
         goal: 'Patient will report pain level 3/10 or less with improved function within 30 days',
         interventions: [
           'Assess pain level using 0-10 scale each visit',
-          'Monitor effectiveness of oxycodone and side effects',
+          'Monitor effectiveness of current pain medication and side effects',
           'Educate on non-pharmacological pain management techniques',
           'Assess for signs of medication misuse or adverse effects',
           'Coordinate with MD if pain management inadequate'

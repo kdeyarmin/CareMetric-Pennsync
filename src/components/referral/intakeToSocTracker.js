@@ -85,7 +85,7 @@ export function computeTurnaround(referral = {}, opts = {}) {
     const withinReferralWindow = turnaround != null && turnaround <= TIMELY_INITIATION_DAYS;
     const withinOrderedWindow =
       orderedSoc != null && socDate.getTime() <= orderedSoc.getTime() + TIMELY_INITIATION_DAYS * 86400000;
-    const timely = referralDate ? withinReferralWindow || withinOrderedWindow : null;
+    const timely = referralDate || orderedSoc ? withinReferralWindow || withinOrderedWindow : null;
     return {
       completed: true,
       open: false,

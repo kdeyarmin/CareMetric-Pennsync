@@ -151,10 +151,12 @@ Deno.serve(async (req) => {
 
     const [employee] = await base44.asServiceRole.entities.User.filter({ email: attempt.user_id }, '-created_date', 1);
     const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 300);
-    const agencyAdmins = allUsers.filter((candidate) =>
-      candidate.account_type === 'agency_admin' &&
-      (!employee?.agency_name || candidate.agency_name === employee.agency_name)
-    );
+    const agencyAdmins = employee?.agency_name
+      ? allUsers.filter((candidate) =>
+          candidate.account_type === 'agency_admin' &&
+          candidate.agency_name === employee.agency_name
+        )
+      : [];
 
     const failedQuestionIds = (attempt.answers_json || [])
       .filter((answer) => answer.correct === false || (answer.points_earned ?? 0) < (answer.points_possible ?? 1))

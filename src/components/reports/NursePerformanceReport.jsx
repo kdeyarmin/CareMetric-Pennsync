@@ -34,12 +34,12 @@ export default function NursePerformanceReport({ dateRange }) {
 
   const filteredVisits = noteConversions.filter(nc => {
     const date = new Date(nc.created_date);
-    return date >= new Date(dateRange.start) && date <= new Date(dateRange.end + 'T23:59:59.999');
+    return date >= new Date(dateRange.start + 'T00:00:00') && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
   const filteredAudits = complianceAudits.filter(a => {
     const date = new Date(a.audit_date);
-    return date >= new Date(dateRange.start) && date <= new Date(dateRange.end + 'T23:59:59.999');
+    return date >= new Date(dateRange.start + 'T00:00:00') && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
   // Calculate performance metrics per nurse (visits = enhancements)
@@ -69,7 +69,7 @@ export default function NursePerformanceReport({ dateRange }) {
     exportToPDF({
       filename: `nurse-performance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`,
       title: 'Nurse Performance Report',
-      subtitle: `Period: ${format(new Date(dateRange.start), 'MMM d, yyyy')} - ${format(new Date(dateRange.end + 'T23:59:59.999'), 'MMM d, yyyy')}`,
+      subtitle: `Period: ${format(new Date(dateRange.start + 'T00:00:00'), 'MMM d, yyyy')} - ${format(new Date(dateRange.end + 'T23:59:59.999'), 'MMM d, yyyy')}`,
       content: [
         { type: 'heading', text: 'Performance Metrics' },
         { type: 'table', data: nurseMetrics, columns: [
@@ -97,7 +97,7 @@ export default function NursePerformanceReport({ dateRange }) {
         <div>
           <h3 className="text-xl font-semibold text-slate-900">Nurse Performance Analysis</h3>
           <p className="text-sm text-slate-600">
-            {format(new Date(dateRange.start), 'MMM d, yyyy')} - {format(new Date(dateRange.end + 'T23:59:59.999'), 'MMM d, yyyy')}
+            {format(new Date(dateRange.start + 'T00:00:00'), 'MMM d, yyyy')} - {format(new Date(dateRange.end + 'T23:59:59.999'), 'MMM d, yyyy')}
           </p>
         </div>
         <Button onClick={handleExport} >

@@ -127,6 +127,7 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
     // HIPAA: purge all cached PHI so the next user on a shared device can't
     // see the previous session's patient data before refetch.
+    sessionStorage.clear();
     try { queryClientInstance.clear(); } catch (_e) { /* no-op */ }
     // Also purge re-fetchable PHI persisted to localStorage/IndexedDB (the
     // in-memory React Query cache is not the only copy). Await so the IndexedDB

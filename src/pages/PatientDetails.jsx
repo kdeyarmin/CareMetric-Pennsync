@@ -595,7 +595,7 @@ export default function PatientDetails() {
                 <AIGeneratedOASISAssessment
                   patientId={patientId}
                   visitId={oasisTriggerVisit.id}
-                  visitType={oasisTriggerVisit.visit_type === 'admission' ? 'Start of Care' : oasisTriggerVisit.visit_type === 'recertification' ? 'Recertification' : 'Start of Care'}
+                  visitType={oasisTriggerVisit.visit_type === 'admission' ? 'Start of Care' : oasisTriggerVisit.visit_type === 'recertification' ? 'Recertification' : oasisTriggerVisit.visit_type === 'discharge' ? 'Discharge' : 'Start of Care'}
                   onSaved={() => {
                     queryClient.invalidateQueries({ queryKey: ['oasisAssessments', patientId] });
                     setOasisTriggerVisit(null);

@@ -21,14 +21,16 @@ export default function OASISComplianceReport({ dateRange }) {
     initialData: [],
   });
 
+  const rangeStart = new Date(dateRange.start + 'T00:00:00');
+
   const filteredOASIS = oasisAssessments.filter(o => {
     const date = new Date(o.assessment_date);
-    return date >= new Date(dateRange.start) && date <= new Date(dateRange.end + 'T23:59:59.999');
+    return date >= rangeStart && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
   const filteredAudits = complianceAudits.filter(a => {
     const date = new Date(a.audit_date);
-    return date >= new Date(dateRange.start) && date <= new Date(dateRange.end + 'T23:59:59.999');
+    return date >= rangeStart && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
   // Calculate metrics

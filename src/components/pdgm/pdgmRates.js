@@ -137,9 +137,10 @@ export function deepMergeNumbers(base, over) {
   if (!over || typeof over !== "object") return out;
   for (const key of Object.keys(over)) {
     const ov = over[key];
+    const baseVal = base?.[key];
     if (ov && typeof ov === "object" && !Array.isArray(ov)) {
-      out[key] = deepMergeNumbers(base?.[key] || {}, ov);
-    } else if (typeof ov === "number" && Number.isFinite(ov)) {
+      out[key] = deepMergeNumbers(baseVal || {}, ov);
+    } else if (typeof ov === "number" && Number.isFinite(ov) && !(baseVal && typeof baseVal === "object")) {
       out[key] = ov;
     }
   }

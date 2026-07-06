@@ -234,6 +234,10 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
       }
       syncParticipants(room);
     } catch (err) {
+      // Disconnect the room we may have already joined before the failure so a
+      // later Retry can't orphan this connection.
+      try { roomRef.current?.disconnect(); } catch { /* already gone */ }
+      roomRef.current = null;
       // Stop the local camera/mic we acquired before the failure so the device
       // LED doesn't stay on, and so a later Retry can't orphan this stream.
       localStreamRef.current?.getTracks().forEach((t) => t.stop());

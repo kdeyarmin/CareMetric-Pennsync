@@ -618,7 +618,8 @@
         "active",
         "discharged",
         "hospitalized",
-        "merged"
+        "merged",
+        "archived"
       ],
       "default": "active"
     },

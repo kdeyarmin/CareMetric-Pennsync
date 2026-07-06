@@ -420,8 +420,8 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
 
   const generate = async () => {
     if (!analysis) return;
-    const { required, presence } = analysis;
-    const criticalUnanswered = computeCriticalGaps(presence, required).filter(e => !answers[e.id]?.trim());
+    const { required } = analysis;
+    const criticalUnanswered = computeCriticalGaps(effectivePresence, required).filter(e => !answers[e.id]?.trim());
     if (criticalUnanswered.length) {
       toast.error(`Required before generating: ${criticalUnanswered.map(e => e.label).join(", ")}`);
       return;
@@ -525,7 +525,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const thinCritical = analysis ? findInadequateCritical(analysis.required, answers) : [];
   const answeredOrConfirmed = (id) => !!answers[id]?.trim() || confirmedNegatives.has(id);
   const answeredCount = gaps.filter(g => answeredOrConfirmed(g.id)).length;
-  const criticalUnanswered = analysis ? computeCriticalGaps(analysis.presence, analysis.required).filter(e => !answers[e.id]?.trim()) : [];
+  const criticalUnanswered = analysis ? computeCriticalGaps(effectivePresence, analysis.required).filter(e => !answers[e.id]?.trim()) : [];
   const documentedCount = analysis ? analysis.required.filter(e => { const p = effectivePresence.find(r => r.id === e.id); return (p && p.present) || answeredOrConfirmed(e.id); }).length : 0;
   const liveCoverage = analysis ? computeCoverageScore({ requiredElements: analysis.required, presenceResults: effectivePresence, answeredIds: analysis.required.filter(e => answers[e.id]?.trim()).map(e => e.id), confirmedNegativeIds: Array.from(confirmedNegatives) }) : 0;
   const tone = liveCoverage >= 90 ? "green" : liveCoverage >= 70 ? "orange" : "red";

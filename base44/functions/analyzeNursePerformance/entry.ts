@@ -39,10 +39,10 @@ Deno.serve(async (req) => {
     // NOT bulk-read the whole Patient table (a needless 5000-record PHI fetch
     // that was fetched and never used).
     const [activities, recommendations, audits, visits, incidents] = await Promise.all([
-      base44.asServiceRole.entities.UserActivity.filter({ user_email: targetEmail }),
-      base44.asServiceRole.entities.TrainingRecommendation.filter({ nurse_email: targetEmail }),
-      base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }),
-      base44.asServiceRole.entities.Visit.filter({ created_by: targetEmail }),
+      base44.asServiceRole.entities.UserActivity.filter({ user_email: targetEmail }, '-created_date', 5000),
+      base44.asServiceRole.entities.TrainingRecommendation.filter({ nurse_email: targetEmail }, '-created_date', 5000),
+      base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }, '-created_date', 5000),
+      base44.asServiceRole.entities.Visit.filter({ created_by: targetEmail }, '-created_date', 5000),
       base44.asServiceRole.entities.Incident.list('-created_date', 5000)
     ]);
 

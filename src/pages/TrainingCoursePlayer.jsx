@@ -808,6 +808,8 @@ export default function TrainingCoursePlayer() {
                   setActiveModuleIndex(0);
                   setAttestationAccepted(false);
                   setSignedName("");
+                  setStartTime(Date.now());
+                  setStartedAt(new Date().toISOString());
                 }}
               >
                 <RefreshCw className="w-4 h-4 mr-2" /> Review Content & Retake

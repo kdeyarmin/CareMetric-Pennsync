@@ -146,7 +146,7 @@ export default function PersonalizedLearningPath({ nurseEmail, onStartModule }) 
           if (!item?.module) return null;
           
           const completed = isModuleCompleted(item.module);
-          const isNext = !completed && idx > 0 && learningPath.learning_path.slice(0, idx).every(prev =>
+          const isNext = !completed && learningPath.learning_path.slice(0, idx).every(prev =>
             prev.module && isModuleCompleted(prev.module)
           );
 

@@ -32,7 +32,7 @@ export function validateNotification({ user_email, title, message, type, priorit
   const safePriority = PRIORITIES.includes(priority) ? priority : 'medium';
   if (action_url != null) {
     const a = String(action_url);
-    if (!a.startsWith('/') || a.startsWith('//')) {
+    if (!a.startsWith('/') || a.startsWith('//') || a.includes('\\')) {
       return { valid: false, error: 'action_url must be a relative in-app path.' };
     }
   }

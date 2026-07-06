@@ -1,6 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@2.5.1';
 
+// Financial visibility gate. MIRRORS src/lib/permissions.canViewFinancials
+// (which is isAdminLike): backend Deno modules can't import src/lib, so the
+// admin checks are duplicated here. Keep in sync. PDGM payment/revenue is
+// restricted to administrators; clinical staff (nurses) must never receive
+// dollar figures, even by calling this endpoint directly.
+function canViewFinancials(user) {
+  if (!user) return false;
+  return (
+    user.role === 'admin' ||
+    user.account_type === 'agency_admin' ||
+    user.account_type === 'super_admin'
+  );
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -125,7 +139,7 @@ Deno.serve(async (req) => {
       addKeyValue('Admission Source', navigationData.admission_timing?.admission_source || 'N/A');
       addKeyValue('Episode Timing', navigationData.admission_timing?.episode_timing || 'N/A');
 
-      if (navigationData.case_mix_calculation) {
+      if (navigationData.case_mix_calculation && canViewFinancials(user)) {
         y += 3;
         addKeyValue('Base Payment', `$${navigationData.case_mix_calculation.base_payment?.toFixed(2)}`);
         addKeyValue('Clinical Weight', navigationData.case_mix_calculation.clinical_weight?.toFixed(4));
@@ -137,7 +151,7 @@ Deno.serve(async (req) => {
     }
 
     // Revenue Analysis
-    if (revenueData) {
+    if (revenueData && canViewFinancials(user)) {
       addSection('REVENUE OPTIMIZATION ANALYSIS');
       addKeyValue('Current Payment', `$${revenueData.original?.totalPayment?.toFixed(2) || 0}`);
       addKeyValue('Optimized Payment', `$${revenueData.corrected?.totalPayment?.toFixed(2) || 0}`);

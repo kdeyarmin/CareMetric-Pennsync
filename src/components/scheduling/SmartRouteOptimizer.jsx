@@ -4,6 +4,7 @@ import { useState } from "react";
 // guard. Prefer it over a raw invokeLLM at component call sites (see the hook's
 // docs); use invokeLLM only in loops/utilities where a hook can't run.
 import { useAICall } from "@/hooks/useAICall";
+import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -132,6 +133,15 @@ Return JSON:
         toast.error("The optimizer returned an unusable result — please try again.");
         return;
       }
+
+      // Persist the optimized visit_time for each visit — otherwise nothing
+      // is actually saved and callers telling the user their schedule "has
+      // been updated" would be lying.
+      await Promise.all(
+        result.optimized_order.map(v =>
+          base44.entities.Visit.update(v.visit_id, { visit_time: v.suggested_time })
+        )
+      );
 
       setOptimizedRoute(result);
       setSavings({

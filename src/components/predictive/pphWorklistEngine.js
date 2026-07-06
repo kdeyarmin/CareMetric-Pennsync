@@ -10,6 +10,8 @@
 // The per-patient risk scoring mirrors RehospitalizationPredictor.jsx (extracted
 // here so it is deterministic and unit-tested with `node --test`).
 
+import { parseLocalDate } from "../../lib/dateLocal.js";
+
 export const DTC_PAC_WINDOW_DAYS = 31; // Discharge-to-Community post-acute window
 export const PPH_MEASURE = "within_stay_pph";
 
@@ -87,9 +89,10 @@ export function computePphRisk({ oasis = [], visits = [] } = {}) {
 
 /** Days since admission (episode age), or null when unknown. */
 export function daysInEpisode(patient, asOf) {
-  const start = patient?.admission_date ? new Date(patient.admission_date) : null;
+  const start = patient?.admission_date ? parseLocalDate(patient.admission_date) : null;
   if (!start || Number.isNaN(start.getTime())) return null;
-  const now = asOf ? new Date(asOf) : new Date();
+  const now = asOf ? parseLocalDate(asOf) : new Date();
+  if (!now || Number.isNaN(now.getTime())) return null;
   return Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 }
 

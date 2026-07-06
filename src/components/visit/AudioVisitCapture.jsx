@@ -104,7 +104,8 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     setSaved(false);
     setVitals({});
     setSignatureImage(null);
-    if (patientId !== boundPatientRef.current) setExistingVisitId(null);
+    setExistingVisitId(patientId === boundPatientRef.current && boundVisit?.patient_id === patientId ? boundVisit.id : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boundVisit intentionally omitted; this should only reset state on a patient switch, not on every boundVisit refetch
   }, [patientId]);
 
   const careScope = patient?.care_type || currentUser?.care_scope;

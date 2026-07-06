@@ -60,6 +60,11 @@ export default function DutyStatusCard() {
   useEffect(() => {
     if (!user) return;
     setOffDutyMessage(user.off_duty_message || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately scoped to this one field so saving the message doesn't clobber in-progress edits in the schedule section below
+  }, [user?.off_duty_message]);
+
+  useEffect(() => {
+    if (!user) return;
     const isRecurring = !!user.scheduled_off_duty_recurring;
     const state = scheduleState(user.scheduled_off_duty_start, user.scheduled_off_duty_end, undefined, isRecurring);
     const live = state !== "none" && state !== "expired";
@@ -67,7 +72,8 @@ export default function DutyStatusCard() {
     setRecurring(live && isRecurring);
     setStartInput(live ? toLocalInput(user.scheduled_off_duty_start) : "");
     setEndInput(live ? toLocalInput(user.scheduled_off_duty_end) : "");
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately scoped to these fields so toggling duty status or saving the message doesn't clobber in-progress edits here
+  }, [user?.scheduled_off_duty_start, user?.scheduled_off_duty_end, user?.scheduled_off_duty_recurring]);
 
   const mutation = useMutation({
     mutationFn: (payload) => base44.functions.invoke("setNurseDutyStatus", payload),

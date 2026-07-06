@@ -24,6 +24,13 @@ Deno.serve(async (req) => {
     }
     const employee = employees[0];
 
+    // Agency admins are scoped to their OWN agency (mirrors exportLearningReportCSV):
+    // without this an agency_admin could pass another agency's employeeId and pull
+    // that tenant's certificate packet.
+    if (user.account_type === 'agency_admin' && employee.agency_name !== user.agency_name) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Get certificates
     let query = { user_id: employeeId, revoked: false };
     if (certificateIds && certificateIds.length > 0) {

@@ -51,30 +51,24 @@ Deno.serve(async (req) => {
     for (const rule of rules) {
       let matches = false;
       
-      if (rule.rule_type === 'keyword' && rule.keywords?.length > 0) {
+      if (rule.rule_type === 'keyword' && rule.pattern) {
         const text = analysisText.toLowerCase();
-        matches = rule.keywords.some(keyword => 
-          text.includes(keyword.toLowerCase())
-        );
-      }
-      
-      if (rule.rule_type === 'sender' && rule.sender_patterns?.length > 0) {
-        matches = rule.sender_patterns.some(pattern => 
-          from_number?.includes(pattern) || 
-          from_name?.toLowerCase().includes(pattern.toLowerCase())
-        );
+        matches = text.includes(rule.pattern.toLowerCase());
       }
 
-      if (rule.rule_type === 'recipient' && rule.sender_patterns?.length > 0) {
-        matches = rule.sender_patterns.some(pattern => 
-          to_number?.includes(pattern) || 
-          to_name?.toLowerCase().includes(pattern.toLowerCase())
-        );
+      if (rule.rule_type === 'sender' && rule.pattern) {
+        matches = from_number?.includes(rule.pattern) ||
+          from_name?.toLowerCase().includes(rule.pattern.toLowerCase());
+      }
+
+      if (rule.rule_type === 'recipient' && rule.pattern) {
+        matches = to_number?.includes(rule.pattern) ||
+          to_name?.toLowerCase().includes(rule.pattern.toLowerCase());
       }
 
       if (matches) {
         const priorityScores = { urgent: 4, high: 3, normal: 2, low: 1 };
-        const score = priorityScores[rule.priority_level] || 2;
+        const score = priorityScores[rule.priority] || 2;
         
         if (score > ruleScore) {
           ruleScore = score;
@@ -91,10 +85,11 @@ Deno.serve(async (req) => {
       });
 
       return Response.json({
-        priority: matchedRule.priority_level,
+        priority: matchedRule.priority,
         reason: `Matched rule: ${matchedRule.name}`,
         rule_id: matchedRule.id,
-        notify_users: matchedRule.notify_users || []
+        notify: matchedRule.notify || false,
+        notify_users: []
       });
     }
 
@@ -134,7 +129,8 @@ Respond with JSON: {"priority": "urgent|high|normal|low", "reason": "brief expla
       priority: aiResponse.priority || 'normal',
       reason: aiResponse.reason || 'AI analysis',
       confidence: aiResponse.confidence || 50,
-      notify_users: aiResponse.priority === 'urgent' ? [] : []
+      notify: aiResponse.priority === 'urgent',
+      notify_users: []
     });
 
   } catch (error) {

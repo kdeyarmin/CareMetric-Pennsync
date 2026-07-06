@@ -551,6 +551,7 @@ Deno.serve(async (req) => {
         provider_message_id: resp.data?.data?.id || row.provider_message_id || null,
         status: mappedStatus,
         failure_reason: null,
+        failure_notified: false,
         client_message_id: clientMessageId,
         redrive_claimed_by: null,
       }).catch(() => {});

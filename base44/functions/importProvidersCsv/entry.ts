@@ -152,10 +152,14 @@ Deno.serve(async (req) => {
 
     const existingProviders = await base44.asServiceRole.entities.Physician.list('-updated_date', 5000);
 
-    const providerMap = new Map();
+    const providerMapByNpi = new Map();
+    const providerMapByNameFax = new Map();
     for (const provider of existingProviders) {
-      const key = cleanValue(provider.npi_number) || `${cleanValue(provider.full_name).toLowerCase()}|${cleanPhone(provider.fax_number)}`;
-      if (key) providerMap.set(key, provider);
+      const npiKey = cleanValue(provider.npi_number);
+      if (npiKey) providerMapByNpi.set(npiKey, provider);
+      const providerName = cleanValue(provider.full_name);
+      const providerFax = cleanPhone(provider.fax_number);
+      if (providerName && providerFax) providerMapByNameFax.set(`${providerName.toLowerCase()}|${providerFax}`, provider);
     }
 
     const providerCreates = [];
@@ -202,7 +206,7 @@ Deno.serve(async (req) => {
         notes: 'Imported from provider CSV'
       };
 
-      const existingProvider = providerMap.get(providerKey);
+      const existingProvider = (npi_number && providerMapByNpi.get(npi_number)) || providerMapByNameFax.get(`${full_name.toLowerCase()}|${fax_number}`);
       if (existingProvider) {
         providerUpdates.push({ id: existingProvider.id, data: providerPayload });
       } else {
