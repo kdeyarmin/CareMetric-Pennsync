@@ -41,6 +41,12 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { label, effective_year, is_official, notes, rates, icd10_clinical_groups, case_mix_weight_table } = body || {};
 
+    // Guard against empty payloads: an accidental invocation with no body
+    // would overwrite the agency's existing rate config with empty defaults.
+    if (!body || Object.keys(body).length === 0) {
+      return Response.json({ error: 'Request body is required' }, { status: 400 });
+    }
+
     // Single-row config: update the most recent row if one exists, else create.
     // The id is derived server-side (not trusted from the body), matching how the
     // page loads `list('-created_date', 1)`.

@@ -39,25 +39,25 @@ function getSchedulerAuthError(req, user) {
 // Predefined list of critical Medicare guidelines to sync
 const GUIDELINES_TO_SYNC = [
   {
-    url: 'https://www.cms.gov/medicare/payment/medicare-fee-for-service-payment/home-health-services',
+    url: 'https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health',
     category: 'medicare_cop',
     subcategory: 'Home Health PPS',
     keywords: ['home health', 'prospective payment', 'HHPPS', 'reimbursement']
   },
   {
-    url: 'https://www.cms.gov/medicare/quality/home-health-quality-reporting-program',
+    url: 'https://www.cms.gov/medicare/quality/home-health',
     category: 'quality_measures',
     subcategory: 'Home Health Quality Reporting',
     keywords: ['quality measures', 'HHQRP', 'reporting']
   },
   {
-    url: 'https://www.cms.gov/medicare/health-safety-standards/quality-safety-oversight-general-information/conditions-participation',
+    url: 'https://www.cms.gov/medicare/health-safety-standards/conditions-coverage-participation/home-health',
     category: 'medicare_cop',
     subcategory: 'Conditions of Participation',
     keywords: ['conditions of participation', 'CoPs', 'compliance', 'regulations']
   },
   {
-    url: 'https://www.cms.gov/medicare/payment/medicare-fee-for-service-payment/home-health-services/home-health-patient-driven-groupings-model',
+    url: 'https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health/home-health-patient-driven-groupings-model',
     category: 'pdgm',
     subcategory: 'Patient-Driven Groupings Model',
     keywords: ['PDGM', 'patient-driven', 'groupings', 'case mix']

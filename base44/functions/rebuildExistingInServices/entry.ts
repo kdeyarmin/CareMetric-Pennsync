@@ -102,7 +102,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const { limit = 10 } = await req.json();
+    // Default limit=1: each course requires a full LLM generation (~15-30s),
+    // so processing many courses in a single invocation would exceed the
+    // platform's 120s execution timeout. The admin calls this repeatedly to
+    // work through the backlog, or passes an explicit limit for small batches.
+    const { limit = 1 } = await req.json();
     const courses = await base44.asServiceRole.entities.TrainingCourse.list('-updated_date', limit);
     const targets = courses.filter((course) => ['in_service', 'annual_mandatory'].includes(course.training_type));
     const results = [];
@@ -115,8 +119,10 @@ Deno.serve(async (req) => {
       // every nested object), which this rich lesson/quiz shape can't satisfy.
       let generated;
       try {
+        // Default model is sufficient for generating structured training content
+        // and avoids the 120s timeout that claude_opus_4_8 hits on the rich
+        // lesson/quiz prompt. Saves credits too.
         const raw = await base44.asServiceRole.integrations.Core.InvokeLLM({
-          model: "claude_opus_4_8",
           prompt: `You create practical healthcare in-service training. Return ONLY valid JSON, no prose or code fences.\n\n${buildPrompt(course)}`
         });
         generated = parseLLMJson(raw);
@@ -146,6 +152,7 @@ Deno.serve(async (req) => {
             course_id: course.id,
             title: module.title || `Module ${index + 1}`,
             type: module.type || 'lesson',
+            category: course.category || 'compliance',
             content_json: module.content || {},
             order_index: index,
             estimated_minutes: Math.max(5, Math.floor((course.estimated_minutes || 30) / Math.max((generated.modules || []).length, 1))),

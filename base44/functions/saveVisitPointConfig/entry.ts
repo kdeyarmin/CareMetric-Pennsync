@@ -30,7 +30,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Only administrators can set visit point values.' }, { status: 403 });
     }
 
-    const body = (await req.json()) || {};
+    const body = (await req.json().catch(() => ({}))) || {};
+
+    // Guard against empty payloads: an accidental invocation with no body
+    // would overwrite the facility's point config with all zeros.
+    if (Object.keys(body).length === 0) {
+      return Response.json({ error: 'Request body is required' }, { status: 400 });
+    }
+
     const fields = { active: true, notes: String(body.notes || '').slice(0, 1000) };
     for (const f of POINT_FIELDS) fields[f] = toNonNegativeNumber(body[f]);
 

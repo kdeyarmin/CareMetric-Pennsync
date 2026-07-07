@@ -18,6 +18,12 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
 
+    // Guard against empty payloads: an accidental invocation with no body
+    // would wipe the agency's existing config with empty defaults.
+    if (!body || Object.keys(body).length === 0) {
+      return Response.json({ error: 'Request body is required (disabled_rules, severity_overrides, or custom_items)' }, { status: 400 });
+    }
+
     const disabled_rules = Array.isArray(body.disabled_rules)
       ? body.disabled_rules.filter((r: unknown) => typeof r === 'string').slice(0, 100)
       : [];
