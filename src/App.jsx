@@ -3,7 +3,7 @@
 // to ROUTES there to make it reachable, or add a REDIRECT for a renamed page.
 
 import './App.css'
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog"
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -163,47 +163,11 @@ const AuthenticatedApp = () => {
 
   // Render the main app. A single layout route keeps the sidebar, header, and
   // bottom nav mounted across navigations — only the page content (Outlet)
-  // changes. This prevents the full-shell remount that previously caused
-  // flicker, lost clicks, and re-fetched queries on every route switch.
-  return (
-    <Routes>
-      <Route path="/" element={<Navigate to={`/${MAIN_PAGE}`} replace />} />
-      <Route element={<Layout />}>
-        {ROUTES.map(({ name, Component, adminOnly, superAdminOnly }) => {
-          // Role gate: platform-level pages require super_admin; other admin
-          // pages require facility_admin or super_admin; everything else is open.
-          const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
-          const blockedAdmin = adminOnly && !isAdmin;
-          return (
-            <Route
-              key={name}
-              path={`/${name}`}
-              // Per-route boundary: a render error in one page shows a contained
-              // error here while the nav shell stays mounted, and navigating to
-              // another route remounts a fresh boundary (no full-app reload).
-              element={
-                <ErrorBoundary key={name}>
-                  {blockedSuperAdmin
-                    ? <AdminOnlyFallback superAdmin />
-                    : blockedAdmin
-                      ? <AdminOnlyFallback />
-                      : (
-                        <Suspense fallback={<RoutePageLoader />}>
-                          <Component />
-                        </Suspense>
-                      )}
-                </ErrorBoundary>
-              }
-            />
-          );
-        })}
-        {REDIRECTS.map(({ from, to }) => (
-          <Route key={from} path={from} element={<RedirectTo to={to} />} />
-        ))}
-        <Route path="*" element={<PageNotFound />} />
-      </Route>
-    </Routes>
-  );
+  // changes. The route tree itself is memoized above (before the early returns)
+  // so it is NOT rebuilt on every navigation re-render — re-creating <Route>
+  // elements on each location change forces React Router v7 to rebuild its
+  // matcher each time, which can make clicks appear to do nothing.
+  return routeTree;
 };
 
 
