@@ -31,10 +31,6 @@ import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 // the whole app — so plain lazy() is sufficient here.
 const JoinTelehealth = lazy(() => import('@/pages/JoinTelehealth'));
 
-const LayoutWrapper = ({ children, currentPageName }) => Layout ?
-  <Layout currentPageName={currentPageName}>{children}</Layout>
-  : <>{children}</>;
-
 // Shown when a non-admin navigates directly to an admin-only route. Admin pages
 // are hidden from the sidebar/palette for non-admins, but routes are reachable
 // by URL, so this is the client-side authorization gate (server RLS is the real
@@ -165,28 +161,27 @@ const AuthenticatedApp = () => {
     return <AIContentResponsibilityAgreement />;
   }
 
-  // Render the main app. Keep the layout mounted during lazy page loads so
-  // navbar clicks visibly navigate immediately instead of replacing the whole app
-  // with a blank centered loader.
+  // Render the main app. A single layout route keeps the sidebar, header, and
+  // bottom nav mounted across navigations — only the page content (Outlet)
+  // changes. This prevents the full-shell remount that previously caused
+  // flicker, lost clicks, and re-fetched queries on every route switch.
   return (
     <Routes>
       <Route path="/" element={<Navigate to={`/${MAIN_PAGE}`} replace />} />
-      {ROUTES.map(({ name, Component, adminOnly, superAdminOnly }) => {
-        // Role gate: platform-level pages require super_admin; other admin
-        // pages require facility_admin or super_admin; everything else is open.
-        const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
-        const blockedAdmin = adminOnly && !isAdmin;
-        return (
-          <Route
-            key={name}
-            path={`/${name}`}
-            element={
-              <LayoutWrapper currentPageName={name}>
-                {/* Per-route boundary: a render error in one page shows a
-                    contained error here while the nav shell stays mounted, and
-                    navigating to another route remounts a fresh boundary (no
-                    full-app reload). The app-level boundary in App() still
-                    catches errors in the layout/providers themselves. */}
+      <Route element={<Layout />}>
+        {ROUTES.map(({ name, Component, adminOnly, superAdminOnly }) => {
+          // Role gate: platform-level pages require super_admin; other admin
+          // pages require facility_admin or super_admin; everything else is open.
+          const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
+          const blockedAdmin = adminOnly && !isAdmin;
+          return (
+            <Route
+              key={name}
+              path={`/${name}`}
+              // Per-route boundary: a render error in one page shows a contained
+              // error here while the nav shell stays mounted, and navigating to
+              // another route remounts a fresh boundary (no full-app reload).
+              element={
                 <ErrorBoundary key={name}>
                   {blockedSuperAdmin
                     ? <AdminOnlyFallback superAdmin />
@@ -198,15 +193,15 @@ const AuthenticatedApp = () => {
                         </Suspense>
                       )}
                 </ErrorBoundary>
-              </LayoutWrapper>
-            }
-          />
-        );
-      })}
-      {REDIRECTS.map(({ from, to }) => (
-        <Route key={from} path={from} element={<RedirectTo to={to} />} />
-      ))}
-      <Route path="*" element={<PageNotFound />} />
+              }
+            />
+          );
+        })}
+        {REDIRECTS.map(({ from, to }) => (
+          <Route key={from} path={from} element={<RedirectTo to={to} />} />
+        ))}
+        <Route path="*" element={<PageNotFound />} />
+      </Route>
     </Routes>
   );
 };

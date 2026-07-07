@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -27,7 +28,13 @@ import CommandPalette from "@/components/navigation/CommandPalette";
 
 const SIDEBAR_COLLAPSED_KEY = "caremetric_sidebar_collapsed";
 
-export default function Layout({ children, currentPageName }) {
+export default function Layout() {
+  // Derive the current page name from the URL so the Layout persists across
+  // route changes (layout-route pattern). Previously each route wrapped its own
+  // <Layout>, which unmounted the entire sidebar + header on every navigation —
+  // causing flicker, lost clicks during the transition, and re-fetched queries.
+  const location = useLocation();
+  const currentPageName = location.pathname.split('/')[1] || 'Dashboard';
   // Persist the desktop sidebar collapse choice so daily users don't have to
   // re-collapse it every session (read lazily so the first paint matches).
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -360,7 +367,7 @@ export default function Layout({ children, currentPageName }) {
             <OfflineIndicator />
             <Breadcrumbs currentPageName={currentPageName} />
             <PageTransition pageKey={currentPageName}>
-              {children}
+              <Outlet />
             </PageTransition>
           </div>
         </main>
