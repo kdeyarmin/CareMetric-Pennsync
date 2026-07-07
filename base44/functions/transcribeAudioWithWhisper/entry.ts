@@ -14,8 +14,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Parse FormData
-    const formData = await req.formData();
+    // Parse FormData — return a clean 400 (not a 500) when the request isn't
+    // multipart/form-data (e.g. JSON body or missing boundary).
+    let formData;
+    try {
+      formData = await req.formData();
+    } catch {
+      return Response.json({ error: "Request must be multipart/form-data with a 'file' field" }, { status: 400 });
+    }
     const audioFile = formData.get("file");
 
     if (!audioFile) {

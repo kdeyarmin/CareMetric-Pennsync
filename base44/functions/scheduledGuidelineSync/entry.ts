@@ -39,19 +39,19 @@ function getSchedulerAuthError(req, user) {
 // Predefined list of critical Medicare guidelines to sync
 const GUIDELINES_TO_SYNC = [
   {
-    url: 'https://www.cms.gov/medicare/payment/medicare-fee-for-service-payment/home-health-services/home-health-prospective-payment-system',
+    url: 'https://www.cms.gov/medicare/payment/medicare-fee-for-service-payment/home-health-services',
     category: 'medicare_cop',
     subcategory: 'Home Health PPS',
     keywords: ['home health', 'prospective payment', 'HHPPS', 'reimbursement']
   },
   {
-    url: 'https://www.cms.gov/medicare/quality/home-health-quality-reporting-program/home-health-quality-reporting-program',
+    url: 'https://www.cms.gov/medicare/quality/home-health-quality-reporting-program',
     category: 'quality_measures',
     subcategory: 'Home Health Quality Reporting',
     keywords: ['quality measures', 'HHQRP', 'reporting']
   },
   {
-    url: 'https://www.cms.gov/medicare/health-safety-standards/quality-safety-oversight-general-information/conditions-participation-cops',
+    url: 'https://www.cms.gov/medicare/health-safety-standards/quality-safety-oversight-general-information/conditions-participation',
     category: 'medicare_cop',
     subcategory: 'Conditions of Participation',
     keywords: ['conditions of participation', 'CoPs', 'compliance', 'regulations']
@@ -100,25 +100,33 @@ Deno.serve(async (req) => {
     // Process each guideline
     for (const guidelineConfig of GUIDELINES_TO_SYNC) {
       try {
-        // Fetch the webpage content
-        const fetchResult = await fetch('https://api.base44.com/v1/fetch-website', {
-          method: 'POST',
+        // Fetch the webpage content directly — the Base44 fetch-website API
+        // requires a user Authorization header, which is absent when the
+        // scheduler calls this function with x-internal-secret instead.
+        const fetchResult = await fetch(guidelineConfig.url, {
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': req.headers.get('Authorization')
+            'User-Agent': 'Mozilla/5.0 (compatible; PennSync-GuidelineSync/1.0)',
+            'Accept': 'text/html,application/xhtml+xml',
           },
-          body: JSON.stringify({
-            url: guidelineConfig.url,
-            formats: ['markdown']
-          })
+          redirect: 'follow',
         });
 
         if (!fetchResult.ok) {
-          throw new Error(`Failed to fetch ${guidelineConfig.url}`);
+          throw new Error(`Failed to fetch ${guidelineConfig.url} (HTTP ${fetchResult.status})`);
         }
 
-        const websiteData = await fetchResult.json();
-        const markdownContent = websiteData.markdown || '';
+        const htmlContent = await fetchResult.text();
+        // Strip HTML tags to produce a rough text/markdown representation for the LLM.
+        const markdownContent = htmlContent
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/\s+/g, ' ')
+          .trim();
 
         if (!markdownContent) {
           throw new Error(`No content extracted from ${guidelineConfig.url}`);
@@ -141,7 +149,7 @@ Extract and return JSON with:
   "regulatory_citation": "Official citation if found"
 }`;
 
-        const analysis = await base44.integrations.Core.InvokeLLM({
+        const analysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
           model: "claude_opus_4_8",
           prompt: analysisPrompt,
           response_json_schema: {

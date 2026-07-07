@@ -19,6 +19,10 @@ Deno.serve(async (req) => {
 
     const { reportType, dateRange, includeCharts = false } = await req.json();
 
+    if (!reportType || typeof reportType !== 'string') {
+      return Response.json({ error: 'reportType is required' }, { status: 400 });
+    }
+
     const today = new Date();
     const daysAgo = parseInt(dateRange) || 30;
     const startDate = new Date(today);
