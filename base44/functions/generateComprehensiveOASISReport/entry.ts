@@ -24,13 +24,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { 
-      analysisResults, 
-      pdgmData, 
+    const {
+      analysisResults = {},
+      pdgmData,
       revenueData,
       navigationData,
       qualityScore,
-      patientName 
+      patientName
     } = await req.json();
 
     const doc = new jsPDF();
@@ -116,12 +116,14 @@ Deno.serve(async (req) => {
       y += 3;
     }
 
-    // Overall Scores Section
-    addSection('OVERALL ASSESSMENT SCORES');
-    addKeyValue('Overall Score', `${analysisResults.overall_score}%`);
-    addKeyValue('Accuracy Score', `${analysisResults.accuracy_score}%`);
-    addKeyValue('Compliance Score', `${analysisResults.compliance_score}%`);
-    addKeyValue('Revenue Optimization', `${analysisResults.revenue_optimization_score}%`);
+    // Overall Scores Section — only render if analysisResults has score data
+    if (analysisResults.overall_score !== undefined || analysisResults.accuracy_score !== undefined) {
+      addSection('OVERALL ASSESSMENT SCORES');
+      addKeyValue('Overall Score', analysisResults.overall_score !== undefined ? `${analysisResults.overall_score}%` : 'N/A');
+      addKeyValue('Accuracy Score', analysisResults.accuracy_score !== undefined ? `${analysisResults.accuracy_score}%` : 'N/A');
+      addKeyValue('Compliance Score', analysisResults.compliance_score !== undefined ? `${analysisResults.compliance_score}%` : 'N/A');
+      addKeyValue('Revenue Optimization', analysisResults.revenue_optimization_score !== undefined ? `${analysisResults.revenue_optimization_score}%` : 'N/A');
+    }
     
     if (qualityScore) {
       y += 3;

@@ -258,6 +258,19 @@ Deno.serve(async (req) => {
     let retriedCount = 0;
     let skippedCount = 0;
 
+    // Filter to faxes that are actually due for retry before resolving
+    // credentials — if nothing is due, there's no need to check Telnyx config
+    // (which may legitimately be absent on agencies that don't use fax).
+    const dueFaxes = allFailed.filter(fax => isFaxRetryDue(fax, now.getTime(), cfg));
+    if (dueFaxes.length === 0) {
+      return Response.json({
+        success: true,
+        retried: 0,
+        skipped: allFailed.length,
+        timestamp: now.toISOString()
+      });
+    }
+
     const { apiKey, faxConnectionId } = await resolveTelnyxCreds(base44);
     // Resolve the office fax from-number the same way sendFax does: prefer the
     // in-app AgencySettings.office_fax_number_e164.
@@ -277,16 +290,14 @@ Deno.serve(async (req) => {
     })();
     const webhookUrl = functionsBaseUrl ? `${functionsBaseUrl}/handleTelnyxStatusWebhook` : undefined;
 
-    if (!apiKey || !faxConnectionId || !fromNumber) {
-      return Response.json({ error: 'Telnyx credentials not configured' }, { status: 500 });
+    if (!apiKey || !faxConnectionId) {
+      return Response.json({ error: 'Telnyx API key or fax connection ID not configured. Set TELNYX_API_KEY and TELNYX_CONNECTION_ID in dashboard env vars, or store them in the Telnyx secret panel.' }, { status: 500 });
+    }
+    if (!fromNumber) {
+      return Response.json({ error: 'Office fax number not configured. Set office_fax_number_e164 in Agency Settings.' }, { status: 500 });
     }
 
-    for (const fax of allFailed) {
-      if (!isFaxRetryDue(fax, now.getTime(), cfg)) {
-        skippedCount++;
-        continue;
-      }
-
+    for (const fax of dueFaxes) {
       // Claim with a per-run token, then RE-READ to confirm we own it. Flipping
       // to 'queued' also removes it from a second run's failed-filter, so two
       // overlapping runs can't both re-send the same document.

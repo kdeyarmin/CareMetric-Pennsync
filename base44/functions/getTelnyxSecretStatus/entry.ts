@@ -3,12 +3,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 /**
  * getTelnyxSecretStatus — admin/super-admin read of whether the Telnyx API key
  * (and the optional resource ids that power text / voice / video / fax) are
- * configured, without ever returning the secret values. All Telnyx config lives
- * in the in-app IntegrationSecret row (provider 'telnyx'); the dashboard-env
- * override path was retired. Mirrors getTwilioSecretStatus.
+ * configured, without ever returning the secret values. Checks the in-app
+ * IntegrationSecret row first, then falls back to dashboard env vars
+ * (TELNYX_API_KEY, TELNYX_PUBLIC_KEY, TELNYX_CONNECTION_ID) — mirroring
+ * resolveTelnyxCreds in the other Telnyx functions so the admin UI shows
+ * the correct status regardless of where credentials are stored.
  *
  * Returns: {
- *   configured, source: 'config'|'none', api_key_last_four,
+ *   configured, source: 'config'|'env'|'none', api_key_last_four,
  *   public_key_configured, public_key_source,
  *   messaging_profile_configured, voice_connection_configured, fax_connection_configured,
  *   updated_by_email, updated_at
@@ -35,23 +37,37 @@ Deno.serve(async (req) => {
       .catch(() => []);
     const rec = rows[0] || {};
 
-    const configured = isSet(rec.api_key);
-    const publicKeyConfigured = isSet(rec.public_key);
+    // Merge env-var fallbacks so the status reflects what the other Telnyx
+    // functions actually use (resolveTelnyxCreds checks the same env vars).
+    const envApiKey = Deno.env.get('TELNYX_API_KEY');
+    const envPublicKey = Deno.env.get('TELNYX_PUBLIC_KEY');
+    const envConnectionId = Deno.env.get('TELNYX_CONNECTION_ID');
+
+    const apiKey = isSet(rec.api_key) ? rec.api_key : (isSet(envApiKey) ? envApiKey : null);
+    const publicKey = isSet(rec.public_key) ? rec.public_key : (isSet(envPublicKey) ? envPublicKey : null);
+    const apiKeySource = isSet(rec.api_key) ? 'config' : (isSet(envApiKey) ? 'env' : 'none');
+    const publicKeySource = isSet(rec.public_key) ? 'config' : (isSet(envPublicKey) ? 'env' : 'none');
+
+    const messagingProfile = isSet(rec.messaging_profile_id) ? rec.messaging_profile_id : null;
+    const voiceConnection = isSet(rec.voice_connection_id) ? rec.voice_connection_id : (isSet(envConnectionId) ? envConnectionId : null);
+    const faxConnection = isSet(rec.fax_connection_id) ? rec.fax_connection_id : (isSet(envConnectionId) ? envConnectionId : null);
+
+    const configured = isSet(apiKey);
 
     return Response.json({
       success: true,
       provider: 'telnyx',
       configured,
-      source: configured ? 'config' : 'none',
-      // Only expose last-4 of the stored API key.
-      api_key_last_four: configured ? rec.api_key.slice(-4) : null,
-      public_key_configured: publicKeyConfigured,
-      public_key_source: publicKeyConfigured ? 'config' : 'none',
-      messaging_profile_configured: isSet(rec.messaging_profile_id),
-      voice_connection_configured: isSet(rec.voice_connection_id),
-      fax_connection_configured: isSet(rec.fax_connection_id),
+      source: apiKeySource,
+      // Only expose last-4 of the API key.
+      api_key_last_four: configured ? apiKey.slice(-4) : null,
+      public_key_configured: isSet(publicKey),
+      public_key_source: publicKeySource,
+      messaging_profile_configured: isSet(messagingProfile),
+      voice_connection_configured: isSet(voiceConnection),
+      fax_connection_configured: isSet(faxConnection),
       updated_by_email: rec.updated_by_email || null,
-      updated_at: configured ? rec.updated_date || null : null,
+      updated_at: isSet(rec.api_key) ? rec.updated_date || null : null,
     });
   } catch (error) {
     console.error('getTelnyxSecretStatus error:', error);

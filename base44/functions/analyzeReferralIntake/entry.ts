@@ -28,6 +28,19 @@ Deno.serve(async (req) => {
 
     const { extractedData, analysisResults } = await req.json();
 
+    // Skip the expensive LLM call when there's nothing to analyze — without
+    // this guard, an empty payload still fires a claude_opus call that times
+    // out at the 120s proxy limit.
+    if (!extractedData || (typeof extractedData === 'object' && Object.keys(extractedData).length === 0)) {
+      return Response.json({
+        success: true,
+        analysis: {
+          missing_critical_info: { high_priority: ['No referral data provided — cannot analyze.'] },
+          suggested_next_steps: []
+        }
+      });
+    }
+
     // Use AI to comprehensively analyze the referral
     const analysisPrompt = `You are an expert home health intake coordinator. Analyze this referral data and provide comprehensive insights.
 
