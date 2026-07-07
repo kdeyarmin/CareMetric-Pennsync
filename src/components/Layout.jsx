@@ -366,7 +366,7 @@ export default function Layout() {
           <div className="p-4 sm:p-6 md:p-8 lg:p-10 min-w-0 max-w-[1600px] mx-auto">
             <OfflineIndicator />
             <Breadcrumbs currentPageName={currentPageName} />
-            <PageTransition pageKey={currentPageName}>
+            <PageTransition>
               <Outlet />
             </PageTransition>
           </div>
