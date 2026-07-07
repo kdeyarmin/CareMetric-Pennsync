@@ -99,6 +99,46 @@ const AuthenticatedApp = () => {
   const isSuperAdminUser = roleView === 'super_admin';
   const isAdmin = roleView === 'super_admin' || roleView === 'facility_admin';
 
+  // Memoized route tree — declared before any early returns so the hook is
+  // called unconditionally on every render (rules of hooks). The tree only
+  // depends on the user's role tier, which is stable across navigations, so
+  // memoizing prevents React Router v7 from rebuilding its matcher on every
+  // location change (which made clicks appear to do nothing).
+  const routeTree = useMemo(() => (
+    <Routes>
+      <Route path="/" element={<Navigate to={`/${MAIN_PAGE}`} replace />} />
+      <Route element={<Layout />}>
+        {ROUTES.map(({ name, Component, adminOnly, superAdminOnly }) => {
+          const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
+          const blockedAdmin = adminOnly && !isAdmin;
+          return (
+            <Route
+              key={name}
+              path={`/${name}`}
+              element={
+                <ErrorBoundary key={name}>
+                  {blockedSuperAdmin
+                    ? <AdminOnlyFallback superAdmin />
+                    : blockedAdmin
+                      ? <AdminOnlyFallback />
+                      : (
+                        <Suspense fallback={<RoutePageLoader />}>
+                          <Component />
+                        </Suspense>
+                      )}
+                </ErrorBoundary>
+              }
+            />
+          );
+        })}
+        {REDIRECTS.map(({ from, to }) => (
+          <Route key={from} path={from} element={<RedirectTo to={to} />} />
+        ))}
+        <Route path="*" element={<PageNotFound />} />
+      </Route>
+    </Routes>
+  ), [isSuperAdminUser, isAdmin]);
+
   // Public patient join/signer routes render WITHOUT authentication — they are
   // gated by capability tokens in the link, not by an app login. This is
   // checked before the auth gate below so external users are never bounced to login.
