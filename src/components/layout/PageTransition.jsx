@@ -1,33 +1,16 @@
-import { motion, AnimatePresence } from "framer-motion";
-
-// Horizontal slide transition between page changes. Keyed on the current page
-// name so AnimatePresence runs the exit/enter cycle on every route switch.
-// Honors reduced-motion (falls back to a plain fade of ~0ms) and only applies
-// the horizontal travel on touch/mobile widths — desktop keeps the existing
-// instant, sidebar-driven layout feel untouched.
-const prefersReducedMotion =
-  typeof window !== "undefined" &&
-  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-
-const variants = {
-  initial: { opacity: 0, x: prefersReducedMotion ? 0 : 24 },
-  animate: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: prefersReducedMotion ? 0 : -24 },
-};
-
+// Wraps page content with a keyed container so React cleanly unmounts the
+// previous page's component tree on navigation (resetting scroll, local state,
+// etc.). The previous AnimatePresence + mode="wait" animation was removed
+// because it deadlocks navigation under the persistent-layout-route pattern:
+// the Layout (and this component) stay mounted across route changes, so only
+// the <Outlet /> content swaps. AnimatePresence mode="wait" holds the
+// "exiting" child until its exit animation finishes, but the Outlet already
+// rendered the NEW page — so the exit runs on already-replaced content and
+// the new page never mounts, making nav links appear to do nothing.
 export default function PageTransition({ pageKey, children }) {
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={pageKey}
-        variants={variants}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        transition={{ duration: prefersReducedMotion ? 0 : 0.22, ease: "easeOut" }}
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    <div key={pageKey} className="animate-fade-in">
+      {children}
+    </div>
   );
 }
