@@ -16,6 +16,7 @@ import { Sparkles, Loader2, AlertTriangle, Film, ChevronDown, ChevronUp } from "
 import { generateTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
 import PresenterPicker from "@/components/training/PresenterPicker";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
+import { isAdminView } from "@/lib/roles";
 import { toast } from "sonner";
 
 // Curated audience roles — these become the course's role_targets, so a generated
@@ -53,6 +54,7 @@ export default function AICourseGenerator({ onGenerated }) {
   });
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
+  const isAdminUser = isAdminView(currentUser);
 
   const set = (patch) => setForm((prev) => ({ ...prev, ...patch }));
 
@@ -314,7 +316,7 @@ export default function AICourseGenerator({ onGenerated }) {
             </Alert>
           )}
 
-          {!(currentUser?.role === "admin" || currentUser?.account_type === "agency_admin" || currentUser?.account_type === "super_admin") && currentUser && (
+          {!isAdminUser && currentUser && (
             <Alert className="border-slate-200 bg-slate-50">
               <AlertDescription className="text-slate-600 text-sm">
                 Only administrators can generate courses.
@@ -323,7 +325,7 @@ export default function AICourseGenerator({ onGenerated }) {
           )}
 
           <div className="flex items-center gap-3 pt-1">
-            <Button onClick={handleGenerate} disabled={loading || !form.topic.trim()}>
+            <Button onClick={handleGenerate} disabled={loading || !form.topic.trim() || !isAdminUser}>
               {loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating…</>
               ) : (
