@@ -135,6 +135,9 @@ Deno.serve(async (req) => {
     }
 
     const { email, full_name } = await req.json();
+    if (!email) {
+      return Response.json({ error: 'email is required' }, { status: 400 });
+    }
 
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: email,

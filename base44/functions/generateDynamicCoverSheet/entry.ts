@@ -215,10 +215,10 @@ Deno.serve(async (req) => {
 
     // Convert to buffer and upload
     const pdfBytes = doc.output('arraybuffer');
-    const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-    
-    const file_url_result = await base44.integrations.Core.UploadFile({ 
-      file: pdfBlob 
+    const file = new File([pdfBytes], 'fax_cover_sheet.pdf', { type: 'application/pdf' });
+
+    const file_url_result = await base44.integrations.Core.UploadFile({
+      file
     });
 
     return Response.json({

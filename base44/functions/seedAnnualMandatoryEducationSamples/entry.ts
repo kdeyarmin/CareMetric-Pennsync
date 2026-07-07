@@ -381,6 +381,8 @@ Deno.serve(async (req) => {
             course_id: course.id,
             title: module.title,
             type: module.type,
+            module_type: 'ongoing',
+            category: ['compliance', 'clinical', 'safety', 'documentation', 'onboarding'].includes(sample.category) ? sample.category : 'compliance',
             content_json: module.content_json,
             order_index: moduleIndex,
             estimated_minutes: 15,

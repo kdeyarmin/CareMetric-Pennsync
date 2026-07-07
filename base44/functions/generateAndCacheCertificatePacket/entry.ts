@@ -165,8 +165,9 @@ Deno.serve(async (req) => {
     const pdfBytes = doc.output('arraybuffer');
 
     // Upload to private storage
+    const packetFile = new File([pdfBytes], 'certificate_packet.pdf', { type: 'application/pdf' });
     const uploadResponse = await base44.integrations.Core.UploadPrivateFile({
-      file: new Blob([pdfBytes], { type: 'application/pdf' })
+      file: packetFile
     });
 
     // Save cache entry
