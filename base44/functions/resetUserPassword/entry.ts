@@ -160,6 +160,18 @@ Deno.serve(async (req) => {
 
     const targetUser = users[0];
 
+    // Privilege boundary: a facility/agency admin must not be able to reset a
+    // privileged account's password (that would hand them a temp password and
+    // let them log in AS a super admin / peer admin — a side-door escalation).
+    // Only a super admin may reset another admin's or a super admin's password.
+    const callerIsSuperAdmin = currentUser.account_type === 'super_admin';
+    const targetIsPrivileged = targetUser.account_type === 'super_admin'
+      || targetUser.account_type === 'agency_admin'
+      || targetUser.role === 'admin';
+    if (targetIsPrivileged && !callerIsSuperAdmin) {
+      return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
+    }
+
     // Update user password using service role
     await base44.asServiceRole.auth.updateUserPassword(userEmail, tempPassword);
 
