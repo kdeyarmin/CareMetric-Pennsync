@@ -9,3 +9,5 @@ overrides:
   ws: 8.21.0
 minimumReleaseAgeExclude:
   - baseline-browser-mapping@2.10.41
+  - '@base44/sdk@0.8.36'
+  - '@base44/vite-plugin@1.0.28'
