@@ -234,7 +234,6 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 {"strengths":[""],"areas_for_improvement":[{"area":"","suggestion":"","priority":""}],"training_recommendations":[{"topic":"","reason":"","urgency":""}],"risk_factors":[""],"overall_summary":"","performance_grade":""}`;
 
     const insights = parseLLMJson(await base44.asServiceRole.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
       prompt: analysisPrompt
     })) || {};
 
@@ -353,7 +352,6 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 {"risk_level":"low|moderate|high|critical","risk_score":0,"warning_signs":[""],"contributing_factors":[""],"recommendations":[""],"positive_indicators":[""]}`;
 
     const burnoutAnalysis = parseLLMJson(await base44.asServiceRole.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
       prompt: burnoutPrompt
     })) || {};
 

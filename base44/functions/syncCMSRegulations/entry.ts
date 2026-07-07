@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
 
     // Fetch latest CMS regulations from internet with AI analysis
     const regulationsUpdate = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "gemini_3_1_pro",
       prompt: `You are a Medicare home health compliance expert. Search the internet for the LATEST CMS regulations and updates for home health agencies as of December 2025.
 
 Focus on:
