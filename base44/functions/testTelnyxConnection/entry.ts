@@ -7,7 +7,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * can verify the integration is wired up correctly without sending a real text,
  * call, or fax:
  *
- *  - Telnyx API key present (TELNYX_API_KEY or in-app config) — presence only.
+ *  - Telnyx API key present (in-app IntegrationSecret config) — presence only.
  *  - a live, read-only probe of the Telnyx REST API (`/v2/whoami`) confirming the
  *    key authenticates and the account is reachable.
  *  - webhook Ed25519 public key present (required to verify inbound webhooks).
@@ -22,8 +22,9 @@ const isSet = (v) => typeof v === 'string' && v.trim() !== '';
 const PROBE_TIMEOUT_MS = 8000;
 
 /**
- * Resolve Telnyx credentials + resource ids: env vars take precedence over the
- * in-app IntegrationSecret row (provider 'telnyx'). This is the single source of
+ * Resolve Telnyx credentials + resource ids from the in-app IntegrationSecret
+ * row (provider 'telnyx') only — the retired TELNYX_* dashboard-env override
+ * path is no longer read. This is the single source of
  * truth for credential resolution, inlined into every Telnyx send/webhook
  * function (single-file Deno deploy model); drift is guarded by
  * base44/functions/telnyxCredsInlineParity.test.js.
@@ -44,10 +45,6 @@ async function resolveTelnyxCreds(base44) {
     voiceConnectionId = pick(rec.voice_connection_id);
     faxConnectionId = pick(rec.fax_connection_id);
   } catch { /* ignore */ }
-  if (!apiKey) apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
-  if (!publicKey) publicKey = pick(Deno.env.get('TELNYX_PUBLIC_KEY'));
-  if (!voiceConnectionId) voiceConnectionId = pick(Deno.env.get('TELNYX_CONNECTION_ID'));
-  if (!faxConnectionId) faxConnectionId = pick(Deno.env.get('TELNYX_CONNECTION_ID'));
   return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
 }
 
@@ -115,7 +112,7 @@ Deno.serve(async (req) => {
       status: creds.apiKey ? 'ok' : 'fail',
       detail: creds.apiKey
         ? 'Telnyx API key is configured.'
-        : 'No Telnyx API key found. Add it on the Administration → Super Admin page, or set TELNYX_API_KEY in the Base44 dashboard.',
+        : 'No Telnyx API key found. Add it on the Administration → Super Admin page.',
     });
 
     // --- Webhook signature verification (Ed25519 public key) ---
