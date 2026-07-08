@@ -9,15 +9,21 @@ export const getRouterBasename = ({ pathname = window.location.pathname, baseUrl
   if (configuredBase) return configuredBase;
 
   const normalizedPathname = pathname.startsWith('/') ? pathname : `/${pathname}`;
-  const lowerPathname = normalizedPathname.toLowerCase();
+  const trimmedPathname = normalizedPathname.replace(/\/+$/, '') || '/';
+  const lowerPathname = trimmedPathname.toLowerCase();
   const routeSuffixes = routerPaths
     .map((path) => path.toLowerCase())
     .sort((a, b) => b.length - a.length);
 
   for (const routePath of routeSuffixes) {
+    if (routePath === '/') {
+      if (lowerPathname === '/') return undefined;
+      if (normalizedPathname.endsWith('/')) return normalizeBasePath(trimmedPathname);
+      continue;
+    }
     if (lowerPathname === routePath) return undefined;
     if (lowerPathname.endsWith(routePath)) {
-      return normalizeBasePath(normalizedPathname.slice(0, -routePath.length));
+      return normalizeBasePath(trimmedPathname.slice(0, -routePath.length));
     }
   }
 

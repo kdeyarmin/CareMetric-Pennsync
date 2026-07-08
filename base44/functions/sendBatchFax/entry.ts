@@ -1,9 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
- * Resolve Telnyx credentials: prefer env vars, then the in-app IntegrationSecret
- * row with provider 'telnyx'. Mirrors the SMS/voice handlers so fax functions work
- * for agencies that store credentials in-app.
+ * Resolve Telnyx credentials from the in-app IntegrationSecret row with
+ * provider 'telnyx'.
  */
 // Largest batch accepted in a single call — bounds fan-out/cost per request.
 const MAX_BATCH_RECIPIENTS = 50;

@@ -27,9 +27,8 @@ function getSchedulerAuthError(req, user) {
 // <<<END SHARED HELPER: schedulerAuth>>>
 
 /**
- * Resolve Telnyx credentials: prefer env vars, then the in-app IntegrationSecret
- * row with provider 'telnyx'. Mirrors the SMS/voice handlers so fax functions work
- * for agencies that store credentials in-app.
+ * Resolve Telnyx credentials from the in-app IntegrationSecret row with
+ * provider 'telnyx'.
  */
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);

@@ -123,9 +123,8 @@ async function sendTelnyx(apiKey, messagingProfileId, from, to, body, webhookUrl
 }
 
 /**
- * Resolve Telnyx credentials: prefer env vars, then the in-app IntegrationSecret
- * row with provider 'telnyx'. Either path configures the integration, so the
- * Credentials are configured in-app via IntegrationSecret.
+ * Resolve Telnyx credentials from the in-app IntegrationSecret row with
+ * provider 'telnyx'.
  */
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
