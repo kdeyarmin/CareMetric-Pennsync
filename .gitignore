@@ -29,3 +29,6 @@ dist-ssr
 
 .env
 !.env.example
+
+# pnpm is the only supported package manager; keep npm lockfiles out
+package-lock.json
