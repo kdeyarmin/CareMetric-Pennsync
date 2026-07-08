@@ -50,11 +50,18 @@ final class WebViewController: UIViewController {
         webView.load(URLRequest(url: appURL))
     }
 
-    private func isAppURL(_ url: URL) -> Bool {
-        guard let appHost = appURL.host,
-              let urlHost = url.host else { return false }
-        return urlHost.caseInsensitiveCompare(appHost) == .orderedSame
-    }
+private func isAppURL(_ url: URL) -> Bool {
+    guard let appHost = appURL.host,
+          let appScheme = appURL.scheme,
+          let urlHost = url.host,
+          let urlScheme = url.scheme else { return false }
+
+    guard urlHost.caseInsensitiveCompare(appHost) == .orderedSame,
+          urlScheme.caseInsensitiveCompare(appScheme) == .orderedSame else { return false }
+
+    let appPath = appURL.path.hasSuffix("/") ? appURL.path : (appURL.path + "/")
+    return url.path.hasPrefix(appPath)
+}
 
     private func openExternally(_ url: URL) {
         UIApplication.shared.open(url, options: [:], completionHandler: nil)
