@@ -38,6 +38,10 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>PennSync saves captured document scans and exported files to your photo library when you choose to keep a copy on this device.</string>
 
+	<!-- Uses only Apple's system TLS/HTTPS; no proprietary encryption. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -145,13 +145,6 @@ test("buildIntegrationSteps reflects a fully wired, verified integration (api_ke
   assert.equal(byId(steps, "live_test").status, "done");
 });
 
-test("a dashboard-env secret reads as configured without a last-four", () => {
-  const steps = buildIntegrationSteps({ secretStatus: { configured: true, source: "env" } });
-  const s = byId(steps, "api_secret");
-  assert.equal(s.status, "done");
-  assert.match(s.detail, /dashboard env/);
-});
-
 test("provisioned nurses missing a bridge cell raise an attention step", () => {
   const steps = buildIntegrationSteps({
     ...READY_INPUTS,

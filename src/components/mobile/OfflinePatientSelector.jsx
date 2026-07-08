@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Download, Loader2, CheckCircle2, Users, Calendar } from "lucide-react";
 import { todayEastern } from "../utils/timezone";
+import { savePatients } from "@/lib/indexedDB";
 
 export default function OfflinePatientSelector({ onCacheComplete, _showDetails = false, _selectedPatientId, onSelectPatient }) {
   const [selectedPatients, setSelectedPatients] = useState([]);
@@ -99,7 +100,8 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
             physician_phone: patient.physician_phone,
             care_type: patient.care_type,
             baseline_vitals: patient.baseline_vitals,
-            functional_status: patient.functional_status
+            functional_status: patient.functional_status,
+            status: patient.status
           },
           recentVisits: recentVisits.map(v => ({
             id: v.id,
@@ -136,6 +138,13 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
 
       localStorage.setItem('offline_patient_data', JSON.stringify(mergedCache));
       localStorage.setItem('offline_cache_timestamp', new Date().toISOString());
+
+      // Keep the canonical IndexedDB roster in sync with this explicit offline
+      // download flow. OfflineManager also refreshes this store in the
+      // background, and the offline patient pickers read it when the network is
+      // gone; writing selected patients here avoids two disconnected caches.
+      await savePatients(mergedCache.map((entry) => entry.patient).filter(Boolean));
+      window.dispatchEvent(new CustomEvent('offline-patients-updated'));
 
       setCacheResult({
         success: true,

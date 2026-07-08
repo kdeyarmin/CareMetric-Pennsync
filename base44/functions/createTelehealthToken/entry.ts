@@ -50,7 +50,6 @@ async function resolveTelnyxCreds(base44) {
       apiKey = pick(rows?.[0]?.api_key);
     } catch { /* ignore */ }
   }
-  if (!apiKey) apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
   return { apiKey };
 }
 

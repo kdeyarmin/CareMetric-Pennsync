@@ -13,6 +13,8 @@ import SessionDocumentation from "@/components/telehealth/SessionDocumentation";
 import TelehealthCall from "@/components/telehealth/TelehealthCall";
 import { generateJoinToken, buildPatientJoinLink } from "@/components/telehealth/telehealthUtils";
 import { toast } from "sonner";
+import { hostedAbsoluteUrl } from '@/lib/assetPath';
+import { ROUTER_PATHS } from '@/routes';
 
 const visitTypes = {
   routine_followup: { label: "Routine Follow-up", visitType: "routine_visit" },
@@ -156,7 +158,7 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
   const createSession = async () => {
     const roomName = `telehealth-${patient.id}-${Date.now()}`;
     // Patient-facing capability link: the token is the patient's access grant.
-    const inviteLink = buildPatientJoinLink(window.location.origin, roomName, generateJoinToken());
+    const inviteLink = buildPatientJoinLink(hostedAbsoluteUrl('/', { routerPaths: ROUTER_PATHS }), roomName, generateJoinToken());
     await createMutation.mutateAsync({
       room_name: roomName,
       patient_id: patient.id,

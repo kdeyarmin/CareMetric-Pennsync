@@ -54,8 +54,7 @@ export default function TelnyxSecretPanel() {
   });
 
   const configured = status?.configured;
-  const sourceLabel =
-    status?.source === "env" ? "Base44 dashboard env" : status?.source === "config" ? "in-app config" : null;
+  const sourceLabel = status?.source === "config" ? "in-app config" : null;
 
   // API key must start with "KEY" and be at least 16 chars.
   const keyTrimmed = apiKey.trim();

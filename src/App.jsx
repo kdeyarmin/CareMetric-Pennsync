@@ -22,9 +22,10 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AIContentResponsibilityAgreement from '@/components/compliance/AIContentResponsibilityAgreement';
 import Layout from '@/components/Layout';
 import ErrorBoundary from '@/components/utils/ErrorBoundary';
-import { ROUTES, REDIRECTS, MAIN_PAGE } from '@/routes';
+import { ROUTES, REDIRECTS, MAIN_PAGE, ROUTER_PATHS } from '@/routes';
 import { getRoleView } from '@/lib/roles';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
+import { getRouterBasename } from '@/lib/routerBasename';
 
 // Public (no-login) patient telehealth join page. Stale-chunk auto-recovery
 // (dev-server restart) is handled centrally by the ErrorBoundary, which wraps
@@ -212,13 +213,14 @@ const AuthenticatedApp = () => {
 
 
 function App() {
+  const routerBasename = getRouterBasename({ routerPaths: ROUTER_PATHS });
 
   return (
     <ErrorBoundary>
       <AuthProvider>
         <QueryClientProvider client={queryClientInstance}>
           <ConfirmDialogProvider>
-            <Router>
+            <Router basename={routerBasename}>
               <NavigationTracker />
               <AuthenticatedApp />
             </Router>

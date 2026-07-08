@@ -163,7 +163,7 @@ export default function SMEReviewQueue() {
               />
               <div className="flex flex-wrap gap-2">
                 <Button asChild variant="outline">
-                  <Link to={`${createPageUrl("TrainingCoursePlayer")}?courseId=${course.id}&preview=true`} target="_blank" rel="noopener noreferrer">
+                  <Link to={`${createPageUrl("TrainingCoursePlayer")}?courseId=${course.id}&preview=true`}>
                     <Eye className="w-4 h-4 mr-2" />Preview
                   </Link>
                 </Button>

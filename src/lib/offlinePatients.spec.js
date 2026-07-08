@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { withOfflineRosterFallback } from './offlinePatients';
+import { mergeOfflinePatientCaches, withOfflineRosterFallback } from './offlinePatients';
 
 const boom = () => Promise.reject(new Error('network down'));
 
@@ -47,5 +47,31 @@ describe('withOfflineRosterFallback', () => {
         getLocal: async () => { throw new Error('idb unavailable'); },
       })
     ).rejects.toThrow('network down');
+  });
+});
+
+
+describe('mergeOfflinePatientCaches', () => {
+  it('merges legacy detailed cache entries with IndexedDB roster patients', () => {
+    const merged = mergeOfflinePatientCaches(
+      [{ patient: { id: 'p1', first_name: 'Ada' }, recentVisits: [{ id: 'v1' }], cachedAt: 'now' }],
+      [{ id: 'p2', first_name: 'Grace' }]
+    );
+
+    expect(merged).toEqual([
+      { patient: { id: 'p1', first_name: 'Ada' }, recentVisits: [{ id: 'v1' }], cachedAt: 'now' },
+      { patient: { id: 'p2', first_name: 'Grace' }, recentVisits: [], carePlans: [], cachedAt: null },
+    ]);
+  });
+
+  it('dedupes by patient id and keeps richer legacy entries first', () => {
+    const merged = mergeOfflinePatientCaches(
+      [{ patient: { id: 'p1', first_name: 'Legacy' }, recentVisits: [{ id: 'v1' }] }],
+      [{ id: 'p1', first_name: 'IndexedDB' }]
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].patient.first_name).toBe('Legacy');
+    expect(merged[0].recentVisits).toEqual([{ id: 'v1' }]);
   });
 });

@@ -15,6 +15,8 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { useAuth } from "@/lib/AuthContext";
 import { isAdminView } from "@/lib/roles";
+import { hostedAssetPath } from '@/lib/assetPath';
+import { ROUTER_PATHS } from '@/routes';
 
 export default function Help() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -203,7 +205,7 @@ export default function Help() {
               <CardContent>
                 <div className={`grid gap-3 ${isAdmin ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>
                   <a
-                    href="/manuals/PennSync-User-Manual.pdf"
+                    href={hostedAssetPath("/manuals/PennSync-User-Manual.pdf", { routerPaths: ROUTER_PATHS })}
                     download
                     className="flex items-center gap-3 rounded-lg bg-white/5 hover:bg-white/10 ring-1 ring-inset ring-white/10 p-3 transition-colors"
                   >
@@ -218,7 +220,7 @@ export default function Help() {
                   </a>
                   {isAdmin && (
                     <a
-                      href="/manuals/PennSync-Facility-Admin-Manual.pdf"
+                      href={hostedAssetPath("/manuals/PennSync-Facility-Admin-Manual.pdf", { routerPaths: ROUTER_PATHS })}
                       download
                       className="flex items-center gap-3 rounded-lg bg-white/5 hover:bg-white/10 ring-1 ring-inset ring-white/10 p-3 transition-colors"
                     >

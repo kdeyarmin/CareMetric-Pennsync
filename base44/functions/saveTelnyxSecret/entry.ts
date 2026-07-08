@@ -4,7 +4,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * saveTelnyxSecret — super-admin-only. Stores the Telnyx API key (and the
  * optional resource ids used by text / voice / video / fax) on the backend-only
  * IntegrationSecret entity (provider 'telnyx'), so the Telnyx integration can be
- * configured entirely in-app without touching the Base44 dashboard env.
+ * configured entirely in-app without touching dashboard environment variables.
  *
  * Mirrors saveTwilioSecret: every value is written via the service role and is
  * NEVER returned to the client — the response only carries presence + the last 4

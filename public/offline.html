@@ -54,12 +54,12 @@
         before. Reconnect to Wi&#8209;Fi or cellular data, then try again — visits you
         documented offline are saved on this device and will sync automatically.
       </p>
-      <button onclick="window.location.replace('/')">Try Again</button>
+      <button onclick="window.location.replace('./')">Try Again</button>
       <p class="hint">Reconnecting retries automatically.</p>
     </div>
     <script>
       // Auto-recover the moment connectivity returns.
-      window.addEventListener('online', function () { window.location.replace('/'); });
+      window.addEventListener('online', function () { window.location.replace('./'); });
     </script>
   </body>
 </html>

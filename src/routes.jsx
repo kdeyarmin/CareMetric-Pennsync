@@ -209,3 +209,12 @@ export const REDIRECTS = [
 export const MAIN_PAGE = 'Dashboard';
 
 export const PAGE_NAMES = ROUTES.map((route) => route.name);
+
+export const ROUTER_PATHS = [
+  '/',
+  '/join',
+  '/signer',
+  '/followup',
+  ...PAGE_NAMES.map((name) => `/${name}`),
+  ...REDIRECTS.map(({ from }) => from),
+];

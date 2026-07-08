@@ -11,7 +11,7 @@ template provides — it is **not** a complete Xcode project.
 | --- | --- |
 | `PennSync/Info.plist` | App Info.plist including the **camera/microphone usage strings** required for telehealth video visits, visit audio recording (SmartNote/Whisper), and the Camera Fax document scanner. iOS refuses `getUserMedia` (and App Store review rejects the binary) without `NSCameraUsageDescription` / `NSMicrophoneUsageDescription`. |
 | `PennSync/BlobDownloadHandler.swift` | `WKDownloadDelegate` that receives the app's **blob CSV/PDF exports** (~50 call sites funnel through `src/lib/downloadCsv.js` and the PDF exporters), saves them to a temp file with the anchor's `download` filename, and presents the iOS share sheet. |
-| `PennSync/WebViewController.swift` | The WKWebView host. Routes `blob:` / `shouldPerformDownload` navigations into `WKDownload`, forwards non-renderable responses to the download handler, and grants in-page `getUserMedia` requests for the app's own origin via `requestMediaCapturePermission`. |
+| `PennSync/WebViewController.swift` | The WKWebView host. Routes `blob:` / `shouldPerformDownload` navigations into `WKDownload`, forwards non-renderable responses to the download handler, opens external/tel/mail links through iOS, handles `target=_blank` and JavaScript dialogs, and grants in-page `getUserMedia` requests for the app's own origin via `requestMediaCapturePermission`. |
 
 ## Integration
 
@@ -40,3 +40,11 @@ template provides — it is **not** a complete Xcode project.
   navigation entirely. The `decidePolicyFor` → `.download` →
   `WKDownloadDelegate` chain restores that behavior and ends in the standard
   share sheet (Files, AirDrop, print, open-in).
+- **External links and pop-ups:** many clinical workflows open generated PDFs,
+  maps, phone numbers, email links, or policy/document URLs in a new browsing
+  context. `WebViewController` keeps same-origin pop-ups in the existing web
+  view and hands external `http(s)`, `tel:`, `mailto:`, and `sms:` links to iOS
+  so they do not become dead taps during App Store review.
+- **Export compliance:** `Info.plist` sets `ITSAppUsesNonExemptEncryption` to
+  `false` because the shell uses only Apple's system TLS/HTTPS and does not ship
+  proprietary encryption code.

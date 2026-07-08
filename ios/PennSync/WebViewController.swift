@@ -23,8 +23,10 @@ final class WebViewController: UIViewController {
 
     /// The hosted app URL — the deployed production frontend. Also the origin
     /// `requestMediaCapturePermission` auto-grants getUserMedia to, so it must
-    /// match the origin the shell actually loads.
-    private let appURL = URL(string: "https://caremetricai.base44.app")!
+    /// match the origin the shell actually loads. Keep any hosted subpath here:
+    /// all same-origin `target=_blank` links, signer links, and telehealth links
+    /// are resolved relative to this app base.
+    private let appURL = URL(string: "https://caremetricai.base44.app/")!
 
     private var webView: WKWebView!
     private lazy var downloadHandler = BlobDownloadHandler(presenter: self)
@@ -39,15 +41,34 @@ final class WebViewController: UIViewController {
 
         webView = WKWebView(frame: view.bounds, configuration: configuration)
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        webView.allowsBackForwardNavigationGestures = true
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.navigationDelegate = self
         webView.uiDelegate = self
         view.addSubview(webView)
 
         webView.load(URLRequest(url: appURL))
     }
+
+private func isAppURL(_ url: URL) -> Bool {
+    guard let appHost = appURL.host,
+          let appScheme = appURL.scheme,
+          let urlHost = url.host,
+          let urlScheme = url.scheme else { return false }
+
+    guard urlHost.caseInsensitiveCompare(appHost) == .orderedSame,
+          urlScheme.caseInsensitiveCompare(appScheme) == .orderedSame else { return false }
+
+    let appPath = appURL.path.hasSuffix("/") ? appURL.path : (appURL.path + "/")
+    return url.path.hasPrefix(appPath)
 }
 
-// MARK: - WKNavigationDelegate (blob export routing)
+    private func openExternally(_ url: URL) {
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+    }
+}
+
+// MARK: - WKNavigationDelegate (blob export routing + external URL handling)
 
 extension WebViewController: WKNavigationDelegate {
 
@@ -64,6 +85,24 @@ extension WebViewController: WKNavigationDelegate {
             decisionHandler(.download)
             return
         }
+
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+
+        if ["tel", "mailto", "sms"].contains(url.scheme?.lowercased() ?? "") {
+            openExternally(url)
+            decisionHandler(.cancel)
+            return
+        }
+
+        if ["http", "https"].contains(url.scheme?.lowercased() ?? ""), !isAppURL(url) {
+            openExternally(url)
+            decisionHandler(.cancel)
+            return
+        }
+
         decisionHandler(.allow)
     }
 
@@ -99,10 +138,53 @@ extension WebViewController: WKNavigationDelegate {
     }
 }
 
-// MARK: - WKUIDelegate (camera/mic capture for telehealth, audio, camera-fax)
+// MARK: - WKUIDelegate (camera/mic capture, target=_blank, JS dialogs)
 
 @available(iOS 15.0, *)
 extension WebViewController: WKUIDelegate {
+
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        // WKWebView does not create new windows by default. Open same-origin
+        // popups (for example in-app generated documents) in the existing web
+        // view and send external links to Safari instead of making them no-ops.
+        guard navigationAction.targetFrame == nil,
+              let url = navigationAction.request.url else { return nil }
+
+        if isAppURL(url) {
+            webView.load(URLRequest(url: url))
+        } else {
+            openExternally(url)
+        }
+        return nil
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping () -> Void
+    ) {
+        let alert = UIAlertController(title: "PennSync", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+        present(alert, animated: true)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        let alert = UIAlertController(title: "PennSync", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
+        present(alert, animated: true)
+    }
 
     func webView(
         _ webView: WKWebView,
@@ -111,20 +193,20 @@ extension WebViewController: WKUIDelegate {
         type: WKMediaCaptureType,
         decisionHandler: @escaping (WKPermissionDecision) -> Void
     ) {
-// Only auto-grant getUserMedia to the app's own origin; anything else
-// (embedded third-party frames) falls back to the default prompt.
-guard let expectedHost = appURL.host,
-      let expectedScheme = appURL.scheme else {
-    decisionHandler(.prompt)
-    return
-}
-let expectedPort = appURL.port ?? (expectedScheme == "http" ? 80 : 443)
-guard origin.host == expectedHost,
-      origin.`protocol` == expectedScheme,
-      origin.port == expectedPort else {
-    decisionHandler(.prompt)
-    return
-}
+        // Only auto-grant getUserMedia to the app's own origin; anything else
+        // (embedded third-party frames) falls back to the default prompt.
+        guard let expectedHost = appURL.host,
+              let expectedScheme = appURL.scheme else {
+            decisionHandler(.prompt)
+            return
+        }
+        let expectedPort = appURL.port ?? (expectedScheme == "http" ? 80 : 443)
+        guard origin.host == expectedHost,
+              origin.`protocol` == expectedScheme,
+              origin.port == expectedPort else {
+            decisionHandler(.prompt)
+            return
+        }
         // iOS has already shown the system camera/microphone permission
         // dialog (driven by the Info.plist usage strings); avoid a second
         // per-page prompt for telehealth, audio recording, and camera fax.

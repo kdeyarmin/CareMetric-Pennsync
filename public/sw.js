@@ -1,14 +1,14 @@
-// Bump on any caching-policy change so `activate` evicts prior caches. v6 adds
-// an offline app shell: a precached /offline.html fallback for navigations, a
-// last-known-good copy of index.html, and cache-first serving of Vite's
-// content-hashed /assets/ bundles. v5 and earlier caches (which could contain
-// PHI attachments before the allowlist tightened) are purged on activate.
-const CACHE_NAME = 'base44-offline-v6';
-const OFFLINE_URL = '/offline.html';
+// Bump on any caching-policy change so `activate` evicts prior caches. v7 keeps
+// the offline app shell scoped to the service worker registration path, so
+// subpath-hosted Base44/App Store installs do not fetch root-level assets.
+const CACHE_NAME = 'base44-offline-v7';
+const scopedPath = (fileName) => new URL(fileName, self.registration.scope).pathname;
+const OFFLINE_URL = scopedPath('offline.html');
 // Fixed cache key for the most recent successfully fetched index.html. Cached
 // under one key (not per-route URL) because every SPA navigation serves the
-// same shell document.
-const SHELL_KEY = '/index.html';
+// same shell document. Keep it scope-qualified so root and subpath installs do
+// not collide.
+const SHELL_KEY = scopedPath('index.html');
 
 self.addEventListener('install', (event) => {
   // Activate the new worker immediately. The only precached document is the
@@ -68,11 +68,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Vite content-hashes everything under /assets/ (index-Cx3f….js), so a given
-  // URL's bytes can never change — cache-first is both safe (a new deploy ships
-  // new URLs via the network-first shell above) and what makes lazy route
+  // Vite content-hashes everything under the app's scoped /assets/
+  // (index-Cx3f….js), so a given URL's bytes can never change — cache-first
+  // is both safe (a new deploy ships new URLs via the network-first shell
+  // above) and what makes lazy route
   // chunks loadable while offline. No PHI: these are the app's own JS/CSS.
-  if (isSameOrigin && pathname.startsWith('/assets/')) {
+  if (isSameOrigin && pathname.startsWith(scopedPath('assets/'))) {
     event.respondWith(
       caches.match(event.request).then((cached) => {
         if (cached) return cached;
@@ -88,9 +89,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Any OTHER app code (js/css/html outside /assets/, e.g. /sw.js itself) must
-  // always come from the network so a deployed fix can't be masked by a stale
-  // cached copy.
+  // Any OTHER app code (js/css/html outside the scoped assets directory,
+  // including the service worker itself) must always come from the network so
+  // a deployed fix can't be masked by a stale cached copy.
   const isAppCode = /\.(?:js|mjs|css|html)(?:\?|$)/.test(url);
   if (isAppCode) {
     event.respondWith(fetch(event.request));

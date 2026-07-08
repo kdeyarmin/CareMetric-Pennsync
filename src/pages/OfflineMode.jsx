@@ -10,6 +10,8 @@ import OfflinePatientSelector from "../components/mobile/OfflinePatientSelector"
 import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
 import OfflineTaskManager from "../components/mobile/OfflineTaskManager";
 import { useOfflineQueue } from "@/lib/offlineSync";
+import { getPatientsLocally } from "@/lib/indexedDB";
+import { mergeOfflinePatientCaches } from "@/lib/offlinePatients";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
 import PageHeader from "@/components/ui/PageHeader";
@@ -35,6 +37,7 @@ export default function OfflineMode() {
   // sync_queue) so this page reflects every offline write — including the main
   // SmartNote / Visit Scribe flow — not a separate, often-empty draft store.
   const { pendingCount } = useOfflineQueue();
+  const [cachedPatients, setCachedPatients] = useState([]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
@@ -68,12 +71,41 @@ export default function OfflineMode() {
     };
   }, []);
 
-  let cachedPatients = [];
-  try {
-    cachedPatients = JSON.parse(localStorage.getItem('offline_patient_data') || '[]');
-  } catch (e) {
-    console.warn('Failed to parse cached patient data:', e);
-  }
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCachedPatients = async () => {
+      let legacyDetailedCache = [];
+      try {
+        legacyDetailedCache = JSON.parse(localStorage.getItem('offline_patient_data') || '[]');
+      } catch (e) {
+        console.warn('Failed to parse cached patient data:', e);
+      }
+
+      let indexedDbRoster = [];
+      try {
+        indexedDbRoster = await getPatientsLocally();
+      } catch (e) {
+        console.warn('Failed to read IndexedDB patient roster:', e);
+      }
+
+      if (!cancelled) {
+        setCachedPatients(mergeOfflinePatientCaches(legacyDetailedCache, indexedDbRoster));
+      }
+    };
+
+    loadCachedPatients();
+    const handleRefresh = () => loadCachedPatients();
+    window.addEventListener('offline-patients-updated', handleRefresh);
+    window.addEventListener('storage', handleRefresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('offline-patients-updated', handleRefresh);
+      window.removeEventListener('storage', handleRefresh);
+    };
+  }, []);
+
+  const cachedPatientsSizeKb = (JSON.stringify(cachedPatients).length / 1024).toFixed(0);
 
   return (
     <PageContainer>
@@ -154,9 +186,7 @@ export default function OfflineMode() {
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-sm text-navy-600 font-medium mb-1 truncate">Storage Used</p>
                 <p className="text-2xl sm:text-3xl font-bold text-navy-900">
-                  {(
-                    (localStorage.getItem('offline_patient_data')?.length || 0) / 1024
-                  ).toFixed(0)}
+                  {cachedPatientsSizeKb}
                   <span className="text-base sm:text-lg ml-1">KB</span>
                 </p>
               </div>
@@ -169,9 +199,10 @@ export default function OfflineMode() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="space-y-6">
           <OfflineSyncStatus />
-          <OfflinePatientSelector onCacheComplete={() => {
-            toast.success('Patient data cached for offline use');
-          }} />
+<OfflinePatientSelector onCacheComplete={(count) => {
+  const n = typeof count === 'number' ? count : 0;
+  toast.success(`${n} patient${n === 1 ? '' : 's'} cached for offline use`);
+}} />
         </div>
 
         <div className="space-y-4 sm:space-y-6">
