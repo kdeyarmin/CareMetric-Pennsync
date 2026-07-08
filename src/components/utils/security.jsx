@@ -122,6 +122,41 @@ export function sanitizeHtml(html) {
 }
 
 /**
+ * Quill-specific HTML sanitizer.
+ *
+ * Quill 2.0.3 is vulnerable to XSS via its HTML export feature
+ * (CVE-2025-15056 / GHSA-v3m3-f69x-jf25) and no patched release exists.
+ * The generic sanitizeHtml() above already strips scripts and event handlers,
+ * but it allows the full HTML profile. This function narrows the allowlist to
+ * only the tags and attributes the app's Quill toolbar can actually produce
+ * (headers, bold/italic/underline/strike, ordered/bullet lists, font color and
+ * background, and links) — defense-in-depth so even a novel Quill export bypass
+ * can't introduce tags outside the editor's own vocabulary.
+ *
+ * @param {string} html — raw HTML from Quill's getHTML / onChange
+ * @returns {string} sanitized HTML safe to store and inject
+ */
+export function sanitizeQuillHtml(html) {
+  if (typeof html !== 'string' || html.length === 0) {
+    return '';
+  }
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'span',
+      'h1', 'h2', 'h3',
+      'strong', 'b', 'em', 'i', 'u', 's', 'strike',
+      'ul', 'ol', 'li',
+      'a',
+    ],
+    ALLOWED_ATTR: ['href', 'style', 'class'],
+    ALLOW_DATA_ATTR: false,
+    ALLOWED_URI_REGEXP: /^https?:\/\/|^mailto:|^tel:|^#/i,
+    FORBID_TAGS: ['script', 'img', 'iframe', 'object', 'embed', 'form', 'input', 'video', 'source'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
+  });
+}
+
+/**
  * Uniform random integer in [0, max) from the Web Crypto CSPRNG, rejection-sampled
  * to avoid modulo bias. Never use Math.random() for tokens/passwords.
  * @param {number} max
