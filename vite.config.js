@@ -5,6 +5,11 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   logLevel: 'error', // Suppress warnings, only show errors
+  // Production bundles must be relocatable: Base44/App Store installs can mount
+  // the same build under arbitrary subpaths, so emitted JS/CSS/icon/manifest
+  // URLs need to be relative instead of rooted at `/`. Dev stays root-based so
+  // Vite's local server and HMR keep their normal behavior.
+  base: command === 'build' ? './' : '/',
   // HIPAA: strip all console.* and debugger statements from PRODUCTION builds.
   // The app logs entities/responses/transcripts in many places, and anything left
   // in the shipped bundle executes in the clinician/patient browser (devtools,

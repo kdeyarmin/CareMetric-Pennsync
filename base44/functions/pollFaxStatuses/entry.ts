@@ -29,7 +29,7 @@ function getSchedulerAuthError(req, user) {
 /**
  * Resolve Telnyx credentials: prefer env vars, then the in-app IntegrationSecret
  * row with provider 'telnyx'. Mirrors the SMS/voice handlers so fax functions work
- * for agencies that store credentials in-app rather than in the dashboard env.
+ * for agencies that store credentials in-app.
  */
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
@@ -47,10 +47,6 @@ async function resolveTelnyxCreds(base44) {
     voiceConnectionId = pick(rec.voice_connection_id);
     faxConnectionId = pick(rec.fax_connection_id);
   } catch { /* ignore */ }
-  if (!apiKey) apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
-  if (!publicKey) publicKey = pick(Deno.env.get('TELNYX_PUBLIC_KEY'));
-  if (!voiceConnectionId) voiceConnectionId = pick(Deno.env.get('TELNYX_CONNECTION_ID'));
-  if (!faxConnectionId) faxConnectionId = pick(Deno.env.get('TELNYX_CONNECTION_ID'));
   return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
 }
 

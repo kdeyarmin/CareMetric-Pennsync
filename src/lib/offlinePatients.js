@@ -39,3 +39,21 @@ export async function withOfflineRosterFallback(fetchRemote, { getLocal, isOffli
     throw error;
   }
 }
+
+
+export function mergeOfflinePatientCaches(localStorageCache = [], indexedDbPatients = []) {
+  const entries = [];
+  const seen = new Set();
+
+  const addEntry = (entry) => {
+    const patient = entry?.patient || entry;
+    if (!patient?.id || seen.has(patient.id)) return;
+    seen.add(patient.id);
+    entries.push(entry?.patient ? entry : { patient, recentVisits: [], carePlans: [], cachedAt: patient.cachedAt || null });
+  };
+
+  if (Array.isArray(localStorageCache)) localStorageCache.forEach(addEntry);
+  if (Array.isArray(indexedDbPatients)) indexedDbPatients.forEach(addEntry);
+
+  return entries;
+}

@@ -8,11 +8,23 @@ installed-context browser APIs (popups, downloads, camera/mic, clipboard), mobil
 chrome/safe-area handling, and repo health (build/lint/tests).
 
 Baseline at audit time: `npm run build`, `npm run lint`, and `npm test`
-(335 tests / 53 files) all pass.
+passed. Follow-up hosted-path/App Store audits now use the repo-standard Node 24 +
+pnpm 11 commands and include guardrail specs for router basenames, scoped assets,
+service-worker scope, iOS WKWebView behavior, and Telnyx in-app configuration.
 
 ---
 
 ## Part 1 — Defects found and FIXED in this pass
+
+### 0. Production asset URLs were still root-bound in arbitrary hosted mounts
+Vite's default production base emits root-relative JS/CSS/preload/icon URLs.
+That works at the domain root but breaks the same App Store/Base44 build when it
+is mounted below a path like `/apps/pennsync`.
+
+**Fixed:** Vite now builds production assets with a relative base (`./`) while
+leaving the dev server root-based for HMR. The runtime router still infers the
+mount path for navigation and public links, and `./` is ignored as a configured
+router basename so dynamic mount inference keeps working.
 
 ### 1. The service worker was never registered (offline mode was inert)
 `public/sw.js` shipped in every build, but **no code anywhere registered it** — no
@@ -21,20 +33,23 @@ of its caching and PHI-eviction logic was dead code. Consequences for an install
 app: cold-launching offline produced the OS browser error page, and none of the
 static-asset caching ever happened.
 
-**Fixed:** `src/main.jsx` now registers `/sw.js` in production builds.
+**Fixed:** `src/main.jsx` now registers the worker from `import.meta.env.BASE_URL`
+in production builds so root-hosted, Base44/App Store subpath-hosted, and Vite
+`BASE_URL` deployments all use the correct scoped worker URL.
 
 ### 2. No offline app shell — cold offline launch showed a browser error
 Even if the old worker had been registered, it deliberately never cached HTML/JS,
 so an installed app opened without connectivity could not paint anything.
 
-**Fixed:** `public/sw.js` (bumped to v6) now:
+**Fixed:** `public/sw.js` (currently cache version v7) now:
 - serves navigations **network-first** (a deploy is never masked by cache), falling
-  back offline to the last successfully fetched `index.html`, then to a new
-  precached, fully self-contained `public/offline.html` branded fallback page
+  back offline to the last successfully fetched scoped `index.html`, then to a
+  precached, fully self-contained scoped `public/offline.html` branded fallback page
   (auto-retries when connectivity returns);
-- serves Vite's content-hashed `/assets/*` bundles **cache-first** (safe because a
-  changed file always gets a new hashed URL via the network-first shell), which is
-  what makes lazy route chunks loadable offline;
+- serves Vite's content-hashed bundles under the service worker's scoped assets
+  path **cache-first** (safe because a changed file always gets a new hashed URL
+  via the network-first shell), which is what makes lazy route chunks loadable
+  offline even when the app is mounted under a hosted subpath;
 - keeps all v5 PHI rules: never caches `/api/`, PDFs, or any cross-origin response;
   fonts and same-origin images only.
 
@@ -137,6 +152,17 @@ For a clinical tool this overstated data-loss protection. **Fixed:** copy now
 matches the real behavior (queue on device → drain on reconnect/startup → failed
 items stay queued; unsynced work survives logout; caches are per-device/per-app).
 
+### 13. Offline patient caches and installed-app previews were still split
+The status tab counted only the retired `offline_patient_data` localStorage cache,
+while the working offline patient pickers read the IndexedDB roster maintained by
+`OfflineManager`. Admin training previews also used internal links with
+`target="_blank"`, which can leave or no-op inside installed app shells.
+
+**Fixed:** Offline Mode now merges the detailed legacy cache with the canonical
+IndexedDB roster for counts, storage, and the cached-patient list; explicit
+offline downloads also write selected patients into IndexedDB and notify mounted
+views to refresh. Internal training preview links now stay inside the router.
+
 ---
 
 ## Part 2 — Findings that need action OUTSIDE this repo (store packaging)
@@ -201,22 +227,15 @@ packages and submits the app.
 
 ## Part 3 — Known gaps kept as-is (documented, not fixed)
 
-1. **Two disconnected patient caches.** `OfflineManager` caches the active roster
-   to IndexedDB, while "Download Data for Offline Access" (`OfflinePatientSelector`)
-   writes `localStorage['offline_patient_data']`; the Offline Mode tiles count only
-   the latter, and only `SmartNoteAssistant` reads the former. Unifying them is a
-   worthwhile follow-up refactor.
-2. **React Query offline reads:** default `networkMode: 'online'` pauses queries
+1. **React Query offline reads:** default `networkMode: 'online'` pauses queries
    offline; most pages show empty/loading states rather than cached data. The
    dedicated offline surfaces (Offline Mode tabs, SmartNote patient picker) now
-   have working IndexedDB fallbacks (Part 1 #10); general pages remain
+   have working IndexedDB fallbacks (Part 1 #10), and Offline Mode's status/list
+   now reads the same canonical roster (Part 1 #13); general pages remain
    online-first by design.
-3. **Internal `<Link target="_blank">` course previews** (`CourseManager`,
-   `SMEReviewQueue`) break out of the installed shell; left alone because they're
-   desktop admin authoring tools.
-4. **`orientation: portrait-primary`** kept (phone-first product decision) — see
+2. **`orientation: portrait-primary`** kept (phone-first product decision) — see
    Play checklist above for the tablet trade-off.
-5. **Old hashed assets accumulate** in the SW cache across deploys until the next
+3. **Old hashed assets accumulate** in the SW cache across deploys until the next
    cache-name bump evicts them; bounded by browser cache quotas and the existing
    version-bump convention in `sw.js`.
 
@@ -224,9 +243,11 @@ packages and submits the app.
 
 ## Part 4 — Verification
 
-- `npm run build` — passes; `dist/` contains `manifest.json`, `sw.js`,
-  `offline.html`, `icons/` (verified post-change).
-- `npm run lint` — passes (0 errors).
-- `npm test` — 335 tests / 53 files pass (node --test + Vitest), including the
-  offline sync/queue suites.
+- `pnpm run build` — passes; `dist/` contains `manifest.json`, `sw.js`,
+  `offline.html`, `icons/`, and relative `./assets/...` entrypoints (verified
+  post-change).
+- `pnpm run lint` — passes (0 errors).
+- `pnpm test` — passes (node --test + Vitest); latest run covered 67 Vitest
+  files / 412 component tests plus the Node utility/contract/security/dedupe
+  suites, including the offline sync/queue suites.
 - Icon set visually verified (any + maskable + apple-touch renders).

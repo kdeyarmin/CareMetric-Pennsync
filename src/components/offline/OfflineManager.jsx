@@ -25,8 +25,8 @@ export default function OfflineManager() {
   // nurse who loses connectivity and THEN opens Offline Mode (exactly the flow
   // the Features page instructs) would otherwise hit a failed dynamic import —
   // the chunk was never downloaded. Importing them here loads them into the
-  // session's module graph and, in production, the service worker's hashed
-  // /assets/ cache, so the offline workflow stays reachable after a restart.
+  // session's module graph and, in production, the service worker's scoped hashed
+  // asset cache, so the offline workflow stays reachable after a restart.
   // Idle-time + fire-and-forget: a failed prefetch just means the old behavior.
   useEffect(() => {
     if (!canSync || !navigator.onLine) return undefined;

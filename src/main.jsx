@@ -112,13 +112,13 @@ window.addEventListener('vite:preloadError', (e) => {
 });
 
 // Register the offline service worker (public/sw.js): network-first app shell
-// with an offline fallback, cache-first hashed /assets/ chunks, and the
+// with an offline fallback, cache-first scoped hashed asset chunks, and the
 // font/image cache with PHI-exclusion rules. Production only — the dev server
 // serves unhashed source modules the worker's caching policy doesn't apply to,
 // and a worker left controlling localhost masks dev-server restarts.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
       // Registration failure (private mode, unsupported embedder) just means
       // no offline cache — the app itself still runs normally.
     });

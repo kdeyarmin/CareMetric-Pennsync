@@ -9,6 +9,8 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { generateSecureToken } from '@/components/utils/security';
 import { toast } from 'sonner';
+import { hostedAbsoluteUrl } from '@/lib/assetPath';
+import { ROUTER_PATHS } from '@/routes';
 
 export default function SignatureRequestCreator({ onCancel }) {
   const [step, setStep] = useState(1);
@@ -208,8 +210,7 @@ export default function SignatureRequestCreator({ onCancel }) {
           expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
         });
 
-        const origin = window.location.origin;
-        const signingUrl = `${origin}/signer?token=${token}`;
+        const signingUrl = hostedAbsoluteUrl(`/signer?token=${token}`, { routerPaths: ROUTER_PATHS });
         
         await base44.integrations.Core.SendEmail({
           to: signer.email,

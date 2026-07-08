@@ -123,7 +123,7 @@ export function evaluateAgencyConfig(settings) {
  * All inputs are optional:
  *   - secretStatus   getTelnyxSecretStatus result
  *                    ({ configured, source, api_key_last_four, ... })
- *                    source is 'env' | 'config' | 'none'; api_key_last_four is from the API key.
+ *                    source is 'config' | 'none'; api_key_last_four is from the API key.
  *   - agencySettings the AgencySettings row (or undefined)
  *   - provisioning   { total, withWorkNumber, missingBridgeCell }
  *   - liveResult     testTelnyxConnection result ({ checks, ... }) or null
@@ -143,13 +143,10 @@ export function buildIntegrationSteps({ secretStatus, agencySettings, provisioni
 
   // 1. Telnyx API key (required).
   const secretConfigured = Boolean(secretStatus && secretStatus.configured);
-  // suffix shows API key last-four when saved in-app, or "(Base44 dashboard env)" when from env
-  const secretSuffix =
-    secretStatus?.source === "env"
-      ? " (Base44 dashboard env)"
-      : secretStatus?.api_key_last_four
-        ? ` ••••${secretStatus.api_key_last_four}`
-        : "";
+  // suffix shows API key last-four when saved in-app.
+  const secretSuffix = secretStatus?.api_key_last_four
+    ? ` ••••${secretStatus.api_key_last_four}`
+    : "";
   steps.push({
     id: "api_secret",
     title: "Add your Telnyx API key",

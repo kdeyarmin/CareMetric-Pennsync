@@ -8,6 +8,8 @@ import PageHeader from "@/components/ui/PageHeader";
 import { toast } from 'sonner';
 import { useAuth } from "@/lib/AuthContext";
 import { isAdminView } from "@/lib/roles";
+import { hostedAssetPath } from '@/lib/assetPath';
+import { ROUTER_PATHS } from '@/routes';
 
 export default function UserGuides() {
   const [downloading, setDownloading] = useState(null);
@@ -311,7 +313,7 @@ export default function UserGuides() {
           <CardContent>
             <div className={`grid gap-4 ${isAdmin ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>
               <a
-                href="/manuals/PennSync-User-Manual.pdf"
+                href={hostedAssetPath("/manuals/PennSync-User-Manual.pdf", { routerPaths: ROUTER_PATHS })}
                 download
                 className="flex items-center gap-4 rounded-lg bg-white/5 hover:bg-white/10 ring-1 ring-inset ring-white/10 p-4 transition-colors"
               >
@@ -327,7 +329,7 @@ export default function UserGuides() {
 
               {isAdmin && (
                 <a
-                  href="/manuals/PennSync-Facility-Admin-Manual.pdf"
+                  href={hostedAssetPath("/manuals/PennSync-Facility-Admin-Manual.pdf", { routerPaths: ROUTER_PATHS })}
                   download
                   className="flex items-center gap-4 rounded-lg bg-white/5 hover:bg-white/10 ring-1 ring-inset ring-white/10 p-4 transition-colors"
                 >

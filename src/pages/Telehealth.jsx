@@ -20,6 +20,8 @@ import SessionCard from "../components/telehealth/SessionCard";
 import SessionDocumentation from "../components/telehealth/SessionDocumentation";
 import RealtimeVitalMonitor from "../components/telehealth/RealtimeVitalMonitor";
 import { generateJoinToken, buildPatientJoinLink } from "../components/telehealth/telehealthUtils";
+import { hostedAbsoluteUrl } from '@/lib/assetPath';
+import { ROUTER_PATHS } from '@/routes';
 
 const visitTypes = [
   { value: "routine_followup", label: "Routine Follow-up" },
@@ -301,7 +303,7 @@ function NewSessionForm({ patients, currentUser, onSubmit, loading }) {
     const roomName = `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const patientName = patient ? `${patient.first_name} ${patient.last_name}` : "Unknown";
     // Patient-facing capability link: the token is the patient's access grant.
-    const inviteLink = buildPatientJoinLink(window.location.origin, roomName, generateJoinToken());
+    const inviteLink = buildPatientJoinLink(hostedAbsoluteUrl('/', { routerPaths: ROUTER_PATHS }), roomName, generateJoinToken());
     onSubmit({
       room_name: roomName,
       patient_id: form.patient_id,

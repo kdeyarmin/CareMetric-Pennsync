@@ -19,12 +19,12 @@ export function generateJoinToken() {
 
 /**
  * Build the public patient join link for a session.
- * @param {string} origin - e.g. window.location.origin
+ * @param {string} appBaseUrl - absolute app base URL, including any hosted mount path
  * @param {string} roomName
  * @param {string} joinToken
  * @returns {string}
  */
-export function buildPatientJoinLink(origin, roomName, joinToken) {
+export function buildPatientJoinLink(appBaseUrl, roomName, joinToken) {
   const params = new URLSearchParams({ room: roomName, t: joinToken });
-  return `${origin}/join?${params.toString()}`;
+  return `${String(appBaseUrl).replace(/\/+$/, '')}/join?${params.toString()}`;
 }
