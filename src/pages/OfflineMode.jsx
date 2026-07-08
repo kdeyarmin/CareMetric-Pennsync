@@ -199,10 +199,10 @@ export default function OfflineMode() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="space-y-6">
           <OfflineSyncStatus />
-          <OfflinePatientSelector onCacheComplete={(count) => {
-            window.dispatchEvent(new CustomEvent('offline-patients-updated'));
-            toast.success(`${count || 'Patient'} data cached for offline use`);
-          }} />
+<OfflinePatientSelector onCacheComplete={(count) => {
+  const n = typeof count === 'number' ? count : 0;
+  toast.success(`${n} patient${n === 1 ? '' : 's'} cached for offline use`);
+}} />
         </div>
 
         <div className="space-y-4 sm:space-y-6">
