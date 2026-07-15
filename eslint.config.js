@@ -7,6 +7,14 @@ import pluginJsxA11y from "eslint-plugin-jsx-a11y";
 
 export default [
   {
+    ignores: [
+      "dist/**",
+      "dist-ssr/**",
+      "node_modules/**",
+      "coverage/**",
+    ],
+  },
+  {
     files: [
       "src/components/**/*.{js,mjs,cjs,jsx}",
       "src/pages/**/*.{js,mjs,cjs,jsx}",
