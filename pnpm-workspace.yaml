@@ -8,9 +8,6 @@ overrides:
   undici: 7.28.0
   ws: 8.21.0
 minimumReleaseAgeExclude:
-  - '@base44/sdk@0.8.36'
-  - '@base44/vite-plugin@1.0.28'
-  - baseline-browser-mapping@2.10.41
   - vitest@4.1.10
   - '@vitest/expect@4.1.10'
   - '@vitest/mocker@4.1.10'
