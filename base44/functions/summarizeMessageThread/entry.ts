@@ -102,7 +102,7 @@ Provide:
   } catch (error) {
     console.error('Error summarizing thread:', error);
     return Response.json({
-      error: error.message
+      error: 'Internal server error'
     }, { status: 500 });
   }
 });

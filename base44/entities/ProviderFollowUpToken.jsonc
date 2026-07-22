@@ -13,7 +13,7 @@
     },
     "token": {
       "type": "string",
-      "description": "Secure random token for public access (bearer capability)"
+      "description": "SHA-256 hex hash of the secure random bearer token (the plaintext lives only in the portal link handed to the provider; validators hash the presented token before lookup)"
     },
     "provider_name": {
       "type": "string",

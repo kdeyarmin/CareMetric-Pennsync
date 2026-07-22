@@ -157,7 +157,7 @@ Expanded documentation:`;
   } catch (error) {
     console.error('Error expanding phrase:', error);
     return Response.json({ 
-      error: error.message || 'Failed to expand clinical phrase' 
+      error: 'Failed to expand clinical phrase' 
     }, { status: 500 });
   }
 });

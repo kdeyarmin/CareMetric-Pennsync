@@ -168,9 +168,11 @@ export const REDIRECTS = [
 
   // ─── Feature-audit consolidation ─────────────────────────────────────────────
   // Redundant standalone pages folded into their canonical homes — see
-  // docs/feature-audit.md. The dead page files were removed once the
-  // consolidation proved stable; the redirects below are kept so old
-  // links/bookmarks resolve to the current home.
+  // docs/feature-audit.md. The redirects below are kept so old links/bookmarks
+  // resolve to the current home. (Some page files — ClinicalChart, MyLearning,
+  // ClinicalInsightsDashboard, NurseEducationVideos — were re-ported from the
+  // live PENNSync app for content parity but stay unrouted, mirroring the live
+  // app, which also redirects these paths; route one by adding a manifest entry.)
   //   ClinicalChart       → its vitals / care-plan / OASIS tabs already live in
   //                          PatientDetails; sent to the patient list (no id ctx).
   //   MedicalScribe       → same record→transcribe→review pipeline as the Clinical
@@ -196,14 +198,10 @@ export const REDIRECTS = [
   { from: '/UserActivityLog', to: '/UserActivityReport?tab=log' },
   { from: '/PDFTemplateLibrary', to: '/TemplateManagement?tab=pdf' },
 
-  // ─── Care Plans removal ──────────────────────────────────────────────────────
-  // The Care Plans feature (the standalone Care Plans page, its builder and the
-  // Automatic Care Plans page, plus all care-plan components, backend functions
-  // and data entities) was removed. Point old links/bookmarks at the patient list
-  // so they resolve instead of hitting PageNotFound.
-  { from: '/CarePlanManagement', to: '/Patients' },
-  { from: '/CarePlanBuilder', to: '/Patients' },
-  { from: '/AutomaticCarePlans', to: '/Patients' },
+  // NOTE: the Care Plans feature (CarePlanManagement, CarePlanBuilder,
+  // AutomaticCarePlans, their components, backend functions and data entities)
+  // was ported back from the live PENNSync app, so those paths are real
+  // manifest-derived routes again — their former removal redirects are gone.
 ];
 
 export const MAIN_PAGE = 'Dashboard';
@@ -215,6 +213,7 @@ export const ROUTER_PATHS = [
   '/join',
   '/signer',
   '/followup',
+  '/privacy',
   ...PAGE_NAMES.map((name) => `/${name}`),
   ...REDIRECTS.map(({ from }) => from),
 ];

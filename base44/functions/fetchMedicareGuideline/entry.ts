@@ -138,7 +138,7 @@ Extract and return JSON with:
   } catch (error) {
     console.error('Error fetching Medicare guideline:', error);
     return Response.json({ 
-      error: error.message,
+      error: 'Internal server error',
       details: 'Failed to fetch and process Medicare guideline'
     }, { status: 500 });
   }

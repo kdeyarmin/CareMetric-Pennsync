@@ -181,6 +181,7 @@ Return ONLY valid JSON (no prose, no code fences) in EXACTLY this shape:
 
     return Response.json({ success: true, questions });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('generateCourseQuiz failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

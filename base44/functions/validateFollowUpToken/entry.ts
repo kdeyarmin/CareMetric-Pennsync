@@ -11,6 +11,12 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // insurance identifiers, analysis results) and ALL revenue/coding mechanics —
 // the provider sees the request questions, never payment math.
 
+async function sha256Hex(input) {
+  const data = new TextEncoder().encode(String(input));
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 Deno.serve(async (req) => {
   try {
     const { token } = await req.json().catch(() => ({}));
@@ -19,7 +25,11 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
-    const rows = await base44.asServiceRole.entities.ProviderFollowUpToken.filter({ token });
+    // Tokens are stored ONLY as their SHA-256 hash (generateFollowUpPortalToken,
+    // mirroring generateSignerToken): hash the presented plaintext before lookup.
+    // No legacy-plaintext fallback — the entity has no pre-hashing data.
+    const tokenHash = await sha256Hex(token);
+    const rows = await base44.asServiceRole.entities.ProviderFollowUpToken.filter({ token: tokenHash });
     const record = rows && rows[0];
     if (!record || record.is_active === false) {
       return Response.json({ valid: false, error: 'This link is no longer valid.' }, { status: 401 });

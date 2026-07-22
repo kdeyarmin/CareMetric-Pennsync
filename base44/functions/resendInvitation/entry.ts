@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     console.error('Error resending invitation:', error.message);
     return Response.json({ 
       error: 'Failed to resend invitation', 
-      details: error.message 
+      details: 'Internal server error' 
     }, { status: 500 });
   }
 });

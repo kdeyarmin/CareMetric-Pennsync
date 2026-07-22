@@ -32,6 +32,11 @@ import { getRouterBasename } from '@/lib/routerBasename';
 // the whole app — so plain lazy() is sufficient here.
 const JoinTelehealth = lazy(() => import('@/pages/JoinTelehealth'));
 
+// Public privacy policy — App Store Guideline 5.1.1(i) requires it reachable
+// from within the app without signing in, and the same URL is entered in App
+// Store Connect, so it must render before the auth gate.
+const PrivacyPolicy = lazy(() => import('@/pages/PrivacyPolicy'));
+
 // Shown when a non-admin navigates directly to an admin-only route. Admin pages
 // are hidden from the sidebar/palette for non-admins, but routes are reachable
 // by URL, so this is the client-side authorization gate (server RLS is the real
@@ -100,51 +105,47 @@ const AuthenticatedApp = () => {
   const isSuperAdminUser = roleView === 'super_admin';
   const isAdmin = roleView === 'super_admin' || roleView === 'facility_admin';
 
-  // Memoized route tree — declared before any early returns so the hook is
-  // called unconditionally on every render (rules of hooks). The tree only
-  // depends on the user's role tier, which is stable across navigations, so
-  // memoizing prevents React Router v7 from rebuilding its matcher on every
-  // location change (which made clicks appear to do nothing).
-  const routeTree = useMemo(() => (
-    <Routes>
-      <Route path="/" element={<Navigate to={`/${MAIN_PAGE}`} replace />} />
-      <Route element={<Layout />}>
-        {ROUTES.map(({ name, Component, adminOnly, superAdminOnly }) => {
-          const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
-          const blockedAdmin = adminOnly && !isAdmin;
-          return (
-            <Route
-              key={name}
-              path={`/${name}`}
-              element={
-                <ErrorBoundary key={name}>
-                  {blockedSuperAdmin
-                    ? <AdminOnlyFallback superAdmin />
-                    : blockedAdmin
-                      ? <AdminOnlyFallback />
-                      : (
-                        <Suspense fallback={<RoutePageLoader />}>
-                          <Component />
-                        </Suspense>
-                      )}
-                </ErrorBoundary>
-              }
-            />
-          );
-        })}
-        {REDIRECTS.map(({ from, to }) => (
-          <Route key={from} path={from} element={<RedirectTo to={to} />} />
-        ))}
-        <Route path="*" element={<PageNotFound />} />
-      </Route>
-    </Routes>
-  ), [isSuperAdminUser, isAdmin]);
+  // Memoized <Route> elements — declared before any early returns so the hooks
+  // are called unconditionally on every render (rules of hooks). Only the route
+  // elements are memoized (they depend on the user's role tier, which is stable
+  // across navigations), NOT the <Routes> wrapper. Memoizing the entire <Routes>
+  // element makes React bail out of re-rendering the route tree on navigation,
+  // so link clicks do nothing. By keeping <Routes> fresh on every render while
+  // reusing the same <Route> element references, React Router doesn't rebuild
+  // its matcher (the original issue) but still re-renders on location change.
+  const routeElements = useMemo(() => ROUTES.map(({ name, Component, adminOnly, superAdminOnly }) => {
+    const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
+    const blockedAdmin = adminOnly && !isAdmin;
+    return (
+      <Route
+        key={name}
+        path={`/${name}`}
+        element={
+          <ErrorBoundary key={name}>
+            {blockedSuperAdmin
+              ? <AdminOnlyFallback superAdmin />
+              : blockedAdmin
+                ? <AdminOnlyFallback />
+                : (
+                  <Suspense fallback={<RoutePageLoader />}>
+                    <Component />
+                  </Suspense>
+                )}
+          </ErrorBoundary>
+        }
+      />
+    );
+  }), [isSuperAdminUser, isAdmin]);
+
+  const redirectElements = useMemo(() => REDIRECTS.map(({ from, to }) => (
+    <Route key={from} path={from} element={<RedirectTo to={to} />} />
+  )), []);
 
   // Public patient join/signer routes render WITHOUT authentication — they are
   // gated by capability tokens in the link, not by an app login. This is
   // checked before the auth gate below so external users are never bounced to login.
   const normalizedPath = location.pathname.toLowerCase();
-  if (normalizedPath.startsWith('/join') || normalizedPath.startsWith('/signer') || normalizedPath.startsWith('/followup')) {
+  if (normalizedPath.startsWith('/join') || normalizedPath.startsWith('/signer') || normalizedPath.startsWith('/followup') || normalizedPath.startsWith('/privacy')) {
     return (
       <Suspense fallback={
         <div className="fixed inset-0 flex items-center justify-center">
@@ -156,6 +157,8 @@ const AuthenticatedApp = () => {
           <Route path="/signer/*" element={<SignerPortal />} />
           {/* Provider follow-up response portal — token-gated, no app login */}
           <Route path="/followup/*" element={<ProviderFollowUpPortal />} />
+          {/* Public privacy policy — required in-app pre-auth (App Store 5.1.1(i)) */}
+          <Route path="/privacy" element={<PrivacyPolicy />} />
         </Routes>
       </Suspense>
     );
@@ -204,11 +207,20 @@ const AuthenticatedApp = () => {
 
   // Render the main app. A single layout route keeps the sidebar, header, and
   // bottom nav mounted across navigations — only the page content (Outlet)
-  // changes. The route tree itself is memoized above (before the early returns)
-  // so it is NOT rebuilt on every navigation re-render — re-creating <Route>
-  // elements on each location change forces React Router v7 to rebuild its
-  // matcher each time, which can make clicks appear to do nothing.
-  return routeTree;
+  // changes. The <Route> elements are memoized above (before the early returns)
+  // so the matcher is NOT rebuilt on every navigation re-render, but <Routes>
+  // itself is created fresh each render so React Router re-renders on location
+  // change and link clicks actually navigate.
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to={`/${MAIN_PAGE}`} replace />} />
+      <Route element={<Layout />}>
+        {routeElements}
+        {redirectElements}
+        <Route path="*" element={<PageNotFound />} />
+      </Route>
+    </Routes>
+  );
 };
 
 

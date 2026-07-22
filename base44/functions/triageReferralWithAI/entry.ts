@@ -89,7 +89,7 @@ Return ONLY valid JSON, no markdown or explanation.`,
   } catch (error) {
     console.error('Triage analysis error:', error);
     return Response.json(
-      { error: 'Triage analysis failed', details: error.message },
+      { error: 'Triage analysis failed', details: 'Internal server error' },
       { status: 500 }
     );
   }

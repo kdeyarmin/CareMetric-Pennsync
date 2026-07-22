@@ -1,0 +1,42 @@
+# XcodeGen spec for the PennSync iOS shell.
+# Run `xcodegen generate` in this directory, then open PennSync.xcodeproj.
+name: PennSync
+options:
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+targets:
+  PennSync:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      # Swift sources compile; Assets.xcassets and PrivacyInfo.xcprivacy are
+      # added to the resources phase; Info.plist is excluded automatically.
+      - path: PennSync
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.caremetric.pennsync
+        INFOPLIST_FILE: PennSync/Info.plist
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LaunchBackground
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+schemes:
+  PennSync:
+    build:
+      targets:
+        PennSync: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

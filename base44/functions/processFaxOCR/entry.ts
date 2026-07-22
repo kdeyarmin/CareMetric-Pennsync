@@ -129,7 +129,7 @@ Return JSON: {"text": "extracted text", "confidence": 0-100}`;
 
       return Response.json({
         success: false,
-        error: error.message
+        error: 'Internal server error'
       }, { status: 500 });
     }
 
@@ -165,6 +165,6 @@ Return JSON: {"text": "extracted text", "confidence": 0-100}`;
 
   } catch (error) {
     console.error('Process fax OCR error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

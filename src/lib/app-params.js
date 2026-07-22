@@ -131,7 +131,6 @@ const getAppParamValue = (paramName, { defaultValue = undefined, removeFromUrl =
 };
 
 const getAppParams = () => {
-	const currentUrl = isNode ? undefined : window.location.href;
 	// `clear_access_token` is a ONE-SHOT directive ("clear the stored token now"),
 	// not a persisted preference. Read it straight from the URL — never through
 	// getAppParamValue, which writes the value to storage and would then re-clear
@@ -160,7 +159,6 @@ const getAppParams = () => {
 		appId,
 		serverUrl,
 		token: getAppParamValue('access_token', { removeFromUrl: true, acceptUrlValue: trustedTokenReferrer }),
-		fromUrl: getAppParamValue('from_url', { defaultValue: currentUrl }),
 		functionsVersion: getAppParamValue('functions_version')
 	};
 };

@@ -339,7 +339,7 @@ Return JSON with detailed mapping results:`;
     console.error('Error in mapNoteToOASIS:', error);
     return Response.json({ 
       success: false,
-      error: error.message 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 });

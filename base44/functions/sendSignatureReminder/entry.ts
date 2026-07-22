@@ -228,7 +228,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error sending signature reminder:', error);
     return Response.json({
-      error: error.message || 'Failed to send reminder'
+      error: 'Failed to send reminder'
     }, { status: 500 });
   }
 });

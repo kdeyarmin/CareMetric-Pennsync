@@ -117,7 +117,9 @@ test("sendFax posts the Telnyx Programmable Fax contract", async () => {
     fetchImpl: impl,
   });
   await handler(new Request("https://app/functions/sendFax", {
-    method: "POST", body: JSON.stringify({ file_url: "https://files/x.pdf", to_number: "+12155550144", document_name: "Doc" }),
+    // file_url must be on an allowlisted storage host — sendFax now rejects
+    // arbitrary hosts (SSRF guard) before handing media_url to Telnyx.
+    method: "POST", body: JSON.stringify({ file_url: "https://base44.app/files/x.pdf", to_number: "+12155550144", document_name: "Doc" }),
   }));
   const call = calls.find((c) => c.url === "https://api.telnyx.com/v2/faxes");
   assert.ok(call, "posted to the Telnyx Faxes endpoint");
@@ -125,7 +127,7 @@ test("sendFax posts the Telnyx Programmable Fax contract", async () => {
   assert.equal(call.body.connection_id, "FC1");
   assert.equal(call.body.from, "+12155550190");
   assert.equal(call.body.to, "+12155550144");
-  assert.equal(call.body.media_url, "https://files/x.pdf");
+  assert.equal(call.body.media_url, "https://base44.app/files/x.pdf");
 });
 
 // ============================ VOICE (outbound) ============================

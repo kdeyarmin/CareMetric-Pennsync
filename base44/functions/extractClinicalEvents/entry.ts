@@ -234,7 +234,7 @@ IMPORTANT: For source_text, provide the EXACT verbatim text from the note, not a
   } catch (error) {
     console.error('Error extracting clinical events:', error);
     return Response.json({
-      error: error.message
+      error: 'Internal server error'
     }, { status: 500 });
   }
 });

@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Prediction error:', error);
     return Response.json(
-      { error: error.message },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

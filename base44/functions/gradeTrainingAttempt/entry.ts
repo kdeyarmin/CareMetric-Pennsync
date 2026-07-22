@@ -414,6 +414,7 @@ Deno.serve(async (req) => {
       remediation_message: !passed ? (assignment.remediation_message || 'Review the lesson content and retry.') : ''
     });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('gradeTrainingAttempt failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

@@ -270,6 +270,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, call_id: callLog.id, provider_call_id: providerCallId });
   } catch (error) {
     console.error('startTelnyxCall error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

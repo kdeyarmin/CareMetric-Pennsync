@@ -415,7 +415,7 @@ Deno.serve(async (req) => {
     return Response.json({ 
       success: true,
       warning: 'User created but notification failed',
-      error: error.message 
+      error: 'Internal server error' 
     });
   }
 });

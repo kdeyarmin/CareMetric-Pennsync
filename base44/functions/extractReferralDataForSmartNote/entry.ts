@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
     return Response.json({ smartNoteData });
   } catch (error) {
     console.error('Error extracting referral data:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
 

@@ -543,9 +543,10 @@ Deno.serve(async (req) => {
       results,
     });
   } catch (error) {
+    console.error('processPatientFileUpdate failed:', error);
     return Response.json({
       success: false,
-      error: error.message,
+      error: 'Internal server error',
     }, { status: 500 });
   }
 });

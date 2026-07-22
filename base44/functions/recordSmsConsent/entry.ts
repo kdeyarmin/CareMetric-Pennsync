@@ -73,6 +73,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, consent_status: status, phone_e164: phone });
   } catch (error) {
     console.error('recordSmsConsent error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

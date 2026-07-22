@@ -8,6 +8,17 @@ function isSchedulerAdmin(user) {
     user.account_type === 'super_admin'
   );
 }
+// Constant-time string compare for the shared-secret check (mirrors
+// createTelehealthToken's timingSafeEqual). A plain === short-circuits on the
+// first differing character, so response timing could leak how much of the
+// secret matched. Dependency-free char-code XOR so the identical source runs
+// under Deno (consumers) and Node (tests).
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
 function getSchedulerAuthError(req, user) {
   if (isSchedulerAdmin(user)) return null;
   const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
@@ -18,7 +29,7 @@ function getSchedulerAuthError(req, user) {
     );
   }
   const providedSecret = String(req.headers.get(SCHEDULER_SECRET_HEADER) || '').trim();
-  if (providedSecret === expectedSecret) return null;
+  if (timingSafeEqualStr(providedSecret, expectedSecret)) return null;
   return Response.json(
     { error: user ? 'Forbidden: admin or scheduler secret required' : 'Unauthorized: scheduler secret required' },
     { status: user ? 403 : 401 },
@@ -148,6 +159,28 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// <<<BEGIN SHARED HELPER: isSafeFetchUrl — generated, edit base44/_shared/backendHelpers.mjs>>>
+// SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
+// internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
+// rather than env-configured; add a host here if file storage ever moves.
+const FILE_URL_ALLOWED_HOSTS = ['qtrypzzcjebvfcihiynt.supabase.co', 'base44.app', 'base44.io'];
+function isSafeFetchUrl(raw) {
+  let u;
+  try { u = new URL(String(raw)); } catch { return false; }
+  if (u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  if (['localhost', '0.0.0.0', '127.0.0.1', '::1', '169.254.169.254'].includes(host)) return false;
+  if (host.endsWith('.internal') || host.endsWith('.local')) return false;
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = +m[1], b = +m[2];
+    if (a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false;
+  }
+  if (!FILE_URL_ALLOWED_HOSTS.some((h) => host === h || host.endsWith('.' + h))) return false;
+  return true;
+}
+// <<<END SHARED HELPER: isSafeFetchUrl>>>
+
 /**
  * Resolve Telnyx credentials from the in-app IntegrationSecret row with
  * provider 'telnyx'.
@@ -168,11 +201,6 @@ async function resolveTelnyxCreds(base44) {
     voiceConnectionId = pick(rec.voice_connection_id);
     faxConnectionId = pick(rec.fax_connection_id);
   } catch { /* ignore */ }
-  // Fallback to app-level secrets so the scheduled retry still runs when no
-  // IntegrationSecret row has been seeded (e.g. before an admin saves Telnyx
-  // config in-app). Only apiKey + faxConnectionId are needed to re-send faxes.
-  if (!apiKey) apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
-  if (!faxConnectionId) faxConnectionId = pick(Deno.env.get('TELNYX_CONNECTION_ID'));
   return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
 }
 
@@ -298,6 +326,19 @@ Deno.serve(async (req) => {
     }
 
     for (const fax of dueFaxes) {
+      // SSRF guard: re-validate the STORED document URL before handing it back
+      // to Telnyx as media_url — a tampered or legacy row must not aim the fax
+      // provider at an arbitrary/internal host. Clearing next_retry_at stops
+      // future runs from re-processing the row (isFaxRetryDue requires it).
+      if (!isSafeFetchUrl(fax.document_url)) {
+        await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+          next_retry_at: null,
+          failure_reason: 'Invalid or disallowed stored document URL',
+        }).catch(() => {});
+        skippedCount++;
+        continue;
+      }
+
       // Claim with a per-run token, then RE-READ to confirm we own it. Flipping
       // to 'queued' also removes it from a second run's failed-filter, so two
       // overlapping runs can't both re-send the same document.
@@ -388,7 +429,7 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('autoRetryFailedFaxes error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
 

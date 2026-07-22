@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('PDF page modification error:', error);
     return Response.json({ 
-      error: error.message || 'Failed to modify PDF pages' 
+      error: 'Failed to modify PDF pages' 
     }, { status: 500 });
   }
 });

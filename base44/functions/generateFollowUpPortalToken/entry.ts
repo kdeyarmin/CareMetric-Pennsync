@@ -19,6 +19,12 @@ function generateSecureToken() {
   return token;
 }
 
+async function sha256Hex(input) {
+  const data = new TextEncoder().encode(String(input));
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 function getAppBaseUrl() {
   // Hardcoded app URL (matches the links built by generateSignerToken).
   return 'https://caremetricai.base44.app';
@@ -54,13 +60,21 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.ProviderFollowUpToken.update(t.id, { is_active: false });
     }
 
+    // Generate the secure token but persist ONLY its SHA-256 hash (in the token
+    // field), mirroring generateSignerToken: the plaintext lives solely in the
+    // portalLink handed to the provider, so read access to ProviderFollowUpToken
+    // rows (RLS gap, export, backup) no longer yields live capability links.
+    // validateFollowUpToken / submitFollowUpResponse hash the presented token
+    // before lookup. Hash-only, no legacy-plaintext fallback — this entity has
+    // no live production data, so hashed-at-rest is the only stored format.
     const token = generateSecureToken();
+    const tokenHash = await sha256Hex(token);
     const days = Math.min(Math.max(Number(expires_in_days) || 30, 1), 90);
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 
     const record = await base44.asServiceRole.entities.ProviderFollowUpToken.create({
       referral_id,
-      token,
+      token: tokenHash,
       provider_name: provider_name || null,
       expires_at: expiresAt,
       is_active: true,

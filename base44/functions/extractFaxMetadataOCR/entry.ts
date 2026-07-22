@@ -83,6 +83,7 @@ Do not guess or infer values not explicitly visible in the document.`,
     return Response.json({ success: true, extracted });
 
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('extractFaxMetadataOCR failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

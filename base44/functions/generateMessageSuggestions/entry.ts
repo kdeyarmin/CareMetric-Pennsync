@@ -98,7 +98,7 @@ Suggest:
   } catch (error) {
     console.error('Error generating suggestions:', error);
     return Response.json({
-      error: error.message
+      error: 'Internal server error'
     }, { status: 500 });
   }
 });

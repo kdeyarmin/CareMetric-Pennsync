@@ -35,6 +35,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, updated_count: updated, total: settingsList.length });
   } catch (error) {
     console.error('backfillTcpaQuietHours failed:', error?.message);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

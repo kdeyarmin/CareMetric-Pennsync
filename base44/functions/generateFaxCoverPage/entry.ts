@@ -122,6 +122,6 @@ Generate a professional cover sheet with a HIPAA confidentiality disclaimer. Ret
 
   } catch (error) {
     console.error('Cover page generation error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

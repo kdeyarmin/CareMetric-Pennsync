@@ -360,6 +360,7 @@ Deno.serve(async (req) => {
 
     return Response.json({ error: `Unknown action: ${action}` }, { status: 400 });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('manageTrainingVideos failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

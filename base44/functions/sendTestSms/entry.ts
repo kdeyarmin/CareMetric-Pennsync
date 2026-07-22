@@ -99,8 +99,11 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // Canonical admin tier (matches isAdminLike): facility admin, agency_admin,
+    // super_admin. agency_admin was previously (inconsistently) excluded.
     const isAdmin =
       user.role === 'admin' ||
+      user.account_type === 'agency_admin' ||
       user.account_type === 'super_admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can send a test text' }, { status: 403 });
@@ -199,6 +202,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('sendTestSms error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

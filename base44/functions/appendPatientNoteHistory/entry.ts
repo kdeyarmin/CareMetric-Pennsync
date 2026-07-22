@@ -124,7 +124,9 @@ Deno.serve(async (req) => {
       try {
         await Patients.update(patient_id, { enhanced_notes_history: next, ...notesPatch });
       } catch (err) {
-        lastError = `Patient update failed: ${err.message}`;
+        // Generic client-visible reason; keep the raw detail server-side only.
+        console.error('appendPatientNoteHistory Patient.update failed:', err);
+        lastError = 'Patient update failed';
         continue;
       }
 

@@ -17,3 +17,4 @@ minimumReleaseAgeExclude:
   - '@vitest/spy@4.1.10'
   - '@vitest/utils@4.1.10'
   - autoprefixer@10.5.3
+  - '@base44/sdk@0.8.40'

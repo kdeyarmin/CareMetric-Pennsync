@@ -208,6 +208,6 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Certificate packet generation failed:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
