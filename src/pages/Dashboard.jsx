@@ -111,7 +111,7 @@ export default function Dashboard() {
   });
 
   const { data: messages = [] } = useQuery({
-    queryKey: ['dashboardUnreadMessages', currentUser?.email],
+    queryKey: ['unreadMessages', currentUser?.email],
     queryFn: () => base44.entities.Message.filter({ recipients: currentUser.email }, '-created_date', 50),
     initialData: [],
     staleTime: 60000,
