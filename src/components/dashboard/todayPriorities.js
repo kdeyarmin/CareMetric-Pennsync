@@ -55,7 +55,9 @@ export function buildTodayPriorities({
   now = new Date(),
   limit = DEFAULT_LIMIT,
 } = {}) {
-  const isAdmin = currentUser?.role === 'admin' || ['agency_admin', 'super_admin'].includes(currentUser?.account_type);
+  const superAdminEmail = (import.meta.env?.VITE_SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
+  const isOwnerSuperAdmin = superAdminEmail && String(currentUser?.email || '').trim().toLowerCase() === superAdminEmail;
+  const isAdmin = currentUser?.role === 'admin' || ['agency_admin', 'super_admin'].includes(currentUser?.account_type) || isOwnerSuperAdmin;
   const patientById = new Map(patients.map((patient) => [patient.id, patient]));
   const priorities = [];
 
