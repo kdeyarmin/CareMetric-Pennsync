@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -369,12 +370,7 @@ export default function PatientAlertsDashboard({ patientId = null }) {
               <Loader2 className="w-8 h-8 animate-spin mx-auto text-slate-400" />
             </div>
           ) : filteredAlerts.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-slate-500">
-                <BellOff className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                <p>No alerts found</p>
-              </CardContent>
-            </Card>
+            <EmptyState icon={BellOff} title="No alerts found" description="" />
           ) : (
             <div className="space-y-3">
               {filteredAlerts.map((alert) => {

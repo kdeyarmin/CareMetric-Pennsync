@@ -1,5 +1,6 @@
 import { ShieldCheck } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
+import PageContainer from "@/components/ui/PageContainer";
 import CredentialComplianceReport from "@/components/admin/CredentialComplianceReport";
 
 /**
@@ -9,7 +10,7 @@ import CredentialComplianceReport from "@/components/admin/CredentialComplianceR
  */
 export default function CredentialCompliancePage() {
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto animate-fade-in">
+    <PageContainer className="animate-fade-in">
       <PageHeader
         icon={ShieldCheck}
         iconColor="bg-emerald-600"
@@ -19,6 +20,6 @@ export default function CredentialCompliancePage() {
         favoritePage="CredentialCompliance"
       />
       <CredentialComplianceReport />
-    </div>
+    </PageContainer>
   );
 }

@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Bell, Mail, Clock, Check, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -260,31 +261,31 @@ export default function NotificationPreferences({ currentUser }) {
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2 pr-4 font-medium">Notification Type</th>
-                  <th className="text-center px-2 py-2 font-medium">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Notification Type</TableHead>
+                  <TableHead className="text-center">
                     <div className="flex items-center justify-center gap-1">
                       <Bell className="w-4 h-4" />
                       <span className="hidden sm:inline">In-App</span>
                     </div>
-                  </th>
-                  <th className="text-center px-2 py-2 font-medium">
+                  </TableHead>
+                  <TableHead className="text-center">
                     <div className="flex items-center justify-center gap-1">
                       <Mail className="w-4 h-4" />
                       <span className="hidden sm:inline">Email</span>
                     </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {notificationTypes.map((type) => {
                   const pref = preferences?.preferences?.[type.key] || { email: true, in_app: true, push: false };
                   return (
-                    <tr key={type.key} className="border-b last:border-0 hover:bg-slate-50">
-                      <td className="py-3 pr-4">
-                        <div>
+                    <TableRow key={type.key}>
+                      <TableCell>
+                        <div className="whitespace-normal">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{type.label}</span>
                             {type.priority === 'critical' && (
@@ -296,26 +297,26 @@ export default function NotificationPreferences({ currentUser }) {
                           </div>
                           <p className="text-xs text-slate-500 mt-0.5">{type.description}</p>
                         </div>
-                      </td>
-                      <td className="text-center px-2">
+                      </TableCell>
+                      <TableCell className="text-center">
                         <Switch
                           checked={pref.in_app !== false}
                           onCheckedChange={(value) => handleToggle(type.key, 'in_app', value)}
                           disabled={!preferences?.in_app_notifications_enabled}
                         />
-                      </td>
-                      <td className="text-center px-2">
+                      </TableCell>
+                      <TableCell className="text-center">
                         <Switch
                           checked={pref.email !== false}
                           onCheckedChange={(value) => handleToggle(type.key, 'email', value)}
                           disabled={!preferences?.email_notifications_enabled}
                         />
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>

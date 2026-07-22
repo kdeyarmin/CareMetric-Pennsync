@@ -5,6 +5,7 @@ import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import StatCard from "@/components/ui/stat-card";
+import EmptyState from "@/components/ui/empty-state";
 import { deriveComplianceIssueStats } from "@/components/compliance/complianceIssueStats";
 import { Button } from "@/components/ui/button";
 import PageContainer from "@/components/ui/PageContainer";
@@ -14,9 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
+import { Loader2,
   Shield, AlertTriangle, TrendingDown, Users, FileText, Calendar, BarChart3, Clock, Award, Bell, Search, CheckCircle2,
-  BookOpen, LayoutDashboard, Lock, Loader2
+  BookOpen, LayoutDashboard, Lock
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { format, subDays, startOfDay, parseISO, differenceInDays } from "date-fns";
@@ -25,6 +26,7 @@ import ComplianceReportGenerator from "@/components/compliance/ComplianceReportG
 import AIComplianceAssistant from "@/components/compliance/AIComplianceAssistant";
 import MedicareRuleSeeder from "@/components/compliance/MedicareRuleSeeder";
 import { isAdminView } from "@/lib/roles";
+import LoadingState from "@/components/ui/LoadingState";
 
 const RegulatoryCompliance = lazy(() => import("@/components/hub-tabs/RegulatoryCompliance"));
 const ComplianceMonitoringDashboard = lazy(() => import("@/components/hub-tabs/ComplianceMonitoringDashboard"));
@@ -38,11 +40,7 @@ const SecurityPolicy = lazy(() => import("@/components/hub-tabs/SecurityPolicy")
 // Security Policy) redirect straight to the right tab.
 const TAB_KEYS = ["dashboard", "regulatory", "security"];
 
-const tabLoader = (
-  <div className="flex justify-center py-12">
-    <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-  </div>
-);
+const tabLoader = <LoadingState className="py-12" />;
 
 export default function ComplianceCenter() {
   const [timeRange, setTimeRange] = useState(30);
@@ -464,7 +462,7 @@ Provide: overall_assessment, critical_priorities (array), systemic_issues, actio
             }} disabled={ai.loading}>
               {ai.loading ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
                   Analyzing...
                 </>
               ) : (
@@ -597,13 +595,7 @@ Provide: overall_assessment, critical_priorities (array), systemic_issues, actio
           </Card>
 
           {filteredIssues.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-slate-900 mb-2">All Clear!</h3>
-                <p className="text-slate-600">No compliance issues found.</p>
-              </CardContent>
-            </Card>
+            <EmptyState icon={CheckCircle2} title="All Clear!" description="No compliance issues found." />
           ) : (
             <div className="space-y-4">
               {Object.entries(groupedByUser).map(([userId, userData]) => {

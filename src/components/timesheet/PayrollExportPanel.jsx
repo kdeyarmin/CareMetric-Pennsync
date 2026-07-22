@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FileSpreadsheet, FileText, Download, Info, CheckCircle2, Hourglass, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -108,44 +109,41 @@ function PayrollTableCard({ serviceType, approvedTimesheets, allTimesheets, empl
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-slate-50">
+            <Table>
+              <TableHeader>
+                <TableRow>
                   {table.columns.map((c) => (
-                    <th
-                      key={c.key}
-                      className={`border border-slate-200 px-2 py-1.5 font-semibold text-slate-700 ${c.numeric ? "text-right" : "text-left"}`}
-                    >
+                    <TableHead key={c.key} className={c.numeric ? "text-right" : ""}>
                       {c.label}
-                    </th>
+                    </TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {table.rows.map((r) => (
-                  <tr key={r.ts.id} className="hover:bg-slate-50">
+                  <TableRow key={r.ts.id}>
                     {r.cells.map((cell, i) => (
-                      <td
+                      <TableCell
                         key={table.columns[i].key}
-                        className={`border border-slate-200 px-2 py-1 text-slate-700 ${cell.numeric ? "text-right tabular-nums" : "text-left"}`}
+                        className={`text-slate-700 ${cell.numeric ? "text-right tabular-nums" : ""}`}
                       >
                         {cell.display}
-                      </td>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
-                <tr className="bg-slate-100 font-semibold">
+                <TableRow className="bg-slate-100 font-semibold">
                   {totals.map((cell, i) => (
-                    <td
+                    <TableCell
                       key={table.columns[i].key}
-                      className={`border border-slate-200 px-2 py-1 text-slate-900 ${table.columns[i].numeric ? "text-right tabular-nums" : "text-left"}`}
+                      className={`text-slate-900 ${table.columns[i].numeric ? "text-right tabular-nums" : ""}`}
                     >
                       {cell}
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
-              </tbody>
-            </table>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
         )}
         {!empty && table.notes.length > 0 && (

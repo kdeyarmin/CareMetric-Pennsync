@@ -266,19 +266,19 @@ Please review this incident in the Incident Reporting Dashboard.`
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'reported': return 'bg-amber-500';
-      case 'under_review': return 'bg-blue-500';
-      case 'resolved': return 'bg-emerald-500';
-      default: return 'bg-slate-500';
+      case 'reported': return 'bg-amber-100 text-amber-800 border border-amber-200';
+      case 'under_review': return 'bg-blue-100 text-blue-800 border border-blue-200';
+      case 'resolved': return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+      default: return 'bg-slate-100 text-slate-800 border border-slate-200';
     }
   };
 
   const getSeverityColor = (severity) => {
     switch (severity) {
-      case 'high': return 'bg-red-600 text-white';
-      case 'medium': return 'bg-orange-500 text-white';
-      case 'low': return 'bg-amber-500 text-white';
-      default: return 'bg-slate-500 text-white';
+      case 'high': return 'bg-red-100 text-red-800 border border-red-200';
+      case 'medium': return 'bg-orange-100 text-orange-800 border border-orange-200';
+      case 'low': return 'bg-amber-100 text-amber-800 border border-amber-200';
+      default: return 'bg-slate-100 text-slate-800 border border-slate-200';
     }
   };
 

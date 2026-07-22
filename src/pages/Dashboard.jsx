@@ -2,10 +2,11 @@ import { useMemo, lazy, Suspense, useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Clock, User, FileText, Mic, Send, Home, Heart, AlertTriangle, Loader2, Calendar } from "lucide-react";
+import { Clock, User, FileText, Mic, Send, Home, Heart, AlertTriangle, Calendar } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/stat-card";
+import LoadingState from "@/components/ui/LoadingState";
 import { toast } from "sonner";
 import { formatEastern } from "@/components/utils/timezone";
 import CareScopeSelector from "@/components/profile/CareScopeSelector";
@@ -180,9 +181,9 @@ export default function Dashboard() {
 
   return (
     <PullToRefresh onRefresh={handleRefresh} containerRef={containerRef}>
-    <div ref={containerRef} className="max-w-7xl mx-auto">
+    <div ref={containerRef} className="mx-auto w-full max-w-7xl space-y-6">
       {hasDataError && (
-        <Card className="mb-4 border-red-200 bg-white">
+        <Card className="border-red-200 bg-white">
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-red-600" />
@@ -199,7 +200,6 @@ export default function Dashboard() {
 
       {/* Welcome header — personalized, but rendered through the standard PageHeader */}
       <PageHeader
-        className="mb-4 sm:mb-6"
         icon={careScope === "hospice" ? Heart : Home}
         eyebrow={careScopeLabel}
         title={`${greeting}, ${firstName}!`}
@@ -210,7 +210,7 @@ export default function Dashboard() {
 
 
       {/* Quick Navigation Hint */}
-      <div className="mb-3 flex items-center justify-center">
+      <div className="flex items-center justify-center">
         <button
           onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
           className="text-xs text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1.5"
@@ -223,13 +223,11 @@ export default function Dashboard() {
       <AnnouncementsWidget />
 
       {/* Scheduled Telehealth reminders */}
-      <div className="mb-6">
-        <UpcomingTelehealthWidget />
-      </div>
+      <UpcomingTelehealthWidget />
 
       {/* Nurse Stats Cards — shared StatCard treatment (clean white + accent + icon chip).
           The first three deep-link into their domain so the metrics are actionable. */}
-      <div className="grid grid-cols-3 gap-4 sm:gap-6 mb-8">
+      <div className="grid grid-cols-3 gap-4 sm:gap-6">
         <Link to="/ClinicalDocumentation" className="block">
           <StatCard
             label="Today's Visits"
@@ -258,7 +256,7 @@ export default function Dashboard() {
       </div>
 
       {/* Quick Action Buttons — consistent navy hover accent (no rainbow). */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 sm:gap-6 mb-8">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 sm:gap-6">
         {[
           { page: "SmartNoteAssistant",  to: "/SmartNoteAssistant",                    label: "Smart Notes",   Icon: FileText },
           { page: "SendFax",             to: "/SendFax",                               label: "Send Fax",      Icon: Send },
@@ -286,7 +284,7 @@ export default function Dashboard() {
 
       {/* Route Optimizer */}
       {visits.length > 0 && (
-        <div className="mb-8">
+        <div>
           <SmartRouteOptimizer
             visits={visits.filter(v => v.status === 'scheduled')}
             patients={patients}
@@ -300,7 +298,7 @@ export default function Dashboard() {
 
       {/* Proactive Clinical Support - Show for first scheduled patient */}
       {visits.length > 0 && visits[0]?.patient_id && (
-        <div className="mb-6">
+        <div>
           <ProactiveClinicalSupport
             patientId={visits[0].patient_id}
             compact={true}
@@ -310,29 +308,21 @@ export default function Dashboard() {
 
 
 
-      <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400"><Loader2 className="w-6 h-6 animate-spin mr-2" />Loading...</div>}>
+      <Suspense fallback={<LoadingState className="py-12" />}>
         {/* Hospitalization Risk Monitor */}
-        <div className="mb-8">
-          <HospitalizationRiskWidget autoAnalyze={false} />
-        </div>
+        <HospitalizationRiskWidget autoAnalyze={false} />
 
         {/* High-Risk Patients Alert */}
-        <div className="mb-8">
-          <HighRiskPatientsWidget />
-        </div>
+        <HighRiskPatientsWidget />
 
         {/* Pending Referrals */}
-        <div className="mb-8">
-          <PendingReferralsWidget />
-        </div>
+        <PendingReferralsWidget />
 
         {/* Provider follow-up requests needing attention (renders for admins only) */}
-        <div className="mb-8">
-          <OverdueFollowUpsWidget />
-        </div>
+        <OverdueFollowUpsWidget />
 
         {/* Real-time Patient Alerts */}
-        <div className="mb-8">
+        <div>
           <RealTimePatientAlerts
             patients={patients}
             visits={visits}
@@ -342,9 +332,7 @@ export default function Dashboard() {
         </div>
 
         {/* Top Clinical Templates */}
-         <div className="mb-8">
-           <TopTemplatesWidget />
-         </div>
+        <TopTemplatesWidget />
         </Suspense>
 
     </div>

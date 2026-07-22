@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -503,12 +504,12 @@ export default function CourseManager() {
             );
           })
         ) : (
-          <Card className="col-span-full">
-            <CardContent className="py-12 text-center">
-              <BookOpen className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-              <p className="text-slate-600">No courses yet. Create your first course!</p>
-            </CardContent>
-          </Card>
+          <EmptyState
+            className="col-span-full"
+            icon={BookOpen}
+            title="No courses yet."
+            description="Create your first course!"
+          />
         )}
       </div>
     </div>

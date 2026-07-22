@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   VISIT_TYPES,
   DAILY_HOUR_FIELDS,
@@ -61,29 +62,31 @@ export default function DailyEntryGrid({ days = [], serviceType, earnsPoints = f
     return r === 0 ? "" : String(r);
   };
 
+  // <Table> provides its own overflow-auto scroll wrapper (the sticky Day
+  // column anchors to it); the outer div only draws the border frame.
   return (
-    <div className="border border-slate-200 rounded-lg overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="bg-slate-50">
-            <th className="sticky left-0 z-10 bg-slate-50 border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600 whitespace-nowrap">
+    <div className="border border-slate-200 rounded-lg">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="sticky left-0 z-10 bg-slate-50 border-r border-slate-200">
               Day
-            </th>
+            </TableHead>
             {columns.map((col) => (
-              <th key={col.key} className="border-b border-slate-200 px-1.5 py-1.5 text-center font-semibold text-slate-600 whitespace-nowrap">
+              <TableHead key={col.key} className="text-center">
                 {col.label}
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {days.map((d) => (
-            <tr key={d} className={isWeekend(d) ? "bg-slate-50/40" : ""}>
-              <td className={`sticky left-0 z-10 border-r border-slate-200 px-2 py-1 text-slate-600 whitespace-nowrap ${isWeekend(d) ? "bg-slate-100" : "bg-white"}`}>
+            <TableRow key={d} className={isWeekend(d) ? "bg-slate-50/40" : ""}>
+              <TableCell className={`sticky left-0 z-10 border-r border-slate-200 px-2 py-1 text-slate-600 ${isWeekend(d) ? "bg-slate-100" : "bg-white"}`}>
                 {dayLabel(d)}
-              </td>
+              </TableCell>
               {columns.map((col) => (
-                <td key={col.key} className="px-1 py-0.5">
+                <TableCell key={col.key} className="px-1 py-0.5">
                   <Input
                     type="number"
                     min="0"
@@ -94,11 +97,11 @@ export default function DailyEntryGrid({ days = [], serviceType, earnsPoints = f
                     value={value?.[d]?.[col.key] ?? ""}
                     onChange={(e) => onCell(d, col.key, e.target.value)}
                   />
-                </td>
+                </TableCell>
               ))}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
+        </TableBody>
         <tfoot>
           <tr className="bg-slate-100 font-semibold">
             <td className="sticky left-0 z-10 bg-slate-100 border-t border-r border-slate-200 px-2 py-1.5 text-slate-800">
@@ -111,7 +114,7 @@ export default function DailyEntryGrid({ days = [], serviceType, earnsPoints = f
             ))}
           </tr>
         </tfoot>
-      </table>
+      </Table>
     </div>
   );
 }

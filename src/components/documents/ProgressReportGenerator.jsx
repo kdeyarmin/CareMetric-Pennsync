@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { TrendingUp, Sparkles } from "lucide-react";
+import { Loader2, TrendingUp, Sparkles } from "lucide-react";
 import { todayEastern } from "../utils/timezone";
 import SmartNotesContextPanel from "./SmartNotesContextPanel";
 import DocumentDraftManager from "./DocumentDraftManager";
@@ -257,7 +257,7 @@ Use professional medical terminology. Be objective and data-driven. Include spec
               className="w-full"
             >
               {ai.loading ? (
-                <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" /> Generating...</>
+                <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Generating...</>
               ) : (
                 <><Sparkles className="w-5 h-5 mr-2" /> Generate Progress Report</>
               )}

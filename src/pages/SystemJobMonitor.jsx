@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -46,6 +45,9 @@ import { toast } from "sonner";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
+import StatCard from "@/components/ui/stat-card";
+import EmptyState from "@/components/ui/empty-state";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
 
 export default function SystemJobMonitor() {
   const queryClient = useQueryClient();
@@ -133,13 +135,7 @@ export default function SystemJobMonitor() {
 
   if (!isSuperAdminView(currentUser)) {
     return (
-      <div className="p-6">
-        <Alert>
-          <AlertDescription>
-            Admin access required to view system job monitoring.
-          </AlertDescription>
-        </Alert>
-      </div>
+      <AccessDeniedState description="Admin access required to view system job monitoring." />
     );
   }
 
@@ -180,65 +176,11 @@ export default function SystemJobMonitor() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600">Total Jobs</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
-              </div>
-              <Activity className="w-8 h-8 text-slate-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600">Success</p>
-                <p className="text-2xl font-bold text-emerald-600">{stats.success}</p>
-              </div>
-              <CheckCircle2 className="w-8 h-8 text-emerald-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600">Errors</p>
-                <p className="text-2xl font-bold text-red-600">{stats.errors}</p>
-              </div>
-              <XCircle className="w-8 h-8 text-red-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600">Warnings</p>
-                <p className="text-2xl font-bold text-amber-600">{stats.warnings}</p>
-              </div>
-              <AlertTriangle className="w-8 h-8 text-amber-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600">Running</p>
-                <p className="text-2xl font-bold text-blue-600">{stats.running}</p>
-              </div>
-              <Clock className="w-8 h-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Jobs" value={stats.total} icon={Activity} tone="slate" />
+        <StatCard label="Success" value={stats.success} icon={CheckCircle2} tone="emerald" />
+        <StatCard label="Errors" value={stats.errors} icon={XCircle} tone="rose" />
+        <StatCard label="Warnings" value={stats.warnings} icon={AlertTriangle} tone="amber" />
+        <StatCard label="Running" value={stats.running} icon={Clock} tone="sky" />
       </div>
 
       {/* Last Sync Info */}
@@ -309,10 +251,7 @@ export default function SystemJobMonitor() {
           {isLoading ? (
             <LoadingState label="Loading logs..." className="py-8" />
           ) : logs.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-              <p className="text-sm text-slate-500">No logs found</p>
-            </div>
+            <EmptyState title="No logs found" icon={FileText} />
           ) : (
             <Table>
               <TableHeader>

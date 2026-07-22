@@ -4,9 +4,10 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import StatCard from "@/components/ui/stat-card";
 import {
   Activity, AlertTriangle, CheckCircle2, XCircle, Cpu, Database,
-  Wifi, RefreshCw, Bell, BellOff, TrendingUp, TrendingDown, Minus,
+  Wifi, RefreshCw, Bell, BellOff,
   Clock, Zap, Server
 } from "lucide-react";
 
@@ -17,32 +18,8 @@ const METRICS = [
   { key: "active_users", label: "Active Users", unit: "", good: null, warn: null },
 ];
 
-function StatusDot({ status }) {
-  const colors = { good: "bg-green-500", warn: "bg-yellow-400 animate-pulse", critical: "bg-red-500 animate-pulse" };
-  return <span className={`inline-block w-2.5 h-2.5 rounded-full ${colors[status] || colors.good}`} />;
-}
-
-function MetricCard({ label, value, unit, status, trend, icon: Icon }) {
-  const textColor = status === "good" ? "text-green-600" : status === "warn" ? "text-yellow-600" : "text-red-600";
-  const bgColor = status === "good" ? "border-green-200 bg-green-50" : status === "warn" ? "border-yellow-200 bg-yellow-50" : "border-red-200 bg-red-50";
-  const TrendIcon = trend > 0 ? TrendingUp : trend < 0 ? TrendingDown : Minus;
-  return (
-    <div className={`rounded-xl border-2 p-4 ${bgColor}`}>
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <StatusDot status={status} />
-          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{label}</span>
-        </div>
-        <Icon className={`w-4 h-4 ${textColor}`} />
-      </div>
-      <p className={`text-2xl font-bold ${textColor}`}>{value}{unit && <span className="text-sm font-normal ml-0.5">{unit}</span>}</p>
-      <div className="flex items-center gap-1 mt-1">
-        <TrendIcon className="w-3 h-3 text-slate-400" />
-        <span className="text-xs text-slate-400">vs last check</span>
-      </div>
-    </div>
-  );
-}
+// Map the monitor's health statuses onto canonical StatCard tones.
+const STATUS_TONE = { healthy: "emerald", good: "emerald", warning: "amber", warn: "amber", critical: "rose", error: "rose" };
 
 function AlertBanner({ alerts, onDismiss }) {
   if (!alerts.length) return null;
@@ -66,7 +43,6 @@ function AlertBanner({ alerts, onDismiss }) {
 
 export default function SystemHealthMonitor() {
   const [metrics, setMetrics] = useState({});
-  const [prevMetrics, setPrevMetrics] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [dismissed, setDismissed] = useState([]);
@@ -125,7 +101,6 @@ export default function SystemHealthMonitor() {
   }, []);
 
   const refresh = useCallback(() => {
-    setPrevMetrics(metricsRef.current);
     const today = new Date();
     const recentVisits = visits.filter(v => {
       const d = new Date(v.created_date);
@@ -178,10 +153,10 @@ export default function SystemHealthMonitor() {
     return value <= m.good ? "good" : value <= m.warn ? "warn" : "critical";
   };
 
-  const getTrend = (key) => {
-    if (!prevMetrics[key]) return 0;
-    return metrics[key] - prevMetrics[key];
-  };
+  // A metric with no measurement yet (undefined fails every threshold
+  // comparison and would read as "critical") renders as a neutral placeholder.
+  const metricValue = (value, unit) => (Number.isFinite(value) ? `${value}${unit}` : "—");
+  const metricTone = (value, status) => (Number.isFinite(value) ? STATUS_TONE[status] : "slate");
 
   const visibleAlerts = alerts.filter((_, i) => !dismissed.includes(i));
   const overallStatus = visibleAlerts.some(a => a.level === "critical") ? "critical" : visibleAlerts.some(a => a.level === "warn") ? "warn" : "good";
@@ -239,36 +214,32 @@ export default function SystemHealthMonitor() {
 
         {/* Metric cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <MetricCard
+          <StatCard
             label="API Response"
-            value={metrics.api_response ?? "—"}
-            unit="ms"
-            status={getStatus("api_response", metrics.api_response)}
-            trend={getTrend("api_response")}
+            value={metricValue(metrics.api_response, "ms")}
+            tone={metricTone(metrics.api_response, getStatus("api_response", metrics.api_response))}
+            sub="vs last check"
             icon={Zap}
           />
-          <MetricCard
+          <StatCard
             label="Error Rate"
-            value={metrics.error_rate ?? "—"}
-            unit="%"
-            status={getStatus("error_rate", metrics.error_rate)}
-            trend={getTrend("error_rate")}
+            value={metricValue(metrics.error_rate, "%")}
+            tone={metricTone(metrics.error_rate, getStatus("error_rate", metrics.error_rate))}
+            sub="vs last check"
             icon={AlertTriangle}
           />
-          <MetricCard
+          <StatCard
             label="Uptime"
-            value={metrics.uptime ?? "—"}
-            unit="%"
-            status={getStatus("uptime", metrics.uptime)}
-            trend={getTrend("uptime")}
+            value={metricValue(metrics.uptime, "%")}
+            tone={metricTone(metrics.uptime, getStatus("uptime", metrics.uptime))}
+            sub="vs last check"
             icon={Activity}
           />
-          <MetricCard
+          <StatCard
             label="DB Latency"
-            value={metrics.db_latency ?? "—"}
-            unit="ms"
-            status={metrics.db_latency < 30 ? "good" : metrics.db_latency < 60 ? "warn" : "critical"}
-            trend={getTrend("db_latency")}
+            value={metricValue(metrics.db_latency, "ms")}
+            tone={metricTone(metrics.db_latency, metrics.db_latency < 30 ? "good" : metrics.db_latency < 60 ? "warn" : "critical")}
+            sub="vs last check"
             icon={Database}
           />
         </div>

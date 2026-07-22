@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import LoadingState from "@/components/ui/LoadingState";
+import { Button } from "@/components/ui/button";
 import StatCard from "@/components/ui/stat-card";
 
 const TYPE_ICON = {
@@ -83,19 +85,15 @@ export default function CommsDashboard() {
         description="SMS, voice, and fax delivery health across your agency"
         favoritePage="CommsDashboard"
         actions={
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm min-h-[44px] hover:bg-muted"
-          >
+          <Button variant="outline" onClick={() => refetch()} className="min-h-[44px] gap-2">
             <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
-          </button>
+          </Button>
         }
       />
 
       {isLoading && (
-        <div className="py-12 text-center text-muted-foreground">Loading communications data…</div>
+        <LoadingState className="py-12" label="Loading communications data…" />
       )}
 
       {isError && (
@@ -109,7 +107,7 @@ export default function CommsDashboard() {
       {!isLoading && !isError && (
         <>
           {/* Stat cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <StatCard
               title="SMS Delivery Rate"
               value={`${sms.delivery_rate ?? 0}%`}
@@ -141,7 +139,7 @@ export default function CommsDashboard() {
           </div>
 
           {/* 7-day volume chart */}
-          <Card className="mb-4 sm:mb-6">
+          <Card>
             <CardHeader className="p-3 sm:p-4 md:p-6">
               <CardTitle className="text-base sm:text-lg">7-Day Volume</CardTitle>
             </CardHeader>
@@ -154,8 +152,8 @@ export default function CommsDashboard() {
                   <Tooltip />
                   <Legend />
                   <Bar dataKey="SMS" fill="#3557b0" />
-                  <Bar dataKey="Calls" fill="#22c55e" />
-                  <Bar dataKey="Faxes" fill="#8b5cf6" />
+                  <Bar dataKey="Calls" fill="#28a07a" />
+                  <Bar dataKey="Faxes" fill="#c7901f" />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -172,7 +170,7 @@ export default function CommsDashboard() {
               </CardHeader>
               <CardContent className="p-3 sm:p-4 md:p-6 pt-0">
                 {failures.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4">No recent failures.</p>
+                  <p className="text-sm text-slate-500 py-4">No recent failures.</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
@@ -222,7 +220,7 @@ export default function CommsDashboard() {
               </CardHeader>
               <CardContent className="p-3 sm:p-4 md:p-6 pt-0">
                 {perNumber.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4">No outbound activity.</p>
+                  <p className="text-sm text-slate-500 py-4">No outbound activity.</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
@@ -252,7 +250,7 @@ export default function CommsDashboard() {
           </div>
 
           {data?.generated_at && (
-            <p className="text-xs text-muted-foreground mt-4">
+            <p className="text-xs text-slate-500 mt-4">
               Generated {new Date(data.generated_at).toLocaleString()}
             </p>
           )}

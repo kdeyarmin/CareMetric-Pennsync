@@ -46,12 +46,14 @@ import {
   Target,
   Trash2,
   UserCheck,
-  Loader2
+  Loader2,
+  Inbox
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import LoadingState from "@/components/ui/LoadingState";
+import EmptyState from "@/components/ui/empty-state";
 import { format, isValid } from "date-fns";
 
 // AI-extracted referral dates (patient_dob, referral_date) are free-text strings
@@ -1100,14 +1102,14 @@ Actions available:
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'new': return 'bg-blue-500';
-      case 'processing': return 'bg-amber-500';
-      case 'awaiting_info': return 'bg-orange-500';
-      case 'ready_for_admission': return 'bg-emerald-500';
-      case 'soc_completed': return 'bg-teal-600';
-      case 'archived': return 'bg-slate-500';
-      case 'declined': return 'bg-red-500';
-      default: return 'bg-slate-500';
+      case 'new': return 'bg-blue-100 text-blue-800 border border-blue-200';
+      case 'processing': return 'bg-amber-100 text-amber-800 border border-amber-200';
+      case 'awaiting_info': return 'bg-orange-100 text-orange-800 border border-orange-200';
+      case 'ready_for_admission': return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+      case 'soc_completed': return 'bg-teal-100 text-teal-800 border border-teal-200';
+      case 'archived': return 'bg-slate-100 text-slate-800 border border-slate-200';
+      case 'declined': return 'bg-red-100 text-red-800 border border-red-200';
+      default: return 'bg-slate-100 text-slate-800 border border-slate-200';
     }
   };
 
@@ -1142,11 +1144,11 @@ Actions available:
 
   const getPriorityColor = (priority) => {
     switch (priority) {
-      case 'urgent': return 'bg-red-600';
-      case 'high': return 'bg-orange-600';
-      case 'normal': return 'bg-blue-600';
-      case 'low': return 'bg-slate-600';
-      default: return 'bg-slate-600';
+      case 'urgent': return 'bg-red-100 text-red-800 border border-red-200';
+      case 'high': return 'bg-orange-100 text-orange-800 border border-orange-200';
+      case 'normal': return 'bg-blue-100 text-blue-800 border border-blue-200';
+      case 'low': return 'bg-slate-100 text-slate-800 border border-slate-200';
+      default: return 'bg-slate-100 text-slate-800 border border-slate-200';
     }
   };
 
@@ -1258,17 +1260,19 @@ Actions available:
           {isLoading ? (
             <LoadingState label="Loading referrals..." />
           ) : filteredReferrals.length === 0 ? (
-            <div className="text-center py-12">
-              <FileText className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-              <p className="text-slate-600">No referrals found</p>
-              <Button
-                onClick={() => setUploadDialogOpen(true)}
-                variant="outline"
-                className="mt-4"
-              >
-                Upload First Referral
-              </Button>
-            </div>
+            <EmptyState
+              icon={Inbox}
+              title="No referrals found"
+              className="m-4 sm:m-6"
+              action={
+                <Button
+                  onClick={() => setUploadDialogOpen(true)}
+                  variant="outline"
+                >
+                  Upload First Referral
+                </Button>
+              }
+            />
           ) : (
             <div className="overflow-x-auto -mx-3 sm:mx-0">
               <Table>

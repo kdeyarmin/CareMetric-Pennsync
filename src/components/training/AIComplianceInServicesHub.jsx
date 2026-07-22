@@ -223,10 +223,10 @@ export default function AIComplianceInServicesHub() {
   };
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 sm:space-y-6">
-      <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-r from-indigo-700 to-navy-700 text-white p-4 sm:p-6 shadow-xl">
+    <div className="mx-auto w-full max-w-7xl space-y-4 sm:space-y-6">
+      <div className="page-header-gradient">
         <h1 className="text-2xl sm:text-3xl font-bold mb-2">AI Compliance In-Services</h1>
-        <p className="text-sm sm:text-base text-indigo-100">AI-powered in-services, competency testing, certificates, learning plan tracking, and compliance reporting inside your current learning center.</p>
+        <p className="relative text-sm sm:text-base text-navy-100">AI-powered in-services, competency testing, certificates, learning plan tracking, and compliance reporting inside your current learning center.</p>
       </div>
 
       <AdminComplianceStats stats={reportStats} />

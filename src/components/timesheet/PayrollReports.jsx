@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart3, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -140,39 +141,39 @@ export default function PayrollReports({ timesheets = [] }) {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="border border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-700">{groupHeader}</th>
-                  <th className="border border-slate-200 px-2 py-1.5 text-right font-semibold text-slate-700">Sheets</th>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{groupHeader}</TableHead>
+                  <TableHead className="text-right">Sheets</TableHead>
                   {REPORT_METRICS.map((m) => (
-                    <th key={m.key} className="border border-slate-200 px-2 py-1.5 text-right font-semibold text-slate-700">{m.label}</th>
+                    <TableHead key={m.key} className="text-right">{m.label}</TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((r) => (
-                  <tr key={r.key} className="hover:bg-slate-50">
-                    <td className="border border-slate-200 px-2 py-1 text-slate-800">{r.label}</td>
-                    <td className="border border-slate-200 px-2 py-1 text-right tabular-nums text-slate-500">{r.count}</td>
+                  <TableRow key={r.key}>
+                    <TableCell className="text-slate-800">{r.label}</TableCell>
+                    <TableCell className="text-right tabular-nums text-slate-500">{r.count}</TableCell>
                     {REPORT_METRICS.map((m) => (
-                      <td key={m.key} className="border border-slate-200 px-2 py-1 text-right tabular-nums text-slate-700">
+                      <TableCell key={m.key} className="text-right tabular-nums text-slate-700">
                         {formatNum(r.metrics[m.key])}
-                      </td>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
-                <tr className="bg-slate-100 font-semibold">
-                  <td className="border border-slate-200 px-2 py-1 text-slate-900">Total</td>
-                  <td className="border border-slate-200 px-2 py-1 text-right tabular-nums text-slate-900">{totals.count}</td>
+                <TableRow className="bg-slate-100 font-semibold">
+                  <TableCell className="text-slate-900">Total</TableCell>
+                  <TableCell className="text-right tabular-nums text-slate-900">{totals.count}</TableCell>
                   {REPORT_METRICS.map((m) => (
-                    <td key={m.key} className="border border-slate-200 px-2 py-1 text-right tabular-nums text-slate-900">
+                    <TableCell key={m.key} className="text-right tabular-nums text-slate-900">
                       {formatNum(totals.metrics[m.key], { blankZero: false })}
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
-              </tbody>
-            </table>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
         )}
       </CardContent>

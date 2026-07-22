@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Brain, Tag, ScanLine, MessageSquareWarning } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
+import PageContainer from "@/components/ui/PageContainer";
 import AIAutoTagger from "@/components/admin/AIAutoTagger";
 import OCRTrainingMonitor from "@/components/admin/OCRTrainingMonitor";
 import OCRFeedbackDashboard from "@/components/admin/OCRFeedbackDashboard";
@@ -13,7 +14,7 @@ import OCRFeedbackDashboard from "@/components/admin/OCRFeedbackDashboard";
  */
 export default function AIToolsCenterPage() {
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto animate-fade-in">
+    <PageContainer className="animate-fade-in">
       <PageHeader
         icon={Brain}
         iconColor="bg-navy-600"
@@ -51,6 +52,6 @@ export default function AIToolsCenterPage() {
           <OCRFeedbackDashboard />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }

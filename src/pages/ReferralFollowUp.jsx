@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import StatCard from "@/components/ui/stat-card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -648,24 +649,18 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                 )}
 
                 <div className={`grid ${adminView && revenue ? "grid-cols-3" : "grid-cols-2"} gap-3`}>
-                  <Card className="border-red-200 bg-red-50">
-                    <CardContent className="p-4 flex items-center gap-3">
-                      <ShieldCheck className="w-6 h-6 text-red-600 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs font-semibold text-red-800 uppercase">Compliance gaps</p>
-                        <p className="text-2xl font-bold text-red-900">{selectedPlan.counts.compliance}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-navy-200 bg-navy-50">
-                    <CardContent className="p-4 flex items-center gap-3">
-                      <TrendingUp className="w-6 h-6 text-navy-600 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs font-semibold text-navy-800 uppercase">Reimbursement gaps</p>
-                        <p className="text-2xl font-bold text-navy-900">{selectedPlan.counts.reimbursement}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <StatCard
+                    title="Compliance gaps"
+                    value={selectedPlan.counts.compliance}
+                    icon={ShieldCheck}
+                    tone="amber"
+                  />
+                  <StatCard
+                    title="Reimbursement gaps"
+                    value={selectedPlan.counts.reimbursement}
+                    icon={TrendingUp}
+                    tone="emerald"
+                  />
                   {/* Revenue exposure — ADMIN ONLY by policy */}
                   {adminView && revenue && (
                     <Card className="border-emerald-200 bg-emerald-50">
@@ -715,7 +710,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                       </p>
                     )}
                     {allItems.map((it) => (
-                      <div key={it.id} className={`border rounded-lg p-3 ${it.source === "ai" ? "border-purple-300 bg-purple-50" : it.source === "agency" ? "border-teal-300 bg-teal-50" : ""}`}>
+                      <div key={it.id} className={`border rounded-lg p-3 ${it.source === "ai" ? "border-gold-300 bg-gold-50" : it.source === "agency" ? "border-navy-200 bg-navy-50" : ""}`}>
                         <div className="flex items-start gap-2">
                           <Checkbox
                             id={`item-${it.id}`}
@@ -728,8 +723,8 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                               <span className="font-semibold text-sm text-slate-900">{it.title}</span>
                               <Badge className={severityBadge(it.severity)}>{it.severity}</Badge>
                               <Badge variant="outline">{it.category}</Badge>
-                              {it.source === "ai" && <Badge className="bg-purple-600 text-white">AI-suggested — verify</Badge>}
-                              {it.source === "agency" && <Badge className="bg-teal-600 text-white">agency rule</Badge>}
+                              {it.source === "ai" && <Badge variant="gold">AI-suggested — verify</Badge>}
+                              {it.source === "agency" && <Badge variant="info">agency rule</Badge>}
                               {/* Dollar figures: admin eyes only, by policy */}
                               {adminView && revenue?.perItem[it.id] && (
                                 <Badge className="bg-emerald-100 text-emerald-800">
@@ -750,7 +745,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                               <span className="font-semibold">If not fixed:</span> {it.impact}
                             </p>
                             {it.grounded_in && (
-                              <p className="text-xs text-purple-700 mt-0.5">
+                              <p className="text-xs text-gold-700 mt-0.5">
                                 <span className="font-semibold">Based on:</span> {it.grounded_in}
                               </p>
                             )}
@@ -776,9 +771,9 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                 )}
 
                 {aiAssessment && (
-                  <Alert className="bg-purple-50 border-purple-300">
-                    <Brain className="w-4 h-4 text-purple-700" />
-                    <AlertDescription className="text-sm text-purple-900">{aiAssessment}</AlertDescription>
+                  <Alert className="bg-gold-50 border-gold-300">
+                    <Brain className="w-4 h-4 text-gold-700" />
+                    <AlertDescription className="text-sm text-navy-900">{aiAssessment}</AlertDescription>
                   </Alert>
                 )}
 
@@ -927,7 +922,7 @@ function RuleSettingsCard({ ruleConfig, onSaved }) {
         <div className="border-t pt-3 space-y-2">
           <p className="text-xs font-semibold text-slate-700">Agency-defined request items</p>
           {customItems.map((c, idx) => (
-            <div key={idx} className="flex items-center justify-between gap-2 text-xs bg-teal-50 border border-teal-200 rounded p-2">
+            <div key={idx} className="flex items-center justify-between gap-2 text-xs bg-navy-50 border border-navy-200 rounded p-2">
               <span className="truncate"><strong>{c.title}</strong> — {c.question}</span>
               <Button type="button" size="sm" variant="ghost" onClick={() => setCustomItems((prev) => prev.filter((_, i) => i !== idx))}>
                 Remove

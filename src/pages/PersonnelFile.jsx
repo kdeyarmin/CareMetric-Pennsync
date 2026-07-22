@@ -11,7 +11,8 @@ import AdminCredentialApproval from "@/components/personnel/AdminCredentialAppro
 import CredentialComplianceReport from "@/components/admin/CredentialComplianceReport";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
-import { Users } from "lucide-react";
+import EmptyState from "@/components/ui/empty-state";
+import { FolderOpen, Users } from "lucide-react";
 
 const isAgencyAdmin = (user) => user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
 
@@ -63,7 +64,7 @@ export default function PersonnelFile() {
 
           <div className="space-y-4">
             {myItems.length === 0 ? (
-              <Card><CardContent className="p-10 text-center text-slate-500">No personnel file items added yet.</CardContent></Card>
+              <EmptyState icon={FolderOpen} title="No personnel file items added yet." description="" />
             ) : (
               myItems.map((item) => (
                 <Card key={item.id}>

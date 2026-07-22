@@ -788,7 +788,7 @@ export default function UserSettings() {
       {/* Delete Account Section - Danger Zone */}
       <div className="mt-8 pt-8 border-t-2 border-red-300">
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+          <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-red-600" />
             Danger Zone
           </h2>

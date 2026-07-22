@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, Sparkles, TrendingDown, GraduationCap, Loader2, FileText, BarChart3, Clapperboard, ShieldCheck, FileCheck2 } from "lucide-react";
+import { BookOpen, Sparkles, TrendingDown, GraduationCap, FileText, BarChart3, Clapperboard, ShieldCheck, FileCheck2 } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import EducatorReadinessPanel from "@/components/learning/EducatorReadinessPanel";
@@ -19,6 +19,7 @@ import ManagerSkillGapPeople from "@/components/training/ManagerSkillGapPeople";
 import StaffEducationComplianceReport from "@/components/training/StaffEducationComplianceReport";
 import SMEReviewQueue from "@/components/training/SMEReviewQueue";
 import PolicyAcknowledgmentManager from "@/components/training/PolicyAcknowledgmentManager";
+import LoadingState from "@/components/ui/LoadingState";
 
 const TAB_KEYS = [
   "overview",
@@ -196,9 +197,7 @@ export default function AdminTraining() {
   // Auth guards — placed after all hooks to satisfy Rules of Hooks
   if (userLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-      </div>
+      <LoadingState className="min-h-[400px]" />
     );
   }
 

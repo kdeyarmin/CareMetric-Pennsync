@@ -615,10 +615,9 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
           <CardContent>
             <div className="space-y-2">
               {analysis.oasis_alignment.map((item, index) => (
-                <div key={index} className="p-3 rounded-lg border" style={{
-                  backgroundColor: item.alignment_status === 'supports' ? '#f0fdf4' : item.alignment_status === 'conflicts' ? '#fef2f2' : '#fffbeb',
-                  borderColor: item.alignment_status === 'supports' ? '#86efac' : item.alignment_status === 'conflicts' ? '#fca5a5' : '#fde047'
-                }}>
+                <div key={index} className={`p-3 rounded-lg border ${
+                  item.alignment_status === 'supports' ? 'bg-green-50 border-green-300' : item.alignment_status === 'conflicts' ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300'
+                }`}>
                   <div className="flex items-start gap-2">
                     {item.alignment_status === 'supports' ? (
                       <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />

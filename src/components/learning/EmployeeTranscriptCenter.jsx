@@ -52,9 +52,9 @@ export default function EmployeeTranscriptCenter() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <HideWhenEmbedded>
-        <div className="rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-700 text-white p-6 shadow-xl">
+        <div className="page-header-gradient">
           <h1 className="text-2xl sm:text-3xl font-bold mb-2">Employee Transcript</h1>
-          <p className="text-indigo-100">Chronological certificate and completion history for assigned in-services.</p>
+          <p className="relative text-navy-100">Chronological certificate and completion history for assigned in-services.</p>
         </div>
       </HideWhenEmbedded>
 

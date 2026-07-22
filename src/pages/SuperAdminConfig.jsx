@@ -9,6 +9,7 @@ import { Loader2, ShieldCheck, Crown, RefreshCw, CheckCircle2 } from "lucide-rea
 import { toast } from "sonner";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import TelnyxSecretPanel from "@/components/admin/TelnyxSecretPanel";
 import TelnyxSetupProgress from "@/components/admin/TelnyxSetupProgress";
 import PhoneProvisioningPanel from "@/components/admin/PhoneProvisioningPanel";
@@ -70,14 +71,10 @@ export default function SuperAdminConfig() {
   if (!isSuperAdmin(currentUser)) {
     return (
       <PageContainer>
-        <div className="flex min-h-[50vh] flex-col items-center justify-center p-8 text-center">
-          <ShieldCheck className="w-10 h-10 text-slate-300 mb-3" />
-          <h1 className="text-2xl font-bold text-slate-900">Super administrator access required</h1>
-          <p className="mt-2 max-w-md text-slate-600">
-            This page is restricted to the platform super administrator. If you believe you should have access,
-            contact {SUPER_ADMIN_EMAIL}.
-          </p>
-        </div>
+        <AccessDeniedState
+          title="Super administrator access required"
+          description={`This page is restricted to the platform super administrator. If you believe you should have access, contact ${SUPER_ADMIN_EMAIL}.`}
+        />
       </PageContainer>
     );
   }

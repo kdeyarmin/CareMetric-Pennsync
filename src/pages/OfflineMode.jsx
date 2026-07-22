@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { WifiOff, Wifi, Users, FileText, Database, Activity, Upload, Loader2 } from "lucide-react";
+import { WifiOff, Wifi, Users, FileText, Database, Activity, Upload } from "lucide-react";
 import OfflinePatientSelector from "../components/mobile/OfflinePatientSelector";
 import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
 import OfflineTaskManager from "../components/mobile/OfflineTaskManager";
@@ -15,6 +15,8 @@ import { mergeOfflinePatientCaches } from "@/lib/offlinePatients";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
 import PageHeader from "@/components/ui/PageHeader";
+import LoadingState from "@/components/ui/LoadingState";
+import StatCard from "@/components/ui/stat-card";
 
 const OfflineVisitDocumentation = lazy(() => import("@/components/hub-tabs/OfflineVisitDocumentation"));
 const OfflineDocumentation = lazy(() => import("@/components/hub-tabs/OfflineDocumentation"));
@@ -23,11 +25,7 @@ const OfflineDocumentation = lazy(() => import("@/components/hub-tabs/OfflineDoc
 // ?tab= deep-link so the retired offline pages redirect to the right tab.
 const TAB_KEYS = ["status", "visit", "pending"];
 
-const tabLoader = (
-  <div className="flex justify-center py-12">
-    <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-  </div>
-);
+const tabLoader = <LoadingState className="py-12" />;
 
 export default function OfflineMode() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -154,46 +152,9 @@ export default function OfflineMode() {
       </Alert>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
-        <Card className="border-blue-200">
-          <CardContent className="p-3 sm:p-4 md:p-6">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-blue-600 font-medium mb-1 truncate">Cached Patients</p>
-                <p className="text-2xl sm:text-3xl font-bold text-blue-900">{cachedPatients.length}</p>
-              </div>
-              <Users className="w-8 h-8 sm:w-10 sm:h-10 text-blue-400 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-amber-200">
-          <CardContent className="p-3 sm:p-4 md:p-6">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-amber-600 font-medium mb-1 truncate">Pending Sync</p>
-                <p className="text-2xl sm:text-3xl font-bold text-amber-900">
-                  {pendingCount}
-                </p>
-              </div>
-              <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-navy-200">
-          <CardContent className="p-3 sm:p-4 md:p-6">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-navy-600 font-medium mb-1 truncate">Storage Used</p>
-                <p className="text-2xl sm:text-3xl font-bold text-navy-900">
-                  {cachedPatientsSizeKb}
-                  <span className="text-base sm:text-lg ml-1">KB</span>
-                </p>
-              </div>
-              <Database className="w-8 h-8 sm:w-10 sm:h-10 text-navy-400 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Cached Patients" value={cachedPatients.length} icon={Users} tone="blue" />
+        <StatCard label="Pending Sync" value={pendingCount} icon={FileText} tone="amber" />
+        <StatCard label="Storage Used" value={`${cachedPatientsSizeKb} KB`} icon={Database} tone="navy" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">

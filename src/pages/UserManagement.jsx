@@ -43,7 +43,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Users,
   Shield,
-  ShieldAlert,
   Search,
   Edit,
   UserX,
@@ -63,6 +62,9 @@ import {
 import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import LoadingState from "@/components/ui/LoadingState";
+import StatCard from "@/components/ui/stat-card";
+import EmptyState from "@/components/ui/empty-state";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { format } from "date-fns";
 import { formatEastern } from "@/components/utils/timezone";
 import { toast } from "sonner";
@@ -398,17 +400,10 @@ export default function UserManagement() {
 
   if (!isAdminView(currentUser)) {
     return (
-      <div className="p-8 max-w-4xl mx-auto">
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-12 text-center">
-            <ShieldAlert className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Access Restricted</h2>
-            <p className="text-slate-600 mb-4">
-              Only administrators can access User Management.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <AccessDeniedState
+        title="Access Restricted"
+        description="Only administrators can access User Management."
+      />
     );
   }
 
@@ -424,61 +419,11 @@ export default function UserManagement() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <Card className="modern-card">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 sm:w-5 sm:h-5 text-slate-500 flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs text-slate-500 truncate">Total Users</p>
-                <p className="text-xl sm:text-2xl font-bold">{stats.total}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="modern-card border-navy-200">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-navy-500 flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs text-slate-500 truncate">Admins</p>
-                <p className="text-xl sm:text-2xl font-bold text-navy-600">{stats.admins}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="modern-card border-blue-200">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500 flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs text-slate-500 truncate">Nurses</p>
-                <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.nurses}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="modern-card border-emerald-200">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center gap-2">
-              <UserCheck className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500 flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs text-slate-500 truncate">Active</p>
-                <p className="text-xl sm:text-2xl font-bold text-emerald-600">{stats.active}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="modern-card border-red-200">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center gap-2">
-              <UserX className="w-4 h-4 sm:w-5 sm:h-5 text-red-500 flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs text-slate-500 truncate">Inactive</p>
-                <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.inactive}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Users" value={stats.total} icon={Users} tone="slate" />
+        <StatCard label="Admins" value={stats.admins} icon={Shield} tone="navy" />
+        <StatCard label="Nurses" value={stats.nurses} icon={Users} tone="blue" />
+        <StatCard label="Active" value={stats.active} icon={UserCheck} tone="emerald" />
+        <StatCard label="Inactive" value={stats.inactive} icon={UserX} tone="red" />
       </div>
 
       {/* Filters & Add User Button */}
@@ -683,7 +628,7 @@ export default function UserManagement() {
           {isLoading ? (
             <LoadingState label="Loading users..." className="py-8 sm:py-12" />
           ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-8 sm:py-12 text-sm sm:text-base text-slate-500">No users found</div>
+            <EmptyState title="No users found" icon={Users} />
           ) : (
             <div className="overflow-x-auto -mx-3 sm:mx-0">
               <Table>

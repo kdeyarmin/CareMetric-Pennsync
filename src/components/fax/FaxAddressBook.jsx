@@ -260,7 +260,7 @@ export default function FaxAddressBook({ onSelectContact }) {
                 />
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Button type="submit" className="flex-1 h-11 rounded-xl bg-slate-900 text-white hover:bg-slate-800">
+                <Button type="submit" className="flex-1 h-11 rounded-xl">
                   {editingContact ? "Update" : "Add"} Contact
                 </Button>
                 <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)} className="h-11 rounded-xl border-slate-300 bg-white">

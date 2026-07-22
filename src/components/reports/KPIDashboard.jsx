@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 const KPI_COLOR_CLASSES = {
-  purple: { border: "border-l-purple-500", bg: "bg-purple-100", text: "text-purple-600" },
+  purple: { border: "border-l-navy-500", bg: "bg-navy-100", text: "text-navy-700" },
   blue: { border: "border-l-blue-500", bg: "bg-blue-100", text: "text-blue-600" },
   green: { border: "border-l-green-500", bg: "bg-green-100", text: "text-green-600" },
   indigo: { border: "border-l-indigo-500", bg: "bg-indigo-100", text: "text-indigo-600" },
@@ -250,7 +250,7 @@ export default function KPIDashboard({ dateRange }) {
             <Card key={index} className={`border-l-4 ${colorClasses.border}`}>
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
-                  <div className={`w-12 h-12 ${colorClasses.bg} rounded-lg flex items-center justify-center`}>
+                  <div className={`w-12 h-12 ${colorClasses.bg} rounded-2xl flex items-center justify-center`}>
                     <kpi.icon className={`w-6 h-6 ${colorClasses.text}`} />
                   </div>
                   {kpi.trend != null && (

@@ -14,8 +14,10 @@ import { Send, Loader2, AlertTriangle } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export default function EventReport() {
+  const confirm = useConfirm();
   const { data: _currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
@@ -216,8 +218,8 @@ export default function EventReport() {
     }
   };
 
-  const handleCancel = () => {
-    if (window.confirm("Are you sure you want to cancel? All entered data will be lost.")) {
+  const handleCancel = async () => {
+    if (await confirm({ title: "Discard this report?", description: "All entered data will be lost.", confirmText: "Discard", destructive: true })) {
       setFormData({
         patient_id: "",
         date_of_event: "",

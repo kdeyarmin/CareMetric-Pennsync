@@ -194,15 +194,15 @@
 /* Modern Card Styles */
 @layer components {
   .modern-card {
-    @apply bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 ease-out;
+    @apply bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 ease-out;
   }
-  
+
   .modern-card-elevated {
-    @apply bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-md hover:shadow-lg transition-all duration-300 ease-out;
+    @apply bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-md hover:shadow-lg transition-all duration-300 ease-out;
   }
-  
+
   .modern-card-interactive {
-    @apply bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 ease-out cursor-pointer;
+    @apply bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 ease-out cursor-pointer;
   }
   
   /* AI Feature Cards with Gradient */
@@ -318,11 +318,11 @@
   
   /* Card variants with refined shadows */
   .card-elevated {
-    @apply bg-slate-50 rounded-xl border border-slate-200 shadow-md hover:shadow-lg transition-all duration-300 ease-out transform hover:-translate-y-0.5;
+    @apply bg-white rounded-xl border border-slate-200 shadow-md hover:shadow-lg transition-all duration-300 ease-out transform hover:-translate-y-0.5;
   }
 
   .card-interactive {
-    @apply bg-slate-50 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300 ease-out cursor-pointer;
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300 ease-out cursor-pointer;
   }
 
   /* Badge variants with modern styling */

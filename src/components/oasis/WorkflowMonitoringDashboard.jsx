@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { toCsvRows } from "@/components/admin/csvExport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import EmptyState from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -344,7 +345,7 @@ export default function WorkflowMonitoringDashboard() {
         </CardHeader>
         <CardContent>
           {filteredExecutions.length === 0 ? (
-            <p className="text-center text-slate-500 py-8">No workflow executions found</p>
+            <EmptyState icon={Activity} title="No workflow executions found" description="" />
           ) : (
             <div className="space-y-3">
               {filteredExecutions.slice(0, 20).map((exec) => (

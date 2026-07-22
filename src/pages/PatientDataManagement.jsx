@@ -56,6 +56,9 @@ import {
   Database
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
+import EmptyState from "@/components/ui/empty-state";
+import StatCard from "@/components/ui/stat-card";
 import PageContainer from "@/components/ui/PageContainer";
 import LoadingState from "@/components/ui/LoadingState";
 import { Link } from "react-router-dom";
@@ -265,16 +268,13 @@ export default function PatientDataManagement() {
   // Admin-only surface: block non-admins (server-side authz is the real gate).
   if (currentUser && !isAdmin) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
-        <Card className="max-w-md border-amber-300">
-          <CardContent className="p-8 text-center">
-            <h2 className="text-xl font-bold text-slate-900 mb-2">Access restricted</h2>
-            <p className="text-sm text-slate-600">
-              Patient Data Management is available to administrators only.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <PageContainer>
+        <AccessDeniedState
+          title="Access restricted"
+          description="Patient Data Management is available to administrators only."
+          className="py-24"
+        />
+      </PageContainer>
     );
   }
 
@@ -318,53 +318,10 @@ export default function PatientDataManagement() {
 
             {/* Stats Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <Card>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-slate-600 truncate">Total Patients</p>
-                <p className="text-xl sm:text-2xl font-bold">{stats.total}</p>
-              </div>
-              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-blue-500 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-slate-600 truncate">Active</p>
-                <p className="text-xl sm:text-2xl font-bold text-emerald-600">{stats.active}</p>
-              </div>
-              <Activity className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-500 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-slate-600 truncate">With Alerts</p>
-                <p className="text-xl sm:text-2xl font-bold text-amber-600">{stats.withAlerts}</p>
-              </div>
-              <Bell className="w-6 h-6 sm:w-8 sm:h-8 text-amber-500 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-slate-600 truncate">Critical</p>
-                <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.critical}</p>
-              </div>
-              <AlertTriangle className="w-6 h-6 sm:w-8 sm:h-8 text-red-500 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
+              <StatCard label="Total Patients" value={stats.total} icon={Users} tone="navy" />
+              <StatCard label="Active" value={stats.active} icon={Activity} tone="emerald" />
+              <StatCard label="With Alerts" value={stats.withAlerts} icon={Bell} tone="amber" />
+              <StatCard label="Critical" value={stats.critical} icon={AlertTriangle} tone="rose" />
       </div>
 
             {/* Duplicate Scanner */}
@@ -601,10 +558,12 @@ export default function PatientDataManagement() {
           </div>
 
           {filteredAndSortedPatients.length === 0 && (
-            <div className="p-8 text-center text-slate-500">
-              <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>No patients found matching your filters.</p>
-            </div>
+            <EmptyState
+              icon={Users}
+              title="No patients found"
+              description="No patients match your current filters. Adjust or clear the filters to see more."
+              className="m-4 sm:m-6"
+            />
             )}
           </CardContent>
         </Card>
@@ -648,10 +607,10 @@ export default function PatientDataManagement() {
 // Import Patients Component
 function ImportPatientsTab() {
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6">
       <div>
-        <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 flex items-center gap-2 mb-2">
-          <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0" />
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2 mb-2">
+          <Upload className="w-6 h-6 text-navy-600 flex-shrink-0" />
           <span className="truncate">Patient roster import</span>
         </h2>
         <p className="text-xs sm:text-sm md:text-base text-slate-600">

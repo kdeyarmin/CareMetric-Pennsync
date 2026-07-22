@@ -22,8 +22,7 @@ import {
   Search,
   Clock,
   MousePointer,
-  Archive,
-  Loader2
+  Archive
 } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
@@ -40,11 +39,7 @@ const UserActivityLog = lazy(() => import("@/components/hub-tabs/UserActivityLog
 // ?tab= deep-link so the retired Activity Log page redirects to the right tab.
 const TAB_KEYS = ["report", "log"];
 
-const tabLoader = (
-  <div className="flex justify-center py-12">
-    <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-  </div>
-);
+const tabLoader = <LoadingState className="py-12" />;
 
 export default function UserActivityReport() {
   const [timeRange, setTimeRange] = useState("30"); // days
@@ -470,22 +465,10 @@ export default function UserActivityReport() {
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
-                        <div className="p-3 bg-emerald-50 rounded-lg">
-                          <p className="text-xs text-emerald-600 font-medium">Total Actions</p>
-                          <p className="text-2xl font-bold text-emerald-900">{stat.total_actions}</p>
-                        </div>
-                        <div className="p-3 bg-navy-50 rounded-lg">
-                          <p className="text-xs text-navy-600 font-medium">Logins</p>
-                          <p className="text-2xl font-bold text-navy-900">{stat.logins}</p>
-                        </div>
-                        <div className="p-3 bg-blue-50 rounded-lg">
-                          <p className="text-xs text-blue-600 font-medium">Pages</p>
-                          <p className="text-2xl font-bold text-blue-900">{stat.pages_visited_count}</p>
-                        </div>
-                        <div className="p-3 bg-orange-50 rounded-lg">
-                          <p className="text-xs text-orange-600 font-medium">Entities</p>
-                          <p className="text-2xl font-bold text-orange-900">{stat.entities_interacted_count}</p>
-                        </div>
+                        <StatCard label="Total Actions" value={stat.total_actions} tone="emerald" />
+                        <StatCard label="Logins" value={stat.logins} tone="navy" />
+                        <StatCard label="Pages" value={stat.pages_visited_count} tone="blue" />
+                        <StatCard label="Entities" value={stat.entities_interacted_count} tone="orange" />
                         <div className="p-3 bg-slate-50 rounded-lg">
                           <p className="text-xs text-slate-600 font-medium">Last Active</p>
                           <p className="text-xs font-bold text-slate-900 mt-1">
