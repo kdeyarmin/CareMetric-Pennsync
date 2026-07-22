@@ -38,7 +38,6 @@ import {
   Lightbulb
 } from "lucide-react";
 import { format } from "date-fns";
-import { isAdminView } from "@/lib/roles";
 import OASISAuditReportGenerator from "@/components/oasis/OASISAuditReportGenerator";
 
 export default function OASISAuditDashboard() {
@@ -57,7 +56,10 @@ export default function OASISAuditDashboard() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = isAdminView(currentUser);
+  // Gate on role === 'admin' to match OASISAudit read RLS (all-row access is
+  // role-admin only; others are limited to created_by/assigned_to), so this
+  // dashboard isn't shown empty/partial to account_type-only admins.
+  const isAdmin = currentUser?.role === 'admin';
 
   // Fetch audits
   const { data: audits = [], isLoading } = useQuery({

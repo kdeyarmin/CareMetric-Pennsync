@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
+import { submitIncidentReport } from "@/functions/submitIncidentReport";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -90,44 +91,27 @@ export default function IncidentReportingModule() {
 
   const createIncidentMutation = useMutation({
     mutationFn: async (incidentData) => {
-      const incident = await base44.entities.Incident.create(incidentData);
-
-      // Manager alerts are best-effort and only for high-severity incidents. A
-      // non-admin reporter can't query Users (RLS denies User.filter), and any
-      // email/query failure must NOT fail the already-created incident — that
-      // would surface a false error and duplicate the report on retry.
-      let managersNotified = false;
-      if (incidentData.severity === 'high') {
-        try {
-          const managers = await base44.entities.User.filter({ role: 'admin' });
-          const patient = patients.find(p => p.id === incidentData.patient_id);
-          if (managers.length > 0) {
-            await Promise.all(
-              managers.map(manager =>
-                base44.integrations.Core.SendEmail({
-                  to: manager.email,
-                  subject: `🚨 High Severity Incident Reported - ${incidentData.incident_type}`,
-                  body: `A high severity incident has been reported:
-
-Patient: ${patient?.first_name} ${patient?.last_name}
-Incident Type: ${incidentData.incident_type}
-Date: ${incidentData.incident_date} at ${incidentData.incident_time}
-Reported By: ${currentUser?.full_name}
-
-Details: ${incidentData.report}
-
-Please review this incident in the Incident Reporting Dashboard.`
-                })
-              )
-            );
-            managersNotified = true;
-          }
-        } catch {
-          // best-effort: alerting failure must not fail the incident
-        }
-      }
-
-      return { incident, managersNotified };
+      // Route through the service-role backend: it creates the incident AND (for
+      // high severity) looks up admins and notifies them server-side. A client
+      // User.filter is blocked by RLS for non-admin reporters, so the manager
+      // alert never fired for nurses when done here.
+      const highSeverity = incidentData.severity === 'high';
+      const res = await submitIncidentReport({
+        patient_id: incidentData.patient_id,
+        patient_name: incidentData.patient_name,
+        incident_type: incidentData.incident_type,
+        incident_name: incidentData.incident_name,
+        incident_date: incidentData.incident_date,
+        incident_time: incidentData.incident_time,
+        severity: incidentData.severity,
+        details: incidentData.details,
+        report: incidentData.report,
+        photo_urls: incidentData.photo_urls,
+        physician_notified: incidentData.physician_notified,
+        immediate_alert: highSeverity,
+      });
+      const data = res?.data || res || {};
+      return { incident: data.incident, managersNotified: highSeverity };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });

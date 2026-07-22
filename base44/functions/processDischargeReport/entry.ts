@@ -1,11 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isAdminLike = (u) => !!u && (
-  u.role === 'admin' || u.account_type === 'agency_admin' ||
-  u.account_type === 'super_admin'
-);
-// <<<END SHARED HELPER: isAdminLike>>>
+// This function reads and UPDATES patients across the whole tenant via service
+// role and Patient has no agency discriminator, so it stays role-/super-admin
+// only — an agency_admin must NOT be able to discharge another agency's charts.
+const canRunDischargeImport = (u) => !!u && (u.role === 'admin' || u.account_type === 'super_admin');
 
 // Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG
 // secret was retired). console.error/warn remain ungated for visibility.
@@ -17,7 +15,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     
     const user = await base44.auth.me();
-    if (!isAdminLike(user)) {
+    if (!canRunDischargeImport(user)) {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
@@ -92,6 +90,11 @@ Deno.serve(async (req) => {
     const nameMap = new Map();
 
     for (const patient of allPatients) {
+      // Only consider charts that can actually be discharged as match candidates.
+      // An already-discharged / merged / archived duplicate sharing a name (or MRN)
+      // must not shadow the active chart or create a false "ambiguous" match that
+      // blocks discharging the real patient.
+      if (patient.is_archived || patient.status === 'merged' || patient.status === 'discharged') continue;
       if (patient.medical_record_number) {
         mrnMap.set(patient.medical_record_number.trim().toLowerCase(), patient);
       }

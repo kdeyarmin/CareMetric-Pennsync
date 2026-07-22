@@ -314,12 +314,13 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
     // Calculate patient outcomes
     const nursePatientIds = [...new Set(visits.map(v => v.patient_id))];
 
-    // Incident writers set patient_id (required) but not visit_id, so a visit_id
-    // join was always empty. Attribute incidents by the nurse's patients, still
-    // honoring visit_id when it happens to be present.
+    // "incidents_reported" = incidents this nurse actually reported. The old
+    // visit_id join was always empty (writers don't set visit_id); attribute by
+    // created_by (the reporter) — NOT by patient, which would count every incident
+    // on a shared patient against every nurse who ever visited them.
     const nurseIncidents = incidents.filter(i =>
-      (i.visit_id && visits.some(v => v.id === i.visit_id)) ||
-      (i.patient_id && nursePatientIds.includes(i.patient_id))
+      i.created_by === targetEmail ||
+      (i.visit_id && visits.some(v => v.id === i.visit_id))
     );
 
     const patientOutcomes = {
