@@ -11,11 +11,15 @@ import ts from "typescript";
  * model) into every Telnyx function: testTelnyxConnection, sendTelnyxSms,
  * sendTelnyxFax, startTelnyxCall, handleTelnyxStatusWebhook (and the apiKey-only
  * copy in createTelnyxVideoToken). It resolves Telnyx credentials from the
- * in-app IntegrationSecret row ONLY — the TELNYX_* dashboard-env override path
- * was retired. Since it gates who can send/verify across all four channels, a
- * silent divergence between copies is a security concern; this asserts every
- * copy resolves each field it exposes identically (and that no copy quietly
- * re-grows an env read).
+ * in-app IntegrationSecret row first — the TELNYX_* dashboard-env override path
+ * was retired for interactive functions. Exception: the three SCHEDULED fax
+ * functions (autoRetryFailedFaxes, sendBatchFax, syncFaxStatuses) keep an
+ * app-level-secret fallback (TELNYX_API_KEY / TELNYX_CONNECTION_ID) so cron
+ * jobs still run before an admin has saved Telnyx config in-app; the DB row
+ * always wins when present. Since resolution gates who can send/verify across
+ * all four channels, a silent divergence between copies is a security concern;
+ * this asserts every copy resolves each field it exposes identically (and that
+ * no copy outside the scheduled-fax allowlist quietly re-grows an env read).
  */
 globalThis.Deno = globalThis.Deno || { serve() {}, env: { get: () => undefined } };
 
@@ -80,10 +84,17 @@ const SCENARIOS = [
     expect: { apiKey: "KEYdb", publicKey: "PUBdb", messagingProfileId: "MPdb", voiceConnectionId: "VCdb", faxConnectionId: "FCdb" },
   },
   {
-    name: "retired env vars alone configure nothing",
+    name: "retired env vars alone configure nothing (except the scheduled-fax fallback)",
     env: { TELNYX_API_KEY: "KEYenv", TELNYX_CONNECTION_ID: "VClegacy" },
     rows: [],
     expect: { apiKey: null, publicKey: null, messagingProfileId: null, voiceConnectionId: null, faxConnectionId: null },
+    // Scheduled fax jobs deliberately fall back to app-level secrets so they
+    // keep running before the in-app Telnyx config has been saved.
+    overrides: {
+      "./autoRetryFailedFaxes/entry.ts": { apiKey: "KEYenv", faxConnectionId: "VClegacy" },
+      "./sendBatchFax/entry.ts": { apiKey: "KEYenv", faxConnectionId: "VClegacy" },
+      "./syncFaxStatuses/entry.ts": { apiKey: "KEYenv" },
+    },
   },
   {
     name: "no creds anywhere → nulls",
@@ -104,8 +115,9 @@ for (const scenario of SCENARIOS) {
       for (const [file, fields] of Object.entries(FILES)) {
         const mod = await loadInline(file, ["resolveTelnyxCreds"]);
         const got = await mod.resolveTelnyxCreds(makeBase44(scenario.rows));
+        const expected = { ...scenario.expect, ...(scenario.overrides?.[file] || {}) };
         for (const f of fields) {
-          assert.equal(got[f], scenario.expect[f], `${file} field ${f}`);
+          assert.equal(got[f], expected[f], `${file} field ${f}`);
         }
       }
     } finally {
