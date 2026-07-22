@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -778,9 +779,9 @@ export default function UserSettings() {
       {/* Legal */}
       <p className="mt-6 text-sm text-slate-500">
         Review how PennSync collects, uses, and retains your data in the{' '}
-        <a href="/privacy" className="font-medium text-navy-600 underline-offset-2 hover:underline">
+        <Link to="/privacy" className="font-medium text-navy-600 underline-offset-2 hover:underline">
           Privacy Policy
-        </a>
+        </Link>
         .
       </p>
 

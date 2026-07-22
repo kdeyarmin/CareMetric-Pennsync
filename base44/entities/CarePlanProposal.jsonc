@@ -152,5 +152,61 @@
     "trigger_source",
     "ai_analysis",
     "status"
-  ]
+  ],
+  // PHI clinical analysis: readable by the proposal's assigned nurse, its
+  // creator, and admin-tier accounts; writes restricted the same way. The
+  // monitorClinicalDataForCarePlanUpdates job writes via service role, which
+  // bypasses RLS, so background generation is unaffected.
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "assigned_nurse": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "agency_admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "super_admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "assigned_nurse": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "agency_admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "super_admin"
+          }
+        }
+      ]
+    }
+  }
 }

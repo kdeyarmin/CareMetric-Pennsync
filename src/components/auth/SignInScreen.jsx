@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { createAxiosClient } from '@/lib/base44AxiosClient';
@@ -270,9 +271,9 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
         </p>
         <p className="mt-2 text-center text-xs text-slate-400">
           Secure clinical platform · HIPAA compliant ·{' '}
-          <a href="/privacy" className="underline-offset-2 hover:underline">
+          <Link to="/privacy" className="underline-offset-2 hover:underline">
             Privacy Policy
-          </a>
+          </Link>
         </p>
       </div>
     </div>

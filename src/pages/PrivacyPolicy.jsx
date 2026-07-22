@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Shield, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -21,9 +22,12 @@ const SectionTitle = ({ children }) => (
 );
 
 const PrivacyPolicy = () => {
+  const navigate = useNavigate();
+  // navigate (not window.location) so the app's router basename is honored
+  // when the SPA is hosted under a sub-path.
   const goBack = () => {
-    if (window.history.length > 1) window.history.back();
-    else window.location.assign('/');
+    if (window.history.length > 1) navigate(-1);
+    else navigate('/');
   };
 
   return (

@@ -78,11 +78,7 @@ export const PURGE_FULL_PREFIXES = [
   K.PATIENTS, K.PATIENT_DATA, K.CACHE_TIMESTAMP,
   K.RECENT_PATIENTS_PREFIX, K.FAVORITE_PATIENTS_PREFIX, K.OASIS_DATA_PREFIX,
   K.PENN_CACHE_PREFIX, K.PENN_SYNC_ERRORS, K.PENN_SYNC_STATUS,
-  // Retired app-params key: prior app versions persisted the full landing URL
-  // (which can carry ?patientId=/?referral_id= deep-link params) under this key
-  // on every load. No live code writes or reads it anymore; purge the stale
-  // copy so it can't outlive logout on a shared device.
-  'base44_from_url',
+  K.APP_PARAM_FROM_URL,
 ];
 
 /** Offline-work queues: drop the synced entries, keep what's still pending. */

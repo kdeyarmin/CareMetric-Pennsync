@@ -10,10 +10,14 @@
  * hosted-page fallbacks work.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import SignInScreen from './SignInScreen';
 import { BRAND_LOGO_URL } from '@/lib/brand';
+
+// The screen links to /privacy with a router <Link>, so it must mount inside a Router.
+const render = (ui) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 
 const mocks = vi.hoisted(() => ({
   navigateToLogin: vi.fn(),

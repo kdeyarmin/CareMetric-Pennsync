@@ -213,6 +213,7 @@ export const ROUTER_PATHS = [
   '/join',
   '/signer',
   '/followup',
+  '/privacy',
   ...PAGE_NAMES.map((name) => `/${name}`),
   ...REDIRECTS.map(({ from }) => from),
 ];
