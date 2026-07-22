@@ -39,7 +39,6 @@ test('can find roadmap items for app feature names', () => {
 test('roadmap lookup supports broad category and feature-context matching', () => {
   assert.ok(getRoadmapForFeature('Document Hub').some((item) => item.id === 'document-packet-control-board'));
   assert.ok(getRoadmapForFeature('Smart Note Assistant quality AI').some((item) => item.id === 'ai-provenance-governance'));
-  assert.ok(getRoadmapForFeature('Document Hub').some((item) => item.id === 'document-packet-control-board'));
   assert.deepEqual(getRoadmapForFeature(''), []);
 });
 
