@@ -5,7 +5,7 @@ const buttonVariants = ({ variant = "default", size = "default", className } = {
     const baseStyles = "inline-flex items-center justify-center rounded-lg text-sm font-semibold leading-none transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-navy-500 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]"
 
     const variants = {
-      default: "border border-navy-700 bg-navy-700 text-white shadow-md hover:border-navy-800 hover:bg-navy-800 hover:shadow-md dark:border-navy-300 dark:bg-navy-300 dark:text-slate-950 dark:hover:border-navy-200 dark:hover:bg-navy-200",
+      default: "border border-slate-900 bg-slate-900 text-white shadow-md hover:border-slate-800 hover:bg-slate-800 hover:shadow-md dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900 dark:hover:border-white dark:hover:bg-white",
       destructive: "bg-red-600 text-white shadow-sm hover:bg-red-700 hover:shadow-md dark:bg-red-500 dark:hover:bg-red-400",
       outline: "border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 hover:border-slate-400 hover:text-navy-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 dark:hover:border-slate-600 dark:hover:text-navy-200",
       ghost: "text-slate-700 hover:bg-slate-100 hover:text-navy-800 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-navy-200",

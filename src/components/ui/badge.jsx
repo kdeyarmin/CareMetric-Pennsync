@@ -1,8 +1,5 @@
 import * as React from "react"
-
-function cn(...inputs) {
-  return inputs.filter(Boolean).join(' ')
-}
+import { cn } from "@/lib/utils"
 
 const Badge = React.forwardRef((props, ref) => {
   const { className, variant = "default", ...otherProps } = props
