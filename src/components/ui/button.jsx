@@ -2,7 +2,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = ({ variant = "default", size = "default", className } = {}) => {
-    const baseStyles = "inline-flex items-center justify-center rounded-lg text-sm font-semibold leading-none transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-navy-500 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]"
+    const baseStyles = "inline-flex items-center justify-center text-center rounded-lg text-sm font-semibold leading-none transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-navy-500 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98] [&_svg]:shrink-0"
 
     const variants = {
       default: "app-primary-button shadow-md hover:shadow-md",

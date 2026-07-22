@@ -5,7 +5,7 @@ const Badge = React.forwardRef((props, ref) => {
   const { className, variant = "default", ...otherProps } = props
   
   const variants = {
-    default: "bg-navy-600 text-white hover:bg-navy-700 shadow-sm",
+    default: "app-primary-badge shadow-sm",
     secondary: "bg-slate-200 text-slate-900 hover:bg-slate-300 shadow-sm",
     destructive: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
     outline: "text-slate-900 border border-slate-300 hover:bg-slate-50",
@@ -20,7 +20,7 @@ const Badge = React.forwardRef((props, ref) => {
     <div
       ref={ref}
       className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold leading-none transition-all duration-200",
+        "inline-flex items-center justify-center text-center rounded-full px-2.5 py-1 text-xs font-semibold leading-none transition-all duration-200",
         variants[variant],
         className
       )}
