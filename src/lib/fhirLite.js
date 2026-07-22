@@ -1,5 +1,11 @@
 function compact(obj) {
-  return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined && value !== null && value !== ''));
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => {
+      if (value === undefined || value === null || value === '') return false;
+      if (Array.isArray(value)) return value.length > 0;
+      return true;
+    }),
+  );
 }
 
 export function patientToFhirLite(patient = {}) {
