@@ -190,7 +190,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('PDF indexing error:', error);
     return Response.json({ 
-      error: error.message || 'Failed to index PDF' 
+      error: 'Failed to index PDF' 
     }, { status: 500 });
   }
 });

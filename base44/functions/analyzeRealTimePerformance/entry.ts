@@ -163,6 +163,6 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 
   } catch (error) {
     console.error('Error analyzing performance:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

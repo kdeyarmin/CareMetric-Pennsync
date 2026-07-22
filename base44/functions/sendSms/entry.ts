@@ -640,6 +640,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, message_id: smsRow.id, provider_message_id: messageId, status: 'sent' });
   } catch (error) {
     console.error('sendTelnyxSms error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

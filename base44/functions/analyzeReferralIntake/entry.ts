@@ -113,7 +113,7 @@ Return ONLY valid JSON matching the structure above, no prose or code fences.`;
     console.error('Referral analysis error:', error);
     return Response.json({ 
       error: 'Failed to analyze referral',
-      details: error.message 
+      details: 'Internal server error' 
     }, { status: 500 });
   }
 });

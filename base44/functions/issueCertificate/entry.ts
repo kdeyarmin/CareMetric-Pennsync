@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
         console.error('Certificate issuance error:', error);
         return Response.json({ 
             error: 'Failed to issue certificate',
-            details: error.message 
+            details: 'Internal server error' 
         }, { status: 500 });
     }
 });

@@ -54,6 +54,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, questions });
   } catch (error) {
     console.error('getCoursePlayerQuestions error:', error);
-    return Response.json({ error: 'Failed to load questions', details: error.message }, { status: 500 });
+    return Response.json({ error: 'Failed to load questions', details: 'Internal server error' }, { status: 500 });
   }
 });

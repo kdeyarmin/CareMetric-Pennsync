@@ -293,7 +293,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Report generation error:', error);
     return Response.json({ 
-      error: error.message,
+      error: 'Internal server error',
       details: 'Failed to generate comprehensive report'
     }, { status: 500 });
   }

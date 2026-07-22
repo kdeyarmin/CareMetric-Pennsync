@@ -135,9 +135,10 @@ Respond with JSON: {"priority": "urgent|high|normal|low", "reason": "brief expla
 
   } catch (error) {
     console.error('Priority analysis error:', error);
-    return Response.json({ 
+    // Generic reason only — the raw exception text stays server-side.
+    return Response.json({
       priority: 'normal',
-      reason: 'Error in analysis: ' + error.message
+      reason: 'Error in analysis'
     });
   }
 });

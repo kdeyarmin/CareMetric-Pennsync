@@ -105,6 +105,7 @@ Deno.serve(async (req) => {
 
     return Response.json({ overall, byBusinessLine, rolesNeedingAttention, rows });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('getTeamTrainingReadiness failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

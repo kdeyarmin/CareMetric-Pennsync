@@ -249,3 +249,44 @@ portrait while Info.plist allows landscape (intent mismatch only).
    standardize admin gates, pin jspdf/openai versions (§4).
 7. **Policy prep**: in-app privacy policy link, demo account, privacy labels, distribution-route
    decision (ABM vs public) for 4.2.
+
+## Implementation status (2026-07-22, same day)
+
+All seven items were implemented on this branch:
+
+1. **Drift reconciled** — the live-only Care Plan feature set (pages `CarePlanManagement`,
+   `CarePlanBuilder`, `AutomaticCarePlans` + 10 `src/components/carePlan/` components, 4 backend
+   functions, 3 entities) is ported and routed via the nav manifest; `ClinicalChart`,
+   `ClinicalInsightsDashboard`, `MyLearning`, `NurseEducationVideos` page files are ported and,
+   matching the live app's own routing, intentionally unrouted (both sides redirect those paths).
+   The repo is now a superset of the live app.
+2. **`appBaseUrl` passed** to `createClient` (`src/api/base44Client.js`) — platform
+   sign-up/OTP/logout now target the backend origin. Also: `from_url` is no longer persisted,
+   and the stale `base44_from_url` key is purged on logout/idle (registered in `OFFLINE_KEYS`).
+3. **All 10 entities registered** in the live PENNSync app via the Base44 connector (verified
+   by re-listing). Repo-only *functions* still deploy with the next app sync.
+4. **iOS wrapper fixed** — main-frame-only guards, native offline/error view with retry,
+   content-process-terminate recovery, media-permission default-port fix, popup/print bridge
+   (`UIPrintInteractionController`), `canOpenURL` guard, pull-to-refresh, App-Bound Domains,
+   iOS 15 floor.
+5. **Project scaffolding added** — `AppDelegate`/`SceneDelegate`, asset catalog with 1024 px
+   AppIcon + launch color, `PrivacyInfo.xcprivacy`, XcodeGen `ios/project.yml`, rewritten
+   `ios/README.md`. (`xcodegen generate` + a real Xcode build remain the definitive check.)
+6. **Backend hardened** — 191 catch-all `error.message` leaks replaced with generic messages +
+   server-side logging; fax send/retry paths now enforce `isSafeFetchUrl`; follow-up portal
+   tokens hashed (SHA-256) at rest; `generateSignerToken`/`adminResetPassword`/`sendTestSms`
+   standardized on `isAdminLike`; unpinned `npm:jspdf`/`npm:openai` pinned and the 2.x jspdf
+   cohort aligned on 2.5.2; scheduler-secret comparison made timing-safe and resynced to all 73
+   helper consumers. Remaining role-gate inconsistencies that need a product decision are listed
+   in the PR discussion.
+7. **Policy prep** — public `/privacy` page (draft policy; **needs counsel review**) linked from
+   the sign-in footer and Settings; `docs/APP_STORE_SUBMISSION_CHECKLIST.md` covers the App
+   Store Connect process items (demo account, privacy labels, 4.8 login-page verification,
+   ABM-vs-public decision).
+
+Also fixed en route: `pnpm-lock.yaml` regenerated for the `@base44/sdk ^0.8.40` bump that landed
+on `main` without a lockfile update (it broke every `pnpm install --frozen-lockfile` CI job).
+
+Final validation on the combined tree: lint 0 errors, actionlint clean, typecheck clean,
+`node --test` 46/46 + backend 82/82, Vitest 417/417, 229 functions transpile, shared helpers in
+sync (73 consumers), production build succeeds.

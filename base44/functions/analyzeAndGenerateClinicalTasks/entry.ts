@@ -166,7 +166,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
     console.error('Clinical task analysis error:', error);
     return Response.json({
       error: 'Failed to analyze and generate tasks',
-      details: error.message
+      details: 'Internal server error'
     }, { status: 500 });
   }
 });

@@ -182,7 +182,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
     console.error('Error analyzing clinical risks:', error);
     return Response.json({
       success: false,
-      error: error.message
+      error: 'Internal server error'
     }, { status: 500 });
   }
 });

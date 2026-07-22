@@ -103,6 +103,7 @@ Deno.serve(async (req) => {
 
     return Response.json({ success: true, reminded_users: remindedUsers, assignments_flagged: flagged });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('remindPlanOverdueStaff failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

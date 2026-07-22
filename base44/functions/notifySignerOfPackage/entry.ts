@@ -207,6 +207,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, email_sent: true });
   } catch (error) {
     console.error('Error sending signer notification:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

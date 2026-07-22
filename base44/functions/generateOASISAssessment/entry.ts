@@ -134,7 +134,7 @@ Write everything clearly and completely - no truncated text.`,
     // Do not leak internal error details (error.toString()/stack) to the
     // caller — could expose PHI or implementation details.
     return Response.json({
-      error: error.message
+      error: 'Internal server error'
     }, { status: 500 });
   }
 });

@@ -8,6 +8,17 @@ function isSchedulerAdmin(user) {
     user.account_type === 'super_admin'
   );
 }
+// Constant-time string compare for the shared-secret check (mirrors
+// createTelehealthToken's timingSafeEqual). A plain === short-circuits on the
+// first differing character, so response timing could leak how much of the
+// secret matched. Dependency-free char-code XOR so the identical source runs
+// under Deno (consumers) and Node (tests).
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
 function getSchedulerAuthError(req, user) {
   if (isSchedulerAdmin(user)) return null;
   const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
@@ -18,7 +29,7 @@ function getSchedulerAuthError(req, user) {
     );
   }
   const providedSecret = String(req.headers.get(SCHEDULER_SECRET_HEADER) || '').trim();
-  if (providedSecret === expectedSecret) return null;
+  if (timingSafeEqualStr(providedSecret, expectedSecret)) return null;
   return Response.json(
     { error: user ? 'Forbidden: admin or scheduler secret required' : 'Unauthorized: scheduler secret required' },
     { status: user ? 403 : 401 },
@@ -143,7 +154,7 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Fax status sync function error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
 

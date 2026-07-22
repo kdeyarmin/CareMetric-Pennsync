@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Messaging assistant error:', error);
     return Response.json({ 
-      error: error.message,
+      error: 'Internal server error',
       success: false
     }, { status: 500 });
   }

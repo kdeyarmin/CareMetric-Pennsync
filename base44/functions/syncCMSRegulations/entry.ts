@@ -134,7 +134,7 @@ Return comprehensive, actionable compliance information.`,
     console.error('CMS regulations sync error:', error);
     return Response.json({
       success: false,
-      error: error.message || 'Failed to sync CMS regulations'
+      error: 'Failed to sync CMS regulations'
     }, { status: 500 });
   }
 });

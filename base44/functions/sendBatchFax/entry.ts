@@ -7,6 +7,28 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // Largest batch accepted in a single call — bounds fan-out/cost per request.
 const MAX_BATCH_RECIPIENTS = 50;
 
+// <<<BEGIN SHARED HELPER: isSafeFetchUrl — generated, edit base44/_shared/backendHelpers.mjs>>>
+// SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
+// internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
+// rather than env-configured; add a host here if file storage ever moves.
+const FILE_URL_ALLOWED_HOSTS = ['qtrypzzcjebvfcihiynt.supabase.co', 'base44.app', 'base44.io'];
+function isSafeFetchUrl(raw) {
+  let u;
+  try { u = new URL(String(raw)); } catch { return false; }
+  if (u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  if (['localhost', '0.0.0.0', '127.0.0.1', '::1', '169.254.169.254'].includes(host)) return false;
+  if (host.endsWith('.internal') || host.endsWith('.local')) return false;
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = +m[1], b = +m[2];
+    if (a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false;
+  }
+  if (!FILE_URL_ALLOWED_HOSTS.some((h) => host === h || host.endsWith('.' + h))) return false;
+  return true;
+}
+// <<<END SHARED HELPER: isSafeFetchUrl>>>
+
 // ---- destination normalization + cost controls (mirrors sendFax) ----
 function normalizeFaxDest(raw) {
   if (!raw) return '';
@@ -88,6 +110,13 @@ Deno.serve(async (req) => {
       return Response.json({
         error: `Too many recipients: ${normalizedRecipients.length} (max ${MAX_BATCH_RECIPIENTS} per batch).`
       }, { status: 400 });
+    }
+
+    // SSRF guard: file_url becomes Telnyx's media_url for every recipient, so an
+    // arbitrary client-supplied URL would make the fax provider fetch (and
+    // transmit) any reachable document. Only app-storage https URLs are allowed.
+    if (!isSafeFetchUrl(file_url)) {
+      return Response.json({ error: 'Invalid or disallowed file_url' }, { status: 400 });
     }
 
     const { apiKey, faxConnectionId } = await resolveTelnyxCreds(base44);
@@ -228,6 +257,7 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('sendBatchFax failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

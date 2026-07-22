@@ -73,6 +73,6 @@ Deno.serve(async (req) => {
         return Response.json({ success: true, notified: notifiedCount });
     } catch (error) {
         console.error("notifyUrgentMessage error:", error);
-        return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({ error: 'Internal server error' }, { status: 500 });
     }
 });

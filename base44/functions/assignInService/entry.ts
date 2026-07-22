@@ -129,6 +129,7 @@ Deno.serve(async (req) => {
       assigned_users: assignmentsToCreate.map((assignment) => assignment.assigned_to_user_id)
     });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('assignInService failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

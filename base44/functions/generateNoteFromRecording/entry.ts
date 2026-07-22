@@ -171,7 +171,7 @@ Return ONLY a valid JSON object, no prose or code fences, of the form:
     console.error('Error generating note from recording:', error);
     return Response.json({
       success: false,
-      error: error.message
+      error: 'Internal server error'
     }, { status: 500 });
   }
 });

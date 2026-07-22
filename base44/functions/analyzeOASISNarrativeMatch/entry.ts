@@ -206,7 +206,7 @@ Return JSON with detailed findings:`,
   } catch (error) {
     console.error('OASIS narrative analysis error:', error);
     return Response.json({ 
-      error: error.message,
+      error: 'Internal server error',
     }, { status: 500 });
   }
 });

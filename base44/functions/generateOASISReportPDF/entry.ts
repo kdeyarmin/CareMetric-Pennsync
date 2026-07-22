@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-import { jsPDF } from 'npm:jspdf@2.5.1';
+import { jsPDF } from 'npm:jspdf@2.5.2';
 
 // Financial visibility gate. MIRRORS src/lib/permissions.canViewFinancials
 // (isAdminLike) / listOASISUploads' canViewFinancials — backend Deno modules
@@ -298,6 +298,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('Error generating PDF:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

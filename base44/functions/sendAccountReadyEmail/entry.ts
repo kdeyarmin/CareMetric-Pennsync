@@ -174,6 +174,7 @@ Deno.serve(async (req) => {
 
     return Response.json({ success: true, message: `Account-ready email sent to ${email}` });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('sendAccountReadyEmail failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

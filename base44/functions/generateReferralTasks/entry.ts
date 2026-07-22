@@ -76,7 +76,7 @@ Return a JSON array of 5-12 tasks ordered by priority and due date.`,
     } catch (error) {
         console.error('Error generating referral tasks:', error);
         return Response.json({ 
-            error: error.message,
+            error: 'Internal server error',
             success: false
         }, { status: 500 });
     }

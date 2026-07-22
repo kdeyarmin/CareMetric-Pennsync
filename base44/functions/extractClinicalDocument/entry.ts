@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Document extraction error:', error);
     return Response.json(
-      { error: error.message || 'Extraction failed' },
+      { error: 'Extraction failed' },
       { status: 500 }
     );
   }

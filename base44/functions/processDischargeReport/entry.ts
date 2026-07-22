@@ -214,7 +214,7 @@ Deno.serve(async (req) => {
     return Response.json({ 
       success: false,
       error: 'Failed to process discharge report',
-      details: error.message
+      details: 'Internal server error'
     }, { status: 500 });
   }
 });

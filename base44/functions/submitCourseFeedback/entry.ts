@@ -79,6 +79,7 @@ Deno.serve(async (req) => {
 
     return Response.json({ success: true, feedback_id: record.id, updated: !!existing[0] });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('submitCourseFeedback failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

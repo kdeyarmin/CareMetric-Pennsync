@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('PDF preparation error:', error);
     return Response.json({ 
-      error: error.message || 'Failed to prepare PDF' 
+      error: 'Failed to prepare PDF' 
     }, { status: 500 });
   }
 });

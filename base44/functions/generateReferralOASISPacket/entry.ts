@@ -1191,7 +1191,7 @@ PLAN:
     console.error('Error generating PDF:', error);
     return Response.json({ 
       error: 'Failed to generate PDF', 
-      details: error.message 
+      details: 'Internal server error' 
     }, { status: 500 });
   }
 });

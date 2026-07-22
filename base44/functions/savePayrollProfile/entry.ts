@@ -77,6 +77,7 @@ Deno.serve(async (req) => {
 
     return Response.json({ success: true, profile: saved });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('savePayrollProfile failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

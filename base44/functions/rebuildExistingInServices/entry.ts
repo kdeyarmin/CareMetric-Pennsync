@@ -221,6 +221,7 @@ Deno.serve(async (req) => {
 
     return Response.json({ success: true, rebuilt: results });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('rebuildExistingInServices failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

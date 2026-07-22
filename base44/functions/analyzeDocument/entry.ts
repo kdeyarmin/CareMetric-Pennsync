@@ -129,7 +129,7 @@ Return a JSON object with this structure:
   } catch (error) {
     console.error('Document analysis error:', error);
     return Response.json({ 
-      error: error.message 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 });

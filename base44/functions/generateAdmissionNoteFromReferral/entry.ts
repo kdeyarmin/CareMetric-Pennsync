@@ -62,7 +62,7 @@ Return ONLY the formatted note text, no JSON structure.`;
     console.error('Admission note generation error:', error);
     return Response.json({ 
       error: 'Failed to generate admission note',
-      details: error.message 
+      details: 'Internal server error' 
     }, { status: 500 });
   }
 });

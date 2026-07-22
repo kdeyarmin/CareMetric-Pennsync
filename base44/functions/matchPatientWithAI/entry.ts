@@ -189,7 +189,7 @@ Provide detailed match analysis with reasoning.`,
     } catch (error) {
         console.error('Error matching patient with AI:', error);
         return Response.json({ 
-            error: error.message,
+            error: 'Internal server error',
             success: false
         }, { status: 500 });
     }

@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('PDF search error:', error);
     return Response.json({ 
-      error: error.message || 'Search failed' 
+      error: 'Search failed' 
     }, { status: 500 });
   }
 });

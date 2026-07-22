@@ -242,7 +242,7 @@ Only suggest tasks that are clinically necessary. If no follow-up is needed, ret
   } catch (error) {
     console.error('Process completed visit error:', error);
     return Response.json({
-      error: error.message
+      error: 'Internal server error'
     }, { status: 500 });
   }
 });

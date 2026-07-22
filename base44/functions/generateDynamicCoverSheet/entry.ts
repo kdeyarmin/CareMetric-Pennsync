@@ -229,9 +229,10 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Cover sheet generation error:', error);
-    return Response.json({ 
-      error: error.message,
-      details: error.toString() 
+    // Generic detail only — error.toString() leaked the raw exception text.
+    return Response.json({
+      error: 'Internal server error',
+      details: 'Failed to generate cover sheet'
     }, { status: 500 });
   }
 });

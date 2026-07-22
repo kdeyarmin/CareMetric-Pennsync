@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('PDF annotation error:', error);
     return Response.json({ 
-      error: error.message || 'Failed to process PDF annotations' 
+      error: 'Failed to process PDF annotations' 
     }, { status: 500 });
   }
 });

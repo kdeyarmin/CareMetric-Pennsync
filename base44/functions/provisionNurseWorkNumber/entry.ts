@@ -96,6 +96,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, target_user_email, work_phone_number: workNum || target.work_phone_number || null });
   } catch (error) {
     console.error('provisionNurseWorkNumber error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

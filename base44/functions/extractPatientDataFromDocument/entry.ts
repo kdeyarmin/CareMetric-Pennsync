@@ -105,9 +105,10 @@ Deno.serve(async (req) => {
     }
 
   } catch (error) {
+    console.error('extractPatientDataFromDocument failed:', error);
     return Response.json({ 
       status: 'error',
-      details: error.message 
+      details: 'Internal server error' 
     }, { status: 500 });
   }
 });

@@ -45,6 +45,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, scheduled_id: row.id });
   } catch (error) {
     console.error('cancelScheduledSms error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
