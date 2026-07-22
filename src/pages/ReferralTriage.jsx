@@ -10,9 +10,11 @@ import PageHeader from '@/components/ui/PageHeader';
 import ReferralTriageAnalyzer from '../components/referral/ReferralTriageAnalyzer';
 import { todayEastern } from '@/components/utils/timezone';
 import { toast } from 'sonner';
+import { buildIncompleteReferralFromTriage, referralPatientReadiness } from '@/components/referral/referralPatientReadiness';
 
 // Triage urgency levels → Referral.priority enum (low/normal/high/urgent).
 const URGENCY_TO_PRIORITY = { CRITICAL: 'urgent', HIGH: 'high', MEDIUM: 'normal', LOW: 'low' };
+const URGENCY_TO_TASK_PRIORITY = { CRITICAL: 'high', HIGH: 'high', MEDIUM: 'medium', LOW: 'medium' };
 
 /**
  * AI-Powered Referral Triage Workflow
@@ -37,21 +39,52 @@ export default function ReferralTriage() {
     if (!lastAnalysis) return;
 
     try {
-      // Create patient from triage analysis
-      // phone, address, emergency_contact_name and emergency_contact_phone are
-      // required on the Patient entity but are rarely present in triage output.
-      // Fall back to clearly-marked placeholders so the create succeeds; staff
-      // complete these during admission.
+      const readiness = referralPatientReadiness(lastAnalysis);
+      const referralPriority = URGENCY_TO_PRIORITY[lastAnalysis.urgency_level] || 'normal';
+
+      if (!readiness.ready) {
+        const referral = await base44.entities.Referral.create({
+          ...buildIncompleteReferralFromTriage(lastAnalysis, {
+            assignedTo: currentUser?.email,
+            referralDate: todayEastern(),
+          }),
+          priority: referralPriority,
+        });
+
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 1);
+        await base44.entities.Task.create({
+          title: `Complete referral identity: ${readiness.full_name || lastAnalysis.patient_name || 'Unknown patient'}`,
+          description: `Patient chart was not created because required identity data is missing: ${readiness.missing.join(', ')}. Complete the referral before admission.`,
+          type: 'referral_follow_up',
+          priority: URGENCY_TO_TASK_PRIORITY[lastAnalysis.urgency_level] || 'medium',
+          status: 'pending',
+          assigned_to: currentUser?.email,
+          related_entity: 'Referral',
+          related_entity_id: referral.id,
+          due_timeframe: '24_hours',
+          due_date: toLocalISODate(dueDate),
+        });
+
+        setShowCreatePatient(false);
+        setLastAnalysis(null);
+        queryClient.invalidateQueries({ queryKey: ['referrals'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        toast.error(`Patient chart not created. Missing: ${readiness.missing.join(', ')}. An awaiting-info referral was queued for completion.`);
+        return;
+      }
+
       const patientData = {
-        first_name: lastAnalysis.patient_name?.split(' ')[0] || 'Unknown',
-        last_name: lastAnalysis.patient_name?.split(' ').slice(1).join(' ') || '',
-        date_of_birth: lastAnalysis.date_of_birth === 'Not provided' ? null : lastAnalysis.date_of_birth,
+        first_name: readiness.first_name,
+        last_name: readiness.last_name,
+        date_of_birth: readiness.identifiers.date_of_birth || null,
+        medical_record_number: readiness.identifiers.medical_record_number || null,
         primary_diagnosis: lastAnalysis.primary_diagnosis,
         secondary_diagnoses: lastAnalysis.secondary_diagnoses || [],
-        phone: lastAnalysis.phone || 'Not provided on referral',
-        address: lastAnalysis.address || 'Not provided on referral',
-        emergency_contact_name: lastAnalysis.emergency_contact_name || 'Not provided on referral',
-        emergency_contact_phone: lastAnalysis.emergency_contact_phone || 'Not provided on referral',
+        phone: readiness.identifiers.phone || null,
+        address: readiness.identifiers.address || null,
+        emergency_contact_name: lastAnalysis.emergency_contact_name || null,
+        emergency_contact_phone: lastAnalysis.emergency_contact_phone || null,
         status: 'active',
         care_type: 'home_health',
         clinical_notes: lastAnalysis.clinical_summary,
@@ -72,7 +105,7 @@ export default function ReferralTriage() {
           referral_source: lastAnalysis.referral_source || 'Manual triage',
           referral_date: todayEastern(),
           document_type: 'manual',
-          priority: URGENCY_TO_PRIORITY[lastAnalysis.urgency_level] || 'normal',
+          priority: referralPriority,
           status: 'ready_for_admission',
         });
       } catch (referralError) {
@@ -92,7 +125,7 @@ export default function ReferralTriage() {
         title: `Admission Setup: ${lastAnalysis.patient_name}`,
         description: `Complete admission assessment and reconcile medications. Urgency: ${lastAnalysis.urgency_level}`,
         type: 'schedule',
-        priority: lastAnalysis.urgency_level === 'CRITICAL' ? 'high' : 'medium',
+        priority: URGENCY_TO_TASK_PRIORITY[lastAnalysis.urgency_level] || 'medium',
         status: 'pending',
         assigned_to: currentUser?.email,
         due_timeframe: dueTimeframe,
@@ -176,7 +209,7 @@ export default function ReferralTriage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-slate-700">
-              Triage analysis complete! Create a patient record from this analysis?
+              Triage analysis complete. PennSync will create a patient only when minimum identity data is present; otherwise it will queue an awaiting-info referral for completion.
             </p>
             <div className="flex flex-col sm:flex-row gap-2">
               <Button
@@ -184,7 +217,7 @@ export default function ReferralTriage() {
                 className="gap-2 bg-indigo-600 hover:bg-indigo-700"
               >
                 <ArrowRight className="w-4 h-4" />
-                Create Patient
+                Create Patient or Queue Referral
               </Button>
               <Button
                 onClick={() => setShowCreatePatient(false)}
@@ -208,7 +241,7 @@ export default function ReferralTriage() {
               { number: '1', title: 'Upload', desc: 'Paste referral or upload fax text' },
               { number: '2', title: 'Analyze', desc: 'AI parses and structures data' },
               { number: '3', title: 'Assess', desc: 'Urgency level and risk assigned' },
-              { number: '4', title: 'Onboard', desc: 'Patient record and intake task created' },
+              { number: '4', title: 'Onboard', desc: 'Create a patient or queue missing identity info' },
             ].map((step, i) => (
               <div key={i} className="p-4 border border-slate-200 rounded-lg">
                 <div className="w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold text-sm mb-2">

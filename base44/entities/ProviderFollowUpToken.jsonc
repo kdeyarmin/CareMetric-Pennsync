@@ -28,6 +28,19 @@
       "default": true,
       "description": "Deactivated after submission (single-use) or on expiry"
     },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "sent",
+        "delivered",
+        "failed",
+        "expired",
+        "revoked"
+      ],
+      "default": "sent",
+      "description": "Canonical provider follow-up delivery/access state used for delivery tracking and dead-letter reporting"
+    },
     "access_count": {
       "type": "number",
       "default": 0,

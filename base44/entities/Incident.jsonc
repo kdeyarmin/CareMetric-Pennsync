@@ -74,7 +74,9 @@
       "enum": [
         "reported",
         "under_review",
-        "resolved"
+        "corrective_action",
+        "resolved",
+        "archived"
       ],
       "default": "reported",
       "description": "Incident status"
@@ -82,6 +84,37 @@
     "resolution_notes": {
       "type": "string",
       "description": "Notes on how incident was resolved"
+    },
+    "investigator_email": {
+      "type": "string",
+      "description": "Admin or supervisor assigned to investigate this incident"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Reviewer email for the latest review action"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the latest review action"
+    },
+    "corrective_action_plan": {
+      "type": "string",
+      "description": "Corrective action plan or prevention steps required before closure"
+    },
+    "corrective_action_due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Due date for corrective action follow-up"
+    },
+    "closed_by": {
+      "type": "string",
+      "description": "Admin or supervisor who closed the incident"
+    },
+    "closed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the incident was closed"
     },
     "ai_tags": {
       "type": "array",

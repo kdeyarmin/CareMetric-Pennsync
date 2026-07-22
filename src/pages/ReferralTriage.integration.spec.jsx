@@ -3,12 +3,13 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/testUtils';
 
-// Spies for the entity writes the triage→patient flow performs.
-const { patientCreate, taskCreate, toastSuccess, toastError } = vi.hoisted(() => ({
+const { patientCreate, referralCreate, taskCreate, toastSuccess, toastError, analysisState } = vi.hoisted(() => ({
   patientCreate: vi.fn(async () => ({ id: 'patient-1' })),
+  referralCreate: vi.fn(async () => ({ id: 'referral-1' })),
   taskCreate: vi.fn(async () => ({ id: 'task-1' })),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  analysisState: { value: null },
 }));
 
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError } }));
@@ -17,6 +18,7 @@ vi.mock('@/api/base44Client', () => {
   const entities = new Proxy({}, {
     get: (_t, name) => {
       if (name === 'Patient') return { create: patientCreate };
+      if (name === 'Referral') return { create: referralCreate };
       if (name === 'Task') return { create: taskCreate };
       return { create: vi.fn(async () => ({})), filter: vi.fn(async () => []), list: vi.fn(async () => []) };
     },
@@ -24,10 +26,15 @@ vi.mock('@/api/base44Client', () => {
   return { base44: { entities, auth: { me: async () => ({ email: 'nurse@x.com', role: 'nurse' }) } } };
 });
 
-// Stub the AI analyzer child: render a button that fires onTriageComplete with a
-// fixed analysis, so this test exercises the page's create-from-triage flow
-// without depending on the analyzer's internals or any LLM call.
-const ANALYSIS = {
+vi.mock('@/components/referral/ReferralTriageAnalyzer', () => ({
+  default: ({ onTriageComplete }) => (
+    <button onClick={() => onTriageComplete(analysisState.value)}>run-triage</button>
+  ),
+}));
+
+import ReferralTriage from '@/pages/ReferralTriage';
+
+const COMPLETE_ANALYSIS = {
   patient_name: 'Jane Doe',
   date_of_birth: '1950-05-01',
   primary_diagnosis: 'CHF',
@@ -35,54 +42,73 @@ const ANALYSIS = {
   clinical_summary: 'Referred for skilled nursing.',
   urgency_level: 'CRITICAL',
 };
-vi.mock('@/components/referral/ReferralTriageAnalyzer', () => ({
-  default: ({ onTriageComplete }) => (
-    <button onClick={() => onTriageComplete(ANALYSIS)}>run-triage</button>
-  ),
-}));
-
-import ReferralTriage from '@/pages/ReferralTriage';
 
 beforeEach(() => {
+  analysisState.value = { ...COMPLETE_ANALYSIS };
   patientCreate.mockClear();
+  referralCreate.mockClear();
   taskCreate.mockClear();
   toastSuccess.mockClear();
   toastError.mockClear();
 });
 
 describe('ReferralTriage — create patient from triage', () => {
-  it('maps analysis to a Patient (with required-field placeholders) and a task', async () => {
+  it('creates a Patient, linked Referral, and task when minimum identity is present', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ReferralTriage />);
 
-    // 1. Complete triage → the "Next Steps" action card appears.
     await user.click(screen.getByText('run-triage'));
-    const createBtn = await screen.findByRole('button', { name: /Create Patient/i });
-
-    // 2. Create patient + task.
+    const createBtn = await screen.findByRole('button', { name: /Create Patient or Queue Referral/i });
     await user.click(createBtn);
 
     await waitFor(() => expect(patientCreate).toHaveBeenCalledTimes(1));
-    const patientArg = patientCreate.mock.calls[0][0];
-    expect(patientArg).toMatchObject({
+    expect(patientCreate.mock.calls[0][0]).toMatchObject({
       first_name: 'Jane',
       last_name: 'Doe',
+      date_of_birth: '1950-05-01',
       primary_diagnosis: 'CHF',
       status: 'active',
       care_type: 'home_health',
-      // Required Patient fields absent from triage fall back to placeholders so
-      // the create succeeds (regression guard for the create-from-triage flow).
-      phone: 'Not provided on referral',
-      address: 'Not provided on referral',
-      emergency_contact_name: 'Not provided on referral',
-      emergency_contact_phone: 'Not provided on referral',
+      phone: null,
+      address: null,
+      emergency_contact_name: null,
+      emergency_contact_phone: null,
     });
 
-    // A CRITICAL referral creates a high-priority admission task.
+    await waitFor(() => expect(referralCreate).toHaveBeenCalledTimes(1));
+    expect(referralCreate.mock.calls[0][0]).toMatchObject({ patient_id: 'patient-1', status: 'ready_for_admission' });
     await waitFor(() => expect(taskCreate).toHaveBeenCalledTimes(1));
     expect(taskCreate.mock.calls[0][0]).toMatchObject({ priority: 'high', status: 'pending' });
 
     expect(toastSuccess).toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it('queues an awaiting-info referral instead of creating a placeholder patient when identity is incomplete', async () => {
+    const user = userEvent.setup();
+    analysisState.value = { ...COMPLETE_ANALYSIS, date_of_birth: 'Not provided', phone: '', address: '' };
+    renderWithProviders(<ReferralTriage />);
+
+    await user.click(screen.getByText('run-triage'));
+    const createBtn = await screen.findByRole('button', { name: /Create Patient or Queue Referral/i });
+    await user.click(createBtn);
+
+    await waitFor(() => expect(referralCreate).toHaveBeenCalledTimes(1));
+    expect(patientCreate).not.toHaveBeenCalled();
+    expect(referralCreate.mock.calls[0][0]).toMatchObject({
+      patient_name: 'Jane Doe',
+      status: 'awaiting_info',
+      requires_manual_review: true,
+      assigned_to: 'nurse@x.com',
+    });
+    expect(referralCreate.mock.calls[0][0].extracted_data.missing_patient_identity).toEqual(['DOB, MRN, phone, or address']);
+    await waitFor(() => expect(taskCreate).toHaveBeenCalledTimes(1));
+    expect(taskCreate.mock.calls[0][0]).toMatchObject({
+      title: 'Complete referral identity: Jane Doe',
+      type: 'referral_follow_up',
+      related_entity: 'Referral',
+      related_entity_id: 'referral-1',
+    });
+    expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/Patient chart not created/));
   });
 });
