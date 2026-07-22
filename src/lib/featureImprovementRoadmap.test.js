@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   FEATURE_IMPROVEMENT_ROADMAP,
+  IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP,
+  ROADMAP_IMPLEMENTATION_DETAILS,
   summarizeImprovementRoadmap,
   getRoadmapForFeature,
   getFeatureEnhancementSuggestions
@@ -14,6 +16,10 @@ test('feature improvement roadmap covers robust enhancement inventory', () => {
   assert.equal(summary.totalEnhancements, 25);
   assert.equal(summary.byTier.critical, 5);
   assert.ok(summary.uniqueFeatureTargets.size >= 25);
+  assert.equal(summary.totalAcceptanceCriteria, 75);
+  assert.equal(summary.totalLaunchSignals, 50);
+  assert.ok(Object.keys(summary.byPhase).length >= 10);
+  assert.ok(summary.uniquePrimaryUsers.size >= 10);
 });
 
 test('roadmap entries include actionable fields', () => {
@@ -25,6 +31,23 @@ test('roadmap entries include actionable fields', () => {
     assert.ok(item.expectedOutcome.length > 20);
     assert.ok(item.enhancements.every((enhancement) => enhancement.length > 20));
     assert.ok(item.featureTargets.length >= 4);
+  }
+});
+
+
+
+test('all 25 roadmap suggestions have implementation metadata', () => {
+  assert.equal(IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP.length, 25);
+  assert.equal(Object.keys(ROADMAP_IMPLEMENTATION_DETAILS).length, 25);
+
+  for (const item of IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP) {
+    assert.ok(item.phase.startsWith('Phase '));
+    assert.ok(item.primaryUsers.length >= 1);
+    assert.equal(item.acceptanceCriteria.length, 3);
+    assert.equal(item.launchSignals.length, 2);
+    assert.ok(item.routeTargets.length >= 2);
+    assert.ok(item.acceptanceCriteria.every((criterion) => criterion.length > 20));
+    assert.ok(item.launchSignals.every((signal) => signal.length > 10));
   }
 });
 
@@ -49,4 +72,7 @@ test('feature enhancement suggestions are flattened and priority sorted', () => 
   assert.ok(suggestions.some((suggestion) => suggestion.initiativeId === 'offline-readiness-expiry'));
   assert.ok(suggestions.some((suggestion) => suggestion.initiativeId === 'universal-draft-recovery'));
   assert.ok(suggestions.every((suggestion) => suggestion.enhancement.length > 20));
+  assert.ok(suggestions.every((suggestion) => suggestion.phase.startsWith('Phase ')));
+  assert.ok(suggestions.every((suggestion) => suggestion.acceptanceCriteria.length === 3));
+  assert.ok(suggestions.every((suggestion) => suggestion.launchSignals.length === 2));
 });

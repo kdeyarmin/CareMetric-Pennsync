@@ -40,7 +40,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { toast } from 'sonner';
 import {
-  FEATURE_IMPROVEMENT_ROADMAP,
+  IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP,
   getFeatureEnhancementSuggestions,
   summarizeImprovementRoadmap
 } from '@/lib/featureImprovementRoadmap';
@@ -1380,7 +1380,7 @@ export default function FeaturesPage() {
               <Badge variant="info" className="mb-2">Research-backed roadmap</Badge>
               <CardTitle className="text-xl sm:text-2xl text-slate-900">Top 25 end-user improvement implementation plan</CardTitle>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                This implementation plan turns the comprehensive app audit into 25 tracked, user-facing enhancement initiatives across clinician workflow, OASIS/PDGM quality, AI trust, mobile/offline reliability, patient self-service, analytics, and administration.
+                This implementation plan turns the comprehensive app audit into 25 tracked, user-facing enhancement initiatives with owners, target workflows, acceptance criteria, and launch signals across clinician workflow, OASIS/PDGM quality, AI trust, mobile/offline reliability, patient self-service, analytics, and administration.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center lg:min-w-[320px]">
@@ -1401,7 +1401,7 @@ export default function FeaturesPage() {
         </CardHeader>
         <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {FEATURE_IMPROVEMENT_ROADMAP.map((item) => (
+            {IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP.map((item) => (
               <div key={item.id} className="rounded-xl border border-slate-200 bg-white/85 p-4 shadow-sm">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <Badge variant={getImpactBadge(item.tier)} className="capitalize">{item.tier}</Badge>
@@ -1409,6 +1409,14 @@ export default function FeaturesPage() {
                 </div>
                 <h3 className="font-semibold text-slate-900">{item.pillar}</h3>
                 <p className="mt-1 text-sm text-slate-600">{item.why}</p>
+                <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                  <div className="rounded-lg bg-slate-50 p-2 ring-1 ring-slate-100">
+                    <span className="font-semibold text-slate-800">Phase:</span> {item.phase}
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-2 ring-1 ring-slate-100">
+                    <span className="font-semibold text-slate-800">Users:</span> {item.primaryUsers.join(', ')}
+                  </div>
+                </div>
                 <ul className="mt-3 space-y-2">
                   {item.enhancements.slice(0, 2).map((enhancement) => (
                     <li key={enhancement} className="flex gap-2 text-sm text-slate-700">
@@ -1417,6 +1425,25 @@ export default function FeaturesPage() {
                     </li>
                   ))}
                 </ul>
+                <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/70 p-3">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-emerald-800">Acceptance criteria</p>
+                  <ul className="space-y-1">
+                    {item.acceptanceCriteria.map((criterion) => (
+                      <li key={criterion} className="flex gap-2 text-xs text-emerald-900">
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-emerald-600" />
+                        <span>{criterion}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/70 p-3">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-blue-800">Launch signals</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.launchSignals.map((signal) => (
+                      <Badge key={signal} variant="info" className="text-[11px]">{signal}</Badge>
+                    ))}
+                  </div>
+                </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {item.featureTargets.map((target) => (
                     <Badge key={target} variant="secondary" className="text-[11px]">{target}</Badge>

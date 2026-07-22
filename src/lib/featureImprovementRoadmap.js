@@ -308,6 +308,62 @@ export const FEATURE_IMPROVEMENT_ROADMAP = [
   }
 ];
 
+
+const DEFAULT_ACCEPTANCE_CRITERIA = [
+  'Primary users can discover the workflow from the relevant hub without training or a hidden URL.',
+  'The workflow exposes a clear next action, completion state, and error or blocked state.',
+  'User actions are auditable and safe for PHI-bearing clinical operations.'
+];
+
+const makeImplementation = ({ phase, primaryUsers, acceptanceCriteria, launchSignals, routeTargets }) => ({
+  phase,
+  primaryUsers,
+  acceptanceCriteria,
+  launchSignals,
+  routeTargets,
+});
+
+export const ROADMAP_IMPLEMENTATION_DETAILS = {
+  'visit-command-center': makeImplementation({ phase: 'Phase 1 — clinician daily workflow', primaryUsers: ['Field clinicians', 'Clinical managers'], acceptanceCriteria: ['Dashboard exposes a visit-by-visit command center for today\'s work.', 'Each visit card includes risk, documentation, signature, offline, and route readiness indicators.', 'Primary actions include start visit, call patient, document, add incident, and open patient chart.'], launchSignals: ['Reduced clicks from dashboard to visit documentation', 'Fewer missed visit prerequisites'], routeTargets: ['/Dashboard', '/Patients', '/ClinicalDocumentation', '/OfflineMode'] }),
+  'universal-draft-recovery': makeImplementation({ phase: 'Phase 1 — documentation reliability', primaryUsers: ['Field clinicians', 'QA reviewers'], acceptanceCriteria: ['Long-form clinical workflows show saved, saving, offline, queued, and conflict states.', 'Users can restore the latest local draft after refresh, timeout, or connectivity loss.', 'Conflicts show a side-by-side compare path instead of overwriting silently.'], launchSignals: ['Lower note-loss support volume', 'Higher completed-note rate after offline sessions'], routeTargets: ['/ClinicalDocumentation', '/OfflineMode', '/Telehealth', '/ReferralIntake'] }),
+  'oasis-readiness-checklist': makeImplementation({ phase: 'Phase 1 — quality gate', primaryUsers: ['QA nurses', 'Clinicians', 'Clinical admins'], acceptanceCriteria: ['OASIS submission flow shows missing items, contradictions, severity, and reviewer sign-off.', 'Each readiness item links to the exact OASIS field or source evidence.', 'PDGM and outcome-measure impacts are displayed where applicable.'], launchSignals: ['Fewer rejected OASIS assessments', 'Shorter QA review turnaround'], routeTargets: ['/OASISCenter', '/ComplianceCenter'] }),
+  'ai-provenance-governance': makeImplementation({ phase: 'Phase 1 — AI trust and safety', primaryUsers: ['Clinicians', 'Compliance officers', 'Admins'], acceptanceCriteria: ['AI suggestions show source facts, guideline or rule basis, confidence, and reviewer action.', 'Rejected suggestions capture a structured reason for model feedback.', 'High-risk or low-confidence edits require explicit attestation or second review.'], launchSignals: ['Higher AI acceptance with fewer edits', 'Trackable override and hallucination reports'], routeTargets: ['/SmartNoteAssistant', '/AIToolsCenter', '/ComplianceCenter'] }),
+  'closed-loop-safety-alerts': makeImplementation({ phase: 'Phase 1 — patient safety loop', primaryUsers: ['Clinicians', 'Clinical managers', 'QA'], acceptanceCriteria: ['High-risk alerts can be assigned with due time, escalation, intervention, and resolution outcome.', 'Overdue safety tasks escalate visibly to managers.', 'Resolved alerts link to care-plan updates, incident records, or training recommendations where applicable.'], launchSignals: ['Lower unresolved-alert aging', 'Improved intervention documentation completeness'], routeTargets: ['/PatientAlerts', '/Incidents', '/IncidentReview'] }),
+  'mobile-clinical-quick-actions': makeImplementation({ phase: 'Phase 2 — mobile acceleration', primaryUsers: ['Mobile clinicians'], acceptanceCriteria: ['Mobile shell exposes a thumb-friendly action launcher on authenticated clinical routes.', 'Actions are role-aware and hide unavailable or unsafe options.', 'Launcher supports start visit, record note, vitals, call, message, incident, document capture, and offline chart.'], launchSignals: ['Reduced mobile navigation depth', 'Increased mobile visit completion rate'], routeTargets: ['/Dashboard', '/ClinicalDocumentation', '/PhoneCenter', '/OfflineMode'] }),
+  'universal-patient-timeline': makeImplementation({ phase: 'Phase 2 — longitudinal chart context', primaryUsers: ['Clinicians', 'Managers', 'QA reviewers'], acceptanceCriteria: ['Patient chart shows a chronological timeline across notes, vitals, alerts, incidents, calls, messages, faxes, documents, education, care plans, and referrals.', 'Timeline entries filter by type and link back to source records.', 'Timeline redacts or gates sensitive records according to role.'], launchSignals: ['Faster chart review before visits', 'Lower duplicate search/navigation events'], routeTargets: ['/PatientDetails', '/PatientRecordDashboard', '/Messages', '/DocumentHub'] }),
+  'next-best-action-dashboard': makeImplementation({ phase: 'Phase 1 — priority triage', primaryUsers: ['Clinicians', 'Admins', 'Managers'], acceptanceCriteria: ['Dashboard ranks action cards by urgency, patient risk, due date, and user role.', 'Every card has one primary action and optional snooze or delegate path.', 'Completed cards disappear or move to done state without a full refresh.'], launchSignals: ['Higher same-day task completion', 'Lower overdue clinical/admin work'], routeTargets: ['/Dashboard', '/OASISCenter', '/ReferralFollowUp', '/TimeOff', '/Timesheets'] }),
+  'patient-caregiver-portal': makeImplementation({ phase: 'Phase 3 — patient self-service', primaryUsers: ['Patients', 'Caregivers', 'Office staff'], acceptanceCriteria: ['Token-gated public portal aggregates visit prep, telehealth checks, signatures, education, teach-back, symptom check-ins, and uploads.', 'Expired or invalid tokens fail closed with clear user guidance.', 'Portal events write back to staff-facing queues.'], launchSignals: ['Reduced office phone follow-up', 'Higher pre-visit task completion'], routeTargets: ['/join', '/signer', '/followup'] }),
+  'role-based-onboarding': makeImplementation({ phase: 'Phase 2 — adoption', primaryUsers: ['New clinicians', 'New admins', 'New office staff'], acceptanceCriteria: ['First-run onboarding checklist changes by role and care scope.', 'Checklist steps deep-link to the exact app workflow.', 'Completion is persisted so users are not repeatedly prompted.'], launchSignals: ['Shorter time-to-first-task', 'Reduced onboarding support tickets'], routeTargets: ['/Dashboard', '/LearningCenter', '/AdminOperations', '/Help'] }),
+  'workflow-completion-state': makeImplementation({ phase: 'Phase 2 — workflow recovery', primaryUsers: ['Clinicians', 'Office staff', 'Admins'], acceptanceCriteria: ['Major workflows expose percent complete, blocked, waiting, and submitted states.', 'Completion indicators survive route changes and deep links.', 'Blocked states explain the missing prerequisite and next action.'], launchSignals: ['Fewer abandoned workflows', 'Reduced duplicate starts'], routeTargets: ['/ReferralIntake', '/OASISCenter', '/ClinicalDocumentation', '/DocumentHub'] }),
+  'previsit-risk-digest': makeImplementation({ phase: 'Phase 2 — clinical preparation', primaryUsers: ['Field clinicians'], acceptanceCriteria: ['Pre-visit digest summarizes changes since last visit, risks, abnormal vitals, medication concerns, incidents, care-plan goals, education needs, and provider follow-up.', 'Digest is available from today\'s schedule and patient chart.', 'Digest distinguishes sourced facts from AI-generated summaries.'], launchSignals: ['Faster pre-visit review', 'Improved risk documentation before visit start'], routeTargets: ['/Dashboard', '/PatientDetails', '/PatientAlerts'] }),
+  'offline-readiness-expiry': makeImplementation({ phase: 'Phase 1 — offline safety', primaryUsers: ['Field clinicians', 'Compliance admins'], acceptanceCriteria: ['Offline Mode shows cache readiness for today\'s patients and missing data before going offline.', 'Cached PHI has visible expiry and re-auth requirements.', 'Sync conflicts produce an auditable resolution trail.'], launchSignals: ['Fewer failed offline visits', 'Reduced stale cached PHI exposure'], routeTargets: ['/OfflineMode', '/PatientDetails', '/AdminOperations'] }),
+  'global-clinical-search': makeImplementation({ phase: 'Phase 2 — findability', primaryUsers: ['All authenticated users'], acceptanceCriteria: ['Global search supports patients, MRNs, providers, documents, referrals, notes, incidents, messages, training, settings, and help.', 'Results are type-filtered and role-aware.', 'Recent and frequent results are prioritized without exposing unauthorized PHI.'], launchSignals: ['Reduced command-palette-only navigation', 'Higher successful search-to-action rate'], routeTargets: ['/Dashboard', '/Patients', '/DocumentHub', '/PhysicianDirectory', '/Help'] }),
+  'role-personalized-homepages': makeImplementation({ phase: 'Phase 3 — personalization', primaryUsers: ['Clinicians', 'Intake staff', 'QA', 'Managers', 'Admins'], acceptanceCriteria: ['Dashboard modules are selected by job function, role, and care scope.', 'Users can customize non-critical module order.', 'Critical compliance and safety items cannot be hidden.'], launchSignals: ['Higher dashboard engagement', 'Reduced irrelevant widget impressions'], routeTargets: ['/Dashboard', '/AdminOperations', '/ReportsAnalytics'] }),
+  'explainable-analytics': makeImplementation({ phase: 'Phase 3 — management insight', primaryUsers: ['Admins', 'Managers'], acceptanceCriteria: ['Each KPI includes definition, trend meaning, drivers, benchmark context, and recommended action.', 'Users can drill from aggregate metric to underlying records where authorized.', 'Exports preserve filter context and provenance.'], launchSignals: ['More report-to-action conversions', 'Reduced metric interpretation questions'], routeTargets: ['/ReportsAnalytics', '/AgencyAnalytics', '/PredictiveAnalytics'] }),
+  'admin-action-queues': makeImplementation({ phase: 'Phase 2 — admin operations', primaryUsers: ['Admins', 'Managers'], acceptanceCriteria: ['Admin Console surfaces exception queues for users, credentials, jobs, data quality, incidents, referrals, offline sync, training, and security.', 'Queues are sortable by urgency and owner.', 'Each queue row links to remediation workflow.'], launchSignals: ['Lower exception aging', 'Higher first-pass admin resolution'], routeTargets: ['/AdminOperations', '/UserManagement', '/CredentialCompliance', '/SystemJobMonitor'] }),
+  'sensitive-action-safeguards': makeImplementation({ phase: 'Phase 2 — data governance', primaryUsers: ['Admins', 'Compliance officers'], acceptanceCriteria: ['Exports, merges, deletes, and bulk downloads require affected-record preview and reason capture.', 'High-risk actions can require second approval by policy.', 'Audit records include actor, reason, scope, timestamp, and outcome.'], launchSignals: ['More complete sensitive-action audit logs', 'Fewer accidental destructive operations'], routeTargets: ['/Patients', '/DuplicatePatients', '/DocumentHub', '/ReportsAnalytics'] }),
+  'provider-relationship-intelligence': makeImplementation({ phase: 'Phase 3 — referral acceleration', primaryUsers: ['Intake staff', 'Office staff', 'Clinicians'], acceptanceCriteria: ['Provider records show preferred channel, response time, missing-document patterns, referral volume, and escalation contacts.', 'Follow-up messages are suggested from provider context.', 'Provider analytics link back to referral and communication history.'], launchSignals: ['Shorter provider response time', 'Fewer missing face-to-face blockers'], routeTargets: ['/PhysicianDirectory', '/ReferralIntake', '/ReferralFollowUp', '/SendFax'] }),
+  'document-packet-control-board': makeImplementation({ phase: 'Phase 2 — document operations', primaryUsers: ['Office staff', 'Admins'], acceptanceCriteria: ['Document Hub shows packet status across sent, viewed, signed, declined, expired, missing signer, missing field, ready, and needs resend.', 'Aging can be grouped by payer, referral, patient, provider, and owner.', 'Packet rows link to resend, remind, or resolve actions.'], launchSignals: ['Reduced unsigned packet aging', 'Higher packet completion rate'], routeTargets: ['/DocumentHub', '/SignDocument', '/SendFax'] }),
+  'inline-documentation-nudges': makeImplementation({ phase: 'Phase 2 — note quality', primaryUsers: ['Clinicians', 'QA reviewers'], acceptanceCriteria: ['Documentation screens surface inline nudges for wound, oxygen, pain, medication, fall-risk, and care-plan gaps.', 'Nudges show why they matter and can be resolved or dismissed with reason.', 'Resolved nudges are reflected in note review status.'], launchSignals: ['Higher first-pass note quality', 'Lower QA rework per note'], routeTargets: ['/ClinicalDocumentation', '/SmartNoteAssistant', '/OASISCenter'] }),
+  'intake-to-soc-timeline': makeImplementation({ phase: 'Phase 2 — referral operations', primaryUsers: ['Intake staff', 'Admins'], acceptanceCriteria: ['Referral records display a timeline from receipt through extraction, verification, coverage checks, F2F validation, follow-up, SOC scheduling, and OASIS start.', 'Blockers are visible with owner and due date.', 'Timeline status can be shared internally without exposing unnecessary PHI.'], launchSignals: ['Lower referral aging', 'Higher on-time SOC completion'], routeTargets: ['/ReferralIntake', '/ReferralFollowUp', '/Patients', '/OASISCenter'] }),
+  'adaptive-training-recommendations': makeImplementation({ phase: 'Phase 3 — continuous learning', primaryUsers: ['Clinicians', 'Managers', 'Educators'], acceptanceCriteria: ['Repeated workflow misses can generate training recommendations tied to relevant micro-content.', 'Managers see aggregate skill gaps without shaming individual clinicians outside authorized views.', 'Completed training links back to quality trend improvement.'], launchSignals: ['Reduced repeated documentation gaps', 'Higher targeted training completion'], routeTargets: ['/LearningCenter', '/NurseTrainingHub', '/AdminTraining', '/ManagerSkillGapDashboard'] }),
+  'demo-sandbox-mode': makeImplementation({ phase: 'Phase 1 — evaluation and training', primaryUsers: ['Prospects', 'Trainers', 'QA', 'Developers'], acceptanceCriteria: ['Demo mode uses synthetic patients, visits, OASIS gaps, referrals, documents, training progress, and analytics only.', 'Demo data is visually labeled and cannot be confused with live PHI.', 'Demo mode does not write synthetic records into production entities.'], launchSignals: ['Faster product evaluation', 'Safer training sessions without PHI'], routeTargets: ['/Dashboard', '/Patients', '/OASISCenter', '/ReportsAnalytics'] }),
+  'release-notes-center': makeImplementation({ phase: 'Phase 1 — change management', primaryUsers: ['All users', 'Admins'], acceptanceCriteria: ['Features or Help exposes role-targeted release notes and workflow-change explanations.', 'Release notes include short tutorials and try-it-now deep links.', 'Admins can highlight agency-specific announcements alongside product changes.'], launchSignals: ['Higher new-feature adoption', 'Reduced confusion after workflow changes'], routeTargets: ['/Features', '/About', '/Help', '/AdminOperations'] }),
+};
+
+const getImplementationDetails = (id) => ROADMAP_IMPLEMENTATION_DETAILS[id] || makeImplementation({
+  phase: 'Backlog',
+  primaryUsers: ['All users'],
+  acceptanceCriteria: DEFAULT_ACCEPTANCE_CRITERIA,
+  launchSignals: ['Adoption and quality metrics improve after release'],
+  routeTargets: [],
+});
+
+export const IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP = FEATURE_IMPROVEMENT_ROADMAP.map((item) => ({
+  ...item,
+  ...getImplementationDetails(item.id),
+}));
+
 const normalizeForSearch = (value) => String(value || '')
   .toLowerCase()
   .replace(/&/g, 'and')
@@ -323,17 +379,21 @@ const hasTokenOverlap = (left, right) => {
   return [...leftTokens].some((token) => rightTokens.has(token));
 };
 
-export function summarizeImprovementRoadmap(roadmap = FEATURE_IMPROVEMENT_ROADMAP) {
+export function summarizeImprovementRoadmap(roadmap = IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP) {
   return roadmap.reduce((summary, item) => {
     summary.totalInitiatives += 1;
     summary.totalEnhancements += item.enhancements.length;
     summary.byTier[item.tier] = (summary.byTier[item.tier] || 0) + 1;
     item.featureTargets.forEach((target) => summary.uniqueFeatureTargets.add(target));
+    summary.byPhase[item.phase] = (summary.byPhase[item.phase] || 0) + 1;
+    summary.totalAcceptanceCriteria += item.acceptanceCriteria.length;
+    summary.totalLaunchSignals += item.launchSignals.length;
+    item.primaryUsers.forEach((user) => summary.uniquePrimaryUsers.add(user));
     return summary;
-  }, { totalInitiatives: 0, totalEnhancements: 0, byTier: {}, uniqueFeatureTargets: new Set() });
+  }, { totalInitiatives: 0, totalEnhancements: 0, totalAcceptanceCriteria: 0, totalLaunchSignals: 0, byTier: {}, byPhase: {}, uniqueFeatureTargets: new Set(), uniquePrimaryUsers: new Set() });
 }
 
-export function getRoadmapForFeature(featureName, roadmap = FEATURE_IMPROVEMENT_ROADMAP) {
+export function getRoadmapForFeature(featureName, roadmap = IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP) {
   const normalized = normalizeForSearch(featureName);
   if (!normalized) return [];
 
@@ -345,7 +405,7 @@ export function getRoadmapForFeature(featureName, roadmap = FEATURE_IMPROVEMENT_
   }));
 }
 
-export function getFeatureEnhancementSuggestions(featureName, categoryName, roadmap = FEATURE_IMPROVEMENT_ROADMAP) {
+export function getFeatureEnhancementSuggestions(featureName, categoryName, roadmap = IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP) {
   const searchContext = [featureName, categoryName].filter(Boolean).join(' ');
   return getRoadmapForFeature(searchContext, roadmap)
     .flatMap((item) => item.enhancements.map((enhancement, index) => ({
@@ -355,7 +415,10 @@ export function getFeatureEnhancementSuggestions(featureName, categoryName, road
       source: item.source,
       enhancement,
       rank: IMPROVEMENT_TIERS[item.tier]?.weight || 0,
-      order: index
+      order: index,
+      phase: item.phase,
+      acceptanceCriteria: item.acceptanceCriteria,
+      launchSignals: item.launchSignals
     })))
     .sort((a, b) => b.rank - a.rank || a.order - b.order);
 }
