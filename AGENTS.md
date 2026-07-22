@@ -13,7 +13,7 @@ Instructions for Codex cloud and other AI coding agents working in this reposito
   pnpm install --frozen-lockfile
   ```
 
-- Store `VITE_BASE44_APP_ID`, `VITE_BASE44_BACKEND_URL`, OpenAI, Anthropic, HeyGen, HMAC, and other service credentials in Codex environment variables or secrets. Do not commit `.env` files.
+- Store `VITE_BASE44_APP_ID`, `VITE_BASE44_BACKEND_URL`, optional `VITE_SUPER_ADMIN_EMAIL`, OpenAI, Anthropic, HeyGen, HMAC, and other service credentials in Codex environment variables or secrets. Do not commit `.env` files.
 - Telnyx credentials are configured in-app through `IntegrationSecret`, not through frontend environment variables.
 
 ## Project shape
@@ -43,7 +43,7 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 
 ## Environment config
 
-The only vars the frontend reads are `VITE_BASE44_APP_ID` and `VITE_BASE44_BACKEND_URL` (consumed in `src/lib/app-params.js`). The Vite dev server boots regardless, but without a valid app id + backend URL the app shows a blocking config state or redirects to `/login` and renders blank because `/login` is served by the hosted backend, not client-side.
+The frontend reads `VITE_BASE44_APP_ID` and `VITE_BASE44_BACKEND_URL` (consumed in `src/lib/app-params.js`), plus the optional `VITE_SUPER_ADMIN_EMAIL` override used by `src/lib/superAdmin.js`. The Vite dev server boots regardless, but without a valid app id + backend URL the app shows a blocking config state or redirects to `/login` and renders blank because `/login` is served by the hosted backend, not client-side.
 
 App id and backend URL can also be passed via URL params `?app_id=...&server_url=...`, which are persisted to localStorage. Other vars such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `HEYGEN_API_KEY`, and `SIGNATURE_HMAC_SECRET` are backend Deno-function secrets and are not used by the local frontend bundle.
 
