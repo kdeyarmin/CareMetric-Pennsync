@@ -1,8 +1,5 @@
 import * as React from "react"
-
-function cn(...inputs) {
-  return inputs.filter(Boolean).join(' ')
-}
+import { cn } from "@/lib/utils"
 
 const Card = React.forwardRef(({ className, ...props }, ref) => (
   <div
