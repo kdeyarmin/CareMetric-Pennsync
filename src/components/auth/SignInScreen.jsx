@@ -186,7 +186,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                     {error}
                   </p>
                 )}
-                <Button type="submit" disabled={busy} className="h-11 w-full bg-navy-800 hover:bg-navy-900">
+                <Button type="submit" disabled={busy} className="h-11 w-full">
                   {busy ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in…</>) : 'Sign in'}
                 </Button>
                 <p className="text-center text-sm text-slate-500">
@@ -228,7 +228,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                     {error}
                   </p>
                 )}
-                <Button type="submit" disabled={busy} className="h-11 w-full bg-navy-800 hover:bg-navy-900">
+                <Button type="submit" disabled={busy} className="h-11 w-full">
                   {busy ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending…</>) : 'Send reset link'}
                 </Button>
                 <button
