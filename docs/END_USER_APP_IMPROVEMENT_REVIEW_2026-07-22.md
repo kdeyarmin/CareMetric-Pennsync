@@ -13,6 +13,13 @@ The highest-impact improvements for end users are:
 5. **Mobile-first clinician refinements** for field users who chart, communicate, and retrieve patient context on phones/tablets.
 6. **Consistent empty/loading/error/retry states** so users know whether the app is still working, missing credentials, offline, or blocked by permissions.
 
+
+## Implemented enhancements in the follow-up pass
+
+- Added a role-aware **Today’s priorities** command-center panel to the dashboard so users see ranked next steps before lower-priority widgets.
+- Added a pure priority builder with focused tests for clinician and administrator ranking behavior.
+- Added dashboard unread-message input so communication work can appear in the same prioritized queue as visits, missing notes, patient risk, incidents, and operational checks.
+
 ## Review scope and signals inspected
 
 This review covered the repository shape and representative user-facing flows rather than authenticated live-backend behavior, because the local app depends on hosted Base44 services and credentials for full clinical workflows.

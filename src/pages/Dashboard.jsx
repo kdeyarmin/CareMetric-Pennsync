@@ -19,6 +19,7 @@ import SmartRouteOptimizer from "@/components/scheduling/SmartRouteOptimizer";
 import ProactiveClinicalSupport from "@/components/clinical/ProactiveClinicalSupport";
 import AnnouncementsWidget from "@/components/dashboard/AnnouncementsWidget";
 import UpcomingTelehealthWidget from "@/components/dashboard/UpcomingTelehealthWidget";
+import TodayPriorities from "@/components/dashboard/TodayPriorities";
 import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import { calculateNurseStats } from "@/components/utils/statsCalculator";
@@ -106,6 +107,15 @@ export default function Dashboard() {
     initialData: [],
     staleTime: 600000,
     gcTime: 900000,
+    enabled: !!currentUser?.email,
+  });
+
+  const { data: messages = [] } = useQuery({
+    queryKey: ['dashboardUnreadMessages', currentUser?.email],
+    queryFn: () => base44.entities.Message.filter({ recipients: currentUser.email }, '-created_date', 50),
+    initialData: [],
+    staleTime: 60000,
+    gcTime: 300000,
     enabled: !!currentUser?.email,
   });
 
@@ -207,7 +217,15 @@ export default function Dashboard() {
         favoritePage="Dashboard"
       />
 
-
+      <TodayPriorities
+        currentUser={currentUser}
+        visits={visits}
+        patients={patients}
+        incidents={incidents}
+        noteConversions={noteConversions}
+        messages={messages}
+        dashboardError={dashboardError}
+      />
 
       {/* Quick Navigation Hint */}
       <div className="flex items-center justify-center">
