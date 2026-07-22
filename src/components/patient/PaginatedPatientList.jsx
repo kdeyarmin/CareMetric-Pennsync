@@ -176,7 +176,7 @@ export default function PaginatedPatientList({
                 <p className="mt-0.5 text-xs text-slate-500">MRN: {patient.medical_record_number}</p>
               )}
 
-              <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
                 <Badge variant="outline" className={getStatusColor(patient.status)}>
                   {patient.status || 'active'}
                 </Badge>
@@ -187,9 +187,9 @@ export default function PaginatedPatientList({
                 )}
               </div>
 
-              <div className="mt-4 flex justify-center gap-2 w-full">
+              <div className="mt-4 flex items-center justify-center gap-2 w-full">
                 <Link to={createPageUrl("PatientDetails") + `?id=${patient.id}`}>
-                  <Button size="sm" variant="outline" className="text-xs">
+                  <Button size="sm" variant="outline" className="text-xs h-9">
                     View Details
                   </Button>
                 </Link>
@@ -197,7 +197,7 @@ export default function PaginatedPatientList({
                   <Button
                     size="sm"
                     onClick={() => onPatientSelect(patient.id)}
-                    className="text-xs"
+                    className="text-xs h-9"
                   >
                     Select
                   </Button>
