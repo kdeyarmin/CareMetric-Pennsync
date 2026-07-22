@@ -13,6 +13,7 @@ import { generateUserManual } from "@/functions/generateUserManual";
 import { toast } from 'sonner';
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import EmptyState from "@/components/ui/empty-state";
 import { useAuth } from "@/lib/AuthContext";
 import { isAdminView } from "@/lib/roles";
 import { hostedAssetPath } from '@/lib/assetPath';
@@ -405,7 +406,7 @@ export default function Help() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {filteredFAQs.length === 0 ? (
-                  <p className="text-center text-slate-500 py-8">No FAQs match your search</p>
+                  <EmptyState icon={Search} title="No FAQs match your search" description="" />
                 ) : (
                   filteredFAQs.map((faq, idx) => (
                     <div key={idx} className="border-l-4 border-gold-400 bg-slate-50 p-4 rounded-r-lg">

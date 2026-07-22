@@ -4,6 +4,7 @@ import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -637,11 +638,11 @@ Provide detailed comparison showing what changed and why.`;
           {/* Saved Scenarios */}
           <TabsContent value="saved" className="space-y-3">
             {scenarios.length === 0 ? (
-              <div className="text-center py-12 bg-slate-50 rounded-lg border-2 border-dashed">
-                <Lightbulb className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-600">No saved scenarios yet</p>
-                <p className="text-sm text-slate-500">Create and run a simulation, then save it</p>
-              </div>
+              <EmptyState
+                icon={Lightbulb}
+                title="No saved scenarios yet"
+                description="Create and run a simulation, then save it"
+              />
             ) : (
               <ScrollArea className="max-h-[600px]">
                 <div className="space-y-3">
@@ -717,11 +718,11 @@ Provide detailed comparison showing what changed and why.`;
           {/* Comparison View */}
           <TabsContent value="compare" className="space-y-4">
             {selectedScenarios.length === 0 ? (
-              <div className="text-center py-12 bg-slate-50 rounded-lg border-2 border-dashed">
-                <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-600">No scenarios selected for comparison</p>
-                <p className="text-sm text-slate-500">Go to Saved Scenarios and click "Compare"</p>
-              </div>
+              <EmptyState
+                icon={BarChart3}
+                title="No scenarios selected for comparison"
+                description='Go to Saved Scenarios and click "Compare"'
+              />
             ) : (
               <div className="space-y-4">
                 <Alert className="bg-navy-50 border-navy-300">

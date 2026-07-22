@@ -39,8 +39,7 @@ import {
   ClipboardList,
   X,
   Sparkles,
-  Brain,
-  ShieldAlert
+  Brain
 } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
@@ -50,6 +49,8 @@ import AIICD10Suggester from "../components/clinical/AIICD10Suggester";
 import AIPathwayGenerator from "../components/clinical/AIPathwayGenerator";
 import AIPathwayUpdater from "../components/clinical/AIPathwayUpdater";
 import OASISUploadWidget from "../components/oasis/OASISUploadWidget";
+import LoadingState from "@/components/ui/LoadingState";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -349,24 +350,17 @@ export default function ClinicalPathwayManager() {
 
   if (isLoading || isLoadingUser) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-      </div>
+      <LoadingState className="py-24" />
     );
   }
 
   // Admin-only surface: block non-admins (server-side authz remains the real gate).
   if (!isAdminView(currentUser)) {
     return (
-      <div className="p-8 max-w-2xl mx-auto">
-        <Card className="border-l-4 border-l-red-500">
-          <CardContent className="p-12 text-center">
-            <ShieldAlert className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Access Restricted</h2>
-            <p className="text-slate-600">Only administrators can manage clinical pathways.</p>
-          </CardContent>
-        </Card>
-      </div>
+      <AccessDeniedState
+        title="Access Restricted"
+        description="Only administrators can manage clinical pathways."
+      />
     );
   }
 
@@ -814,7 +808,7 @@ function PathwayForm({ pathway, onSave, onCancel, isSaving }) {
 const getPriorityColor = (priority) => {
   switch (priority) {
     case 'critical': return 'bg-red-600 text-white';
-    case 'high': return 'bg-orange-500 text-white';
+    case 'high': return 'bg-orange-100 text-orange-800 border border-orange-200';
     case 'medium': return 'bg-amber-500 text-white';
     case 'low': return 'bg-blue-500 text-white';
     default: return 'bg-slate-500 text-white';

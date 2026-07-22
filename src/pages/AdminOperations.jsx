@@ -5,9 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
-import { Card, CardContent } from "@/components/ui/card";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ShieldAlert, Activity, Database, Settings, Zap } from "lucide-react";
+import { Activity, Database, Settings, Zap } from "lucide-react";
 import AdminConsoleDirectory from "@/components/admin/AdminConsoleDirectory";
 import AdminDashboardOverview from "@/components/admin/AdminDashboardOverview";
 import UserActivityDashboard from "@/components/admin/UserActivityDashboard";
@@ -53,15 +53,10 @@ export default function AdminOperations() {
 
   if (!isAdminView(currentUser)) {
     return (
-      <div className="p-8 max-w-2xl mx-auto">
-        <Card className="modern-card border-l-4 border-l-red-500">
-          <CardContent className="p-12 text-center">
-            <ShieldAlert className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Access Restricted</h2>
-            <p className="text-slate-600">Only administrators can access Admin Operations.</p>
-          </CardContent>
-        </Card>
-      </div>
+      <AccessDeniedState
+        title="Access Restricted"
+        description="Only administrators can access Admin Operations."
+      />
     );
   }
 

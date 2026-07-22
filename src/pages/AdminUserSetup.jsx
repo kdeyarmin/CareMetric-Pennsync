@@ -15,10 +15,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Mail, Plus, Shield, AlertTriangle, Check, UserCheck } from "lucide-react";
+import { Mail, Plus, Shield, Check, UserCheck } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { toast } from "sonner";
 
 export default function AdminUserSetup() {
@@ -76,15 +76,10 @@ export default function AdminUserSetup() {
 
   if (!isAdmin) {
     return (
-      <div className="p-8 max-w-4xl mx-auto">
-        <Alert className="border-red-300 bg-red-50">
-          <AlertTriangle className="w-5 h-5 text-red-600" />
-          <AlertDescription className="text-red-900">
-            <p className="font-semibold mb-2">Access Denied</p>
-            <p>Only administrators can access this page.</p>
-          </AlertDescription>
-        </Alert>
-      </div>
+      <AccessDeniedState
+        title="Access Denied"
+        description="Only administrators can access this page."
+      />
     );
   }
 

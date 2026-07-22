@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Plus, Edit2, Trash2, FileText, FileType } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
+import EmptyState from '@/components/ui/empty-state';
 import { isAdminView } from '@/lib/roles';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 
@@ -278,9 +279,7 @@ export default function TemplateManagement() {
       </div>
 
       {templates.length === 0 && !showForm && (
-        <Card className="p-8 text-center text-slate-500">
-          No templates yet. Create one to get started.
-        </Card>
+        <EmptyState icon={FileText} title="No templates yet." description="Create one to get started." />
       )}
             </>
           )}

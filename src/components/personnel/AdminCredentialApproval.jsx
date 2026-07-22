@@ -24,6 +24,7 @@ import {
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { isAdminLike } from "@/lib/superAdmin";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 // Guarded date formatter: format(parseISO(undefined)) throws a RangeError, which
 // would white-screen the whole approvals card if any credential has a null date.
@@ -37,6 +38,7 @@ export default function AdminCredentialApproval() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -94,8 +96,8 @@ export default function AdminCredentialApproval() {
     }
   });
 
-  const handleApprove = (credential) => {
-    if (window.confirm(`Approve ${credential.title} for ${credential.user_name}?`)) {
+  const handleApprove = async (credential) => {
+    if (await confirm({ title: "Approve credential?", description: `Approve ${credential.title} for ${credential.user_name}?`, confirmText: "Approve" })) {
       approveMutation.mutate(credential);
     }
   };

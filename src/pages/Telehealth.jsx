@@ -14,6 +14,7 @@ import { Video, Plus, Calendar, Clock, CheckCircle2 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import StatCard from "@/components/ui/stat-card";
+import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import TelehealthCall from "../components/telehealth/TelehealthCall";
 import SessionCard from "../components/telehealth/SessionCard";
@@ -263,10 +264,7 @@ export default function Telehealth() {
 
         <TabsContent value="past" className="mt-4 space-y-3">
           {past.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
-              <Clock className="w-10 h-10 mx-auto mb-2 opacity-40" />
-              <p>No completed sessions yet.</p>
-            </div>
+            <EmptyState icon={Clock} title="No completed sessions yet." description="" />
           ) : past.map(s => (
             <SessionCard key={s.id} session={s} onJoin={() => {}} onCancel={() => {}} />
           ))}
