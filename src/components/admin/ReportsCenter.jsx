@@ -753,7 +753,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
         completed: completed.length,
         completionRate: nurseVisits.length > 0 ? Math.round((completed.length / nurseVisits.length) * 100) : 0,
         docQuality: completed.length > 0 ? Math.round((withCompleteDoc.length / completed.length) * 100) : 0,
-        avgVisitsPerDay: Math.round(nurseVisits.length / parseInt(dateRange, 10))
+        avgVisitsPerDay: Number((nurseVisits.length / Math.max(parseInt(dateRange, 10), 1)).toFixed(1))
       };
     }).sort((a, b) => b.completionRate - a.completionRate);
   };

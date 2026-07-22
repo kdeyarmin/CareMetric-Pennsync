@@ -10,6 +10,9 @@ import { format, subMonths, startOfMonth, endOfMonth, differenceInMinutes } from
 import { FileText, CheckCircle2, XCircle, Clock, TrendingUp } from 'lucide-react';
 
 const COLORS = ['#22c55e', '#ef4444', '#f59e0b', '#3557b0', '#8b5cf6'];
+// Color by slice MEANING, not array index: after filtering out zero-value slices
+// an index-based fill could paint the "Failed" slice green.
+const STATUS_COLORS = { Successful: '#22c55e', Failed: '#ef4444', 'Queued/Sending': '#f59e0b' };
 
 export default function FaxAnalytics() {
     const { data: faxes = [], isLoading } = useQuery({
@@ -217,7 +220,7 @@ export default function FaxAnalytics() {
                                         dataKey="value"
                                     >
                                         {metrics.statusData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || COLORS[index % COLORS.length]} />
                                         ))}
                                     </Pie>
                                     <RechartsTooltip 

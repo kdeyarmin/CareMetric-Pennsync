@@ -134,7 +134,8 @@ export default function PatientRecordDashboard() {
       const visitDate = parseLocalDate(v.visit_date);
       if (!visitDate) return false;
       const daysDiff = (startOfToday - visitDate) / (1000 * 60 * 60 * 24);
-      return daysDiff <= 7;
+      // Lower bound too, so future-dated visits don't count as "recent".
+      return daysDiff >= 0 && daysDiff <= 7;
     }).length;
 
     return {

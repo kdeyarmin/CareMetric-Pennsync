@@ -172,9 +172,9 @@ function parseUploadedPatient(row, rowNumber) {
   const middle_name = firstOf(row, ['middle_name', 'middlename', 'middle', 'mi']) || parsedName.middle_name;
   const medical_record_number = firstOf(row, ['medical_record_number', 'mrn', 'record_number', 'patient_id', 'chart_number']);
   const date_of_birth = normalizeDob(firstOf(row, ['date_of_birth', 'dob', 'birth_date', 'birthdate']));
-  const admission_date = normalizeDob(firstOf(row, ['admission_date', 'soc_date', 'start_of_care', 'admit_date']));
+  const admission_date = normalizeDob(firstOf(row, ['admitted_date', 'admission_date', 'soc_date', 'start_of_care', 'admit_date']));
   const discharge_date = normalizeDob(firstOf(row, ['discharge_date', 'dc_date', 'discharged_on']));
-  const rawStatus = firstOf(row, ['status', 'patient_status']).toLowerCase();
+  const rawStatus = firstOf(row, ['current_admission_status', 'status', 'patient_status']).toLowerCase();
   // Constrain to the Patient.status enum (active/discharged/hospitalized/merged);
   // an arbitrary CSV value would be written verbatim and silently dropped. Unknown
   // values map to '' so the Patient.status default ('active') applies intentionally.
@@ -182,12 +182,12 @@ function parseUploadedPatient(row, rowNumber) {
     : rawStatus.includes('hospital') ? 'hospitalized'
     : rawStatus.includes('active') ? 'active'
     : '';
-  const payor = firstOf(row, ['payor', 'payer', 'insurance', 'primary_insurance']);
+  const payor = firstOf(row, ['primary_payor', 'payor', 'payer', 'insurance', 'primary_insurance']);
   const primary_diagnosis = firstOf(row, ['primary_diagnosis', 'diagnosis', 'dx', 'primary_dx']);
   const secondaryRaw = firstOf(row, ['secondary_diagnoses', 'secondary_diagnosis', 'other_diagnoses']);
   const secondary_diagnoses = secondaryRaw ? secondaryRaw.split(/[;|]/).map((s) => s.trim()).filter(Boolean) : [];
   const phone = firstOf(row, ['phone', 'phone_number', 'home_phone', 'primary_phone']);
-  const address = firstOf(row, ['address', 'street_address', 'home_address']);
+  const address = firstOf(row, ['addr_1_care', 'care_address_1', 'address', 'street_address', 'home_address']);
 
   const patientLabel = `${first_name} ${last_name}`.trim() + (medical_record_number ? ` (MRN ${medical_record_number})` : '') + ` [row ${rowNumber}]`;
 

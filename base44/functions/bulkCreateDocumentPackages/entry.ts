@@ -56,7 +56,10 @@ Deno.serve(async (req) => {
             document_name: template.name,
             document_title: template.name,
             document_content: template.content || '',
-            document_type: template.category,
+            // template.category has many values outside DocumentSignature.document_type's
+            // enum (skilled_nursing, oasis, discharge, …), which would reject the create;
+            // pass it through only when valid, otherwise fall back to 'other'.
+            document_type: ['consent', 'hipaa', 'treatment_agreement', 'financial_agreement', 'advance_directive', 'release', 'custom_request', 'other'].includes(template.category) ? template.category : 'other',
             status: 'pending',
             signers: [
               {

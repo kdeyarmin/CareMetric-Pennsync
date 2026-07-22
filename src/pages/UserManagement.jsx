@@ -362,7 +362,9 @@ export default function UserManagement() {
 
   // Stats
   const now = new Date();
-  const pendingInvitations = invitations.filter(i => i.status === 'pending');
+  // A still-'pending' invitation past its expires_at is Expired, not Pending —
+  // exclude it here so it doesn't appear in both the Pending and Expired cards.
+  const pendingInvitations = invitations.filter(i => i.status === 'pending' && new Date(i.expires_at) >= now);
   const expiredInvitations = invitations.filter(i => i.status === 'expired' || (i.status === 'pending' && new Date(i.expires_at) < now));
   const _expiringSoonInvitations = pendingInvitations.filter(i => {
     const expiresAt = new Date(i.expires_at);

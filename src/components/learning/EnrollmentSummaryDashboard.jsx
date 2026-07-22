@@ -69,7 +69,8 @@ export default function EnrollmentSummaryDashboard() {
         grouped[a.course_title].completed++;
       }
     });
-    return Object.values(grouped).slice(0, 10);
+    // Top 10 by completions, not an arbitrary first 10.
+    return Object.values(grouped).sort((a, b) => b.completed - a.completed).slice(0, 10);
   }, [assignments]);
 
   const statusData = useMemo(() => {

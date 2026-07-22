@@ -320,6 +320,11 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   }
 
   const invitation = invitations[0];
+  // Never resurrect an already-accepted invitation back to 'pending' — that would
+  // re-open the auto-approval path for a user who has already been onboarded.
+  if (invitation.status === 'accepted') {
+    return Response.json({ error: 'This invitation has already been accepted and cannot be resent.' }, { status: 400 });
+  }
   const now = new Date();
   const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 

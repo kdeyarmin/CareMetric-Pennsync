@@ -9,7 +9,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   filterRecentFaxLogs,
   getStatusCounts,
-  getRelativeTimeLabel
+  getRelativeTimeLabel,
+  normalizeStatus
 } from '@/components/fax/faxTrackerUtils';
 
 const statusConfig = {
@@ -197,7 +198,7 @@ export default function RealtimeFaxStatusTracker() {
           ) : (
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {faxLogs.map((fax) => {
-                const status = fax.status?.toLowerCase() || 'pending';
+                const status = normalizeStatus(fax.status);
                 const config = statusConfig[status] || statusConfig.pending;
                 const Icon = config.icon;
 
@@ -269,8 +270,8 @@ export default function RealtimeFaxStatusTracker() {
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-600 uppercase">Status</p>
-                <span className={`${statusConfig[selectedFax.status?.toLowerCase()]?.badge || statusConfig.pending.badge} text-xs font-semibold px-2 py-1 rounded inline-block mt-1`}>
-                  {statusConfig[selectedFax.status?.toLowerCase()]?.label || 'Unknown'}
+                <span className={`${statusConfig[normalizeStatus(selectedFax.status)]?.badge || statusConfig.pending.badge} text-xs font-semibold px-2 py-1 rounded inline-block mt-1`}>
+                  {statusConfig[normalizeStatus(selectedFax.status)]?.label || 'Unknown'}
                 </span>
               </div>
               <div>

@@ -13,8 +13,19 @@ Deno.serve(async (req) => {
     const { employeeId, certificateIds, dateRangeStart, dateRangeEnd } = await req.json();
 
     // Authorization: only admins can generate for others, users can only generate for themselves
-    if (employeeId !== user.email && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin') {
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyAdmin = user.account_type === 'agency_admin';
+    if (employeeId !== user.email && !isAgencyAdmin && !isSuperAdmin) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // Agency admins are scoped to their OWN agency — they must not pull certificate
+    // packets for employees of other agencies. Super admins are cross-agency.
+    if (employeeId !== user.email && isAgencyAdmin && !isSuperAdmin) {
+      const targets = await base44.asServiceRole.entities.User.filter({ email: employeeId }, '-created_date', 1);
+      const target = targets?.[0];
+      if (!target || !user.agency_name || target.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // Check for existing valid cache. The cache key only tracks user_id + date

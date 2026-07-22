@@ -108,7 +108,10 @@ const CHECKS = [
     evaluate: (data) => {
       if (!isPresent(data.primary_diagnosis_code)) return true;
       const cleanCode = String(data.primary_diagnosis_code).toUpperCase().replace(/[^A-Z0-9.]/g, '');
-      return /^[A-Z][0-9]{2}\.?[A-Z0-9]{0,4}$/.test(cleanCode);
+      // The 3rd character may be a letter in valid ICD-10-CM codes (e.g. M1A.0,
+      // C4A, Z3A, O9A), so allow a digit OR letter there — requiring two digits
+      // rejected those legitimate codes.
+      return /^[A-Z][0-9][0-9A-Z]\.?[A-Z0-9]{0,4}$/.test(cleanCode);
     },
     action: 'Correct the ICD-10-CM format before billing or quality review.',
   },

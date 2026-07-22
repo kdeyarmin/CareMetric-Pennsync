@@ -133,6 +133,9 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
     },
     onSuccess: () => {
       toast.success("Thread saved to patient chart");
+    },
+    onError: (err) => {
+      toast.error(err?.message || "Couldn't save the thread to the chart. Please try again.");
     }
   });
 

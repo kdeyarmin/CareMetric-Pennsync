@@ -66,7 +66,10 @@ export default function NotificationCenter({ currentUser, onClose }) {
       message: n.message || n.title,
       created_date: n.created_date,
       is_read: n.is_read,
-      priority: n.priority || 'medium'
+      priority: n.priority || 'medium',
+      // Preserve the deep-link fields so the action button can render.
+      action_url: n.action_url,
+      action_label: n.action_label
     })),
     // Only include critical/high patient alerts to avoid flooding
     ...activeAlerts.filter(a => ['critical', 'high'].includes(a.severity)).map(a => ({

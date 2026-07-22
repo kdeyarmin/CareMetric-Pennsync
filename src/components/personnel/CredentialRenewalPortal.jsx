@@ -129,7 +129,14 @@ export default function CredentialRenewalPortal({ userId }) {
   const today = new Date();
 
   const expiringCredentials = credentials.filter(cred => {
-    if (!cred.expiration_date || cred.status === 'expired' || cred.status === 'pending_approval') return false;
+    // Exclude rejected/expired/in-flight the same way expiredCredentials does, so a
+    // dead 'rejected' submission doesn't reappear as "Expiring Soon".
+    if (
+      !cred.expiration_date ||
+      cred.status === 'expired' ||
+      cred.status === 'pending_approval' ||
+      cred.status === 'rejected'
+    ) return false;
     const expDate = parseISO(cred.expiration_date);
     const daysUntil = differenceInDays(expDate, today);
     return daysUntil <= 90 && daysUntil >= 0;
@@ -148,7 +155,9 @@ export default function CredentialRenewalPortal({ userId }) {
       cred.status === 'rejected'
     ) return false;
     const expDate = parseISO(cred.expiration_date);
-    return expDate < today;
+    // Strictly before today (by calendar day) so a credential expiring TODAY is
+    // "Expiring" only, not listed as Expired as well (which stacked two dialogs).
+    return differenceInDays(expDate, today) < 0;
   });
 
   const pendingRenewals = credentials.filter(cred => cred.status === 'pending_approval');

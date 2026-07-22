@@ -228,6 +228,16 @@
           "user_condition": {
             "role": "admin"
           }
+        },
+        {
+          "user_condition": {
+            "account_type": "agency_admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "super_admin"
+          }
         }
       ]
     },
@@ -239,6 +249,16 @@
         {
           "user_condition": {
             "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "agency_admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "super_admin"
           }
         }
       ]

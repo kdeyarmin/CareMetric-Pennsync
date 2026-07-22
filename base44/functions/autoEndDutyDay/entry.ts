@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     if (authError) return authError;
 
     // Find everyone still toggled on and flip them off.
-    const onDuty = await base44.asServiceRole.entities.User.filter({ duty_status: 'on_duty' }).catch(() => []);
+    const onDuty = await base44.asServiceRole.entities.User.filter({ duty_status: 'on_duty' }, '-created_date', 5000).catch(() => []);
     let flipped = 0;
     for (const u of onDuty) {
       const ok = await base44.asServiceRole.entities.User.update(u.id, { duty_status: 'off_duty', duty_on_since: null })

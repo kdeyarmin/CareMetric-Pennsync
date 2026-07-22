@@ -68,6 +68,9 @@ export default function PatientEducationPortal() {
       queryClient.invalidateQueries({ queryKey: ["patient-education", selectedPatientId] });
       toast.success("Delivery status updated");
     },
+    onError: (err) => {
+      toast.error(err?.message || "Couldn't save delivery — your teach-back notes were not saved. Please try again.");
+    },
   });
 
   const filteredPatients = patients.filter(
@@ -205,7 +208,7 @@ export default function PatientEducationPortal() {
                   <EducationMaterialCard
                     key={material.id}
                     material={material}
-                    onUpdate={(id, data) => updateDeliveryMutation.mutate({ id, data })}
+                    onUpdate={(id, data) => updateDeliveryMutation.mutateAsync({ id, data })}
                     isExpanded={expandedMaterialId === material.id}
                     onToggleExpand={() =>
                       setExpandedMaterialId(
@@ -282,6 +285,9 @@ function EducationMaterialCard({
       setDeliveryMethod("in_person");
       setTeachBackNotes("");
       setTeachBackConfirmed(true);
+    } catch {
+      // Update failed (onError already toasted); keep the form — including the
+      // teach-back notes — intact so the nurse doesn't lose their work.
     } finally {
       setUpdatingStatus(false);
     }

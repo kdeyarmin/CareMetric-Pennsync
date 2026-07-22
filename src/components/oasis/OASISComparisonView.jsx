@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { logOASISAction, AuditActions } from "../utils/auditLogger";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -147,6 +148,9 @@ export default function OASISComparisonView({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['oasisRecords'] });
       onUpdate?.();
+    },
+    onError: (err) => {
+      toast.error(err?.message || "Couldn't save your review. Please try again.");
     },
   });
 

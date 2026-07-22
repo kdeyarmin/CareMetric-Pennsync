@@ -158,10 +158,11 @@ const daysUntil = (date) => {
   if (!date) return Infinity;
   const target = parseLocalDate(date) || new Date(date);
   const now = new Date();
-  // Compare dates only, ignoring time to avoid timezone edge cases
-  target.setHours(23, 59, 59, 999);
+  // Compare whole calendar days from local midnight to local midnight, so an item
+  // due today is 0 (not 1) and one due yesterday is -1 (Expired), not 0.
+  target.setHours(0, 0, 0, 0);
   now.setHours(0, 0, 0, 0);
-  return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
+  return Math.round((target - now) / (1000 * 60 * 60 * 24));
 };
 
 export default function LearningCenter() {

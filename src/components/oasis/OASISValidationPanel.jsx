@@ -601,7 +601,13 @@ function validateDates(data) {
     try {
       const soc = new Date(socDate);
       const assessment = new Date(assessmentDate);
-      
+
+      // NaN arithmetic never throws, so an unparseable date would otherwise slip
+      // through validation silently; raise it explicitly via the catch below.
+      if (Number.isNaN(soc.getTime()) || Number.isNaN(assessment.getTime())) {
+        throw new Error('Unparseable SOC/assessment date');
+      }
+
       if (assessment < soc) {
         issues.push({
           severity: 'critical',
