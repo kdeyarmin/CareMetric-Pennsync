@@ -96,8 +96,19 @@ if name.isEmpty || name == "_" || name == "." || name == ".." {
         return name
     }
 
+    /// The deepest presented view controller reachable from `presenter`, so
+    /// sheets still appear when a popup window or another modal is on screen
+    /// (downloads can start from the popup web views too).
+    private func topPresenter() -> UIViewController? {
+        guard var top = presenter else { return nil }
+        while let presented = top.presentedViewController {
+            top = presented
+        }
+        return top
+    }
+
     private func presentShareSheet(for fileURL: URL) {
-        guard let presenter else { return }
+        guard let presenter = topPresenter() else { return }
 
         let activity = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
         // iPad requires a popover anchor.
@@ -116,7 +127,7 @@ if name.isEmpty || name == "_" || name == "." || name == ".." {
     }
 
     private func presentError(_ error: Error) {
-        guard let presenter else { return }
+        guard let presenter = topPresenter() else { return }
         let alert = UIAlertController(
             title: "Export Failed",
             message: "The file could not be downloaded. \(error.localizedDescription)",

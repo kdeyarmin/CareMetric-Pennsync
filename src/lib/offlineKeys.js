@@ -62,6 +62,13 @@ export const OFFLINE_KEYS = {
   FAVORITE_PATIENTS_PREFIX: 'favoritedPatients_',
   OASIS_DATA_PREFIX: 'oasis_data_',
   VISIT_DRAFT_PREFIX: 'visit_draft_',
+
+  // ── retired app-params key ────────────────────────────────────────────────────
+  // Prior app versions persisted the full landing URL (which can carry
+  // ?patientId=/?referral_id= deep-link params) under this key on every load.
+  // No live code writes or reads it anymore; kept so the purge cleans the stale
+  // copy off shared devices.
+  APP_PARAM_FROM_URL: 'base44_from_url',
 };
 
 const K = OFFLINE_KEYS;
@@ -71,6 +78,11 @@ export const PURGE_FULL_PREFIXES = [
   K.PATIENTS, K.PATIENT_DATA, K.CACHE_TIMESTAMP,
   K.RECENT_PATIENTS_PREFIX, K.FAVORITE_PATIENTS_PREFIX, K.OASIS_DATA_PREFIX,
   K.PENN_CACHE_PREFIX, K.PENN_SYNC_ERRORS, K.PENN_SYNC_STATUS,
+  // Retired app-params key: prior app versions persisted the full landing URL
+  // (which can carry ?patientId=/?referral_id= deep-link params) under this key
+  // on every load. No live code writes or reads it anymore; purge the stale
+  // copy so it can't outlive logout on a shared device.
+  'base44_from_url',
 ];
 
 /** Offline-work queues: drop the synced entries, keep what's still pending. */

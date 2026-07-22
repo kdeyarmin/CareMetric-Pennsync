@@ -775,6 +775,15 @@ export default function UserSettings() {
         </AlertDescription>
       </Alert>
 
+      {/* Legal */}
+      <p className="mt-6 text-sm text-slate-500">
+        Review how PennSync collects, uses, and retains your data in the{' '}
+        <a href="/privacy" className="font-medium text-navy-600 underline-offset-2 hover:underline">
+          Privacy Policy
+        </a>
+        .
+      </p>
+
       {/* Delete Account Section - Danger Zone */}
       <div className="mt-8 pt-8 border-t-2 border-red-300">
         <div className="mb-4">

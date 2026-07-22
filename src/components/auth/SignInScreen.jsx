@@ -269,7 +269,10 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
           </button>
         </p>
         <p className="mt-2 text-center text-xs text-slate-400">
-          Secure clinical platform · HIPAA compliant
+          Secure clinical platform · HIPAA compliant ·{' '}
+          <a href="/privacy" className="underline-offset-2 hover:underline">
+            Privacy Policy
+          </a>
         </p>
       </div>
     </div>

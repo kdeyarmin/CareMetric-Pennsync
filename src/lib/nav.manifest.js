@@ -29,7 +29,7 @@ import {
   Mail, BookUser, Video, HelpCircle, AlertTriangle,
   Phone, Send, Heart, Database, Lock, Award,
   Clipboard, ClipboardCheck, FileSearch, Filter, Globe,
-  Monitor, PieChart, Radio, Search, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
+  Monitor, PieChart, Radio, Search, Target, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
 } from "lucide-react";
 
 // NOTE: PAGE_NAMES and REDIRECTS are NOT imported here to avoid a circular
@@ -111,6 +111,36 @@ export const NAV_MANIFEST = [
     adminOnly: true,
     breadcrumbParent: "Patients",
     keywords: ["duplicate", "merge", "deduplicate"],
+  },
+  {
+    // Care Plans hub (list + drag-and-drop builder tab). Ported back from the
+    // live PENNSync app; the Builder and Automatic pages below are its
+    // non-sidebar children.
+    page: "CarePlanManagement",
+    label: "Care Plans",
+    icon: Target,
+    category: "Patient Care",
+    adminOnly: false,
+    breadcrumbParent: null,
+    keywords: ["care plan", "goals", "treatment plan"],
+  },
+  {
+    page: "CarePlanBuilder",
+    label: "Care Plan Builder",
+    icon: Target,
+    category: null,
+    adminOnly: false,
+    breadcrumbParent: "CarePlanManagement",
+    keywords: ["care plan", "builder", "create"],
+  },
+  {
+    page: "AutomaticCarePlans",
+    label: "Automatic Care Plans",
+    icon: Zap,
+    category: null,
+    adminOnly: false,
+    breadcrumbParent: "CarePlanManagement",
+    keywords: ["auto care plan", "ai care plan"],
   },
   {
     // Hub combining OASIS assessment entry (SmartOASISAssessment, the default
