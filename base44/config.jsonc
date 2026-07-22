@@ -1,9 +1,9 @@
 {
   "name": "PennSync",
   "site": {
-    "installCommand": "npm install",
-    "buildCommand": "npm run build",
-    "serveCommand": "npm run dev",
+    "installCommand": "pnpm install --frozen-lockfile",
+    "buildCommand": "pnpm run build",
+    "serveCommand": "pnpm run dev",
     "outputDirectory": "./dist"
   }
 }
