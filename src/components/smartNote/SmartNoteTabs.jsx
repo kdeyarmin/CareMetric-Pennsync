@@ -8,7 +8,18 @@ export const SMART_NOTE_TABS = [
 ];
 
 export default function SmartNoteTabs({ activeTab, setActiveTab }) {
-  const tabColorMap = { indigo: "bg-indigo-600", violet: "bg-navy-600", purple: "bg-navy-600", emerald: "bg-emerald-600", cyan: "bg-navy-600" };
+  // Active background+text are applied via inline styles — Tailwind bg-*/text-white
+  // classes are unreliable for selected states here (the codebase uses the same
+  // inline-style pattern for the visit-type buttons and Dashboard CTAs). Without
+  // this, text-white renders against an unstyled (light) background and the label
+  // and icon disappear.
+  const tabActiveStyle = {
+    indigo: { backgroundColor: '#333c9c', color: '#ffffff' },
+    violet: { backgroundColor: '#264491', color: '#ffffff' },
+    purple: { backgroundColor: '#264491', color: '#ffffff' },
+    emerald: { backgroundColor: '#059669', color: '#ffffff' },
+    cyan: { backgroundColor: '#264491', color: '#ffffff' },
+  };
   const tabHoverMap = { indigo: "hover:bg-indigo-50 hover:text-indigo-700", violet: "hover:bg-navy-50 hover:text-navy-700", purple: "hover:bg-navy-50 hover:text-navy-700", emerald: "hover:bg-emerald-50 hover:text-emerald-700", cyan: "hover:bg-navy-50 hover:text-navy-700" };
 
   return (
@@ -23,7 +34,8 @@ export default function SmartNoteTabs({ activeTab, setActiveTab }) {
             role="tab"
             aria-selected={isActive}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all min-h-[44px] whitespace-nowrap px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1 ${isActive ? `${tabColorMap[tab.color]} text-white shadow-sm` : `text-slate-500 ${tabHoverMap[tab.color]}`}`}
+            style={isActive ? tabActiveStyle[tab.color] : undefined}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all min-h-[44px] whitespace-nowrap px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1 ${isActive ? "shadow-sm" : `text-slate-500 ${tabHoverMap[tab.color]}`}`}
           >
             <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
             <span className="hidden sm:inline">{tab.label}</span>
