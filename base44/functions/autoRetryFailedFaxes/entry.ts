@@ -168,6 +168,11 @@ async function resolveTelnyxCreds(base44) {
     voiceConnectionId = pick(rec.voice_connection_id);
     faxConnectionId = pick(rec.fax_connection_id);
   } catch { /* ignore */ }
+  // Fallback to app-level secrets so the scheduled retry still runs when no
+  // IntegrationSecret row has been seeded (e.g. before an admin saves Telnyx
+  // config in-app). Only apiKey + faxConnectionId are needed to re-send faxes.
+  if (!apiKey) apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
+  if (!faxConnectionId) faxConnectionId = pick(Deno.env.get('TELNYX_CONNECTION_ID'));
   return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
 }
 
