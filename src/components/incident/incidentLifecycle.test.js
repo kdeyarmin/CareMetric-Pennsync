@@ -21,6 +21,14 @@ test('createIncidentReviewEvent records incident-specific transition metadata', 
   assert.equal(event.record_type, 'Incident');
   assert.equal(event.to_status, 'in_review');
   assert.deepEqual(event.metadata, { incident_from_status: 'reported', incident_to_status: 'under_review' });
+  const resolvedEvent = createIncidentReviewEvent({
+    incidentId: 'inc-1',
+    fromStatus: 'corrective_action',
+    toStatus: 'resolved',
+    actorEmail: 'admin@example.com',
+  });
+  assert.equal(resolvedEvent.from_status, 'correction_requested');
+  assert.equal(resolvedEvent.to_status, 'final');
   assert.throws(() => createIncidentReviewEvent({ incidentId: 'inc-1', fromStatus: 'resolved', toStatus: 'reported', actorEmail: 'a@b.c' }), /Invalid incident status transition/);
 });
 

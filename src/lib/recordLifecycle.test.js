@@ -20,6 +20,7 @@ test('canTransitionRecordLifecycle allows reviewed lifecycle paths', () => {
   assert.equal(canTransitionRecordLifecycle('submitted', 'final'), true);
   assert.equal(canTransitionRecordLifecycle('final', 'correction_requested'), true);
   assert.equal(canTransitionRecordLifecycle('correction_requested', 'corrected'), true);
+  assert.equal(canTransitionRecordLifecycle('correction_requested', 'final'), true);
   assert.equal(canTransitionRecordLifecycle('corrected', 'final'), true);
   assert.equal(canTransitionRecordLifecycle('final', 'archived'), true);
 });

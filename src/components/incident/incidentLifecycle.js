@@ -22,7 +22,7 @@ export function createIncidentReviewEvent({ incidentId, fromStatus = 'reported',
   return createLifecycleAuditEvent({
     recordType: 'Incident',
     recordId: incidentId,
-    fromStatus: fromStatus === 'corrective_action' && toStatus === 'resolved' ? 'corrected' : INCIDENT_STATUS_TO_LIFECYCLE[fromStatus || 'reported'],
+    fromStatus: INCIDENT_STATUS_TO_LIFECYCLE[fromStatus || 'reported'],
     toStatus: INCIDENT_STATUS_TO_LIFECYCLE[toStatus],
     actorEmail,
     reason,
