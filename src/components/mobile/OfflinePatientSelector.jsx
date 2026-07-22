@@ -34,7 +34,7 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
   });
 
   const { data: allPatients = [] } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'updated', 2000],
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
   });
 

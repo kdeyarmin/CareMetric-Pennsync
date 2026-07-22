@@ -35,7 +35,7 @@ export default function SignerPortal() {
         setError(result.error || 'Invalid or expired access link.');
       }
     } catch (err) {
-      setError(err.message || 'Failed to validate access link.');
+      setError(err.response?.data?.error || err.message || 'Failed to validate access link.');
     } finally {
       setIsLoading(false);
     }

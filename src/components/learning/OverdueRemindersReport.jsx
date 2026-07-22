@@ -9,21 +9,32 @@ import { useQuery } from '@tanstack/react-query';
 import ReportFilters from './ReportFilters';
 import { toCsv, exportTimestamp } from '../admin/csvExport';
 import { toast } from 'sonner';
+import { parseLocalDate, formatLocalDate } from '@/lib/dateLocal';
 
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : '—');
+const formatDate = (value) => formatLocalDate(value) || '—';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
+// All date-only comparisons run on local calendar midnights: parsing due_date as
+// UTC midnight flagged assignments overdue the evening before (and on) the due date.
+const startOfToday = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+};
 const daysOverdue = (dueDate) => {
-  if (!dueDate) return 0;
-  const diff = Date.now() - new Date(dueDate).getTime();
-  return diff > 0 ? Math.floor(diff / MS_PER_DAY) : 0;
+  const due = parseLocalDate(dueDate);
+  if (!due) return 0;
+  const diff = startOfToday().getTime() - due.getTime();
+  return diff > 0 ? Math.round(diff / MS_PER_DAY) : 0;
 };
 
 // Incomplete assignment whose due date has passed (or already flagged overdue).
+// "Due today" is NOT yet overdue — only a due date strictly before today counts.
 const isOverdue = (a) => {
   if (a.status === 'completed') return false;
   if (a.status === 'overdue') return true;
-  return !!a.due_date && new Date(a.due_date) < new Date();
+  if (!a.due_date) return false;
+  const due = parseLocalDate(a.due_date);
+  return !!due && due < startOfToday();
 };
 
 export default function OverdueRemindersReport() {
@@ -46,9 +57,10 @@ export default function OverdueRemindersReport() {
     return assignments
       .filter(isOverdue)
       .filter((a) => {
+        if (filters.businessLine && filters.businessLine !== 'all' && a.assigned_to_business_line && a.assigned_to_business_line !== filters.businessLine) return false;
         if (empNeedle && !(a.assigned_to_user_id || '').toLowerCase().includes(empNeedle)) return false;
-        if (filters.dateStart && a.due_date && new Date(a.due_date) < new Date(filters.dateStart)) return false;
-        if (filters.dateEnd && a.due_date && new Date(a.due_date) > new Date(`${filters.dateEnd}T23:59:59`)) return false;
+        if (filters.dateStart && a.due_date && parseLocalDate(a.due_date) < parseLocalDate(filters.dateStart)) return false;
+        if (filters.dateEnd && a.due_date && parseLocalDate(a.due_date) > parseLocalDate(filters.dateEnd)) return false;
         return true;
       })
       .map((a) => ({ ...a, _daysOverdue: daysOverdue(a.due_date) }))

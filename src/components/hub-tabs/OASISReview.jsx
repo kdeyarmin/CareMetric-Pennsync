@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
+import { isAdminView } from "@/lib/roles";
 import OASISComparisonView from "@/components/oasis/OASISComparisonView";
 import OASISApprovalWorkflow from "@/components/oasis/OASISApprovalWorkflow";
 
@@ -29,11 +30,11 @@ export default function OASISReview() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   // Fetch patients with pending OASIS reviews
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'updated', 2000],
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
   });
 

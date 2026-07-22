@@ -113,6 +113,9 @@ export default function TemplateManagement() {
 
     saveMutation.mutate({
       ...formData,
+      // DocumentTemplate requires `template_name` (the form binds to `name`);
+      // write both so the create/update isn't rejected by schema validation.
+      template_name: formData.name,
       placeholders,
     });
   };
@@ -120,7 +123,7 @@ export default function TemplateManagement() {
   const handleEdit = (template) => {
     setEditingTemplate(template);
     setFormData({
-      name: template.name,
+      name: template.name || template.template_name || '',
       description: template.description,
       category: template.category,
       content: template.content,

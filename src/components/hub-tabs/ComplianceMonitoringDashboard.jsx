@@ -169,8 +169,10 @@ export default function ComplianceMonitoringDashboard() {
       }
       userVisitCounts[visit.created_by]++;
       
-      // Check if visit has minimal documentation
-      if (!visit.assessment || !visit.interventions || visit.assessment.length < 50) {
+      // Check if visit has minimal documentation. The Visit entity stores the
+      // narrative in `nurse_notes` (there are no `assessment`/`interventions`
+      // fields — reading those flagged every visit as 100% incomplete).
+      if (!visit.nurse_notes || visit.nurse_notes.length < 50) {
         userIncompleteVisits[visit.created_by]++;
       }
     });

@@ -48,7 +48,16 @@ const MN_LINK = /\b(for (?:the )?management of|to monitor|monitoring for|assess(
 const DX_HINT = /\b(diagnos\w*|\bdx\b|chf|copd|diabet\w*|dm2?|htn|hypertension|wound|ulcer|fracture|cva|stroke|cancer|dementia|parkinson|renal|failure|pneumonia|cellulitis|sepsis|afib|copd)\b/i;
 
 function normalize(text) {
-  return String(text || "").replace(/\s+/g, " ").trim();
+  // Collapse runs of spaces/tabs but PRESERVE newlines, so sentencesWith() can
+  // still scope clause-by-clause. Collapsing newlines here merged bullet drafts
+  // (newline-separated, no periods) into one line, letting a reason in one bullet
+  // and taxing-effort evidence in another falsely satisfy homebound/skilled-need.
+  return String(text || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
 }
 
 // Split on SENTENCE terminators + newlines only (NOT ';' or ':'), so a clause

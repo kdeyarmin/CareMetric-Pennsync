@@ -18,7 +18,7 @@ export default function BulkDocumentPackageCreator() {
   const queryClient = useQueryClient();
 
   const { data: patients = [], isLoading: patientsLoading } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'updated', 100],
     queryFn: async () => {
       const results = await base44.entities.Patient.list('-updated_date', 100);
       return results;
@@ -28,7 +28,9 @@ export default function BulkDocumentPackageCreator() {
   const { data: templates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ['documentTemplates'],
     queryFn: async () => {
-      const results = await base44.entities.DocumentTemplate.filter({ is_active: true });
+      // DocumentTemplate has no `is_active` field, so filtering on it returns
+      // nothing — list all templates (there is no active/inactive concept).
+      const results = await base44.entities.DocumentTemplate.list('-created_date', 200);
       return results;
     },
   });
@@ -171,7 +173,7 @@ export default function BulkDocumentPackageCreator() {
                       className="mt-1"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">{template.name}</p>
+                      <p className="font-medium text-sm">{template.name || template.template_name}</p>
                       <p className="text-xs text-slate-600 truncate">{template.description}</p>
                     </div>
                   </label>

@@ -5,13 +5,15 @@ import { cn } from "@/lib/utils";
 import { format, isValid } from "date-fns";
 import { AlertTriangle, CheckCircle2, Clock, Hourglass } from "lucide-react";
 import { buildAgingBoard, TIMELY_INITIATION_DAYS } from "./intakeToSocTracker";
+import { parseLocalDate } from "@/lib/dateLocal";
 
 // Referral dates can be AI-extracted free-text strings; guard every format the
-// same way ReferralIntake does so a bad date can't crash the board.
+// same way ReferralIntake does so a bad date can't crash the board. parseLocalDate
+// reads a date-only YYYY-MM-DD on the local calendar (not UTC midnight, which
+// rendered a day early) and falls back to Date parsing for free-text values.
 const safeDate = (value) => {
-  if (!value) return null;
-  const d = new Date(value);
-  return isValid(d) ? format(d, "MM/dd/yyyy") : null;
+  const d = parseLocalDate(value);
+  return d && isValid(d) ? format(d, "MM/dd/yyyy") : null;
 };
 
 const BUCKET_ORDER = ["on_track", "due_soon", "overdue"];

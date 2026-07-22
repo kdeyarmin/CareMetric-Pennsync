@@ -42,7 +42,11 @@ export default function RealTimePatientAlerts({
     // prop). Previously an empty favorites list short-circuited to zero alerts,
     // so a brand-new nurse got a silent, empty safety net that hid overdue
     // visits, recent incidents, and high-risk patients.
-    const favoritedPatientIds = currentUser?.favorited_patients?.map(p => p.id) || [];
+    // favorited_patients is an array of patient-ID strings (User schema); tolerate
+    // legacy object entries {id} just in case, but never emit undefined.
+    const favoritedPatientIds = (currentUser?.favorited_patients || [])
+      .map(p => (typeof p === 'string' ? p : p?.id))
+      .filter(Boolean);
     const patientsToCheck = favoritedPatientIds.length > 0
       ? (patients || []).filter(p => favoritedPatientIds.includes(p.id))
       : (patients || []);

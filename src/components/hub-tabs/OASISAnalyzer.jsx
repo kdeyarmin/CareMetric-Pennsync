@@ -128,7 +128,7 @@ export default function OASISAnalyzer() {
 
   // Fetch patients for linking
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'updated', 2000],
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
   });
 

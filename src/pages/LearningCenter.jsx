@@ -54,7 +54,6 @@ import LearnerMemoryBoosters from '@/components/training/LearnerMemoryBoosters';
 import EducatorReadinessPanel from '@/components/learning/EducatorReadinessPanel';
 import GamificationDashboard from '@/components/training/GamificationDashboard';
 import { selfEnrollCourse } from '@/functions/selfEnrollCourse';
-import { generateLearningTranscriptPDF } from '@/functions/generateLearningTranscriptPDF';
 import { submitCourseFeedback } from '@/functions/submitCourseFeedback';
 import { getCourseFeedbackSummary } from '@/functions/getCourseFeedbackSummary';
 
@@ -364,8 +363,15 @@ export default function LearningCenter() {
     if (!user?.email) return;
     setDownloadingTranscript(true);
     try {
-      const response = await generateLearningTranscriptPDF({ employeeId: user.email });
-      downloadBlob(`Training_Transcript_${toLocalISODate()}.pdf`, response.data, 'application/pdf');
+      // Fetch as binary: functions.invoke UTF-8-decodes PDF bytes and corrupts
+      // the file, so use functions.fetch + arrayBuffer (mirrors UserGuides/Help).
+      const response = await base44.functions.fetch('generateLearningTranscriptPDF', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: user.email })
+      });
+      if (!response.ok) throw new Error(`PDF generation failed (${response.status})`);
+      downloadBlob(`Training_Transcript_${toLocalISODate()}.pdf`, await response.arrayBuffer(), 'application/pdf');
     } catch (error) {
       console.error('Failed to download transcript:', error);
     } finally {

@@ -12,6 +12,21 @@ import { Badge } from '@/components/ui/badge';
 import { WifiOff, Save, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+// Coerce form vital_signs (all string-typed <input> values, including blanks) to
+// the numeric shape the Visit schema requires. Omits empty/blank fields and
+// returns null when nothing numeric remains, so an offline CREATE_VISIT can't be
+// rejected on sync for a type violation — which would stall the whole queue.
+const normalizeVitals = (vitals) => {
+  if (!vitals || typeof vitals !== 'object') return null;
+  const out = {};
+  for (const [key, value] of Object.entries(vitals)) {
+    if (value === '' || value == null) continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) out[key] = n;
+  }
+  return Object.keys(out).length ? out : null;
+};
+
 export default function OfflineVisitDocumentation({ patientId, visitId, existingData, onSaved }) {
   const { isOnline } = useOfflineQueue();
   const [formData, setFormData] = useState({
@@ -77,8 +92,7 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
       // globally by OfflineManager on reconnect. Strip the local-only placeholder
       // visit_id; a stable client_request_id keeps a retried drain idempotent.
       const { visit_id: _placeholderId, ...rest } = formData;
-      const hasVitals = rest.vital_signs &&
-        Object.values(rest.vital_signs).some((v) => v !== '' && v != null);
+      const normalizedVitals = normalizeVitals(rest.vital_signs);
       const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -90,14 +104,14 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
         await addToSyncQueue('UPDATE_VISIT', {
           visit_id: visitId,
           ...rest,
-          vital_signs: hasVitals ? rest.vital_signs : null,
+          vital_signs: normalizedVitals,
           status: 'completed',
         });
       } else {
         await addToSyncQueue('CREATE_VISIT', {
           client_request_id: clientRequestId,
           ...rest,
-          vital_signs: hasVitals ? rest.vital_signs : null,
+          vital_signs: normalizedVitals,
           status: 'completed',
         });
       }
@@ -117,11 +131,9 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
     try {
       // Strip the local-only placeholder id; the backend assigns the real one.
       const { visit_id: _visit_id, ...rest } = formData;
-      const hasVitals = rest.vital_signs &&
-        Object.values(rest.vital_signs).some((v) => v !== '' && v != null);
       const payload = {
         ...rest,
-        vital_signs: hasVitals ? rest.vital_signs : null,
+        vital_signs: normalizeVitals(rest.vital_signs),
         status: 'completed',
       };
 

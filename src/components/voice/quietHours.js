@@ -31,7 +31,7 @@ export const AREA_CODE_TIMEZONE = {
   440: "America/New_York", 443: "America/New_York", 470: "America/New_York", 475: "America/New_York",
   478: "America/New_York", 484: "America/New_York", 502: "America/New_York", 508: "America/New_York",
   513: "America/New_York", 516: "America/New_York", 517: "America/New_York", 518: "America/New_York",
-  540: "America/New_York", 551: "America/New_York", 561: "America/New_York", 564: "America/New_York",
+  540: "America/New_York", 551: "America/New_York", 561: "America/New_York",
   567: "America/New_York", 570: "America/New_York", 571: "America/New_York", 585: "America/New_York",
   607: "America/New_York", 610: "America/New_York", 614: "America/New_York", 617: "America/New_York",
   631: "America/New_York", 646: "America/New_York", 667: "America/New_York", 678: "America/New_York",
@@ -82,6 +82,7 @@ export const AREA_CODE_TIMEZONE = {
   206: "America/Los_Angeles", 209: "America/Los_Angeles", 213: "America/Los_Angeles", 253: "America/Los_Angeles",
   279: "America/Los_Angeles", 310: "America/Los_Angeles", 323: "America/Los_Angeles", 341: "America/Los_Angeles",
   360: "America/Los_Angeles", 408: "America/Los_Angeles", 415: "America/Los_Angeles", 424: "America/Los_Angeles",
+  564: "America/Los_Angeles", // western Washington overlay (Pacific), not Eastern
   425: "America/Los_Angeles", 442: "America/Los_Angeles", 503: "America/Los_Angeles", 509: "America/Los_Angeles",
   510: "America/Los_Angeles", 530: "America/Los_Angeles", 541: "America/Los_Angeles", 559: "America/Los_Angeles",
   562: "America/Los_Angeles", 619: "America/Los_Angeles", 626: "America/Los_Angeles", 628: "America/Los_Angeles",

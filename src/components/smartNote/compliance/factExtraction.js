@@ -64,7 +64,10 @@ export function extractVitals(text) {
   // silently truncated to a plausible-looking 110 (dropping the extra digit).
   // Tolerate a colon separator ("HR: 82") like the BP/O2 patterns — a very common
   // EMR/dictation style that otherwise dropped the value entirely.
-  const hrMatch = text.match(/(?:hr|heart\s*rate)\s*:?\s*(\d{2,3})(?!\d)/i);
+  // Left word boundary so a frequency like "q4hr 150" or "24hr 125" can't have
+  // its embedded "hr" read as a heart rate (phantom HR that would then whitelist
+  // a hallucinated value in the guard).
+  const hrMatch = text.match(/\b(?:hr|heart\s*rate)\s*:?\s*(\d{2,3})(?!\d)/i);
   if (hrMatch) vitals.hr = parseInt(hrMatch[1]);
 
   // Allow the filler words nurses routinely write between the keyword and the
@@ -217,7 +220,7 @@ export function extractCanonicalVitalsFromText(text) {
 const MEASUREMENT_PATTERNS = [
   /\b\d{2,3}\/\d{2,3}\b/g, // blood pressure
   /\b\d{1,3}\s?%/g, // percentages (O2 sat, etc.)
-  /\b\d{1,3}\s?x\s?\d{1,3}(?:\.\d+)?\s?(?:cm|mm)\b/gi, // wound dimensions 2x3 cm
+  /\b\d{1,3}(?:\.\d+)?\s?x\s?\d{1,3}(?:\.\d+)?\s?(?:cm|mm)\b/gi, // wound dimensions 2x3 cm / 2.5 x 3 cm
   // Single measurement, but NOT the second operand of an "NxM cm" dimension: a
   // faithful rewrite that normalizes spacing ("4x5 cm" -> "4 x 5 cm") must not
   // make the guard extract a spurious "5cm" token that the source lacks and then
@@ -227,7 +230,7 @@ const MEASUREMENT_PATTERNS = [
   // pattern already emits (no spurious "5cm"), while a standalone "5 cm" still
   // matches with an empty prefix. (Lookbehind is avoided because it throws a
   // SyntaxError in Safari < 16.4.)
-  /(?:\d\s?x\s?)?\b\d+(?:\.\d+)?\s?(?:cm|mm)\b/gi, // single measurement
+  /(?:\b\d{1,3}(?:\.\d+)?\s?x\s?)?\b\d+(?:\.\d+)?\s?(?:cm|mm)\b/gi, // single measurement (whole first operand consumed, so "12 x 5 cm" never emits a spurious "2x5cm")
   /\b\d+(?:\.\d+)?\s?(?:mg|mcg|g|ml|units?|iu|tab(?:lets?)?|cc)\b/gi, // doses
   /\b\d{1,2}\/10\b/g, // pain / rating scales
   /\b\d{2,3}\s?(?:bpm|beats)/gi, // heart rate

@@ -210,6 +210,33 @@ export default function DischargeReportUploader() {
               </div>
             )}
 
+            {/* Ambiguous Matches — matched more than one active patient, so NOT discharged */}
+            {results.ambiguous_patients && results.ambiguous_patients.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" />
+                  Ambiguous Matches — Not Discharged ({results.ambiguous_patients.length})
+                </h3>
+                <Alert className="bg-amber-50 border-amber-300 mb-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <AlertDescription className="text-amber-900 text-sm">
+                    These discharge rows matched more than one active patient (name-only match), so no
+                    file was closed. Review and discharge each one manually.
+                  </AlertDescription>
+                </Alert>
+                <ScrollArea className="h-48 border rounded-lg border-amber-300 bg-amber-50">
+                  <div className="p-4 space-y-2">
+                    {results.ambiguous_patients.map((patient, idx) => (
+                      <div key={idx} className="text-sm text-amber-900">
+                        • {patient.name} {patient.mrn && `(MRN: ${patient.mrn})`}
+                        {patient.candidate_count ? ` — ${patient.candidate_count} possible matches` : ''}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+
             {/* Errors */}
             {results.errors && results.errors.length > 0 && (
               <Alert variant="destructive">

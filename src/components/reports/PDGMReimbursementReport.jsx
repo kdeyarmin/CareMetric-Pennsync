@@ -43,7 +43,9 @@ export default function PDGMReimbursementReport({ dateRange }) {
   const rangeStart = new Date(dateRange.start + 'T00:00:00');
   const rangeEnd = new Date(dateRange.end + 'T23:59:59.999');
   const filteredOASIS = oasisAssessments.filter(o => {
-    const date = new Date(o.assessment_date);
+    // Parse the date-only assessment_date on the local clock too, so a boundary-day
+    // episode isn't shifted into the prior evening and dropped from the report.
+    const date = new Date(o.assessment_date + 'T00:00:00');
     return date >= rangeStart && date <= rangeEnd;
   });
 
@@ -54,7 +56,7 @@ export default function PDGMReimbursementReport({ dateRange }) {
     const end = new Date(dateRange.end + 'T23:59:59.999');
     return uploads.filter((u) => {
       if (!Number.isFinite(u?.estimated_payment) || u.estimated_payment <= 0 || !u?.assessment_date) return false;
-      const d = new Date(u.assessment_date);
+      const d = new Date(u.assessment_date + 'T00:00:00');
       return d >= start && d <= end;
     });
   }, [uploadsResp, dateRange.start, dateRange.end]);

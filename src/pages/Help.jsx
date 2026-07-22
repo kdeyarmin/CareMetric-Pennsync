@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { generateUserManual } from "@/functions/generateUserManual";
+import { base44 } from "@/api/base44Client";
 import { toast } from 'sonner';
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
@@ -27,15 +27,20 @@ export default function Help() {
   const handleDownloadManual = async () => {
     setDownloading(true);
     try {
-      const response = await generateUserManual({});
-      const pdfData = response?.data ?? response;
-
-      if (!pdfData) {
-        throw new Error("No document data was returned.");
+      // Fetch the PDF as binary. The axios-based functions.invoke wrapper decodes
+      // the PDF bytes as UTF-8 text, which corrupts the binary (replacement
+      // characters shift xref offsets), so use functions.fetch + arrayBuffer.
+      const response = await base44.functions.fetch('generateUserManual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      if (!response.ok) {
+        throw new Error(`PDF generation failed (${response.status})`);
       }
-      
+
       // Create blob and download
-      const blob = new Blob([pdfData], { type: 'application/pdf' });
+      const blob = new Blob([await response.arrayBuffer()], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

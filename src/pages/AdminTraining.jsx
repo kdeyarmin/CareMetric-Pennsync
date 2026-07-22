@@ -149,14 +149,16 @@ export default function AdminTraining() {
       if (attempt.pass_fail_result === "failed" || attempt.passed === false) areaEntry.failed += 1;
 
       (attempt.answers_json || []).forEach((answer) => {
+        const missKey = `${category}__${answer.prompt}`;
+        const missEntry = missedMap.get(missKey) || { category, prompt: answer.prompt, missCount: 0, seen: 0 };
+        // `seen` counts every time the question was answered; `missCount` only the
+        // times it was missed — otherwise missRate is tautologically 100%.
+        missEntry.seen += 1;
         if (answer.correct === false || (answer.points_earned ?? 0) < (answer.points_possible ?? 1)) {
-          const missKey = `${category}__${answer.prompt}`;
-          const missEntry = missedMap.get(missKey) || { category, prompt: answer.prompt, missCount: 0, seen: 0 };
           missEntry.missCount += 1;
-          missEntry.seen += 1;
-          missedMap.set(missKey, missEntry);
           if (!areaEntry.topIssue) areaEntry.topIssue = answer.prompt;
         }
+        missedMap.set(missKey, missEntry);
       });
       areaMap.set(category, areaEntry);
     });
@@ -183,9 +185,10 @@ export default function AdminTraining() {
       .sort((a, b) => a.averageScore - b.averageScore);
 
     const missedTopics = [...missedMap.values()]
-      .map((topic) => ({ 
-        ...topic, 
-        missRate: Math.min(100, Math.round((topic.missCount / Math.max(topic.seen, 1)) * 100)) 
+      .filter((topic) => topic.missCount > 0)
+      .map((topic) => ({
+        ...topic,
+        missRate: Math.min(100, Math.round((topic.missCount / Math.max(topic.seen, 1)) * 100))
       }))
       .sort((a, b) => b.missCount - a.missCount)
       .slice(0, 10);

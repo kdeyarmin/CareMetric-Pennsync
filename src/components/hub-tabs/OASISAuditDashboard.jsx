@@ -38,6 +38,7 @@ import {
   Lightbulb
 } from "lucide-react";
 import { format } from "date-fns";
+import { isAdminView } from "@/lib/roles";
 import OASISAuditReportGenerator from "@/components/oasis/OASISAuditReportGenerator";
 
 export default function OASISAuditDashboard() {
@@ -56,7 +57,7 @@ export default function OASISAuditDashboard() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   // Fetch audits
   const { data: audits = [], isLoading } = useQuery({

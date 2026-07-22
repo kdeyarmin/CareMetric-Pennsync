@@ -91,18 +91,23 @@ export default function IncidentReportingModule() {
   const createIncidentMutation = useMutation({
     mutationFn: async (incidentData) => {
       const incident = await base44.entities.Incident.create(incidentData);
-      
-      // Send automated alerts to clinical managers
-      const managers = await base44.entities.User.filter({ role: 'admin' });
-      const patient = patients.find(p => p.id === incidentData.patient_id);
-      
-      if (managers.length > 0 && incidentData.severity === 'high') {
-        await Promise.all(
-          managers.map(manager =>
-            base44.integrations.Core.SendEmail({
-              to: manager.email,
-              subject: `🚨 High Severity Incident Reported - ${incidentData.incident_type}`,
-              body: `A high severity incident has been reported:
+
+      // Manager alerts are best-effort and only for high-severity incidents. A
+      // non-admin reporter can't query Users (RLS denies User.filter), and any
+      // email/query failure must NOT fail the already-created incident — that
+      // would surface a false error and duplicate the report on retry.
+      let managersNotified = false;
+      if (incidentData.severity === 'high') {
+        try {
+          const managers = await base44.entities.User.filter({ role: 'admin' });
+          const patient = patients.find(p => p.id === incidentData.patient_id);
+          if (managers.length > 0) {
+            await Promise.all(
+              managers.map(manager =>
+                base44.integrations.Core.SendEmail({
+                  to: manager.email,
+                  subject: `🚨 High Severity Incident Reported - ${incidentData.incident_type}`,
+                  body: `A high severity incident has been reported:
 
 Patient: ${patient?.first_name} ${patient?.last_name}
 Incident Type: ${incidentData.incident_type}
@@ -112,21 +117,25 @@ Reported By: ${currentUser?.full_name}
 Details: ${incidentData.report}
 
 Please review this incident in the Incident Reporting Dashboard.`
-            })
-          )
-        );
+                })
+              )
+            );
+            managersNotified = true;
+          }
+        } catch {
+          // best-effort: alerting failure must not fail the incident
+        }
       }
-      
-      return incident;
+
+      return { incident, managersNotified };
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       setShowReportDialog(false);
       resetForm();
-      // A manager alert only fires for high-severity incidents (see mutationFn), so
-      // only claim managers were notified when that actually happened.
+      // Only claim managers were notified when the alert actually went out.
       toast.success(
-        variables?.severity === 'high'
+        result?.managersNotified
           ? "Incident reported successfully. Clinical managers have been notified."
           : "Incident reported successfully."
       );

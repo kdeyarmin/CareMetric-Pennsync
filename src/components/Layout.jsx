@@ -260,6 +260,10 @@ export default function Layout() {
     // HIPAA: purge cached PHI before logging out (shared-device safety). Await
     // the storage purge so the IndexedDB clear isn't abandoned by the redirect.
     try { queryClientInstance.clear(); } catch { /* no-op */ }
+    // sessionStorage can hold PHI (note drafts, referral extracts, patient deep
+    // links); clear it on logout for shared-device safety, like clearCachedPHI
+    // does for localStorage/IndexedDB.
+    try { sessionStorage.clear(); } catch { /* no-op */ }
     try { await clearCachedPHI(); } catch { /* no-op */ }
     base44.auth.logout();
 

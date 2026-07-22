@@ -20,7 +20,7 @@ import {
   Brain,
   FileWarning
 } from "lucide-react";
-import { format } from "date-fns";
+import { parseLocalDate, formatLocalDate } from "@/lib/dateLocal";
 
 const EVENT_ICONS = {
   medication_change: Pill,
@@ -55,8 +55,14 @@ export default function ClinicalEventsTimeline({ patientId, limit = 20 }) {
         const daysAgo = parseInt(dateRange);
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
-        
-        return allEvents.filter(e => new Date(e.event_date) >= cutoffDate);
+        cutoffDate.setHours(0, 0, 0, 0);
+
+        // Parse the date-only event_date on the local calendar so a boundary-day
+        // event isn't shifted to UTC midnight and dropped from the range.
+        return allEvents.filter(e => {
+          const d = parseLocalDate(e.event_date);
+          return d && d >= cutoffDate;
+        });
       }
       
       return allEvents;
@@ -185,7 +191,7 @@ export default function ClinicalEventsTimeline({ patientId, limit = 20 }) {
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <p className="text-xs text-slate-500">
-                            {format(new Date(event.event_date), 'MMM d, yyyy')}
+                            {formatLocalDate(event.event_date, { month: 'short', day: 'numeric', year: 'numeric' })}
                           </p>
                           <Badge className="text-xs">
                             {(event.event_type || '').replace(/_/g, ' ')}

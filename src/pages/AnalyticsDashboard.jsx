@@ -279,7 +279,7 @@ export default function AnalyticsDashboard() {
         if (['note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)) {
           userStats[ua.user_email].aiUsageCount++;
         }
-        if (['visit_document', 'note_enhanced', 'note_ai_generated'].includes(ua.action)) {
+        if (['visit_document', 'note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)) {
           userStats[ua.user_email].totalActions++;
         }
       }

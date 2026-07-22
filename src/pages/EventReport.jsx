@@ -176,7 +176,7 @@ export default function EventReport() {
             submitter_title: formData.submitter_title,
             state_reportable: false,
           },
-          immediate_alert: false,
+          immediate_alert: true,
         });
       }
 

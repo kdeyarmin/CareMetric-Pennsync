@@ -58,7 +58,7 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
   // ['patients'] cache the Patients page populates, so this is usually instant
   // and adds no extra round-trip. Only needed when adding a brand-new patient.
   const { data: existingPatients = [] } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'created', 2000],
     queryFn: async () => {
       const all = await base44.entities.Patient.list('-created_date', 2000);
       return all.filter((p) => !p.is_archived);

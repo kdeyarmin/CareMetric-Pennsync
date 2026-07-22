@@ -48,7 +48,10 @@ export default function FaxReceivingToggle() {
     });
   };
 
-  const isEnabled = setting?.fax_receiving_enabled ?? true;
+  // The inbound-fax webhook treats an unset flag (or a missing AgencySettings row)
+  // as DISABLED and drops the fax, so the toggle must reflect that — defaulting to
+  // "Active" here made the card claim faxing was on while faxes were being dropped.
+  const isEnabled = !!setting?.fax_receiving_enabled;
 
   if (isLoading) {
     return null;
