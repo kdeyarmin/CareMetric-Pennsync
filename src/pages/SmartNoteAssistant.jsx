@@ -642,7 +642,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                           type="button"
                           onClick={() => setVisitType(v.value)}
                           aria-pressed={selected}
-                          style={selected ? { backgroundColor: '#264491', borderColor: '#264491', color: '#ffffff' } : undefined}
+                          style={selected ? { background: '#264491', borderColor: '#264491', color: '#ffffff' } : undefined}
                           className={`py-3 sm:py-2 px-2 rounded-xl text-xs font-semibold border-2 transition-all text-center leading-tight min-h-[48px] sm:min-h-0 active:scale-95 ${selected ? "shadow-md" : "bg-slate-50 border-slate-200 text-slate-700 hover:border-navy-300 hover:bg-navy-50"}`}
                         >
                           {v.label}

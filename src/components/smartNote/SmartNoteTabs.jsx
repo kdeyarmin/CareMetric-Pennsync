@@ -14,11 +14,11 @@ export default function SmartNoteTabs({ activeTab, setActiveTab }) {
   // this, text-white renders against an unstyled (light) background and the label
   // and icon disappear.
   const tabActiveStyle = {
-    indigo: { backgroundColor: '#333c9c', color: '#ffffff' },
-    violet: { backgroundColor: '#264491', color: '#ffffff' },
-    purple: { backgroundColor: '#264491', color: '#ffffff' },
-    emerald: { backgroundColor: '#059669', color: '#ffffff' },
-    cyan: { backgroundColor: '#264491', color: '#ffffff' },
+    indigo: { background: '#333c9c', color: '#ffffff' },
+    violet: { background: '#264491', color: '#ffffff' },
+    purple: { background: '#264491', color: '#ffffff' },
+    emerald: { background: '#059669', color: '#ffffff' },
+    cyan: { background: '#264491', color: '#ffffff' },
   };
   const tabHoverMap = { indigo: "hover:bg-indigo-50 hover:text-indigo-700", violet: "hover:bg-navy-50 hover:text-navy-700", purple: "hover:bg-navy-50 hover:text-navy-700", emerald: "hover:bg-emerald-50 hover:text-emerald-700", cyan: "hover:bg-navy-50 hover:text-navy-700" };
 
