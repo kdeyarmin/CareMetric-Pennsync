@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   DollarSign,
   TrendingUp,
@@ -229,119 +230,119 @@ function _CaseMixBreakdown({ original, corrected }) {
 
       {/* Component Details Table */}
       <div className="border rounded-lg overflow-hidden">
-        <table className="w-full text-xs">
-          <thead className="bg-slate-100">
-            <tr>
-              <th className="text-left p-2 font-medium">Component</th>
-              <th className="text-center p-2 font-medium">Original</th>
-              {hasChanges && <th className="text-center p-2 font-medium">Corrected</th>}
-              <th className="text-center p-2 font-medium">Weight</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            <tr className="bg-blue-50">
-              <td className="p-2 font-medium">Clinical Group</td>
-              <td className="p-2 text-center">
+        <Table className="text-xs">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Component</TableHead>
+              <TableHead className="text-center">Original</TableHead>
+              {hasChanges && <TableHead className="text-center">Corrected</TableHead>}
+              <TableHead className="text-center">Weight</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow className="bg-blue-50">
+              <TableCell className="px-2 py-2 font-medium">Clinical Group</TableCell>
+              <TableCell className="px-2 py-2 text-center">
                 <span className="block text-slate-600">{original.clinicalGroup?.replace('MMTA_', '')}</span>
                 <span className="text-slate-400">{original.clinicalWeight?.toFixed(4)}</span>
-              </td>
+              </TableCell>
               {hasChanges && (
-                <td className="p-2 text-center">
+                <TableCell className="px-2 py-2 text-center">
                   <span className="block text-green-600">{corrected.clinicalGroup?.replace('MMTA_', '')}</span>
                   <span className="text-green-500">{corrected.clinicalWeight?.toFixed(4)}</span>
-                </td>
+                </TableCell>
               )}
-              <td className="p-2 text-center font-mono text-blue-700">
+              <TableCell className="px-2 py-2 text-center font-mono text-blue-700">
                 {(hasChanges ? corrected : original).clinicalWeight?.toFixed(4)}
-              </td>
-            </tr>
-            <tr>
-              <td className="p-2 font-medium">
+              </TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="px-2 py-2 font-medium">
                 Functional Level
                 <span className="block text-slate-400 font-normal">Points: {original.functionalPoints || 0}{hasChanges && corrected.functionalPoints !== original.functionalPoints ? ` → ${corrected.functionalPoints}` : ''}</span>
-              </td>
-              <td className="p-2 text-center">
+              </TableCell>
+              <TableCell className="px-2 py-2 text-center">
                 <span className="block text-slate-600 capitalize">{original.functionalLevel}</span>
                 <span className="text-slate-400">×{original.functionalMultiplier?.toFixed(2)}</span>
-              </td>
+              </TableCell>
               {hasChanges && (
-                <td className="p-2 text-center">
+                <TableCell className="px-2 py-2 text-center">
                   <span className={`block capitalize ${corrected.functionalLevel !== original.functionalLevel ? 'text-green-600' : 'text-slate-600'}`}>
                     {corrected.functionalLevel}
                   </span>
                   <span className={corrected.functionalMultiplier !== original.functionalMultiplier ? 'text-green-500' : 'text-slate-400'}>
                     ×{corrected.functionalMultiplier?.toFixed(2)}
                   </span>
-                </td>
+                </TableCell>
               )}
-              <td className="p-2 text-center font-mono text-blue-700">
+              <TableCell className="px-2 py-2 text-center font-mono text-blue-700">
                 ×{(hasChanges ? corrected : original).functionalMultiplier?.toFixed(2)}
-              </td>
-            </tr>
-            <tr className="bg-blue-50">
-              <td className="p-2 font-medium">
+              </TableCell>
+            </TableRow>
+            <TableRow className="bg-blue-50">
+              <TableCell className="px-2 py-2 font-medium">
                 Comorbidity Adj.
                 <span className="block text-slate-400 font-normal">Count: {original.comorbidityCount || 0}{hasChanges && corrected.comorbidityCount !== original.comorbidityCount ? ` → ${corrected.comorbidityCount}` : ''}</span>
-              </td>
-              <td className="p-2 text-center">
+              </TableCell>
+              <TableCell className="px-2 py-2 text-center">
                 <span className="block text-slate-600 capitalize">{original.comorbidityLevel}</span>
                 <span className="text-slate-400">×{original.comorbidityMultiplier?.toFixed(2)}</span>
-              </td>
+              </TableCell>
               {hasChanges && (
-                <td className="p-2 text-center">
+                <TableCell className="px-2 py-2 text-center">
                   <span className={`block capitalize ${corrected.comorbidityLevel !== original.comorbidityLevel ? 'text-green-600' : 'text-slate-600'}`}>
                     {corrected.comorbidityLevel}
                   </span>
                   <span className={corrected.comorbidityMultiplier !== original.comorbidityMultiplier ? 'text-green-500' : 'text-slate-400'}>
                     ×{corrected.comorbidityMultiplier?.toFixed(2)}
                   </span>
-                </td>
+                </TableCell>
               )}
-              <td className="p-2 text-center font-mono text-blue-700">
+              <TableCell className="px-2 py-2 text-center font-mono text-blue-700">
                 ×{(hasChanges ? corrected : original).comorbidityMultiplier?.toFixed(2)}
-              </td>
-            </tr>
-            <tr>
-              <td className="p-2 font-medium">Admission Source</td>
-              <td className="p-2 text-center">
+              </TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="px-2 py-2 font-medium">Admission Source</TableCell>
+              <TableCell className="px-2 py-2 text-center">
                 <span className="block text-slate-600 capitalize">{original.admissionSource}</span>
                 <span className="text-slate-400">×{original.admissionMultiplier?.toFixed(2)}</span>
-              </td>
+              </TableCell>
               {hasChanges && (
-                <td className="p-2 text-center">
+                <TableCell className="px-2 py-2 text-center">
                   <span className={`block capitalize ${corrected.admissionSource !== original.admissionSource ? 'text-green-600' : 'text-slate-600'}`}>
                     {corrected.admissionSource}
                   </span>
                   <span className={corrected.admissionMultiplier !== original.admissionMultiplier ? 'text-green-500' : 'text-slate-400'}>
                     ×{corrected.admissionMultiplier?.toFixed(2)}
                   </span>
-                </td>
+                </TableCell>
               )}
-              <td className="p-2 text-center font-mono text-blue-700">
+              <TableCell className="px-2 py-2 text-center font-mono text-blue-700">
                 ×{(hasChanges ? corrected : original).admissionMultiplier?.toFixed(2)}
-              </td>
-            </tr>
-            <tr className="bg-blue-50">
-              <td className="p-2 font-medium">Episode Timing</td>
-              <td className="p-2 text-center">
+              </TableCell>
+            </TableRow>
+            <TableRow className="bg-blue-50">
+              <TableCell className="px-2 py-2 font-medium">Episode Timing</TableCell>
+              <TableCell className="px-2 py-2 text-center">
                 <span className="block text-slate-600 capitalize">{original.episodeTiming}</span>
                 <span className="text-slate-400">×{original.timingMultiplier?.toFixed(2)}</span>
-              </td>
+              </TableCell>
               {hasChanges && (
-                <td className="p-2 text-center">
+                <TableCell className="px-2 py-2 text-center">
                   <span className={`block capitalize ${corrected.episodeTiming !== original.episodeTiming ? 'text-green-600' : 'text-slate-600'}`}>
                     {corrected.episodeTiming}
                   </span>
                   <span className={corrected.timingMultiplier !== original.timingMultiplier ? 'text-green-500' : 'text-slate-400'}>
                     ×{corrected.timingMultiplier?.toFixed(2)}
                   </span>
-                </td>
+                </TableCell>
               )}
-              <td className="p-2 text-center font-mono text-blue-700">
+              <TableCell className="px-2 py-2 text-center font-mono text-blue-700">
                 ×{(hasChanges ? corrected : original).timingMultiplier?.toFixed(2)}
-              </td>
-            </tr>
-          </tbody>
+              </TableCell>
+            </TableRow>
+          </TableBody>
           <tfoot className="bg-indigo-100">
             <tr>
               <td className="p-2 font-semibold">Final Case-Mix Weight</td>
@@ -358,7 +359,7 @@ function _CaseMixBreakdown({ original, corrected }) {
               </td>
             </tr>
           </tfoot>
-        </table>
+        </Table>
       </div>
 
       {/* Weight Calculation Formula */}

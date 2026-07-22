@@ -8,6 +8,7 @@ import { DEFAULT_PDGM_RATES, mergePdgmRates, DEFAULT_ICD10_CLINICAL_GROUPS, effe
 import { validateRateNumbers, validateIcdMappings } from "@/components/pdgm/rateSettingsValidation";
 import CaseMixWeightsUpload from "@/components/pdgm/CaseMixWeightsUpload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -100,21 +101,21 @@ function RateTable({ title, help, table, onCell }) {
         <p className="text-xs text-slate-500">{help}</p>
       </CardHeader>
       <CardContent className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="border-b border-slate-200">
-              <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 px-2 py-2"> </th>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead> </TableHead>
               {cols.map((c) => (
-                <th key={c} className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 px-2 py-2">{prettify(c)}</th>
+                <TableHead key={c}>{prettify(c)}</TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {rows.map((row) => (
-              <tr key={row} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
-                <td className="text-xs font-semibold text-slate-700 px-2 py-1.5 whitespace-nowrap">{prettify(row)}</td>
+              <TableRow key={row}>
+                <TableCell className="text-xs font-semibold text-slate-700 px-2 py-1.5">{prettify(row)}</TableCell>
                 {cols.map((col) => (
-                  <td key={col} className="px-1 py-1.5">
+                  <TableCell key={col} className="px-1 py-1.5">
                     <Input
                       type="number"
                       step="any"
@@ -124,12 +125,12 @@ function RateTable({ title, help, table, onCell }) {
                       onChange={(e) => onCell(row, col, e.target.value)}
                       className="h-9 w-28 text-sm"
                     />
-                  </td>
+                  </TableCell>
                 ))}
-              </tr>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </CardContent>
     </Card>
   );

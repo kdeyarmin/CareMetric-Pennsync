@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -112,18 +113,18 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
           <p className="text-sm text-slate-400 py-6 text-center">No employees match your search.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-slate-500 border-b border-slate-200">
-                  <th className="py-2 pr-3 font-medium">Employee</th>
-                  <th className="py-2 px-3 font-medium">Company / service line</th>
-                  <th className="py-2 px-3 font-medium">Paid by points</th>
-                  <th className="py-2 px-3 font-medium">Phone reimb. / pay ($)</th>
-                  <th className="py-2 px-3 font-medium">Applied</th>
-                  <th className="py-2 pl-3 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Company / service line</TableHead>
+                  <TableHead>Paid by points</TableHead>
+                  <TableHead>Phone reimb. / pay ($)</TableHead>
+                  <TableHead>Applied</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((e) => {
                   const profile = profileByEmail.get(e.email);
                   const serviceType = valueFor(
@@ -138,12 +139,12 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
                   const active = valueFor(e.email, "active", profile ? profile.active !== false : true);
                   const dirty = !!edits[e.email];
                   return (
-                    <tr key={e.email} className="border-b border-slate-100">
-                      <td className="py-2 pr-3">
+                    <TableRow key={e.email}>
+                      <TableCell>
                         <div className="font-medium text-slate-900">{e.name || e.email}</div>
                         <div className="text-xs text-slate-400">{e.email}</div>
-                      </td>
-                      <td className="py-2 px-3">
+                      </TableCell>
+                      <TableCell>
                         <Select
                           value={serviceType}
                           onValueChange={(v) =>
@@ -161,16 +162,16 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
                             ))}
                           </SelectContent>
                         </Select>
-                      </td>
-                      <td className="py-2 px-3">
+                      </TableCell>
+                      <TableCell>
                         <Checkbox
                           checked={earnsPoints}
                           disabled={serviceType !== "home_health"}
                           onCheckedChange={(checked) => setEdit(e.email, { earns_points: checked === true })}
                           aria-label="Paid by points"
                         />
-                      </td>
-                      <td className="py-2 px-3">
+                      </TableCell>
+                      <TableCell>
                         <Input
                           type="number"
                           min="0"
@@ -181,15 +182,15 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
                           value={amount}
                           onChange={(ev) => setEdit(e.email, { phone_reimbursement: ev.target.value })}
                         />
-                      </td>
-                      <td className="py-2 px-3">
+                      </TableCell>
+                      <TableCell>
                         <Checkbox
                           checked={active === true}
                           onCheckedChange={(checked) => setEdit(e.email, { active: checked === true })}
                           aria-label="Applied"
                         />
-                      </td>
-                      <td className="py-2 pl-3">
+                      </TableCell>
+                      <TableCell>
                         <Button
                           size="sm"
                           variant={dirty ? "default" : "outline"}
@@ -199,12 +200,12 @@ export default function PayrollSetupPanel({ employees = [], profiles = [] }) {
                           <Check className="w-4 h-4 mr-1" />
                           Save
                         </Button>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </CardContent>
