@@ -2,10 +2,12 @@
 // auditable patch needed to deactivate an app user without deleting historical
 // clinical/training/payroll records.
 
-export function canOffboardUser({ currentUserEmail, targetUserEmail, currentUserRole } = {}) {
+export function canOffboardUser({ currentUserEmail, targetUserEmail, currentUserRole, currentUserAccountType } = {}) {
   if (!currentUserEmail || !targetUserEmail) return false;
   if (currentUserEmail === targetUserEmail) return false;
-  return ['admin', 'agency_admin', 'super_admin'].includes(currentUserRole);
+  const role = String(currentUserRole || '').toLowerCase();
+  const accountType = String(currentUserAccountType || role).toLowerCase();
+  return role === 'admin' || ['agency_admin', 'super_admin'].includes(accountType);
 }
 
 export function buildUserOffboardingPatch({ targetUser, actorEmail, reason, at = new Date().toISOString() } = {}) {
