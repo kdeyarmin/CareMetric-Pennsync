@@ -62,8 +62,10 @@ export default function DailyEntryGrid({ days = [], serviceType, earnsPoints = f
     return r === 0 ? "" : String(r);
   };
 
+  // <Table> provides its own overflow-auto scroll wrapper (the sticky Day
+  // column anchors to it); the outer div only draws the border frame.
   return (
-    <div className="border border-slate-200 rounded-lg overflow-x-auto">
+    <div className="border border-slate-200 rounded-lg">
       <Table>
         <TableHeader>
           <TableRow>

@@ -100,7 +100,7 @@ function RateTable({ title, help, table, onCell }) {
         <CardTitle className="text-base">{title}</CardTitle>
         <p className="text-xs text-slate-500">{help}</p>
       </CardHeader>
-      <CardContent className="overflow-x-auto">
+      <CardContent>
         <Table>
           <TableHeader>
             <TableRow>

@@ -153,6 +153,11 @@ export default function SystemHealthMonitor() {
     return value <= m.good ? "good" : value <= m.warn ? "warn" : "critical";
   };
 
+  // A metric with no measurement yet (undefined fails every threshold
+  // comparison and would read as "critical") renders as a neutral placeholder.
+  const metricValue = (value, unit) => (Number.isFinite(value) ? `${value}${unit}` : "—");
+  const metricTone = (value, status) => (Number.isFinite(value) ? STATUS_TONE[status] : "slate");
+
   const visibleAlerts = alerts.filter((_, i) => !dismissed.includes(i));
   const overallStatus = visibleAlerts.some(a => a.level === "critical") ? "critical" : visibleAlerts.some(a => a.level === "warn") ? "warn" : "good";
 
@@ -211,29 +216,29 @@ export default function SystemHealthMonitor() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard
             label="API Response"
-            value={`${metrics.api_response ?? "—"}ms`}
-            tone={STATUS_TONE[getStatus("api_response", metrics.api_response)]}
+            value={metricValue(metrics.api_response, "ms")}
+            tone={metricTone(metrics.api_response, getStatus("api_response", metrics.api_response))}
             sub="vs last check"
             icon={Zap}
           />
           <StatCard
             label="Error Rate"
-            value={`${metrics.error_rate ?? "—"}%`}
-            tone={STATUS_TONE[getStatus("error_rate", metrics.error_rate)]}
+            value={metricValue(metrics.error_rate, "%")}
+            tone={metricTone(metrics.error_rate, getStatus("error_rate", metrics.error_rate))}
             sub="vs last check"
             icon={AlertTriangle}
           />
           <StatCard
             label="Uptime"
-            value={`${metrics.uptime ?? "—"}%`}
-            tone={STATUS_TONE[getStatus("uptime", metrics.uptime)]}
+            value={metricValue(metrics.uptime, "%")}
+            tone={metricTone(metrics.uptime, getStatus("uptime", metrics.uptime))}
             sub="vs last check"
             icon={Activity}
           />
           <StatCard
             label="DB Latency"
-            value={`${metrics.db_latency ?? "—"}ms`}
-            tone={STATUS_TONE[metrics.db_latency < 30 ? "good" : metrics.db_latency < 60 ? "warn" : "critical"]}
+            value={metricValue(metrics.db_latency, "ms")}
+            tone={metricTone(metrics.db_latency, metrics.db_latency < 30 ? "good" : metrics.db_latency < 60 ? "warn" : "critical")}
             sub="vs last check"
             icon={Database}
           />
