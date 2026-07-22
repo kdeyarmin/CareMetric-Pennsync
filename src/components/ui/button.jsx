@@ -5,7 +5,7 @@ function cn(...inputs) {
 }
 
 const buttonVariants = ({ variant = "default", size = "default", className } = {}) => {
-    const baseStyles = "inline-flex items-center justify-center rounded-lg text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-navy-500 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]"
+    const baseStyles = "inline-flex items-center justify-center rounded-lg text-sm font-semibold leading-none transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-navy-500 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]"
 
     const variants = {
       default: "bg-navy-600 text-white shadow-sm hover:bg-navy-700 hover:shadow-md dark:bg-navy-400 dark:text-slate-950 dark:hover:bg-navy-300",
@@ -18,7 +18,7 @@ const buttonVariants = ({ variant = "default", size = "default", className } = {
     }
 
     const sizes = {
-      default: "h-10 px-4 py-2",
+      default: "h-10 px-4",
       sm: "h-9 rounded-md px-3",
       lg: "h-11 rounded-md px-8",
       icon: "h-10 w-10",
