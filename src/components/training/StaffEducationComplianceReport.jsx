@@ -73,6 +73,9 @@ export default function StaffEducationComplianceReport() {
         email: nurse.email,
         completed: recent.filter(isCompleted).length,
         avgScore: Math.round(avgScore),
+        // Distinguish "no scored work in this window" from a genuine low score, so
+        // a nurse with nothing scored isn't tagged At Risk with a phantom 0%.
+        hasScores: scored.length > 0,
         overdue,
         total: recent.length,
       };
@@ -99,13 +102,13 @@ export default function StaffEducationComplianceReport() {
       totalRequired,
       completedRequired,
       totalOverdue: staffMetrics.reduce((sum, s) => sum + s.overdue, 0),
-      atRiskStaff: staffMetrics.filter(s => s.overdue > 0 || s.avgScore < 70).length
+      atRiskStaff: staffMetrics.filter(s => s.overdue > 0 || (s.hasScores && s.avgScore < 70)).length
     };
   }, [allUsers, allAssignments, timeframe]);
 
   const statusLabel = (staff) =>
-    (staff.avgScore >= 90 && staff.overdue === 0) ? 'Excellent'
-      : (staff.overdue > 0 || staff.avgScore < 70) ? 'At Risk'
+    (staff.hasScores && staff.avgScore >= 90 && staff.overdue === 0) ? 'Excellent'
+      : (staff.overdue > 0 || (staff.hasScores && staff.avgScore < 70)) ? 'At Risk'
       : 'On Track';
 
   const exportCSV = () => {

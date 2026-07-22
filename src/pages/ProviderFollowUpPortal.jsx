@@ -52,8 +52,8 @@ export default function ProviderFollowUpPortal() {
           setState({ phase: "ready" });
         }
       })
-      .catch(() => {
-        if (!cancelled) setState({ phase: "invalid", message: "Unable to open this request. Please try again or contact the agency." });
+      .catch((err) => {
+        if (!cancelled) setState({ phase: "invalid", message: err?.response?.data?.error || "Unable to open this request. Please try again or contact the agency." });
       });
     return () => {
       cancelled = true;

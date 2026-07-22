@@ -33,7 +33,7 @@ export default function AssignmentWizard({ users = [], onAssign, initialFilters 
           <Select value={filters.department} onValueChange={(value) => setFilters({ ...filters, department: value })}><SelectTrigger><SelectValue placeholder="Department" /></SelectTrigger><SelectContent><SelectItem value="all">All departments</SelectItem>{unique(users.map((user) => user.department)).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
           <Select value={filters.business_line} onValueChange={(value) => setFilters({ ...filters, business_line: value })}><SelectTrigger><SelectValue placeholder="Business line" /></SelectTrigger><SelectContent><SelectItem value="all">All business lines</SelectItem>{unique(users.map((user) => user.business_line)).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
           <Select value={filters.location} onValueChange={(value) => setFilters({ ...filters, location: value })}><SelectTrigger><SelectValue placeholder="Location" /></SelectTrigger><SelectContent><SelectItem value="all">All locations</SelectItem>{unique(users.map((user) => user.location)).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
-          <Button className="w-full" onClick={() => onAssign?.({ userEmails: selectedUsers, filters })}>Use {selectedUsers.length || filteredUsers.length} Employees</Button>
+          <Button className="w-full" onClick={() => onAssign?.({ userEmails: selectedUsers.length ? selectedUsers : filteredUsers.map((user) => user.email), filters })}>Use {selectedUsers.length || filteredUsers.length} Employees</Button>
         </CardContent>
       </Card>
       <Card>

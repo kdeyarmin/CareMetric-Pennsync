@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
 
     // Recalculate quality scores for all entities
     const [patients, users, visits] = await Promise.all([
-      base44.asServiceRole.entities.Patient.filter({ status: 'active' }),
+      base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000),
       base44.asServiceRole.entities.User.list('-created_date', 500),
       base44.asServiceRole.entities.Visit.filter({ status: 'completed' }, '-visit_date', 200),
     ]);

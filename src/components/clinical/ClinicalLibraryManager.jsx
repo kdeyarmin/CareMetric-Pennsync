@@ -63,7 +63,7 @@ export default function ClinicalLibraryManager() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'active', 'first_name', 200],
     queryFn: () => base44.entities.Patient.filter({ status: 'active' }, 'first_name', 200),
     initialData: []
   });

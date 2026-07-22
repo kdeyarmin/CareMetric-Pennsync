@@ -163,10 +163,19 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
       return createTaskMutation.mutateAsync(taskData);
     });
 
-    await Promise.all(taskPromises);
-    
-    if (onTasksCreated) {
-      onTasksCreated(pathway.recommended_tasks.length);
+    // allSettled (not all): a partial failure was previously an unhandled rejection
+    // with no user feedback. Report how many succeeded and surface the rest.
+    const results = await Promise.allSettled(taskPromises);
+    const succeeded = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - succeeded;
+
+    if (onTasksCreated && succeeded > 0) {
+      onTasksCreated(succeeded);
+    }
+    if (failed > 0) {
+      toast.error(`Created ${succeeded} of ${results.length} pathway task(s); ${failed} failed. Please retry the failed one(s).`);
+    } else {
+      toast.success(`Created ${succeeded} pathway task(s).`);
     }
   };
 

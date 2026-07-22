@@ -66,13 +66,13 @@ export default function PhoneAnalyticsPanel() {
 
   const { data: smsMessages = [] } = useQuery({
     queryKey: ["analytics-sms"],
-    queryFn: () => base44.entities.SmsMessage.list("-created_date", 1000),
+    queryFn: () => base44.entities.SmsMessage.list("-created_date", 5000),
     enabled: isAdmin,
     initialData: [],
   });
   const { data: callLogs = [] } = useQuery({
     queryKey: ["analytics-calls"],
-    queryFn: () => base44.entities.CallLog.list("-created_date", 1000),
+    queryFn: () => base44.entities.CallLog.list("-created_date", 5000),
     enabled: isAdmin,
     initialData: [],
   });

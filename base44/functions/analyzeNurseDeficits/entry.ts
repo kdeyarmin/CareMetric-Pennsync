@@ -16,10 +16,15 @@ Deno.serve(async (req) => {
     }
     const emailToAnalyze = nurseEmail || user.email;
 
-    // Fetch all AI suggestions for this nurse in the time period
-    const suggestions = await base44.asServiceRole.entities.TrainingRecommendation.filter({
-      nurse_email: emailToAnalyze
-    });
+    // Fetch AI suggestions for this nurse newest-first with an explicit high limit.
+    // Without a sort/limit the SDK returns only the default first page (~50 rows,
+    // not newest-first), so a nurse with many older recommendations got an empty
+    // recent window and a blank deficit report.
+    const suggestions = await base44.asServiceRole.entities.TrainingRecommendation.filter(
+      { nurse_email: emailToAnalyze },
+      '-created_date',
+      1000
+    );
 
     // Filter by date
     const cutoffDate = new Date();

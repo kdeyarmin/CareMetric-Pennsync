@@ -78,7 +78,7 @@ export default function Messages() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'first_name', 100],
     queryFn: () => base44.entities.Patient.list('first_name', 100),
     initialData: [],
   });
@@ -326,7 +326,7 @@ export default function Messages() {
                       </div>
                       <div className={`mt-0.5 flex items-center gap-1 px-1 text-[10px] text-slate-400 ${mine ? "flex-row-reverse" : ""}`}>
                         <span>{format(new Date(msg.created_date), "MMM d, h:mm a")}</span>
-                        {mine && msg.read_by?.includes(currentUser?.email) && <CheckCircle2 className="h-3 w-3 text-emerald-500" />}
+                        {mine && msg.read_by?.some((reader) => reader && reader !== currentUser?.email) && <CheckCircle2 className="h-3 w-3 text-emerald-500" />}
                       </div>
                       {msg.patient_id && (
                         <Link

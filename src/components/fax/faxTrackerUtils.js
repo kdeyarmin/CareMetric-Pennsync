@@ -11,12 +11,19 @@ export const filterRecentFaxLogs = (logs = [], now = Date.now(), rangeMs = TWENT
 // counts as queued — otherwise both would fall through to 'pending'.
 const STATUS_GROUP = { sent: 'delivered', sending: 'queued' };
 
+// Normalize a raw fax status to its canonical bucket so the row/detail display
+// and the summary counts agree (a 'sent' fax reads/counts as delivered, a
+// 'sending' fax as queued) instead of falling through to 'Pending'/'Unknown'.
+export const normalizeStatus = (raw) => {
+  const s = String(raw || '').toLowerCase() || 'pending';
+  return STATUS_GROUP[s] || s;
+};
+
 export const getStatusCounts = (logs = []) => {
   const counts = { delivered: 0, failed: 0, pending: 0, queued: 0 };
 
   logs.forEach((log) => {
-    const raw = log.status?.toLowerCase() || 'pending';
-    const status = STATUS_GROUP[raw] || raw;
+    const status = normalizeStatus(log.status);
     if (status in counts) {
       counts[status] += 1;
     } else {

@@ -93,10 +93,12 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
       documentedConditions.push({ condition: "Pressure Ulcer", source: "M1306" });
     }
     if (pdgmData.clinical_items?.stasis_ulcer) {
-      documentedConditions.push({ condition: "Stasis Ulcer", source: "M1322" });
+      // Stasis ulcer is M1330 (M1322 is the count of Stage-1 pressure injuries).
+      documentedConditions.push({ condition: "Stasis Ulcer", source: "M1330" });
     }
     if (pdgmData.clinical_items?.surgical_wound) {
-      documentedConditions.push({ condition: "Surgical Wound", source: "M1330" });
+      // Surgical wound is M1340 (M1330 is the stasis-ulcer item).
+      documentedConditions.push({ condition: "Surgical Wound", source: "M1340" });
     }
     if (documentedConditions.length === 0) return null;
     return reconcileComorbidities({

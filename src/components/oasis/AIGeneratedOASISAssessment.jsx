@@ -77,7 +77,11 @@ export default function AIGeneratedOASISAssessment({ patientId, visitId, visitTy
           const numMatch = itemNum.match(/M(\d+)/);
           if (numMatch) {
             const num = parseInt(numMatch[1]);
-            if (num >= 1000 && num <= 1060) return false;
+            // M1021 (Primary Diagnosis) and M1023 (Other Diagnoses) fall in this
+            // range but are clinical diagnosis items, not administrative — keep
+            // them so the primary diagnosis is saved and the referral-divergence
+            // safety check can run.
+            if (num >= 1000 && num <= 1060 && num !== 1021 && num !== 1023) return false;
           }
           return true;
         });

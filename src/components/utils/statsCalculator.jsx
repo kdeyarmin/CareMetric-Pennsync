@@ -239,6 +239,10 @@ export const calculateNurseStats = (nurseEmail, data) => {
 
   const timeSavedMinutes = totalConversions * 20;
   const timeSavedHours = Math.floor(timeSavedMinutes / 60);
+  // Range-scoped time saved (matches dateRange), for cards labeled e.g. "30 days".
+  // The all-time fields above are kept as-is (AgencyAnalytics reads them all-time).
+  const timeSavedMinutesInRange = conversionsInRange * 20;
+  const timeSavedHoursInRange = Math.floor(timeSavedMinutesInRange / 60);
 
   return {
     totalVisits: nurseVisits.length,
@@ -248,7 +252,10 @@ export const calculateNurseStats = (nurseEmail, data) => {
     noteConversionsInRange: conversionsInRange,
     timeSavedMinutes,
     timeSavedHours,
-    timeSavedDisplay: timeSavedHours > 0 ? `${timeSavedHours}h ${timeSavedMinutes % 60}m` : `${timeSavedMinutes}m`
+    timeSavedDisplay: timeSavedHours > 0 ? `${timeSavedHours}h ${timeSavedMinutes % 60}m` : `${timeSavedMinutes}m`,
+    timeSavedMinutesInRange,
+    timeSavedHoursInRange,
+    timeSavedDisplayInRange: timeSavedHoursInRange > 0 ? `${timeSavedHoursInRange}h ${timeSavedMinutesInRange % 60}m` : `${timeSavedMinutesInRange}m`
   };
 };
 

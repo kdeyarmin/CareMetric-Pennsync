@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, ArrowRight, CheckCircle2, Database } from "lucide-react";
+import { parseLocalDate } from "@/lib/dateLocal";
 
 export default function QuickHealthOverview() {
   const { data: patients = [] } = useQuery({
@@ -40,7 +41,13 @@ export default function QuickHealthOverview() {
   const usersWithoutCreds = users.filter(u => !coveredUsers.has(u.email)).length;
 
   const now = new Date();
-  const expiredCreds = credentials.filter(c => new Date(c.expiration_date) < now).length;
+  // Compare on local calendar midnights so a date-only expiration isn't parsed as
+  // UTC midnight and counted as expired up to a day early.
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const expiredCreds = credentials.filter(c => {
+    const d = parseLocalDate(c.expiration_date);
+    return d && d < startOfToday;
+  }).length;
 
   const hasIssues = incompletePatients > 0 || incompleteUsers > 0 || usersWithoutCreds > 0 || expiredCreds > 0;
 

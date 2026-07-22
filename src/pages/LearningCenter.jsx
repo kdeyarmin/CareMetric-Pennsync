@@ -54,7 +54,6 @@ import LearnerMemoryBoosters from '@/components/training/LearnerMemoryBoosters';
 import EducatorReadinessPanel from '@/components/learning/EducatorReadinessPanel';
 import GamificationDashboard from '@/components/training/GamificationDashboard';
 import { selfEnrollCourse } from '@/functions/selfEnrollCourse';
-import { generateLearningTranscriptPDF } from '@/functions/generateLearningTranscriptPDF';
 import { submitCourseFeedback } from '@/functions/submitCourseFeedback';
 import { getCourseFeedbackSummary } from '@/functions/getCourseFeedbackSummary';
 import LoadingState from "@/components/ui/LoadingState";
@@ -156,10 +155,11 @@ const daysUntil = (date) => {
   if (!date) return Infinity;
   const target = parseLocalDate(date) || new Date(date);
   const now = new Date();
-  // Compare dates only, ignoring time to avoid timezone edge cases
-  target.setHours(23, 59, 59, 999);
+  // Compare whole calendar days from local midnight to local midnight, so an item
+  // due today is 0 (not 1) and one due yesterday is -1 (Expired), not 0.
+  target.setHours(0, 0, 0, 0);
   now.setHours(0, 0, 0, 0);
-  return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
+  return Math.round((target - now) / (1000 * 60 * 60 * 24));
 };
 
 export default function LearningCenter() {
@@ -361,8 +361,15 @@ export default function LearningCenter() {
     if (!user?.email) return;
     setDownloadingTranscript(true);
     try {
-      const response = await generateLearningTranscriptPDF({ employeeId: user.email });
-      downloadBlob(`Training_Transcript_${toLocalISODate()}.pdf`, response.data, 'application/pdf');
+      // Fetch as binary: functions.invoke UTF-8-decodes PDF bytes and corrupts
+      // the file, so use functions.fetch + arrayBuffer (mirrors UserGuides/Help).
+      const response = await base44.functions.fetch('generateLearningTranscriptPDF', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: user.email })
+      });
+      if (!response.ok) throw new Error(`PDF generation failed (${response.status})`);
+      downloadBlob(`Training_Transcript_${toLocalISODate()}.pdf`, await response.arrayBuffer(), 'application/pdf');
     } catch (error) {
       console.error('Failed to download transcript:', error);
     } finally {

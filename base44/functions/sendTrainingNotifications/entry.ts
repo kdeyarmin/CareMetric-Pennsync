@@ -50,7 +50,9 @@ Deno.serve(async (req) => {
     const today = new Date();
     const notificationsSent = [];
 
-    const assignments = await base44.asServiceRole.entities.TrainingAssignment.list('-created_date', 1000);
+    // Sort by due date (soonest first) with a high cap so the most overdue /
+    // soonest-due rows are never starved by a newest-first 1000-row window.
+    const assignments = await base44.asServiceRole.entities.TrainingAssignment.list('due_date', 5000);
 
     for (const assignment of assignments.filter((item) => ['assigned', 'in_progress'].includes(item.status))) {
       if (!assignment.due_date || !assignment.assigned_to_user_id) continue;

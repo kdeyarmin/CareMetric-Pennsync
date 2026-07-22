@@ -149,8 +149,8 @@ Deno.serve(async (req) => {
     addText(`Audits Flagged: ${flaggedAudits}`, 10);
     addText(`Critical Issues: ${criticalAudits}`, 10);
 
-    const visitsWithCompleteDoc = completedVisits > 0 
-      ? filteredVisits.filter(v => v.nurse_notes && v.nurse_notes.length > 100).length
+    const visitsWithCompleteDoc = completedVisits > 0
+      ? filteredVisits.filter(v => v.status === 'completed' && v.nurse_notes && v.nurse_notes.length > 100).length
       : 0;
     const docComplianceRate = completedVisits > 0 
       ? Math.round((visitsWithCompleteDoc / completedVisits) * 100)

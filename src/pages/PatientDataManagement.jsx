@@ -82,7 +82,7 @@ export default function PatientDataManagement() {
   const isAdmin = isAdminView(currentUser);
 
   const { data: patients = [], isLoading } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'roster', 'created', 2000],
     queryFn: async () => {
       try {
         const allPatients = await base44.entities.Patient.list('-created_date', 2000);

@@ -31,7 +31,12 @@ export default function ScheduledSmsList() {
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["scheduled-sms", user?.email],
-    queryFn: () => base44.entities.ScheduledSms.filter({ nurse_email: user.email }, "send_at", 200),
+    // Only pending (still-cancelable) texts, soonest-first: filtering by status
+    // keeps already-sent history from crowding out pending rows, and ascending
+    // send_at guarantees the imminent ones are within the fetched page (a plain
+    // ascending fetch buried pending under old history; "-send_at" buried the
+    // soonest-due texts behind far-future ones).
+    queryFn: () => base44.entities.ScheduledSms.filter({ nurse_email: user.email, status: "pending" }, "send_at", 500),
     enabled: !!user?.email,
     refetchInterval: 30000,
     initialData: [],

@@ -101,7 +101,7 @@ export default function ComplianceCenter() {
   });
 
   const { data: _patients = [] } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'updated', 2000],
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
     initialData: [],
   });
@@ -297,15 +297,17 @@ export default function ComplianceCenter() {
   }, [groupedByUser]);
 
   const sendNotificationMutation = useMutation({
-    mutationFn: async ({ userEmails, message, subject }) => {
+    mutationFn: async ({ recipients, subject }) => {
+      // Each recipient gets ONLY their own compliance issues — never a combined
+      // roster (that would leak every selected employee's PHI to everyone).
       return await Promise.all(
-        userEmails.map(email => 
+        recipients.map(({ email, message }) =>
           base44.integrations.Core.SendEmail({ to: email, subject, body: message })
         )
       );
     },
     onSuccess: (_, variables) => {
-      toast.success(`Notifications sent to ${variables.userEmails.length} employee(s)`);
+      toast.success(`Notifications sent to ${variables.recipients.length} employee(s)`);
       setSelectedUsers(new Set());
     },
     onError: () => {
@@ -320,16 +322,18 @@ export default function ComplianceCenter() {
     }
 
     const userEmails = Array.from(selectedUsers);
-    const issuesSummary = userEmails.map(email => {
+    const recipients = userEmails.map(email => {
       const userData = groupedByUser[email];
       const issues = userData.issues.map(issue => `• ${issue.details}`).join('\n');
-      return `${userData.userName}:\n${issues}`;
-    }).join('\n\n');
+      return {
+        email,
+        message: `You have compliance items requiring immediate attention:\n\n${issues}\n\nPlease address these items as soon as possible.`
+      };
+    });
 
     sendNotificationMutation.mutate({
-      userEmails,
+      recipients,
       subject: "⚠️ Compliance Action Required",
-      message: `You have compliance items requiring immediate attention:\n\n${issuesSummary}\n\nPlease address these items as soon as possible.`
     });
   };
 

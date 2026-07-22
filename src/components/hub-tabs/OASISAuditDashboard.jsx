@@ -56,6 +56,9 @@ export default function OASISAuditDashboard() {
     queryFn: () => base44.auth.me(),
   });
 
+  // Gate on role === 'admin' to match OASISAudit read RLS (all-row access is
+  // role-admin only; others are limited to created_by/assigned_to), so this
+  // dashboard isn't shown empty/partial to account_type-only admins.
   const isAdmin = currentUser?.role === 'admin';
 
   // Fetch audits

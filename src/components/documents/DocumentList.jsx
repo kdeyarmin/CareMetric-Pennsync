@@ -181,7 +181,7 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
   });
 
   const { data: allPatients = [] } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'updated', 2000],
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
     initialData: [],
     enabled: showPatientInfo && !patientId

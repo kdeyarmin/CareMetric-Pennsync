@@ -179,8 +179,11 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
 
       // Update file statuses based on results
       if (response.data?.results) {
-        response.data.results.forEach((result, _idx) => {
-          const fileIndex = files.findIndex(f => f.name === result.fileName);
+        response.data.results.forEach((result) => {
+          // Match the first file with this name that is still analyzing, so two
+          // files sharing a name each claim their own result instead of both
+          // overwriting the first (leaving the second stuck on "analyzing").
+          const fileIndex = files.findIndex((f, i) => f.name === result.fileName && updatedFiles[i]?.status === 'analyzing');
           if (fileIndex !== -1) {
             updatedFiles[fileIndex] = {
               ...updatedFiles[fileIndex],

@@ -239,7 +239,7 @@ const AREA_CODE_TIMEZONE = {
   561: "America/New_York",
   562: "America/Los_Angeles",
   563: "America/Chicago",
-  564: "America/New_York",
+  564: "America/Los_Angeles",
   567: "America/New_York",
   570: "America/New_York",
   571: "America/New_York",

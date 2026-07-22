@@ -8,6 +8,7 @@ import { Loader2, Zap, CheckCircle2, XCircle, AlertTriangle, Play, Info } from "
 import { Progress } from "@/components/ui/progress";
 import { format, addDays } from "date-fns";
 import { deriveActionTypes, evaluateRuleTrigger } from "@/components/oasis/workflowEngineUtils";
+import { sendInAppNotification } from "@/lib/notify";
 
 const ACTION_LABELS = {
   create_task: "Create task",
@@ -192,16 +193,35 @@ export default function WorkflowExecutionEngine({
             executed_at: new Date().toISOString()
           };
         }
-        return {
-          action_type: "notify_clinician",
-          status: "completed",
-          result: {
-            recipient: recipientEmail,
-            message: config.notification_message || "OASIS workflow triggered",
-            sent_at: new Date().toISOString()
-          },
-          executed_at: new Date().toISOString()
-        };
+        // Actually create the in-app notification (this was previously a no-op that
+        // still reported "completed", so no clinician was ever notified).
+        try {
+          const message = config.notification_message || "OASIS workflow triggered";
+          await sendInAppNotification({
+            user_email: recipientEmail,
+            title: rule.rule_name || "OASIS workflow",
+            message,
+            type: "compliance_alert",
+            priority: config.task_priority || "medium",
+          });
+          return {
+            action_type: "notify_clinician",
+            status: "completed",
+            result: {
+              recipient: recipientEmail,
+              message,
+              sent_at: new Date().toISOString()
+            },
+            executed_at: new Date().toISOString()
+          };
+        } catch (error) {
+          return {
+            action_type: "notify_clinician",
+            status: "failed",
+            error: error.message,
+            executed_at: new Date().toISOString()
+          };
+        }
       }
 
       case "flag_for_review":

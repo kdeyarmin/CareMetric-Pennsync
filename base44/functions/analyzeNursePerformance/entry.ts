@@ -28,8 +28,22 @@ Deno.serve(async (req) => {
 
     const { nurse_email, date_range_days = 30 } = await req.json();
 
-    // Admins can view any nurse, nurses can only view themselves
-    const targetEmail = (user.role === 'admin' && nurse_email) ? nurse_email : user.email;
+    // Admins can view any nurse, nurses can only view themselves. The dashboard
+    // shows the nurse picker to account_type admins too, so honor their selection
+    // here — otherwise their own data was returned mislabeled as the picked nurse.
+    // Agency admins are scoped to their own agency; role/super admins are not.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isRoleAdmin = user.role === 'admin';
+    const isAgencyAdmin = user.account_type === 'agency_admin';
+    let targetEmail = user.email;
+    if (nurse_email && nurse_email !== user.email && (isRoleAdmin || isSuperAdmin || isAgencyAdmin)) {
+      if (isRoleAdmin || isSuperAdmin) {
+        targetEmail = nurse_email;
+      } else {
+        const [target] = await base44.asServiceRole.entities.User.filter({ email: nurse_email }, '-created_date', 1);
+        targetEmail = (target && user.agency_name && target.agency_name === user.agency_name) ? nurse_email : user.email;
+      }
+    }
     
     const dateThreshold = new Date();
     dateThreshold.setDate(dateThreshold.getDate() - date_range_days);
@@ -300,8 +314,13 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
     // Calculate patient outcomes
     const nursePatientIds = [...new Set(visits.map(v => v.patient_id))];
 
+    // "incidents_reported" = incidents this nurse actually reported. The old
+    // visit_id join was always empty (writers don't set visit_id); attribute by
+    // created_by (the reporter) — NOT by patient, which would count every incident
+    // on a shared patient against every nurse who ever visited them.
     const nurseIncidents = incidents.filter(i =>
-      visits.some(v => v.id === i.visit_id)
+      i.created_by === targetEmail ||
+      (i.visit_id && visits.some(v => v.id === i.visit_id))
     );
 
     const patientOutcomes = {

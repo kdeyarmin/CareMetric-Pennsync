@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { formatLocalDate } from "@/lib/dateLocal";
 import {
   Dialog,
   DialogContent,
@@ -42,8 +43,9 @@ export default function PotentialDuplicateDialog({ open, onOpenChange, matches =
 
   const formatDob = (dob) => {
     if (!dob) return "N/A";
-    const d = new Date(dob);
-    return Number.isNaN(d.getTime()) ? dob : d.toLocaleDateString();
+    // Date-only DOB: format on the local calendar so it isn't shown a day early
+    // (which could make two records look like different people).
+    return formatLocalDate(dob) || dob;
   };
 
   return (

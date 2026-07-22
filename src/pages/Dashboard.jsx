@@ -120,7 +120,7 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     if (!currentUser?.email) {
-      return { noteConversions: 0, timeSavedDisplay: '0 hrs', noteEnhancements: { total: 0 } };
+      return { noteConversions: 0, timeSavedDisplay: '0 hrs', timeSavedDisplayInRange: '0 hrs', noteEnhancements: { total: 0 } };
     }
 
     // Filter for current user's enhancements
@@ -248,7 +248,7 @@ export default function Dashboard() {
         </Link>
         <StatCard
           label="Time Saved"
-          value={stats.timeSavedDisplay}
+          value={stats.timeSavedDisplayInRange}
           sub="30 days"
           icon={Clock}
           tone="gold"

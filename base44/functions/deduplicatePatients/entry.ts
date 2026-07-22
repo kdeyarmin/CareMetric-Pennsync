@@ -950,8 +950,13 @@ Deno.serve(async (req) => {
 
     // Bounded to the SDK's 5000/request max; omitting a limit silently caps at
     // the SDK default of 50. Re-run the scan if more patients remain.
-    const patients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
-    console.log(`Loaded ${patients.length} patients in ${Date.now() - startTime}ms`);
+    const loadedPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
+    // Exclude merged / soft-archived duplicates from the candidate set: a merged
+    // loser keeps the survivor's MRN and name, so re-scanning it re-buckets the
+    // same pair as a phantom duplicate on every run (and could even pick an
+    // archived stub as the survivor).
+    const patients = loadedPatients.filter((p) => !p.is_archived && p.status !== 'merged');
+    console.log(`Loaded ${loadedPatients.length} patients (${patients.length} active candidates) in ${Date.now() - startTime}ms`);
 
     // Quick candidate bucketing by exact MRN and exact normalized name.
     const mrnGroups = new Map();

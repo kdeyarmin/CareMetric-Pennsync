@@ -90,7 +90,9 @@ export default function PatientAlertsDashboard({ patientId = null }) {
     if (patientId || isAdmin) return allAlerts;
     if (!currentUser?.favorited_patients) return [];
     return allAlerts.filter(alert =>
-      currentUser.favorited_patients.some(fav => fav.id === alert.patient_id)
+      // favorited_patients holds patient-ID strings; tolerate legacy {id} objects.
+      currentUser.favorited_patients.some(fav =>
+        (typeof fav === 'string' ? fav : fav?.id) === alert.patient_id)
     );
   }, [allAlerts, patientId, currentUser, isAdmin]);
 

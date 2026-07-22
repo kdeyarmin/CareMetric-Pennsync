@@ -9,6 +9,9 @@ export default function AIComplianceInServices() {
     queryFn: () => base44.auth.me(),
   });
 
+  // Gate on role === 'admin' to match TrainingCourse RLS (draft reads and all
+  // writes are role-admin only). account_type-only admins would otherwise see the
+  // management hub but hit an incomplete course list and failing create/publish.
   const isAdmin = currentUser?.role === 'admin';
 
   // Admins see the full management hub; everyone else sees their in-service

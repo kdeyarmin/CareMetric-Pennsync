@@ -67,8 +67,11 @@ class ErrorBoundary extends React.Component {
         window.location.href = reloadUrl.toString();
         return;
       }
-      // Exhausted retries — clear key so a future navigation can try again.
+      // Exhausted retries — clear key so a future navigation can try again, and
+      // drop the stale-chunk flag so render() shows the real error card (with a
+      // manual reload) instead of a permanent "Refreshing…" spinner.
       sessionStorage.removeItem(key);
+      this.setState({ isStaleChunk: false });
     }
     logger.error('Error caught by boundary:', error, errorInfo);
   }

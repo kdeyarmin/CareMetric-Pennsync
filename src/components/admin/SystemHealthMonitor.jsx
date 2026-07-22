@@ -110,7 +110,7 @@ export default function SystemHealthMonitor() {
     const probes = upProbesRef.current;
     const newMetrics = {
       api_response: measured.apiLatency ?? 0,
-      error_rate: parseFloat((incidents.length / Math.max(visits.length, 1) * 10).toFixed(2)),
+      error_rate: parseFloat((incidents.length / Math.max(visits.length, 1) * 100).toFixed(2)),
       uptime: probes.total ? parseFloat(((probes.ok / probes.total) * 100).toFixed(3)) : 100,
       active_users: users.filter(u => {
         const d = new Date(u.updated_date || u.created_date);

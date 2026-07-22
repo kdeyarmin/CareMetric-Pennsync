@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       let acks = await svc.PolicyAcknowledgment.filter(filter, '-created_date', 5000);
       // Agency admins are scoped to their own agency's staff.
       if (user.account_type === 'agency_admin' && user.agency_name) {
-        const agencyUsers = await svc.User.filter({ agency_name: user.agency_name });
+        const agencyUsers = await svc.User.filter({ agency_name: user.agency_name }, '-created_date', 5000);
         const emails = new Set(agencyUsers.map((u) => u.email));
         acks = acks.filter((a) => emails.has(a.user_id));
       }

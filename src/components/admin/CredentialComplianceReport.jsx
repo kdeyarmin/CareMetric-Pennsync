@@ -8,7 +8,7 @@ import { AlertTriangle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toCsvRows } from "@/components/admin/csvExport";
-import { parseLocalDate, toLocalISODate } from "@/lib/dateLocal";
+import { parseLocalDate, toLocalISODate, formatLocalDate } from "@/lib/dateLocal";
 
 const WINDOW_OPTIONS = [
   { value: "all", label: "All (including future)" },
@@ -142,7 +142,7 @@ export default function CredentialComplianceReport() {
       c.title || '',
       c.item_type || '',
       c.issuing_organization || '',
-      c.expiration_date ? new Date(c.expiration_date).toLocaleDateString() : '',
+      formatLocalDate(c.expiration_date),
       c.daysUntil,
       c.daysUntil < 0 ? 'Expired' : 'Active',
     ]);
@@ -269,7 +269,7 @@ export default function CredentialComplianceReport() {
                 <div key={c.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">{c.title} <span className="text-slate-400 font-normal">· {c.item_type}</span></p>
-                    <p className="text-xs text-slate-500 truncate">{c.user_name || c.user_id} · expires {new Date(c.expiration_date).toLocaleDateString()}</p>
+                    <p className="text-xs text-slate-500 truncate">{c.user_name || c.user_id} · expires {formatLocalDate(c.expiration_date)}</p>
                   </div>
                   {c.daysUntil < 0 ? (
                     <Badge variant="destructive">Expired {Math.abs(c.daysUntil)}d</Badge>

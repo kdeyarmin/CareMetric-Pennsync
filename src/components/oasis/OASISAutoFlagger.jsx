@@ -47,6 +47,11 @@ async function autoFlagOASIS(oasisUpload, analysisResults) {
     // Accuracy in [60, 75) — a genuine accuracy flag, not the generic default.
     flagReason = 'low_accuracy';
     priority = 'high';
+  } else if (analysisResults.overall_score < THRESHOLDS.overall) {
+    // Flagged solely for a low overall score (accuracy/compliance individually OK).
+    // Previously this fell through to the default low_accuracy/medium mislabel.
+    flagReason = 'low_overall_score';
+    priority = 'high';
   }
 
   // Compile key issues

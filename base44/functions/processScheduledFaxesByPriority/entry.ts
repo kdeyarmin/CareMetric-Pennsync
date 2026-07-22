@@ -75,8 +75,8 @@ Deno.serve(async (req) => {
     // Sort by priority (urgent first, then high, normal, low)
     const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
     dueFaxes.sort((a, b) => {
-      const aPriority = priorityOrder[a.priority] || 2;
-      const bPriority = priorityOrder[b.priority] || 2;
+      const aPriority = priorityOrder[a.priority] ?? 2;
+      const bPriority = priorityOrder[b.priority] ?? 2;
       if (aPriority !== bPriority) return aPriority - bPriority;
       // If same priority, sort by scheduled time (earliest first)
       return new Date(a.scheduled_time) - new Date(b.scheduled_time);

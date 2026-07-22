@@ -85,17 +85,25 @@ export default function DesktopSidebar({
                 <Sparkles className="w-3 h-3" /> Favorites
               </p>
             )}
-            {currentUser?.favorited_patients?.map((patient) => (
-              <Link
-                key={`fav-patient-${patient.id}`}
-                to={createPageUrl(`PatientDetails?id=${patient.id}`)}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-200 hover:bg-navy-700 hover:text-white"
-                title={collapsed ? patient.name : undefined}
-              >
-                <Users className="w-4 h-4 flex-shrink-0" />
-                {!collapsed && <span className="truncate">{patient.name}</span>}
-              </Link>
-            ))}
+            {currentUser?.favorited_patients?.map((patient) => {
+              // favorited_patients holds patient-ID strings (User schema); tolerate
+              // legacy {id,name} objects and skip anything without a usable id so we
+              // never render a `?id=undefined` link or a blank label.
+              const id = typeof patient === 'string' ? patient : patient?.id;
+              if (!id) return null;
+              const label = (patient && typeof patient === 'object' && patient.name) ? patient.name : id;
+              return (
+                <Link
+                  key={`fav-patient-${id}`}
+                  to={createPageUrl(`PatientDetails?id=${id}`)}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-200 hover:bg-navy-700 hover:text-white"
+                  title={collapsed ? label : undefined}
+                >
+                  <Users className="w-4 h-4 flex-shrink-0" />
+                  {!collapsed && <span className="truncate">{label}</span>}
+                </Link>
+              );
+            })}
             <div className="border-t border-navy-700 my-2" />
           </>
         )}

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { format } from "date-fns";
 import {
   BarChart,
   Bar,
@@ -126,7 +127,7 @@ export default function AdminTrainingAnalytics() {
   const weeklyData = {};
   completedAssignments.forEach(a => {
     if (a.completion_date) {
-      const week = new Date(a.completion_date).toISOString().substring(0, 10);
+      const week = format(new Date(a.completion_date), "yyyy-MM-dd");
       weeklyData[week] = (weeklyData[week] || 0) + 1;
     }
   });

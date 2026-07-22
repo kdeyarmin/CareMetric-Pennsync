@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { formatLocalDate } from "@/lib/dateLocal";
 
 export default function VitalSignsTrendDashboard({ patientId }) {
   const { data: visits = [], isLoading } = useQuery({
@@ -26,7 +27,7 @@ export default function VitalSignsTrendDashboard({ patientId }) {
         const v = visit.vital_signs || {};
         return {
           visit: idx + 1,
-          date: new Date(visit.visit_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          date: formatLocalDate(visit.visit_date, { month: "short", day: "numeric" }),
           visitType: visit.visit_type?.replace(/_/g, " ") || "—",
           systolic: v.blood_pressure_systolic || null,
           diastolic: v.blood_pressure_diastolic || null,

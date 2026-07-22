@@ -19,7 +19,7 @@ export default function DocumentManagement() {
   });
 
   const { data: _patients = [] } = useQuery({
-    queryKey: ['patients'],
+    queryKey: ['patients', 'updated', 2000],
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
     initialData: []
   });
