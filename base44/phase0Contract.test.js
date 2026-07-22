@@ -81,7 +81,11 @@ test('P0-01 high-risk entities define scoped read RLS for patient/document/messa
       assert.match(raw, new RegExp(`"${owner}"\\s*:\\s*\\{\\s*"\\$contains"\\s*:\\s*"\\{\\{user\\.email\\}\\}"`), `${item.entity} read RLS must include ${owner}.$contains`);
     }
     if (item.adminReadable) {
-      assert.match(raw, /"role"\s*:\s*"admin"|"account_type"\s*:\s*"super_admin"/, `${item.entity} read RLS must include an admin/super-admin path`);
+      assert.match(
+        raw,
+        /"role"\s*:\s*"admin"|"account_type"\s*:\s*"agency_admin"|"account_type"\s*:\s*"super_admin"/,
+        `${item.entity} read RLS must include an admin/super-admin path`,
+      );
     }
   }
 });
