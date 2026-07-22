@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-import { jsPDF } from 'npm:jspdf@2.5.1';
+import { jsPDF } from 'npm:jspdf@2.5.2';
 
 Deno.serve(async (req) => {
     try {
@@ -195,7 +195,7 @@ Deno.serve(async (req) => {
         console.error('Certificate generation error:', error);
         return Response.json({ 
             error: 'Failed to generate certificate',
-            details: error.message 
+            details: 'Internal server error' 
         }, { status: 500 });
     }
 });

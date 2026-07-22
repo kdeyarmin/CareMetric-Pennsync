@@ -117,7 +117,7 @@ Do NOT use medical jargon. Make it conversational and supportive.`;
   } catch (error) {
     console.error('Education generation error:', error);
     return Response.json(
-      { error: error.message },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

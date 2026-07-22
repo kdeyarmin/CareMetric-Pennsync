@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('PDF merge error:', error);
     return Response.json({ 
-      error: error.message || 'Failed to merge PDFs' 
+      error: 'Failed to merge PDFs' 
     }, { status: 500 });
   }
 });

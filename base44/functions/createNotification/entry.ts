@@ -325,7 +325,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error creating notification:', error);
     return Response.json({ 
-      error: error.message || 'Internal server error' 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 });

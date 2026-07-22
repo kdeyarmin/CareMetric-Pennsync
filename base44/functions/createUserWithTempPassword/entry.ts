@@ -379,7 +379,7 @@ Deno.serve(async (req) => {
     console.error('Error in createUserWithTempPassword:', error.message);
     return Response.json({
       error: 'Failed to send invitation',
-      details: error.message
+      details: 'Internal server error'
     }, { status: 500 });
   }
 });

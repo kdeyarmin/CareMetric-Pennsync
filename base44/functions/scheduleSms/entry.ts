@@ -103,6 +103,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, scheduled_id: row.id, send_at: sendAtIso });
   } catch (error) {
     console.error('scheduleSms error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

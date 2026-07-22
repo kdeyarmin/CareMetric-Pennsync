@@ -83,6 +83,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, id: saved?.id || current?.id || null });
   } catch (error) {
     console.error('Error saving PDGM rate config:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

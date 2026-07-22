@@ -202,6 +202,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true, message: 'Welcome email sent successfully' });
   } catch (error) {
     console.error('Welcome email error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

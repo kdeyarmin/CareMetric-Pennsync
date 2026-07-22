@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-import { jsPDF } from 'npm:jspdf@2.5.1';
+import { jsPDF } from 'npm:jspdf@2.5.2';
 
 Deno.serve(async (req) => {
   try {
@@ -193,6 +193,7 @@ Deno.serve(async (req) => {
       }
     });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('generateBagTechniquePDF failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

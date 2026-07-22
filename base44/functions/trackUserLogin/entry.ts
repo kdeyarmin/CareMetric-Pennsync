@@ -24,6 +24,7 @@ Deno.serve(async (req) => {
 
     return Response.json({ success: true });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('trackUserLogin failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

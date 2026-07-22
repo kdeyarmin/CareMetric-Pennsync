@@ -26,9 +26,10 @@ Deno.serve(async (req) => {
 
     return Response.json(response.data || response);
   } catch (error) {
+    console.error('autoImportPatients failed:', error);
     return Response.json({
       success: false,
-      error: error.message,
+      error: 'Internal server error',
     }, { status: 500 });
   }
 });

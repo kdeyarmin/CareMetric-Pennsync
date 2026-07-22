@@ -156,7 +156,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
   } catch (error) {
     console.error('Error analyzing clinical trends:', error);
     return Response.json({
-      error: error.message
+      error: 'Internal server error'
     }, { status: 500 });
   }
 });

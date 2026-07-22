@@ -32,6 +32,11 @@ import { getRouterBasename } from '@/lib/routerBasename';
 // the whole app — so plain lazy() is sufficient here.
 const JoinTelehealth = lazy(() => import('@/pages/JoinTelehealth'));
 
+// Public privacy policy — App Store Guideline 5.1.1(i) requires it reachable
+// from within the app without signing in, and the same URL is entered in App
+// Store Connect, so it must render before the auth gate.
+const PrivacyPolicy = lazy(() => import('@/pages/PrivacyPolicy'));
+
 // Shown when a non-admin navigates directly to an admin-only route. Admin pages
 // are hidden from the sidebar/palette for non-admins, but routes are reachable
 // by URL, so this is the client-side authorization gate (server RLS is the real
@@ -140,7 +145,7 @@ const AuthenticatedApp = () => {
   // gated by capability tokens in the link, not by an app login. This is
   // checked before the auth gate below so external users are never bounced to login.
   const normalizedPath = location.pathname.toLowerCase();
-  if (normalizedPath.startsWith('/join') || normalizedPath.startsWith('/signer') || normalizedPath.startsWith('/followup')) {
+  if (normalizedPath.startsWith('/join') || normalizedPath.startsWith('/signer') || normalizedPath.startsWith('/followup') || normalizedPath.startsWith('/privacy')) {
     return (
       <Suspense fallback={
         <div className="fixed inset-0 flex items-center justify-center">
@@ -152,6 +157,8 @@ const AuthenticatedApp = () => {
           <Route path="/signer/*" element={<SignerPortal />} />
           {/* Provider follow-up response portal — token-gated, no app login */}
           <Route path="/followup/*" element={<ProviderFollowUpPortal />} />
+          {/* Public privacy policy — required in-app pre-auth (App Store 5.1.1(i)) */}
+          <Route path="/privacy" element={<PrivacyPolicy />} />
         </Routes>
       </Suspense>
     );

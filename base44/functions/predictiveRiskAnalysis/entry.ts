@@ -308,7 +308,7 @@ Return comprehensive risk assessment:`,
     console.error('Predictive risk analysis error:', error);
     return Response.json({ 
       success: false,
-      error: error.message 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 });

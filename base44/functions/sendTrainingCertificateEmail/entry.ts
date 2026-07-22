@@ -337,6 +337,7 @@ Deno.serve(async (req) => {
       certificate_url: certificateUrl
     });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('sendTrainingCertificateEmail failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

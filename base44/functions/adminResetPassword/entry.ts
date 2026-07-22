@@ -1,5 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -126,10 +133,11 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Only an admin / super-admin may force a password reset for another account.
+    // Only an admin-tier account may force a password reset for another account.
     // Previously unauthenticated — anyone could trigger reset invites for any user.
+    // Uses the canonical isAdminLike tier (admin / agency_admin / super_admin).
     const currentUser = await base44.auth.me();
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.account_type !== 'super_admin')) {
+    if (!isAdminLike(currentUser)) {
       return Response.json({ error: 'Unauthorized. Admin access required.' }, { status: 403 });
     }
 
@@ -189,6 +197,6 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('adminResetPassword error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -774,6 +775,15 @@ export default function UserSettings() {
           <strong>Note:</strong> These preferences will be applied across all your Smart Note Assistant sessions and affect how AI assists you with documentation.
         </AlertDescription>
       </Alert>
+
+      {/* Legal */}
+      <p className="mt-6 text-sm text-slate-500">
+        Review how PennSync collects, uses, and retains your data in the{' '}
+        <Link to="/privacy" className="font-medium text-navy-600 underline-offset-2 hover:underline">
+          Privacy Policy
+        </Link>
+        .
+      </p>
 
       {/* Delete Account Section - Danger Zone */}
       <div className="mt-8 pt-8 border-t-2 border-red-300">

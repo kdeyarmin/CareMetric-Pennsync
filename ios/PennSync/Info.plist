@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 
 	<!--
 	  Camera / microphone usage strings.
@@ -42,13 +42,58 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 
+	<!--
+	  App-Bound Domains. Opting in (together with
+	  limitsNavigationsToAppBoundDomains = true on the
+	  WKWebViewConfiguration) is what enables Service Workers inside the
+	  WKWebView. Main-frame navigation is limited to these domains, which is
+	  safe because WebViewController already sends external main-frame links
+	  to Safari; cross-origin subframes (Supabase previews) are unaffected.
+	  Bare domains cover their subdomains (caremetricai.base44.app, the
+	  base44.com auth/API endpoints).
+	-->
+	<key>WKAppBoundDomains</key>
+	<array>
+		<string>base44.app</string>
+		<string>base44.com</string>
+	</array>
+
+	<!--
+	  Schemes queried via UIApplication.canOpenURL before handing links to
+	  iOS (openExternally in WebViewController). iOS 9+ requires them to be
+	  declared here or canOpenURL always returns false.
+	-->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tel</string>
+		<string>mailto</string>
+		<string>sms</string>
+		<string>http</string>
+		<string>https</string>
+	</array>
+
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
 	</dict>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
@@ -66,9 +111,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>UIFileSharingEnabled</key>
-	<true/>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<true/>
 </dict>
 </plist>

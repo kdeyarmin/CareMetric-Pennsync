@@ -157,7 +157,7 @@ Format as a professional medical summary. Be detailed, objective, and Medicare-c
   } catch (error) {
     console.error('Error generating discharge summary:', error);
     return Response.json({
-      error: error.message || 'Failed to generate discharge summary'
+      error: 'Failed to generate discharge summary'
     }, { status: 500 });
   }
 });

@@ -190,7 +190,7 @@ Return ONLY valid JSON array, no other text.`;
   } catch (error) {
     console.error('Supply analysis error:', error);
     return Response.json(
-      { error: error.message },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

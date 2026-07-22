@@ -86,6 +86,7 @@ Deno.serve(async (req) => {
       totalProcessed: candidates.length,
     });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('deletePatientsMissingFirstName failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

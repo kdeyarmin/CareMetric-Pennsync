@@ -502,6 +502,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('ADR packet generation error:', error);
-    return Response.json({ error: error.message || 'Failed to generate ADR packet' }, { status: 500 });
+    return Response.json({ error: 'Failed to generate ADR packet' }, { status: 500 });
   }
 });

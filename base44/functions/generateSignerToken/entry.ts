@@ -1,11 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 
-    if (user?.role !== 'admin') {
+    // Canonical admin-tier gate (facility admin / agency_admin / super_admin),
+    // matching generateFollowUpPortalToken and the rest of the admin surfaces.
+    if (!isAdminLike(user)) {
       return Response.json(
         { error: 'Forbidden: Admin access required' },
         { status: 403 }
@@ -73,7 +82,8 @@ Deno.serve(async (req) => {
       tokenId: tokenRecord.id,
     });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('generateSignerToken failed:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
 

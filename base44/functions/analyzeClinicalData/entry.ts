@@ -96,7 +96,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
   } catch (error) {
     console.error('Clinical data analysis error:', error);
     return Response.json({
-      error: error.message,
+      error: 'Internal server error',
       success: false
     }, { status: 500 });
   }

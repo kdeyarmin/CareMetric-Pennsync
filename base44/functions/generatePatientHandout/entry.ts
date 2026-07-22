@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-import { jsPDF } from 'npm:jspdf@2.5.1';
+import { jsPDF } from 'npm:jspdf@2.5.2';
 
 // Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG
 // secret was retired). console.error/warn remain ungated for visibility.
@@ -775,9 +775,11 @@ Deno.serve(async (req) => {
       const fbBytes = new Uint8Array(fb.output('arraybuffer'));
       let fbBin = '';
       for (let i = 0; i < fbBytes.length; i += 8192) fbBin += String.fromCharCode.apply(null, fbBytes.subarray(i, Math.min(i + 8192, fbBytes.length)));
-      return Response.json({ success: true, pdf: btoa(fbBin), filename: 'education_guide.pdf', warning: 'Generated fallback PDF due to error: ' + error.message });
+      // Generic warning only — the raw exception text stays server-side (logged
+      // above and recorded in the SystemLog diagnostics).
+      return Response.json({ success: true, pdf: btoa(fbBin), filename: 'education_guide.pdf', warning: 'Generated fallback PDF due to an internal error' });
     } catch (_fb) { /* fall through */ }
 
-    return Response.json({ error: error.message || 'Unknown error occurred', stage: diagnostics.stage }, { status: 500 });
+    return Response.json({ error: 'Unknown error occurred', stage: diagnostics.stage }, { status: 500 });
   }
 });
