@@ -3,11 +3,6 @@ import { parseLocalDate } from '../../lib/dateLocal.js';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_LIMIT = 5;
 
-function dateValue(value) {
-  const date = parseLocalDate(value);
-  return date ? date.getTime() : null;
-}
-
 function daysUntil(value, now = new Date()) {
   const due = parseLocalDate(value);
   const today = parseLocalDate(now);
