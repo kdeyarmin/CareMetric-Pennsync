@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { ArrowLeft, Calendar, Plus, User, FileText, AlertTriangle, Phone, MapPin, Heart, Stethoscope, Activity, ClipboardList, ExternalLink, Users, Sparkles } from "lucide-react";
+import { ArrowLeft, Calendar, Plus, User, FileText, AlertTriangle, Phone, MapPin, Heart, Stethoscope, Activity, ClipboardList, ExternalLink, Users, Sparkles, Send } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -48,6 +48,7 @@ import ClinicalEventsTimeline from "../components/patient/ClinicalEventsTimeline
 import DocumentUploader from "../components/documents/DocumentUploader";
 import DocumentList from "../components/documents/DocumentList";
 import PatientDocumentRecordFax from "../components/fax/PatientDocumentRecordFax";
+import PatientFaxDocumentDialog from "../components/fax/PatientFaxDocumentDialog";
 import VitalSignsTrendDashboard from "../components/patient/VitalSignsTrendDashboard";
 import PatientTelehealthPanel from "../components/telehealth/PatientTelehealthPanel";
 import CareTeamMessaging from "../components/messaging/CareTeamMessaging";
@@ -66,6 +67,7 @@ export default function PatientDetails() {
   const [activeTab, setActiveTab] = useState("overview");
   const [aiToolsTab, setAiToolsTab] = useState("analysis");
   const [isDocumentUploaderOpen, setIsDocumentUploaderOpen] = useState(false);
+  const [isFaxDialogOpen, setIsFaxDialogOpen] = useState(false);
   const [newVisit, setNewVisit] = useState({
     visit_date: format(new Date(), 'yyyy-MM-dd'),
     visit_time: '',
@@ -197,15 +199,21 @@ export default function PatientDetails() {
         description={`MRN: ${sanitizeInput(patient.medical_record_number) || 'N/A'} · DOB: ${patient.date_of_birth && isValid(parseISO(patient.date_of_birth)) ? format(parseISO(patient.date_of_birth), 'MM/dd/yyyy') : 'N/A'}`}
         favoritePage="PatientDetails"
         actions={
-          <Button
-            variant="outline"
-            onClick={() => navigate(createPageUrl("Patients"))}
-            size="sm"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Back to Patients</span>
-            <span className="sm:hidden">Back</span>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => setIsFaxDialogOpen(true)}>
+              <Send className="w-4 h-4 mr-2" />
+              Fax Document
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate(createPageUrl("Patients"))}
+              size="sm"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline">Back to Patients</span>
+              <span className="sm:hidden">Back</span>
+            </Button>
+          </div>
         }
       />
 
@@ -794,6 +802,12 @@ export default function PatientDetails() {
           </CardContent>
         )}
       </Card>
+
+      <PatientFaxDocumentDialog
+        patient={patient}
+        open={isFaxDialogOpen}
+        onOpenChange={setIsFaxDialogOpen}
+      />
 
       <DocumentUploader
         patientId={patientId}
