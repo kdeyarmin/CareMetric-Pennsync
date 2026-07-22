@@ -7,6 +7,7 @@ import { isAdminLike } from "@/lib/superAdmin";
 import { DEFAULT_PDGM_RATES, mergePdgmRates, DEFAULT_ICD10_CLINICAL_GROUPS, effectiveIcdGroups } from "@/components/pdgm/pdgmRates";
 import { validateRateNumbers, validateIcdMappings } from "@/components/pdgm/rateSettingsValidation";
 import CaseMixWeightsUpload from "@/components/pdgm/CaseMixWeightsUpload";
+import PDGMCalculationPreview from "@/components/pdgm/PDGMCalculationPreview";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -424,6 +425,12 @@ export default function PDGMRateSettings() {
               </div>
             </CardContent>
           </Card>
+
+          <PDGMCalculationPreview
+            isDirty={isDirty}
+            isOfficial={meta.is_official}
+            baseRate={effectivePreview.basePaymentRate ?? DEFAULT_PDGM_RATES.basePaymentRate}
+          />
 
           {/* Official CMS case-mix weight table — reference for analysis only.
               Keyed on config arrival so the year field re-initializes from the
