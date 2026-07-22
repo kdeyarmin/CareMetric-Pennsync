@@ -1378,9 +1378,9 @@ export default function FeaturesPage() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <Badge variant="info" className="mb-2">Research-backed roadmap</Badge>
-              <CardTitle className="text-xl sm:text-2xl text-slate-900">Next-generation feature enhancement plan</CardTitle>
+              <CardTitle className="text-xl sm:text-2xl text-slate-900">Top 25 end-user improvement implementation plan</CardTitle>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                This improvement layer reviews PennSync’s current feature inventory against CMS home health quality reporting, HIPAA security safeguards, ONC interoperability priorities, AHRQ safety practices, and field-clinician workflow needs.
+                This implementation plan turns the comprehensive app audit into 25 tracked, user-facing enhancement initiatives across clinician workflow, OASIS/PDGM quality, AI trust, mobile/offline reliability, patient self-service, analytics, and administration.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center lg:min-w-[320px]">
@@ -1394,7 +1394,7 @@ export default function FeaturesPage() {
               </div>
               <div className="rounded-xl bg-white/80 p-3 ring-1 ring-slate-200">
                 <p className="text-2xl font-bold text-emerald-700">{roadmapFeatureTargetCount}</p>
-                <p className="text-xs text-slate-500">features touched</p>
+                <p className="text-xs text-slate-500">workflow targets</p>
               </div>
             </div>
           </div>
