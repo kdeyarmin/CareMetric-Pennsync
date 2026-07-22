@@ -16,8 +16,8 @@ importers:
   .:
     dependencies:
       '@base44/sdk':
-        specifier: ^0.8.38
-        version: 0.8.38
+        specifier: ^0.8.40
+        version: 0.8.40
       '@base44/vite-plugin':
         specifier: ^1.0.30
         version: 1.0.30
@@ -325,8 +325,8 @@ packages:
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
 
-  '@base44/sdk@0.8.38':
-    resolution: {integrity: sha512-qR/pW31+yEljXwrbn/atPxLoALpAFaVmg2tfav/c4MDyPlt71T43+XVwEdPfQHEzgzPX+fx7bdOpounuV7y1Mg==}
+  '@base44/sdk@0.8.40':
+    resolution: {integrity: sha512-eU9M5yo3EEbvbLqZrLo70I1RWC+TkV+zQ9KGXuyXF4pQX2rLiB5IVL5LwUZMnOwiMjr2kga+9UEMc5Kv+6vSzQ==}
 
   '@base44/vite-plugin@1.0.30':
     resolution: {integrity: sha512-KFO+HP3TUf/2vg5cW0LFV7/nHHQyAYqXqPi6jq/hQB64JWhvZBXLlQIwQU0y5mu0JVliFOgLNcwHdwC8J+ekjg==}
@@ -3808,7 +3808,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@base44/sdk@0.8.38':
+  '@base44/sdk@0.8.40':
     dependencies:
       axios: 1.18.1
       socket.io-client: 4.8.3
