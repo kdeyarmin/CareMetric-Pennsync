@@ -33,6 +33,8 @@ import PersonalizedTrainingRecommender from "../components/training/Personalized
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
 import PageHeader from "@/components/ui/PageHeader";
+import LoadingState from "@/components/ui/LoadingState";
+import StatCard from "@/components/ui/stat-card";
 
 // Lazy spoke — the former Nurse Training (documentation skills) page is now a tab.
 const NurseTraining = lazy(() => import("@/components/hub-tabs/NurseTraining"));
@@ -42,11 +44,7 @@ const NurseTraining = lazy(() => import("@/components/hub-tabs/NurseTraining"));
 // "personalized" is the default.
 const TAB_KEYS = ["personalized", "required", "library", "progress", "documentation"];
 
-const tabLoader = (
-  <div className="flex justify-center py-12">
-    <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-  </div>
-);
+const tabLoader = <LoadingState className="py-12" />;
 
 export default function NurseTrainingHub() {
   const [_selectedModule, setSelectedModule] = useState(null);
@@ -252,57 +250,10 @@ export default function NurseTrainingHub() {
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600 mb-1">Completion Rate</p>
-                <p className="text-3xl font-bold text-blue-600">{completionRate}%</p>
-              </div>
-              <Award className="w-8 h-8 text-blue-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600 mb-1">Completed</p>
-                <p className="text-3xl font-bold text-emerald-600">
-                  {completedModulesCount}
-                </p>
-              </div>
-              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600 mb-1">In Progress</p>
-                <p className="text-3xl font-bold text-orange-600">
-                  {inProgressCount}
-                </p>
-              </div>
-              <Clock className="w-8 h-8 text-orange-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600 mb-1">Skill Gaps</p>
-                <p className="text-3xl font-bold text-red-600">{skillGaps.length}</p>
-              </div>
-              <Target className="w-8 h-8 text-red-400" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Completion Rate" value={`${completionRate}%`} icon={Award} tone="blue" />
+        <StatCard label="Completed" value={completedModulesCount} icon={CheckCircle2} tone="emerald" />
+        <StatCard label="In Progress" value={inProgressCount} icon={Clock} tone="orange" />
+        <StatCard label="Skill Gaps" value={skillGaps.length} icon={Target} tone="red" />
       </div>
 
       <EmbeddedPage>

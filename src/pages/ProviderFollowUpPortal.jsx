@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ClipboardCheck, CheckCircle2, AlertTriangle, Send } from "lucide-react";
+import LoadingState from "@/components/ui/LoadingState";
 
 /**
  * Provider Follow-Up Portal — PUBLIC, token-gated page (routed pre-auth in
@@ -107,8 +108,7 @@ export default function ProviderFollowUpPortal() {
         {state.phase === "loading" && (
           <Card>
             <CardContent className="p-10 text-center">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-navy-600 mx-auto mb-3" />
-              <p className="text-slate-600">Opening your request…</p>
+              <LoadingState label="Opening your request…" className="py-0" />
             </CardContent>
           </Card>
         )}

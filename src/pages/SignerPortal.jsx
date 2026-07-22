@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { validateSignerToken } from '@/functions/validateSignerToken';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, Lock, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, Lock, CheckCircle2, Loader2 } from 'lucide-react';
 import SignerPackageViewer from '@/components/signer/SignerPackageViewer';
 
 export default function SignerPortal() {
@@ -69,7 +69,7 @@ export default function SignerPortal() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4" role="status">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+        <Loader2 className="w-8 h-8 animate-spin text-navy-600" aria-hidden="true" />
         <span className="sr-only">Validating access…</span>
       </div>
     );

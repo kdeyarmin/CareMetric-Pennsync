@@ -57,6 +57,7 @@ import { selfEnrollCourse } from '@/functions/selfEnrollCourse';
 import { generateLearningTranscriptPDF } from '@/functions/generateLearningTranscriptPDF';
 import { submitCourseFeedback } from '@/functions/submitCourseFeedback';
 import { getCourseFeedbackSummary } from '@/functions/getCourseFeedbackSummary';
+import LoadingState from "@/components/ui/LoadingState";
 
 // Lazy spokes — the former My Learning hub's tabs (My Courses, In-Services,
 // Annual Education, Transcripts) now render inside this canonical Learning Center.
@@ -75,11 +76,7 @@ const TAB_KEYS = [
   'boosters', 'courses', 'inservices', 'annual', 'policies', 'transcripts',
 ];
 
-const tabLoader = (
-  <div className="flex justify-center py-12">
-    <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-  </div>
-);
+const tabLoader = <LoadingState className="py-12" />;
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '—';
 
@@ -490,9 +487,7 @@ export default function LearningCenter() {
 
   if (userLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-      </div>
+      <LoadingState className="min-h-[400px]" />
     );
   }
 
@@ -853,9 +848,7 @@ export default function LearningCenter() {
         {/* Active Assignments Tab */}
         <TabsContent value="active" className="space-y-3">
           {assignmentsLoading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-            </div>
+            <LoadingState className="py-12" />
           ) : sortedActive.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">

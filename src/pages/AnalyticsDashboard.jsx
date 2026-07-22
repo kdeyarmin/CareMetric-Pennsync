@@ -433,7 +433,7 @@ export default function AnalyticsDashboard() {
         favoritePage="AnalyticsDashboard"
         actions={
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <Button onClick={handleExportPDF} className="bg-blue-600 hover:bg-blue-700 min-h-[44px] w-full sm:w-auto">
+            <Button onClick={handleExportPDF} className="min-h-[44px] w-full sm:w-auto">
               <Download className="w-4 h-4 mr-2" />
               <span className="hidden sm:inline">Export PDF</span>
               <span className="sm:hidden">PDF</span>

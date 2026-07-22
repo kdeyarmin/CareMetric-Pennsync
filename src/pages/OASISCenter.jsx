@@ -13,12 +13,12 @@ import {
   BarChart3,
   TrendingUp,
   Eye,
-  Loader2,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
 import { isAdminView } from "@/lib/roles";
+import LoadingState from "@/components/ui/LoadingState";
 
 const SmartOASISAssessment = lazy(() => import("@/components/hub-tabs/SmartOASISAssessment"));
 const OASISAnalyzer = lazy(() => import("@/components/hub-tabs/OASISAnalyzer"));
@@ -44,11 +44,7 @@ const TAB_KEYS = ["assessment", "analyze", "review", "clinical", "quality", "rev
 // admin-only and intentionally hidden from nurses.
 const ADMIN_TABS = ["revenue", "analytics", "audit"];
 
-const tabLoader = (
-  <div className="flex justify-center py-12">
-    <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-  </div>
-);
+const tabLoader = <LoadingState className="py-12" />;
 
 export default function OASISCenter() {
   const { data: currentUser, isLoading: isUserLoading } = useQuery({

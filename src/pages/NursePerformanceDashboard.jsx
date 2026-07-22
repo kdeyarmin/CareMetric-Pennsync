@@ -6,6 +6,7 @@ import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
+import StatCard from "@/components/ui/stat-card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -131,13 +132,6 @@ export default function NursePerformanceDashboard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['nurseGoals'] })
   });
 
-  const getScoreColor = (score) => {
-    if (score >= 90) return 'text-emerald-600 bg-emerald-50';
-    if (score >= 80) return 'text-blue-600 bg-blue-50';
-    if (score >= 70) return 'text-amber-600 bg-amber-50';
-    return 'text-red-600 bg-red-50';
-  };
-
   const getGradeColor = (grade) => {
     if (grade === 'A' || grade === 'A+') return 'bg-emerald-500';
     if (grade === 'B' || grade === 'B+') return 'bg-blue-500';
@@ -231,7 +225,7 @@ export default function NursePerformanceDashboard() {
                     <span className="text-3xl font-bold text-white">{insights?.performance_grade || 'B'}</span>
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-slate-900 mb-1">Overall Performance</h2>
+                    <h2 className="text-xl font-semibold text-slate-900 mb-1">Overall Performance</h2>
                     <p className="text-slate-700">{insights?.overall_summary}</p>
                   </div>
                 </div>
@@ -242,59 +236,10 @@ export default function NursePerformanceDashboard() {
 
           {/* Key Metrics Grid */}
           <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-            <Card>
-              <CardContent className="p-3 sm:p-4 md:p-6">
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-slate-600 mb-1 truncate">Compliance Score</p>
-                    <p className={`text-xl sm:text-2xl md:text-3xl font-bold ${getScoreColor(metrics?.avg_compliance_score)}`}>
-                      {metrics?.avg_compliance_score || 0}%
-                    </p>
-                  </div>
-                  <CheckCircle2 className="w-6 h-6 sm:w-8 sm:h-8 text-blue-400 flex-shrink-0" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 mb-1">Enhancements Completed</p>
-                    <p className="text-3xl font-bold text-slate-900">{metrics?.completed_visits || 0}</p>
-                  </div>
-                  <FileText className="w-8 h-8 text-emerald-400" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 mb-1">AI Adoption</p>
-                    <p className="text-3xl font-bold text-navy-600">
-                      {metrics?.suggestion_acceptance_rate || 0}%
-                    </p>
-                  </div>
-                  <Brain className="w-8 h-8 text-navy-400" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 mb-1">Avg Doc Time</p>
-                    <p className="text-3xl font-bold text-orange-600">
-                      {metrics?.avg_documentation_time || 0}m
-                    </p>
-                  </div>
-                  <Clock className="w-8 h-8 text-orange-400" />
-                </div>
-              </CardContent>
-            </Card>
+            <StatCard label="Compliance Score" value={`${metrics?.avg_compliance_score || 0}%`} icon={CheckCircle2} tone="blue" />
+            <StatCard label="Enhancements Completed" value={metrics?.completed_visits || 0} icon={FileText} tone="emerald" />
+            <StatCard label="AI Adoption" value={`${metrics?.suggestion_acceptance_rate || 0}%`} icon={Brain} tone="navy" />
+            <StatCard label="Avg Doc Time" value={`${metrics?.avg_documentation_time || 0}m`} icon={Clock} tone="orange" />
           </div>
 
           <Tabs defaultValue="insights" className="space-y-4 sm:space-y-6">
@@ -315,30 +260,16 @@ export default function NursePerformanceDashboard() {
             {/* Documentation Quality Tab */}
             <TabsContent value="quality" className="space-y-6">
               <div className="grid md:grid-cols-3 gap-6">
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Total Notes</p>
-                    <p className="text-3xl font-bold text-blue-600">{docQuality?.total_notes || 0}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Avg Note Length</p>
-                    <p className="text-3xl font-bold text-emerald-600">{docQuality?.avg_note_length || 0}</p>
-                    <p className="text-xs text-slate-500 mt-1">characters</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Completeness</p>
-                    <p className="text-3xl font-bold text-navy-600">
-                      {docQuality?.total_notes > 0 
-                        ? Math.round((docQuality.notes_with_vitals / docQuality.total_notes) * 100)
-                        : 0}%
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">notes with vitals</p>
-                  </CardContent>
-                </Card>
+                <StatCard label="Total Notes" value={docQuality?.total_notes || 0} tone="blue" />
+                <StatCard label="Avg Note Length" value={docQuality?.avg_note_length || 0} description="characters" tone="emerald" />
+                <StatCard
+                  label="Completeness"
+                  value={`${docQuality?.total_notes > 0
+                    ? Math.round((docQuality.notes_with_vitals / docQuality.total_notes) * 100)
+                    : 0}%`}
+                  description="notes with vitals"
+                  tone="navy"
+                />
               </div>
 
               <div className="grid md:grid-cols-2 gap-6">
@@ -382,12 +313,7 @@ export default function NursePerformanceDashboard() {
             {/* Patient Outcomes Tab */}
             <TabsContent value="outcomes" className="space-y-6">
               <div className="grid md:grid-cols-2 gap-6">
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Patients Managed</p>
-                    <p className="text-3xl font-bold text-blue-600">{patientOutcomes?.total_patients || 0}</p>
-                  </CardContent>
-                </Card>
+                <StatCard label="Patients Managed" value={patientOutcomes?.total_patients || 0} tone="blue" />
 
                 <Card>
                   <CardHeader>
@@ -410,30 +336,10 @@ export default function NursePerformanceDashboard() {
             {/* Utilization Tab */}
             <TabsContent value="utilization" className="space-y-6">
               <div className="grid md:grid-cols-4 gap-6">
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Visits (30d)</p>
-                    <p className="text-3xl font-bold text-blue-600">{utilization?.visits_last_30_days || 0}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Avg Visits/Day</p>
-                    <p className="text-3xl font-bold text-emerald-600">{utilization?.avg_visits_per_day || 0}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Productive Hours</p>
-                    <p className="text-3xl font-bold text-navy-600">{utilization?.productive_hours || 0}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Utilization Rate</p>
-                    <p className="text-3xl font-bold text-orange-600">{utilization?.utilization_rate || 0}%</p>
-                  </CardContent>
-                </Card>
+                <StatCard label="Visits (30d)" value={utilization?.visits_last_30_days || 0} tone="blue" />
+                <StatCard label="Avg Visits/Day" value={utilization?.avg_visits_per_day || 0} tone="emerald" />
+                <StatCard label="Productive Hours" value={utilization?.productive_hours || 0} tone="navy" />
+                <StatCard label="Utilization Rate" value={`${utilization?.utilization_rate || 0}%`} tone="orange" />
               </div>
 
               <Card>
@@ -563,7 +469,7 @@ export default function NursePerformanceDashboard() {
             <TabsContent value="goals" className="space-y-6">
               <div className="flex justify-between items-center">
                 <div>
-                  <h3 className="text-lg font-semibold">My Performance Goals</h3>
+                  <h3 className="text-xl font-semibold text-slate-900">My Performance Goals</h3>
                   <p className="text-sm text-slate-600">Track your professional development objectives</p>
                 </div>
                 <Button onClick={() => { setEditingGoal(null); setShowGoalDialog(true); }}>
@@ -874,9 +780,9 @@ export default function NursePerformanceDashboard() {
                     <CardTitle className="text-lg">AI Suggestion Analytics</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
+                    <div className="flex items-center justify-between p-4 bg-navy-50 rounded-lg">
                       <span className="text-slate-700">Total Suggestions Received</span>
-                      <span className="text-2xl font-bold text-blue-600">{metrics?.total_suggestions_received}</span>
+                      <span className="text-2xl font-bold text-navy-600">{metrics?.total_suggestions_received}</span>
                     </div>
                     <div className="flex items-center justify-between p-4 bg-emerald-50 rounded-lg">
                       <span className="text-slate-700">Suggestions Applied</span>
@@ -969,7 +875,7 @@ export default function NursePerformanceDashboard() {
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-2">
-                                <h3 className="font-semibold text-slate-900">{gap.skill}</h3>
+                                <h3 className="text-xl font-semibold text-slate-900">{gap.skill}</h3>
                                 <Badge variant="destructive">{gap.gap_severity} priority</Badge>
                               </div>
                               <p className="text-sm text-slate-600 mb-3">{gap.recommendation}</p>
@@ -978,7 +884,7 @@ export default function NursePerformanceDashboard() {
                                 <Badge variant="outline">{(gap.current_level || 'unknown').replace(/_/g, ' ')}</Badge>
                               </div>
                             </div>
-                            <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700">
+                            <Button asChild size="sm">
                               <Link to={createPageUrl('NurseTrainingHub')}>
                                 Take Training
                               </Link>

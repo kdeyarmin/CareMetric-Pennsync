@@ -189,8 +189,8 @@ export default function AuditTrailViewer({ filterType = "all" }) {
   ).length;
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0 flex-1">
           <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-900 mb-1 truncate">
             {filterType === 'security' ? 'Security Events Log' : 'Complete Audit Trail'}

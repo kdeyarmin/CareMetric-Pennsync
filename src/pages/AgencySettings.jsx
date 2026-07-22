@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CustomValidationRuleManager from "../components/validation/CustomValidationRuleManager";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import LoadingState from "@/components/ui/LoadingState";
 
 export default function AgencySettings() {
   const queryClient = useQueryClient();
@@ -97,9 +98,7 @@ export default function AgencySettings() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-      </div>
+      <LoadingState className="py-24" />
     );
   }
 
@@ -171,7 +170,7 @@ export default function AgencySettings() {
           </Card>
 
           {/* PDGM Location Settings */}
-          <Card className="border-2 border-blue-200">
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MapPin className="w-5 h-5 text-blue-600" />
@@ -300,7 +299,7 @@ export default function AgencySettings() {
             <Button 
               type="submit" 
               disabled={saveMutation.isPending}
-              className="bg-blue-600 hover:bg-blue-700 gap-2 min-h-[44px] w-full sm:w-auto"
+              className="gap-2 min-h-[44px] w-full sm:w-auto"
             >
               {saveMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>

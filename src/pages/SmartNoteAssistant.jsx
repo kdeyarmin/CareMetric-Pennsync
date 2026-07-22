@@ -642,8 +642,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                           type="button"
                           onClick={() => setVisitType(v.value)}
                           aria-pressed={selected}
-                          style={selected ? { background: '#264491', borderColor: '#264491', color: '#ffffff' } : undefined}
-                          className={`py-3 sm:py-2 px-2 rounded-xl text-xs font-semibold border-2 transition-all text-center leading-tight min-h-[48px] sm:min-h-0 active:scale-95 ${selected ? "shadow-md" : "bg-slate-50 border-slate-200 text-slate-700 hover:border-navy-300 hover:bg-navy-50"}`}
+                          className={`py-3 sm:py-2 px-2 rounded-xl text-xs font-semibold border-2 transition-all text-center leading-tight min-h-[48px] sm:min-h-0 active:scale-95 ${selected ? "bg-navy-600 border-navy-600 text-white shadow-md" : "bg-slate-50 border-slate-200 text-slate-700 hover:border-navy-300 hover:bg-navy-50"}`}
                         >
                           {v.label}
                         </button>
@@ -736,8 +735,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                   <Button
                     onClick={startReview}
                     disabled={!ready}
-                    style={ready ? { backgroundColor: '#264491', color: '#ffffff' } : undefined}
-                    className="hover:bg-navy-700 h-11 sm:h-9 px-5 gap-1.5 text-sm font-semibold w-full sm:w-auto"
+                    className="h-11 sm:h-9 px-5 gap-1.5 text-sm font-semibold w-full sm:w-auto"
                   >
                     <ClipboardList className="w-4 h-4" /> Review & Complete <ArrowRight className="w-3.5 h-3.5" />
                   </Button>

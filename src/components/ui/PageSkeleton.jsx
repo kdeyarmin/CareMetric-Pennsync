@@ -1,5 +1,8 @@
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Thin wrapper so every page skeleton shares the canonical sheen treatment.
 export function SkeletonBlock({ className = "" }) {
-  return <div className={`bg-slate-200 rounded animate-pulse ${className}`} />;
+  return <Skeleton className={className} />;
 }
 
 export function AssessmentSkeleton() {
@@ -55,7 +58,7 @@ export function AssessmentSkeleton() {
 
 export function CardSkeleton({ rows = 3 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 animate-pulse">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
       <SkeletonBlock className="h-5 w-40" />
       {Array.from({ length: rows }).map((_, i) => (
         <SkeletonBlock key={i} className={`h-4 ${i % 2 === 0 ? 'w-full' : 'w-3/4'}`} />

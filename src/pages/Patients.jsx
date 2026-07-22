@@ -322,15 +322,13 @@ export default function Patients() {
         />
       )}
 
-      <div className="mb-6">
-        <AdvancedPatientFilters
-          onFilterChange={setFilters}
-          activeFilters={filters}
-        />
-      </div>
+      <AdvancedPatientFilters
+        onFilterChange={setFilters}
+        activeFilters={filters}
+      />
 
       {/* Sort & Results Count */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
           {filteredPatients.length} {filteredPatients.length === 1 ? 'patient' : 'patients'}
           {filters.search && ` matching "${filters.search}"`}

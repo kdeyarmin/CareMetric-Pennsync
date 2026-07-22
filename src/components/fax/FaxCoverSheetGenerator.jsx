@@ -355,7 +355,7 @@ export default function FaxCoverSheetGenerator({
             onClick={generateCoverSheet}
             disabled={isGenerating}
             size="sm"
-            className="w-full h-11 rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+            className="w-full h-11 rounded-xl"
           >
             {isGenerating ? (
               <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Generating...</>

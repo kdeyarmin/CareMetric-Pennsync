@@ -6,10 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-  Search, Plus, BookOpen, Send, Eye, Edit, Copy, TrendingUp, Clock, FileText, Star
+  Search, Plus, BookOpen, Send, Eye, Edit, Copy, TrendingUp, Clock, Star
 } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
+import StatCard from '@/components/ui/stat-card';
+import EmptyState from '@/components/ui/empty-state';
+import LoadingState from '@/components/ui/LoadingState';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -122,63 +125,10 @@ export default function EducationLibrary() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <BookOpen className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{stats.totalMaterials}</p>
-                <p className="text-sm text-slate-600">Total Materials</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-100 rounded-lg">
-                <Send className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{stats.totalSent}</p>
-                <p className="text-sm text-slate-600">Total Sent</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-navy-100 rounded-lg">
-                <Clock className="w-5 h-5 text-navy-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{stats.recentSent}</p>
-                <p className="text-sm text-slate-600">Sent This Week</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-100 rounded-lg">
-                <Star className="w-5 h-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900 truncate">
-                  {stats.mostUsed?.title || 'N/A'}
-                </p>
-                <p className="text-xs text-slate-600">Most Popular</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Materials" value={stats.totalMaterials} icon={BookOpen} tone="blue" />
+        <StatCard label="Total Sent" value={stats.totalSent} icon={Send} tone="emerald" />
+        <StatCard label="Sent This Week" value={stats.recentSent} icon={Clock} tone="navy" />
+        <StatCard label="Most Popular" value={stats.mostUsed?.title || 'N/A'} icon={Star} tone="amber" />
       </div>
 
       <Tabs defaultValue="library" className="space-y-4">
@@ -223,24 +173,17 @@ export default function EducationLibrary() {
 
           {/* Materials Grid */}
           {isLoading ? (
-            <Card>
-              <CardContent className="py-12 text-center text-slate-500">
-                Loading materials...
-              </CardContent>
-            </Card>
+            <LoadingState label="Loading materials..." />
           ) : filteredMaterials.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-500">No materials found</p>
-                <Button 
-                  onClick={() => { setEditorMode('create'); setSelectedMaterial(null); }}
-                  className="mt-4"
-                >
+            <EmptyState
+              title="No materials found"
+              icon={BookOpen}
+              action={
+                <Button onClick={() => { setEditorMode('create'); setSelectedMaterial(null); }}>
                   Create Your First Material
                 </Button>
-              </CardContent>
-            </Card>
+              }
+            />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredMaterials.map((material) => (
@@ -326,10 +269,7 @@ export default function EducationLibrary() {
             </CardHeader>
             <CardContent>
               {sentMaterials.length === 0 ? (
-                <div className="text-center py-8 text-slate-500">
-                  <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p>No materials sent yet</p>
-                </div>
+                <EmptyState title="No materials sent yet" icon={Send} />
               ) : (
                 <div className="space-y-3">
                   {sentMaterials.map((sent) => (

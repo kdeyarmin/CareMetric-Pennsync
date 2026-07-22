@@ -217,7 +217,7 @@ const categoryColors = {
   diabetes: "bg-emerald-100 text-emerald-800",
   medication: "bg-navy-100 text-navy-800",
   respiratory: "bg-navy-100 text-navy-800",
-  hospice: "bg-purple-100 text-purple-800",
+  hospice: "bg-violet-100 text-violet-800",
 };
 
 // Plain-text builders so a nurse can paste correctly-worded criteria straight

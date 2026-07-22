@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileText, ExternalLink, Send } from "lucide-react";
+import { Loader2, FileText, ExternalLink, Send } from "lucide-react";
 import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateLocal";
 import { openExternalUrl } from "@/components/utils/security";
@@ -227,7 +227,7 @@ export default function ReferralDocumentViewer({ patientId }) {
             >
               {isSending ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
                   Sending...
                 </>
               ) : (

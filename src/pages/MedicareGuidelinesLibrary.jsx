@@ -41,6 +41,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import LoadingState from "@/components/ui/LoadingState";
 
 export default function MedicareGuidelinesLibrary() {
   const queryClient = useQueryClient();
@@ -152,7 +153,7 @@ export default function MedicareGuidelinesLibrary() {
       hospice_regulations: "bg-gold-100 text-gold-800",
       quality_measures: "bg-amber-100 text-amber-800",
       compliance_audit: "bg-orange-100 text-orange-800",
-      pdgm: "bg-teal-100 text-teal-800",
+      pdgm: "bg-sky-100 text-sky-800",
       other: "bg-slate-100 text-slate-800"
     };
     return colors[category] || colors.other;
@@ -315,9 +316,7 @@ export default function MedicareGuidelinesLibrary() {
 
       {/* Guidelines List */}
       {isLoading ? (
-        <div className="flex justify-center items-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
+        <LoadingState className="py-12" />
       ) : filteredGuidelines.length === 0 ? (
         <EmptyState
           icon={FileText}

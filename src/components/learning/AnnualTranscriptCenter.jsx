@@ -55,9 +55,9 @@ export default function AnnualTranscriptCenter() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <HideWhenEmbedded>
-        <div className="rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-700 text-white p-6 shadow-xl">
+        <div className="page-header-gradient">
           <h1 className="text-2xl sm:text-3xl font-bold mb-2">Annual Education Transcript</h1>
-          <p className="text-indigo-100">All completed annual mandatory education and certificates for {currentYear}.</p>
+          <p className="relative text-navy-100">All completed annual mandatory education and certificates for {currentYear}.</p>
         </div>
       </HideWhenEmbedded>
 

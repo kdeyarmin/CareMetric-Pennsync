@@ -6,7 +6,7 @@ import { toLocalISODate } from "@/lib/dateLocal";
 import { isAdminView } from "@/lib/roles";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
-import { BarChart3, Activity, Building2, Loader2 } from "lucide-react";
+import { BarChart3, Activity, Building2 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
@@ -16,6 +16,7 @@ import NursePerformanceReport from "@/components/reports/NursePerformanceReport"
 import OASISComplianceReport from "@/components/reports/OASISComplianceReport";
 import PDGMReimbursementReport from "@/components/reports/PDGMReimbursementReport";
 import KPIDashboard from "@/components/reports/KPIDashboard";
+import LoadingState from "@/components/ui/LoadingState";
 
 const AdminReportsCenter = lazy(() => import("@/components/hub-tabs/AdminReportsCenter"));
 // Performance Analytics (documentation time / AI utilization / quality, with
@@ -28,11 +29,7 @@ const AnalyticsDashboard = lazy(() => import("@/pages/AnalyticsDashboard"));
 // redirect to the right tab.
 const TAB_KEYS = ["kpi", "perf-dashboard", "referrals", "performance", "oasis", "pdgm", "reports-center"];
 
-const tabLoader = (
-  <div className="flex justify-center py-12">
-    <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-  </div>
-);
+const tabLoader = <LoadingState className="py-12" />;
 
 export default function ReportsAnalytics() {
   const [dateRange, _setDateRange] = useState({

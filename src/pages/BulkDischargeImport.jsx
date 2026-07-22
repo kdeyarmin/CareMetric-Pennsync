@@ -1,5 +1,6 @@
 import { FolderArchive } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
+import PageContainer from "@/components/ui/PageContainer";
 import DischargeReportUploader from "@/components/admin/DischargeReportUploader";
 
 /**
@@ -9,7 +10,7 @@ import DischargeReportUploader from "@/components/admin/DischargeReportUploader"
  */
 export default function BulkDischargeImportPage() {
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-5xl mx-auto animate-fade-in">
+    <PageContainer className="max-w-5xl animate-fade-in">
       <PageHeader
         icon={FolderArchive}
         iconColor="bg-amber-600"
@@ -19,6 +20,6 @@ export default function BulkDischargeImportPage() {
         favoritePage="BulkDischargeImport"
       />
       <DischargeReportUploader />
-    </div>
+    </PageContainer>
   );
 }
