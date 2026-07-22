@@ -8,6 +8,7 @@ import App from '@/App.jsx'
 // tailwind.config.js fontFamily.sans).
 import '@fontsource-variable/inter'
 import '@/index.css'
+import '@/styles/button-contrast.css'
 import { installAlertToToastShim } from '@/lib/alert-shim'
 
 // Surface legacy window.alert() notifications as on-brand toasts.

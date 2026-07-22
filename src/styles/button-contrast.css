@@ -1,0 +1,17 @@
+.app-primary-button,
+.btn-primary {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+
+.app-primary-button:hover,
+.btn-primary:hover {
+  background-color: color-mix(in srgb, hsl(var(--primary)) 86%, black);
+  border-color: color-mix(in srgb, hsl(var(--primary)) 86%, black);
+}
+
+.btn-primary {
+  border-style: solid;
+  border-width: 1px;
+}
