@@ -1,19 +1,18 @@
+import { parseLocalDate } from '@/lib/dateLocal';
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_LIMIT = 5;
 
 function dateValue(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  const time = date.getTime();
-  return Number.isNaN(time) ? null : time;
+  const date = parseLocalDate(value);
+  return date ? date.getTime() : null;
 }
 
 function daysUntil(value, now = new Date()) {
-  const target = dateValue(value);
-  if (target === null) return null;
-  const today = new Date(now);
+  const due = parseLocalDate(value);
+  const today = parseLocalDate(now);
+  if (!due || !today) return null;
   today.setHours(0, 0, 0, 0);
-  const due = new Date(target);
   due.setHours(0, 0, 0, 0);
   return Math.round((due.getTime() - today.getTime()) / MS_PER_DAY);
 }
