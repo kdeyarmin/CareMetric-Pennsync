@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     }
     const expiresMs = Date.parse(record.expires_at);
     if (!Number.isFinite(expiresMs) || expiresMs < Date.now()) {
-      await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, { is_active: false }).catch(() => {});
+      await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, { is_active: false, status: 'expired' }).catch(() => {});
       return Response.json({ error: 'This link has expired.' }, { status: 401 });
     }
     if (record.submitted_at) {
@@ -91,6 +91,7 @@ Deno.serve(async (req) => {
     // Single-use link: no edits after submission.
     await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, {
       is_active: false,
+      status: 'delivered',
       submitted_at: now,
     }).catch(() => {});
 

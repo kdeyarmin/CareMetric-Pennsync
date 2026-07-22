@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     // Expiry — an unparseable expires_at counts as expired (fail closed).
     const expiresMs = Date.parse(record.expires_at);
     if (!Number.isFinite(expiresMs) || expiresMs < Date.now()) {
-      await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, { is_active: false }).catch(() => {});
+      await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, { is_active: false, status: 'expired' }).catch(() => {});
       return Response.json({ valid: false, error: 'This link has expired. Please contact the agency for a new one.' }, { status: 401 });
     }
 

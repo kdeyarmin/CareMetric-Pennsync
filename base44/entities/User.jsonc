@@ -231,6 +231,19 @@
     "ai_content_agreement_version": {
       "type": "string",
       "description": "Version of the AI-generated content responsibility agreement the user accepted; a bump re-prompts the user for re-acceptance"
+    },
+    "offboarded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when an admin deactivated/offboarded this user"
+    },
+    "offboarded_by": {
+      "type": "string",
+      "description": "Admin email that offboarded this user"
+    },
+    "offboarding_reason": {
+      "type": "string",
+      "description": "Reason recorded by the admin when deactivating this user"
     }
   },
   "required": [
