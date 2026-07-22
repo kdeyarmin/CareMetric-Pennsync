@@ -47,6 +47,7 @@ import HealthHistorySection from "../components/patient/HealthHistorySection";
 import ClinicalEventsTimeline from "../components/patient/ClinicalEventsTimeline";
 import DocumentUploader from "../components/documents/DocumentUploader";
 import DocumentList from "../components/documents/DocumentList";
+import PatientDocumentRecordFax from "../components/fax/PatientDocumentRecordFax";
 import VitalSignsTrendDashboard from "../components/patient/VitalSignsTrendDashboard";
 import PatientTelehealthPanel from "../components/telehealth/PatientTelehealthPanel";
 import CareTeamMessaging from "../components/messaging/CareTeamMessaging";
@@ -650,6 +651,7 @@ export default function PatientDetails() {
                   <DocumentList patientId={patientId} showPatientInfo={false} />
                 </CardContent>
               </Card>
+              <PatientDocumentRecordFax patient={patient} />
             </TabsContent>
 
             <TabsContent value="referral-docs">
