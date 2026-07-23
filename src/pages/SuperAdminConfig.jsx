@@ -12,6 +12,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import TelnyxSecretPanel from "@/components/admin/TelnyxSecretPanel";
 import TelnyxSetupProgress from "@/components/admin/TelnyxSetupProgress";
+import IntegrationsHealthPanel from "@/components/admin/IntegrationsHealthPanel";
 import PhoneProvisioningPanel from "@/components/admin/PhoneProvisioningPanel";
 import A2PCompliancePanel from "@/components/admin/A2PCompliancePanel";
 import ConsentLedgerPanel from "@/components/admin/ConsentLedgerPanel";
@@ -134,6 +135,9 @@ export default function SuperAdminConfig() {
             )}
           </CardContent>
         </Card>
+
+        {/* Live health board for every integration (AI, email, telephony, …) */}
+        <IntegrationsHealthPanel />
 
         {/* Guided setup command center — progress + "what's next", links below */}
         <TelnyxSetupProgress />
