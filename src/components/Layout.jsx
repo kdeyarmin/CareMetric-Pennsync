@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Toaster } from "sonner";
 import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } from "@/lib/nav.manifest";
 import { getRoleView } from "@/lib/roles";
+import { MAIN_PAGE } from "@/routes";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 
 import DesktopSidebar from "@/components/layout/DesktopSidebar";
@@ -34,6 +35,7 @@ export default function Layout() {
   // <Layout>, which unmounted the entire sidebar + header on every navigation —
   // causing flicker, lost clicks during the transition, and re-fetched queries.
   const location = useLocation();
+  const navigate = useNavigate();
   const currentPageName = location.pathname.split('/')[1] || 'Dashboard';
   // Persist the desktop sidebar collapse choice so daily users don't have to
   // re-collapse it every session (read lazily so the first paint matches).
@@ -299,10 +301,14 @@ export default function Layout() {
                 <p className="text-sm text-navy-900"><strong>Account Details:</strong><br />{currentUser.full_name}<br />{currentUser.email}</p>
               </div>
               <p className="text-sm text-slate-500 mb-6">You will receive an email notification once your account is approved.</p>
-              <pre className="mb-6 max-h-40 overflow-auto rounded-lg bg-slate-900 p-3 text-left text-[10px] leading-tight text-emerald-300">{JSON.stringify(currentUser, null, 2)}</pre>
-              <Button onClick={handleLogout} variant="outline" className="w-full">
-                <LogOut className="w-4 h-4 mr-2" /> Sign Out
-              </Button>
+              <div className="space-y-2">
+                <Button onClick={() => navigate(`/${MAIN_PAGE}`, { replace: true })} className="w-full">
+                  Return to Dashboard
+                </Button>
+                <Button onClick={handleLogout} variant="outline" className="w-full">
+                  <LogOut className="w-4 h-4 mr-2" /> Sign Out
+                </Button>
+              </div>
             </CardContent>
           </Card>
           <p className="mt-6 text-center text-xs text-slate-400">
