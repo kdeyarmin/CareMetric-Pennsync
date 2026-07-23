@@ -91,7 +91,7 @@ export default function Layout() {
   const roleView = getRoleView(currentUser);
   const isSuperAdminUser = roleView === 'super_admin';
   const isAdmin = roleView === 'super_admin' || roleView === 'facility_admin';
-  const isApproved = currentUser?.is_approved === true || isAdmin;
+  const isApproved = currentUser?.is_approved === true || isAdmin || currentUser?.is_test_agent_user === true;
   const isTimeOffApprover = isAdmin || currentUser?.is_manager === true;
 
   useEffect(() => {
