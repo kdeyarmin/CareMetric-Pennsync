@@ -46,7 +46,10 @@ export default function CareScopeSelector({ currentUser, onSaved }) {
     setSaving(true);
     try {
       await base44.auth.updateMe({ care_scope: selected });
-      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+      // Await the refetch so the fresh care_scope is in the cache BEFORE onSaved
+      // runs — otherwise the Dashboard's "set your care scope" gate can linger on
+      // stale data and appear to swallow the user's next navigation.
+      await queryClient.refetchQueries({ queryKey: ["currentUser"] });
       if (onSaved) onSaved(selected);
     } catch (error) {
       console.error('Error saving care scope:', error);
