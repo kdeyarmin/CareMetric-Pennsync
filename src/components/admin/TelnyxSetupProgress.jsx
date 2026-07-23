@@ -126,6 +126,15 @@ export default function TelnyxSetupProgress() {
   );
   const progress = useMemo(() => summarizeSteps(steps), [steps]);
 
+  // Persistent surfacing of a rejected Telnyx API key. The live test flags this
+  // as the `telnyx_api_live` check failing (HTTP 401) even though the key is
+  // "configured" — a transient toast is easy to miss, so keep it on-screen until
+  // a valid key is saved and the test re-run.
+  const liveApiRejected = useMemo(() => {
+    const check = (liveResult?.checks || []).find((c) => c.id === "telnyx_api_live");
+    return check && check.status === "fail" ? check : null;
+  }, [liveResult]);
+
   return (
     <Card id="twilio-overview" className="scroll-mt-24 border-indigo-100">
       <CardHeader>
@@ -152,6 +161,27 @@ export default function TelnyxSetupProgress() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {liveApiRejected && (
+          <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-red-900">Telnyx rejected your API key</p>
+              <p className="text-xs text-red-700 mt-0.5">
+                {liveApiRejected.detail} Texting, voice, and fax will fail until a valid key is saved.
+                Paste a current Telnyx API key in the API key section below, then re-run the live test.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-2 h-7 border-red-300 text-red-700 hover:bg-red-100"
+                onClick={() => scrollToAnchor("telnyx-secret")}
+              >
+                Update API key <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-medium text-slate-600">Required setup</span>
