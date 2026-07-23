@@ -126,7 +126,7 @@ export default function AIContentResponsibilityAgreement() {
                           id={id}
                           checked={checked[index]}
                           onCheckedChange={() => toggle(index)}
-                          className="mt-0.5"
+                          className={`mt-0.5 ${checked[index] ? "border-navy-600 bg-navy-600 text-white" : ""}`}
                         />
                         <span className="text-sm leading-relaxed text-slate-700">{text}</span>
                       </label>

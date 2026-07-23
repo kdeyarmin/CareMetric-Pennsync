@@ -301,14 +301,9 @@ export default function Layout() {
                 <p className="text-sm text-navy-900"><strong>Account Details:</strong><br />{currentUser.full_name}<br />{currentUser.email}</p>
               </div>
               <p className="text-sm text-slate-500 mb-6">You will receive an email notification once your account is approved.</p>
-              <div className="space-y-2">
-                <Button onClick={() => navigate(`/${MAIN_PAGE}`, { replace: true })} className="w-full">
-                  Return to Dashboard
-                </Button>
-                <Button onClick={handleLogout} variant="outline" className="w-full">
-                  <LogOut className="w-4 h-4 mr-2" /> Sign Out
-                </Button>
-              </div>
+              <Button onClick={handleLogout} variant="outline" className="w-full">
+                <LogOut className="w-4 h-4 mr-2" /> Sign Out
+              </Button>
             </CardContent>
           </Card>
           <p className="mt-6 text-center text-xs text-slate-400">
