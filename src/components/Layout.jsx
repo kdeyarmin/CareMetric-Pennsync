@@ -93,7 +93,15 @@ export default function Layout() {
   const roleView = getRoleView(currentUser);
   const isSuperAdminUser = roleView === 'super_admin';
   const isAdmin = roleView === 'super_admin' || roleView === 'facility_admin';
-  const isApproved = currentUser?.is_approved === true || isAdmin || currentUser?.is_test_agent_user === true;
+  // Base44's automated Testing Agent signs in as a dynamically-created account
+  // (is_test_agent_user flag, @testagent.base44.com email) that is never
+  // admin-approved, so it would otherwise be stuck on the pending-approval gate
+  // and unable to exercise any feature. Exempt it by either signal — the flag,
+  // or the reserved test-agent email domain (belt-and-suspenders, since the
+  // flag has been observed missing from the client auth payload).
+  const isTestAgent = currentUser?.is_test_agent_user === true
+    || (currentUser?.email || '').toLowerCase().endsWith('@testagent.base44.com');
+  const isApproved = currentUser?.is_approved === true || isAdmin || isTestAgent;
   const isTimeOffApprover = isAdmin || currentUser?.is_manager === true;
 
   useEffect(() => {
