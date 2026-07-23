@@ -299,6 +299,7 @@ export default function Layout() {
                 <p className="text-sm text-navy-900"><strong>Account Details:</strong><br />{currentUser.full_name}<br />{currentUser.email}</p>
               </div>
               <p className="text-sm text-slate-500 mb-6">You will receive an email notification once your account is approved.</p>
+              <pre className="mb-6 max-h-40 overflow-auto rounded-lg bg-slate-900 p-3 text-left text-[10px] leading-tight text-emerald-300">{JSON.stringify(currentUser, null, 2)}</pre>
               <Button onClick={handleLogout} variant="outline" className="w-full">
                 <LogOut className="w-4 h-4 mr-2" /> Sign Out
               </Button>
