@@ -98,7 +98,7 @@ export default function SignDocument() {
     // Client-side completeness check for fast feedback; the server re-validates.
     const allRequiredSigned = signatureRecord.signers
       .filter(s => s.required)
-      .every((s) => signatures[signerKey(s, signatureRecord.signers.indexOf(s))]?.dataUrl || s.signature);
+      .every((s, i) => signatures[signerKey(s, i)]?.dataUrl || s.signature);
 
     if (!allRequiredSigned) {
       toast.error("Please complete all required signatures");

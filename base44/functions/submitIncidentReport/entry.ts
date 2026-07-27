@@ -42,11 +42,11 @@ Deno.serve(async (req) => {
     const users = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
       u && (u.role === 'admin' || u.role === 'agency_admin' ||
         u.account_type === 'agency_admin' || u.account_type === 'super_admin'));
-      const adminUsers = (Array.isArray(users) ? users : []).filter((candidate) => candidate.role === 'admin');
-
-      if (adminUsers.length > 0) {
+      // Notify every admin-tier recipient — an extra role==='admin' re-filter
+      // here re-dropped the account_type-based admins the list above includes.
+      if (users.length > 0) {
         await Promise.all(
-          adminUsers.map((adminUser) =>
+          users.map((adminUser) =>
             base44.asServiceRole.entities.Notification.create({
               user_email: adminUser.email,
               title: `Urgent incident: ${payload.incident_name || payload.incident_type}`,

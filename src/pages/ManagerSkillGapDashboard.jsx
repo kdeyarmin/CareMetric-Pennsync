@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Sparkles, BarChart3 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
-import { isAdminView } from "@/lib/roles";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
@@ -18,8 +17,11 @@ const isManager = (user) => user?.role === "admin" || user?.account_type === "ag
 export default function ManagerSkillGapDashboard() {
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   // Manager/admin-only: per-nurse skill-gap rankings are management data.
-  const isAdmin = isAdminView(currentUser);
-  const { data: users = [] } = useQuery({ queryKey: ["skill-gap-users"], queryFn: () => base44.entities.User.list('-created_date', 500), initialData: [], enabled: isAdmin });
+  // This is the MANAGER skill-gap dashboard — supervisors/managers (isManager)
+  // see it too, not just admins. Gating on isAdminView alone locked the
+  // intended audience out. isManager already includes the admin tiers.
+  const canViewManagement = isManager(currentUser);
+  const { data: users = [] } = useQuery({ queryKey: ["skill-gap-users"], queryFn: () => base44.entities.User.list('-created_date', 500), initialData: [], enabled: canViewManagement });
   const { data: assignments = [] } = useQuery({ queryKey: ["skill-gap-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), initialData: [] });
   const { data: attempts = [] } = useQuery({ queryKey: ["skill-gap-attempts"], queryFn: () => base44.entities.TrainingAttempt.list('-submitted_at', 1000), initialData: [] });
   const { data: courses = [] } = useQuery({ queryKey: ["skill-gap-courses"], queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500), initialData: [] });
@@ -83,7 +85,7 @@ export default function ManagerSkillGapDashboard() {
 
   if (currentUser && !isManager(currentUser)) return <div className="max-w-3xl mx-auto p-6 text-slate-600">This dashboard is available to managers, supervisors, and admins only.</div>;
 
-  if (currentUser && !isAdmin) {
+  if (currentUser && !canViewManagement) {
     return (
       <PageContainer>
         <AccessDeniedState

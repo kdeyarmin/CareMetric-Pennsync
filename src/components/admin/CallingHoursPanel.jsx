@@ -128,16 +128,22 @@ export default function CallingHoursPanel() {
 
   const save = useMutation({
     mutationFn: () => {
+      // The transfer number becomes a Call Control `transfer` target, which
+      // Telnyx rejects unless it's E.164. REJECT the save on an unnormalizable
+      // value rather than persisting the raw string — a bad value silently
+      // breaks after-hours transfers at call time.
+      const normalizedTransfer = form.after_hours_transfer_number_e164
+        ? normalizeE164(form.after_hours_transfer_number_e164)
+        : "";
+      if (form.after_hours_transfer_number_e164 && !normalizedTransfer) {
+        throw new Error("Enter a valid after-hours transfer number (E.164, e.g. +17244650444) or clear the field.");
+      }
       // Parse the raw holidays text at save time so the saved array always
       // matches what's in the textarea, even if it never lost focus.
       const payload = {
         ...form,
         business_hours_holidays: parseHolidays(holidaysText),
-        // The transfer number becomes a Call Control `transfer` target, which
-        // Telnyx rejects unless it's E.164 — store it normalized.
-        after_hours_transfer_number_e164: form.after_hours_transfer_number_e164
-          ? normalizeE164(form.after_hours_transfer_number_e164) || form.after_hours_transfer_number_e164
-          : "",
+        after_hours_transfer_number_e164: normalizedTransfer,
       };
       return settings?.id
         ? base44.entities.AgencySettings.update(settings.id, payload)
