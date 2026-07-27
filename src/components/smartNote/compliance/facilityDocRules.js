@@ -88,7 +88,17 @@ export function ruleAppliesToVisit(rule, visitType) {
 export function ruleSatisfiedByNote(rule, noteText) {
   const keywords = rule && rule.required_keywords;
   if (!Array.isArray(keywords) || keywords.length === 0) return null;
-  return anyKeyword(lc(noteText), keywords);
+  // Word-boundary matching, not raw substrings: the keyword "cm" was satisfied
+  // by "CMS guidelines", falsely marking a wound-measurement requirement
+  // documented (a false PASS on a facility requirement). Admin-authored
+  // keywords are whole words/phrases; boundaries also make the old
+  // trailing-space workaround ("bg ") unnecessary while keeping it working.
+  const text = lc(noteText);
+  return keywords.some((k) => {
+    const t = lc(k).trim();
+    if (!t) return false;
+    return new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text);
+  });
 }
 
 /**

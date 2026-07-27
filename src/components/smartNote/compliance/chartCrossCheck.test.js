@@ -55,3 +55,15 @@ test("no fall-risk warning when fall risk is not high", () => {
   const out = crossCheckChart("Assessed wound.", patient);
   assert.equal(out.find((f) => f.category === "Safety"), undefined);
 });
+
+// ── Regression: bidirectional allergy matching (2026-07 review) ─────────────
+
+test("a note med MORE specific than the allergy entry still flags", () => {
+  const out = crossCheckChart("Administered sulfamethoxazole per order.", { allergies: "Sulfa" });
+  assert.equal(out.filter((f) => f.severity === "critical").length, 1, "allergy 'Sulfa' must catch sulfamethoxazole");
+});
+
+test("reaction descriptions in the allergy field don't create phantom conflicts", () => {
+  const out = crossCheckChart("Patient tolerated aspirin well.", { allergies: "Penicillin — causes severe rash" });
+  assert.deepEqual(out.filter((f) => f.category === "Allergy"), []);
+});

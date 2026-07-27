@@ -90,7 +90,8 @@ const E = {
     label: "Progress toward care-plan goals",
     copReference: "42 CFR 484.60",
     keywords: ["goal", "progress", "plan of care", "improving", "toward goal"],
-    pattern: /goal|progress|plan of care|improving|toward/i,
+    // No bare "toward": "ambulated toward the bathroom" is not goal progress.
+    pattern: /goal|progress|plan of care|improving|toward(?:s)? (?:the )?goal/i,
     question: "What progress toward the plan-of-care goals did you observe?",
     notDocumentedPhrase: "Progress toward care-plan goals was not documented this visit.",
   },
@@ -193,8 +194,14 @@ const E = {
   discharge_reason: {
     label: "Reason for discharge",
     copReference: "42 CFR 484.50",
-    keywords: ["discharge", "goals met", "transfer", "no longer", "reason for discharge"],
-    pattern: /discharge|goals met|transfer|no longer (?:homebound|skilled)/i,
+    // Deliberately narrow: this is a CRITICAL gate, and the bare words
+    // "discharge"/"transfer" false-passed on wound drainage ("no discharge or
+    // drainage noted") and mobility notes ("transferred to wheelchair") —
+    // silencing the hard-block on a discharge note that never states its reason.
+    keywords: ["reason for discharge", "discharged", "discharge plan", "discharge criteria", "goals met", "revocation", "no longer homebound", "no longer skilled", "no longer eligible"],
+    // "transfer to" is limited to CARE destinations — "transferred to
+    // wheelchair/bed" is a mobility note, not a discharge reason.
+    pattern: /reason for discharge|\bdischarged\b|discharg(?:e|ing)\s+(?:plan|planning|instructions|criteria|date|today|home|from|to\b)|goals (?:have been |were )?met|revocation|revoked|no longer (?:homebound|skilled|eligible)|transfer(?:red|ring)? to (?:the )?(?:hospital|inpatient|outpatient|facility|snf|skilled nursing|hospice|assisted living|another agency|er\b|emergency)/i,
     question: "What is the reason for discharge (goals met, transfer, no longer eligible)?",
     notDocumentedPhrase: "Reason for discharge was not documented this visit.",
   },
@@ -225,8 +232,10 @@ const E = {
   visit_reason: {
     label: "Reason for unscheduled visit",
     copReference: "42 CFR 484.75",
-    keywords: ["reason for visit", "called", "complaint of", "prn", "unscheduled"],
-    pattern: /reason for (?:the )?visit|called|prn|unscheduled/i,
+    // Bare "prn" false-passed this CRITICAL gate on any PRN medication line
+    // ("administered PRN oxycodone"); require visit-reason context.
+    keywords: ["reason for visit", "complaint of", "prn visit", "unscheduled", "after-hours", "crisis visit", "requested visit"],
+    pattern: /reason for (?:the |this )?visit|complaint of|prn (?:visit|call)|after[- ]hours (?:visit|call)|crisis visit|unscheduled|(?:patient|family|caregiver|office|agency|md|physician) (?:called|requested)|called (?:to request|for|regarding|due to)|visit (?:made|requested|prompted) (?:due to|for|because)/i,
     question: "What was the reason for this unscheduled / PRN visit?",
     notDocumentedPhrase: "Reason for the unscheduled visit was not documented.",
   },
@@ -242,8 +251,11 @@ const E = {
   terminal_prognosis: {
     label: "Terminal prognosis (≤6 months)",
     copReference: "42 CFR 418.22",
-    keywords: ["terminal", "prognosis", "six months", "6 months", "life expectancy", "decline", "end of life"],
-    pattern: /terminal|prognosis|(?:six|6) months|life expectancy|end[- ]of[- ]life/i,
+    // Bare "6 months"/"decline" false-passed this CRITICAL gate on unrelated
+    // text ("has had the sacral wound for 6 months", "patient declined a
+    // shower"); require prognosis context around the timeframe.
+    keywords: ["terminal", "prognosis", "life expectancy", "end of life", "months or less", "continued decline", "continues to decline", "hospice appropriate"],
+    pattern: /terminal|prognosis|life expectancy|end[- ]of[- ]life|(?:six|6)[- ]months? or less|months or less|continue[ds]? to decline|continued decline|hospice[- ]appropriate/i,
     question: "What supports the continued terminal prognosis of six months or less?",
     notDocumentedPhrase: "Terminal prognosis was not documented this visit.",
     hint: "Cite objective decline supporting ≤6-month prognosis: measurable changes (weight loss, PPS/FAST score, intake), increasing symptom burden, or functional decline since last visit.",

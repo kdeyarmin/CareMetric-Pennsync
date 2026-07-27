@@ -23,12 +23,19 @@ export function detectPresence(draftText, requiredElements) {
       if (seg) evidence = `${seg}.`;
     }
 
-    // 2) fallback: any keyword appears in a segment
+    // 2) fallback: any keyword appears in a segment — anchored at a LEADING
+    //    word boundary, not raw substrings. Short keywords ("hr", "temp", "bp")
+    //    matched inside unrelated words ("attemPTed", "q2HR"), falsely marking
+    //    an element documented so the nurse was never asked about it. Only the
+    //    leading edge is anchored: many keywords are deliberate stems
+    //    ("educat", "reconcil", "allerg") that must keep matching suffixes.
     if (!evidence && Array.isArray(elem.keywords) && elem.keywords.length) {
-      const lower = (draftText || "").toLowerCase();
-      const matchedKeyword = elem.keywords.find((k) => lower.includes(k.toLowerCase()));
+      const kwRegex = (k) =>
+        new RegExp(`\\b${String(k).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
+      const matchedKeyword = elem.keywords.find((k) => k && kwRegex(k).test(draftText || ""));
       if (matchedKeyword) {
-        const seg = segments.find((s) => s.toLowerCase().includes(matchedKeyword.toLowerCase()));
+        const re = kwRegex(matchedKeyword);
+        const seg = segments.find((s) => re.test(s));
         evidence = seg ? `${seg}.` : matchedKeyword;
       }
     }

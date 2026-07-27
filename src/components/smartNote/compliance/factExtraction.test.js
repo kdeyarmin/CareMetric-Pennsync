@@ -307,3 +307,68 @@ test("value-guard still catches a kg->lb weight unit error (no synthesized lbs t
   // A unitless source weight still round-trips (the intended false-positive fix).
   assert.equal(valueGuard("weight 180 lbs", "wt 180").ok, true);
 });
+
+// ── Regression: value-guard tokenization holes (2026-07 review) ─────────────
+
+test("3-D wound dimensions are guarded — a hallucinated first dimension is flagged", () => {
+  const tokens = extractNumbersAndMeasurements("Sacral wound 4 x 5 x 2 cm.");
+  assert.ok(tokens.includes("4x5x2cm"), `expected 4x5x2cm in ${tokens}`);
+  const vg = valueGuard("Sacral wound measures 9 x 5 x 2 cm.", "Sacral wound 4 x 5 x 2 cm.");
+  assert.equal(vg.ok, false, "a changed wound length must not pass the value-guard");
+});
+
+test("insulin mix ratios are not read as blood pressure", () => {
+  const v = extractVitals("Gave Novolin 70/30 10 units SQ");
+  assert.equal(v.bp_sys, undefined);
+  assert.equal(v.bp_dia, undefined);
+  const v2 = extractVitals("insulin aspart 70/30 administered");
+  assert.equal(v2.bp_sys, undefined);
+});
+
+test("a LABELED hypotensive/equal BP is kept (agonal readings are real chart data)", () => {
+  assert.deepEqual(extractVitals("BP 55/30, patient unresponsive"), { bp_sys: 55, bp_dia: 30 });
+  const v = extractVitals("BP 90/90 today");
+  assert.equal(v.bp_sys, 90);
+  assert.equal(v.bp_dia, 90);
+  // The UNLABELED fallback keeps the strict plausibility window (dates etc.).
+  assert.deepEqual(extractVitals("Recert due 11/20"), {});
+});
+
+test("kg spelling variants defeat the lb-synthesis and are guarded as kg", () => {
+  const vg = valueGuard("Weight 80 lbs.", "Weight: 80 kgs.");
+  assert.equal(vg.ok, false, "an 80 kg -> 80 lbs unit error must be flagged");
+  // Faithful respelling of the same unit does NOT flag.
+  assert.equal(valueGuard("Weight 80 kg.", "Weight: 80 kgs.").ok, true);
+});
+
+test("RR / weight typos are dropped rather than truncated", () => {
+  assert.equal(extractVitals("RR 210").rr, undefined);
+  assert.equal(extractVitals("weight 1800").weight, undefined);
+  assert.equal(extractVitals("temperature 1013").temp, undefined);
+  assert.equal(extractVitals("underweight 15% below ideal").weight, undefined);
+});
+
+test("every labeled occurrence of a repeated vital is whitelisted", () => {
+  const vg = valueGuard(
+    "HR 88 bpm initially, HR 92 bpm after ambulation.",
+    "HR 88, rechecked HR 92",
+  );
+  assert.equal(vg.ok, true, "a faithful second reading must not be flagged");
+});
+
+test("brand-name meds resolve to the canonical medication", () => {
+  assert.deepEqual(extractMedications("continue Lasix 40 mg daily"), ["Furosemide"]);
+  // Brand in the note, generic in the source (or vice versa) — same canonical name.
+  assert.equal(valueGuard("Continued Furosemide.", "continue Lasix").ok, true);
+  assert.equal(valueGuard("Administered Vicodin for pain.", "Reviewed the medication list.").ok, false);
+});
+
+test("O2 flow rate and bare-u insulin doses are guarded", () => {
+  assert.equal(valueGuard("O2 at 4 L/min via NC.", "O2 at 2 L/min via NC.").ok, false);
+  assert.equal(valueGuard("Gave 15 u insulin.", "Gave 10 u insulin.").ok, false);
+  assert.equal(valueGuard("Gave 10 units insulin.", "Gave 10 u insulin.").ok, true, "u/units respellings are equivalent");
+});
+
+test("splitSentences keeps decimal values whole", () => {
+  assert.deepEqual(splitSentences("Temp 98.6. BP 120/80."), ["Temp 98.6", "BP 120/80"]);
+});

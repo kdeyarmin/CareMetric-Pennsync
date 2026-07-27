@@ -158,3 +158,11 @@ test('summarizeFacilityRules + sortFacilityResults: counts and ordering', () => 
   const sorted = sortFacilityResults(results);
   assert.equal(sorted[0].rule.rule_name, 'a'); // missing critical first
 });
+
+// ── Regression: word-boundary keyword satisfaction (2026-07 review) ─────────
+
+test("a short keyword is not satisfied by an unrelated containing word", () => {
+  const rule = { required_keywords: ["cm"] };
+  assert.equal(ruleSatisfiedByNote(rule, "Reviewed CMS guidelines with caregiver."), false);
+  assert.equal(ruleSatisfiedByNote(rule, "Wound measures 4 x 5 cm today."), true);
+});

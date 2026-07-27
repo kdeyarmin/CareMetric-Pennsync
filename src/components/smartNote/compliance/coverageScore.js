@@ -68,13 +68,25 @@ export function toNoteConversionFields({
 export function deriveStructuredVisitFields(presenceResults, ctx = {}) {
   const { answeredIds = [], confirmedNegativeIds = [], textById = {} } = ctx;
   const presentIds = presenceResults.filter((r) => r.present).map((r) => r.id);
+  const inRequiredSet = (id) => presenceResults.some((r) => r.id === id);
   const evidenceFor = (id) => {
     const r = presenceResults.find((x) => x.id === id);
     return textById[id] || (r && r.evidence) || "";
   };
+  // The required set differs by service line / visit type: hospice uses
+  // comfort_skilled_need (and has no homebound element), and the home-health
+  // discharge/prn sets carry neither id. An element that isn't in THIS visit's
+  // required set can't be "not documented" — hardcoding false for it made every
+  // hospice visit persist skilled_intervention_documented:false, which the
+  // data-quality and completeness backends then flagged on compliant notes.
+  const skilledIds = ["skilled_need", "comfort_skilled_need"].filter(inRequiredSet);
   return {
-    homebound_status_verified: isCovered("homebound", presentIds, answeredIds, confirmedNegativeIds),
-    skilled_intervention_documented: isCovered("skilled_need", presentIds, answeredIds, confirmedNegativeIds),
+    homebound_status_verified: inRequiredSet("homebound")
+      ? isCovered("homebound", presentIds, answeredIds, confirmedNegativeIds)
+      : true,
+    skilled_intervention_documented: skilledIds.length
+      ? skilledIds.some((id) => isCovered(id, presentIds, answeredIds, confirmedNegativeIds))
+      : true,
     homebound_justification: evidenceFor("homebound"),
   };
 }

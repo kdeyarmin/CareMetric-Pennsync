@@ -73,3 +73,44 @@ test("evidence is a clean single line for bullet drafts", () => {
   assert.ok(!homebound.evidence.includes("\n"), "evidence should not span multiple lines");
   assert.match(homebound.evidence, /taxing effort/i);
 });
+
+// ── Regression: keyword/pattern false-passes (2026-07 review) ───────────────
+
+import { getRequiredElements as _getReq } from "./requiredElements.js";
+
+test("short keywords no longer match inside unrelated words", () => {
+  const req = _getReq("home_health", "routine_visit");
+  const vitals = (text) => detectPresence(text, req).find((r) => r.id === "vitals");
+  assert.equal(vitals("Patient attempted to ambulate with walker.").present, false, "'attempted' must not satisfy vitals via 'temp'");
+  assert.equal(vitals("Reposition q2hr per care plan.").present, false, "'q2hr' must not satisfy vitals via 'hr'");
+  assert.equal(vitals("BP 148/90, HR 82.").present, true);
+});
+
+test("wound drainage does not satisfy the discharge-reason critical gate", () => {
+  const req = _getReq("home_health", "discharge");
+  const row = (text) => detectPresence(text, req).find((r) => r.id === "discharge_reason");
+  assert.equal(row("Incision clean and dry, no discharge or drainage noted.").present, false);
+  assert.equal(row("Patient transferred to wheelchair with one assist.").present, false);
+  assert.equal(row("Discharged from service — goals met; transfer to outpatient PT.").present, true);
+});
+
+test("a PRN medication does not satisfy the PRN visit-reason critical gate", () => {
+  const req = _getReq("home_health", "prn");
+  const row = (text) => detectPresence(text, req).find((r) => r.id === "visit_reason");
+  assert.equal(row("Administered PRN oxycodone 5 mg for pain 6/10.").present, false);
+  assert.equal(row("Family called to request an unscheduled visit for new confusion.").present, true);
+});
+
+test("an unrelated '6 months' does not satisfy the terminal-prognosis critical gate", () => {
+  const req = _getReq("hospice", "recertification");
+  const row = (text) => detectPresence(text, req).find((r) => r.id === "terminal_prognosis");
+  assert.equal(row("Patient has had the sacral wound for 6 months.").present, false);
+  assert.equal(row("Continued decline supports a prognosis of six months or less.").present, true);
+});
+
+test("'ambulated toward the bathroom' does not satisfy care-plan progress", () => {
+  const req = _getReq("home_health", "routine_visit");
+  const row = (text) => detectPresence(text, req).find((r) => r.id === "care_plan_progress");
+  assert.equal(row("Patient ambulated toward the bathroom.").present, false);
+  assert.equal(row("Progress toward the mobility goal noted.").present, true);
+});

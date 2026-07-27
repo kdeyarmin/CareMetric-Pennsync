@@ -9,11 +9,15 @@ import { MEDICAL_TERMS } from "../../utils/medicalDictionary.js";
 
 // ── Sentence / phrase helpers (lifted from OASISScrubber.jsx) ──────────────
 
-/** Split free text into trimmed sentences, also breaking on newlines/bullets. */
+/** Split free text into trimmed sentences, also breaking on newlines/bullets.
+ * A period FOLLOWED BY A DIGIT is a decimal point ("Temp 98.6"), not a sentence
+ * boundary — splitting there truncated evidence lines and made provenance /
+ * grounding fragment decimal vitals into nonsense ("Temp 98" / "6°F").
+ * Lookahead only (lookbehind throws in Safari < 16.4; see MEASUREMENT_PATTERNS). */
 export function splitSentences(text) {
   if (!text) return [];
   return text
-    .split(/[.!?\n]+/)
+    .split(/[!?\n]+|\.(?!\d)/)
     .map((s) => s.replace(/^[\s•\-*–·]+/, "").trim())
     .filter((s) => s.length > 0);
 }
@@ -28,7 +32,8 @@ export function extractPhrases(text, pattern) {
 /** Return up to 5 full sentences that match `pattern`. */
 export function getSentencesContaining(text, pattern) {
   if (!text) return [];
-  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+  // Decimal-safe like splitSentences: "98.6" is one value, not two sentences.
+  const sentences = text.split(/[!?]+|\.(?!\d)/).filter((s) => s.trim().length > 0);
   return sentences
     .filter((s) => { pattern.lastIndex = 0; return pattern.test(s); })
     .map((s) => s.trim() + ".")
@@ -48,15 +53,33 @@ export function extractVitals(text) {
   // string) rather than a lookbehind — lookbehind throws a SyntaxError in Safari
   // < 16.4 (see MEASUREMENT_PATTERNS below), which would fail this whole module at
   // parse time. Group 1 = systolic, group 2 = diastolic in both patterns.
-  const bpMatch = text.match(/bp\s*(\d{2,3})\/(\d{2,3})(?!\d)/i) || text.match(/(?:^|\D)(\d{2,3})\/(\d{2,3})(?!\d)/);
-  if (bpMatch) {
-    const sys = parseInt(bpMatch[1]);
-    const dia = parseInt(bpMatch[2]);
-    // Guard the unlabeled "nn/nn" fallback against dates ("11/20") and other
-    // ratios: only accept physiologically plausible systolic/diastolic values.
-    if (sys >= 60 && sys <= 300 && dia >= 30 && dia <= 200 && sys > dia) {
+  const labeledBp = text.match(/bp\s*:?\s*(\d{2,3})\/(\d{2,3})(?!\d)/i);
+  if (labeledBp) {
+    const sys = parseInt(labeledBp[1]);
+    const dia = parseInt(labeledBp[2]);
+    // A LABELED reading gets only a sanity window — a nurse writing "BP 55/30,
+    // patient unresponsive" documented a real (agonal) pressure, and dropping it
+    // loses chart data and the hypotension escalation. ("BP 90/90" is also real.)
+    if (sys >= 30 && sys <= 300 && dia >= 10 && dia <= 250) {
       vitals.bp_sys = sys;
       vitals.bp_dia = dia;
+    }
+  } else {
+    // Unlabeled "nn/nn" fallback. Strip insulin mix-ratio phrases first
+    // ("Novolin 70/30", "insulin aspart 70/30") — 70/30 sits inside the
+    // plausibility window and was read as a phantom hypotensive BP that could
+    // reach the saved vital_signs and trigger a false escalation.
+    const bpSource = text.replace(/\b(?:novolin|humulin|novolog|humalog|insulin(?:\s+[a-z]+)?|mix(?:tard)?)\s*\d{2,3}\/\d{2,3}\b/gi, " ");
+    const bpMatch = bpSource.match(/(?:^|\D)(\d{2,3})\/(\d{2,3})(?!\d)/);
+    if (bpMatch) {
+      const sys = parseInt(bpMatch[1]);
+      const dia = parseInt(bpMatch[2]);
+      // Guard the unlabeled fallback against dates ("11/20") and other ratios:
+      // only accept physiologically plausible systolic/diastolic values.
+      if (sys >= 60 && sys <= 300 && dia >= 30 && dia <= 200 && sys > dia) {
+        vitals.bp_sys = sys;
+        vitals.bp_dia = dia;
+      }
     }
   }
 
@@ -84,18 +107,24 @@ export function extractVitals(text) {
   // Full spellings ("Temp:", "Temperature:") support a colon; the bare single-letter
   // "t" shorthand only matches its space-adjacent numeric form ("T 98.6") — allowing
   // a colon on bare "t" would misread generic "T:" list labels as a temperature.
-  const tempMatch = text.match(/(?:\btemp\b|temperature)\s*:?\s*(\d{2,3}(?:\.\d)?)|\bt\b\s+(\d{2,3}(?:\.\d)?)/i);
+  // Trailing (?!\d) mirrors the BP/HR anchors: a typo like "temperature 1013"
+  // must be dropped, not silently truncated to a plausible-looking 101.
+  const tempMatch = text.match(/(?:\btemp\b|temperature)\s*:?\s*(\d{2,3}(?:\.\d)?)(?!\d)|\bt\b\s+(\d{2,3}(?:\.\d)?)(?!\d)/i);
   if (tempMatch) {
     const t = parseFloat(tempMatch[1] ?? tempMatch[2]);
     if (t > 90) vitals.temp = t;
   }
 
   // \brr\b is word-anchored so a word ending in "rr" before a colon ("corr: 5")
-  // can't be misread as a respiratory rate.
-  const rrMatch = text.match(/(?:\brr\b|resp(?:iratory)?\s*rate)\s*:?\s*(\d{1,2})/i);
+  // can't be misread as a respiratory rate; trailing (?!\d) so "rr 210" is
+  // dropped rather than truncated to 21.
+  const rrMatch = text.match(/(?:\brr\b|resp(?:iratory)?\s*rate)\s*:?\s*(\d{1,2})(?!\d)/i);
   if (rrMatch) vitals.rr = parseInt(rrMatch[1]);
 
-  const wtMatch = text.match(/(?:wt|weight)\s*:?\s*(\d{2,3}(?:\.\d)?)\s*(?:lbs?|kg)?/i);
+  // Left \b so "underweight 15%" can't read as weight 15; trailing (?!\d) so
+  // "weight 1800" is dropped rather than truncated to 180. Accepts the kg
+  // spelling variants nurses actually write (kg/kgs/kilograms/lbs/pounds).
+  const wtMatch = text.match(/\b(?:wt|weight)\s*:?\s*(\d{2,3}(?:\.\d)?)(?!\d)\s*(?:lbs?|pounds?|kgs?|kilograms?)?\b/i);
   if (wtMatch) vitals.weight = parseFloat(wtMatch[1]);
 
   return vitals;
@@ -220,31 +249,45 @@ export function extractCanonicalVitalsFromText(text) {
 const MEASUREMENT_PATTERNS = [
   /\b\d{2,3}\/\d{2,3}\b/g, // blood pressure
   /\b\d{1,3}\s?%/g, // percentages (O2 sat, etc.)
+  // 3-D wound dimensions FIRST (L x W x D — the standard wound-care form). Without
+  // this the guard tokenized "4 x 5 x 2 cm" as only "5x2cm", so a hallucinated
+  // first dimension ("9 x 5 x 2 cm") passed the value-guard clean.
+  /\b\d{1,3}(?:\.\d+)?\s?x\s?\d{1,3}(?:\.\d+)?\s?x\s?\d{1,3}(?:\.\d+)?\s?(?:cm|mm)\b/gi,
   /\b\d{1,3}(?:\.\d+)?\s?x\s?\d{1,3}(?:\.\d+)?\s?(?:cm|mm)\b/gi, // wound dimensions 2x3 cm / 2.5 x 3 cm
   // Single measurement, but NOT the second operand of an "NxM cm" dimension: a
   // faithful rewrite that normalizes spacing ("4x5 cm" -> "4 x 5 cm") must not
   // make the guard extract a spurious "5cm" token that the source lacks and then
   // flag the correct note as a hallucinated value. We *consume* an optional
-  // leading "<digit> x " instead of using a lookbehind — String.match returns the
-  // whole match, so "4 x 5 cm" normalizes to the same "4x5cm" token the dimension
-  // pattern already emits (no spurious "5cm"), while a standalone "5 cm" still
-  // matches with an empty prefix. (Lookbehind is avoided because it throws a
-  // SyntaxError in Safari < 16.4.)
-  /(?:\b\d{1,3}(?:\.\d+)?\s?x\s?)?\b\d+(?:\.\d+)?\s?(?:cm|mm)\b/gi, // single measurement (whole first operand consumed, so "12 x 5 cm" never emits a spurious "2x5cm")
-  /\b\d+(?:\.\d+)?\s?(?:mg|mcg|g|ml|units?|iu|tab(?:lets?)?|cc)\b/gi, // doses
+  // leading "<digit> x " (possibly chained for 3-D forms) instead of using a
+  // lookbehind — String.match returns the whole match, so "4 x 5 cm" normalizes
+  // to the same "4x5cm" token the dimension pattern already emits (no spurious
+  // "5cm"), while a standalone "5 cm" still matches with an empty prefix.
+  // (Lookbehind is avoided because it throws a SyntaxError in Safari < 16.4.)
+  /(?:\b\d{1,3}(?:\.\d+)?\s?x\s?(?:\d{1,3}(?:\.\d+)?\s?x\s?)?)?\b\d+(?:\.\d+)?\s?(?:cm|mm)\b/gi, // single measurement (whole first operand consumed, so "12 x 5 cm" never emits a spurious "2x5cm")
+  /\b\d+(?:\.\d+)?\s?(?:mg|mcg|g|ml|units?|iu|u|tab(?:lets?)?|cc)\b/gi, // doses (incl. bare "u" insulin shorthand)
+  /\b\d+(?:\.\d+)?\s?(?:l\/min|lpm)\b/gi, // O2 flow rate (2 L/min)
   /\b\d{1,2}\/10\b/g, // pain / rating scales
   /\b\d{2,3}\s?(?:bpm|beats)/gi, // heart rate
   /\b\d{1,2}\s?(?:breaths|rpm)/gi, // resp rate
-  /\b\d{2,3}(?:\.\d)?\s?(?:lbs?|kg)\b/gi, // weight
+  /\b\d{2,3}(?:\.\d)?\s?(?:lbs?|pounds?|kgs?|kilograms?)\b/gi, // weight (all common unit spellings)
   /\b\d{2,3}(?:\.\d)?\s?°?\s?f\b/gi, // temperature in F
 ];
 
-/** Normalize a measurement token for set comparison (lowercase, no spaces). */
+/** Normalize a measurement token for set comparison (lowercase, no spaces).
+ * Unit spellings collapse to one canonical form ("80 kgs"/"80 kilograms" →
+ * "80kg", "180 pounds" → "180lbs") so a faithful unit respelling never flags —
+ * while a kg→lb UNIT CHANGE still does (different canonical unit). */
 function normalizeToken(t) {
   // Drop the degree symbol too so "98.6 F" and "98.6°F" reduce to the same
   // token — otherwise the value-guard flags a faithful °-adding rewrite as a
   // hallucinated value.
-  return t.toLowerCase().replace(/[\s°]+/g, "");
+  return t
+    .toLowerCase()
+    .replace(/[\s°]+/g, "")
+    .replace(/(kilograms?|kgs)$/, "kg")
+    .replace(/(pounds?|lb)$/, "lbs")
+    .replace(/units?$/, "u")
+    .replace(/lpm$/, "l/min");
 }
 
 /** Extract normalized measurement/value tokens from text. */
@@ -274,12 +317,26 @@ export function extractNumbersAndMeasurements(text) {
   if (v.hr) add(`${v.hr}bpm`);
   if (v.rr) add(`${v.rr}breaths`);
   if (v.temp) add(`${v.temp}f`);
+  // extractVitals returns only the FIRST reading of each vital, but a nurse
+  // legitimately documents repeats ("HR 88 initially, HR 92 after ambulation") —
+  // without folding every labeled occurrence, the guard flagged the faithful
+  // restatement of the second reading as a hallucinated value.
+  for (const m of text.matchAll(/\bbp\s*:?\s*(\d{2,3})\/(\d{2,3})(?!\d)/gi)) add(`${parseInt(m[1])}/${parseInt(m[2])}`);
+  for (const m of text.matchAll(/\b(?:hr|heart\s*rate)\s*:?\s*(\d{2,3})(?!\d)/gi)) add(`${parseInt(m[1])}bpm`);
+  for (const m of text.matchAll(/\b(?:rr|resp(?:iratory)?\s*rate)\s*:?\s*(\d{1,2})(?!\d)/gi)) add(`${parseInt(m[1])}breaths`);
+  for (const m of text.matchAll(/\b(?:temp|temperature)\s*:?\s*(\d{2,3}(?:\.\d)?)(?!\d)/gi)) {
+    const t = parseFloat(m[1]);
+    if (t > 90) add(`${t}f`);
+  }
   // Weight is the one vital with a unit ambiguity: extractVitals drops the unit, so
   // synthesizing an "lbs" token for a source documented in kg would let a real unit
   // error slip the value-guard ("80 kg" -> allowing "80 lbs", ~96 lb off). Only
   // synthesize the lbs token when the source weight is UNITLESS ("wt 180"); an
   // explicit lbs/kg weight is already emitted verbatim by MEASUREMENT_PATTERNS.
-  if (v.weight && !/(?:\bwt|weight)\s*:?\s*\d{2,3}(?:\.\d)?\s*(?:lbs?|kg)\b/i.test(text)) {
+  // All the kg/lb unit spellings count as "has a unit" — "80 kgs"/"80 kilograms"
+  // previously slipped this check and synthesized the very 80lbs token the
+  // suppression exists to prevent.
+  if (v.weight && !/\b(?:wt|weight)\s*:?\s*\d{2,3}(?:\.\d)?\s*(?:lbs?|pounds?|kgs?|kilograms?)\b/i.test(text)) {
     add(`${v.weight}lbs`);
   }
   return found;
@@ -295,6 +352,14 @@ const MED_SET = new Set(MEDICAL_TERMS.medications.map((m) => m.toLowerCase()));
 const MED_NAMES = [
   ...MEDICAL_TERMS.medications,
   ...Object.values(MEDICAL_TERMS.common_mishears).filter((v) => MED_SET.has(v.toLowerCase())),
+  // The mishear KEYS whose correction is a medication are the BRAND names nurses
+  // actually write (Lasix, Zithromax, Coumadin, …) — without them the value-guard
+  // and chart cross-check were blind to brand-name meds ("continue Lasix 40 mg"
+  // extracted nothing).
+  ...Object.keys(MEDICAL_TERMS.common_mishears).filter((k) => {
+    const corrected = MEDICAL_TERMS.common_mishears[k];
+    return typeof corrected === "string" && MED_SET.has(corrected.toLowerCase());
+  }),
 ];
 // De-dupe canonical names case-insensitively (so "Atorvastatin" and the
 // "statin"→"atorvastatin" mishear entry don't both survive), longest first so
@@ -311,13 +376,26 @@ const UNIQUE_MEDS = (() => {
   return out.sort((a, b) => b.length - a.length);
 })();
 
+// Matched name (brand/mishear) → canonical medication, so "Lasix" in the note
+// and "furosemide"-family entries reduce to ONE name on both sides of the
+// value-guard and in the chart cross-check.
+const CANONICAL_MED = (() => {
+  const map = new Map();
+  for (const [k, vv] of Object.entries(MEDICAL_TERMS.common_mishears)) {
+    if (typeof vv === "string" && MED_SET.has(vv.toLowerCase())) map.set(k.toLowerCase(), vv);
+  }
+  return map;
+})();
+
 /** Return the list of known medication names mentioned in `text` (canonical). */
 export function extractMedications(text) {
   if (!text) return [];
   const found = [];
   for (const med of UNIQUE_MEDS) {
     const re = new RegExp(`\\b${med.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-    if (re.test(text) && !found.includes(med)) found.push(med);
+    if (!re.test(text)) continue;
+    const canonical = CANONICAL_MED.get(med.toLowerCase()) || med;
+    if (!found.includes(canonical)) found.push(canonical);
   }
   return found;
 }
