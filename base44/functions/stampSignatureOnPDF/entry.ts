@@ -43,10 +43,28 @@ Deno.serve(async (req) => {
     }
 
     if (!isSafeFetchUrl(pdf_url)) return Response.json({ error: 'Invalid or disallowed pdf_url' }, { status: 400 });
-    // Fetch the PDF bytes. Guard response.ok so an expired/404 storage URL yields
-    // a clean 400 instead of feeding an HTML error page into pdf-lib (opaque 500).
-    const pdfResponse = await fetch(pdf_url);
-    if (!pdfResponse.ok) {
+    // Fetch the PDF bytes with MANUAL redirects, re-validating every hop —
+    // redirect:'follow' would let an allowlisted host 3xx into an internal/
+    // metadata address (mirrors processPatientFileUpdate's safeFetchFollow).
+    // Guard response.ok so an expired/404 storage URL yields a clean 400
+    // instead of feeding an HTML error page into pdf-lib (opaque 500).
+    let pdfResponse = null;
+    let nextUrl = pdf_url;
+    for (let hop = 0; hop < 4; hop++) {
+      pdfResponse = await fetch(nextUrl, { redirect: 'manual' });
+      if (pdfResponse.status >= 300 && pdfResponse.status < 400) {
+        const location = pdfResponse.headers.get('location');
+        if (!location) break;
+        const resolved = new URL(location, nextUrl).toString();
+        if (!isSafeFetchUrl(resolved)) {
+          return Response.json({ error: 'Invalid or disallowed pdf_url redirect' }, { status: 400 });
+        }
+        nextUrl = resolved;
+        continue;
+      }
+      break;
+    }
+    if (!pdfResponse || !pdfResponse.ok) {
       return Response.json({ error: 'Failed to fetch PDF' }, { status: 400 });
     }
     const pdfBytes = await pdfResponse.arrayBuffer();

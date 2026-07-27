@@ -246,6 +246,21 @@ export const buildUploadKeys = (patient) => {
   return keys;
 };
 
+// An MRN match must AGREE with the row's name when the row carries one — a
+// single typo'd MRN digit used to match (and discharge/archive) whichever
+// patient owned that MRN, name unchecked. Different last names are a conflict
+// unless the first names agree exactly (married-name change).
+const foldNamePart = (v) => String(v || '').toLowerCase().replace(/[^a-z]/g, '');
+const mrnNameConflict = (row, rec) => {
+  const rowLast = foldNamePart(row.last_name);
+  const recLast = foldNamePart(rec?.last_name);
+  if (!rowLast || !recLast) return false; // nothing to compare
+  if (rowLast === recLast || rowLast.includes(recLast) || recLast.includes(rowLast)) return false;
+  const rowFirst = foldNamePart(row.first_name);
+  const recFirst = foldNamePart(rec?.first_name);
+  return !(rowFirst && recFirst && rowFirst === recFirst);
+};
+
 // Resolve an uploaded patient against the existing roster. Matches by MRN
 // first, then by Name+DOB. Surfaces ambiguity (the same key shared by several
 // existing patients, or MRN and Name+DOB pointing at different people) as an
@@ -268,6 +283,12 @@ export const resolveMatch = (patient, existingByMrn, existingByNameDob) => {
 
   if (mrnMatch && nameDobMatch && mrnMatch.id !== nameDobMatch.id) {
     return { error: 'MRN matched one patient, but name and DOB matched a different patient.' };
+  }
+
+  if (mrnMatch && !nameDobMatch && mrnNameConflict(patient, mrnMatch)) {
+    return {
+      error: `MRN belongs to ${mrnMatch.first_name || ''} ${mrnMatch.last_name || ''} but this row names a different patient — verify the MRN before importing.`.trim(),
+    };
   }
 
   return {

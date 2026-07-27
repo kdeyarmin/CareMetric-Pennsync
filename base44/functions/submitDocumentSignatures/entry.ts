@@ -70,8 +70,11 @@ Deno.serve(async (req) => {
     const submittedById = new Map(
       signatures.filter((s) => s && s.signer_id != null).map((s) => [String(s.signer_id), s]),
     );
-    const updatedSigners = sig.signers.map((signer) => {
-      const sub = submittedById.get(String(signer.id));
+    // Same fallback keying as the signing page (signer.id, else `idx_<n>`):
+    // legacy signer rows have no id, so keying on String(undefined) collided
+    // every id-less row on multi-signer documents.
+    const updatedSigners = sig.signers.map((signer, index) => {
+      const sub = submittedById.get(String(signer.id ?? `idx_${index}`));
       if (!sub || !sub.signature) return signer;
       return {
         ...signer,

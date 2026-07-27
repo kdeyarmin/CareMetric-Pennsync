@@ -18,3 +18,14 @@ test('buildPatientTimeline skips undated records and tolerates empty inputs', ()
   const events = buildPatientTimeline({ tasks: [{ id: 't1', title: 'No date' }] });
   assert.deepEqual(events, []);
 });
+
+test("records without a patient_id never appear on a specific patient's timeline", () => {
+  const events = buildPatientTimeline({
+    patientId: "p1",
+    documents: [
+      { id: "d1", patient_id: "p1", created_date: "2026-07-01", title: "Chart note" },
+      { id: "d2", created_date: "2026-07-02", title: "Unattributed psych eval" },
+    ],
+  });
+  assert.ok(!events.some((e) => /unattributed/i.test(e.title || "")));
+});

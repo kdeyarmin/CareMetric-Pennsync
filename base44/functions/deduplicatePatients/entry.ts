@@ -188,6 +188,7 @@ export const REASON = {
   BOTH_NAMES_SIMILAR: 'Both names similar',
   PARTIAL_NAME: 'Partial name match',
   NAME_VARIATION: 'Name variation match',
+  POSSIBLE_TWINS: 'Possible twins — verify before merging',
   DOB: 'DOB match',
   DOB_SWAPPED: 'DOB month/day swapped',
   DOB_YEAR_TYPO: 'DOB year typo',
@@ -591,7 +592,30 @@ export function scorePatientPair(p1, p2, options = {}) {
     return { score: 0, matches: [] };
   }
 
-  return { score, matches };
+  // ---- Twins flag ---------------------------------------------------------
+  // Twins share last name, DOB, address, and phone — everything EXCEPT the
+  // first name — and were scoring ~100 with no warning ("Ella"/"Emma Smith",
+  // same DOB+address+phone → one click from a wrong-patient merge). When both
+  // first names are well-formed and clearly different (similarity < 85 with no
+  // containment, so "Jon"/"John" and "Katherine"/"Catherine" stay unflagged)
+  // while last name + DOB agree, flag the pair for human verification. The
+  // score is kept (hiding the pair would remove it from review entirely).
+  const twinFirst1 = normalizeName(p1.first_name);
+  const twinFirst2 = normalizeName(p2.first_name);
+  const possibleTwins =
+    hasDobCredit &&
+    twinFirst1.length >= 3 && twinFirst2.length >= 3 &&
+    twinFirst1 !== twinFirst2 &&
+    !twinFirst1.includes(twinFirst2) && !twinFirst2.includes(twinFirst1) &&
+    similarity(twinFirst1, twinFirst2) < 85 &&
+    // A single-edit variant that KEEPS the first letter is a typo/short
+    // nickname ("Jon"/"John"), not a sibling; a leading-letter substitution
+    // ("Jason"/"Mason") is exactly the twin-name pattern and stays flagged.
+    !(levenshtein(twinFirst1, twinFirst2) <= 1 && twinFirst1[0] === twinFirst2[0]) &&
+    similarity(normalizeName(p1.last_name), normalizeName(p2.last_name)) >= 95;
+  if (possibleTwins) matches.push(REASON.POSSIBLE_TWINS);
+
+  return { score, matches, ...(possibleTwins ? { possibleTwins: true } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -889,6 +913,70 @@ export function findDuplicateGroups(patients, opts = {}) {
 }
 // <<<END GENERATED ENGINE>>>
 
+// Every entity that references a patient via `patient_id` must follow the
+// patient when duplicates merge — mirrors PATIENT_RELATED_ENTITIES in
+// src/components/patient/mergePatients.js (Deno cannot import from src/; the
+// entity-list parity test on that module guards this copy's source of truth).
+// Before this loop existed, the confirm path ONLY archived the duplicate: its
+// entire clinical history stayed pointed at the invisible archived record.
+const PATIENT_RELATED_ENTITIES = [
+  'AdrAuditCase', 'AppliedDataLog', 'AppointmentForm', 'Billing', 'CallLog',
+  'CareCoordinationAlert', 'CarePlan', 'CarePlanProposal', 'ClinicalEvent',
+  'ClinicalLibraryTemplate', 'ComplianceAudit', 'DigitalSignature',
+  'DischargeSummary', 'Document', 'DocumentAnalysisHistory', 'DocumentPackage',
+  'DocumentRecord', 'DocumentSignature', 'FaceToFaceEncounter', 'FaxDraft',
+  'FaxHistory', 'FaxLog', 'GeneratedDocument', 'HealthRecord', 'Immunization',
+  'Incident', 'InterventionLog', 'Invoice', 'MaterialInteraction', 'MedicalCode',
+  'Medication', 'MedicationReconciliation', 'Message', 'NoteConversion',
+  'NoteFeedback', 'OASISAssessment', 'OASISAudit', 'OASISFeedback',
+  'OASISScenario', 'OASISUpload', 'OASISWorkflowExecution', 'PDFIndex',
+  'PDGMCaseMix', 'PatientAlert', 'PatientBillingInfo', 'PatientDocument',
+  'PatientEducationAssignment', 'PatientEducationDelivery',
+  'PatientEducationDraft', 'PatientEducationEngagement', 'PatientMessage',
+  'PatientOutcome', 'PatientOutcomeMetric', 'PatientPathwayAssignment',
+  'PatientRecommendation', 'PatientRiskAssessment', 'Payment', 'PaymentRecord',
+  'PendingPatientUpdate', 'ProviderPatientAssignment', 'Referral', 'RiskAlert',
+  'RiskAnalysis', 'ScheduledFax', 'ScheduledSms', 'SentEducationMaterial',
+  'SmsConsent', 'SmsMessage', 'SuggestedIntervention', 'SupplyPrediction',
+  'SupplyUsageLog', 'Task', 'TeamMessage', 'TeamNote', 'TelehealthSession',
+  'TimeSavings', 'TrainingRecommendation', 'Visit',
+];
+
+const REASSIGN_PAGE_SIZE = 5000;
+
+// Re-point every related record from the archived duplicate to the survivor.
+// Best-effort per record; pages until a short page or a fully-stuck page.
+async function reassignPatientRecords(base44, fromId, toId) {
+  const reassigned = {};
+  for (const entityName of PATIENT_RELATED_ENTITIES) {
+    const api = base44.asServiceRole.entities[entityName];
+    if (!api?.filter || !api?.update) continue;
+    let moved = 0;
+    try {
+      let fetched = REASSIGN_PAGE_SIZE;
+      while (fetched === REASSIGN_PAGE_SIZE) {
+        const records = (await api.filter({ patient_id: fromId }, undefined, REASSIGN_PAGE_SIZE)) || [];
+        fetched = records.length;
+        let movedThisPage = 0;
+        for (const record of records) {
+          try {
+            await api.update(record.id, { patient_id: toId });
+            moved += 1;
+            movedThisPage += 1;
+          } catch (err) {
+            console.error(`reassignPatientRecords: could not move ${entityName} ${record.id}:`, err?.message);
+          }
+        }
+        if (movedThisPage === 0) break;
+      }
+    } catch (err) {
+      console.error(`reassignPatientRecords: could not read ${entityName}:`, err?.message);
+    }
+    if (moved > 0) reassigned[entityName] = moved;
+  }
+  return reassigned;
+}
+
 // This admin-only operation DELETES records, so it only acts on HIGH-confidence
 // duplicates (shared score >= 70). A name match alone scores 60, so it never
 // qualifies on its own — corroboration (DOB / phone / email / address / ...) is
@@ -962,10 +1050,14 @@ Deno.serve(async (req) => {
     const mrnGroups = new Map();
     const nameGroups = new Map();
 
+    // Placeholder MRNs are shared by unrelated patients — bucketing on them
+    // would mark every "N/A" patient a 100%-confidence duplicate of the rest.
+    const PLACEHOLDER_MRNS = new Set(['N/A', 'NA', 'NONE', 'UNKNOWN', 'PENDING', 'TBD', 'TEMP', '0', '00', '000', '0000', 'X', 'XX', 'XXX']);
+
     patients.forEach((patient) => {
       if (patient.medical_record_number) {
         const mrn = patient.medical_record_number.toString().trim().toUpperCase();
-        if (mrn) {
+        if (mrn && !PLACEHOLDER_MRNS.has(mrn)) {
           if (!mrnGroups.has(mrn)) mrnGroups.set(mrn, []);
           mrnGroups.get(mrn).push(patient);
         }
@@ -983,21 +1075,37 @@ Deno.serve(async (req) => {
     const duplicateGroups = [];
     const processed = new Set();
 
-    // Phase 1: exact MRN matches are definitive (100% confidence).
+    // Phase 1: exact MRN matches — but a shared MRN alone is NOT definitive.
+    // Each candidate must also clear the engine's identity guards
+    // (scorePatientPair hard-blocks different-name + different-DOB pairs), so
+    // a typo'd or recycled MRN can never merge two different people at 100%.
     for (const [, group] of mrnGroups) {
       const unprocessed = group.filter((p) => !processed.has(p.id));
       if (unprocessed.length > 1) {
-        duplicateGroups.push({
-          primary: unprocessed[0],
-          duplicates: unprocessed.slice(1).map((p) => ({
-            patient: p,
-            score: 100,
-            matches: [REASON.MRN],
-            confidenceLevel: 'high',
-            confidencePercent: 100,
-          })),
-        });
-        unprocessed.forEach((p) => processed.add(p.id));
+        const primary = unprocessed[0];
+        const verified = [];
+        for (const p of unprocessed.slice(1)) {
+          const pair = scorePatientPair(primary, p);
+          if ((pair?.score ?? 0) > 0) {
+            verified.push(p);
+          } else {
+            console.log(`Skipping MRN-bucket candidate ${p.id}: shared MRN but conflicting identity (name/DOB)`);
+          }
+        }
+        if (verified.length > 0) {
+          duplicateGroups.push({
+            primary,
+            duplicates: verified.map((p) => ({
+              patient: p,
+              score: 100,
+              matches: [REASON.MRN],
+              confidenceLevel: 'high',
+              confidencePercent: 100,
+            })),
+          });
+          processed.add(primary.id);
+          verified.forEach((p) => processed.add(p.id));
+        }
       }
     }
 
@@ -1064,7 +1172,9 @@ Deno.serve(async (req) => {
             id: patient.id,
             name: `${patient.first_name} ${patient.last_name}`,
             mrn: patient.medical_record_number || 'N/A',
-            match_score: group.duplicates.find((d) => d.patient.id === patient.id)?.score || 100,
+            // null (not a fabricated 100) when the group carries no per-patient
+            // score — e.g. the removed record was the group's primary.
+            match_score: group.duplicates.find((d) => d.patient.id === patient.id)?.score ?? null,
           };
 
           if (!confirm) {
@@ -1072,6 +1182,10 @@ Deno.serve(async (req) => {
             removedFromGroup.push(entry);
             continue;
           }
+
+          // Move the duplicate's clinical history onto the survivor BEFORE
+          // archiving, so the active chart keeps every visit/OASIS/document.
+          entry.reassigned = await reassignPatientRecords(base44, patient.id, keep.id);
 
           // SOFT-delete (archive) — NOT an irreversible hard cascade-delete. The
           // duplicate is marked merged/archived and pointed at the survivor; the

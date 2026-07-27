@@ -19,7 +19,18 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // Canonical, order-stable serialization of the integrity-relevant fields. Derived
 // from the stored record so any post-signing edit to a covered field changes the
 // recomputed value and fails verification.
-function canonicalPayload(rec) {
+//
+// PAYLOAD VERSIONS — new stamps use the highest version; verify recomputes with
+// the version a record was STAMPED with so legacy stamps stay verifiable:
+//   v1: id, patient_id, document_type, document_title, document_url,
+//       completed_date, signers
+//   v2: v1 + document_content — template-created packages have NO document_url;
+//       the signer sees and attests to document_content, so leaving it out let
+//       the signed legal text be edited after signing while verification still
+//       reported "valid".
+const CANONICAL_PAYLOAD_VERSION = 2;
+
+function canonicalPayload(rec, version = CANONICAL_PAYLOAD_VERSION) {
   const signers = (Array.isArray(rec?.signers) ? rec.signers : [])
     .map((s) => ({
       id: s?.id ?? null,
@@ -31,7 +42,7 @@ function canonicalPayload(rec) {
       signature: s?.signature ?? null,
     }))
     .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-  return JSON.stringify({
+  const payload = {
     id: rec?.id ?? null,
     patient_id: rec?.patient_id ?? null,
     document_type: rec?.document_type ?? null,
@@ -39,7 +50,16 @@ function canonicalPayload(rec) {
     document_url: rec?.document_url ?? null,
     completed_date: rec?.completed_date ?? null,
     signers,
-  });
+  };
+  if (version >= 2) payload.document_content = rec?.document_content ?? null;
+  return JSON.stringify(payload);
+}
+
+// The payload version a stored record was stamped with (legacy records
+// predate the field → v1).
+function storedPayloadVersion(rec) {
+  const v = Number(rec?.signature_hash_payload_v);
+  return Number.isInteger(v) && v >= 1 ? v : 1;
 }
 
 function toHex(buf) {
@@ -115,7 +135,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Signature is already stamped; re-stamping is not allowed.' }, { status: 409 });
       }
       const stampedAt = new Date().toISOString();
-      const { hash, alg } = await computeHash(canonicalPayload(sig));
+      const { hash, alg } = await computeHash(canonicalPayload(sig, CANONICAL_PAYLOAD_VERSION));
       // Append (never rewrite) an audit-trail entry recording the integrity stamp —
       // an immutable record of who sealed the document, when, and with which alg.
       const auditEntry = {
@@ -126,6 +146,7 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.DocumentSignature.update(signature_id, {
         signature_hash: hash,
         signature_hash_alg: alg,
+        signature_hash_payload_v: CANONICAL_PAYLOAD_VERSION,
         signature_hash_at: stampedAt,
         audit_trail: [...(Array.isArray(sig.audit_trail) ? sig.audit_trail : []), auditEntry],
       });
@@ -138,7 +159,7 @@ Deno.serve(async (req) => {
       const stored = sig.signature_hash || null;
       let verification = { isValid: false, status: 'unsigned', alg: null };
       if (stored) {
-        const { hash, error } = await computeHash(canonicalPayload(sig), sig.signature_hash_alg);
+        const { hash, error } = await computeHash(canonicalPayload(sig, storedPayloadVersion(sig)), sig.signature_hash_alg);
         if (error === 'secret_unconfigured') {
           verification = { isValid: false, status: 'unverifiable', alg: sig.signature_hash_alg };
         } else {
@@ -174,7 +195,7 @@ Deno.serve(async (req) => {
     if (!stored) {
       return Response.json({ success: true, isValid: false, status: 'unsigned', reason: 'no_integrity_hash' });
     }
-    const { hash, error } = await computeHash(canonicalPayload(sig), sig.signature_hash_alg);
+    const { hash, error } = await computeHash(canonicalPayload(sig, storedPayloadVersion(sig)), sig.signature_hash_alg);
     if (error === 'secret_unconfigured') {
       // The record was HMAC-signed but the secret isn't available to verify it now.
       return Response.json({ success: true, isValid: false, status: 'unverifiable', reason: 'secret_unconfigured', alg: sig.signature_hash_alg });
