@@ -99,6 +99,21 @@
       "type": "string",
       "description": "Reference to Visit entity if task was generated from a visit"
     },
+    // Generic source-record link, for tasks generated from something that is not
+    // a Visit. ReferralTriage writes these when a referral can't become a chart
+    // (missing identity data) so the assignee's task points back at the referral
+    // to complete; without the properties Base44 dropped both silently, leaving
+    // "complete the referral before admission" with no referral attached.
+    // Mirrors the related_entity / related_entity_id pair the backend already
+    // writes into Notification.metadata.
+    "related_entity": {
+      "type": "string",
+      "description": "Entity name this task was generated from (e.g. 'Referral')"
+    },
+    "related_entity_id": {
+      "type": "string",
+      "description": "Id of the related_entity record"
+    },
     "completion_notes": {
       "type": "string",
       "description": "Notes added when task is completed"

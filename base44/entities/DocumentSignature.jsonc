@@ -22,6 +22,44 @@
         "other"
       ]
     },
+    // Field placements captured in the request builder's step 3 (drag a
+    // signature/date/text box onto the page). SignatureRequestCreator already
+    // sends these on create, but with no property here Base44 dropped them, so
+    // every placement the requester positioned was discarded the moment the
+    // request was sent. Persisting them stops that data loss; RENDERING them in
+    // the signer portal and stamping them into the output PDF is still to do —
+    // until then a request behaves as it does today (whole-document signing).
+    "signature_fields": {
+      "type": "array",
+      "description": "Placed field boxes: position/size are page-relative percentages",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "signerId": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["signature", "initials", "date", "text"]
+          },
+          "label": { "type": "string" },
+          "required": { "type": "boolean" },
+          "position": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            }
+          },
+          "size": {
+            "type": "object",
+            "properties": {
+              "width": { "type": "number" },
+              "height": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
     "signers": {
       "type": "array",
       "items": {
