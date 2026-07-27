@@ -964,7 +964,8 @@ async function reassignPatientRecords(base44, fromId, toId) {
             moved += 1;
             movedThisPage += 1;
           } catch (err) {
-            console.error(`reassignPatientRecords: could not move ${entityName} ${record.id}:`, err?.message);
+            // Status-only log (no record ids — retained logs must stay identifier-free).
+            console.error(`reassignPatientRecords: could not move a ${entityName} record:`, err?.message);
           }
         }
         if (movedThisPage === 0) break;
@@ -1089,7 +1090,8 @@ Deno.serve(async (req) => {
           if ((pair?.score ?? 0) > 0) {
             verified.push(p);
           } else {
-            console.log(`Skipping MRN-bucket candidate ${p.id}: shared MRN but conflicting identity (name/DOB)`);
+            // Status-only log (no record ids — retained logs must stay identifier-free).
+            console.log('Skipping an MRN-bucket candidate: shared MRN but conflicting identity (name/DOB)');
           }
         }
         if (verified.length > 0) {
