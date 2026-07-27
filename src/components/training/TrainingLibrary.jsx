@@ -16,6 +16,7 @@ import {
   FileText,
   Brain
 } from "lucide-react";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function TrainingLibrary({ nurseEmail, moduleType, onStartModule }) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -24,7 +25,7 @@ export default function TrainingLibrary({ nurseEmail, moduleType, onStartModule 
 
   const { data: modules = [] } = useQuery({
     queryKey: ['trainingModules', moduleType],
-    queryFn: () => base44.entities.TrainingModule.filter({}),
+    queryFn: () => base44.entities.TrainingModule.filter({}, undefined, ALL_ROWS),
     initialData: [],
   });
 

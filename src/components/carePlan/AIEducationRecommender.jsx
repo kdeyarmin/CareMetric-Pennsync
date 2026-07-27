@@ -16,6 +16,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { format } from "date-fns";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function AIEducationRecommender({ patient, carePlans = [], onAssignEducation }) {
   const ai = useAICall();
@@ -26,7 +27,7 @@ export default function AIEducationRecommender({ patient, carePlans = [], onAssi
   // Fetch existing education assignments
   const { data: existingEducation = [] } = useQuery({
     queryKey: ['patientEducation', patient?.id],
-    queryFn: () => base44.entities.PatientEducationAssignment.filter({ patient_id: patient?.id }),
+    queryFn: () => base44.entities.PatientEducationAssignment.filter({ patient_id: patient?.id }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!patient?.id,
     initialData: []
   });

@@ -27,6 +27,7 @@ import AIComplianceAssistant from "@/components/compliance/AIComplianceAssistant
 import MedicareRuleSeeder from "@/components/compliance/MedicareRuleSeeder";
 import { isAdminView } from "@/lib/roles";
 import LoadingState from "@/components/ui/LoadingState";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 const RegulatoryCompliance = lazy(() => import("@/components/hub-tabs/RegulatoryCompliance"));
 const ComplianceMonitoringDashboard = lazy(() => import("@/components/hub-tabs/ComplianceMonitoringDashboard"));
@@ -96,7 +97,7 @@ export default function ComplianceCenter() {
 
   const { data: _medicareRules = [] } = useQuery({
     queryKey: ['medicareComplianceRules'],
-    queryFn: () => base44.entities.MedicareComplianceRule.list(),
+    queryFn: () => base44.entities.MedicareComplianceRule.list(undefined, ALL_ROWS),
     initialData: [],
   });
 

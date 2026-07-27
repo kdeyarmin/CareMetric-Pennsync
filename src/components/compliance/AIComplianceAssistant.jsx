@@ -17,6 +17,7 @@ import {
   FileText,
   Sparkles
 } from "lucide-react";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function AIComplianceAssistant({ compact = false, context = null }) {
   const [question, setQuestion] = useState("");
@@ -25,7 +26,7 @@ export default function AIComplianceAssistant({ compact = false, context = null 
 
   const { data: complianceRules = [] } = useQuery({
     queryKey: ['medicareComplianceRules'],
-    queryFn: () => base44.entities.MedicareComplianceRule.list(),
+    queryFn: () => base44.entities.MedicareComplianceRule.list(undefined, ALL_ROWS),
     initialData: [],
   });
 

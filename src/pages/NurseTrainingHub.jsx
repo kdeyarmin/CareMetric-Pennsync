@@ -35,6 +35,7 @@ import EmbeddedPage from "@/components/ui/embeddedPage";
 import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
 import StatCard from "@/components/ui/stat-card";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 // Lazy spoke — the former Nurse Training (documentation skills) page is now a tab.
 const NurseTraining = lazy(() => import("@/components/hub-tabs/NurseTraining"));
@@ -80,7 +81,7 @@ export default function NurseTrainingHub() {
 
   const { data: trainingModules = [] } = useQuery({
     queryKey: ['trainingModules'],
-    queryFn: () => base44.entities.TrainingModule.list(),
+    queryFn: () => base44.entities.TrainingModule.list(undefined, ALL_ROWS),
     initialData: []
   });
 

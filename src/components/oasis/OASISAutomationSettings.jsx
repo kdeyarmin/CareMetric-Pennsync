@@ -33,6 +33,7 @@ import {
   CheckCircle2,
   AlertTriangle
 } from "lucide-react";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function OASISAutomationSettings() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -61,7 +62,7 @@ export default function OASISAutomationSettings() {
   // Fetch automation rules
   const { data: rules = [] } = useQuery({
     queryKey: ['automationRules'],
-    queryFn: () => base44.entities.OASISAutomationRule.list('-priority'),
+    queryFn: () => base44.entities.OASISAutomationRule.list('-priority', ALL_ROWS),
   });
 
   // Create/update rule

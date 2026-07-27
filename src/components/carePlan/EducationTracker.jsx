@@ -20,6 +20,7 @@ import {
   FileText
 } from "lucide-react";
 import { format } from "date-fns";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function EducationTracker({ patient }) {
   const queryClient = useQueryClient();
@@ -28,7 +29,7 @@ export default function EducationTracker({ patient }) {
 
   const { data: assignments = [], isLoading } = useQuery({
     queryKey: ['patientEducation', patient?.id],
-    queryFn: () => base44.entities.PatientEducationAssignment.filter({ patient_id: patient?.id }, '-assigned_date'),
+    queryFn: () => base44.entities.PatientEducationAssignment.filter({ patient_id: patient?.id }, '-assigned_date', PATIENT_HISTORY_ROWS),
     enabled: !!patient?.id,
     initialData: []
   });

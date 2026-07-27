@@ -11,6 +11,7 @@ import { useSearchParams } from 'react-router-dom';
 import ReportFilters from './ReportFilters';
 import { toCsvRows } from "@/components/admin/csvExport";
 import { toast } from 'sonner';
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '—';
 
@@ -36,7 +37,7 @@ export default function CourseRosterReport() {
 
   const { data: courses = [] } = useQuery({
     queryKey: ['roster-courses'],
-    queryFn: () => base44.entities.TrainingCourse.filter({ status: 'published' }, 'title'),
+    queryFn: () => base44.entities.TrainingCourse.filter({ status: 'published' }, 'title', ALL_ROWS),
     initialData: []
   });
 

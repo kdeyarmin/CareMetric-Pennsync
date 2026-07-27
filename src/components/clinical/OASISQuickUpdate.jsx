@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { optionsForItem, PAIN_FREQUENCY_OPTIONS } from "@/components/oasis/oasisScales";
 import { todayEastern, formatEastern } from "@/components/utils/timezone";
 import { markStartOfCareCompleted } from "@/components/referral/intakeToSocTracker";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 // Each OASIS-E item uses its OWN valid range (M1810/M1845 = 0–3, M1850 = 0–5,
 // M1830/M1860 = 0–6) — see oasisScales.js. A single flat list either truncated the
@@ -56,7 +57,7 @@ export async function completeReferralSocForPatient(patientId, socDate) {
     const openReferrals = await base44.entities.Referral.filter({
       patient_id: patientId,
       status: { $in: OPEN_REFERRAL_STATUSES },
-    });
+    }, undefined, PATIENT_HISTORY_ROWS);
     if (!Array.isArray(openReferrals) || openReferrals.length !== 1) return;
     const me = await base44.auth.me().catch(() => null);
     await base44.entities.Referral.update(

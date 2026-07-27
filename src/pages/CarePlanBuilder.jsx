@@ -15,6 +15,7 @@ import InterventionLibrary from "@/components/carePlan/InterventionLibrary";
 import CarePlanCanvas from "@/components/carePlan/CarePlanCanvas";
 import InterventionDetailPanel from "@/components/carePlan/InterventionDetailPanel";
 import AICarePlanAnalyzer from "@/components/carePlan/AICarePlanAnalyzer";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 function findLibraryItem(id) {
   for (const cat of INTERVENTIONS_LIBRARY) {
@@ -110,7 +111,7 @@ export default function CarePlanBuilder() {
 
     setSaving(true);
     try {
-      const existingPlans = await base44.entities.CarePlan.filter({ patient_id: selectedPatientId });
+      const existingPlans = await base44.entities.CarePlan.filter({ patient_id: selectedPatientId }, undefined, PATIENT_HISTORY_ROWS);
 
       const _interventionsWithPathways = planItems.map(item => ({
         id: item.id,

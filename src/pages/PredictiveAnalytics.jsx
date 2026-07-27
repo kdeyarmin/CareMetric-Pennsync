@@ -26,6 +26,7 @@ import PPHPreventionWorklist from "../components/predictive/PPHPreventionWorklis
 import TherapyNeedForecaster from "../components/predictive/TherapyNeedForecaster";
 import PopulationRiskOverview from "../components/predictive/PopulationRiskOverview";
 import PredictiveInsightsPanel from "../components/predictive/PredictiveInsightsPanel";
+import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function PredictiveAnalytics() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -35,7 +36,7 @@ export default function PredictiveAnalytics() {
   // Fetch patients
   const { data: patients = [] } = useQuery({
     queryKey: ['predictivePatients'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }),
+    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS),
   });
 
   // Fetch OASIS data
@@ -53,7 +54,7 @@ export default function PredictiveAnalytics() {
   // Fetch alerts
   const { data: alerts = [] } = useQuery({
     queryKey: ['predictiveAlerts'],
-    queryFn: () => base44.entities.PatientAlert.filter({ status: 'active' }),
+    queryFn: () => base44.entities.PatientAlert.filter({ status: 'active' }, undefined, PATIENT_HISTORY_ROWS),
   });
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);

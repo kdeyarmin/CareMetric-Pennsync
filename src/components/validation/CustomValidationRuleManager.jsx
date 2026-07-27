@@ -32,6 +32,7 @@ import {
   AlertTriangle,
   Info
 } from "lucide-react";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function CustomValidationRuleManager() {
   const confirm = useConfirm();
@@ -52,7 +53,7 @@ export default function CustomValidationRuleManager() {
 
   const { data: rules = [] } = useQuery({
     queryKey: ['customValidationRules'],
-    queryFn: () => base44.entities.CustomValidationRule.list('-created_date')
+    queryFn: () => base44.entities.CustomValidationRule.list('-created_date', ALL_ROWS)
   });
 
   const createRuleMutation = useMutation({

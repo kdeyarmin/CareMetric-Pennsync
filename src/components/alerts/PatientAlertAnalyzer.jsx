@@ -12,6 +12,7 @@ import {
   Brain
 } from "lucide-react";
 import { getAlertIcon, getSeverityColor } from "@/components/alerts/alertPresentation";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function PatientAlertAnalyzer({ 
   patientId, 
@@ -54,7 +55,7 @@ export default function PatientAlertAnalyzer({
   // Fetch existing alerts
   const { data: existingAlerts = [] } = useQuery({
     queryKey: ['patientAlerts', patientId],
-    queryFn: () => base44.entities.PatientAlert.filter({ patient_id: patientId, status: 'active' }),
+    queryFn: () => base44.entities.PatientAlert.filter({ patient_id: patientId, status: 'active' }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!patientId
   });
 

@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { validateFileUpload } from "@/components/utils/security";
 import { format, parseISO, differenceInDays, addMonths } from "date-fns";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function CredentialRenewalPortal({ userId }) {
   const [selectedCredential, setSelectedCredential] = useState(null);
@@ -46,7 +47,7 @@ export default function CredentialRenewalPortal({ userId }) {
 
   const { data: credentials = [] } = useQuery({
     queryKey: ['userCredentials', targetUserId],
-    queryFn: () => base44.entities.PersonnelCredential.filter({ user_id: targetUserId }),
+    queryFn: () => base44.entities.PersonnelCredential.filter({ user_id: targetUserId }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!targetUserId,
     initialData: [],
   });

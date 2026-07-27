@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Bell, AlertCircle, CheckCircle, AlertTriangle, Info, ChevronDown, Sparkles } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 const TYPE_CONFIG = {
   urgent:  { border: "border-red-200",   bg: "bg-red-50",   bar: "bg-red-500",   icon: AlertCircle,   iconColor: "text-red-500"   },
@@ -47,7 +48,7 @@ export default function AnnouncementsWidget() {
 
   const { data: announcements = [], isLoading } = useQuery({
     queryKey: ['announcements'],
-    queryFn: () => base44.entities.Announcement.filter({ is_active: true }, '-created_date'),
+    queryFn: () => base44.entities.Announcement.filter({ is_active: true }, '-created_date', ALL_ROWS),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });

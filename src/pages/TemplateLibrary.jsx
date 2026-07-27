@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { createPageUrl } from "@/utils";
 import ClinicalTemplateLibrary from "../components/templates/ClinicalTemplateLibrary";
 import TemplateEditor from "../components/templates/TemplateEditor";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function TemplateLibrary() {
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ export default function TemplateLibrary() {
 
   const { data: patients } = useQuery({
     queryKey: ['templatePatients'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }),
+    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS),
     initialData: [],
   });
 

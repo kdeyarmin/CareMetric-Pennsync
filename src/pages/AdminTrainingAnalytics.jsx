@@ -33,6 +33,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/stat-card";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
+import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function AdminTrainingAnalytics() {
   const [_selectedModule, _setSelectedModule] = useState('all');
@@ -59,13 +60,13 @@ export default function AdminTrainingAnalytics() {
 
   const { data: modules = [] } = useQuery({
     queryKey: ['trainingModules'],
-    queryFn: () => base44.entities.TrainingModule.list(),
+    queryFn: () => base44.entities.TrainingModule.list(undefined, ALL_ROWS),
     enabled: isAdminView(currentUser)
   });
 
   const { data: recommendations = [] } = useQuery({
     queryKey: ['allRecommendations'],
-    queryFn: () => base44.entities.TrainingRecommendation.list(),
+    queryFn: () => base44.entities.TrainingRecommendation.list(undefined, PATIENT_HISTORY_ROWS),
     enabled: isAdminView(currentUser)
   });
 

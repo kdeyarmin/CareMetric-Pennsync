@@ -1,6 +1,7 @@
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 // Threshold configuration
 const THRESHOLDS = {
@@ -136,7 +137,7 @@ function useAutoFlagOASIS() {
         // Check if already flagged
         const existing = await base44.entities.OASISAudit.filter({ 
           oasis_upload_id: oasisUpload.id 
-        });
+        }, undefined, PATIENT_HISTORY_ROWS);
         
         if (existing.length === 0) {
           const me = await base44.auth.me();

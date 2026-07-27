@@ -42,6 +42,8 @@ import ReactMarkdown from "react-markdown";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
+import { formatLocalDate } from "@/lib/dateLocal";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function MedicareGuidelinesLibrary() {
   const queryClient = useQueryClient();
@@ -69,7 +71,7 @@ export default function MedicareGuidelinesLibrary() {
 
   const { data: guidelines = [], isLoading } = useQuery({
     queryKey: ['medicareGuidelines'],
-    queryFn: () => base44.entities.MedicareGuideline.filter({ is_active: true }, '-last_fetched_date'),
+    queryFn: () => base44.entities.MedicareGuideline.filter({ is_active: true }, '-last_fetched_date', ALL_ROWS),
     initialData: [],
   });
 
@@ -368,7 +370,7 @@ export default function MedicareGuidelinesLibrary() {
                   {guideline.effective_date && (
                     <div className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
-                      Effective: {new Date(guideline.effective_date).toLocaleDateString()}
+                      Effective: {formatLocalDate(guideline.effective_date)}
                     </div>
                   )}
                   {guideline.cms_manual_chapter && (
@@ -452,7 +454,7 @@ export default function MedicareGuidelinesLibrary() {
                     <div>
                       <span className="font-medium text-slate-700">Effective Date:</span>
                       <p className="text-slate-600">
-                        {new Date(selectedGuideline.effective_date).toLocaleDateString()}
+                        {formatLocalDate(selectedGuideline.effective_date)}
                       </p>
                     </div>
                   )}

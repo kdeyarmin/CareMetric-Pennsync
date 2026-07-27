@@ -50,10 +50,11 @@ import {
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { format } from "date-fns";
+import { formatLocalDate } from "@/lib/dateLocal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 const COLORS = ['#3557b0', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#0d9488'];
 
@@ -71,7 +72,7 @@ export default function NursePerformanceDashboard() {
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
     enabled: isAdminView(currentUser),
     initialData: []
   });
@@ -103,7 +104,7 @@ export default function NursePerformanceDashboard() {
   // Fetch nurse goals
   const { data: nurseGoals = [] } = useQuery({
     queryKey: ['nurseGoals', nurseEmail],
-    queryFn: () => base44.entities.NurseGoal.filter({ nurse_email: nurseEmail }),
+    queryFn: () => base44.entities.NurseGoal.filter({ nurse_email: nurseEmail }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!nurseEmail,
     initialData: []
   });
@@ -517,7 +518,7 @@ export default function NursePerformanceDashboard() {
                             </div>
                             <Progress value={progress} className="h-2" />
                             <div className="flex justify-between text-xs text-slate-600">
-                              <span>Target: {format(new Date(goal.target_date), 'MMM d, yyyy')}</span>
+                              <span>Target: {formatLocalDate(goal.target_date, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                               <Badge variant={
                                 goal.status === 'achieved' ? 'default' :
                                 goal.status === 'missed' ? 'destructive' :

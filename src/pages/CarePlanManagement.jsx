@@ -21,6 +21,7 @@ import {
   ChevronDown
 } from "lucide-react";
 import { format, addDays } from "date-fns";
+import { formatLocalDate, toLocalISODate } from "@/lib/dateLocal";
 import {
   Select,
   SelectContent,
@@ -53,6 +54,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function CarePlanManagement() {
   const navigate = useNavigate();
@@ -84,7 +86,7 @@ export default function CarePlanManagement() {
   // Fetch only patients the user has charted on
   const { data: myVisits = [] } = useQuery({
     queryKey: ['myVisits'],
-    queryFn: () => currentUser ? base44.entities.Visit.filter({ created_by: currentUser.email }) : Promise.resolve([]),
+    queryFn: () => currentUser ? base44.entities.Visit.filter({ created_by: currentUser.email }, undefined, PATIENT_HISTORY_ROWS) : Promise.resolve([]),
     enabled: !!currentUser,
     initialData: [],
   });
@@ -231,7 +233,9 @@ export default function CarePlanManagement() {
             content: `Education on ${topic} for ${selectedPatient.primary_diagnosis}`,
             format: 'handout',
             status: 'assigned',
-            assigned_date: new Date().toISOString().split('T')[0],
+            // Local calendar day, not UTC's: toISOString() rolls over to tomorrow
+            // for any US evening, stamping education assignments a day ahead.
+            assigned_date: toLocalISODate(),
             assigned_by: 'AI System'
           });
         }
@@ -344,7 +348,7 @@ export default function CarePlanManagement() {
 
     setSaving(true);
     try {
-      const existingPlans = await base44.entities.CarePlan.filter({ patient_id: builderPatient.id });
+      const existingPlans = await base44.entities.CarePlan.filter({ patient_id: builderPatient.id }, undefined, PATIENT_HISTORY_ROWS);
       const savePromises = planItems.map(item => {
         const existingForItem = existingPlans.find(p => p.problem === item.name);
         const data = {
@@ -663,7 +667,8 @@ export default function CarePlanManagement() {
                       content: `Medicare-compliant education on ${topic} for ${selectedPatient.primary_diagnosis}`,
                       format: 'handout',
                       status: 'assigned',
-                      assigned_date: new Date().toISOString().split('T')[0],
+                      // Local calendar day, not UTC's (see above).
+                      assigned_date: toLocalISODate(),
                       assigned_by: 'AI Care Plan System',
                       priority: 'high'
                     })
@@ -866,7 +871,7 @@ export default function CarePlanManagement() {
                                 {plan.frequency && <span><strong>Frequency:</strong> {plan.frequency}</span>}
                                 {plan.target_date && (
                                   <span>
-                                    <strong>Target:</strong> {format(new Date(plan.target_date), 'MMM d, yyyy')}
+                                    <strong>Target:</strong> {formatLocalDate(plan.target_date, { month: 'short', day: 'numeric', year: 'numeric' })}
                                   </span>
                                 )}
                               </div>

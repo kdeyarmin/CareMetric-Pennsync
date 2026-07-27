@@ -61,6 +61,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function ClinicalPathwayManager() {
   const queryClient = useQueryClient();
@@ -77,7 +78,7 @@ export default function ClinicalPathwayManager() {
 
   const { data: pathways = [], isLoading } = useQuery({
     queryKey: ['clinicalPathways'],
-    queryFn: () => base44.entities.ClinicalPathway.list('-created_date')
+    queryFn: () => base44.entities.ClinicalPathway.list('-created_date', ALL_ROWS)
   });
 
   const createMutation = useMutation({

@@ -6,11 +6,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { AlertTriangle, CheckCircle2, Users, FileText, ClipboardCheck } from "lucide-react";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function DataQualityDashboard() {
   const { data: patients = [] } = useQuery({
     queryKey: ['all-patients-quality'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }),
+    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS),
     initialData: [],
   });
 

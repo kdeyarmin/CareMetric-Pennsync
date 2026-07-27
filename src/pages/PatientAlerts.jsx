@@ -23,6 +23,7 @@ import PatientAlertsDashboard from "../components/alerts/PatientAlertsDashboard"
 import PatientAlertAnalyzer from "../components/alerts/PatientAlertAnalyzer";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function PatientAlerts() {
   const [searchParams] = useSearchParams();
@@ -36,7 +37,7 @@ export default function PatientAlerts() {
     // versa) depending on mount order. A ['patients']-prefix invalidate still
     // refreshes this key.
     queryKey: ['patients', 'active'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' })
+    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS)
   });
 
   const { data: _currentUser } = useQuery({

@@ -75,6 +75,7 @@ import StepIndicator from "../components/smartNote/StepIndicator";
 import SmartNoteTabs from "../components/smartNote/SmartNoteTabs";
 import PageContainer from "@/components/ui/PageContainer";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function SmartNoteAssistant({ visitId = null }) {
   const [searchParams] = useSearchParams();
@@ -191,7 +192,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   // required-element set inside ConstrainedNoteReviewer via ruleLibrary.
   const { data: complianceRules = [] } = useQuery({
     queryKey: ["medicareComplianceRules"],
-    queryFn: () => base44.entities.MedicareComplianceRule.list(),
+    queryFn: () => base44.entities.MedicareComplianceRule.list(undefined, ALL_ROWS),
     initialData: [],
     staleTime: 5 * 60 * 1000,
   });

@@ -37,6 +37,7 @@ import {
   TrendingUp,
   Activity
 } from "lucide-react";
+import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function OASISActionWorkflow({ 
   analysisId, 
@@ -67,14 +68,14 @@ export default function OASISActionWorkflow({
   // Fetch action items
   const { data: actionItems = [], isLoading } = useQuery({
     queryKey: ['oasis-actions', analysisId],
-    queryFn: () => base44.entities.OASISActionItem.filter({ analysis_id: analysisId }),
+    queryFn: () => base44.entities.OASISActionItem.filter({ analysis_id: analysisId }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!analysisId
   });
 
   // Fetch users for assignment
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
-    queryFn: () => base44.entities.User.list()
+    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS)
   });
 
   // Current user, for the reviewed_by audit trail

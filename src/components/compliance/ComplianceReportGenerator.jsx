@@ -15,6 +15,7 @@ import {
   Calendar
 } from "lucide-react";
 import { format } from "date-fns";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function ComplianceReportGenerator({ 
   dateRange = 7,
@@ -41,7 +42,7 @@ export default function ComplianceReportGenerator({
 
   const { data: medicareRules = [] } = useQuery({
     queryKey: ['medicareComplianceRules'],
-    queryFn: () => base44.entities.MedicareComplianceRule.list(),
+    queryFn: () => base44.entities.MedicareComplianceRule.list(undefined, ALL_ROWS),
     initialData: [],
   });
 

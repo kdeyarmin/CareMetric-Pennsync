@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Send, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function PersonalizedMaterialSender({ material, onClose, onSent }) {
   const [selectedPatientId, setSelectedPatientId] = useState('');
@@ -23,7 +24,7 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients-active'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, 'last_name'),
+    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, 'last_name', ALL_ROWS),
     initialData: []
   });
 

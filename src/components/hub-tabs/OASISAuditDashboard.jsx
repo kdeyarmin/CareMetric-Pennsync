@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import OASISAuditReportGenerator from "@/components/oasis/OASISAuditReportGenerator";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function OASISAuditDashboard() {
   const [statusFilter, setStatusFilter] = useState("all");
@@ -72,7 +73,7 @@ export default function OASISAuditDashboard() {
   const { data: admins = [] } = useQuery({
     queryKey: ['adminUsers'],
     queryFn: async () => {
-      const users = await base44.entities.User.list();
+      const users = await base44.entities.User.list(undefined, ALL_ROWS);
       return users.filter(u => u.role === 'admin');
     },
     enabled: isAdmin

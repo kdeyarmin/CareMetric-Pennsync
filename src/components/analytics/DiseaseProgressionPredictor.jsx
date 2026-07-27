@@ -7,8 +7,8 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { TrendingUp, TrendingDown, Brain, Activity, AlertTriangle, Loader2 } from "lucide-react";
-import { format } from "date-fns";
 import { toast } from 'sonner';
+import { formatLocalDate } from "@/lib/dateLocal";
 
 export default function DiseaseProgressionPredictor({ patients, visits }) {
   const ai = useAICall();
@@ -106,7 +106,10 @@ export default function DiseaseProgressionPredictor({ patients, visits }) {
 
     try {
       const vitalsTrend = patientData.visits.slice(-10).map(v => ({
-        date: format(new Date(v.visit_date), 'MMM dd'),
+        // Date-only field: formatLocalDate keeps the label on the visit's own
+        // calendar day instead of UTC-midnight's (one day early west of UTC),
+        // and returns "" rather than throwing when visit_date is missing.
+        date: formatLocalDate(v.visit_date, { month: 'short', day: '2-digit' }),
         bp: v.vital_signs?.blood_pressure_systolic || null,
         o2: v.vital_signs?.oxygen_saturation || null,
         weight: v.vital_signs?.weight || null,
@@ -299,7 +302,7 @@ Provide:
               <h4 className="font-semibold mb-2">Historical Vital Signs Trend:</h4>
               <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={selectedPatient.visits.slice(-10).map(v => ({
-                  date: format(new Date(v.visit_date), 'MM/dd'),
+                  date: formatLocalDate(v.visit_date, { month: '2-digit', day: '2-digit' }),
                   bp: v.vital_signs?.blood_pressure_systolic || null,
                   o2: v.vital_signs?.oxygen_saturation || null
                 }))}>

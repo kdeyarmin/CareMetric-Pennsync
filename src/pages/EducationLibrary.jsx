@@ -21,6 +21,7 @@ import PersonalizedMaterialSender from '../components/education/PersonalizedMate
 import MaterialPreview from '../components/education/MaterialPreview';
 import { categoryLabels } from '@/components/education/educationCategories';
 import { toast } from 'sonner';
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function EducationLibrary() {
   const queryClient = useQueryClient();
@@ -36,7 +37,7 @@ export default function EducationLibrary() {
 
   const { data: materials = [], isLoading } = useQuery({
     queryKey: ['educationMaterials'],
-    queryFn: () => base44.entities.EducationMaterial.filter({ is_published: true }, '-last_used_date'),
+    queryFn: () => base44.entities.EducationMaterial.filter({ is_published: true }, '-last_used_date', ALL_ROWS),
     initialData: []
   });
 

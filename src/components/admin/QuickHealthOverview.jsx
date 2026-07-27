@@ -5,11 +5,12 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, ArrowRight, CheckCircle2, Database } from "lucide-react";
 import { parseLocalDate } from "@/lib/dateLocal";
+import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function QuickHealthOverview() {
   const { data: patients = [] } = useQuery({
     queryKey: ['patients-health'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }),
+    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS),
     initialData: [],
   });
 
@@ -21,7 +22,7 @@ export default function QuickHealthOverview() {
 
   const { data: credentials = [] } = useQuery({
     queryKey: ['credentials-health'],
-    queryFn: () => base44.entities.PersonnelCredential.list(),
+    queryFn: () => base44.entities.PersonnelCredential.list(undefined, PATIENT_HISTORY_ROWS),
     initialData: [],
   });
 

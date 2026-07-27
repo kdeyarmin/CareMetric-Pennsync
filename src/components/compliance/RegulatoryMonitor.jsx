@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatEastern } from "@/components/utils/timezone";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function RegulatoryMonitor({ isAdmin = false }) {
   const queryClient = useQueryClient();
@@ -54,7 +55,7 @@ export default function RegulatoryMonitor({ isAdmin = false }) {
 
   const { data: updates = [] } = useQuery({
     queryKey: ['regulatoryUpdates'],
-    queryFn: () => base44.entities.RegulatoryUpdate.filter({}, '-created_date'),
+    queryFn: () => base44.entities.RegulatoryUpdate.filter({}, '-created_date', ALL_ROWS),
   });
 
   const { data: currentUser } = useQuery({

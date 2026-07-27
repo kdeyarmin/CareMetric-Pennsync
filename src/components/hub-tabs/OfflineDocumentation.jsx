@@ -9,6 +9,7 @@ import OfflineSyncStatus from '@/components/offline/OfflineSyncStatus';
 import OfflineVisitDocumentation from '@/components/offline/OfflineVisitDocumentation';
 import { FileText, Upload, AlertCircle, Info, UserSearch } from 'lucide-react';
 import { withOfflineRosterFallback } from '@/lib/offlinePatients';
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function OfflineDocumentation() {
   const [selectedPatientId, setSelectedPatientId] = useState(null);
@@ -21,7 +22,7 @@ export default function OfflineDocumentation() {
     queryKey: ['patients', 'offline-roster'],
     networkMode: 'always',
     queryFn: () => withOfflineRosterFallback(
-      () => base44.entities.Patient.filter({ status: 'active' })
+      () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS)
     ),
   });
 

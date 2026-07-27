@@ -21,6 +21,7 @@ import {
   ListChecks,
   Activity
 } from "lucide-react";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, patientId, onTasksCreated, onPathwaysTriggered }) {
   const [triggeredPathways, setTriggeredPathways] = useState([]);
@@ -38,7 +39,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
   const { data: pathways = [] } = useQuery({
     queryKey: ['clinicalPathways'],
     queryFn: async () => {
-      const result = await base44.entities.ClinicalPathway.filter({ is_active: true });
+      const result = await base44.entities.ClinicalPathway.filter({ is_active: true }, undefined, ALL_ROWS);
       return result;
     }
   });

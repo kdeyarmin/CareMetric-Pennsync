@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { calculatePDGM } from "@/functions/calculatePDGM";
 import { debounce } from "@/lib/debounce";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 const FUNCTIONAL_ITEMS = [
   { key: 'm1800_grooming', label: 'M1800 Grooming', max: 3 },
@@ -68,7 +69,7 @@ export default function OASISScenarioManager({
   const { data: savedScenarios = [] } = useQuery({
     queryKey: ['oasis-scenarios', analysisId],
     // Scenarios are scoped to the OASIS analysis they were modeled from.
-    queryFn: () => base44.entities.OASISScenario.filter({ analysis_id: analysisId }),
+    queryFn: () => base44.entities.OASISScenario.filter({ analysis_id: analysisId }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!analysisId
   });
 

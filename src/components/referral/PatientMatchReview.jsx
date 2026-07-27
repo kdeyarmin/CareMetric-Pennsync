@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, User, XCircle, Phone, MapPin, Calendar, FileText } from "lucide-react";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function PatientMatchReview({ referral, onConfirmMatch, onCreateNew, onClose }) {
   const [selectedMatch, setSelectedMatch] = useState(null);
@@ -22,7 +23,7 @@ export default function PatientMatchReview({ referral, onConfirmMatch, onCreateN
       // "Match Option N" with no identifying detail to confirm the match.
       const patientIds = referral.match_suggestions.map(m => m.patient_id).filter(Boolean);
       if (!patientIds.length) return [];
-      return base44.entities.Patient.filter({ id: { $in: patientIds } });
+      return base44.entities.Patient.filter({ id: { $in: patientIds } }, undefined, ALL_ROWS);
     },
     enabled: !!referral.match_suggestions?.length,
     initialData: []

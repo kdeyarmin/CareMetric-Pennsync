@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from 'sonner';
+import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function ReferralDocumentViewer({ patientId }) {
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
@@ -30,7 +31,7 @@ export default function ReferralDocumentViewer({ patientId }) {
 
   const { data: referrals = [] } = useQuery({
     queryKey: ['patientReferrals', patientId],
-    queryFn: () => base44.entities.Referral.filter({ patient_id: patientId }, '-created_date'),
+    queryFn: () => base44.entities.Referral.filter({ patient_id: patientId }, '-created_date', PATIENT_HISTORY_ROWS),
     initialData: [],
     enabled: !!patientId,
   });
@@ -40,7 +41,7 @@ export default function ReferralDocumentViewer({ patientId }) {
 
   const { data: users = [] } = useQuery({
     queryKey: ['allUsers'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
     initialData: [],
   });
 

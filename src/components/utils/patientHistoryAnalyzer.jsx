@@ -1,5 +1,7 @@
 import { base44 } from "@/api/base44Client";
 import { formatAge } from "@/lib/age";
+import { parseLocalDate } from "@/lib/dateLocal";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 /**
  * Comprehensive Patient History Analyzer
@@ -12,8 +14,8 @@ export async function buildComprehensivePatientHistory(patientId) {
       base44.entities.Patient.filter({ id: patientId }).then(data => data[0]),
       base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 20),
       base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 10),
-      base44.entities.PatientAlert.filter({ patient_id: patientId, status: 'active' }),
-      base44.entities.Task.filter({ patient_id: patientId, status: { $ne: 'completed' } })
+      base44.entities.PatientAlert.filter({ patient_id: patientId, status: 'active' }, undefined, PATIENT_HISTORY_ROWS),
+      base44.entities.Task.filter({ patient_id: patientId, status: { $ne: 'completed' } }, undefined, PATIENT_HISTORY_ROWS)
     ]);
 
     return {
@@ -88,17 +90,22 @@ function analyzePatientTrends(patient, visits) {
     // Visit frequency analysis
     const recentVisits = visits.slice(0, 5);
     if (recentVisits.length >= 2) {
-      const dates = recentVisits.map(v => new Date(v.visit_date));
+      // Drop visits with a missing/unparseable date: `new Date(undefined)` is an
+      // Invalid Date, which turned every interval into NaN and reported the
+      // patient's visit cadence as "NaN days / variable".
+      const dates = recentVisits.map(v => parseLocalDate(v.visit_date)).filter(Boolean);
       const intervals = [];
       for (let i = 0; i < dates.length - 1; i++) {
         const daysBetween = Math.floor((dates[i] - dates[i + 1]) / (1000 * 60 * 60 * 24));
         intervals.push(daysBetween);
       }
-      const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-      trends.visit_frequency = {
-        average_days_between: Math.round(avgInterval),
-        consistency: intervals.every(i => Math.abs(i - avgInterval) < 3) ? 'consistent' : 'variable'
-      };
+      if (intervals.length > 0) {
+        const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+        trends.visit_frequency = {
+          average_days_between: Math.round(avgInterval),
+          consistency: intervals.every(i => Math.abs(i - avgInterval) < 3) ? 'consistent' : 'variable'
+        };
+      }
     }
   }
 
@@ -186,6 +193,22 @@ function generateContinuityInsights(visits, incidents) {
 }
 
 /**
+ * Whole days on service, counted on LOCAL calendar days. `admission_date` is a
+ * date-only field, so subtracting `new Date()` from its UTC-midnight parse mixed
+ * two different day boundaries and could report a day either side of the truth.
+ * @param {string} admissionDate
+ * @returns {number|string} day count, or "Unknown" when there is no usable date
+ */
+function lengthOfCareDays(admissionDate) {
+  const start = parseLocalDate(admissionDate);
+  if (!start) return "Unknown";
+  const today = new Date();
+  start.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((today - start) / (1000 * 60 * 60 * 24)));
+}
+
+/**
  * Format patient history for AI prompt injection
  */
 export function formatHistoryForAI(history) {
@@ -199,7 +222,7 @@ COMPREHENSIVE PATIENT HISTORY & TRENDS:
 Patient Overview:
 - Name: ${patient?.first_name} ${patient?.last_name}
 - Age: ${formatAge(patient?.date_of_birth)}
-- Length of Care: ${patient?.admission_date ? Math.floor((new Date() - new Date(patient.admission_date)) / (1000 * 60 * 60 * 24)) : 'Unknown'} days
+- Length of Care: ${lengthOfCareDays(patient?.admission_date)} days
 - Status: ${patient?.status}
 
 CLINICAL TRENDS ANALYSIS:

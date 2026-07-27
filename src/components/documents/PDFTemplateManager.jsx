@@ -36,6 +36,7 @@ import TemplateFieldMapper from "./TemplateFieldMapper";
 import VisualPDFTemplateEditor from "./VisualPDFTemplateEditor";
 import TemplateSearchFilter from "./TemplateSearchFilter";
 import TemplateVersionHistory from "./TemplateVersionHistory";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function PDFTemplateManager() {
   const queryClient = useQueryClient();
@@ -61,7 +62,7 @@ export default function PDFTemplateManager() {
 
   const { data: templates = [] } = useQuery({
     queryKey: ['pdf-templates'],
-    queryFn: () => base44.entities.PDFTemplate.list('-created_date'),
+    queryFn: () => base44.entities.PDFTemplate.list('-created_date', PATIENT_HISTORY_ROWS),
     initialData: []
   });
 
