@@ -166,8 +166,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const careScope = currentUser?.care_scope || "home_health";
   const VISIT_TYPES = getVisitTypes(careScope);
-  const isHospice = careScope === "hospice";
-  const serviceLine = isHospice ? "hospice" : "home_health";
   const { data: patients = [] } = useQuery({
     queryKey: ["patients", "active-200"],
     // Without 'always', React Query's default networkMode PAUSES the queryFn
@@ -204,6 +202,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
     queryFn: () => base44.entities.Patient.get(patientId),
     enabled: !!patientId,
   });
+  // The regulatory frame follows the PATIENT's program when known (mirrors
+  // AudioVisitCapture, the sibling flow): a home-health/'both'-scope nurse
+  // documenting a hospice patient must get the hospice required elements +
+  // 42 CFR 418 framing (terminal prognosis, comfort-focused skilled need),
+  // not homebound/skilled-need — and vice versa. Falls back to the nurse's
+  // care_scope when no patient is selected yet.
+  const effectiveCareType = (patientDetail || patient)?.care_type || careScope;
+  const isHospice = effectiveCareType === "hospice";
+  const serviceLine = isHospice ? "hospice" : "home_health";
   // Facility-specific documentation requirements (e.g. "on oxygen → SpO2 in every
   // note") — admin-authored, applied to the selected patient. Used for the live
   // STEP 1 checklist and a non-blocking nudge before the nurse advances to review.
