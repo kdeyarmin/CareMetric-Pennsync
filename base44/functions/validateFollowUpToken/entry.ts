@@ -31,15 +31,24 @@ Deno.serve(async (req) => {
     const tokenHash = await sha256Hex(token);
     const rows = await base44.asServiceRole.entities.ProviderFollowUpToken.filter({ token: tokenHash });
     const record = rows && rows[0];
-    if (!record || record.is_active === false) {
+    // A submitted token is deactivated by submitFollowUpResponse in the same
+    // update that stamps submitted_at — without this exception a provider
+    // re-opening their link always got the 401 error instead of the portal's
+    // friendly "this request was already completed" state.
+    const alreadySubmitted = !!record?.submitted_at;
+    if (!record || (record.is_active !== true && !alreadySubmitted)) {
       return Response.json({ valid: false, error: 'This link is no longer valid.' }, { status: 401 });
     }
 
-    // Expiry — an unparseable expires_at counts as expired (fail closed).
-    const expiresMs = Date.parse(record.expires_at);
-    if (!Number.isFinite(expiresMs) || expiresMs < Date.now()) {
-      await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, { is_active: false, status: 'expired' }).catch(() => {});
-      return Response.json({ valid: false, error: 'This link has expired. Please contact the agency for a new one.' }, { status: 401 });
+    // Expiry — an unparseable expires_at counts as expired (fail closed). A
+    // submitted token skips this: it's already read-only, and the provider
+    // deserves the "completed" confirmation rather than an expiry error.
+    if (!alreadySubmitted) {
+      const expiresMs = Date.parse(record.expires_at);
+      if (!Number.isFinite(expiresMs) || expiresMs < Date.now()) {
+        await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, { is_active: false, status: 'expired' }).catch(() => {});
+        return Response.json({ valid: false, error: 'This link has expired. Please contact the agency for a new one.' }, { status: 401 });
+      }
     }
 
     const referrals = await base44.asServiceRole.entities.Referral.filter({ id: record.referral_id });

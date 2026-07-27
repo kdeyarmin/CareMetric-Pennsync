@@ -143,3 +143,10 @@ test("looksLikeMedicareAdvantage requires medicare plus advantage/HMO/PPO wordin
   assert.equal(looksLikeMedicareAdvantage("Medicare Part B"), false);
   assert.equal(looksLikeMedicareAdvantage("Aetna PPO"), false); // PPO without medicare
 });
+
+// ── Regression: OCR-wrapped MBIs (2026-07 review) ───────────────────────────
+
+test("an MBI wrapped across a line break or spaced into groups is surfaced", () => {
+  assert.ok(findMbiCandidates("MBI: 1EG4-\nTE5-MK73").length >= 1);
+  assert.ok(findMbiCandidates("Medicare number 1EG4 TE5 MK73 on file").length >= 1);
+});

@@ -276,3 +276,28 @@ test("uses the same default tables as the live PDGM model (drift guard)", () => 
     DEFAULT_PDGM_RATES.clinicalGroupWeights.MMTA_Wounds.institutional_early;
   assert.equal(result.primary.caseMixWeight, expected);
 });
+
+// ── Regression: fabricated-code guards (2026-07 review) ─────────────────────
+
+test("clinical shorthand shaped like codes is never harvested", () => {
+  assert.deepEqual(extractIcdCodesFromText("B12 deficiency anemia"), []);
+  assert.deepEqual(extractIcdCodesFromText("T12 compression fracture, pain at T10-T11"), []);
+  assert.deepEqual(extractIcdCodesFromText("gave amp of D50 for hypoglycemia"), []);
+  // Past the anatomic vertebral range, a bare code still harvests.
+  assert.equal(extractIcdCodesFromText("breast ca C50")[0]?.code, "C50");
+});
+
+test("a fabricated token can no longer steal the PDGM principal slot", () => {
+  const result = generateDiagnosisCodes({
+    diagnoses: {
+      primary_icd10: "I50.9",
+      secondary_diagnoses: ["B12 deficiency anemia", "T12 compression fracture"],
+    },
+  });
+  assert.equal(result.primary?.code, "I509", "the documented I50.9 stays principal");
+  assert.ok(!result.sequenced.some((d) => d.code === "B12" || d.code === "T12"));
+});
+
+test("a sentence period without a space does not eat a genuine bare code", () => {
+  assert.equal(extractIcdCodesFromText("Primary dx I10.Ambulates independently")[0]?.code, "I10");
+});

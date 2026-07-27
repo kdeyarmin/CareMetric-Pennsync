@@ -102,3 +102,19 @@ test("dob matches common renderings", () => {
   );
   assert.equal(iso.patient_dob, true);
 });
+
+// ── Regression: whole-word matching + OCR dates (2026-07 review) ────────────
+
+test("substring name fragments do not auto-match the wrong patient", () => {
+  const fax = { ocrText: "ADDITIONAL INFORMATION REQUEST\nPatient: Robert Johnson\nSmithfield Family Clinic", senderNumber: "" };
+  const signals = extractSignals(fax, { patientName: "John Smith" });
+  assert.equal(signals.patient_name, false, "'john'⊂'johnson' + 'smith'⊂'smithfield' must not match");
+  const match = bestFaxBackMatch(fax, [{ patientName: "John Smith", referral: { id: "r1" } }]);
+  assert.ok(!match || !match.confident, "form marker + fragment name must not auto-attach");
+});
+
+test("OCR-spaced date separators still match the DOB", () => {
+  const fax = { ocrText: "patient jane doe dob 01 / 05 / 1950 additional information request", senderNumber: "" };
+  const signals = extractSignals(fax, { patientName: "Jane Doe", patientDob: "1950-01-05" });
+  assert.equal(signals.patient_dob, true);
+});

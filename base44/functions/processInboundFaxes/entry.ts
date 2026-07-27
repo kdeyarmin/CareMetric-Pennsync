@@ -67,20 +67,25 @@ const normText = (s: unknown) => String(s || '').toLowerCase().replace(/\s+/g, '
 const normName = (s: unknown) =>
   String(s || '').toLowerCase().replace(/\bdr\.?\b/g, '').replace(/[^a-z ]/g, '').trim();
 
+// WHOLE-WORD comparison — raw substring matching auto-attached the wrong
+// patient ("John Smith" matched a fax about "Robert Johnson" from "Smithfield
+// Family Clinic"), which mis-files PHI and silences the stale-request escalation.
 function nameInText(name: unknown, text: string) {
   const words = normName(name).split(' ').filter((w) => w.length > 1);
   if (words.length < 2) return false;
-  const t = normName(text);
-  return words.every((w) => t.includes(w));
+  const tokens = new Set(normName(text).split(' ').filter(Boolean));
+  return words.every((w) => tokens.has(w));
 }
 
+// OCR often spaces out date separators ("01 / 05 / 1950") — tighten them first.
 function dobInText(dob: unknown, text: string) {
   const raw = String(dob || '').trim();
+  const t = String(text || '').replace(/\s*([/-])\s*/g, '$1');
   const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return raw.length >= 8 && text.includes(raw);
+  if (!m) return raw.length >= 8 && t.includes(raw);
   const [, y, mo, d] = m;
   const variants = [`${y}-${mo}-${d}`, `${mo}/${d}/${y}`, `${Number(mo)}/${Number(d)}/${y}`, `${mo}-${d}-${y}`];
-  return variants.some((v) => text.includes(v));
+  return variants.some((v) => t.includes(v));
 }
 
 function extractSignals(fax: { ocrText: string; senderNumber: string }, candidate: Record<string, unknown>) {

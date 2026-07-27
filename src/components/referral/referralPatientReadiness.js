@@ -4,7 +4,12 @@
 // keep the item in the referral queue so staff can complete missing data without
 // polluting the active census with placeholders.
 
-const PLACEHOLDER_VALUES = new Set(['not provided', 'not provided on referral', 'unknown', 'n/a', 'na', 'none']);
+const PLACEHOLDER_VALUES = new Set([
+  'not provided', 'not provided on referral', 'unknown', 'n/a', 'na', 'none',
+  // The exact filler referralExtraction.js instructs the extractor to emit —
+  // without it a "Not documented in referral" string counted as a real value.
+  'not documented', 'not documented in referral', 'not documented on referral',
+]);
 
 export function cleanReferralValue(value) {
   if (value == null) return '';
@@ -16,6 +21,18 @@ export function cleanReferralValue(value) {
 export function splitPatientName(fullName) {
   const cleaned = cleanReferralValue(fullName).replace(/\s+/g, ' ');
   if (!cleaned) return { first_name: '', last_name: '', full_name: '' };
+  // Faxed referrals commonly write "Last, First [Middle]" — splitting that
+  // positionally created patients named first_name "Doe," last_name "Jane".
+  const comma = cleaned.match(/^([^,]+),\s*(.+)$/);
+  if (comma) {
+    const last = comma[1].trim();
+    const given = comma[2].trim();
+    return {
+      first_name: given.split(' ')[0] || '',
+      last_name: last,
+      full_name: `${given} ${last}`.trim(),
+    };
+  }
   const parts = cleaned.split(' ');
   return {
     first_name: parts[0] || '',
