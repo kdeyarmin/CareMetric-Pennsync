@@ -168,7 +168,7 @@ describe("entity-list parity with the schemas (regression)", () => {
   it("covers every base44 entity that carries patient_id", () => {
     // 37 patient-linked entities (CarePlan, FaceToFaceEncounter, Immunization,
     // Billing, …) were missing from the list — merged charts silently lost them.
-    const entitiesDir = path.resolve(process.cwd(), "base44/entities"); // vitest runs from the repo root
+    const entitiesDir = path.resolve("base44/entities"); // resolves against the repo root (vitest cwd)
     const withPatientId = fs.readdirSync(entitiesDir)
       .filter((f) => f.endsWith(".jsonc"))
       .filter((f) => fs.readFileSync(path.join(entitiesDir, f), "utf8").includes('"patient_id"'))
