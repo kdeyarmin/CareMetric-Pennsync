@@ -49,3 +49,17 @@ describe("deriveComplianceIssueStats", () => {
     expect(s.affectedUsers).toBe(0);
   });
 });
+
+describe("grouping hardening", () => {
+  it("survives prototype-key userIds and keeps unknown users distinct", () => {
+    const issues = [
+      { userId: "constructor", userName: "Weird", userRole: "nurse", title: "A", type: "x", severity: "high" },
+      { userName: "No Id 1", userRole: "nurse", title: "B", type: "x", severity: "high" },
+      { userName: "No Id 2", userRole: "nurse", title: "C", type: "x", severity: "high" },
+    ];
+    const res = deriveComplianceIssueStats(issues);
+    expect(res.groupedByUser["constructor"].issues.length).toBe(1);
+    // Two distinct unknown users must not collapse into one "undefined" bucket.
+    expect(res.affectedUsers).toBe(3);
+  });
+});

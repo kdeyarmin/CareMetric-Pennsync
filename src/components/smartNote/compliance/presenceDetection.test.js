@@ -114,3 +114,43 @@ test("'ambulated toward the bathroom' does not satisfy care-plan progress", () =
   assert.equal(row("Patient ambulated toward the bathroom.").present, false);
   assert.equal(row("Progress toward the mobility goal noted.").present, true);
 });
+
+// ── negation guard on negationSensitive elements ──
+
+test("a negated homebound/skilled-need mention is not evidence", () => {
+  // Regression: the engine's own "…was not documented" fallback lines and
+  // "Patient is not homebound" satisfied the detector, so a note explicitly
+  // stating the elements were missing scanned as compliant.
+  const negated = detectPresence(
+    "Homebound status was not documented this visit. Skilled need was not documented this visit.",
+    reqs,
+  );
+  assert.equal(negated.find((r) => r.id === "homebound").present, false);
+  assert.equal(negated.find((r) => r.id === "skilled_need").present, false);
+
+  const denial = detectPresence(
+    "Patient is NOT homebound. No wound care or skilled service was needed today.",
+    reqs,
+  );
+  assert.equal(denial.find((r) => r.id === "homebound").present, false);
+  assert.equal(denial.find((r) => r.id === "skilled_need").present, false);
+});
+
+test("affirmative homebound/skilled-need statements still detect", () => {
+  const res = detectPresence(
+    "Patient is homebound due to severe dyspnea; requires a walker to leave home. Performed skilled wound care to the sacral ulcer.",
+    reqs,
+  );
+  assert.equal(res.find((r) => r.id === "homebound").present, true);
+  assert.equal(res.find((r) => r.id === "skilled_need").present, true);
+});
+
+test("clinical negative findings on ordinary elements still count as evidence", () => {
+  // "denies pain" is valid pain-assessment documentation — the negation guard
+  // must stay scoped to the negationSensitive eligibility elements.
+  const painElem = reqs.find((r) => /pain/i.test(r.id) || /pain/i.test(r.label));
+  if (painElem) {
+    const res = detectPresence("Patient denies pain this visit.", [painElem]);
+    assert.equal(res[0].present, true);
+  }
+});

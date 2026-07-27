@@ -370,7 +370,11 @@ export function matchCatalogItem(letterText) {
   for (const doc of ADR_DOCUMENT_CATALOG) {
     for (const kw of doc.keywords) {
       const needle = ` ${normalize(kw)} `;
-      if (needle.trim() && text.includes(needle.trim())) {
+      // Keep the space padding on BOTH sides — trimming the needle defeated
+      // the word-boundary check it exists for: 'abn' matched inside
+      // "abnormal", 'claim' inside "disclaimer", merging unrelated letter
+      // items into the wrong catalog row (and out of the checklist).
+      if (needle.trim() && text.includes(needle)) {
         const score = needle.trim().length;
         if (!best || score > best.score) best = { id: doc.id, score };
       }
@@ -378,8 +382,6 @@ export function matchCatalogItem(letterText) {
   }
   return best;
 }
-
-const VALID_SEVERITY = (s, fallback) => (SEVERITIES.includes(s) ? s : fallback);
 
 /**
  * Merge the letter's requested items with the CMS baseline catalog into the
@@ -427,7 +429,9 @@ export function buildAdrChecklist({ letterItems = [], auditType = "other" } = {}
       letter_text: text,
       letter_details: String(raw?.details || "").trim() || undefined,
       category: doc ? doc.category : "administrative",
-      severity: doc ? doc.severity : VALID_SEVERITY(raw?.severity, "high"),
+      // A letter-only item is always at least "high" — the contractor asked
+      // for it by name; an (off-schema) AI severity field must not downgrade it.
+      severity: doc ? doc.severity : "high",
       citation: doc ? doc.citation : "Requested by the reviewing contractor in this letter",
       what_to_include: doc ? doc.what_to_include : text,
       verification_points: doc ? doc.verification_points : ["Document present and legible as requested by the letter"],
@@ -466,16 +470,20 @@ export function buildAdrChecklist({ letterItems = [], auditType = "other" } = {}
  */
 export function groupChecklistByCategory(checklist = []) {
   const order = Object.keys(CATEGORY_LABELS);
+  const known = new Set(order);
+  const byLetterFirst = (a, b) => {
+    const aLetter = a.source !== "cms_baseline" ? 0 : 1;
+    const bLetter = b.source !== "cms_baseline" ? 0 : 1;
+    return aLetter - bLetter || a.seq - b.seq;
+  };
   const groups = order.map((category) => ({
     category,
     label: CATEGORY_LABELS[category],
-    items: checklist
-      .filter((it) => it.category === category)
-      .sort((a, b) => {
-        const aLetter = a.source !== "cms_baseline" ? 0 : 1;
-        const bLetter = b.source !== "cms_baseline" ? 0 : 1;
-        return aLetter - bLetter || a.seq - b.seq;
-      }),
+    items: checklist.filter((it) => it.category === category).sort(byLetterFirst),
   }));
+  // A persisted row whose category has drifted must still be shown — silently
+  // dropping it removes a requirement from both the panel and the print.
+  const strays = checklist.filter((it) => !known.has(it.category)).sort(byLetterFirst);
+  if (strays.length) groups.push({ category: "other", label: "Other requirements", items: strays });
   return groups.filter((g) => g.items.length > 0);
 }

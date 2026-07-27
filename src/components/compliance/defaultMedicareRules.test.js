@@ -69,3 +69,35 @@ test("the seeded rules actually feed the smart-note required elements", () => {
   assert.ok(elements.some((e) => e.id === "infection_control"), "infection_control should be added");
   assert.equal(elements.find((e) => e.id === "homebound")?.severity, "critical");
 });
+
+test("regulatory citations are the verified ones", () => {
+  const byName = Object.fromEntries(DEFAULT_MEDICARE_RULES.map((r) => [r.rule_name, r]));
+  // Homebound eligibility is 42 CFR 409.42(a) — 484.55(c) is the
+  // comprehensive-assessment content list.
+  assert.equal(byName["Homebound Status Documentation"].cop_reference, "42 CFR 409.42(a)");
+  // 484.55(c)(1) is functional status; (c)(5) is the medication review.
+  assert.equal(byName["Functional Status Assessment"].cop_reference, "42 CFR 484.55(c)(1)");
+  // 28 Pa. Code § 601.35 is home health aide services (601.31 is acceptance
+  // of patients / plan of treatment); POT review is 601.31(c).
+  assert.equal(byName["PA Home Health Aide Supervision"].cop_reference, "28 Pa. Code § 601.35");
+  assert.equal(byName["PA Plan of Treatment Review"].cop_reference, "28 Pa. Code § 601.31(c)");
+});
+
+test("every default rule is scoped to home_health", () => {
+  // These are all 42 CFR 484 / PA home-health rules — without the scope,
+  // seeding injected homebound/skilled-need CRITICALS into hospice notes.
+  for (const rule of DEFAULT_MEDICARE_RULES) {
+    assert.equal(rule.service_line, "home_health", rule.rule_name);
+  }
+});
+
+test("seeded home-health rules never inject elements into hospice notes", () => {
+  const { elements, applied } = buildMergedElements(DEFAULT_MEDICARE_RULES, {
+    serviceLine: "hospice",
+    visitType: "routine_visit",
+  });
+  assert.equal(applied.length, 0);
+  const ids = elements.map((e) => e.id);
+  assert.ok(!ids.includes("homebound"), "hospice has no homebound requirement");
+  assert.ok(!ids.includes("skilled_need"));
+});

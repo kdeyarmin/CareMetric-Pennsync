@@ -116,7 +116,11 @@ export function checklistForPrompt(checklist = []) {
     .map((it) => {
       const points = (it.verification_points || []).map((p) => `      - ${p}`).join("\n");
       const asked = it.letter_text ? `\n    Letter wording: "${it.letter_text}"` : "";
-      return `  [${it.id}] ${it.title} (severity: ${it.severity}; ${it.citation})${asked}\n    Reviewer checks:\n${points}`;
+      // The NOT-APPLICABLE RULES tell the model to use each item's "Applies:"
+      // condition — without rendering it the model can't tell which items are
+      // conditional and makes wrong N/A calls.
+      const applies = it.when ? `\n    Applies: ${it.when}` : "";
+      return `  [${it.id}] ${it.title} (severity: ${it.severity}; ${it.citation})${asked}${applies}\n    Reviewer checks:\n${points}`;
     })
     .join("\n");
 }

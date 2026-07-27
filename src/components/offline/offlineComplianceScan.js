@@ -32,6 +32,18 @@ export function visitTypeKey(label) {
   return VISIT_TYPE_TO_KEY[label] || "routine_visit";
 }
 
+// Disciplines that are NOT held to the skilled-nursing eligibility elements:
+// an aide's or social worker's note never documents homebound justification or
+// a skilled nursing service — those live in the nurse's notes. Holding an aide
+// note to them hard-blocked every aide visit on requirements that don't apply.
+const NON_SKILLED_DISCIPLINES = new Set(["Home Health Aide", "Social Work"]);
+const SKILLED_ONLY_ELEMENT_IDS = new Set(["homebound", "skilled_need", "comfort_skilled_need"]);
+
+/** True when this discipline label is exempt from the skilled-nursing elements. */
+export function isNonSkilledDiscipline(label) {
+  return NON_SKILLED_DISCIPLINES.has(String(label || "").trim());
+}
+
 /**
  * Run the offline compliance scan over an assembled visit note.
  *
@@ -39,6 +51,7 @@ export function visitTypeKey(label) {
  * @param {string} input.noteText       assembled clinical narrative
  * @param {string} [input.serviceLine="home_health"]
  * @param {string} [input.visitType="routine_visit"]  compliance visit-type key
+ * @param {string} [input.disciplineLabel]  offline-form visit-type label (e.g. "Home Health Aide")
  * @param {Object} [input.patient]      patient chart record (for chart cross-check)
  * @returns {{
  *   coverage: number,
@@ -49,9 +62,12 @@ export function visitTypeKey(label) {
  *   grounding_pending: boolean,
  * }}
  */
-export function scanOfflineNote({ noteText, serviceLine = "home_health", visitType = "routine_visit", patient } = {}) {
+export function scanOfflineNote({ noteText, serviceLine = "home_health", visitType = "routine_visit", disciplineLabel, patient } = {}) {
   const text = String(noteText || "");
-  const requiredElements = getRequiredElements(serviceLine, visitType);
+  let requiredElements = getRequiredElements(serviceLine, visitType);
+  if (isNonSkilledDiscipline(disciplineLabel)) {
+    requiredElements = requiredElements.filter((e) => !SKILLED_ONLY_ELEMENT_IDS.has(e.id));
+  }
   const presence = detectPresence(text, requiredElements);
   const gaps = computeGaps(presence, requiredElements);
   const criticalGaps = computeCriticalGaps(presence, requiredElements);

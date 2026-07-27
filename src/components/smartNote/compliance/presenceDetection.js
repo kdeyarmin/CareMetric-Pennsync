@@ -4,6 +4,31 @@
 // for the homebound_justification chart field).
 import { splitSentences } from "./factExtraction.js";
 
+// Negation guard for `negationSensitive` elements (homebound, skilled need):
+// a NEGATED mention is not evidence — "Patient is not homebound", "No wound
+// care performed", and the engine's own "…was not documented this visit"
+// fallback lines used to satisfy the detector, so a note explicitly stating
+// the element was missing scanned as compliant (a false PASS on the two
+// eligibility gates that hard-block). Scoped by flag so clinically valid
+// negative findings on other elements ("denies pain") keep counting.
+const NOT_DOCUMENTED = /\bnot\s+(?:documented|assessed|addressed|performed|provided|completed|done)\b/i;
+// Up to 4 words between the negation and the hit, so a coordinated phrase
+// ("No wound care or skilled service…") is still seen as negated. Clause
+// boundaries (; , :) reset the window.
+const NEGATED_PREFIX = /\b(?:not|no|never|denies|without|declined?s?|refused?s?|no longer|unable to)\s+(?:\w+\s+){0,4}$/i;
+
+function isNegatedHit(segment, re) {
+  if (NOT_DOCUMENTED.test(segment)) return true;
+  const m = re.exec(segment);
+  if (!m) return false;
+  const boundary = Math.max(
+    segment.lastIndexOf(";", m.index),
+    segment.lastIndexOf(",", m.index),
+    segment.lastIndexOf(":", m.index),
+  );
+  return NEGATED_PREFIX.test(segment.slice(boundary + 1, m.index));
+}
+
 /**
  * @param {string} draftText normalized rough draft
  * @param {Array} requiredElements from getRequiredElements()
@@ -15,11 +40,12 @@ export function detectPresence(draftText, requiredElements) {
   const segments = splitSentences(draftText || "");
   return requiredElements.map((elem) => {
     let evidence = null;
+    const accepts = (s, re) => re.test(s) && !(elem.negationSensitive && isNegatedHit(s, re));
 
     // 1) strongest signal: an element-specific regex pattern (case-insensitive,
     //    no /g flag, so .test() is stateless across segments)
     if (elem.pattern) {
-      const seg = segments.find((s) => elem.pattern.test(s));
+      const seg = segments.find((s) => accepts(s, elem.pattern));
       if (seg) evidence = `${seg}.`;
     }
 
@@ -32,11 +58,21 @@ export function detectPresence(draftText, requiredElements) {
     if (!evidence && Array.isArray(elem.keywords) && elem.keywords.length) {
       const kwRegex = (k) =>
         new RegExp(`\\b${String(k).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
-      const matchedKeyword = elem.keywords.find((k) => k && kwRegex(k).test(draftText || ""));
-      if (matchedKeyword) {
-        const re = kwRegex(matchedKeyword);
-        const seg = segments.find((s) => re.test(s));
-        evidence = seg ? `${seg}.` : matchedKeyword;
+      for (const k of elem.keywords) {
+        if (!k || !kwRegex(k).test(draftText || "")) continue;
+        const re = kwRegex(k);
+        const seg = segments.find((s) => accepts(s, re));
+        if (seg) {
+          evidence = `${seg}.`;
+          break;
+        }
+        if (!elem.negationSensitive) {
+          // Keyword present but no clean segment — keep the legacy keyword
+          // fallback for ordinary elements; negation-sensitive ones require
+          // an un-negated segment and move on to the next keyword.
+          evidence = k;
+          break;
+        }
       }
     }
 

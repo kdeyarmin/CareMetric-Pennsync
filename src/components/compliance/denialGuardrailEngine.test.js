@@ -155,3 +155,95 @@ test("hospice routine visit evaluates comfort skilled need, not homebound", () =
   assert.equal(find(res, CLUSTER.HOMEBOUND), undefined); // homebound N/A in hospice
   assert.ok(find(res, CLUSTER.SKILLED_NEED)); // comfort skilled need evaluated
 });
+
+// ── negation guards (regressions: negated text used to PASS) ──
+
+test("'no longer homebound' is an eligibility FAIL, never a quality PASS", () => {
+  const res = runDenialGuardrail({
+    noteText:
+      "Patient is no longer homebound due to improved strength and no longer needs the walker; leaves home independently. " +
+      "Skilled observation and assessment of an unstable CHF patient for management of CHF.",
+    visitType: "routine_visit",
+  });
+  const hb = find(res, CLUSTER.HOMEBOUND);
+  assert.equal(hb.status, GUARD_STATUS.FAIL);
+  assert.equal(hb.severity, "critical");
+  assert.match(hb.message, /NOT homebound/);
+  assert.equal(res.passed, false);
+  assert.equal(res.blocking, true);
+});
+
+test("a negated or refused skilled service does not pass skilled-need specificity", () => {
+  for (const note of [
+    "Patient is homebound due to dyspnea; requires a walker and assist of one. No wound care performed this visit; wound has healed.",
+    "Patient is homebound due to dyspnea; requires a walker and assist of one. Patient refused wound care and dressing change today.",
+  ]) {
+    const res = runDenialGuardrail({ noteText: note, visitType: "routine_visit" });
+    const sn = find(res, CLUSTER.SKILLED_NEED);
+    assert.equal(sn.status, GUARD_STATUS.FAIL, note);
+  }
+});
+
+test("an affirmative skilled service still passes with the negation guard in place", () => {
+  const res = runDenialGuardrail({
+    noteText: "Homebound due to CVA; requires two-person assist to leave. Performed sterile wound care and dressing change to the sacral ulcer for treatment of the stage 3 wound.",
+    visitType: "routine_visit",
+  });
+  assert.equal(find(res, CLUSTER.SKILLED_NEED).status, GUARD_STATUS.PASS);
+});
+
+test("the primary diagnosis matches on word boundaries, not substrings ('CA' vs 'catheter')", () => {
+  const noteText =
+    "Homebound due to weakness; requires a walker and assistance of one to leave home. " +
+    "Skilled foley catheter change performed to monitor output.";
+  const res = runDenialGuardrail({
+    noteText,
+    visitType: "routine_visit",
+    context: { primaryDiagnosis: "CA of prostate" },
+  });
+  const mn = find(res, CLUSTER.MEDICAL_NECESSITY);
+  assert.equal(mn.status, GUARD_STATUS.FAIL);
+  assert.match(mn.message, /diagnosis/);
+  // A real reference to the diagnosis still passes.
+  const linked = runDenialGuardrail({
+    noteText: noteText.replace("to monitor output", "to monitor output related to prostate CA obstruction"),
+    visitType: "routine_visit",
+    context: { primaryDiagnosis: "CA of prostate" },
+  });
+  assert.equal(find(linked, CLUSTER.MEDICAL_NECESSITY).status, GUARD_STATUS.PASS);
+});
+
+// ── F2F on admission without a wired validation ──
+
+test("an admission with no linked F2F validation warns instead of reading green", () => {
+  const res = runDenialGuardrail({
+    noteText:
+      "Homebound due to CVA; requires two-person assist to leave. Skilled observation and assessment of an unstable CHF patient for management of CHF.",
+    visitType: "admission",
+  });
+  const f2f = find(res, CLUSTER.F2F);
+  assert.equal(f2f.status, GUARD_STATUS.FAIL);
+  assert.equal(f2f.severity, "high"); // visible + risk-scored, but not blocking
+  assert.equal(res.blocking, false);
+  assert.ok(res.denial_risk_score > 0);
+  // A routine visit with no validation stays not-applicable.
+  const routine = runDenialGuardrail({
+    noteText: "Homebound due to CVA; requires two-person assist. Wound care performed for treatment of the sacral ulcer.",
+    visitType: "routine_visit",
+  });
+  assert.equal(find(routine, CLUSTER.F2F), undefined);
+});
+
+// ── hospice comfort vocabulary ──
+
+test("a compliant hospice comfort-care note passes skilled need", () => {
+  const res = runDenialGuardrail({
+    noteText:
+      "Assessed worsening dyspnea and managed with repositioning, mouth care, and caregiver coaching on comfort care for end-stage COPD.",
+    serviceLine: "hospice",
+    visitType: "routine_visit",
+  });
+  const sn = find(res, CLUSTER.SKILLED_NEED);
+  assert.equal(sn.status, GUARD_STATUS.PASS);
+  assert.equal(res.blocking, false);
+});

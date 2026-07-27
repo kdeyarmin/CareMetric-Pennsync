@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   OPEN_ADR_STATUSES,
   REMINDER_DAYS_BEFORE,
+  normalizeDueDateString,
+  resolveResponseDueDate,
   MAX_OVERDUE_REMINDER_DAYS,
   parseDateOnlyUTC,
   planAdrDeadlineReminders,
@@ -114,4 +116,43 @@ test("messages are honest about the denial consequence", () => {
   });
   assert.match(dueToday.title, /due TODAY/);
   assert.match(dueToday.message, /treated as missing/);
+});
+
+// ── due-date normalization / derivation (regression) ──
+
+test("normalizeDueDateString accepts the formats the UI renders", () => {
+  // Regression: the UI displayed these as live deadlines while the strict
+  // planner parser rejected them — reminders silently never fired.
+  assert.equal(normalizeDueDateString("2026-07-03"), "2026-07-03");
+  assert.equal(normalizeDueDateString("2026-7-3"), "2026-07-03");
+  assert.equal(normalizeDueDateString("07/03/2026"), "2026-07-03");
+  assert.equal(normalizeDueDateString("7-3-2026"), "2026-07-03");
+  assert.equal(normalizeDueDateString("July 3, 2026"), "2026-07-03");
+  assert.equal(normalizeDueDateString("Jul 3 2026"), "2026-07-03");
+  assert.equal(normalizeDueDateString("2026-07-03T00:00:00"), "2026-07-03");
+  assert.equal(normalizeDueDateString("2026-02-30"), null); // impossible date
+  assert.equal(normalizeDueDateString("45 days"), null);
+  assert.equal(normalizeDueDateString(""), null);
+});
+
+test("resolveResponseDueDate derives letter_date + response_due_days when no absolute date", () => {
+  // The common MAC wording "within 45 days of the date of this letter".
+  const derived = resolveResponseDueDate({ letter_date: "2026-06-01", response_due_days: 45 });
+  assert.deepEqual(derived, { date: "2026-07-16", derived: true });
+  // An explicit date wins and is not flagged derived.
+  const direct = resolveResponseDueDate({ response_due_date: "07/03/2026", letter_date: "2026-06-01", response_due_days: 45 });
+  assert.deepEqual(direct, { date: "2026-07-03", derived: false });
+  // Nothing usable → null, so the UI can demand a manual date.
+  assert.deepEqual(resolveResponseDueDate({}), { date: null, derived: false });
+  assert.deepEqual(resolveResponseDueDate({ response_due_days: 45 }), { date: null, derived: false });
+});
+
+test("a normalized due date plans reminders end-to-end", () => {
+  const dueDate = resolveResponseDueDate({ response_due_date: "07/03/2026" }).date;
+  const plans = planAdrDeadlineReminders({
+    cases: [{ id: "c1", status: "checklist_ready", created_by: "a@b.c", response_due_date: dueDate }],
+    todayIso: "2026-07-03",
+  });
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].days_left, 0);
 });

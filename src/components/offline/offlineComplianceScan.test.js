@@ -51,3 +51,33 @@ test("presence results are returned for downstream gap questions", () => {
   assert.ok(Array.isArray(res.presence) && res.presence.length > 0);
   assert.ok(res.presence.every((p) => "id" in p && "present" in p));
 });
+
+test("a note stating the critical elements were NOT documented blocks", () => {
+  // Regression: the engine's own fallback wording used to satisfy the
+  // detector, so this note queued with has_blocking_issues: false.
+  const res = scanOfflineNote({
+    noteText: "Homebound status was not documented this visit. Skilled need was not documented this visit.",
+  });
+  const gapIds = res.critical_gaps.map((g) => g.id);
+  assert.ok(gapIds.includes("homebound"));
+  assert.ok(gapIds.includes("skilled_need"));
+  assert.equal(res.has_blocking_issues, true);
+});
+
+test("aide and social-work notes are not held to skilled-nursing eligibility elements", () => {
+  const res = scanOfflineNote({
+    noteText: "Bathed patient, changed linens, and prepared a light meal. Patient comfortable.",
+    visitType: visitTypeKey("Home Health Aide"),
+    disciplineLabel: "Home Health Aide",
+  });
+  const gapIds = res.critical_gaps.map((g) => g.id);
+  assert.ok(!gapIds.includes("homebound"));
+  assert.ok(!gapIds.includes("skilled_need"));
+  // A skilled-nursing note keeps them.
+  const sn = scanOfflineNote({
+    noteText: "Bathed patient, changed linens.",
+    visitType: visitTypeKey("Skilled Nursing"),
+    disciplineLabel: "Skilled Nursing",
+  });
+  assert.ok(sn.critical_gaps.map((g) => g.id).includes("homebound"));
+});

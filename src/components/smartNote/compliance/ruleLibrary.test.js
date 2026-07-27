@@ -93,3 +93,20 @@ test("buildOverrides produces a shape getRequiredElements accepts", () => {
   const resolved = getRequiredElements(ctx.serviceLine, ctx.visitType, overrides);
   assert.ok(resolved.some((e) => e.id === "infection_control"));
 });
+
+test("a service_line-scoped rule applies only to its service line", () => {
+  const rule = {
+    rule_name: "HH only rule",
+    category: "homebound_status",
+    severity: "critical",
+    service_line: "home_health",
+    is_active: true,
+  };
+  const hh = buildMergedElements([rule], { serviceLine: "home_health", visitType: "routine_visit" });
+  assert.equal(hh.applied.length, 1);
+  const hospice = buildMergedElements([rule], { serviceLine: "hospice", visitType: "routine_visit" });
+  assert.equal(hospice.applied.length, 0);
+  // Unscoped (agency-authored) rules still apply to both.
+  const unscoped = buildMergedElements([{ ...rule, service_line: undefined, category: "patient_education" }], { serviceLine: "hospice", visitType: "routine_visit" });
+  assert.equal(unscoped.applied.length, 1);
+});

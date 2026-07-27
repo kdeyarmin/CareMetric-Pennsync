@@ -38,6 +38,16 @@ function appliesToVisit(rule, visitType) {
   return v.includes(visitType);
 }
 
+// A rule scoped to one service line must not leak into the other: seeding the
+// home-health defaults used to inject homebound/skilled-need CRITICALS into
+// hospice notes, hard-blocking them on requirements hospice does not have.
+// Unscoped rules (agency-authored, pre-scoping records) still apply to both.
+function appliesToService(rule, serviceLine) {
+  const s = rule.service_line;
+  if (!s || s === "both" || s === "all") return true;
+  return s === serviceLine;
+}
+
 function dedupeKeywords(existing = [], incoming = []) {
   const seen = new Set(existing.map((k) => String(k).toLowerCase()));
   const out = [...existing];
@@ -106,6 +116,7 @@ export function buildMergedElements(rules, { serviceLine = "home_health", visitT
   for (const rule of rules) {
     if (!rule || rule.is_active === false) continue;
     if (!appliesToVisit(rule, visitType)) continue;
+    if (!appliesToService(rule, serviceLine)) continue;
     const id = CATEGORY_TO_ID[rule.category];
     if (!id) continue;
     const sev = mapSeverity(rule.severity);

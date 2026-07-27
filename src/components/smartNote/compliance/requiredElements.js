@@ -16,6 +16,9 @@
 //     pattern?: RegExp,                      // optional stronger presence test
 //     question,                              // asked when the element is missing
 //     notDocumentedPhrase,                   // non-critical fallback line
+//     negationSensitive?: boolean,           // negated mentions are NOT evidence
+//                                            // ("not homebound", "no wound care
+//                                            // performed", "was not documented")
 //     standardNegative?: { prompt, phrase }, // confirm-only conventional negative
 //     hint?,                                 // one-line "what a good answer covers"
 //     examples?: string[]                    // compliant sample answers (UI expander)
@@ -33,7 +36,10 @@ export const VISIT_TYPES = ["routine_visit", "admission", "recertification", "di
 const E = {
   homebound: {
     label: "Homebound status",
-    copReference: "42 CFR 484.55(c)",
+    // Confined-to-home eligibility is 42 CFR 409.42(a); 484.55(c) is the
+    // comprehensive-assessment content list and does not contain homebound.
+    copReference: "42 CFR 409.42(a)",
+    negationSensitive: true,
     keywords: ["homebound", "unable to leave", "taxing effort", "confined to home", "leaving home requires", "considerable effort"],
     pattern: /homebound|unable to leave|taxing effort|confined to (?:home|residence)|leaving (?:the )?home requires/i,
     question: "Why is the patient homebound? What makes leaving home require a considerable and taxing effort?",
@@ -47,6 +53,7 @@ const E = {
   skilled_need: {
     label: "Skilled need / justification",
     copReference: "42 CFR 484.75",
+    negationSensitive: true,
     keywords: ["skilled", "wound care", "medication management", "teaching", "assessment of", "observation and assessment", "skilled observation"],
     pattern: /skilled (?:need|nursing|assessment|service|intervention|observation)|requires the skill|wound care|medication management|observation and assessment/i,
     question: "What skilled nursing service required your professional skill this visit?",
@@ -266,7 +273,11 @@ const E = {
   },
   comfort_skilled_need: {
     label: "Comfort-focused skilled need",
-    copReference: "42 CFR 418.76",
+    // Hospice nursing core services are 42 CFR 418.64(b); 418.76 is the
+    // hospice AIDE and homemaker services CoP — the wrong citation for a
+    // nursing skilled-need finding.
+    copReference: "42 CFR 418.64(b)",
+    negationSensitive: true,
     keywords: ["comfort", "symptom management", "pain", "dyspnea", "nausea", "palliative"],
     pattern: /comfort|symptom management|dyspnea|nausea|palliat/i,
     question: "What comfort-focused skilled need did this visit address?",

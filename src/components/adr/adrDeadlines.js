@@ -38,6 +38,61 @@ export function parseDateOnlyUTC(value) {
   return ms;
 }
 
+const MONTH_NAMES = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+};
+
+function isoIfValid(y, mo, d) {
+  const iso = `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return parseDateOnlyUTC(iso) === null ? null : iso;
+}
+
+/**
+ * Normalize a letter-extracted date to the strict YYYY-MM-DD the reminder
+ * planner requires. The UI's tolerant parser rendered "07/03/2026" and
+ * "July 3, 2026" as live deadlines while parseDateOnlyUTC rejected them — an
+ * armed-looking due date whose reminders silently never fired.
+ * @returns {string|null}
+ */
+export function normalizeDueDateString(value) {
+  const s = String(value || "").trim();
+  if (!s) return null;
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/.exec(s); // ISO date or datetime
+  if (m) return isoIfValid(m[1], m[2], m[3]);
+  m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(s); // US M/D/YYYY
+  if (m) return isoIfValid(m[3], m[1], m[2]);
+  m = /^([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(s); // Month D, YYYY
+  if (m) {
+    const mo = MONTH_NAMES[m[1].toLowerCase()];
+    return mo ? isoIfValid(m[3], mo, m[2]) : null;
+  }
+  return null;
+}
+
+/**
+ * Resolve the response due date from the letter analysis. MAC letters often
+ * state only a day count ("within 45 days of the date of this letter") — with
+ * no absolute date extracted, the case used to have NO deadline at all: no
+ * reminders, no due-soon stat, no banner. When only letter_date +
+ * response_due_days are available the date is computed and flagged `derived`
+ * so the UI can ask the user to confirm it.
+ * @param {{ response_due_date?: string, letter_date?: string, response_due_days?: number }} analysis
+ * @returns {{ date: string|null, derived: boolean }}
+ */
+export function resolveResponseDueDate(analysis = {}) {
+  const direct = normalizeDueDateString(analysis.response_due_date);
+  if (direct) return { date: direct, derived: false };
+  const letterIso = normalizeDueDateString(analysis.letter_date);
+  const days = Number(analysis.response_due_days);
+  if (letterIso && Number.isInteger(days) && days > 0 && days <= 365) {
+    const d = new Date(parseDateOnlyUTC(letterIso) + days * DAY_MS);
+    return { date: isoIfValid(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()), derived: true };
+  }
+  return { date: null, derived: false };
+}
+
 /**
  * Plan today's deadline reminders.
  *
