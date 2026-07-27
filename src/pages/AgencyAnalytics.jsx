@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { toLocalISODate } from "@/lib/dateLocal";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,17 +31,25 @@ import StatCard from "@/components/ui/stat-card";
 export default function AgencyAnalytics() {
   const [_dateRange, _setDateRange] = useState("30days");
 
+  // Admin-only page: agency-wide performance rankings and revenue/cost figures
+  // must not render for clinical staff (server-side RLS remains the primary
+  // control; this is the same defense-in-depth gate as AnalyticsDashboard).
+  const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+  const isAdmin = isAdminView(currentUser);
+
   // Fetch all necessary data
   const { data: visits = [] } = useQuery({
     queryKey: ['all-visits'],
     queryFn: () => base44.entities.Visit.list('-created_date', 1000),
     initialData: [],
+    enabled: isAdmin,
   });
 
   const { data: noteConversions = [] } = useQuery({
     queryKey: ['note-conversions'],
     queryFn: () => base44.entities.NoteConversion.list('-created_date', 1000),
     initialData: [],
+    enabled: isAdmin,
   });
 
   // Sibling Incident/ComplianceAudit/TrainingCompletion queries pass limits;
@@ -48,24 +58,28 @@ export default function AgencyAnalytics() {
     queryKey: ['all-users'],
     queryFn: () => base44.entities.User.list('-created_date', 5000),
     initialData: [],
+    enabled: isAdmin,
   });
 
   const { data: allPatients = [] } = useQuery({
     queryKey: ['all-patients'],
     queryFn: () => base44.entities.Patient.list('-created_date', 5000),
     initialData: [],
+    enabled: isAdmin,
   });
 
   const { data: incidents = [] } = useQuery({
     queryKey: ['all-incidents'],
     queryFn: () => base44.entities.Incident.list('-created_date', 1000),
     initialData: [],
+    enabled: isAdmin,
   });
 
   const { data: complianceAudits = [] } = useQuery({
     queryKey: ['compliance-audits'],
     queryFn: () => base44.entities.ComplianceAudit.list('-created_date', 1000),
     initialData: [],
+    enabled: isAdmin,
   });
 
   // Training activity from the live assignment system (TrainingCompletion retired).
@@ -73,6 +87,7 @@ export default function AgencyAnalytics() {
     queryKey: ['training-assignments-agency'],
     queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 5000),
     initialData: [],
+    enabled: isAdmin,
   });
 
   // Calculate overall statistics
@@ -158,6 +173,18 @@ export default function AgencyAnalytics() {
       toast.error('Failed to export report: ' + error.message);
     }
   };
+
+  if (currentUser && !isAdmin) {
+    return (
+      <PageContainer>
+        <AccessDeniedState
+          title="Access restricted"
+          description="Agency Analytics is available to administrators only."
+          className="py-24"
+        />
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>

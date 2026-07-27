@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Sparkles, BarChart3 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import PageContainer from "@/components/ui/PageContainer";
@@ -15,7 +17,9 @@ const isManager = (user) => user?.role === "admin" || user?.account_type === "ag
 
 export default function ManagerSkillGapDashboard() {
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const { data: users = [] } = useQuery({ queryKey: ["skill-gap-users"], queryFn: () => base44.entities.User.list('-created_date', 500), initialData: [] });
+  // Manager/admin-only: per-nurse skill-gap rankings are management data.
+  const isAdmin = isAdminView(currentUser);
+  const { data: users = [] } = useQuery({ queryKey: ["skill-gap-users"], queryFn: () => base44.entities.User.list('-created_date', 500), initialData: [], enabled: isAdmin });
   const { data: assignments = [] } = useQuery({ queryKey: ["skill-gap-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), initialData: [] });
   const { data: attempts = [] } = useQuery({ queryKey: ["skill-gap-attempts"], queryFn: () => base44.entities.TrainingAttempt.list('-submitted_at', 1000), initialData: [] });
   const { data: courses = [] } = useQuery({ queryKey: ["skill-gap-courses"], queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500), initialData: [] });
@@ -78,6 +82,18 @@ export default function ManagerSkillGapDashboard() {
   }, [teamMembers, assignments, attempts, courses]);
 
   if (currentUser && !isManager(currentUser)) return <div className="max-w-3xl mx-auto p-6 text-slate-600">This dashboard is available to managers, supervisors, and admins only.</div>;
+
+  if (currentUser && !isAdmin) {
+    return (
+      <PageContainer>
+        <AccessDeniedState
+          title="Access restricted"
+          description="The Skill Gap Dashboard is available to managers and administrators only."
+          className="py-24"
+        />
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>
