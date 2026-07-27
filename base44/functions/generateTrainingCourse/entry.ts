@@ -193,7 +193,7 @@ const buildLessonContext = (modules) =>
 
 const loadCourseForGeneration = async (base44, course_id) => {
   if (!course_id) return { error: Response.json({ error: 'course_id is required' }, { status: 400 }) };
-  const courseList = await base44.asServiceRole.entities.TrainingCourse.filter({ id: course_id });
+  const courseList = await base44.asServiceRole.entities.TrainingCourse.filter({ id: course_id }, undefined, 5000);
   const course = courseList[0];
   if (!course) return { error: Response.json({ error: 'Course not found' }, { status: 404 }) };
   const params = course.ai_prompt_json || {};
@@ -511,7 +511,7 @@ CONTENT RULES:
   };
 
   // Upsert on (course_id, order_index) so a client retry can't duplicate a module.
-  const existing = await base44.asServiceRole.entities.TrainingModule.filter({ course_id, order_index: index });
+  const existing = await base44.asServiceRole.entities.TrainingModule.filter({ course_id, order_index: index }, undefined, 5000);
   if (existing[0]) {
     await base44.asServiceRole.entities.TrainingModule.update(existing[0].id, moduleRecord);
   } else {
@@ -656,7 +656,7 @@ async function runFinalizePhase(base44, user, body, req) {
 
   // Finalize must be retry-safe: don't write a second 'course_created' audit
   // entry when a client retries after an ambiguous failure.
-  const existingLogs = await base44.asServiceRole.entities.TrainingAuditLog.filter({ entity_id: course_id, action: 'course_created' });
+  const existingLogs = await base44.asServiceRole.entities.TrainingAuditLog.filter({ entity_id: course_id, action: 'course_created' }, undefined, 5000);
   if (existingLogs.length === 0) {
     await base44.asServiceRole.entities.TrainingAuditLog.create({
       actor_id: user.email,

@@ -28,7 +28,7 @@ async function resolveTelnyxCreds(base44) {
   let voiceConnectionId = null;
   let faxConnectionId = null;
   try {
-    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' });
+    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' }, undefined, 5000);
     const rec = rows?.[0] || {};
     apiKey = pick(rec.api_key);
     publicKey = pick(rec.public_key);
@@ -452,7 +452,7 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
   // Resolve the nurse who owns this work number.
   let nurse = null;
   for (const variant of phoneVariants(workNum)) {
-    const matches = await base44.asServiceRole.entities.User.filter({ work_phone_number: variant }).catch(() => []);
+    const matches = await base44.asServiceRole.entities.User.filter({ work_phone_number: variant }, undefined, 5000).catch(() => []);
     if (matches.length > 0) { nurse = matches[0]; break; }
   }
   if (!nurse) {
@@ -473,7 +473,7 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
   // Resolve patient (best effort).
   let patientId = null;
   for (const variant of phoneVariants(patientNum)) {
-    const m = await base44.asServiceRole.entities.Patient.filter({ phone: variant }).catch(() => []);
+    const m = await base44.asServiceRole.entities.Patient.filter({ phone: variant }, undefined, 5000).catch(() => []);
     if (m.length > 0) { patientId = m[0].id; break; }
   }
 
@@ -604,7 +604,7 @@ async function handleInboundFax(base44, payload) {
   // A FAILED office-forward row (created 'completed' but never 'routed') is
   // left retryable so a redelivery can complete the forward — otherwise a
   // transient forward error silently dropped the fax forever.
-  const existing = await base44.asServiceRole.entities.IncomingFax.filter({ telnyx_fax_id: providerId }).catch(() => []);
+  const existing = await base44.asServiceRole.entities.IncomingFax.filter({ telnyx_fax_id: providerId }, undefined, 5000).catch(() => []);
   const settled = (Array.isArray(existing) ? existing : []).find(
     (r) => r?.status === 'routed' || r?.processing_status === 'pending',
   );
@@ -692,7 +692,7 @@ async function handleFaxEvent(base44, payload) {
   if (!providerId) return Response.json({ success: true, skipped: 'no fax id' });
   if (!mapped) return Response.json({ success: true, skipped: 'unknown status', status: payload?.status });
 
-  const rows = await base44.asServiceRole.entities.FaxLog.filter({ telnyx_fax_id: providerId }).catch(() => []);
+  const rows = await base44.asServiceRole.entities.FaxLog.filter({ telnyx_fax_id: providerId }, undefined, 5000).catch(() => []);
   if (!rows.length) return Response.json({ success: false, message: 'FaxLog not found' });
   const faxLog = rows[0];
   // Idempotency + forward-only: ignore an unchanged or out-of-order (lower-rank)
@@ -824,7 +824,7 @@ async function decideInboundRouting(base44, config, workNum) {
 
   let nurse = null;
   for (const variant of (workNum ? phoneVariants(workNum) : [])) {
-    const matches = await base44.asServiceRole.entities.User.filter({ work_phone_number: variant }).catch(() => []);
+    const matches = await base44.asServiceRole.entities.User.filter({ work_phone_number: variant }, undefined, 5000).catch(() => []);
     if (matches.length > 0) { nurse = matches[0]; break; }
   }
   if (!nurse) {
@@ -1025,7 +1025,7 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
       ? await base44.asServiceRole.entities.CallLog.filter({ provider_call_id: callControlId }, '-created_date', 1).catch(() => [])
       : [];
     if (!rows.length && state?.call_log_id) {
-      rows = await base44.asServiceRole.entities.CallLog.filter({ id: state.call_log_id }).catch(() => []);
+      rows = await base44.asServiceRole.entities.CallLog.filter({ id: state.call_log_id }, undefined, 5000).catch(() => []);
     }
     if (rows.length) {
       const cur = rows[0];

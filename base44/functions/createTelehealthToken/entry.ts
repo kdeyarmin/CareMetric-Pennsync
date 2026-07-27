@@ -46,7 +46,7 @@ async function resolveTelnyxCreds(base44) {
   let apiKey = null;
   if (!apiKey) {
     try {
-      const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' });
+      const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' }, undefined, 5000);
       apiKey = pick(rows?.[0]?.api_key);
     } catch { /* ignore */ }
   }

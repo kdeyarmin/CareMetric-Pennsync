@@ -193,7 +193,7 @@ Deno.serve(async (req) => {
     for (const invitation of invitations) {
       try {
         // Find the registered user
-        const matchingUsers = await base44.asServiceRole.entities.User.filter({ email: invitation.email });
+        const matchingUsers = await base44.asServiceRole.entities.User.filter({ email: invitation.email }, undefined, 5000);
         if (!matchingUsers || matchingUsers.length === 0) {
           skippedCount++;
           continue;

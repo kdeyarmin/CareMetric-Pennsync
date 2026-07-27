@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { formatEastern } from "../utils/timezone";
 import { toast } from "sonner";
+import { startOfLocalDay } from "@/lib/dateLocal";
 
 export default function SecurityAuditScheduler() {
   const [runningAudit, setRunningAudit] = useState(false);
@@ -137,9 +138,13 @@ export default function SecurityAuditScheduler() {
       }
 
       // Check 6: Data retention compliance
+      // discharge_date is date-only; parse it on local calendar components so
+      // the 7-year retention boundary is measured against the same day the rest
+      // of the app displays.
       const oldPatients = patients.filter(p => {
-        if (!p.discharge_date) return false;
-        const daysSinceDischarge = (Date.now() - new Date(p.discharge_date).getTime()) / (1000 * 60 * 60 * 24);
+        const discharged = startOfLocalDay(p.discharge_date);
+        if (!discharged) return false;
+        const daysSinceDischarge = (Date.now() - discharged.getTime()) / (1000 * 60 * 60 * 24);
         return daysSinceDischarge > 2555; // 7 years
       });
 

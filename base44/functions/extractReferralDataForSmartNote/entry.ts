@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
     // referrals the caller may see (the frontend reads Referral the same way).
     // The prior asServiceRole read bypassed RLS — any caller could read any
     // referral's demographics/clinical PHI by id, despite the "fixed" comment.
-    const referral = await base44.entities.Referral.filter({ id: referral_id });
+    const referral = await base44.entities.Referral.filter({ id: referral_id }, undefined, 5000);
     if (!referral?.length || !referral[0].extracted_data) {
       return Response.json({ error: 'Referral not found or not processed' }, { status: 404 });
     }

@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'invitation_id is required' }, { status: 400 });
     }
 
-    const invitations = await base44.asServiceRole.entities.UserInvitation.filter({ id: invitation_id });
+    const invitations = await base44.asServiceRole.entities.UserInvitation.filter({ id: invitation_id }, undefined, 5000);
     if (!invitations || invitations.length === 0) {
       return Response.json({ error: 'Invitation not found' }, { status: 404 });
     }

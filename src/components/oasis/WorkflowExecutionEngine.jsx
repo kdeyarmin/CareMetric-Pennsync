@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { format, addDays } from "date-fns";
 import { deriveActionTypes, evaluateRuleTrigger } from "@/components/oasis/workflowEngineUtils";
 import { sendInAppNotification } from "@/lib/notify";
+import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 const ACTION_LABELS = {
   create_task: "Create task",
@@ -74,7 +75,7 @@ export default function WorkflowExecutionEngine({
 
   const { data: automationRules, isLoading: isLoadingRules, error: rulesError } = useQuery({
     queryKey: ["automationRules"],
-    queryFn: () => base44.entities.OASISAutomationRule.filter({ is_active: true })
+    queryFn: () => base44.entities.OASISAutomationRule.filter({ is_active: true }, undefined, ALL_ROWS)
   });
 
   const { data: currentUser, isLoading: isLoadingUser, error: userError } = useQuery({
@@ -297,7 +298,7 @@ export default function WorkflowExecutionEngine({
         try {
           const previousExecutions = await base44.entities.OASISWorkflowExecution.filter({
             oasis_upload_id: oasisUploadId
-          });
+          }, undefined, PATIENT_HISTORY_ROWS);
           executedRuleIds = new Set(
             previousExecutions.map((execution) => execution.automation_rule_id).filter(Boolean)
           );

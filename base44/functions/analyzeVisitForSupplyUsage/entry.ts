@@ -145,7 +145,7 @@ Return ONLY valid JSON array, no other text.`;
           const existingAlerts = await base44.asServiceRole.entities.SupplyLowStockAlert.filter({
             supply_id: matchedSupply.id,
             status: 'active'
-          });
+          }, undefined, 5000);
 
           if (existingAlerts.length === 0) {
             const alert = await base44.asServiceRole.entities.SupplyLowStockAlert.create({

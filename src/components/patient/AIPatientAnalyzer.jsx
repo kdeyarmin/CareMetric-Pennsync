@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Brain, AlertTriangle, Target, TrendingUp, Loader2, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from 'sonner';
 import { formatAge } from "@/lib/age";
+import { isWithinLastDays } from "@/lib/dateLocal";
 
 export default function AIPatientAnalyzer({ patient, visits, incidents }) {
   const ai = useAICall();
@@ -28,12 +29,7 @@ export default function AIPatientAnalyzer({ patient, visits, incidents }) {
       const recentIncidents = (incidents || []).slice(0, 5);
       // Actual count of visits within the last 30 days, so the prompt's
       // "(Last 30 days)" label matches the number (not just the 10 most recent).
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const visitsLast30Days = (visits || []).filter(v => {
-        const d = new Date(v.visit_date);
-        return !Number.isNaN(d.getTime()) && d >= thirtyDaysAgo;
-      }).length;
+      const visitsLast30Days = (visits || []).filter(v => isWithinLastDays(v.visit_date, 30)).length;
 
       const prompt = `Analyze this home health patient's comprehensive medical record and provide clinical insights:
 

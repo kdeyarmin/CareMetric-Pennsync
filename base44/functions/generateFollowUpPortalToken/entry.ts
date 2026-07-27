@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     }
 
     // The referral must exist before a capability link is minted for it.
-    const referrals = await base44.asServiceRole.entities.Referral.filter({ id: referral_id });
+    const referrals = await base44.asServiceRole.entities.Referral.filter({ id: referral_id }, undefined, 5000);
     if (!referrals || referrals.length === 0) {
       return Response.json({ error: 'Referral not found' }, { status: 404 });
     }
@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     const prior = await base44.asServiceRole.entities.ProviderFollowUpToken.filter({
       referral_id,
       is_active: true,
-    });
+    }, undefined, 5000);
     for (const t of prior || []) {
       await base44.asServiceRole.entities.ProviderFollowUpToken.update(t.id, { is_active: false });
     }

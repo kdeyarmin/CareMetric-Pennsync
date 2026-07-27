@@ -226,7 +226,7 @@ Deno.serve(async (req) => {
       );
 
       if (dueOffsets.length > 0) {
-        const userRecord = await base44.asServiceRole.entities.User.filter({ email: cred.user_id });
+        const userRecord = await base44.asServiceRole.entities.User.filter({ email: cred.user_id }, undefined, 5000);
 
         if (userRecord && userRecord.length > 0) {
           const userName = userRecord[0].full_name || cred.user_id;
@@ -293,7 +293,7 @@ Deno.serve(async (req) => {
     // Send a consolidated 90-day expiration digest to all admins.
     let adminDigestSent = 0;
     if (adminDigestItems.length > 0) {
-      const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+      const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
       adminDigestItems.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
 
       const digestBullets = adminDigestItems.map((i) => {

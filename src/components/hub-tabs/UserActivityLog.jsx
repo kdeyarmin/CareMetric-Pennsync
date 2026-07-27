@@ -37,6 +37,7 @@ import {
   Send
 } from "lucide-react";
 import { formatEastern } from "@/components/utils/timezone";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function UserActivityLog() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,7 +52,7 @@ export default function UserActivityLog() {
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
   });
 
   // Filter activities

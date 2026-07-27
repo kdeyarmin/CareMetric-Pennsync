@@ -41,6 +41,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function AnnouncementManager() {
   const queryClient = useQueryClient();
@@ -61,7 +62,7 @@ export default function AnnouncementManager() {
     queryKey: ['announcements'],
     queryFn: async () => {
       try {
-        const result = await base44.entities.Announcement.list('-created_date');
+        const result = await base44.entities.Announcement.list('-created_date', ALL_ROWS);
         return result || [];
       } catch (error) {
         console.error('❌ Error fetching announcements:', error);

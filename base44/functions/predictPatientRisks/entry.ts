@@ -37,10 +37,10 @@ Deno.serve(async (req) => {
     // patient — prevents cross-patient IDOR via a guessed patient_id. Mirrors
     // the safe pattern in processCompletedVisit / expandClinicalPhrase.
     const [patients, visits, incidents, alerts] = await Promise.all([
-      base44.entities.Patient.filter({ id: patient_id }),
+      base44.entities.Patient.filter({ id: patient_id }, undefined, 5000),
       base44.entities.Visit.filter({ patient_id }, '-visit_date', 20),
-      base44.entities.Incident.filter({ patient_id }),
-      base44.entities.PatientAlert.filter({ patient_id, status: 'active' })
+      base44.entities.Incident.filter({ patient_id }, undefined, 5000),
+      base44.entities.PatientAlert.filter({ patient_id, status: 'active' }, undefined, 5000)
     ]);
 
     const patient = patients[0];

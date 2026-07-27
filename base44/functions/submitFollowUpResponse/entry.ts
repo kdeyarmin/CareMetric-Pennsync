@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     // mirroring generateSignerToken): hash the presented plaintext before lookup.
     // No legacy-plaintext fallback — the entity has no pre-hashing data.
     const tokenHash = await sha256Hex(token);
-    const rows = await base44.asServiceRole.entities.ProviderFollowUpToken.filter({ token: tokenHash });
+    const rows = await base44.asServiceRole.entities.ProviderFollowUpToken.filter({ token: tokenHash }, undefined, 5000);
     const record = rows && rows[0];
     if (!record || record.is_active === false) {
       return Response.json({ error: 'This link is no longer valid.' }, { status: 401 });
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'This request was already submitted.' }, { status: 409 });
     }
 
-    const referrals = await base44.asServiceRole.entities.Referral.filter({ id: record.referral_id });
+    const referrals = await base44.asServiceRole.entities.Referral.filter({ id: record.referral_id }, undefined, 5000);
     const referral = referrals && referrals[0];
     const followUp = referral?.follow_up_requests;
     if (!referral || !followUp || !Array.isArray(followUp.items)) {

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Brain, TrendingUp, Play, Loader2, CheckCircle, XCircle, Clock, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function OCRTrainingMonitor() {
   const queryClient = useQueryClient();
@@ -21,7 +22,7 @@ export default function OCRTrainingMonitor() {
 
   const { data: unappliedFeedback = [] } = useQuery({
     queryKey: ['unapplied-feedback'],
-    queryFn: () => base44.entities.OCRFeedback.filter({ applied_to_training: false }),
+    queryFn: () => base44.entities.OCRFeedback.filter({ applied_to_training: false }, undefined, ALL_ROWS),
     initialData: []
   });
 

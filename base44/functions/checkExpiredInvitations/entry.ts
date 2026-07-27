@@ -175,9 +175,12 @@ Deno.serve(async (req) => {
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     // Get all pending invitations
-    const pendingInvitations = await base44.asServiceRole.entities.UserInvitation.filter({ 
-      status: 'pending' 
-    });
+    // Explicit high limit: an unlimited filter() only returns the server's
+    // default page (~50), so past that this sweep leaves the overflow pending —
+    // expired invitations stay accepted and the reported counts under-report.
+    const pendingInvitations = await base44.asServiceRole.entities.UserInvitation.filter({
+      status: 'pending'
+    }, undefined, 5000);
 
     console.log('Found pending invitations:', pendingInvitations.length);
 
@@ -215,7 +218,7 @@ Deno.serve(async (req) => {
     console.log('Expiring soon:', expiringSoon.length);
 
     // Get all admins
-    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
 
     // Send notifications if there are expired or expiring invitations
     if (expired.length > 0 || expiringSoon.length > 0) {

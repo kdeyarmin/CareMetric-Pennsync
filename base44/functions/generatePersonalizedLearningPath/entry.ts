@@ -17,12 +17,19 @@ Deno.serve(async (req) => {
     const targetEmail = nurse_email || user.email;
 
     // Fetch nurse performance data
+    // Explicit limits: an unlimited filter() returns only the server's default
+    // page (~50 rows), so an established nurse's visit and audit history was
+    // truncated and the "gaps" below were computed from an arbitrary slice.
+    // The audits are also sorted newest-first — `audits.slice(0, 10)` below is
+    // labelled recentAudits, but without a sort it took the first 10 of an
+    // arbitrarily ordered page, so the compliance average and the weak-area
+    // tally could be built from the nurse's OLDEST audits.
     const [assignments, recommendations, audits, visits, skills] = await Promise.all([
-      base44.asServiceRole.entities.TrainingAssignment.filter({ assigned_to_user_id: targetEmail }),
-      base44.asServiceRole.entities.TrainingRecommendation.filter({ nurse_email: targetEmail }),
-      base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }),
-      base44.asServiceRole.entities.Visit.filter({ created_by: targetEmail }),
-      base44.asServiceRole.entities.NurseSkill.filter({ nurse_email: targetEmail })
+      base44.asServiceRole.entities.TrainingAssignment.filter({ assigned_to_user_id: targetEmail }, '-created_date', 1000),
+      base44.asServiceRole.entities.TrainingRecommendation.filter({ nurse_email: targetEmail }, '-created_date', 1000),
+      base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }, '-audit_date', 1000),
+      base44.asServiceRole.entities.Visit.filter({ created_by: targetEmail }, '-visit_date', 1000),
+      base44.asServiceRole.entities.NurseSkill.filter({ nurse_email: targetEmail }, undefined, 1000)
     ]);
 
     // Analyze performance and gaps
@@ -45,8 +52,10 @@ Deno.serve(async (req) => {
       });
     });
 
-    // Get all available training modules
-    const allModules = await base44.asServiceRole.entities.TrainingModule.filter({});
+    // Get all available training modules. Explicit limit — unlimited returns
+    // only the server's default page, so the path was recommended from a
+    // partial catalog once the library passed ~50 modules.
+    const allModules = await base44.asServiceRole.entities.TrainingModule.filter({}, undefined, 5000);
 
     // Use AI to generate personalized learning path
     const prompt = `

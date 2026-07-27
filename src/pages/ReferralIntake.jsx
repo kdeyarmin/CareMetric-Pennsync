@@ -89,6 +89,7 @@ import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import PatientMatchReview from "../components/referral/PatientMatchReview";
 import PatientVerificationStep from "../components/referral/PatientVerificationStep";
 import MultiReferralDetector from "../components/referral/MultiReferralDetector";
+import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 const ReferralProcessor = lazy(() => import("@/components/hub-tabs/ReferralProcessor"));
 const ReferralAdmissionNote = lazy(() => import("@/components/hub-tabs/ReferralAdmissionNote"));
@@ -171,7 +172,7 @@ export default function ReferralIntake() {
 
   const { data: users = [] } = useQuery({
     queryKey: ['allUsers'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
     initialData: [],
   });
 
@@ -814,7 +815,7 @@ Actions available:
             { referralId, patientId: updates.patient_id || referralRecord?.patient_id || null, ...f2fInput },
             f2fValidation
           );
-          const existingF2F = await base44.entities.FaceToFaceEncounter.filter({ referral_id: referralId });
+          const existingF2F = await base44.entities.FaceToFaceEncounter.filter({ referral_id: referralId }, undefined, PATIENT_HISTORY_ROWS);
           if (existingF2F?.length > 0) {
             await base44.entities.FaceToFaceEncounter.update(existingF2F[0].id, f2fPayload);
           } else {

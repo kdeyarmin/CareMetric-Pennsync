@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
     }
 
     // Fetch the document
-    const docs = await base44.entities.DocumentSignature.filter({ id: document_id });
+    const docs = await base44.entities.DocumentSignature.filter({ id: document_id }, undefined, 5000);
     if (!docs || docs.length === 0) {
       return Response.json({ error: 'Document not found' }, { status: 404 });
     }

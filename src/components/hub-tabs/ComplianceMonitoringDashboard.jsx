@@ -29,6 +29,7 @@ import {
 import { toast } from "sonner";
 import { format, parseISO, differenceInDays } from "date-fns";
 import { isAdminView } from "@/lib/roles";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function ComplianceMonitoringDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -44,7 +45,7 @@ export default function ComplianceMonitoringDashboard() {
 
   const { data: allUsers = [], refetch: refetchUsers } = useQuery({
     queryKey: ['allUsers'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
     initialData: [],
     refetchInterval: 30000, // Refresh every 30 seconds
   });

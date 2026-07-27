@@ -44,7 +44,7 @@ async function suggestMessageContent(base44, params) {
   }
 
   const [patients, recentVisits, incidents, threadMessages] = await Promise.all([
-    base44.entities.Patient.filter({ id: patient_id }),
+    base44.entities.Patient.filter({ id: patient_id }, undefined, 5000),
     base44.entities.Visit.filter({ patient_id }, '-visit_date', 5),
     base44.entities.Incident.filter({ patient_id }, '-incident_date', 5),
     thread_id ? base44.entities.Message.filter({ thread_id }, '-created_date', 10) : Promise.resolve([])
@@ -110,7 +110,9 @@ async function summarizeThread(base44, params) {
     return Response.json({ error: 'Missing thread_id' }, { status: 400 });
   }
 
-  const messages = await base44.entities.Message.filter({ thread_id }, 'created_date');
+  // Explicit limit: unlimited returns only the server's default page (~50), so
+  // the assistant reasoned over a truncated thread on any long conversation.
+  const messages = await base44.entities.Message.filter({ thread_id }, 'created_date', 5000);
 
   if (messages.length === 0) {
     return Response.json({ error: 'No messages found' }, { status: 404 });
@@ -118,7 +120,7 @@ async function summarizeThread(base44, params) {
 
   let patientContext = '';
   if (patient_id) {
-    const patients = await base44.entities.Patient.filter({ id: patient_id });
+    const patients = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
     const patient = patients[0];
     
     if (patient) {

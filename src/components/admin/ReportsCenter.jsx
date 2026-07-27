@@ -32,6 +32,8 @@ import { formatEastern, todayEastern } from "@/components/utils/timezone";
 import { useQuery } from "@tanstack/react-query";
 import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from 'sonner';
+import { safePercent } from "@/lib/safePercent";
+import { startOfLocalDay } from "@/lib/dateLocal";
 
 export default function ReportsCenter({ users: allUsers, patients: allPatients, visits, incidents }) {
   const [reportType, setReportType] = useState("productivity");
@@ -518,10 +520,14 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
       ? Math.round((visitsWithNotes.length / completedVisits.length) * 100)
       : 0;
 
+    // Both sides on LOCAL calendar days. visit_date is date-only, so parsing it
+    // with `new Date()` put it at UTC midnight while created_date is a real
+    // timestamp — comparing the two mixed day boundaries and could land this
+    // "documented within 7 days" compliance count on the wrong side of the line.
     const visitsWithinTimeframe = completedVisits.filter(v => {
-      if (!v.visit_date || !v.created_date) return false;
-      const visitDate = new Date(v.visit_date);
-      const docDate = new Date(v.created_date);
+      const visitDate = startOfLocalDay(v.visit_date);
+      const docDate = startOfLocalDay(v.created_date);
+      if (!visitDate || !docDate) return false;
       return differenceInDays(docDate, visitDate) <= 7;
     });
 
@@ -1159,7 +1165,9 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
                         labelLine={true}
                         label={(entry) => {
                           const name = (entry.type || '').replace(/_/g, ' ');
-                          const percent = ((entry.revenue / reportPreview.totalRevenue) * 100).toFixed(0);
+                          // A window with no billable revenue made this render
+                          // "(NaN%)" on every slice; safePercent yields 0 instead.
+                          const percent = safePercent(entry.revenue, reportPreview.totalRevenue);
                           return `${name} (${percent}%)`;
                         }}
                       >

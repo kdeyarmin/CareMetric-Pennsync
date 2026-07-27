@@ -32,6 +32,7 @@ import GranularComplianceGapAnalyzer from "@/components/compliance/GranularCompl
 import { severityBadgeClass } from "@/lib/severityStyles";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { format, subDays, startOfWeek, endOfWeek } from "date-fns";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function RealTimeComplianceDashboard() {
   const [dateRange, setDateRange] = useState("30");
@@ -66,7 +67,7 @@ export default function RealTimeComplianceDashboard() {
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
   });
 
   const { data: allVisits = [] } = useQuery({

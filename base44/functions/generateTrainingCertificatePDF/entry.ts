@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
         }
 
         // Fetch certificate record
-        const certificates = await base44.entities.TrainingCertificate.filter({ certificate_id });
+        const certificates = await base44.entities.TrainingCertificate.filter({ certificate_id }, undefined, 5000);
         
         if (!certificates || certificates.length === 0) {
             return Response.json({ error: 'Certificate not found' }, { status: 404 });

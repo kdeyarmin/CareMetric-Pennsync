@@ -7,6 +7,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Activity, Heart, Wind } from "lucide-react";
+import { formatLocalDate } from "@/lib/dateLocal";
 
 const VITAL_CONFIG = [
   { key: "blood_pressure_systolic", label: "BP Systolic", color: "#ef4444", unit: "mmHg" },
@@ -29,7 +30,9 @@ export default function VitalsChart({ patientId }) {
     visits
       .filter((v) => v.vital_signs && Object.keys(v.vital_signs).length > 0)
       .map((v) => ({
-        date: new Date(v.visit_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        // `visit_date` is a date-only field; `new Date(...)` would read it as UTC
+        // midnight and label every point one day early west of UTC.
+        date: formatLocalDate(v.visit_date, { month: "short", day: "numeric" }),
         ...v.vital_signs,
       }))
       .reverse(),

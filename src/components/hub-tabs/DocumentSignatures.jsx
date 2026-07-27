@@ -21,6 +21,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { getNormalizedSignatureStatus, isSignatureOverdue } from "@/components/signature/signatureUtils";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function DocumentSignatures() {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ export default function DocumentSignatures() {
     queryKey: ['all-signatures', selectedPatient],
     queryFn: () => {
       if (selectedPatient) {
-        return base44.entities.DocumentSignature.filter({ patient_id: selectedPatient });
+        return base44.entities.DocumentSignature.filter({ patient_id: selectedPatient }, undefined, PATIENT_HISTORY_ROWS);
       }
       return base44.entities.DocumentSignature.list('-created_date', 200);
     },

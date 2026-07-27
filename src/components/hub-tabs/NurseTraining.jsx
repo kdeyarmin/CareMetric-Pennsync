@@ -26,6 +26,7 @@ import TrainingModuleViewer from "@/components/training/TrainingModuleViewer";
 import PersonalizedLearningPath from "@/components/training/PersonalizedLearningPath";
 import TrainingLibrary from "@/components/training/TrainingLibrary";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function NurseTraining() {
   const [activeTab, setActiveTab] = useState("onboarding");
@@ -47,7 +48,7 @@ export default function NurseTraining() {
     queryKey: ['myTrainingProgress', currentUser?.email],
     queryFn: () => base44.entities.MicroLearningProgress.filter({ 
       nurse_email: currentUser?.email 
-    }),
+    }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!currentUser?.email,
   });
 
@@ -56,7 +57,7 @@ export default function NurseTraining() {
     queryFn: () => base44.entities.TrainingRecommendation.filter({ 
       nurse_email: currentUser?.email,
       addressed: false
-    }),
+    }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!currentUser?.email,
   });
 

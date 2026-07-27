@@ -29,6 +29,7 @@ import {
 
 import DigitalSignaturePad from './DigitalSignaturePad';
 import { toast } from 'sonner';
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 const formatPdfDate = (value) => value ? formatLocalDate(value) : '—';
 
@@ -68,7 +69,8 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
       }
       const summaries = await base44.entities.DischargeSummary.filter(
         { patient_id: patientId },
-        '-generated_date'
+        '-generated_date',
+        PATIENT_HISTORY_ROWS,
       );
       return summaries[0];
     },

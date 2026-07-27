@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
         }
 
         // Get patient details
-        const patients = await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id });
+        const patients = await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id }, undefined, 5000);
         const patient = patients[0];
 
         if (!patient || !patient.email) {

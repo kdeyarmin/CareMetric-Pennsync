@@ -20,6 +20,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+// Whole-year age on local calendar components. The previous inline
+// `(now - dob) / 31557600000` used an averaged year length, so the age handed to
+// the care-plan prompt could be a year off around a patient's birthday.
+import { formatAge } from "@/lib/age";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function AICarePlanSuggestionEngine({
   patientId,
@@ -38,7 +43,7 @@ export default function AICarePlanSuggestionEngine({
 
   const { data: medicareRules = [] } = useQuery({
     queryKey: ['medicareComplianceRules'],
-    queryFn: () => base44.entities.MedicareComplianceRule.list(),
+    queryFn: () => base44.entities.MedicareComplianceRule.list(undefined, ALL_ROWS),
     initialData: [],
   });
 
@@ -64,7 +69,7 @@ PATIENT CONTEXT:
 - Diagnosis: ${diagnosis}
 - Current Medications: ${patientData?.current_medications?.map(m => m.name).join(', ') || 'None documented'}
 - Functional Status: ${JSON.stringify(patientData?.functional_status || {})}
-- Age: ${patientData?.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / 31557600000) : 'Unknown'}
+- Age: ${formatAge(patientData?.date_of_birth)}
 - Allergies: ${patientData?.allergies || 'None'}
 
 EXISTING CARE PLANS (do NOT duplicate):

@@ -66,7 +66,7 @@ async function resolveTelnyxCreds(base44) {
   let voiceConnectionId = null;
   let faxConnectionId = null;
   try {
-    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' });
+    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' }, undefined, 5000);
     const rec = rows?.[0] || {};
     apiKey = pick(rec.api_key);
     publicKey = pick(rec.public_key);
@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
     let destination = normalizeE164(to_number);
     let resolvedPatientId = patient_id || null;
     if (!destination && patient_id) {
-      const p = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }).catch(() => []);
+      const p = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000).catch(() => []);
       destination = normalizeE164(p[0]?.phone);
     }
     if (!destination) {
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
     }
     if (!resolvedPatientId) {
       for (const v of phoneVariants(destination)) {
-        const m = await base44.asServiceRole.entities.Patient.filter({ phone: v }).catch(() => []);
+        const m = await base44.asServiceRole.entities.Patient.filter({ phone: v }, undefined, 5000).catch(() => []);
         if (m.length > 0) { resolvedPatientId = m[0].id; break; }
       }
     }

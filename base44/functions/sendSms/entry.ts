@@ -55,7 +55,7 @@ async function resolveTelnyxCreds(base44) {
   let voiceConnectionId = null;
   let faxConnectionId = null;
   try {
-    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' });
+    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' }, undefined, 5000);
     const rec = rows?.[0] || {};
     apiKey = pick(rec.api_key);
     publicKey = pick(rec.public_key);
@@ -68,7 +68,7 @@ async function resolveTelnyxCreds(base44) {
 
 async function resolvePatientId(base44, e164) {
   for (const variant of phoneVariants(e164)) {
-    const matches = await base44.asServiceRole.entities.Patient.filter({ phone: variant }).catch(() => []);
+    const matches = await base44.asServiceRole.entities.Patient.filter({ phone: variant }, undefined, 5000).catch(() => []);
     if (matches.length > 0) return matches[0].id;
   }
   return null;

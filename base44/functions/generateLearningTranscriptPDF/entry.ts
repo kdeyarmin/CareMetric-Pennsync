@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
     }
 
     // Get employee
-    const employees = await base44.asServiceRole.entities.User.filter({ email: employeeId });
+    const employees = await base44.asServiceRole.entities.User.filter({ email: employeeId }, undefined, 5000);
     if (!employees || employees.length === 0) {
       return Response.json({ error: 'Employee not found' }, { status: 404 });
     }
@@ -38,7 +38,8 @@ Deno.serve(async (req) => {
 
     const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter(
       query,
-      '-issued_at'
+      '-issued_at',
+      5000,
     );
 
     // Create PDF

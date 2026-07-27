@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -34,7 +34,6 @@ export default function Layout() {
   // <Layout>, which unmounted the entire sidebar + header on every navigation —
   // causing flicker, lost clicks during the transition, and re-fetched queries.
   const location = useLocation();
-  const navigate = useNavigate();
   const currentPageName = location.pathname.split('/')[1] || 'Dashboard';
   // Persist the desktop sidebar collapse choice so daily users don't have to
   // re-collapse it every session (read lazily so the first paint matches).

@@ -12,6 +12,8 @@ import { Loader2, TrendingUp, Sparkles } from "lucide-react";
 import { todayEastern } from "../utils/timezone";
 import SmartNotesContextPanel from "./SmartNotesContextPanel";
 import DocumentDraftManager from "./DocumentDraftManager";
+import { parseLocalDate } from "@/lib/dateLocal";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function ProgressReportGenerator({ patientId, patient }) {
   const [reportDate, setReportDate] = useState(todayEastern());
@@ -24,25 +26,34 @@ export default function ProgressReportGenerator({ patientId, patient }) {
 
   const { data: visits = [] } = useQuery({
     queryKey: ['patientVisits', patientId],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date'),
+    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', PATIENT_HISTORY_ROWS),
     enabled: !!patientId,
     initialData: [],
   });
 
   const { data: incidents = [] } = useQuery({
     queryKey: ['patientIncidents', patientId],
-    queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }),
+    queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!patientId,
     initialData: [],
   });
 
   const generateReport = async () => {
     try {
+      // Local midnight `reportPeriod` days back. visit_date / incident_date are
+      // date-only fields: `new Date(...)` reads them at UTC midnight (the prior
+      // local day west of UTC), and an unanchored boundary carries the current
+      // time-of-day — together they dropped the oldest day of the report window.
       const daysAgo = new Date();
-      daysAgo.setDate(daysAgo.getDate() - parseInt(reportPeriod));
-      
-      const periodVisits = visits.filter(v => 
-        v.status === 'completed' && new Date(v.visit_date) >= daysAgo
+      daysAgo.setDate(daysAgo.getDate() - parseInt(reportPeriod, 10));
+      daysAgo.setHours(0, 0, 0, 0);
+      const inPeriod = (value) => {
+        const d = parseLocalDate(value);
+        return d != null && d >= daysAgo;
+      };
+
+      const periodVisits = visits.filter(v =>
+        v.status === 'completed' && inPeriod(v.visit_date)
       );
 
       const firstVisit = periodVisits[periodVisits.length - 1];
@@ -92,7 +103,7 @@ ${v.nurse_notes?.substring(0, 250)}
 `).join('\n')}
 
 INCIDENTS/CONCERNS:
-${incidents.filter(inc => new Date(inc.incident_date) >= daysAgo).map(inc => `
+${incidents.filter(inc => inPeriod(inc.incident_date)).map(inc => `
 - ${inc.incident_type} (${inc.incident_date}): ${inc.severity} severity
   ${inc.report?.substring(0, 100)}
 `).join('\n') || 'No incidents reported during this period'}

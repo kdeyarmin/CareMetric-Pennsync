@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     // Resolve the employee's display name from their user record (best-effort).
     let employee_name = email;
     try {
-      const users = await base44.asServiceRole.entities.User.filter({ email });
+      const users = await base44.asServiceRole.entities.User.filter({ email }, undefined, 5000);
       if (users && users[0]) employee_name = users[0].full_name || email;
     } catch (_e) {
       employee_name = email;
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
     };
 
     const existing = await base44.asServiceRole.entities.EmployeePayrollProfile
-      .filter({ employee_email: email })
+      .filter({ employee_email: email }, undefined, 5000)
       .catch(() => []);
 
     let saved;

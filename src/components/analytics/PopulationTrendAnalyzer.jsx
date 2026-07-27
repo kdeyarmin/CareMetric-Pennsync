@@ -10,8 +10,9 @@ import {
 } from "@/components/ui/select";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import { TrendingUp, TrendingDown, Users, Activity, AlertTriangle } from "lucide-react";
-import { format, subDays, eachDayOfInterval } from "date-fns";
+import { format, subDays, eachDayOfInterval, startOfDay } from "date-fns";
 import { computeAge } from "@/components/oasis/oasisAnalytics";
+import { parseLocalDate, toLocalISODate } from "@/lib/dateLocal";
 
 export default function PopulationTrendAnalyzer({ patients, visits, incidents }) {
   const [timeRange, setTimeRange] = useState("90");
@@ -20,17 +21,28 @@ export default function PopulationTrendAnalyzer({ patients, visits, incidents })
 
   // Calculate trends based on selected parameters
   const trendData = useMemo(() => {
-    const days = parseInt(timeRange);
-    const startDate = subDays(new Date(), days);
-    
+    const days = parseInt(timeRange, 10);
+    // Bucket on LOCAL calendar days. `admission_date` / `visit_date` /
+    // `incident_date` are date-only ("YYYY-MM-DD") fields, so `new Date(value)`
+    // parses them at UTC midnight — which is the PREVIOUS local day everywhere
+    // west of UTC. The axis below is built from local days, so every point
+    // landed one bucket early and the newest day always read 0. parseLocalDate /
+    // toLocalISODate keep the record and the axis on the same calendar day.
+    // startOfDay anchors the window so the oldest day isn't half-counted.
+    const startDate = startOfDay(subDays(new Date(), days));
+    const inRange = (value) => {
+      const d = parseLocalDate(value);
+      return d != null && d >= startDate;
+    };
+
     if (metric === "admissions") {
       // Patient admission trends over time
       const dateMap = {};
-      patients.filter(p => p.admission_date && new Date(p.admission_date) >= startDate).forEach(p => {
-        const date = format(new Date(p.admission_date), 'yyyy-MM-dd');
+      patients.filter(p => inRange(p.admission_date)).forEach(p => {
+        const date = toLocalISODate(p.admission_date);
         dateMap[date] = (dateMap[date] || 0) + 1;
       });
-      
+
       return eachDayOfInterval({ start: startDate, end: new Date() })
         .map(date => ({
           date: format(date, 'MMM dd'),
@@ -39,11 +51,11 @@ export default function PopulationTrendAnalyzer({ patients, visits, incidents })
     } else if (metric === "visits") {
       // Visit volume trends
       const dateMap = {};
-      visits.filter(v => v.visit_date && new Date(v.visit_date) >= startDate).forEach(v => {
-        const date = format(new Date(v.visit_date), 'yyyy-MM-dd');
+      visits.filter(v => inRange(v.visit_date)).forEach(v => {
+        const date = toLocalISODate(v.visit_date);
         dateMap[date] = (dateMap[date] || 0) + 1;
       });
-      
+
       return eachDayOfInterval({ start: startDate, end: new Date() })
         .map(date => ({
           date: format(date, 'MMM dd'),
@@ -52,8 +64,8 @@ export default function PopulationTrendAnalyzer({ patients, visits, incidents })
     } else if (metric === "incidents") {
       // Incident trends
       const dateMap = {};
-      incidents.filter(i => i.incident_date && new Date(i.incident_date) >= startDate).forEach(i => {
-        const date = format(new Date(i.incident_date), 'yyyy-MM-dd');
+      incidents.filter(i => inRange(i.incident_date)).forEach(i => {
+        const date = toLocalISODate(i.incident_date);
         dateMap[date] = (dateMap[date] || 0) + 1;
       });
       
@@ -126,9 +138,11 @@ export default function PopulationTrendAnalyzer({ patients, visits, incidents })
   // Key insights
   const insights = useMemo(() => {
     const activePatients = patients.filter(p => p.status === "active").length;
-    const recentIncidents = incidents.filter(i => 
-      new Date(i.incident_date) >= subDays(new Date(), 7)
-    ).length;
+    const sevenDaysAgo = startOfDay(subDays(new Date(), 7));
+    const recentIncidents = incidents.filter(i => {
+      const d = parseLocalDate(i.incident_date);
+      return d != null && d >= sevenDaysAgo;
+    }).length;
     const avgVisitsPerDay = trendData.slice(-7).reduce((sum, d) => sum + d.value, 0) / 7;
     
     return [

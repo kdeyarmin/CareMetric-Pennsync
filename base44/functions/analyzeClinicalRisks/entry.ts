@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     // enforces that this caller may access this patient — prevents
     // cross-patient IDOR via a guessed patientId.
     const [patient, visits, oasisRecords, incidents] = await Promise.all([
-      base44.entities.Patient.filter({ id: patientId }),
+      base44.entities.Patient.filter({ id: patientId }, undefined, 5000),
       base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 20),
       base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 3),
       base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 10)

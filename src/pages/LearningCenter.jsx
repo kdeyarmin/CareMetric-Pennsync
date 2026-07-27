@@ -57,6 +57,7 @@ import { selfEnrollCourse } from '@/functions/selfEnrollCourse';
 import { submitCourseFeedback } from '@/functions/submitCourseFeedback';
 import { getCourseFeedbackSummary } from '@/functions/getCourseFeedbackSummary';
 import LoadingState from "@/components/ui/LoadingState";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 // Lazy spokes — the former My Learning hub's tabs (My Courses, In-Services,
 // Annual Education, Transcripts) now render inside this canonical Learning Center.
@@ -216,7 +217,7 @@ export default function LearningCenter() {
     queryFn: () => base44.entities.Competency.filter({
       role_target: user.role,
       active: true
-    }),
+    }, undefined, ALL_ROWS),
     enabled: !!user?.role,
     initialData: []
   });

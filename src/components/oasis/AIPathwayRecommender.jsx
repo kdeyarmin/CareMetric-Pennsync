@@ -21,6 +21,7 @@ import {
   ChevronUp
 } from "lucide-react";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function AIPathwayRecommender({ 
   pdgmData, 
@@ -44,7 +45,7 @@ export default function AIPathwayRecommender({
 
   const { data: availablePathways = [] } = useQuery({
     queryKey: ['clinicalPathways'],
-    queryFn: () => base44.entities.ClinicalPathway.filter({ is_active: true }),
+    queryFn: () => base44.entities.ClinicalPathway.filter({ is_active: true }, undefined, ALL_ROWS),
   });
 
   const createTasksMutation = useMutation({

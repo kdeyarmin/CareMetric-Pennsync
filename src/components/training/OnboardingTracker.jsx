@@ -14,11 +14,12 @@ import {
   Award,
   ArrowRight
 } from "lucide-react";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function OnboardingTracker({ nurseEmail, onStartModule }) {
   const { data: modules = [] } = useQuery({
     queryKey: ['onboardingModules'],
-    queryFn: () => base44.entities.TrainingModule.filter({}),
+    queryFn: () => base44.entities.TrainingModule.filter({}, undefined, ALL_ROWS),
     initialData: [],
   });
 

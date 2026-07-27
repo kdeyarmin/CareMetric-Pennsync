@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import OnCallCalendar from "@/components/oncall/OnCallCalendar";
 import AssignOnCallDialog from "@/components/oncall/AssignOnCallDialog";
 import { isAdminView } from "@/lib/roles";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function OnCallSchedule() {
   const queryClient = useQueryClient();
@@ -35,7 +36,7 @@ export default function OnCallSchedule() {
       const to = format(endOfWeek(endOfMonth(cursor), { weekStartsOn: 0 }), "yyyy-MM-dd");
       return base44.entities.OnCallShift.filter({
         shift_date: { $gte: from, $lte: to },
-      });
+      }, undefined, ALL_ROWS);
     },
     initialData: [],
   });

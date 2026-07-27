@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'action must be one of acknowledge, resolve, dismiss, toggle_flagged_urgent' }, { status: 400 });
     }
 
-    const [alert] = await base44.asServiceRole.entities.PatientAlert.filter({ id: alert_id });
+    const [alert] = await base44.asServiceRole.entities.PatientAlert.filter({ id: alert_id }, undefined, 5000);
     if (!alert) return Response.json({ error: 'Alert not found' }, { status: 404 });
 
     const isAdmin =
@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
 
     let allowed = isAdmin || alert.created_by === user.email;
     if (!allowed && alert.patient_id) {
-      const [patient] = await base44.asServiceRole.entities.Patient.filter({ id: alert.patient_id });
+      const [patient] = await base44.asServiceRole.entities.Patient.filter({ id: alert.patient_id }, undefined, 5000);
       allowed = patient?.created_by === user.email
         || (Array.isArray(patient?.assigned_nurses) && patient.assigned_nurses.includes(user.email));
     }

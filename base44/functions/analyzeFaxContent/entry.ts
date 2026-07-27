@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
     }
 
     // Fetch the fax log
-    const faxLog = await base44.asServiceRole.entities.FaxLog.filter({ id: fax_log_id });
+    const faxLog = await base44.asServiceRole.entities.FaxLog.filter({ id: fax_log_id }, undefined, 5000);
     if (!faxLog || faxLog.length === 0) {
       return Response.json({ error: 'Fax not found' }, { status: 404 });
     }

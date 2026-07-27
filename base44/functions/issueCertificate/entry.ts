@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
         // Fetch assignment and course details
         const assignment = await base44.asServiceRole.entities.TrainingAssignment.get(assignment_id);
         const course = await base44.asServiceRole.entities.TrainingCourse.get(course_id);
-        const userData = await base44.asServiceRole.entities.User.filter({ email: user_id });
+        const userData = await base44.asServiceRole.entities.User.filter({ email: user_id }, undefined, 5000);
 
         if (!assignment || !course) {
             return Response.json({ error: 'Assignment or course not found' }, { status: 404 });
@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
         const existingCerts = await base44.asServiceRole.entities.TrainingCertificate.filter({
             assignment_id,
             user_id
-        });
+        }, undefined, 5000);
 
         if (existingCerts && existingCerts.length > 0) {
             // Certificate already exists, return it

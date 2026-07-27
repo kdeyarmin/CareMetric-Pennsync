@@ -26,6 +26,7 @@ import { ROUTES, REDIRECTS, MAIN_PAGE, ROUTER_PATHS } from '@/routes';
 import { getRoleView } from '@/lib/roles';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 import { getRouterBasename } from '@/lib/routerBasename';
+import { isPublicTokenPath } from '@/lib/publicRoutes';
 
 // Public (no-login) patient telehealth join page. Stale-chunk auto-recovery
 // (dev-server restart) is handled centrally by the ErrorBoundary, which wraps
@@ -144,8 +145,8 @@ const AuthenticatedApp = () => {
   // Public patient join/signer routes render WITHOUT authentication — they are
   // gated by capability tokens in the link, not by an app login. This is
   // checked before the auth gate below so external users are never bounced to login.
-  const normalizedPath = location.pathname.toLowerCase();
-  if (normalizedPath.startsWith('/join') || normalizedPath.startsWith('/signer') || normalizedPath.startsWith('/followup') || normalizedPath.startsWith('/privacy')) {
+  // Segment match, not a string prefix — see lib/publicRoutes.js.
+  if (isPublicTokenPath(location.pathname)) {
     return (
       <Suspense fallback={
         <div className="fixed inset-0 flex items-center justify-center">

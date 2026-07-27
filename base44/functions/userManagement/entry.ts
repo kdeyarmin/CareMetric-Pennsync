@@ -314,7 +314,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
     return Response.json({ error: 'invitation_id is required' }, { status: 400 });
   }
 
-  const invitations = await base44.asServiceRole.entities.UserInvitation.filter({ id: invitation_id });
+  const invitations = await base44.asServiceRole.entities.UserInvitation.filter({ id: invitation_id }, undefined, 5000);
   if (!invitations || invitations.length === 0) {
     return Response.json({ error: 'Invitation not found' }, { status: 404 });
   }
@@ -386,7 +386,7 @@ async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuper
     return Response.json({ error: 'User email is required' }, { status: 400 });
   }
 
-  const users = await base44.asServiceRole.entities.User.filter({ email: userEmail });
+  const users = await base44.asServiceRole.entities.User.filter({ email: userEmail }, undefined, 5000);
   if (!users || users.length === 0) {
     return Response.json({ error: 'User not found' }, { status: 404 });
   }
@@ -453,9 +453,11 @@ async function checkExpiredInvitations(base44) {
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-  const pendingInvitations = await base44.asServiceRole.entities.UserInvitation.filter({ 
-    status: 'pending' 
-  });
+  // Explicit high limit: an unlimited filter() stops at the server's default
+  // page (~50), which would silently hide the overflow from the admin list.
+  const pendingInvitations = await base44.asServiceRole.entities.UserInvitation.filter({
+    status: 'pending'
+  }, undefined, 5000);
 
   const expired = [];
   const expiringSoon = [];
@@ -475,7 +477,7 @@ async function checkExpiredInvitations(base44) {
 
   // Notify admins if needed
   if (expired.length > 0 || expiringSoon.length > 0) {
-    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
 
     for (const admin of admins) {
       const sections = [];
@@ -549,7 +551,7 @@ async function updateUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   // Privilege boundary: a facility admin must not be able to mutate a privileged
   // account (demote a peer admin to 'user', or rewrite the super admin's record)
   // — only a super admin may edit another admin's or a super admin's account.
-  const targetUsers = await base44.asServiceRole.entities.User.filter({ id: user_id });
+  const targetUsers = await base44.asServiceRole.entities.User.filter({ id: user_id }, undefined, 5000);
   const targetUser = targetUsers?.[0];
   if (!targetUser) {
     return Response.json({ error: 'User not found' }, { status: 404 });

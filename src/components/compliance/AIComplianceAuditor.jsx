@@ -24,6 +24,7 @@ import {
 import { trackRecommendation } from "../training/RecommendationTracker";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
 import { buildComprehensivePatientHistory, formatHistoryForAI, extractKeyInsights } from "../utils/patientHistoryAnalyzer";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function AIComplianceAuditor({ 
   patientId, 
@@ -58,7 +59,7 @@ export default function AIComplianceAuditor({
 
   const { data: incidents = [] } = useQuery({
     queryKey: ['patientIncidents', patientId],
-    queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }),
+    queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!patientId,
   });
 

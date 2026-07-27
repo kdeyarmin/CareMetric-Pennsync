@@ -225,7 +225,7 @@ Deno.serve(async (req) => {
 
       // Renewals need a human decision — let the admins know one is waiting.
       try {
-        const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+        const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
         await Promise.all((admins || []).filter((a) => a?.email).map((admin) =>
           base44.asServiceRole.integrations.Core.SendEmail({
             to: admin.email,

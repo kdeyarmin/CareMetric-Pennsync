@@ -23,6 +23,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from "recharts";
+import { isWithinLastDays } from "@/lib/dateLocal";
 
 const RISK_COLORS = {
   high: '#ef4444',
@@ -82,12 +83,7 @@ export default function PopulationRiskOverview({
       }
 
       // Visit frequency changes
-      const recentVisits = patientVisits.filter(v => {
-        const visitDate = new Date(v.visit_date);
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 14);
-        return visitDate >= weekAgo;
-      });
+      const recentVisits = patientVisits.filter(v => isWithinLastDays(v.visit_date, 14));
       if (recentVisits.length === 0 && patientVisits.length > 0) {
         riskScore += 10;
         riskFactors.push('No recent visits');

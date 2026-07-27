@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
 
     // Fetch comprehensive historical data
     const [patients, visits, clinicalEvents] = await Promise.all([
-      base44.entities.Patient.filter({ id: patient_id }),
+      base44.entities.Patient.filter({ id: patient_id }, undefined, 5000),
       base44.entities.Visit.filter({ patient_id }, '-visit_date', 100),
       base44.entities.ClinicalEvent.filter({ patient_id }, '-event_date', 100)
     ]);

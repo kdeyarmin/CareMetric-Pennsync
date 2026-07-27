@@ -5,11 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { History, Eye } from "lucide-react";
 import { format } from "date-fns";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function TemplateVersionHistory({ parentTemplateId }) {
   const { data: versions = [] } = useQuery({
     queryKey: ['template-versions', parentTemplateId],
-    queryFn: () => base44.entities.PDFTemplate.filter({ parent_template_id: parentTemplateId }, '-created_date'),
+    queryFn: () => base44.entities.PDFTemplate.filter({ parent_template_id: parentTemplateId }, '-created_date', PATIENT_HISTORY_ROWS),
     initialData: [],
     enabled: !!parentTemplateId
   });

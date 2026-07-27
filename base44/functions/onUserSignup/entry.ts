@@ -237,9 +237,15 @@ Deno.serve(async (req) => {
     // uninvited signup — and with invite-only there is no manual-approval rescue.
     debugLog('Checking for invitation...');
     const normalizedEmail = (user.email || '').trim().toLowerCase();
+    // Explicit high limit: an unlimited filter() is capped at the server's
+    // default page (~50 rows). The signing-up user is matched against this list
+    // BELOW by normalized email, so once an agency has more than a page of
+    // pending invitations, an invited user whose invitation sorted past the cap
+    // is treated as uninvited — they lose the invited role/approval and land in
+    // the unregistered path instead.
     const pendingInvitations = await base44.asServiceRole.entities.UserInvitation.filter({
       status: 'pending'
-    });
+    }, undefined, 5000);
     const invitations = (pendingInvitations || []).filter(
       (inv) => (inv.email || '').trim().toLowerCase() === normalizedEmail
     );
@@ -250,7 +256,7 @@ Deno.serve(async (req) => {
 
       // Don't trust the body's user.id<->email pairing: confirm the id resolves
       // to the invited email before granting role/approval.
-      const actualUsers = await base44.asServiceRole.entities.User.filter({ id: user.id });
+      const actualUsers = await base44.asServiceRole.entities.User.filter({ id: user.id }, undefined, 5000);
       if (!actualUsers?.[0] || actualUsers[0].email !== user.email) {
         return Response.json({ error: 'User id/email mismatch' }, { status: 400 });
       }
@@ -343,7 +349,7 @@ Deno.serve(async (req) => {
     // to this email first (don't trust the body's id<->email pairing). This is
     // fail-closed — it only ever removes access, never grants it.
     try {
-      const blockedUsers = await base44.asServiceRole.entities.User.filter({ id: user.id });
+      const blockedUsers = await base44.asServiceRole.entities.User.filter({ id: user.id }, undefined, 5000);
       const blockedUser = blockedUsers?.[0];
       if (blockedUser
         && (blockedUser.email || '').trim().toLowerCase() === normalizedEmail
@@ -356,7 +362,7 @@ Deno.serve(async (req) => {
     }
 
     debugLog('Fetching admin users...');
-    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
     debugLog('Found admins:', admins.length);
 
     const attemptDate = new Date().toLocaleString();
@@ -423,7 +429,7 @@ Deno.serve(async (req) => {
 async function verifyInvitedUser(base44, email) {
   try {
     const config = base44.getConfig();
-    let users = await base44.asServiceRole.entities.User.filter({ email });
+    let users = await base44.asServiceRole.entities.User.filter({ email }, undefined, 5000);
     let authUser = users?.[0];
 
     if (authUser?.is_verified) {
@@ -443,7 +449,7 @@ async function verifyInvitedUser(base44, email) {
         return { success: false, step: 'resend_failed' };
       }
 
-      users = await base44.asServiceRole.entities.User.filter({ email });
+      users = await base44.asServiceRole.entities.User.filter({ email }, undefined, 5000);
       authUser = users?.[0];
     }
 

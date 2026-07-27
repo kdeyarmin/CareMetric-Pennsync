@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { toLocalISODate } from "@/lib/dateLocal";
+import { isWithinLastDays, toLocalISODate } from "@/lib/dateLocal";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,12 +22,7 @@ export default function PatientSummaryGenerator({ patient, visits, incidents }) 
       const recentIncidents = incidents.slice(0, 3);
       // Actual count of visits within the last 30 days, so the "(last 30 days)"
       // prompt labels match the number rather than the first 5 array entries.
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const visitsLast30Days = visits.filter(v => {
-        const d = new Date(v.visit_date);
-        return !Number.isNaN(d.getTime()) && d >= thirtyDaysAgo;
-      }).length;
+      const visitsLast30Days = visits.filter(v => isWithinLastDays(v.visit_date, 30)).length;
 
       let prompt = '';
       let schema = {};

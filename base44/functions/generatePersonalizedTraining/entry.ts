@@ -26,9 +26,9 @@ Deno.serve(async (req) => {
       // `filter(r => r.addressed)` always empty, pinning the rate at 0%.
       base44.asServiceRole.entities.TrainingRecommendation.filter({
         nurse_email: targetEmail
-      }),
-      base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }),
-      base44.asServiceRole.entities.UserActivity.filter({ user_email: targetEmail })
+      }, undefined, 5000),
+      base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }, undefined, 5000),
+      base44.asServiceRole.entities.UserActivity.filter({ user_email: targetEmail }, undefined, 5000)
     ]);
 
     // Calculate specific deficits

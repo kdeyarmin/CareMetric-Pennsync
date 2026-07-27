@@ -24,6 +24,16 @@ export default [
       "src/hooks/**/*.{js,mjs,cjs,jsx}",
       "src/api/**/*.{js,mjs,cjs,jsx}",
       "src/Layout.jsx",
+      // The app root, its entrypoint, and the remaining top-level modules were
+      // the last unlinted source files — App.jsx holds the auth gate and the
+      // route table, which is exactly where an unused/undefined identifier
+      // matters most.
+      "src/App.jsx",
+      "src/main.jsx",
+      "src/routes.jsx",
+      "src/utils/**/*.{js,mjs,cjs,jsx}",
+      "src/constants/**/*.{js,mjs,cjs,jsx}",
+      "src/functions/**/*.{js,mjs,cjs,jsx}",
     ],
     languageOptions: {
       globals: globals.browser,

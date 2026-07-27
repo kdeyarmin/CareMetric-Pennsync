@@ -52,6 +52,7 @@ import {
 import CareScopeSelector from "../components/profile/CareScopeSelector";
 import CareScopeBadge from "../components/profile/CareScopeBadge";
 import DutyStatusCard from "../components/voice/DutyStatusCard";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function UserSettings() {
   const queryClient = useQueryClient();
@@ -232,7 +233,7 @@ export default function UserSettings() {
         requested_at: new Date().toISOString(),
       }, 'warning');
 
-      const admins = await base44.entities.User.filter({ role: 'admin' }).catch(() => []);
+      const admins = await base44.entities.User.filter({ role: 'admin' }, undefined, ALL_ROWS).catch(() => []);
       await Promise.all((admins || []).map((admin) =>
         base44.functions.invoke('createNotification', {
           user_email: admin.email,

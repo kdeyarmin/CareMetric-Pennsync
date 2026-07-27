@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Invalid personal_cell_e164' }, { status: 400 });
     }
 
-    const targets = await base44.asServiceRole.entities.User.filter({ email: target_user_email });
+    const targets = await base44.asServiceRole.entities.User.filter({ email: target_user_email }, undefined, 5000);
     const target = targets[0];
     if (!target) {
       return Response.json({ error: 'Target user not found' }, { status: 404 });
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
 
     // Work numbers must be unique across nurses.
     if (workNum) {
-      const existing = await base44.asServiceRole.entities.User.filter({ work_phone_number: workNum });
+      const existing = await base44.asServiceRole.entities.User.filter({ work_phone_number: workNum }, undefined, 5000);
       const conflict = existing.find((u) => u.email !== target_user_email);
       if (conflict) {
         return Response.json({ error: `Work number ${workNum} is already assigned to ${conflict.email}` }, { status: 409 });
@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
     // If the typed number is tracked in the pool, adopt its stored Telnyx id so
     // the User record stays complete without the admin re-entering it.
     const poolMatches = workNum
-      ? await base44.asServiceRole.entities.PhoneNumber.filter({ e164: workNum }).catch(() => [])
+      ? await base44.asServiceRole.entities.PhoneNumber.filter({ e164: workNum }, undefined, 5000).catch(() => [])
       : [];
     const poolRow = poolMatches[0] || null;
 
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
           status: 'assigned', assigned_to_email: target_user_email,
         }).catch(() => {});
       }
-      const priorRows = await base44.asServiceRole.entities.PhoneNumber.filter({ assigned_to_email: target_user_email }).catch(() => []);
+      const priorRows = await base44.asServiceRole.entities.PhoneNumber.filter({ assigned_to_email: target_user_email }, undefined, 5000).catch(() => []);
       for (const pr of priorRows) {
         if (!poolRow || pr.id !== poolRow.id) {
           await base44.asServiceRole.entities.PhoneNumber.update(pr.id, { status: 'available', assigned_to_email: '' }).catch(() => {});

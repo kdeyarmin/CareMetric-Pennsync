@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
     if (patientId) {
       // RLS-scoped read (NOT asServiceRole) so the caller cannot pull another
       // patient's PHI into the prompt via a guessed patientId.
-      const patients = await base44.entities.Patient.filter({ id: patientId });
+      const patients = await base44.entities.Patient.filter({ id: patientId }, undefined, 5000);
       const patient = patients[0];
       // Make the access check BLOCKING: if the RLS-scoped read returns nothing
       // the caller can't see this patient, so don't attach AI Tasks to it below.

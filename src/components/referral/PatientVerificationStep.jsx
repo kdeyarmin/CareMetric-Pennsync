@@ -25,6 +25,7 @@ import {
   looksLikeMedicare,
   looksLikeMedicareAdvantage,
 } from "./mbiValidator";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 // A suggested patient's stored date_of_birth may be a malformed string (patients
 // auto-created from referrals persist the raw AI-extracted DOB). date-fns format()
@@ -78,7 +79,7 @@ export default function PatientVerificationStep({
     queryKey: ['verification-patients', matchPatientIds],
     queryFn: () =>
       matchPatientIds.length
-        ? base44.entities.Patient.filter({ id: { $in: matchPatientIds } })
+        ? base44.entities.Patient.filter({ id: { $in: matchPatientIds } }, undefined, ALL_ROWS)
         : [],
     enabled: matchPatientIds.length > 0,
     initialData: [],

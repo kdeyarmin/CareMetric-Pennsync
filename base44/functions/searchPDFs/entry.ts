@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     if (isAdmin) {
       if (patient_id) filter.patient_id = patient_id;
     } else if (patient_id) {
-      const [scopePatient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id });
+      const [scopePatient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000);
       // Mirror the Patient RLS: assigned nurse OR creator OR admin.
       const allowed = scopePatient?.created_by === user.email
         || (Array.isArray(scopePatient?.assigned_nurses) && scopePatient.assigned_nurses.includes(user.email));

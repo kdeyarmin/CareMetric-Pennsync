@@ -27,8 +27,8 @@ Deno.serve(async (req) => {
     // Reads are scoped to the authenticated user (RLS, NOT asServiceRole) so the
     // caller cannot embed another patient's PHI into a cover sheet via a guessed id.
     const [patientResults, documentResults] = await Promise.all([
-      patient_id ? base44.entities.Patient.filter({ id: patient_id }) : Promise.resolve([]),
-      document_id ? base44.entities.Document.filter({ id: document_id }) : Promise.resolve([])
+      patient_id ? base44.entities.Patient.filter({ id: patient_id }, undefined, 5000) : Promise.resolve([]),
+      document_id ? base44.entities.Document.filter({ id: document_id }, undefined, 5000) : Promise.resolve([])
     ]);
 
     const patient = patientResults[0] || null;

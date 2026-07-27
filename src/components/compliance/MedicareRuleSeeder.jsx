@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { BookOpen, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { DEFAULT_MEDICARE_RULES, rulesToSeed } from "./defaultMedicareRules";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 // Admin-only control to load the bundled default MedicareComplianceRule set
 // (incl. Pennsylvania-specific rules) into the agency's rule library. The Smart
@@ -18,7 +19,7 @@ export default function MedicareRuleSeeder() {
 
   const { data: existing = [] } = useQuery({
     queryKey: ["medicareComplianceRules"],
-    queryFn: () => base44.entities.MedicareComplianceRule.list(),
+    queryFn: () => base44.entities.MedicareComplianceRule.list(undefined, ALL_ROWS),
     initialData: [],
   });
 

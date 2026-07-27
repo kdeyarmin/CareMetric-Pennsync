@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
     }
 
     // Get signature details
-    const signature = await base44.asServiceRole.entities.DocumentSignature.filter({ id: signature_id });
+    const signature = await base44.asServiceRole.entities.DocumentSignature.filter({ id: signature_id }, undefined, 5000);
 
     if (!signature || signature.length === 0) {
       return Response.json({ error: 'Signature not found' }, { status: 404 });
@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
     const sig = signature[0];
 
     // Get patient details
-    const patients = await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id });
+    const patients = await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id }, undefined, 5000);
     const patient = patients[0];
 
     if (!patient || !patient.email) {

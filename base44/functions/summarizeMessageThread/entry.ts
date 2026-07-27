@@ -15,8 +15,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing thread_id' }, { status: 400 });
     }
 
-    // Fetch all messages in thread
-    const messages = await base44.entities.Message.filter({ thread_id }, 'created_date');
+    // Fetch all messages in thread. The explicit limit is what makes "all" true:
+    // unlimited returns only the server's default page (~50), so a long thread
+    // was summarized from its first page while the summary claimed to cover it.
+    const messages = await base44.entities.Message.filter({ thread_id }, 'created_date', 5000);
 
     if (messages.length === 0) {
       return Response.json({ error: 'No messages found' }, { status: 404 });
@@ -26,7 +28,7 @@ Deno.serve(async (req) => {
     let patientContext = '';
     if (patient_id) {
       const [patients] = await Promise.all([
-        base44.entities.Patient.filter({ id: patient_id })
+        base44.entities.Patient.filter({ id: patient_id }, undefined, 5000)
       ]);
       const patient = patients[0];
 

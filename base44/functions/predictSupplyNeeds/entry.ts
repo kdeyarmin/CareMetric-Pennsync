@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     const usageLogs = await base44.asServiceRole.entities.SupplyUsageLog.filter({
       patient_id: patientId,
       usage_date: { $gte: sixMonthsAgoStr }
-    });
+    }, undefined, 5000);
 
     // Get all supplies (bounded to the SDK's 5000/request max)
     const allSupplies = await base44.asServiceRole.entities.SupplyItem.list('-created_date', 5000);

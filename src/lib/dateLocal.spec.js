@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { parseLocalDate, formatLocalDate, calculateAge, toLocalISODate } from "./dateLocal";
+import {
+  parseLocalDate,
+  formatLocalDate,
+  calculateAge,
+  toLocalISODate,
+  startOfLocalDay,
+  daysAgoLocal,
+  isWithinLastDays,
+} from "./dateLocal";
 
 describe("parseLocalDate", () => {
   it("parses a date-only string as local calendar components (no UTC shift)", () => {
@@ -85,5 +93,72 @@ describe("toLocalISODate", () => {
 
   it("returns an empty string for invalid dates", () => {
     expect(toLocalISODate(new Date("not-a-date"))).toBe("");
+  });
+});
+
+describe("startOfLocalDay", () => {
+  it("zeroes the time component without shifting the calendar day", () => {
+    const d = startOfLocalDay(new Date(2026, 6, 27, 23, 59, 59));
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(6);
+    expect(d.getDate()).toBe(27);
+    expect(d.getHours()).toBe(0);
+    expect(d.getMinutes()).toBe(0);
+  });
+
+  it("keeps a date-only string on its own calendar day", () => {
+    const d = startOfLocalDay("2026-07-27");
+    expect(toLocalISODate(d)).toBe("2026-07-27");
+  });
+
+  it("returns null for missing or unparseable values", () => {
+    expect(startOfLocalDay("")).toBeNull();
+    expect(startOfLocalDay("not-a-date")).toBeNull();
+    expect(startOfLocalDay("2026-02-31")).toBeNull();
+  });
+
+  it("does not mutate the caller's Date", () => {
+    const original = new Date(2026, 6, 27, 15, 30);
+    startOfLocalDay(original);
+    expect(original.getHours()).toBe(15);
+  });
+});
+
+describe("daysAgoLocal", () => {
+  it("returns local midnight N calendar days back", () => {
+    const now = new Date(2026, 6, 27, 14, 23);
+    expect(toLocalISODate(daysAgoLocal(30, now))).toBe("2026-06-27");
+    expect(daysAgoLocal(30, now).getHours()).toBe(0);
+  });
+
+  it("treats 0 days as the start of today", () => {
+    const now = new Date(2026, 6, 27, 14, 23);
+    expect(toLocalISODate(daysAgoLocal(0, now))).toBe("2026-07-27");
+  });
+});
+
+describe("isWithinLastDays", () => {
+  const now = new Date(2026, 6, 27, 14, 23);
+
+  it("includes a record dated today, whatever the time of day", () => {
+    // The bug this pins: an `>= new Date()` bound carries the current time of
+    // day, so a date-only value for TODAY (midnight) sorted before it and fell
+    // out of the window.
+    expect(isWithinLastDays("2026-07-27", 30, now)).toBe(true);
+    expect(isWithinLastDays("2026-07-27", 0, now)).toBe(true);
+  });
+
+  it("includes the whole boundary day", () => {
+    expect(isWithinLastDays("2026-06-27", 30, now)).toBe(true);
+  });
+
+  it("excludes the day before the window", () => {
+    expect(isWithinLastDays("2026-06-26", 30, now)).toBe(false);
+  });
+
+  it("returns false for missing or unparseable values", () => {
+    expect(isWithinLastDays(undefined, 30, now)).toBe(false);
+    expect(isWithinLastDays("", 30, now)).toBe(false);
+    expect(isWithinLastDays("not-a-date", 30, now)).toBe(false);
   });
 });

@@ -166,11 +166,12 @@ export default function SignatureRequestCreator({ onCancel }) {
       }));
 
       // 3. Create DocumentSignature record.
-      // Persist the placed fields (position/size/signerId/type/label) so the
-      // Step-3 placement isn't discarded. NOTE: the DocumentSignature entity has
-      // no signature_fields attribute yet — this requires adding the field to
-      // base44/entities/DocumentSignature, and the signer portal / PDF stamping
-      // must be updated to render these positions for the fix to be end-to-end.
+      // The placed fields (position/size/signerId/type/label) now PERSIST —
+      // DocumentSignature.signature_fields exists in the schema, so step 3's
+      // placement is no longer silently dropped on send. Still outstanding for
+      // an end-to-end feature: the signer portal must render these boxes and the
+      // PDF stamping must honour their positions. Until then a request behaves as
+      // it does today (whole-document signing) but the placement survives.
       const docSig = await base44.entities.DocumentSignature.create({
         document_title: finalFileName,
         document_type: 'custom_request',

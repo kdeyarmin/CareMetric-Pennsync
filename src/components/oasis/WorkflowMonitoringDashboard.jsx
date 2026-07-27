@@ -37,6 +37,7 @@ import {
   ResponsiveContainer
 } from "recharts";
 import { endOfDay, parseISO } from "date-fns";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 const COLORS = ['#10b981', '#3557b0', '#f59e0b', '#ef4444', '#8b5cf6'];
 
@@ -54,7 +55,7 @@ export default function WorkflowMonitoringDashboard() {
   // Fetch automation rules for filtering
   const { data: automationRules = [] } = useQuery({
     queryKey: ['automationRules'],
-    queryFn: () => base44.entities.OASISAutomationRule.list(),
+    queryFn: () => base44.entities.OASISAutomationRule.list(undefined, ALL_ROWS),
   });
 
   // Filter data

@@ -12,6 +12,7 @@ import {
   BookOpen, CheckCircle2, Clock, Loader2, Send, Eye, EyeOff
 } from "lucide-react";
 import { toast } from "sonner";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function PatientEducationPortal() {
   const queryClient = useQueryClient();
@@ -30,7 +31,8 @@ export default function PatientEducationPortal() {
       selectedPatientId
         ? base44.entities.PatientEducationDelivery.filter(
             { patient_id: selectedPatientId },
-            "-generated_date"
+            "-generated_date",
+            PATIENT_HISTORY_ROWS,
           )
         : Promise.resolve([]),
     enabled: !!selectedPatientId,

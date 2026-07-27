@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
 
     const existingCache = hasExplicitIds
       ? []
-      : await base44.entities.CertificatePacketCache.filter(cacheQuery);
+      : await base44.entities.CertificatePacketCache.filter(cacheQuery, undefined, 5000);
     
     if (existingCache && existingCache.length > 0) {
       const cache = existingCache[0];
@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     // the authenticated caller (auth.me()).
     let employee = user;
     if (employeeId !== user.email) {
-      const employees = await base44.asServiceRole.entities.User.filter({ email: employeeId });
+      const employees = await base44.asServiceRole.entities.User.filter({ email: employeeId }, undefined, 5000);
       if (!employees || employees.length === 0) {
         return Response.json({ error: 'Employee not found' }, { status: 404 });
       }
@@ -97,7 +97,8 @@ Deno.serve(async (req) => {
 
     const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter(
       query,
-      '-issued_at'
+      '-issued_at',
+      5000,
     );
 
     // Generate PDF server-side

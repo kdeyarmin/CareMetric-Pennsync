@@ -54,9 +54,14 @@ Deno.serve(async (req) => {
 
     if (reportType === 'transcript') {
       // Employee transcript CSV
+      // Explicit high limits throughout this function: an unlimited filter()
+      // returns only the server's default page (~50 rows), so every CSV below
+      // silently stopped at 50 records. These exports are the agency's training
+      // compliance evidence — a short file reads as "this is everything".
       const certificates = (await base44.asServiceRole.entities.TrainingCertificate.filter(
         { user_id: employeeId, revoked: false },
-        '-issued_at'
+        '-issued_at',
+        5000
       )).filter(cert => inAgency(cert.user_id));
 
       headers = ['Completion Date', 'Course', 'Score', 'Pass', 'Certificate ID'];
@@ -77,7 +82,7 @@ Deno.serve(async (req) => {
         query.assigned_to_business_line = businessLine;
       }
 
-      const assignments = (await base44.asServiceRole.entities.TrainingAssignment.filter(query, '-created_date'))
+      const assignments = (await base44.asServiceRole.entities.TrainingAssignment.filter(query, '-created_date', 5000))
         .filter(a => inAgency(a.assigned_to_user_id));
 
       headers = ['Employee', 'Assigned Date', 'Due Date', 'Status', 'Completion Date', 'Score', 'Attempts'];
@@ -94,7 +99,8 @@ Deno.serve(async (req) => {
       // Learning plan compliance CSV
       const enrollments = (await base44.asServiceRole.entities.PlanEnrollment.filter(
         { plan_id: planId },
-        '-enrolled_at'
+        '-enrolled_at',
+        5000
       )).filter(e => inAgency(e.user_id));
 
       headers = ['Employee', 'Enrollment Date', 'Status', 'Progress %', 'Completed / Total'];
@@ -113,7 +119,7 @@ Deno.serve(async (req) => {
         query.assigned_to_business_line = businessLine;
       }
 
-      const overdue = (await base44.asServiceRole.entities.TrainingAssignment.filter(query, '-due_date'))
+      const overdue = (await base44.asServiceRole.entities.TrainingAssignment.filter(query, '-due_date', 5000))
         .filter(a => inAgency(a.assigned_to_user_id));
 
       headers = ['Employee', 'Course', 'Due Date', 'Days Overdue'];
@@ -133,7 +139,7 @@ Deno.serve(async (req) => {
         query.business_line = businessLine;
       }
 
-      const expiring = (await base44.asServiceRole.entities.TrainingCertificate.filter(query, 'expiration_date'))
+      const expiring = (await base44.asServiceRole.entities.TrainingCertificate.filter(query, 'expiration_date', 5000))
         .filter(c => inAgency(c.user_id));
 
       headers = ['Employee', 'Course', 'Issued Date', 'Expiration Date', 'Days Until Expiry'];

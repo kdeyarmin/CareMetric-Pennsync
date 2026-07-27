@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     }
 
     const rows = await base44.asServiceRole.entities.IntegrationSecret
-      .filter({ provider: 'telnyx' })
+      .filter({ provider: 'telnyx' }, undefined, 5000)
       .catch(() => []);
     const rec = rows[0] || {};
 

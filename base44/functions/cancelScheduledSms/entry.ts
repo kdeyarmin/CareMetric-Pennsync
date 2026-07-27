@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
     const { scheduled_id } = await req.json();
     if (!scheduled_id) return Response.json({ error: 'Missing scheduled_id' }, { status: 400 });
 
-    const rows = await base44.asServiceRole.entities.ScheduledSms.filter({ id: scheduled_id }).catch(() => []);
+    const rows = await base44.asServiceRole.entities.ScheduledSms.filter({ id: scheduled_id }, undefined, 5000).catch(() => []);
     const row = rows[0];
     if (!row) return Response.json({ error: 'Scheduled message not found' }, { status: 404 });
 

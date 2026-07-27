@@ -19,6 +19,7 @@ import {
   Download
 } from "lucide-react";
 import { toast } from 'sonner';
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = false }) {
   const ai = useAICall();
@@ -50,7 +51,7 @@ export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = fal
 
   const { data: existingOASIS = [] } = useQuery({
     queryKey: ['patientOASIS', patientId],
-    queryFn: () => base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date'),
+    queryFn: () => base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', PATIENT_HISTORY_ROWS),
     enabled: !!patientId,
     initialData: []
   });

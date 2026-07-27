@@ -25,7 +25,7 @@ async function canActOnDocument(base44, user, sig) {
   if (sig.created_by === user.email || sig.created_by_email === user.email
     || sig.requested_by === user.email || sig.sender_email === user.email) return true;
   if (sig.patient_id) {
-    const [p] = await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id }).catch(() => []);
+    const [p] = await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id }, undefined, 5000).catch(() => []);
     if (p && (p.created_by === user.email
       || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email)))) return true;
   }

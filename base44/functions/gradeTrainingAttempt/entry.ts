@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'assignmentId is required' }, { status: 400 });
     }
 
-    const [assignment] = await base44.asServiceRole.entities.TrainingAssignment.filter({ id: assignmentId });
+    const [assignment] = await base44.asServiceRole.entities.TrainingAssignment.filter({ id: assignmentId }, undefined, 5000);
     if (!assignment) {
       return Response.json({ error: 'Assignment not found' }, { status: 404 });
     }
@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const [course] = await base44.asServiceRole.entities.TrainingCourse.filter({ id: assignment.course_id });
+    const [course] = await base44.asServiceRole.entities.TrainingCourse.filter({ id: assignment.course_id }, undefined, 5000);
     // Grade only ACTIVE questions — the player (getCoursePlayerQuestions) serves
     // only active:true, so including inactive ones here made the "all questions
     // answered" check below reject every submission the moment an admin
@@ -336,7 +336,7 @@ Deno.serve(async (req) => {
       const requiredAssignments = planAssignments.filter((item) => item.required !== false);
       const completedCount = requiredAssignments.filter((item) => item.id === assignmentId ? passed : item.status === 'completed').length;
       const progressPercentage = Math.round((completedCount / Math.max(requiredAssignments.length, 1)) * 100);
-      const [existingEnrollment] = await base44.asServiceRole.entities.PlanEnrollment.filter({ plan_id: assignment.plan_id, user_id: assignment.assigned_to_user_id });
+      const [existingEnrollment] = await base44.asServiceRole.entities.PlanEnrollment.filter({ plan_id: assignment.plan_id, user_id: assignment.assigned_to_user_id }, undefined, 5000);
       if (existingEnrollment) {
         await base44.asServiceRole.entities.PlanEnrollment.update(existingEnrollment.id, {
           courses_completed: completedCount,

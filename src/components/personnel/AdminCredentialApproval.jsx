@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { isAdminLike } from "@/lib/superAdmin";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 // Guarded date formatter: format(parseISO(undefined)) throws a RangeError, which
 // would white-screen the whole approvals card if any credential has a null date.
@@ -47,7 +48,7 @@ export default function AdminCredentialApproval() {
 
   const { data: pendingCredentials = [] } = useQuery({
     queryKey: ['pendingCredentials'],
-    queryFn: () => base44.entities.PersonnelCredential.filter({ status: 'pending_approval' }),
+    queryFn: () => base44.entities.PersonnelCredential.filter({ status: 'pending_approval' }, undefined, PATIENT_HISTORY_ROWS),
     initialData: [],
   });
 

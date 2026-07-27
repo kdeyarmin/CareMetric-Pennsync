@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function ProfileCompletenessAlert({ user }) {
   const { data: credentials = [] } = useQuery({
     queryKey: ['myCredentials', user?.email],
-    queryFn: () => user?.email ? base44.entities.PersonnelCredential.filter({ user_id: user.email }) : Promise.resolve([]),
+    queryFn: () => user?.email ? base44.entities.PersonnelCredential.filter({ user_id: user.email }, undefined, PATIENT_HISTORY_ROWS) : Promise.resolve([]),
     enabled: !!user?.email,
     initialData: [],
   });

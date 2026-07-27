@@ -27,6 +27,7 @@ import { formatEastern } from "../utils/timezone";
 import { exportToPDF } from "../utils/pdfExporter";
 import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from 'sonner';
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function StaffEducationComplianceReport() {
   const [timeframe, setTimeframe] = useState('30');
@@ -34,7 +35,7 @@ export default function StaffEducationComplianceReport() {
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['users'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
   });
 
   // Derive compliance from the entities the grading/certificate pipeline

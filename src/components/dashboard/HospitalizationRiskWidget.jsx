@@ -14,6 +14,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { toast } from 'sonner';
 import { formatAge } from "@/lib/age";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function HospitalizationRiskWidget({ autoAnalyze = false }) {
   const [analyzing, setAnalyzing] = useState(false);
@@ -205,7 +206,7 @@ Return detailed risk assessment:`,
             patient_id: patientRisk.patient_id,
             alert_type: 'readmission_risk',
             status: 'active'
-          });
+          }, undefined, PATIENT_HISTORY_ROWS);
           if (existing?.length > 0) {
             await base44.entities.PatientAlert.update(existing[0].id, alertData);
           } else {

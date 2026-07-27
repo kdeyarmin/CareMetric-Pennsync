@@ -17,6 +17,7 @@ import { differenceInDays } from "date-fns";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { formatEastern } from "@/components/utils/timezone";
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
   const [expanded, setExpanded] = useState(!compact);
@@ -31,7 +32,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
     queryKey: ['implementedRegUpdates'],
     queryFn: () => base44.entities.RegulatoryUpdate.filter({ 
       status: { $in: ['approved', 'implemented'] }
-    }, '-effective_date'),
+    }, '-effective_date', ALL_ROWS),
   });
 
   // Filter to recent and unacknowledged updates

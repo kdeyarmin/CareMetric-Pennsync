@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     const events = await base44.entities.ClinicalEvent.filter({
       patient_id,
       verified: false
-    }, '-event_date');
+    }, '-event_date', 5000);
 
     if (events.length === 0) {
       return Response.json({
@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     }
 
     // Also fetch patient data for context
-    const patients = await base44.entities.Patient.filter({ id: patient_id });
+    const patients = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
     const patient = patients[0];
 
     // Analyze events for inconsistencies

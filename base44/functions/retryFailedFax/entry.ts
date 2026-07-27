@@ -59,7 +59,7 @@ async function resolveTelnyxCreds(base44) {
   let voiceConnectionId = null;
   let faxConnectionId = null;
   try {
-    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' });
+    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' }, undefined, 5000);
     const rec = rows?.[0] || {};
     apiKey = pick(rec.api_key);
     publicKey = pick(rec.public_key);
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
     }
 
     // Fetch the original fax log
-    const faxLogs = await base44.entities.FaxLog.filter({ id: fax_log_id });
+    const faxLogs = await base44.entities.FaxLog.filter({ id: fax_log_id }, undefined, 5000);
     if (faxLogs.length === 0) {
       return Response.json({ error: 'FaxLog not found' }, { status: 404 });
     }

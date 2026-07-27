@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
       if (manager_email === user.email) {
         return Response.json({ error: 'You cannot assign yourself as your own approver.' }, { status: 400 });
       }
-      const matches = await base44.asServiceRole.entities.User.filter({ email: manager_email });
+      const matches = await base44.asServiceRole.entities.User.filter({ email: manager_email }, undefined, 5000);
       const mgr = matches && matches[0];
       const mgrIsAdmin = mgr && (mgr.role === 'admin' || mgr.account_type === 'super_admin' || mgr.account_type === 'agency_admin');
       if (!mgr || !(mgrIsAdmin || mgr.is_manager === true)) {

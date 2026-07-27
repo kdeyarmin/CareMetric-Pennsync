@@ -76,6 +76,52 @@ export function formatAge(dob, now = new Date(), fallback = "Unknown") {
 }
 
 /**
+ * Local midnight for a given moment (default: now).
+ *
+ * Rolling-window filters are pervasively written as `new Date()` minus N days
+ * and then compared against a date-only field. That boundary carries the
+ * CURRENT TIME OF DAY while the field parses at midnight, so the oldest day of
+ * the window is always dropped — and a record dated TODAY sorts before "now",
+ * so it falls out of an `>= today` upcoming filter too.
+ *
+ * @param {string|number|Date} [value]
+ * @returns {Date|null} null when the value is unparseable
+ */
+export function startOfLocalDay(value = new Date()) {
+  const d = parseLocalDate(value);
+  if (!d) return null;
+  const copy = new Date(d.getTime());
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+/**
+ * Local midnight `days` calendar days before `now` — the correct lower bound for
+ * a "last N days" window over date-only fields.
+ * @param {number} days
+ * @param {Date} [now]
+ * @returns {Date}
+ */
+export function daysAgoLocal(days, now = new Date()) {
+  const start = startOfLocalDay(now) ?? new Date();
+  start.setDate(start.getDate() - Number(days || 0));
+  return start;
+}
+
+/**
+ * Is a date-only (or datetime) value within the last `days` calendar days,
+ * counting today as day 0 and including the boundary day in full?
+ * @param {string|number|Date} value
+ * @param {number} days
+ * @param {Date} [now]
+ * @returns {boolean} false when the value is missing or unparseable
+ */
+export function isWithinLastDays(value, days, now = new Date()) {
+  const d = parseLocalDate(value);
+  return d != null && d >= daysAgoLocal(days, now);
+}
+
+/**
  * Format a date-only value as a local calendar date string suitable for <input type="date">
  * values and date-only entity fields. Unlike toISOString().slice(0, 10), this
  * does not jump to tomorrow/ yesterday for users outside UTC.

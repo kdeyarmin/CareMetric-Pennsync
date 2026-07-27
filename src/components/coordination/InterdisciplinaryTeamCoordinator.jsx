@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { toLocalISODate } from "@/lib/dateLocal";
+import { isWithinLastDays, toLocalISODate } from "@/lib/dateLocal";
 import { useAICall } from "@/hooks/useAICall";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,18 +38,11 @@ export default function InterdisciplinaryTeamCoordinator({
       const complexityIndicators = {
         diagnoses_count: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])].filter(Boolean).length,
         medications_count: patientData.current_medications?.length || 0,
-        recent_incidents: incidents?.filter(i => {
-          const incidentDate = new Date(i.incident_date);
-          const daysSince = (new Date() - incidentDate) / (1000 * 60 * 60 * 24);
-          return daysSince <= 30;
-        }).length || 0,
+        recent_incidents: incidents?.filter(i => isWithinLastDays(i.incident_date, 30)).length || 0,
         active_alerts: alerts?.length || 0,
-        recent_hospitalizations: incidents?.filter(i => {
-          if (i.incident_type !== 'hospitalized') return false;
-          const incidentDate = new Date(i.incident_date);
-          const daysSince = (new Date() - incidentDate) / (1000 * 60 * 60 * 24);
-          return daysSince <= 30;
-        }).length || 0
+        recent_hospitalizations: incidents?.filter(i =>
+          i.incident_type === 'hospitalized' && isWithinLastDays(i.incident_date, 30)
+        ).length || 0
       };
 
       const result = await ai.run({

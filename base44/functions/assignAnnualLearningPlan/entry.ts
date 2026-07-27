@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'planId and dueDate are required' }, { status: 400 });
     }
 
-    const [plan] = await base44.asServiceRole.entities.LearningPlan.filter({ id: planId });
+    const [plan] = await base44.asServiceRole.entities.LearningPlan.filter({ id: planId }, undefined, 5000);
     if (!plan) {
       return Response.json({ error: 'Learning plan not found' }, { status: 404 });
     }
@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     });
 
     for (const candidate of candidates) {
-      const [existingEnrollment] = await base44.asServiceRole.entities.PlanEnrollment.filter({ plan_id: planId, user_id: candidate.email });
+      const [existingEnrollment] = await base44.asServiceRole.entities.PlanEnrollment.filter({ plan_id: planId, user_id: candidate.email }, undefined, 5000);
       if (!existingEnrollment) {
         await base44.asServiceRole.entities.PlanEnrollment.create({
           plan_id: plan.id,

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/accordion";
 import { toast } from 'sonner';
 import { formatAge } from "@/lib/age";
+import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function AutomaticDocumentReviewer({
   noteContent,
@@ -46,7 +47,7 @@ export default function AutomaticDocumentReviewer({
 
   const { data: medicareRules = [] } = useQuery({
     queryKey: ['medicareComplianceRules'],
-    queryFn: () => base44.entities.MedicareComplianceRule.list(),
+    queryFn: () => base44.entities.MedicareComplianceRule.list(undefined, ALL_ROWS),
     initialData: [],
   });
 
@@ -232,7 +233,7 @@ Return detailed JSON analysis.`,
           const existing = await base44.entities.TrainingRecommendation.filter({
             visit_id: visitId,
             source: 'automatic_document_review'
-          });
+          }, undefined, PATIENT_HISTORY_ROWS);
           alreadyRecorded = existing?.length > 0;
         } catch (error) {
           console.error('Error checking existing training recommendations:', error);
