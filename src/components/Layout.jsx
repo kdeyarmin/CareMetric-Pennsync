@@ -12,7 +12,6 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Toaster } from "sonner";
 import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } from "@/lib/nav.manifest";
 import { getRoleView } from "@/lib/roles";
-import { MAIN_PAGE } from "@/routes";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 
 import DesktopSidebar from "@/components/layout/DesktopSidebar";
