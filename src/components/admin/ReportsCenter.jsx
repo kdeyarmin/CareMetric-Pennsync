@@ -32,6 +32,7 @@ import { formatEastern, todayEastern } from "@/components/utils/timezone";
 import { useQuery } from "@tanstack/react-query";
 import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from 'sonner';
+import { safePercent } from "@/lib/safePercent";
 
 export default function ReportsCenter({ users: allUsers, patients: allPatients, visits, incidents }) {
   const [reportType, setReportType] = useState("productivity");
@@ -1159,7 +1160,9 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
                         labelLine={true}
                         label={(entry) => {
                           const name = (entry.type || '').replace(/_/g, ' ');
-                          const percent = ((entry.revenue / reportPreview.totalRevenue) * 100).toFixed(0);
+                          // A window with no billable revenue made this render
+                          // "(NaN%)" on every slice; safePercent yields 0 instead.
+                          const percent = safePercent(entry.revenue, reportPreview.totalRevenue);
                           return `${name} (${percent}%)`;
                         }}
                       >

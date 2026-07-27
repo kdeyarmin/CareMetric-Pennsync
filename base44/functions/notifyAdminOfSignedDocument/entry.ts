@@ -175,9 +175,7 @@ Deno.serve(async (req) => {
 
     // Get all admins. A transient lookup failure must NOT leave the claim set
     // (that would permanently skip the notice on re-fire) — release and retry.
-    const admins = await base44.asServiceRole.entities.User.filter({
-      role: 'admin',
-    }).catch(() => null);
+    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000).catch(() => null);
 
     if (admins === null) {
       await base44.asServiceRole.entities.DocumentSignature.update(signature.id, { admin_notified: false }).catch(() => {});

@@ -36,8 +36,11 @@ Deno.serve(async (req) => {
     // instead of re-fetching the template inside the patient loop (P×T gets) and
     // fetching each patient serially.
     const [patients, templates] = await Promise.all([
-      base44.asServiceRole.entities.Patient.filter({ id: { $in: patient_ids } }),
-      base44.asServiceRole.entities.DocumentTemplate.filter({ id: { $in: template_ids } }),
+      // Explicit limits: an unlimited filter() returns only the server's default
+      // page (~50), so a bulk send to more than ~50 selected patients silently
+      // built packages for the first page and reported success for the rest.
+      base44.asServiceRole.entities.Patient.filter({ id: { $in: patient_ids } }, undefined, 5000),
+      base44.asServiceRole.entities.DocumentTemplate.filter({ id: { $in: template_ids } }, undefined, 5000),
     ]);
     const patientMap = new Map(patients.map((p) => [p.id, p]));
     const templateMap = new Map(templates.map((t) => [t.id, t]));

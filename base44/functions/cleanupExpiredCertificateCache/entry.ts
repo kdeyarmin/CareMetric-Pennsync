@@ -13,9 +13,12 @@ Deno.serve(async (req) => {
     const now = new Date();
 
     // Find all expired cache entries
+    // Explicit high limit: an unlimited filter() only sees the server's default
+    // page (~50), so if entries expire faster than one page per run this sweep
+    // never catches up and the cache grows without bound.
     const expiredCache = await base44.asServiceRole.entities.CertificatePacketCache.filter({
       expires_at: { $lt: now.toISOString() }
-    });
+    }, undefined, 5000);
 
     let deletedCount = 0;
 

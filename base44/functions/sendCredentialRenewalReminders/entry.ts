@@ -293,7 +293,7 @@ Deno.serve(async (req) => {
     // Send a consolidated 90-day expiration digest to all admins.
     let adminDigestSent = 0;
     if (adminDigestItems.length > 0) {
-      const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+      const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
       adminDigestItems.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
 
       const digestBullets = adminDigestItems.map((i) => {

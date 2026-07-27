@@ -110,7 +110,9 @@ async function summarizeThread(base44, params) {
     return Response.json({ error: 'Missing thread_id' }, { status: 400 });
   }
 
-  const messages = await base44.entities.Message.filter({ thread_id }, 'created_date');
+  // Explicit limit: unlimited returns only the server's default page (~50), so
+  // the assistant reasoned over a truncated thread on any long conversation.
+  const messages = await base44.entities.Message.filter({ thread_id }, 'created_date', 5000);
 
   if (messages.length === 0) {
     return Response.json({ error: 'No messages found' }, { status: 404 });

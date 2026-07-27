@@ -215,7 +215,7 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.DocumentSignature.update(signature.id, { admin_notified: true }).catch(() => {});
       let releaseClaim = false;
       try {
-        const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+        const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
         if (admins && admins.length > 0) {
           // Signer identity lives in the signers[] array, not flat fields. Report
           // the signers that have completed on this document.

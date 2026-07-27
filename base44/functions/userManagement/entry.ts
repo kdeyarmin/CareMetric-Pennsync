@@ -453,9 +453,11 @@ async function checkExpiredInvitations(base44) {
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-  const pendingInvitations = await base44.asServiceRole.entities.UserInvitation.filter({ 
-    status: 'pending' 
-  });
+  // Explicit high limit: an unlimited filter() stops at the server's default
+  // page (~50), which would silently hide the overflow from the admin list.
+  const pendingInvitations = await base44.asServiceRole.entities.UserInvitation.filter({
+    status: 'pending'
+  }, undefined, 5000);
 
   const expired = [];
   const expiringSoon = [];
@@ -475,7 +477,7 @@ async function checkExpiredInvitations(base44) {
 
   // Notify admins if needed
   if (expired.length > 0 || expiringSoon.length > 0) {
-    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
 
     for (const admin of admins) {
       const sections = [];
