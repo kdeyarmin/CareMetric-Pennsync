@@ -77,9 +77,10 @@ export default function NumberPoolPanel() {
   const [buyOpen, setBuyOpen] = useState(false);
   const [searchArea, setSearchArea] = useState("");
   const [found, setFound] = useState([]);
-  // What the number is for: a per-nurse voice+SMS line (default) or the shared
-  // office fax line. Fax purchases are wired to the Telnyx fax connection and
-  // stored as AgencySettings.office_fax_number_e164 by the backend.
+  // What the number is for: a per-nurse voice+SMS line (default) or the single
+  // blind OUTBOUND fax line. Fax purchases are wired to the Telnyx fax
+  // connection and stored as AgencySettings.outbound_fax_number_e164 by the
+  // backend; recipients see the office fax number instead (masked).
   const [buyPurpose, setBuyPurpose] = useState("voice_sms");
   const pickPurpose = (p) => {
     setBuyPurpose(p);
@@ -101,7 +102,7 @@ export default function NumberPoolPanel() {
         action: "purchase",
         e164,
         purpose: buyPurpose,
-        ...(buyPurpose === "fax" ? { set_as_office_fax: true } : {}),
+        ...(buyPurpose === "fax" ? { set_as_outbound_fax: true } : {}),
       }),
     onSuccess: (res, e164) => {
       invalidate();
@@ -109,7 +110,7 @@ export default function NumberPoolPanel() {
       setFound((prev) => prev.filter((n) => n.e164 !== e164));
       toast.success(
         buyPurpose === "fax"
-          ? "Fax number purchased — wired to your fax connection and set as the office fax line"
+          ? "Fax number purchased — wired to your fax connection and set as the outbound fax line"
           : "Number purchased and added to the pool",
       );
     },
@@ -175,13 +176,14 @@ export default function NumberPoolPanel() {
                     className={buyPurpose === "fax" ? "bg-indigo-600 hover:bg-indigo-700" : ""}
                     onClick={() => pickPurpose("fax")}
                   >
-                    Office fax line
+                    Outbound fax line
                   </Button>
                 </div>
                 {buyPurpose === "fax" && (
                   <p className="text-[11px] text-slate-500 mt-1">
                     Searches fax-capable numbers. Buying wires the number to your Telnyx fax connection and
-                    sets it as the shared office fax number every user faxes from.
+                    sets it as the single blind line every fax transmits from — recipients see the office
+                    fax number instead, so replies go straight to the office machine.
                   </p>
                 )}
               </div>

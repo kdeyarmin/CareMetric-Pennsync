@@ -69,15 +69,17 @@ Deno.serve(async (req) => {
       if (conflict) {
         return Response.json({ error: `Work number ${workNum} is already assigned to ${conflict.email}` }, { status: 409 });
       }
-      // The shared office fax / main office lines are reserved: handing one to a
-      // nurse would break inbound fax ingestion or office call routing.
+      // The office fax, outbound fax, and main office lines are reserved:
+      // handing one to a nurse would break fax transmission/masking or office
+      // call routing.
       const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
       const reserved = [
         normalizeE164(settingsRows[0]?.office_fax_number_e164),
+        normalizeE164(settingsRows[0]?.outbound_fax_number_e164),
         normalizeE164(settingsRows[0]?.main_office_number_e164),
       ].filter(Boolean);
       if (reserved.includes(workNum)) {
-        return Response.json({ error: `${workNum} is the shared office fax / main office number — it can't be a personal work number.` }, { status: 409 });
+        return Response.json({ error: `${workNum} is a reserved office/fax line — it can't be a personal work number.` }, { status: 409 });
       }
     }
 

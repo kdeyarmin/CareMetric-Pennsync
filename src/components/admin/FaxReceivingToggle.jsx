@@ -73,12 +73,12 @@ export default function FaxReceivingToggle() {
         <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
           <div className="flex-1">
             <Label className="text-base font-semibold">
-              {isEnabled ? "Fax Receiving Active" : "Fax Receiving Disabled"}
+              {isEnabled ? "In-App Fax Receiving Active" : "In-App Fax Receiving Off"}
             </Label>
             <p className="text-sm text-slate-600 mt-1">
-              {isEnabled 
-                ? "Your agency is currently accepting incoming faxes" 
-                : "Incoming faxes will be rejected until re-enabled"}
+              {isEnabled
+                ? "Incoming faxes on the outbound line are ingested into the app (OCR + referral matching)"
+                : "The app doesn't handle incoming faxes — replies go straight to the office fax machine"}
             </p>
           </div>
           <Switch
@@ -89,10 +89,12 @@ export default function FaxReceivingToggle() {
         </div>
 
         {!isEnabled && (
-          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-sm text-amber-800">
-              <strong>Note:</strong> While disabled, incoming faxes will not be processed. 
-              Existing scheduled and outbound faxes will continue to work normally.
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>Off is the normal setting:</strong> outbound faxes are presented under the office
+              fax number, so replies dial the office machine directly. Any stray fax dialed to the
+              outbound line is passed straight through to the office fax. Scheduled and outbound faxes
+              work normally.
             </p>
           </div>
         )}

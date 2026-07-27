@@ -8,7 +8,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  *
  * Telnyx faxes require a Programmable Fax connection id (the in-app
  * fax_connection_id on IntegrationSecret) and a from number on that connection
- * (the in-app AgencySettings.office_fax_number_e164).
+ * (the in-app AgencySettings.outbound_fax_number_e164 — the single blind
+ * transmission line; office_fax_number_e164 is the office machine recipients
+ * are told to reply to).
  */
 
 // <<<BEGIN SHARED HELPER: isSafeFetchUrl — generated, edit base44/_shared/backendHelpers.mjs>>>
@@ -54,6 +56,17 @@ function normalizeFromE164(raw) {
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
   if (String(raw).trim().startsWith('+') && digits.length >= 8 && digits.length <= 15 && digits[0] !== '0') return `+${digits}`;
   return null;
+}
+
+// Fax caller-id display name shown to the receiving machine (Telnyx
+// from_display_name allows only letters, numbers, spaces and -_~!.+): presents
+// the OFFICE fax number so recipients dial the office machine back, not the
+// blind outbound line.
+function officeFaxDisplayName(officeE164) {
+  const d = String(officeE164 || '').replace(/[^\d]/g, '');
+  const ten = d.length === 11 && d.startsWith('1') ? d.slice(1) : d;
+  if (ten.length !== 10) return null;
+  return `Office Fax ${ten.slice(0, 3)}-${ten.slice(3, 6)}-${ten.slice(6)}`;
 }
 
 // ---- cost controls (mirrors src/components/voice/costControls.js) ----
@@ -120,13 +133,19 @@ Deno.serve(async (req) => {
     }
 
     const { apiKey, faxConnectionId } = await resolveTelnyxCreds(base44);
-    // Every user faxes from the SINGLE shared office fax number so the office
-    // number is what recipients see (and reply-to) — incoming faxes therefore go
-    // straight to the office, never to an individual. Configurable in-app via
-    // AgencySettings.office_fax_number_e164.
+    // Outbound faxes TRANSMIT from the single "blind" Telnyx fax line
+    // (AgencySettings.outbound_fax_number_e164) but are PRESENTED as the office
+    // fax machine (office_fax_number_e164, e.g. +17244650444): the office
+    // number rides on the caller-id display name and the cover sheet, so
+    // fax-backs are dialed straight to the physical office machine — the app
+    // expects no inbound faxes. Legacy fallback: with no outbound line set, the
+    // office number itself is the technical from (pre-split behavior).
     const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
     const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const fromNumber = normalizeFromE164(officeFaxRaw);
+    const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
+    const officeFax = normalizeFromE164(officeFaxRaw);
+    const outboundFax = normalizeFromE164(outboundFaxRaw);
+    const fromNumber = outboundFax || officeFax;
 
     // Cost control: block premium/blocked/international fax destinations by default.
     const faxDest = normalizeFaxDest(to_number);
@@ -138,11 +157,16 @@ Deno.serve(async (req) => {
     if (!apiKey || !faxConnectionId) {
       return Response.json({ error: 'Telnyx fax credentials not configured' }, { status: 500 });
     }
+    if (outboundFaxRaw && !outboundFax) {
+      return Response.json({
+        error: `Outbound fax number "${outboundFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`,
+      }, { status: 500 });
+    }
     if (!fromNumber) {
       return Response.json({
         error: officeFaxRaw
-          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`
-          : 'Office fax number not configured. Set the shared office fax number in Agency Settings.',
+          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650444).`
+          : 'No outbound fax number configured. Set the outbound fax line (and office fax number) in Agency Settings.',
       }, { status: 500 });
     }
 
@@ -189,6 +213,9 @@ Deno.serve(async (req) => {
       media_url: file_url,
       quality: 'high',
     };
+    // Mask the blind line: present the office fax number as the caller-id name.
+    const displayName = officeFaxDisplayName(officeFax);
+    if (displayName) payload.from_display_name = displayName;
     if (functionsBaseUrl) payload.webhook_url = `${functionsBaseUrl}/handleTelnyxStatusWebhook`;
 
     let telnyxResponse;

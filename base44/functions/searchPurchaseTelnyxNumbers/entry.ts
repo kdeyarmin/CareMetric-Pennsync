@@ -8,20 +8,24 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  *
  * Body: { action: 'search'|'purchase'|'provision_fax', ... }
  *   - search        { area_code?, country?, limit?, purpose? }
- *   - purchase      { e164, label?, purpose?, set_as_office_fax? }
- *   - provision_fax { e164?, set_as_office_fax? }
+ *   - purchase      { e164, label?, purpose?, set_as_outbound_fax? }
+ *   - provision_fax { e164?, set_as_outbound_fax? }
  *
  * `purpose` selects what the number is for and how it is wired at order time:
  *   - 'voice_sms' (default) — a nurse line. Search filters SMS+voice-capable
  *     numbers; purchase attaches the messaging profile + voice connection.
- *   - 'fax' — the shared office fax line. Search filters fax-capable numbers;
- *     purchase attaches the Programmable Fax connection instead, and (unless
- *     set_as_office_fax === false) stores the number as
- *     AgencySettings.office_fax_number_e164 so sendFax/sendBatchFax use it.
+ *   - 'fax' — the single blind OUTBOUND fax line. Search filters fax-capable
+ *     numbers; purchase attaches the Programmable Fax connection instead, and
+ *     (unless set_as_outbound_fax === false) stores the number as
+ *     AgencySettings.outbound_fax_number_e164, the technical from sendFax /
+ *     sendBatchFax transmit with. Recipients never reply to it: outbound faxes
+ *     are presented under the OFFICE fax number (office_fax_number_e164, the
+ *     physical office machine), so fax-backs go straight to the office and the
+ *     app expects no inbound faxes.
  *
  * `provision_fax` provisions fax capacity on a number the account ALREADY owns:
  * it looks the number up in Telnyx, re-points its connection at the Programmable
- * Fax connection, and stores it as the office fax number. Use it when the fax
+ * Fax connection, and stores it as the outbound fax line. Use it when the fax
  * line was purchased outside the app (or bought in-app before fax support).
  *
  * The purchased Telnyx phone-number id is stored in the existing
@@ -73,15 +77,16 @@ async function fetchJson(url, init) {
 
 const TELNYX_API_BASE = 'https://api.telnyx.com/v2';
 
-// Store `e164` as the shared office fax line (what every outbound fax sends
-// from, and where inbound faxes land). One AgencySettings row is the source of
-// truth app-wide (newest row wins everywhere it's read).
-async function setOfficeFaxNumber(base44, e164) {
+// Store `e164` as the single blind OUTBOUND fax line (the technical `from`
+// every outbound fax transmits with; presented to recipients under the office
+// fax number). One AgencySettings row is the source of truth app-wide (newest
+// row wins everywhere it's read).
+async function setOutboundFaxNumber(base44, e164) {
   const rows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
   if (rows[0]?.id) {
-    await base44.asServiceRole.entities.AgencySettings.update(rows[0].id, { office_fax_number_e164: e164 });
+    await base44.asServiceRole.entities.AgencySettings.update(rows[0].id, { outbound_fax_number_e164: e164 });
   } else {
-    await base44.asServiceRole.entities.AgencySettings.create({ office_fax_number_e164: e164 });
+    await base44.asServiceRole.entities.AgencySettings.create({ outbound_fax_number_e164: e164 });
   }
 }
 
@@ -115,10 +120,10 @@ Deno.serve(async (req) => {
       }).catch(() => {});
 
     // Point an already-owned Telnyx number at the Programmable Fax connection
-    // and (optionally) store it as the office fax line. Shared by the
+    // and (optionally) store it as the outbound fax line. Shared by the
     // 'provision_fax' action and a fax-purpose purchase of a number that's
     // already in the pool.
-    async function provisionExistingFax(e164, { setAsOfficeFax }) {
+    async function provisionExistingFax(e164, { setAsOutboundFax }) {
       // Resolve the Telnyx phone-number id by looking the number up in the
       // account (authoritative — the locally stored id can be a number-ORDER id
       // from an old purchase, which the phone_numbers PATCH would reject).
@@ -146,14 +151,14 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Telnyx rejected the fax-connection update.', status: patch.status, details: firstErr || patch.data }, { status: 502 });
       }
 
-      if (setAsOfficeFax) await setOfficeFaxNumber(base44, e164);
+      if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164);
       // Refresh the stored id from the authoritative lookup (it may hold a
       // number-order id from an old in-app purchase).
       if (poolRows[0]?.id && poolRows[0].twilio_phone_number_sid !== numberId) {
         await base44.asServiceRole.entities.PhoneNumber.update(poolRows[0].id, { twilio_phone_number_sid: numberId }).catch(() => {});
       }
-      await audit('fax_capacity_provisioned', { e164, telnyx_number_id: numberId, set_as_office_fax: setAsOfficeFax });
-      return Response.json({ success: true, e164, telnyx_number_id: numberId, fax_connection_id: faxConnectionId, office_fax_set: setAsOfficeFax });
+      await audit('fax_capacity_provisioned', { e164, telnyx_number_id: numberId, set_as_outbound_fax: setAsOutboundFax });
+      return Response.json({ success: true, e164, telnyx_number_id: numberId, fax_connection_id: faxConnectionId, outbound_fax_set: setAsOutboundFax });
     }
 
     if (action === 'search') {
@@ -188,7 +193,7 @@ Deno.serve(async (req) => {
     if (action === 'purchase') {
       const e164 = normalizeE164(body.e164);
       if (!e164) return Response.json({ error: 'Enter a valid number to purchase.' }, { status: 400 });
-      const setAsOfficeFax = purpose === 'fax' && body.set_as_office_fax !== false;
+      const setAsOutboundFax = purpose === 'fax' && body.set_as_outbound_fax !== false;
       if (purpose === 'fax' && !faxConnectionId) {
         return Response.json({ error: 'Add your Telnyx fax connection id first (Telnyx Credentials → Advanced) so the number can be wired for fax.' }, { status: 400 });
       }
@@ -198,7 +203,7 @@ Deno.serve(async (req) => {
       // so the admin's intent (make this my fax line) is honored either way.
       const existing = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }).catch(() => []);
       if (existing.length > 0) {
-        if (purpose === 'fax') return await provisionExistingFax(e164, { setAsOfficeFax });
+        if (purpose === 'fax') return await provisionExistingFax(e164, { setAsOutboundFax });
         return Response.json({ success: true, already_in_pool: true, e164 });
       }
 
@@ -232,20 +237,20 @@ Deno.serve(async (req) => {
         e164,
         label: typeof body.label === 'string' && body.label.trim()
           ? body.label.trim()
-          : (purpose === 'fax' ? 'Office fax line' : ''),
+          : (purpose === 'fax' ? 'Outbound fax line' : ''),
         status: 'available',
         twilio_phone_number_sid: telnyxNumberId || '',
         notes: purpose === 'fax'
           ? 'Purchased in-app via Telnyx numbers API (fax line — attached to the Programmable Fax connection)'
           : 'Purchased in-app via Telnyx numbers API',
       });
-      if (setAsOfficeFax) await setOfficeFaxNumber(base44, e164);
+      if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164);
       await base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email, user_name: user.full_name,
         action: 'phone_number_purchased', entity_type: 'PhoneNumber', entity_id: row.id,
-        details: { e164, telnyx_number_id: telnyxNumberId, purpose, set_as_office_fax: setAsOfficeFax, timestamp: new Date().toISOString() }, status: 'success',
+        details: { e164, telnyx_number_id: telnyxNumberId, purpose, set_as_outbound_fax: setAsOutboundFax, timestamp: new Date().toISOString() }, status: 'success',
       }).catch(() => {});
-      return Response.json({ success: true, e164, id: row.id, telnyx_number_id: telnyxNumberId, purpose, office_fax_set: setAsOfficeFax });
+      return Response.json({ success: true, e164, id: row.id, telnyx_number_id: telnyxNumberId, purpose, outbound_fax_set: setAsOutboundFax });
     }
 
     if (action === 'provision_fax') {
@@ -260,7 +265,7 @@ Deno.serve(async (req) => {
       if (!faxConnectionId) {
         return Response.json({ error: 'Add your Telnyx fax connection id first (Telnyx Credentials → Advanced) so the number can be wired for fax.' }, { status: 400 });
       }
-      return await provisionExistingFax(e164, { setAsOfficeFax: body.set_as_office_fax !== false });
+      return await provisionExistingFax(e164, { setAsOutboundFax: body.set_as_outbound_fax !== false });
     }
 
     return Response.json({ error: `Unknown action: ${action}` }, { status: 400 });

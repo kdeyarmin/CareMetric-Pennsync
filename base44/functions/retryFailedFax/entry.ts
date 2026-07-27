@@ -14,6 +14,17 @@ function normalizeFromE164(raw) {
   return null;
 }
 
+// Fax caller-id display name shown to the receiving machine (Telnyx
+// from_display_name allows only letters, numbers, spaces and -_~!.+): presents
+// the OFFICE fax number so recipients dial the office machine back, not the
+// blind outbound line. Mirrors sendFax.
+function officeFaxDisplayName(officeE164) {
+  const d = String(officeE164 || '').replace(/[^\d]/g, '');
+  const ten = d.length === 11 && d.startsWith('1') ? d.slice(1) : d;
+  if (ten.length !== 10) return null;
+  return `Office Fax ${ten.slice(0, 3)}-${ten.slice(3, 6)}-${ten.slice(6)}`;
+}
+
 // <<<BEGIN SHARED HELPER: isSafeFetchUrl — generated, edit base44/_shared/backendHelpers.mjs>>>
 // SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
 // internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
@@ -112,12 +123,15 @@ Deno.serve(async (req) => {
 
     // Get Telnyx credentials (env, then in-app IntegrationSecret)
     const { apiKey, faxConnectionId } = await resolveTelnyxCreds(base44);
-    // Resolve the office fax from-number the same way sendFax does: prefer the
-    // in-app AgencySettings.office_fax_number_e164, normalized strictly to
-    // E.164 (Telnyx rejects a formatted `from`; mirrors sendFax).
+    // Resolve the from-number the same way sendFax does: transmit from the
+    // blind outbound line (outbound_fax_number_e164), presented as the office
+    // fax machine; legacy fallback to office_fax_number_e164 as the from.
     const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
     const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const fromNumber = normalizeFromE164(officeFaxRaw);
+    const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
+    const officeFax = normalizeFromE164(officeFaxRaw);
+    const outboundFax = normalizeFromE164(outboundFaxRaw);
+    const fromNumber = outboundFax || officeFax;
 
     if (!apiKey || !faxConnectionId) {
       return Response.json({
@@ -125,11 +139,17 @@ Deno.serve(async (req) => {
         success: false
       }, { status: 500 });
     }
+    if (outboundFaxRaw && !outboundFax) {
+      return Response.json({
+        error: `Outbound fax number "${outboundFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`,
+        success: false
+      }, { status: 500 });
+    }
     if (!fromNumber) {
       return Response.json({
         error: officeFaxRaw
-          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`
-          : 'Office fax number not configured. Set the shared office fax number in Agency Settings.',
+          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650444).`
+          : 'No outbound fax number configured. Set the outbound fax line (and office fax number) in Agency Settings.',
         success: false
       }, { status: 500 });
     }
@@ -180,6 +200,9 @@ Deno.serve(async (req) => {
       media_url: originalFax.document_url,
       quality: 'high',
     };
+    // Mask the blind line: present the office fax number as the caller-id name.
+    const displayName = officeFaxDisplayName(officeFax);
+    if (displayName) retryPayload.from_display_name = displayName;
     if (functionsBaseUrl) retryPayload.webhook_url = `${functionsBaseUrl}/handleTelnyxStatusWebhook`;
 
     // Re-send the fax

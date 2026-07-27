@@ -153,26 +153,44 @@ Deno.serve(async (req) => {
         : 'No fax connection id — outbound fax requires a Programmable Fax / FAX Application connection id.',
     });
 
-    // --- Office fax from-number (saved AgencySettings, strict E.164) ---
-    // Every outbound fax sends from this one shared number; a missing or
-    // malformed value fails every send, so surface it here alongside the
-    // fax connection check.
+    // --- Fax numbers (saved AgencySettings, strict-ish E.164) ---
+    // Faxes TRANSMIT from the single blind outbound line and are PRESENTED
+    // under the office fax machine's number (replies go straight to the
+    // office). A missing/malformed outbound line (with no office fallback)
+    // fails every send, so surface both here alongside the connection check.
+    const validFaxNumber = (raw) => {
+      const d = raw.replace(/[^\d]/g, '');
+      return (
+        d.length === 10 ||
+        (d.length === 11 && d.startsWith('1')) ||
+        (raw.startsWith('+') && d.length >= 8 && d.length <= 15 && d[0] !== '0')
+      );
+    };
     const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
     const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const officeFaxDigits = officeFaxRaw.replace(/[^\d]/g, '');
-    const officeFaxValid =
-      officeFaxDigits.length === 10 ||
-      (officeFaxDigits.length === 11 && officeFaxDigits.startsWith('1')) ||
-      (officeFaxRaw.startsWith('+') && officeFaxDigits.length >= 8 && officeFaxDigits.length <= 15 && officeFaxDigits[0] !== '0');
+    const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
+    const officeFaxValid = officeFaxRaw !== '' && validFaxNumber(officeFaxRaw);
+    const outboundFaxValid = outboundFaxRaw !== '' && validFaxNumber(outboundFaxRaw);
+    const faxFromValid = outboundFaxValid || officeFaxValid;
     checks.push({
       id: 'telnyx_fax_from',
-      label: 'Office fax number',
+      label: 'Outbound fax line',
+      status: faxFromValid ? 'ok' : 'warn',
+      detail: outboundFaxValid
+        ? `Blind outbound fax line configured (${outboundFaxRaw}) — all faxes transmit from it.`
+        : officeFaxValid
+          ? 'No dedicated outbound line — faxes fall back to transmitting from the office fax number (set the outbound line so the office machine stays reply-only).'
+          : outboundFaxRaw || officeFaxRaw
+            ? 'Saved fax number doesn\'t look like a valid phone number — every outbound fax will fail until it\'s fixed.'
+            : 'No outbound fax number saved — outbound faxing is disabled until one is set in Agency Settings.',
+    });
+    checks.push({
+      id: 'telnyx_fax_reply',
+      label: 'Office fax machine (reply-to)',
       status: officeFaxValid ? 'ok' : 'warn',
       detail: officeFaxValid
-        ? `Shared office fax number configured (${officeFaxRaw}).`
-        : officeFaxRaw
-          ? `Saved office fax number "${officeFaxRaw}" doesn't look like a valid phone number — every outbound fax will fail until it's fixed.`
-          : 'No shared office fax number saved — outbound faxing is disabled until one is set in Agency Settings.',
+        ? `Recipients are shown ${officeFaxRaw} as the sender, so fax replies go straight to the office machine.`
+        : 'No office fax machine number saved — recipients won\'t be pointed at the office for replies.',
     });
 
     // --- Live Telnyx API probe ---
@@ -190,7 +208,7 @@ Deno.serve(async (req) => {
     const stats = {
       messaging_ready: Boolean(creds.apiKey),
       voice_ready: Boolean(creds.apiKey && creds.voiceConnectionId),
-      fax_ready: Boolean(creds.apiKey && creds.faxConnectionId && officeFaxValid),
+      fax_ready: Boolean(creds.apiKey && creds.faxConnectionId && faxFromValid),
       webhooks_verifiable: Boolean(creds.publicKey),
       total_users: allUsers.length,
       nurses_with_work_number: allUsers.filter((u) => isSetStr(u.work_phone_number)).length,

@@ -92,22 +92,44 @@ export function evaluateAgencyConfig(settings) {
     });
   }
 
-  // Every outbound fax sends from this single shared number (sendFax /
-  // sendBatchFax resolve it server-side), so fax capacity is dead without it.
+  // Recipients see (and reply to) the OFFICE fax machine's number on every
+  // outbound fax — the cover sheet and caller-id name carry it, so fax-backs go
+  // straight to the physical office machine, never into the app.
   if (isBlank(s.office_fax_number_e164)) {
     checks.push({
       id: "office_fax",
-      label: "Shared office fax number",
+      label: "Office fax machine (reply-to)",
       status: "warn",
-      detail: "Not set — outbound faxing is disabled until the office fax number is set.",
+      detail: "Not set — recipients won't be shown the office number to fax replies to.",
     });
   } else {
     const ok = looksLikePhone(s.office_fax_number_e164);
     checks.push({
       id: "office_fax",
-      label: "Shared office fax number",
+      label: "Office fax machine (reply-to)",
       status: ok ? "ok" : "warn",
-      detail: ok ? "Configured." : "Doesn't look like a valid fax number — every outbound fax will fail.",
+      detail: ok ? "Configured — replies go straight to the office machine." : "Doesn't look like a valid fax number.",
+    });
+  }
+
+  // The single blind Telnyx line every fax TRANSMITS from (masked as the office
+  // number above). With neither number set, outbound faxing is disabled.
+  if (isBlank(s.outbound_fax_number_e164)) {
+    checks.push({
+      id: "outbound_fax",
+      label: "Outbound fax line",
+      status: "warn",
+      detail: isBlank(s.office_fax_number_e164)
+        ? "Not set — outbound faxing is disabled until the outbound fax line is set."
+        : "Not set — faxes fall back to transmitting from the office fax number, which must then be a Telnyx fax number.",
+    });
+  } else {
+    const ok = looksLikePhone(s.outbound_fax_number_e164);
+    checks.push({
+      id: "outbound_fax",
+      label: "Outbound fax line",
+      status: ok ? "ok" : "warn",
+      detail: ok ? "Configured — all faxes transmit from this blind line." : "Doesn't look like a valid fax number — every outbound fax will fail.",
     });
   }
 

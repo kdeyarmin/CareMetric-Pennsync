@@ -568,10 +568,15 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
 // both terminal and share the top rank so neither can overwrite the other.
 const FAX_RANK = { queued: 1, sending: 2, sent: 3, delivered: 4, failed: 4 };
 
-// Inbound fax ingestion: Telnyx delivers a received fax as `fax.received` with
-// the media URL. Create an IncomingFax row (previously nothing ingested
-// inbound faxes at all) so the processInboundFaxes job can OCR it and
-// auto-match provider fax-backs to open referral follow-up requests.
+// Inbound fax handling: Telnyx delivers a received fax as `fax.received` with
+// the media URL. The app does NOT expect inbound faxes by default — outbound
+// faxes transmit from a blind Telnyx line but are PRESENTED under the office
+// fax machine's number, so fax-backs are dialed straight to the office. Any
+// stray fax that still lands on the blind line (e.g. a machine auto-redialing
+// the transmitting number) is passed straight through to the office fax
+// machine. Opt-in ingestion (fax_receiving_enabled) keeps the legacy behavior:
+// an IncomingFax row that the processInboundFaxes job OCRs and matches to
+// referral follow-ups.
 async function handleInboundFax(base44, payload) {
   const providerId = payload?.id;
   if (!providerId) return Response.json({ success: true, skipped: 'no fax id' });
@@ -583,31 +588,83 @@ async function handleInboundFax(base44, payload) {
   const mediaUrl = payload?.media_url || payload?.original_media_url;
   if (!mediaUrl) return Response.json({ success: true, skipped: 'no media url' });
 
-  const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-  const settings = settingsRows[0];
-  if (!settings?.fax_receiving_enabled) {
-    return Response.json({ success: true, skipped: 'fax receiving disabled' });
-  }
-
-  // Idempotency: Telnyx re-delivers webhooks; one IncomingFax per provider fax id.
+  // Idempotency FIRST: Telnyx re-delivers webhooks; one IncomingFax row — and
+  // at most one office forward — per provider fax id (a PHI fax must never be
+  // re-faxed on a re-delivery).
   const existing = await base44.asServiceRole.entities.IncomingFax.filter({ telnyx_fax_id: providerId }).catch(() => []);
   if (existing.length > 0) {
     return Response.json({ success: true, deduped: true });
   }
 
+  const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+  const settings = settingsRows[0];
+
+  if (settings?.fax_receiving_enabled) {
+    // Opt-in ingestion: keep the fax in-app for OCR + referral matching.
+    const record = await base44.asServiceRole.entities.IncomingFax.create({
+      // Route to whoever owns the agency settings (an admin) until the
+      // processing job matches it to a patient/referral.
+      user_email: settings.created_by || 'unassigned',
+      sender_fax_number: payload?.from || '',
+      received_at: new Date().toISOString(),
+      document_url: mediaUrl,
+      page_count: Number.isFinite(payload?.page_count) ? payload.page_count : undefined,
+      telnyx_fax_id: providerId,
+      processing_status: 'pending',
+      status: 'unread',
+    });
+    return Response.json({ success: true, incoming_fax_id: record.id });
+  }
+
+  // Default posture: pass the fax straight through to the office machine.
+  // Requires the office fax number + fax creds; the self-loop guard skips the
+  // forward if the office number IS the line that received it (misconfig).
+  const officeFax = normalizeE164(settings?.office_fax_number_e164);
+  const receivedOn = normalizeE164(payload?.to);
+  const creds = await resolveTelnyxCreds(base44);
+  if (!creds.apiKey || !creds.faxConnectionId || !officeFax || !receivedOn || officeFax === receivedOn) {
+    return Response.json({ success: true, skipped: 'fax receiving disabled' });
+  }
+
+  // The row is created BEFORE the forward as the at-most-once guard; marked
+  // 'routed' on success, left 'unread' on failure so a stray fax is never
+  // silently dropped (it stays visible to admins with its media URL).
+  // processing_status 'completed' keeps the OCR job away from it.
   const record = await base44.asServiceRole.entities.IncomingFax.create({
-    // The office fax line is shared; route to whoever owns the agency settings
-    // (an admin) until the processing job matches it to a patient/referral.
-    user_email: settings.created_by || 'unassigned',
+    user_email: settings?.created_by || 'unassigned',
     sender_fax_number: payload?.from || '',
     received_at: new Date().toISOString(),
     document_url: mediaUrl,
     page_count: Number.isFinite(payload?.page_count) ? payload.page_count : undefined,
     telnyx_fax_id: providerId,
-    processing_status: 'pending',
+    processing_status: 'completed',
     status: 'unread',
   });
-  return Response.json({ success: true, incoming_fax_id: record.id });
+  let forwarded = false;
+  try {
+    const resp = await fetch('https://api.telnyx.com/v2/faxes', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${creds.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        connection_id: creds.faxConnectionId,
+        from: receivedOn,
+        to: officeFax,
+        media_url: mediaUrl,
+        quality: 'high',
+      }),
+    });
+    forwarded = resp.ok;
+    if (!resp.ok) console.error('inbound fax office-forward rejected', { status: resp.status });
+  } catch (err) {
+    console.error('inbound fax office-forward failed:', err?.message);
+  }
+  if (forwarded) {
+    await base44.asServiceRole.entities.IncomingFax.update(record.id, {
+      status: 'routed',
+      routed_to: `office fax ${officeFax}`,
+    }).catch(() => {});
+  }
+  return Response.json({ success: true, forwarded_to_office: forwarded, incoming_fax_id: record.id });
 }
 
 async function handleFaxEvent(base44, payload) {

@@ -210,7 +210,7 @@ test("a fax-purpose search filters fax-capable numbers (not sms/voice)", async (
   assert.ok(!/filter\[features\]\[\]=sms/.test(decoded), "fax search does not require sms");
 });
 
-test("a fax-purpose purchase attaches the FAX connection and sets the office fax number", async () => {
+test("a fax-purpose purchase attaches the FAX connection and sets the blind outbound line", async () => {
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_2", phone_numbers: [{ id: "np_9", phone_number: "+12155550199" }] } } }) },
   ]);
@@ -234,9 +234,10 @@ test("a fax-purpose purchase attaches the FAX connection and sets the office fax
   assert.ok(order, "posted a number order");
   assert.equal(order.body.connection_id, "FC1", "fax purchases attach the fax connection, not voice");
   assert.equal(order.body.messaging_profile_id, undefined, "fax purchases don't attach the messaging profile");
-  const officeFaxWrite = writes.find((w) => w.entity === "AgencySettings" && w.op === "update");
-  assert.equal(officeFaxWrite?.id, "AS1");
-  assert.equal(officeFaxWrite?.patch.office_fax_number_e164, "+12155550199", "stored as the shared office fax line");
+  const outboundWrite = writes.find((w) => w.entity === "AgencySettings" && w.op === "update");
+  assert.equal(outboundWrite?.id, "AS1");
+  assert.equal(outboundWrite?.patch.outbound_fax_number_e164, "+12155550199", "stored as the blind outbound fax line");
+  assert.equal(outboundWrite?.patch.office_fax_number_e164, undefined, "the office reply-to number is untouched");
 });
 
 test("provision_fax re-points an owned number at the fax connection", async () => {
@@ -263,8 +264,67 @@ test("provision_fax re-points an owned number at the fax connection", async () =
   const patch = calls.find((c) => /\/v2\/phone_numbers\/np_7$/.test(c.url) && c.method === "PATCH");
   assert.ok(patch, "PATCHed the owned Telnyx number");
   assert.equal(patch.body.connection_id, "FC1", "re-pointed at the Programmable Fax connection");
-  const officeFaxWrite = writes.find((w) => w.entity === "AgencySettings" && w.op === "update");
-  assert.equal(officeFaxWrite?.patch.office_fax_number_e164, "+12155550188", "stored normalized as the office fax line");
+  const outboundWrite = writes.find((w) => w.entity === "AgencySettings" && w.op === "update");
+  assert.equal(outboundWrite?.patch.outbound_fax_number_e164, "+12155550188", "stored normalized as the blind outbound fax line");
+});
+
+test("sendFax transmits from the blind outbound line masked as the office fax", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fax_3", status: "queued" } } }) },
+  ]);
+  const handler = await loadHandler("./sendFax/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({ data: {
+      IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
+      AgencySettings: [{ office_fax_number_e164: "+17244650444", outbound_fax_number_e164: "+12155550190" }],
+    } }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/sendFax", {
+    method: "POST", body: JSON.stringify({ file_url: "https://base44.app/files/x.pdf", to_number: "+12155550144" }),
+  }));
+  assert.equal(res.status, 200);
+  const call = calls.find((c) => c.url === "https://api.telnyx.com/v2/faxes");
+  assert.ok(call, "posted to the Telnyx Faxes endpoint");
+  assert.equal(call.body.from, "+12155550190", "transmits from the blind outbound line");
+  assert.equal(call.body.from_display_name, "Office Fax 724-465-0444", "presents the office machine's number to the recipient");
+});
+
+test("a stray inbound fax on the blind line is passed straight through to the office machine", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.endsWith("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fwd_1" } } }) },
+  ]);
+  const writes = [];
+  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({
+      writes,
+      data: {
+        IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64, fax_connection_id: "FC1" }],
+        // fax_receiving_enabled is NOT set — the default posture forwards to the office.
+        AgencySettings: [{ office_fax_number_e164: "+17244650444" }],
+        IncomingFax: [],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(signedWebhook(privateKey, { data: { event_type: "fax.received", payload: {
+    id: "faxin_1", direction: "inbound", media_url: "https://media.telnyx.com/f1.pdf",
+    from: "+13125550182", to: "+12155550190",
+  } } }));
+  assert.equal(res.status, 200);
+  const fwd = calls.find((c) => c.url.endsWith("/v2/faxes"));
+  assert.ok(fwd, "forwarded the received fax to the office");
+  assert.equal(fwd.body.to, "+17244650444", "delivered to the office fax machine");
+  assert.equal(fwd.body.from, "+12155550190", "sent from the line that received it");
+  assert.equal(fwd.body.media_url, "https://media.telnyx.com/f1.pdf");
+  const row = writes.find((w) => w.entity === "IncomingFax" && w.op === "create");
+  assert.ok(row, "created the at-most-once forward record");
+  assert.equal(row.row.processing_status, "completed", "kept away from the in-app OCR job");
+  const routed = writes.find((w) => w.entity === "IncomingFax" && w.op === "update");
+  assert.equal(routed?.patch.status, "routed", "marked routed after the successful forward");
 });
 
 test("sendFax normalizes a formatted office fax number to E.164 on `from`", async () => {

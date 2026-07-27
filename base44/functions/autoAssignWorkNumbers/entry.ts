@@ -57,11 +57,16 @@ Deno.serve(async (req) => {
     const inUse = new Set(
       allUsers.map((u) => normalizeE164(u.work_phone_number)).filter(Boolean),
     );
-    // The shared office fax / main office lines are reserved: they can sit in
-    // the pool (e.g. bought in-app), but handing one to a nurse would break
-    // inbound fax ingestion or office call routing. Treat them as in-use.
+    // The office fax, outbound fax, and main office lines are reserved: they
+    // can sit in the pool (e.g. bought in-app), but handing one to a nurse
+    // would break fax transmission/masking or office call routing. Treat them
+    // as in-use.
     const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    for (const reserved of [settingsRows[0]?.office_fax_number_e164, settingsRows[0]?.main_office_number_e164]) {
+    for (const reserved of [
+      settingsRows[0]?.office_fax_number_e164,
+      settingsRows[0]?.outbound_fax_number_e164,
+      settingsRows[0]?.main_office_number_e164,
+    ]) {
       const norm = normalizeE164(reserved);
       if (norm) inUse.add(norm);
     }
