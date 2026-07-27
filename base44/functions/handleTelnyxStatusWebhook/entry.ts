@@ -366,9 +366,19 @@ async function sendAutoReply(apiKey, messagingProfileId, from, to, text) {
 async function getAgencyConfig(base44) {
   const settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
   const s = settings[0] || {};
+  // The office / after-hours numbers become Call Control `transfer` targets, and
+  // Telnyx rejects a formatted number — so a stored "(724) 465-0440" would
+  // dead-end every after-hours call at the apology fallback. Normalize to E.164
+  // at point of use (raw kept only when unnormalizable, preserving the old
+  // failure mode for genuine garbage).
+  const toE164 = (raw) => normalizeE164(raw) || (raw ? String(raw).trim() : '');
   return {
     settings: s,
-    mainOffice: s.main_office_number_e164 || '',
+    mainOffice: toE164(s.main_office_number_e164),
+    // As-entered forms for SPOKEN greetings / reply TEXT ({office} substitution):
+    // an admin's "724-465-0440" reads/speaks better than "+17244650440".
+    mainOfficeDisplay: String(s.main_office_number_e164 || '').trim(),
+    afterHoursTransferDisplay: String(s.after_hours_transfer_number_e164 || s.main_office_number_e164 || '').trim(),
     defaultOffDuty: s.default_off_duty_template || '',
     smsEnabled: s.sms_messaging_enabled ?? true,
     afterHoursReplyEnabled: s.after_hours_sms_auto_reply_enabled !== false,
@@ -378,7 +388,7 @@ async function getAgencyConfig(base44) {
     voicemailEnabled: s.voicemail_enabled === true,
     voicemailGreeting: s.voicemail_greeting || '',
     afterHoursAction: s.after_hours_call_action || 'transfer',
-    afterHoursTransfer: s.after_hours_transfer_number_e164 || s.main_office_number_e164 || '',
+    afterHoursTransfer: toE164(s.after_hours_transfer_number_e164 || s.main_office_number_e164),
     afterHoursGreeting: s.after_hours_call_greeting || '',
   };
 }
@@ -509,7 +519,7 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
     await sendReply('You are now subscribed to texts from your care team. Reply STOP to opt out, HELP for help.');
   } else if (HELP_WORDS.includes(keyword)) {
     if (!priorOptedOut && smsEnabled) {
-      const office = config.mainOffice ? ` or call our office at ${config.mainOffice}` : '';
+      const office = config.mainOfficeDisplay ? ` or call our office at ${config.mainOfficeDisplay}` : '';
       await sendReply(`This is your home-health care team. Reply STOP to unsubscribe${office}.`);
     }
   }
@@ -519,13 +529,13 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
   const offDuty = isOffDutyNow(nurse, new Date(), config.settings);
   const agencyClosed = !isAgencyOpen(config.settings);
   if (agencyClosed && config.afterHoursReplyEnabled && !priorOptedOut && smsEnabled) {
-    const office = config.mainOffice || 'the main office';
+    const office = config.mainOfficeDisplay || 'the main office';
     const msg = (config.afterHoursReply || config.defaultOffDuty ||
       `Thanks for your message. Our office is currently closed. For anything urgent, please call ${office}. We'll reply during business hours.`)
       .replace(/\{office\}/gi, office);
     await sendReply(msg);
   } else if (offDuty && !priorOptedOut && smsEnabled) {
-    const office = config.mainOffice || '724-465-0440';
+    const office = config.mainOfficeDisplay || '724-465-0440';
     const msg = (nurse.off_duty_message || config.defaultOffDuty ||
       `Thank you for your text, but I am currently not working. Please contact the office at ${office}.`)
       .replace(/\{office\}/gi, office);
@@ -815,7 +825,7 @@ async function decideInboundRouting(base44, config, workNum) {
   }
 
   if (agencyClosed) {
-    const office = config.afterHoursTransfer || config.mainOffice || 'the main office';
+    const office = config.afterHoursTransferDisplay || 'the main office';
     if (config.afterHoursAction === 'voicemail' && config.voicemailEnabled) {
       const greeting = (config.afterHoursGreeting || config.voicemailGreeting ||
         'Our office is currently closed. Please leave a message after the tone and we will return your call.').replace(/\{office\}/gi, office);
@@ -832,7 +842,7 @@ async function decideInboundRouting(base44, config, workNum) {
 
   // Off duty = toggled off, after the 5pm auto-off, or a scheduled window.
   if (isOffDutyNow(nurse, new Date(), config.settings)) {
-    const office = config.mainOffice || '724-465-0440';
+    const office = config.mainOfficeDisplay || '724-465-0440';
     const greeting = (nurse.off_duty_message ||
       'Thank you for your call, I am not working right now. Please hold while I connect you to Penn Home Health.').replace(/\{office\}/gi, office);
     // Speak the message, then connect them to the office so they don't have to
@@ -1029,16 +1039,25 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
 
 // Ring the next find-me-follow-me target on the original caller leg. The dialed
 // leg carries the ringdown client_state so an unanswered hangup can advance.
+// A transfer command can be REJECTED outright (e.g. a malformed stored office
+// number) with no hangup event to advance on — so on failure, try each
+// remaining target in order, and if every one is rejected apologize and hang up
+// rather than stranding the caller on a silent answered (billed) leg.
 async function startRingdown(apiKey, aLegId, targets, callerId, idx = 0) {
   const list = Array.isArray(targets) ? targets : [];
-  const target = list[idx];
-  if (!target) { await callCommand(apiKey, aLegId, 'hangup', {}); return; }
-  await callCommand(apiKey, aLegId, 'transfer', {
-    to: target.to,
-    from: callerId || target.to,
-    timeout_secs: RING_TIMEOUT_SECS_DEFAULT,
-    client_state: encodeClientState({ t: 'ringdown', targets: list, idx, callerId, a_leg: aLegId }),
-  });
+  for (let i = Math.max(0, Number(idx) || 0); i < list.length; i++) {
+    const target = list[i];
+    if (!target || !target.to) continue;
+    const r = await callCommand(apiKey, aLegId, 'transfer', {
+      to: target.to,
+      from: callerId || target.to,
+      timeout_secs: RING_TIMEOUT_SECS_DEFAULT,
+      client_state: encodeClientState({ t: 'ringdown', targets: list, idx: i, callerId, a_leg: aLegId }),
+    });
+    if (r.ok) return;
+  }
+  await callCommand(apiKey, aLegId, 'speak', { ...SPEAK_DEFAULTS, payload: 'We are unable to connect your call at this time. Please try again later.' });
+  await callCommand(apiKey, aLegId, 'hangup', {});
 }
 
 async function continueAfterGreeting(base44, apiKey, callControlId, action, to, callerId, targets = null) {

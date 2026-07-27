@@ -556,6 +556,66 @@ test("inbound call answers first, then bridges an on-duty nurse on call.answered
   assert.equal(decodeState(transfer.body.client_state).t, "ringdown");
 });
 
+test("an after-hours/weekend inbound call greets and transfers to the NORMALIZED after-hours number", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/actions/answer"), respond: () => ({ status: 200, json: { data: {} } }) },
+  ]);
+  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({
+      data: {
+        IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }],
+        User: [{ email: "n@x.com", work_phone_number: "+12155550100", personal_cell_e164: "+12155550111", duty_status: "on_duty" }],
+        // Business hours ON with no open days = closed all week (nights/weekends).
+        // The transfer number is stored FORMATTED — routing must normalize it.
+        AgencySettings: [{
+          business_hours_enabled: true, business_hours: {},
+          after_hours_call_action: "transfer",
+          after_hours_transfer_number_e164: "(724) 465-0440",
+        }],
+        CallLog: [],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  await handler(signedWebhook(privateKey, { data: { event_type: "call.initiated", payload: { call_control_id: "cc_ah", direction: "incoming", from: "+13125550182", to: "+12155550100" } } }));
+  const answer = calls.find((c) => /\/actions\/answer$/.test(c.url));
+  assert.ok(answer, "answered the after-hours call (to speak the greeting)");
+  const carried = decodeState(answer.body.client_state);
+  assert.equal(carried.action, "greet_transfer", "after-hours calls greet then transfer");
+  assert.equal(carried.to, "+17244650440", "transfer target is normalized E.164, not the raw formatted string");
+});
+
+test("a rejected ringdown transfer advances to the next target instead of stranding the caller", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  let transferCalls = 0;
+  const { impl, calls } = makeFetch([
+    // First target is rejected outright (e.g. bad number); the next succeeds.
+    { match: (u) => u.includes("/actions/transfer"), respond: () => (++transferCalls === 1
+      ? { status: 422, json: { errors: [{ detail: "invalid destination" }] } }
+      : { status: 200, json: { data: {} } }) },
+    { match: (u) => u.includes("/actions/speak"), respond: () => ({ status: 200, json: { data: {} } }) },
+    { match: (u) => u.includes("/actions/hangup"), respond: () => ({ status: 200, json: { data: {} } }) },
+  ]);
+  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }] } }),
+    fetchImpl: impl,
+  });
+  await handler(signedWebhook(privateKey, { data: { event_type: "call.answered", payload: {
+    call_control_id: "cc_rd", direction: "incoming",
+    client_state: b64json({ t: "inbound_ivr", action: "ringdown", greeting: "", to: null, callerId: "+12155550100",
+      targets: [{ to: "724-465", kind: "primary" }, { to: "+17244650440", kind: "office" }] }),
+  } } }));
+  const transfers = calls.filter((c) => /\/actions\/transfer$/.test(c.url));
+  assert.equal(transfers.length, 2, "retried the next target after the rejection");
+  assert.equal(transfers[1].body.to, "+17244650440", "second attempt rings the next ringdown target");
+  assert.ok(!calls.some((c) => /\/actions\/hangup$/.test(c.url)), "caller was not hung up — the second target is ringing");
+});
+
 test("find-me-follow-me rolls to the next target when a leg goes unanswered", async () => {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const pubB64 = rawEd25519PublicKeyB64(publicKey);
