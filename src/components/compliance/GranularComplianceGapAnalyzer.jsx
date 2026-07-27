@@ -28,7 +28,10 @@ export default function GranularComplianceGapAnalyzer({
 
   const analyzeVisitTypeGaps = useCallback(() => {
     const gaps = {};
-    const visitTypes = ['admission', 'recertification', 'routine_visit', 'discharge'];
+    // Every Visit.visit_type enum value: skilled_nursing/prn get the generic
+    // documentation + vitals checks (omitting them silently exempted the most
+    // common visit type from gap analysis).
+    const visitTypes = ['admission', 'recertification', 'routine_visit', 'discharge', 'skilled_nursing', 'prn'];
 
     visitTypes.forEach(type => {
       const typeVisits = visits.filter(v => v.visit_type === type);
