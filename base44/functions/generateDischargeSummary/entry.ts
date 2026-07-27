@@ -24,8 +24,9 @@ Deno.serve(async (req) => {
     // Fetch all visits for this patient
     const visits = await base44.entities.Visit.filter(
       { patient_id, status: 'completed' },
-      '-visit_date'
-    , 5000);
+      '-visit_date',
+      5000,
+    );
 
     // Fetch education materials sent
     const educationMaterials = await base44.entities.SentEducationMaterial.filter(

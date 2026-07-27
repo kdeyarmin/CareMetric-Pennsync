@@ -57,6 +57,38 @@ describe('whenTransactionCommits', () => {
     await expect(promise).rejects.toThrow('IndexedDB transaction aborted');
   });
 
+  // `tx.error` / `request.error` are null in some failure modes. Rejecting with
+  // null would make every downstream `err.message` read report "undefined" (or
+  // throw), so the rejection value must always be a real Error.
+  it('always rejects with an Error, even when the failure carries none', async () => {
+    const cases = [
+      ['transaction error', (tx, req) => { void req; tx.onerror(); }, 'IndexedDB transaction failed'],
+      ['transaction abort', (tx, req) => { void req; tx.onabort(); }, 'IndexedDB transaction aborted'],
+      ['request error', (tx, req) => { void tx; req.onerror(); }, 'IndexedDB request failed'],
+    ];
+    for (const [label, trigger, expected] of cases) {
+      const tx = makeTx();
+      const request = makeRequest(null);
+      const promise = whenTransactionCommits(tx, request);
+      trigger(tx, request);              // tx.error / request.error left null
+      const err = await promise.catch((e) => e);
+      expect(err, label).toBeInstanceOf(Error);
+      expect(err.message, label).toBe(expected);
+    }
+  });
+
+  it('preserves a DOMException-like error that is not an Error instance', async () => {
+    // IndexedDB surfaces DOMException, which is not an Error in every runtime —
+    // keep its message rather than replacing it with the generic fallback.
+    const tx = makeTx();
+    const promise = whenTransactionCommits(tx, makeRequest(null));
+    tx.error = { name: 'QuotaExceededError', message: 'The quota has been exceeded.' };
+    tx.onerror();
+    const err = await promise.catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe('The quota has been exceeded.');
+  });
+
   it('rejects when the transaction errors', async () => {
     const tx = makeTx();
     const promise = whenTransactionCommits(tx, makeRequest(1));

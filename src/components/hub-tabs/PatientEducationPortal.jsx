@@ -31,8 +31,9 @@ export default function PatientEducationPortal() {
       selectedPatientId
         ? base44.entities.PatientEducationDelivery.filter(
             { patient_id: selectedPatientId },
-            "-generated_date"
-          , PATIENT_HISTORY_ROWS)
+            "-generated_date",
+            PATIENT_HISTORY_ROWS,
+          )
         : Promise.resolve([]),
     enabled: !!selectedPatientId,
   });

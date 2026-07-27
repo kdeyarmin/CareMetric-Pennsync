@@ -28,19 +28,27 @@ export const STORES = {
  * @returns {Promise<any>}
  */
 export function whenTransactionCommits(tx, request) {
+  // Always reject with a real Error. `tx.error` / `request.error` are null in
+  // some failure modes (notably an explicit abort() rather than a storage
+  // error), and rejecting with null makes every downstream `err.message` read
+  // either throw or report "undefined" instead of the real failure.
+  const asError = (value, fallback) =>
+    value instanceof Error ? value : new Error(value?.message || fallback);
+
   return new Promise((resolve, reject) => {
     let result;
     let failed = false;
+    const fail = (value, fallback) => {
+      failed = true;
+      reject(asError(value, fallback));
+    };
     if (request) {
       request.onsuccess = () => { result = request.result; };
-      request.onerror = () => { failed = true; reject(request.error); };
+      request.onerror = () => fail(request.error, 'IndexedDB request failed');
     }
     tx.oncomplete = () => { if (!failed) resolve(result); };
-    tx.onerror = () => { failed = true; reject(tx.error); };
-    tx.onabort = () => {
-      failed = true;
-      reject(tx.error || new Error('IndexedDB transaction aborted'));
-    };
+    tx.onerror = () => fail(tx.error, 'IndexedDB transaction failed');
+    tx.onabort = () => fail(tx.error, 'IndexedDB transaction aborted');
   });
 }
 

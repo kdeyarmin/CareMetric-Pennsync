@@ -1,6 +1,7 @@
 import { base44 } from "@/api/base44Client";
 import { formatAge } from "@/lib/age";
 import { parseLocalDate } from "@/lib/dateLocal";
+import { differenceInCalendarDays } from "date-fns";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 /**
@@ -96,8 +97,12 @@ function analyzePatientTrends(patient, visits) {
       const dates = recentVisits.map(v => parseLocalDate(v.visit_date)).filter(Boolean);
       const intervals = [];
       for (let i = 0; i < dates.length - 1; i++) {
-        const daysBetween = Math.floor((dates[i] - dates[i + 1]) / (1000 * 60 * 60 * 24));
-        intervals.push(daysBetween);
+        // Calendar-day difference, not elapsed milliseconds. These are LOCAL
+        // midnights, so a spring-forward day is only 23 hours — dividing by
+        // 86400000 and flooring reported consecutive visits across the DST
+        // change as 0 days apart, understating the cadence and flipping the
+        // consistency verdict.
+        intervals.push(differenceInCalendarDays(dates[i], dates[i + 1]));
       }
       if (intervals.length > 0) {
         const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
@@ -202,10 +207,8 @@ function generateContinuityInsights(visits, incidents) {
 function lengthOfCareDays(admissionDate) {
   const start = parseLocalDate(admissionDate);
   if (!start) return "Unknown";
-  const today = new Date();
-  start.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  return Math.max(0, Math.round((today - start) / (1000 * 60 * 60 * 24)));
+  // Calendar days, so a DST transition inside the episode can't shift the count.
+  return Math.max(0, differenceInCalendarDays(new Date(), start));
 }
 
 /**

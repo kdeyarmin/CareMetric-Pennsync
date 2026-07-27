@@ -69,8 +69,9 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
       }
       const summaries = await base44.entities.DischargeSummary.filter(
         { patient_id: patientId },
-        '-generated_date'
-      , PATIENT_HISTORY_ROWS);
+        '-generated_date',
+        PATIENT_HISTORY_ROWS,
+      );
       return summaries[0];
     },
     enabled: !!(patientId || summaryId)

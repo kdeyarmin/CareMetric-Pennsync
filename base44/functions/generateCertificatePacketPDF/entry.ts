@@ -39,8 +39,9 @@ Deno.serve(async (req) => {
 
     const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter(
       query,
-      '-issued_at'
-    , 5000);
+      '-issued_at',
+      5000,
+    );
 
     // Create main PDF with cover sheet
     const doc = new jsPDF();

@@ -54,18 +54,20 @@ for (const file of readdirSync(ENTITIES)) {
   }
 }
 
-/** Every property name a schema defines, at any nesting depth. */
+/**
+ * The entity's ROOT property names — the only keys a top-level write may use.
+ *
+ * Deliberately NOT flattened across nesting depth. Collecting nested names into
+ * one set makes the guard accept a bogus root key that happens to match a nested
+ * one: DocumentSignature defines `required`, `position` and `size` only inside
+ * `signature_fields` items, so a flattened set would wave through
+ * `DocumentSignature.create({ position: … })` even though Base44 discards it. A
+ * guard that passes on a real drift is worse than no guard — it manufactures
+ * confidence. The scanner only extracts top-level payload keys, so root
+ * properties are exactly the right comparison set.
+ */
 function definedFields(schema) {
-  const out = new Set();
-  (function walk(node) {
-    if (!node || typeof node !== 'object') return;
-    for (const [key, value] of Object.entries(node.properties || {})) {
-      out.add(key);
-      if (value?.properties) walk(value);
-      if (value?.items?.properties) walk(value.items);
-    }
-  })(schema);
-  return out;
+  return new Set(Object.keys(schema?.properties || {}));
 }
 
 function collectSources(dir) {
@@ -210,4 +212,22 @@ test('the scanner actually resolves literal payloads (guards against a no-op tes
   assert.deepEqual(keys, ['title', 'bogus_field_xyz']);
   assert.ok(definedFields(schemas.get('Task')).has('title'));
   assert.ok(!definedFields(schemas.get('Task')).has('bogus_field_xyz'));
+});
+
+test('a nested property name is NOT accepted as a top-level write key', () => {
+  // Regression guard for an over-permissive field set. DocumentSignature defines
+  // `position`, `size` and `required` only inside signature_fields[] items; a
+  // set flattened across nesting depth would accept them at the record root and
+  // wave through a write Base44 actually discards.
+  const docSig = schemas.get('DocumentSignature');
+  assert.ok(docSig, 'DocumentSignature schema is present');
+
+  const root = definedFields(docSig);
+  assert.ok(root.has('signature_fields'), 'the array field itself is a root property');
+  for (const nestedOnly of ['position', 'size', 'required']) {
+    assert.ok(
+      !root.has(nestedOnly),
+      `'${nestedOnly}' is nested inside signature_fields[] and must not count as a root field`,
+    );
+  }
 });

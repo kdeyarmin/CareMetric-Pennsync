@@ -93,7 +93,15 @@ describe('date-only handling west of UTC (America/New_York)', () => {
   const env = globalThis.process.env;
   const originalTZ = env.TZ;
   beforeAll(() => { env.TZ = 'America/New_York'; });
-  afterAll(() => { env.TZ = originalTZ; });
+  afterAll(() => {
+    // CI starts with no TZ set, and `env.TZ = undefined` stores the STRING
+    // "undefined" — an invalid zone Node resolves as GMT. A reused Vitest worker
+    // would then run later date-sensitive suites under a silently wrong
+    // timezone, which could mask exactly the regressions this file exists to
+    // catch. Delete the variable instead of assigning undefined back.
+    if (originalTZ === undefined) delete env.TZ;
+    else env.TZ = originalTZ;
+  });
 
   it('does not shift a date-only visit_date back a day', () => {
     // Sanity check that the pinned zone is actually in effect.
