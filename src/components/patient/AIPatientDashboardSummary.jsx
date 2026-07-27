@@ -19,7 +19,7 @@ import {
   Loader2,
   Copy
 } from "lucide-react";
-import { isValid } from "date-fns";
+import { isWithinLastDays, parseLocalDate, startOfLocalDay } from "@/lib/dateLocal";
 
 // Flatten the structured AI summary into plain text a clinician can paste into
 // a note (headings + bullets), so the summary isn't trapped in the widget.
@@ -59,18 +59,17 @@ export default function AIPatientDashboardSummary({
   const generateSummary = useCallback(async () => {
     try {
       // Get recent visits (last 30 days)
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const recentVisits = visits.filter(v => {
-        const visitDate = new Date(v.visit_date);
-        return isValid(visitDate) && visitDate >= thirtyDaysAgo;
-      }).slice(0, 10);
+      const recentVisits = visits.filter(v => isWithinLastDays(v.visit_date, 30)).slice(0, 10);
 
-      // Get upcoming visits
-      const today = new Date();
+      // Get upcoming visits. The bound is local MIDNIGHT, not `new Date()`:
+      // visit_date is date-only, so a visit scheduled for TODAY parsed to
+      // midnight and compared against the current time of day sorted BEFORE
+      // "now" — today's scheduled visit vanished from the nurse's upcoming list
+      // for the whole working day.
+      const startOfToday = startOfLocalDay();
       const upcomingVisits = visits.filter(v => {
-        const visitDate = new Date(v.visit_date);
-        return v.status === 'scheduled' && isValid(visitDate) && visitDate >= today;
+        const visitDate = parseLocalDate(v.visit_date);
+        return v.status === 'scheduled' && visitDate != null && visitDate >= startOfToday;
       }).slice(0, 5);
 
       // Get pending tasks
