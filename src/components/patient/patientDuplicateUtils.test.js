@@ -498,3 +498,27 @@ test('identical directional street addresses still score a street-address match'
   const { matches } = scorePatientPair(a, b);
   assert.ok(matches.includes(REASON.STREET_ADDRESS));
 });
+test("twins are flagged for verification, look-alikes and typos are not", () => {
+  const base = { date_of_birth: "2015-06-01", address: "12 Oak St", phone: "555-111-2222" };
+  const twins = scorePatientPair(
+    { first_name: "Ella", last_name: "Smith", ...base },
+    { first_name: "Emma", last_name: "Smith", ...base },
+  );
+  assert.ok(twins.score >= 70, "twins still surface for review");
+  assert.ok(twins.matches.includes(REASON.POSSIBLE_TWINS));
+  assert.equal(twins.possibleTwins, true);
+
+  // A same-person typo ("Jon"/"John": containment) must NOT be flagged.
+  const typo = scorePatientPair(
+    { first_name: "Jon", last_name: "Smith", ...base },
+    { first_name: "John", last_name: "Smith", ...base },
+  );
+  assert.ok(!typo.matches.includes(REASON.POSSIBLE_TWINS));
+
+  // Katherine/Catherine (high similarity) stays unflagged.
+  const spelling = scorePatientPair(
+    { first_name: "Katherine", last_name: "Smith", ...base },
+    { first_name: "Catherine", last_name: "Smith", ...base },
+  );
+  assert.ok(!spelling.matches.includes(REASON.POSSIBLE_TWINS));
+});

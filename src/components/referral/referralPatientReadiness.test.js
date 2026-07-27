@@ -38,3 +38,16 @@ test('buildIncompleteReferralFromTriage creates an awaiting-info referral payloa
   assert.deepEqual(payload.extracted_data.missing_patient_identity, ['DOB, MRN, phone, or address']);
   assert.match(payload.follow_up_notes[0].note, /Patient chart not created/);
 });
+
+// ── Regression: name convention + placeholders (2026-07 review) ─────────────
+
+test("'Last, First' fax convention splits correctly", () => {
+  assert.deepEqual(splitPatientName('Doe, Jane'), { first_name: 'Jane', last_name: 'Doe', full_name: 'Jane Doe' });
+  assert.equal(splitPatientName('Doe, Jane Marie').first_name, 'Jane');
+  assert.equal(splitPatientName('Doe, Jane Marie').last_name, 'Doe');
+});
+
+test("the extractor's 'Not documented' filler is treated as empty", () => {
+  assert.equal(cleanReferralValue('Not documented in referral'), '');
+  assert.equal(cleanReferralValue('Not documented'), '');
+});

@@ -46,6 +46,7 @@ import AdrChecklistPanel from "../components/adr/AdrChecklistPanel";
 import AdrPacketVerifier from "../components/adr/AdrPacketVerifier";
 import AdrSubmissionPanel from "../components/adr/AdrSubmissionPanel";
 import { AUDIT_TYPES } from "../components/adr/adrRequirements";
+import { resolveResponseDueDate } from "../components/adr/adrDeadlines";
 
 const AUDIT_TYPE_LABELS = Object.fromEntries(AUDIT_TYPES.map((t) => [t.id, t.label]));
 
@@ -126,6 +127,11 @@ export default function ADRCenter() {
       ]
         .filter(Boolean)
         .join(" — ");
+      // Normalize the due date to the strict YYYY-MM-DD the reminder planner
+      // requires (a raw "07/03/2026" displayed fine but silently planned zero
+      // reminders), and derive it from letter_date + response_due_days when
+      // the letter states only a day count ("within 45 days of this letter").
+      const dueDate = resolveResponseDueDate(analysis);
       const created = await base44.entities.AdrAuditCase.create({
         case_name: caseName,
         status: "checklist_ready",
@@ -136,11 +142,16 @@ export default function ADRCenter() {
         claim_number: analysis.claim_number || "",
         dates_of_service: analysis.dates_of_service || "",
         letter_date: analysis.letter_date || undefined,
-        response_due_date: analysis.response_due_date || undefined,
+        response_due_date: dueDate.date || undefined,
         letter_file_url: letterFileUrl,
         letter_analysis: analysis,
         checklist,
       });
+      if (dueDate.derived) {
+        toast.info(`Response deadline computed as ${dueDate.date} from the letter date + ${analysis.response_due_days} days — verify it against the letter.`);
+      } else if (!dueDate.date) {
+        toast.warning("No response deadline could be read from the letter — set it manually so deadline reminders can fire.");
+      }
       setPendingCase(null);
       setNewCaseOpen(false);
       refresh();

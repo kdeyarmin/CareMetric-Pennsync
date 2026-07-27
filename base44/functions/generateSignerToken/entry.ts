@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + days);
 
-    const tokenRecord = await base44.entities.DocumentPackageToken.create({
+    const tokenRecord = await base44.asServiceRole.entities.DocumentPackageToken.create({
       package_id,
       token: tokenHash,
       // Marks this row as storing a HASH (not plaintext). Validators use it to

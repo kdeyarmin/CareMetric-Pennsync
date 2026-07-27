@@ -211,6 +211,12 @@ Return JSON:
     return `REG-${src}-${slug}`;
   };
 
+  // Once a human has reviewed the update, the AI-draft caveat in the summary is
+  // stale — nurses would still read "verify before acting" on content an admin
+  // already verified. reviewed_by/reviewed_at carry the audit trail.
+  const stripDraftPrefix = (summary) =>
+    String(summary || '').replace(/^\[AI-SUGGESTED DRAFT[^\]]*\]\s*/, '');
+
   const handleApprove = async () => {
     if (!selectedUpdate) return;
 
@@ -218,6 +224,7 @@ Return JSON:
       id: selectedUpdate.id,
       data: {
         status: 'approved',
+        summary: stripDraftPrefix(selectedUpdate.summary),
         reviewed_by: currentUser?.email,
         reviewed_at: new Date().toISOString(),
         implementation_notes: implementationNotes
@@ -326,6 +333,7 @@ Return JSON:
       id: selectedUpdate.id,
       data: {
         status: 'implemented',
+        summary: stripDraftPrefix(selectedUpdate.summary),
         reviewed_by: currentUser?.email,
         reviewed_at: new Date().toISOString(),
         implementation_notes: summaryNote,

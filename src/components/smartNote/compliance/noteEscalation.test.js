@@ -24,3 +24,12 @@ test("no critical vitals for a normal note", () => {
 test("empty note yields nothing", () => {
   assert.deepEqual(detectNoteCriticalVitals(""), []);
 });
+
+// ── Regression: worst-rating pain escalation (2026-07 review) ───────────────
+
+test("a 10/10 escalates even when a lower prior rating appears first", () => {
+  const out = detectNoteCriticalVitals(
+    "Compared to the prior documented visit, pain 6/10 to 10/10. Patient reports pain 10/10 at rest today. BP 130/80.",
+  );
+  assert.ok(out.some((r) => /pain/i.test(r.id) || /pain/i.test(r.label)), "worst-in-note pain must drive the escalation");
+});

@@ -33,6 +33,28 @@ export function extractPain(text) {
   return Number.isFinite(v) && v >= 0 && v <= 10 ? v : null;
 }
 
+/**
+ * EVERY documented "N/10" pain rating in the text (same context rules as
+ * extractPain). The severe-pain escalation must key off the WORST rating in the
+ * note — first-match-wins missed a 10/10 whenever a prior/lower value appeared
+ * earlier ("pain was 5/10 last visit, now 10/10", or the opt-in trend summary).
+ */
+export function extractPainRatings(text) {
+  if (!text) return [];
+  const out = [];
+  const res = [
+    /(?:pain|discomfort|rating)\D{0,12}?\b(\d{1,2})\s*\/\s*10\b/gi,
+    /\b(\d{1,2})\s*\/\s*10\b\D{0,8}?(?:pain|discomfort)/gi,
+  ];
+  for (const re of res) {
+    for (const m of text.matchAll(re)) {
+      const v = parseInt(m[1], 10);
+      if (Number.isFinite(v) && v >= 0 && v <= 10 && !out.includes(v)) out.push(v);
+    }
+  }
+  return out;
+}
+
 /** Extract the comparable metric set from one note's text. */
 function extractMetrics(text) {
   const v = extractVitals(text);
@@ -42,7 +64,12 @@ function extractMetrics(text) {
   // 176 lbs) isn't reported as a huge swing, and a real change isn't masked.
   // (Temperature needs no such handling: extractVitals already rejects sub-90
   // values, so a Celsius reading is dropped rather than mis-compared.)
-  if (weight != null && /(?:\bwt|weight)\s*:?\s*\d{2,3}(?:\.\d)?\s*kg\b/i.test(text)) {
+  // The unit must come from the SAME reading extractVitals captured (the first
+  // labeled weight) — keying off a kg label ANYWHERE in the text converted a
+  // captured lbs reading when a second kg-labeled figure appeared later
+  // ("Weight 176 lbs per bath scale; family reports 80 kg"), doubling it.
+  const wtm = text.match(/\b(?:wt|weight)\s*:?\s*(\d{2,3}(?:\.\d)?)(?!\d)\s*(lbs?|pounds?|kgs?|kilograms?)?\b/i);
+  if (weight != null && wtm && /^k/i.test(wtm[2] || "")) {
     weight = Math.round(weight * 2.20462 * 10) / 10;
   }
   return {
@@ -65,7 +92,9 @@ const SCALAR_METRICS = [
   { key: "hr", label: "Heart rate", unit: "bpm", trailingUnit: "bpm", minDelta: 10, concern: (p, n) => n > 100 || n < 50 || Math.abs(n - p) >= 15 },
   { key: "o2", label: "Oxygen saturation", unit: "%", fmt: (x) => `${x}%`, minDelta: 2, concern: (p, n) => n < 92 || n - p <= -2 },
   { key: "temp", label: "Temperature", unit: "°F", trailingUnit: "°F", minDelta: 1, concern: (p, n) => n >= 100.4 },
-  { key: "weight", label: "Weight", unit: "lbs", trailingUnit: "lbs", minDelta: 3, concern: (p, n) => n - p >= 3 },
+  // Loss matters as much as gain: a ≥5 lb drop (dehydration / cachexia —
+  // especially on the hospice line) is flagged alongside the CHF-style gain.
+  { key: "weight", label: "Weight", unit: "lbs", trailingUnit: "lbs", minDelta: 3, concern: (p, n) => n - p >= 3 || p - n >= 5 },
   { key: "pain", label: "Pain", unit: "/10", fmt: (x) => `${x}/10`, minDelta: 2, concern: (p, n) => n >= 7 || n - p >= 2 },
 ];
 

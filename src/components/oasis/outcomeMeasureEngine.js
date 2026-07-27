@@ -313,7 +313,11 @@ export function toPatientOutcomeMetric({ patientId, episodeStart, episodeEnd, di
       transferring_improved: flag("bed_transfer"),
       medication_management_improved: flag("oral_meds"),
       dyspnea_improved: flag("dyspnea"),
-      overall_improvement_score: outcome.overall_improvement_score ?? 0,
+      // null (every measure excluded) means "not measurable" — recording 0
+      // would fabricate a measured 0% improvement, so omit the field instead.
+      ...(outcome.overall_improvement_score != null
+        ? { overall_improvement_score: outcome.overall_improvement_score }
+        : {}),
     },
     gg_discharge_function_score: outcome.gg_discharge_function.score ?? undefined,
     measure_results: outcome.measures.map((m) => ({
@@ -388,8 +392,10 @@ export function toAgencyKPIs(rollup, { periodStart, periodEnd, periodType = "qua
   return (rollup?.measures || [])
     .filter((m) => m.rate !== null)
     .map((m) => {
+      // Without a configured benchmark there is no performance signal —
+      // "on_target" earned by episode volume alone is a false quality claim.
       const status = benchmark == null
-        ? (m.star_eligible ? "on_target" : "warning")
+        ? "warning"
         : (m.rate >= benchmark ? "on_target" : m.rate >= benchmark - 10 ? "warning" : "critical");
       return {
         ...(agencyId ? { agency_id: agencyId } : {}),
@@ -407,6 +413,9 @@ export function toAgencyKPIs(rollup, { periodStart, periodEnd, periodType = "qua
           m.star_eligible
             ? `Meets the ${STAR_MIN_EPISODES}-episode star-rating threshold`
             : `Below the ${STAR_MIN_EPISODES}-episode star-rating threshold (${m.denominator})`,
+          ...(benchmark == null
+            ? ["No national benchmark configured — performance not rated against a target"]
+            : []),
         ],
       };
     });

@@ -225,3 +225,48 @@ test("toPersistedVerification keeps the fields the generator and UI consume", ()
     assert.ok(key in persisted, `missing ${key}`);
   }
 });
+
+// ── missing items never carry page references (regression) ──
+
+test("a 'missing' verdict clears AI-supplied pages — no TOC ref, no key frame", () => {
+  // Regression: {status:"missing", pages:[5]} produced a TOC row citing page 5
+  // and a red KEY ITEM frame — pointing the Medicare reviewer at "evidence"
+  // the verification itself says is absent.
+  const summary = summarizePacketVerification({
+    checklist,
+    pageCount: 20,
+    verification: {
+      items: [{ id: "plan_of_care", status: "missing", pages: [5] }],
+    },
+  });
+  const poc = idOf(summary, "plan_of_care");
+  assert.equal(poc.status, "missing");
+  assert.deepEqual(poc.pages, []);
+  const tocRow = summary.toc.find((t) => t.item_id === "plan_of_care");
+  assert.equal(tocRow.packet_page, null);
+  assert.ok(!summary.key_pages.some((k) => k.packet_page === 5 && k.labels.some((l) => /plan of care/i.test(l))));
+});
+
+test("a letter-requested document that is missing blocks readiness", () => {
+  // A contractor-named item is never severity "critical" by catalog accident —
+  // but omitting it invites denial, so it must hard-block, not just warn.
+  const letterOnly = buildAdrChecklist({
+    letterItems: [{ text: "Signed wound photography disclaimer form" }],
+    auditType: "mac_adr",
+  });
+  const target = letterOnly.find((it) => it.source === "letter");
+  assert.ok(target, "expected an unmatched letter-only checklist row");
+  const summary = summarizePacketVerification({
+    checklist: letterOnly,
+    pageCount: 10,
+    verification: {
+      items: letterOnly.map((it) => ({
+        id: it.id,
+        status: it.id === target.id ? "missing" : "found",
+        pages: it.id === target.id ? [] : [1],
+      })),
+    },
+  });
+  assert.ok(summary.readiness.blocking.some((b) => b.id === target.id && b.reason === "missing_letter_item"));
+  assert.equal(summary.readiness.level, "not_ready");
+});

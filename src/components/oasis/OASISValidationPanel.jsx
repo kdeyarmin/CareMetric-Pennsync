@@ -378,7 +378,9 @@ function validateAdmissionSourceTiming(data) {
     const m1000Val = String(m1000).trim();
     let expectedSource = 'community';
     
-    if (['2', '3', '4'].includes(m1000Val) || 
+    // 2=acute, 3=LTCH, 4=SNF, 5=IRF, 6=psych — all institutional under PDGM
+    // (mirrors calculatePDGM; 5/6 previously classified community).
+    if (['2', '3', '4', '5', '6'].includes(m1000Val) || 
         m1000Val.toLowerCase().includes('hospital') || 
         m1000Val.toLowerCase().includes('snf')) {
       expectedSource = 'institutional';

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { validateFileUpload } from "@/components/utils/security";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -16,10 +17,14 @@ export default function OCRDocumentExtractor({ onDataExtracted }) {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Validate file type
-    const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-    if (!validTypes.includes(file.type)) {
-      toast.error('Please upload a PDF or image file (JPG, PNG)');
+    // Shared strict validation (type allowlist + extension + size cap).
+    const check = validateFileUpload(file, {
+      maxSize: 50 * 1024 * 1024,
+      allowedTypes: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
+      allowedExtensions: ['.pdf', '.jpg', '.jpeg', '.png'],
+    });
+    if (!check.valid) {
+      toast.error(check.error);
       return;
     }
 

@@ -36,12 +36,38 @@ const HB_CAUSAL = /\b(due to|secondary to|because of|related to|as a result of|r
 // Evidence that leaving home is a considerable and TAXING effort.
 const HB_EFFORT = /\b(taxing|considerable effort|requires? (?:the )?assist|assistance of|max(?:imal)? assist|moderate assist|min(?:imal)? assist|two[- ]person|one[- ]person|walker|wheelchair|w\/c|cane|crutch|unable to leave|unsafe to leave|cannot leave|exhaust\w*|only .*(?:with help|steps)|supervision to ambulat\w*|tolerates only)\b/i;
 const HB_MENTION = /\b(homebound|confined to (?:home|residence|the house)|leaving (?:the )?home)\b/i;
+// An affirmative statement that the patient is NOT homebound — an ELIGIBILITY
+// failure, never a quality pass ("no longer homebound", "not homebound",
+// "denies being homebound").
+const HB_NEGATED = /\b(?:no longer|not|never|denies being|is not|isn't)\s+(?:considered\s+|currently\s+)?homebound\b/i;
 
 // ── skilled-need quality signals ────────────────────────────────────────────
 // Vague / custodial-sounding statements that auditors treat as unskilled.
 const SN_VAGUE = /\b(provided|gave|rendered|performed|completed)\s+(?:the\s+)?(?:routine\s+)?(?:nursing|skilled)\s+(?:care|visit|services?)\b|\broutine (?:nursing )?visit (?:completed|done|performed)\b|\bnursing (?:visit|care) (?:provided|completed|given|done)\b|\bsnv (?:completed|done)\b/i;
 // A specific skilled service that requires professional judgment.
 const SN_SPECIFIC = /\b(wound care|dressing change|sterile|observation and assessment|skilled (?:observation|assessment)|assessment of (?:the |an? )?\w+|medication management|med (?:management|teaching|reconcil\w*)|teach[- ]?back|catheter|foley|injection|insulin|\biv\b|infusion|titrat\w*|ostomy|trach|lung ausc\w*|edema (?:check|assessment)|gait training|venipuncture|picc|enteral|parenteral)\b/i;
+// Comfort-focused skilled services for HOSPICE notes (comfort_skilled_need).
+// The home-health vocabulary alone hard-blocked compliant comfort-care notes
+// ("managed with repositioning, mouth care, and caregiver coaching").
+const SN_COMFORT = /\b(symptom (?:management|assessment|control)|comfort (?:care|measures?|plan)|reposition\w*|mouth care|oral care|pain (?:management|control|assessment|reassess\w*)|oxygen (?:titrat\w*|administr\w*|therapy)|caregiver (?:coaching|teaching|education)|end[- ]of[- ]life|terminal (?:care|restlessness|agitation)|bowel regimen|secretion management|(?:dyspnea|nausea|anxiety|agitation|air hunger) (?:management|managed|control)|managed with|morphine|roxanol|lorazepam|comfort kit)\b/i;
+const SN_SPECIFIC_COMFORT = new RegExp(`${SN_SPECIFIC.source}|${SN_COMFORT.source}`, "i");
+
+// A skilled-service mention negated in its own clause is NOT a delivered
+// service — "No wound care performed", "Patient refused wound care" used to
+// PASS skilled-need specificity.
+// Up to 4 words between the negation and the hit, so a coordinated phrase
+// ("No wound care or skilled service…") is still seen as negated. Clause
+// boundaries (; , :) reset the window.
+const SN_NEGATED_PREFIX = /\b(?:no|not|without|denies|declined?s?|refused?s?|unable to|deferred|held)\s+(?:\w+\s+){0,4}$/i;
+
+function unnegatedSentences(text, re) {
+  return sentencesWith(text, re).filter((s) => {
+    const m = re.exec(s);
+    if (!m) return false;
+    const boundary = Math.max(s.lastIndexOf(";", m.index), s.lastIndexOf(",", m.index), s.lastIndexOf(":", m.index));
+    return !SN_NEGATED_PREFIX.test(s.slice(boundary + 1, m.index));
+  });
+}
 
 // ── medical-necessity linkage signals ───────────────────────────────────────
 const MN_LINK = /\b(for (?:the )?management of|to monitor|monitoring for|assess(?:ing|ment)? (?:for|of)|to evaluate|for evaluation of|due to|secondary to|related to|s\/p|post[- ]?op|for treatment of|management of|to manage)\b/i;
@@ -63,9 +89,13 @@ function normalize(text) {
 // Split on SENTENCE terminators + newlines only (NOT ';' or ':'), so a clause
 // like "homebound due to dyspnea; requires a walker and assist" stays intact —
 // the reason and the taxing-effort evidence must be scoped together.
+// No lookbehind: it is a parse-time SyntaxError on Safari < 16.4, which would
+// kill the whole module on import (see factExtraction.js) — terminators are
+// rewritten to newlines instead.
 function sentencesWith(text, re) {
   return String(text || "")
-    .split(/(?<=[.!?])\s+|\n+/)
+    .replace(/([.!?])\s+/g, "$1\n")
+    .split(/\n+/)
     .map((s) => s.trim())
     .filter((s) => s && re.test(s));
 }
@@ -86,6 +116,19 @@ function evaluateHomebound(text, cop) {
       message: "Homebound status is not documented.",
       remediation: "Document the medical reason for confinement and why leaving home requires a considerable and taxing effort.",
       evidence: null,
+    });
+  }
+  // A note that affirmatively documents the patient is NOT homebound is an
+  // eligibility failure — the reason/effort quality check must never turn
+  // "no longer homebound" into a PASS.
+  if (HB_NEGATED.test(text)) {
+    return finding(CLUSTER.HOMEBOUND, GUARD_STATUS.FAIL, {
+      severity: "critical",
+      denial_risk: 35,
+      cop_reference: cop,
+      message: "The note documents the patient is NOT homebound — the home health benefit requires confined-to-home status.",
+      remediation: "If the patient is genuinely no longer homebound, initiate discharge planning; do not bill further home health visits. If homebound status continues, correct the narrative.",
+      evidence: sentencesWith(text, HB_NEGATED)[0] || null,
     });
   }
   const scope = sentencesWith(text, HB_MENTION).join(" ");
@@ -117,19 +160,21 @@ function evaluateHomebound(text, cop) {
 }
 
 /**
- * Evaluate skilled-need specificity.
+ * Evaluate skilled-need specificity. `specificRe` carries the service-line
+ * vocabulary (home-health SN_SPECIFIC, or +comfort terms for hospice); only
+ * un-negated mentions count as a delivered service.
  */
-function evaluateSkilledNeed(text, cop) {
-  const specific = SN_SPECIFIC.test(text);
+function evaluateSkilledNeed(text, cop, specificRe = SN_SPECIFIC) {
+  const specificHits = unnegatedSentences(text, specificRe);
   const vague = SN_VAGUE.test(text);
 
-  if (specific) {
+  if (specificHits.length) {
     return finding(CLUSTER.SKILLED_NEED, GUARD_STATUS.PASS, {
       severity: "critical",
       denial_risk: 0,
       cop_reference: cop,
       message: "A specific skilled service requiring professional judgment is documented.",
-      evidence: sentencesWith(text, SN_SPECIFIC)[0] || null,
+      evidence: specificHits[0] || null,
     });
   }
   if (vague) {
@@ -156,16 +201,25 @@ function evaluateSkilledNeed(text, cop) {
  * Evaluate medical-necessity linkage: the skilled service must tie to the
  * patient's diagnosis / clinical condition.
  */
-function evaluateMedicalNecessity(text, cop, primaryDiagnosis) {
+function evaluateMedicalNecessity(text, cop, primaryDiagnosis, specificRe = SN_SPECIFIC) {
   // Scope the linkage check to the SKILLED-SERVICE sentence(s) — the diagnosis
   // link must tie to the skilled service, not to an unrelated clause (e.g. the
   // homebound "due to weakness" reason).
-  const skilledSentences = sentencesWith(text, SN_SPECIFIC);
+  const skilledSentences = unnegatedSentences(text, specificRe);
   const scope = skilledSentences.length ? skilledSentences.join(" ") : text;
-  const scopeLower = scope.toLowerCase();
-  const dxMentioned =
-    DX_HINT.test(scope) ||
-    (primaryDiagnosis && scopeLower.includes(String(primaryDiagnosis).toLowerCase().split(/\s+/)[0]));
+  // Word-boundary match on a meaningful diagnosis token — a raw substring let
+  // "CA of prostate" match inside "CAtheter" and pass medical necessity for a
+  // note that never references the diagnosis. Tokens under 3 chars and glue
+  // words are skipped.
+  const DX_STOPWORDS = new Set(["of", "the", "and", "with", "left", "right", "due", "to"]);
+  const dxToken = String(primaryDiagnosis || "")
+    .toLowerCase()
+    .split(/\s+/)
+    .find((t) => t.length >= 3 && !DX_STOPWORDS.has(t));
+  const dxTokenRe = dxToken
+    ? new RegExp(`\\b${dxToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
+    : null;
+  const dxMentioned = DX_HINT.test(scope) || (dxTokenRe ? dxTokenRe.test(scope) : false);
   const linked = MN_LINK.test(scope);
 
   if (dxMentioned && linked) {
@@ -196,8 +250,21 @@ function evaluateMedicalNecessity(text, cop, primaryDiagnosis) {
  * scans the nurse's note for it. When no validation is supplied the cluster is
  * not-applicable (e.g. a routine visit, or F2F handled elsewhere).
  */
-function evaluateF2F(f2fValidation, cop) {
+function evaluateF2F(f2fValidation, cop, applicable = false) {
   if (!f2fValidation) {
+    // On an admission/recert, "nothing wired up" must not read as green — the
+    // F2F cluster is one of the four denial drivers this engine exists to
+    // guard. Non-blocking (high, not critical), but visible and risk-scored.
+    if (applicable) {
+      return finding(CLUSTER.F2F, GUARD_STATUS.FAIL, {
+        severity: "high",
+        denial_risk: 10,
+        cop_reference: cop,
+        message: "Face-to-Face validation is not linked to this note — confirm a compliant F2F encounter is on file at referral intake.",
+        remediation: "Run the referral's F2F validation (eligible certifying practitioner, timing window, diagnosis linkage) and link the result before billing.",
+        evidence: null,
+      });
+    }
     return finding(CLUSTER.F2F, GUARD_STATUS.NOT_APPLICABLE, {
       severity: "info",
       denial_risk: 0,
@@ -255,11 +322,14 @@ export function runDenialGuardrail({ noteText, serviceLine = "home_health", visi
     findings.push(evaluateHomebound(text, byId.homebound.copReference));
   }
   if (skilledEl) {
-    findings.push(evaluateSkilledNeed(text, skilledEl.copReference));
-    findings.push(evaluateMedicalNecessity(text, skilledEl.copReference, context.primaryDiagnosis));
+    // Hospice comfort notes are judged with the comfort-care vocabulary too —
+    // repositioning/mouth care/caregiver coaching ARE the skilled service.
+    const specificRe = skilledEl.id === "comfort_skilled_need" ? SN_SPECIFIC_COMFORT : SN_SPECIFIC;
+    findings.push(evaluateSkilledNeed(text, skilledEl.copReference, specificRe));
+    findings.push(evaluateMedicalNecessity(text, skilledEl.copReference, context.primaryDiagnosis, specificRe));
   }
   if (f2fApplicable || context.f2fValidation) {
-    findings.push(evaluateF2F(context.f2fValidation, "42 CFR 424.22"));
+    findings.push(evaluateF2F(context.f2fValidation, "42 CFR 424.22", f2fApplicable));
   }
 
   const denialRisk = Math.min(

@@ -312,8 +312,8 @@ export default function OutcomeMeasuresSection() {
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-600">
-                        Measures at the floor ({STAR_MIN_MEASURES} of 7 needed
-                        for a star)
+                        Measures at the floor (all {STAR_MIN_MEASURES} tracked
+                        measures needed for a star)
                       </span>
                       <span className="font-semibold text-slate-900">
                         {derived.measuresAtFloor} / {STAR_MIN_MEASURES}

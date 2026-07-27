@@ -29,19 +29,23 @@ const normName = (s) =>
   String(s || "").toLowerCase().replace(/\bdr\.?\b/g, "").replace(/[^a-z ]/g, "").trim();
 
 /** Does the OCR text contain every word of the (2+ word) name? Single-word
- *  names are too ambiguous to count as a match. */
+ *  names are too ambiguous to count as a match. WHOLE-WORD comparison — raw
+ *  substring matching auto-attached the wrong patient ("John Smith" matched a
+ *  fax about "Robert Johnson" from "Smithfield Family Clinic"). */
 function nameInText(name, text) {
   const words = normName(name).split(" ").filter((w) => w.length > 1);
   if (words.length < 2) return false;
-  const t = normName(text);
-  return words.every((w) => t.includes(w));
+  const tokens = new Set(normName(text).split(" ").filter(Boolean));
+  return words.every((w) => tokens.has(w));
 }
 
-/** DOB appears in the text in any of the common renderings. */
+/** DOB appears in the text in any of the common renderings. OCR often spaces
+ *  out date separators ("01 / 05 / 1950"), so separators are tightened first. */
 function dobInText(dob, text) {
   const raw = String(dob || "").trim();
+  const t = String(text || "").replace(/\s*([/-])\s*/g, "$1");
   const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return raw.length >= 8 && text.includes(raw);
+  if (!m) return raw.length >= 8 && t.includes(raw);
   const [, y, mo, d] = m;
   const variants = [
     `${y}-${mo}-${d}`,
@@ -49,7 +53,7 @@ function dobInText(dob, text) {
     `${Number(mo)}/${Number(d)}/${y}`,
     `${mo}-${d}-${y}`,
   ];
-  return variants.some((v) => text.includes(v));
+  return variants.some((v) => t.includes(v));
 }
 
 /**

@@ -7,9 +7,13 @@
  * 0–3 truncation) AND over-counts the 0–3/0–5 items (offering responses that don't
  * exist for that item). This module gives each item exactly its valid range.
  *
- * Labels are a concise, accurate graduated-assistance scale (not the verbatim CMS
- * response text, which is item-specific and lengthy) — enough for the quick-entry
- * draft tool to record the correct LEVEL without offering invalid codes.
+ * Labels are ITEM-SPECIFIC and mirror the main OASIS form (oasisQuestions.jsx),
+ * because the recorded value's MEANING is defined by that form and by the
+ * outcome-measure engine. A generic graduated-assistance scale mislabeled the
+ * higher codes — e.g. M1830 code 6 means "Unable to rate — artificial opening"
+ * on the form, but the generic scale offered it as "Unable to perform", so a
+ * quick-entry nurse would record a totally-dependent bather under a code the
+ * rest of the app reads as not-ratable.
  */
 
 export const ASSIST_LABELS = [
@@ -21,6 +25,70 @@ export const ASSIST_LABELS = [
   '5 – Dependent, does not participate',
   '6 – Unable to perform',
 ];
+
+/**
+ * Per-item response labels, index = response code. Wording mirrors the main
+ * OASIS form so quick-entry and the form record the same meaning per code.
+ */
+export const ITEM_LABELS = {
+  m1800: [
+    '0 – Able to groom self unaided',
+    '1 – Grooming utensils must be placed within reach',
+    '2 – Someone must assist the patient',
+    '3 – Patient depends entirely upon someone else',
+  ],
+  m1810: [
+    '0 – No assistance needed',
+    '1 – With minor difficulty or helper makes adaptations',
+    '2 – Someone must assist',
+    '3 – Totally dependent',
+  ],
+  m1820: [
+    '0 – No assistance needed',
+    '1 – With minor difficulty or helper makes adaptations',
+    '2 – Someone must assist',
+    '3 – Totally dependent',
+  ],
+  m1830: [
+    '0 – Able to bathe self in shower/tub independently',
+    '1 – With minimal person assistance to bathe',
+    '2 – With partial person assistance; patient performs part',
+    '3 – With extensive person assistance; minimal patient effort',
+    '4 – Unable to bathe self; total person assistance',
+    '5 – Unable to bathe self and refused',
+    '6 – Unable to rate — patient has artificial opening',
+  ],
+  m1840: [
+    '0 – Able to independently transfer',
+    '1 – Able to transfer with minimal assistance',
+    '2 – Able to bear weight and pivot with assistance',
+    '3 – Unable to bear weight; totally dependent',
+    '4 – Bedfast, unable to use toilet/commode',
+  ],
+  m1845: [
+    '0 – Able to manage all toileting independently',
+    '1 – Can manage with use of devices/difficulty',
+    '2 – Someone must help with clothing or use devices',
+    '3 – Patient depends entirely on another person',
+  ],
+  m1850: [
+    '0 – Able to independently transfer',
+    '1 – Transfers with minimal human assistance',
+    '2 – Unable to transfer self but able to bear weight and pivot',
+    '3 – Unable to transfer and unable to bear weight',
+    '4 – Bedfast, unable to transfer but able to turn and position self in bed',
+    '5 – Bedfast, unable to transfer and unable to turn and position self',
+  ],
+  m1860: [
+    '0 – Able to independently walk on all surfaces',
+    '1 – With minor difficulty on uneven surfaces',
+    '2 – Requires use of one-handed device',
+    '3 – Requires use of two-handed device or walker',
+    '4 – Requires human supervision to ambulate',
+    '5 – Chairfast, able to wheel self independently',
+    '6 – Bedfast, unable to ambulate or be up in a chair',
+  ],
+};
 
 /** Highest valid response value for each OASIS-E functional item. */
 export const OASIS_ITEM_MAX = {
@@ -40,9 +108,12 @@ export function scaleOptions(maxValue) {
   return ASSIST_LABELS.slice(0, max + 1).map((label, i) => ({ value: String(i), label }));
 }
 
-/** Convenience: options for a given M-item key (e.g. 'm1860'). */
+/** Options for a given M-item key (e.g. 'm1860'), using its form-accurate labels. */
 export function optionsForItem(itemKey) {
-  return scaleOptions(OASIS_ITEM_MAX[String(itemKey).toLowerCase()]);
+  const key = String(itemKey).toLowerCase();
+  const labels = ITEM_LABELS[key];
+  if (labels) return labels.map((label, i) => ({ value: String(i), label }));
+  return scaleOptions(OASIS_ITEM_MAX[key]);
 }
 
 /**

@@ -85,12 +85,28 @@ export function validateMbi(value) {
 export function findMbiCandidates(text) {
   const tokens = String(text ?? "").split(/[^A-Za-z0-9-]+/).filter(Boolean);
   const out = [];
+  const isMbiShaped = (normalized) =>
+    normalized.length === 11 &&
+    isN(normalized[0]) && // MBIs always start with a digit
+    /[A-Z]/.test(normalized) && /[0-9]/.test(normalized);
   for (const token of tokens) {
-    const normalized = normalizeMbi(token);
-    if (normalized.length !== 11) continue;
-    if (!isN(normalized[0])) continue; // MBIs always start with a digit
-    if (!/[A-Z]/.test(normalized) || !/[0-9]/.test(normalized)) continue;
-    if (!out.includes(token)) out.push(token);
+    if (isMbiShaped(normalizeMbi(token)) && !out.includes(token)) out.push(token);
+  }
+  // OCR pass: an MBI wrapped across a line break or printed with spaced groups
+  // ("1EG4-\nTE5-MK73", "1EG4 TE5 MK73") never survives whitespace
+  // tokenization. Join short consecutive token runs and keep any whose
+  // concatenation is MBI-shaped — validateMbi still does the strict per-position
+  // check, so a coincidental join can only surface as a flagged near-miss.
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].length > 8) continue;
+    let joined = tokens[i];
+    for (let k = 1; k <= 3 && i + k < tokens.length; k++) {
+      if (tokens[i + k].length > 8) break;
+      joined += tokens[i + k];
+      const normalized = normalizeMbi(joined);
+      if (normalized.length > 11) break;
+      if (isMbiShaped(normalized) && !out.includes(normalized)) out.push(normalized);
+    }
   }
   return out;
 }

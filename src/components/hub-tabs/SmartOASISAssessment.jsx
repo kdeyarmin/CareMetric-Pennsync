@@ -349,9 +349,17 @@ export default function SmartOASISAssessment() {
     if (!selectedPatientId) { toast.error("Please select a patient first."); return; }
     setSaving(true);
     try {
-      await base44.entities.Patient.update(selectedPatientId, {
-        care_type: careScope === "hospice" ? "hospice" : "home_health",
-      });
+      // care_type drives the whole app's regulatory frame (hospice 42 CFR 418
+      // vs home-health 484 — required note elements, framing, PDGM). It is set
+      // explicitly at referral/admission; only FILL it here when the chart has
+      // none. The old unconditional write silently flipped a hospice patient
+      // to home_health whenever an assessment's heuristic said otherwise.
+      const chartPatient = patients.find((p) => p.id === selectedPatientId);
+      if (!chartPatient?.care_type) {
+        await base44.entities.Patient.update(selectedPatientId, {
+          care_type: careScope === "hospice" ? "hospice" : "home_health",
+        });
+      }
       // Eastern calendar day (matches OASISQuickUpdate) — this date drives
       // Medicare assessment-timing windows and the referral SOC clock below.
       const assessmentDate = todayEastern();

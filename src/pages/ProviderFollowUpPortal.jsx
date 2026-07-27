@@ -155,6 +155,16 @@ export default function ProviderFollowUpPortal() {
               </CardContent>
             </Card>
 
+            {openItems.length === 0 && (
+              <Card className="border-green-200 bg-green-50">
+                <CardContent className="p-6 text-center text-sm text-green-900">
+                  <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                  Every item on this request has already been answered — nothing further is needed.
+                  If you have corrections, please contact the agency directly.
+                </CardContent>
+              </Card>
+            )}
+
             {openItems.map((it) => (
               <Card key={it.item_id}>
                 <CardHeader className="pb-2">
@@ -185,6 +195,7 @@ export default function ProviderFollowUpPortal() {
               </Card>
             ))}
 
+            {openItems.length > 0 && (
             <Card>
               <CardContent className="p-4 space-y-3">
                 <div className="grid sm:grid-cols-2 gap-3">
@@ -220,6 +231,7 @@ export default function ProviderFollowUpPortal() {
                 </p>
               </CardContent>
             </Card>
+            )}
           </>
         )}
       </div>

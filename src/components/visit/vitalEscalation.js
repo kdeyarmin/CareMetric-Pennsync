@@ -21,10 +21,13 @@ function readBloodPressure(v) {
   let systolic = toNum(v.blood_pressure_systolic);
   let diastolic = toNum(v.blood_pressure_diastolic);
   if ((systolic === null || diastolic === null) && typeof v.bp === "string") {
-    // Anchor with digit lookarounds so a fat-fingered "1180/120" is rejected
-    // rather than parsed as 180/120 (which would slip under the >180/120
-    // hypertensive-crisis threshold and miss the escalation).
-    const m = v.bp.match(/(?<!\d)(\d{2,3})\s*\/\s*(\d{2,3})(?!\d)/);
+    // Anchor the digits so a fat-fingered "1180/120" is rejected rather than
+    // parsed as 180/120 (which would slip under the >180/120 hypertensive-crisis
+    // threshold and miss the escalation). The leading edge CONSUMES an optional
+    // non-digit instead of using a lookbehind — lookbehind is a parse-time
+    // SyntaxError in Safari < 16.4 and would take down every module importing
+    // this file (the whole note reviewer), matching factExtraction's rule.
+    const m = v.bp.match(/(?:^|\D)(\d{2,3})\s*\/\s*(\d{2,3})(?!\d)/);
     if (m) {
       const s = toNum(m[1]);
       const d = toNum(m[2]);

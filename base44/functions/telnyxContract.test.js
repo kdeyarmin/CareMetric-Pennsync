@@ -171,6 +171,262 @@ test("searchPurchaseTelnyxNumbers posts the Telnyx number-order contract", async
   assert.deepEqual(call.body.phone_numbers, [{ phone_number: "+12155550177" }]);
 });
 
+// A minimal spy-able client: like makeBase44 but with stable per-entity objects
+// so update/create calls can be recorded, and per-entity overrides.
+function makeSpyBase44({ user = { email: "a@x.com", account_type: "super_admin", full_name: "Ada" }, data = {}, writes = [] } = {}) {
+  const cache = {};
+  const entity = (name) => {
+    if (!cache[name]) {
+      cache[name] = {
+        create: async (row) => { writes.push({ entity: name, op: "create", row }); return { id: `${name}_1`, ...row }; },
+        update: async (id, patch) => { writes.push({ entity: name, op: "update", id, patch }); return { id, ...patch }; },
+        filter: async () => data[name] || [],
+        list: async () => data[name] || [],
+      };
+    }
+    return cache[name];
+  };
+  const entities = new Proxy({}, { get: (_t, name) => entity(String(name)) });
+  return { auth: { me: async () => user }, entities, asServiceRole: { entities } };
+}
+
+test("a fax-purpose search filters fax-capable numbers (not sms/voice)", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/available_phone_numbers"), respond: () => ({ status: 200, json: { data: [{ phone_number: "+12155550166" }] } }) },
+  ]);
+  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }] } }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+    method: "POST", body: JSON.stringify({ action: "search", purpose: "fax", area_code: "215" }),
+  }));
+  assert.equal(res.status, 200);
+  const call = calls.find((c) => c.url.includes("/v2/available_phone_numbers"));
+  assert.ok(call, "searched Telnyx available numbers");
+  const decoded = decodeURIComponent(call.url);
+  assert.match(decoded, /filter\[features\]\[\]=fax/, "filters fax capability");
+  assert.ok(!/filter\[features\]\[\]=sms/.test(decoded), "fax search does not require sms");
+});
+
+test("a fax-purpose purchase attaches the FAX connection and sets the blind outbound line", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_2", phone_numbers: [{ id: "np_9", phone_number: "+12155550199" }] } } }) },
+  ]);
+  const writes = [];
+  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({
+      writes,
+      data: {
+        IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1", messaging_profile_id: "MP1", voice_connection_id: "VC1" }],
+        AgencySettings: [{ id: "AS1" }],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+    method: "POST", body: JSON.stringify({ action: "purchase", e164: "2155550199", purpose: "fax" }),
+  }));
+  assert.equal(res.status, 200);
+  const order = calls.find((c) => c.url === "https://api.telnyx.com/v2/number_orders");
+  assert.ok(order, "posted a number order");
+  assert.equal(order.body.connection_id, "FC1", "fax purchases attach the fax connection, not voice");
+  assert.equal(order.body.messaging_profile_id, undefined, "fax purchases don't attach the messaging profile");
+  const outboundWrite = writes.find((w) => w.entity === "AgencySettings" && w.op === "update");
+  assert.equal(outboundWrite?.id, "AS1");
+  assert.equal(outboundWrite?.patch.outbound_fax_number_e164, "+12155550199", "stored as the blind outbound fax line");
+  assert.equal(outboundWrite?.patch.office_fax_number_e164, undefined, "the office reply-to number is untouched");
+});
+
+test("provision_fax re-points an owned number at the fax connection", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u, init) => u.includes("/v2/phone_numbers?"), respond: () => ({ status: 200, json: { data: [{ id: "np_7", phone_number: "+12155550188" }] } }) },
+    { match: (u, init) => /\/v2\/phone_numbers\/np_7$/.test(u) && init.method === "PATCH", respond: () => ({ status: 200, json: { data: { id: "np_7" } } }) },
+  ]);
+  const writes = [];
+  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({
+      writes,
+      data: {
+        IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
+        AgencySettings: [{ id: "AS1", office_fax_number_e164: "" }],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+    method: "POST", body: JSON.stringify({ action: "provision_fax", e164: "(215) 555-0188" }),
+  }));
+  assert.equal(res.status, 200);
+  const patch = calls.find((c) => /\/v2\/phone_numbers\/np_7$/.test(c.url) && c.method === "PATCH");
+  assert.ok(patch, "PATCHed the owned Telnyx number");
+  assert.equal(patch.body.connection_id, "FC1", "re-pointed at the Programmable Fax connection");
+  const outboundWrite = writes.find((w) => w.entity === "AgencySettings" && w.op === "update");
+  assert.equal(outboundWrite?.patch.outbound_fax_number_e164, "+12155550188", "stored normalized as the blind outbound fax line");
+});
+
+test("sendFax transmits from the blind outbound line masked as the office fax", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fax_3", status: "queued" } } }) },
+  ]);
+  const handler = await loadHandler("./sendFax/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({ data: {
+      IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
+      AgencySettings: [{ office_fax_number_e164: "+17244650444", outbound_fax_number_e164: "+12155550190" }],
+    } }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/sendFax", {
+    method: "POST", body: JSON.stringify({ file_url: "https://base44.app/files/x.pdf", to_number: "+12155550144" }),
+  }));
+  assert.equal(res.status, 200);
+  const call = calls.find((c) => c.url === "https://api.telnyx.com/v2/faxes");
+  assert.ok(call, "posted to the Telnyx Faxes endpoint");
+  assert.equal(call.body.from, "+12155550190", "transmits from the blind outbound line");
+  assert.equal(call.body.from_display_name, "Office Fax 724-465-0444", "presents the office machine's number to the recipient");
+});
+
+test("a stray inbound fax on the blind line is passed straight through to the office machine", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.endsWith("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fwd_1" } } }) },
+  ]);
+  const writes = [];
+  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({
+      writes,
+      data: {
+        IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64, fax_connection_id: "FC1" }],
+        // fax_receiving_enabled is NOT set — the default posture forwards to the office.
+        AgencySettings: [{ office_fax_number_e164: "+17244650444" }],
+        IncomingFax: [],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(signedWebhook(privateKey, { data: { event_type: "fax.received", payload: {
+    id: "faxin_1", direction: "inbound", media_url: "https://media.telnyx.com/f1.pdf",
+    from: "+13125550182", to: "+12155550190",
+  } } }));
+  assert.equal(res.status, 200);
+  const fwd = calls.find((c) => c.url.endsWith("/v2/faxes"));
+  assert.ok(fwd, "forwarded the received fax to the office");
+  assert.equal(fwd.body.to, "+17244650444", "delivered to the office fax machine");
+  assert.equal(fwd.body.from, "+12155550190", "sent from the line that received it");
+  assert.equal(fwd.body.media_url, "https://media.telnyx.com/f1.pdf");
+  const row = writes.find((w) => w.entity === "IncomingFax" && w.op === "create");
+  assert.ok(row, "created the at-most-once forward record");
+  assert.equal(row.row.processing_status, "completed", "kept away from the in-app OCR job");
+  const routed = writes.find((w) => w.entity === "IncomingFax" && w.op === "update");
+  assert.equal(routed?.patch.status, "routed", "marked routed after the successful forward");
+});
+
+test("sendFax normalizes a formatted office fax number to E.164 on `from`", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fax_2", status: "queued" } } }) },
+  ]);
+  const handler = await loadHandler("./sendFax/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({ data: {
+      IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
+      // The admin typed a formatted number — Telnyx requires E.164 on `from`.
+      AgencySettings: [{ office_fax_number_e164: "(215) 555-0190" }],
+    } }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/sendFax", {
+    method: "POST", body: JSON.stringify({ file_url: "https://base44.app/files/x.pdf", to_number: "+12155550144" }),
+  }));
+  assert.equal(res.status, 200);
+  const call = calls.find((c) => c.url === "https://api.telnyx.com/v2/faxes");
+  assert.ok(call, "posted to the Telnyx Faxes endpoint");
+  assert.equal(call.body.from, "+12155550190", "from is normalized E.164, not the raw formatted string");
+});
+
+test("provisionNurseWorkNumber refuses to hand out the shared office fax number", async () => {
+  const { impl } = makeFetch([]);
+  const handler = await loadHandler("./provisionNurseWorkNumber/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({
+      user: { email: "a@x.com", role: "admin", full_name: "Ada" },
+      data: {
+        User: [{ id: "u1", email: "n@x.com" }],
+        AgencySettings: [{ office_fax_number_e164: "+12155550190" }],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/provisionNurseWorkNumber", {
+    method: "POST", body: JSON.stringify({ target_user_email: "n@x.com", work_phone_number: "+12155550190" }),
+  }));
+  assert.equal(res.status, 409, "the office fax line can't become a personal work number");
+});
+
+test("provisionNurseWorkNumber syncs the pool row for a manually-typed assignment", async () => {
+  const { impl } = makeFetch([]);
+  const writes = [];
+  const handler = await loadHandler("./provisionNurseWorkNumber/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({
+      user: { email: "a@x.com", role: "admin", full_name: "Ada" },
+      writes,
+      data: {
+        User: [{ id: "u1", email: "n@x.com" }],
+        PhoneNumber: [{ id: "p1", e164: "+12155550100", twilio_phone_number_sid: "np_1", status: "available" }],
+        AgencySettings: [],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/provisionNurseWorkNumber", {
+    method: "POST", body: JSON.stringify({ target_user_email: "n@x.com", work_phone_number: "215-555-0100" }),
+  }));
+  assert.equal(res.status, 200);
+  const userWrite = writes.find((w) => w.entity === "User" && w.op === "update");
+  assert.equal(userWrite?.patch.work_phone_number, "+12155550100");
+  assert.equal(userWrite?.patch.twilio_phone_number_sid, "np_1", "adopts the pool row's Telnyx number id");
+  const poolWrite = writes.find((w) => w.entity === "PhoneNumber" && w.op === "update" && w.id === "p1");
+  assert.equal(poolWrite?.patch.status, "assigned", "the matching pool row is marked assigned");
+  assert.equal(poolWrite?.patch.assigned_to_email, "n@x.com");
+});
+
+test("autoAssignWorkNumbers skips the shared office fax / main office numbers", async () => {
+  const { impl } = makeFetch([]);
+  const writes = [];
+  const handler = await loadHandler("./autoAssignWorkNumbers/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({
+      user: { email: "a@x.com", role: "admin", full_name: "Ada" },
+      writes,
+      data: {
+        // The office fax line sits FIRST in the pool — FIFO must not hand it out.
+        PhoneNumber: [
+          { id: "p1", e164: "+12155550190", status: "available" },
+          { id: "p2", e164: "+12155550101", status: "available" },
+        ],
+        User: [{ id: "u1", email: "n@x.com" }],
+        AgencySettings: [{ office_fax_number_e164: "+12155550190" }],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/autoAssignWorkNumbers", {
+    method: "POST", body: JSON.stringify({}),
+  }));
+  assert.equal(res.status, 200);
+  const out = await res.json();
+  assert.equal(out.assigned_count, 1);
+  assert.equal(out.assigned[0].e164, "+12155550101", "the fax line was skipped; the next number was assigned");
+  const userWrite = writes.find((w) => w.entity === "User" && w.op === "update");
+  assert.equal(userWrite?.patch.work_phone_number, "+12155550101");
+});
+
 // ============================ VIDEO TOKEN ============================
 test("createTelehealthToken provisions a room and mints a join token", async () => {
   const { impl, calls } = makeFetch([
@@ -298,6 +554,66 @@ test("inbound call answers first, then bridges an on-duty nurse on call.answered
   assert.equal(transfer.body.from, "+12155550100");
   // The transfer carries ringdown state so an unanswered hangup can advance.
   assert.equal(decodeState(transfer.body.client_state).t, "ringdown");
+});
+
+test("an after-hours/weekend inbound call greets and transfers to the NORMALIZED after-hours number", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/actions/answer"), respond: () => ({ status: 200, json: { data: {} } }) },
+  ]);
+  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({
+      data: {
+        IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }],
+        User: [{ email: "n@x.com", work_phone_number: "+12155550100", personal_cell_e164: "+12155550111", duty_status: "on_duty" }],
+        // Business hours ON with no open days = closed all week (nights/weekends).
+        // The transfer number is stored FORMATTED — routing must normalize it.
+        AgencySettings: [{
+          business_hours_enabled: true, business_hours: {},
+          after_hours_call_action: "transfer",
+          after_hours_transfer_number_e164: "(724) 465-0440",
+        }],
+        CallLog: [],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  await handler(signedWebhook(privateKey, { data: { event_type: "call.initiated", payload: { call_control_id: "cc_ah", direction: "incoming", from: "+13125550182", to: "+12155550100" } } }));
+  const answer = calls.find((c) => /\/actions\/answer$/.test(c.url));
+  assert.ok(answer, "answered the after-hours call (to speak the greeting)");
+  const carried = decodeState(answer.body.client_state);
+  assert.equal(carried.action, "greet_transfer", "after-hours calls greet then transfer");
+  assert.equal(carried.to, "+17244650440", "transfer target is normalized E.164, not the raw formatted string");
+});
+
+test("a rejected ringdown transfer advances to the next target instead of stranding the caller", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  let transferCalls = 0;
+  const { impl, calls } = makeFetch([
+    // First target is rejected outright (e.g. bad number); the next succeeds.
+    { match: (u) => u.includes("/actions/transfer"), respond: () => (++transferCalls === 1
+      ? { status: 422, json: { errors: [{ detail: "invalid destination" }] } }
+      : { status: 200, json: { data: {} } }) },
+    { match: (u) => u.includes("/actions/speak"), respond: () => ({ status: 200, json: { data: {} } }) },
+    { match: (u) => u.includes("/actions/hangup"), respond: () => ({ status: 200, json: { data: {} } }) },
+  ]);
+  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }] } }),
+    fetchImpl: impl,
+  });
+  await handler(signedWebhook(privateKey, { data: { event_type: "call.answered", payload: {
+    call_control_id: "cc_rd", direction: "incoming",
+    client_state: b64json({ t: "inbound_ivr", action: "ringdown", greeting: "", to: null, callerId: "+12155550100",
+      targets: [{ to: "724-465", kind: "primary" }, { to: "+17244650440", kind: "office" }] }),
+  } } }));
+  const transfers = calls.filter((c) => /\/actions\/transfer$/.test(c.url));
+  assert.equal(transfers.length, 2, "retried the next target after the rejection");
+  assert.equal(transfers[1].body.to, "+17244650440", "second attempt rings the next ringdown target");
+  assert.ok(!calls.some((c) => /\/actions\/hangup$/.test(c.url)), "caller was not hung up — the second target is ringing");
 });
 
 test("find-me-follow-me rolls to the next target when a leg goes unanswered", async () => {

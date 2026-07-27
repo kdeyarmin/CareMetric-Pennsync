@@ -1,6 +1,8 @@
 import { lazy, Suspense, useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { toLocalISODate } from "@/lib/dateLocal";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,14 +74,21 @@ export default function UserActivityReport() {
   }, [requestedTab, activeTab, setSearchParams]);
 
   // Fetch user activity data
+  // Admin-only: the agency-wide user activity audit trail must not be
+  // browsable by every authenticated user (defense in depth alongside RLS).
+  const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+  const isAdmin = isAdminView(currentUser);
+
   const { data: activities = [], isLoading } = useQuery({
     queryKey: ['user-activities-report'],
-    queryFn: () => base44.entities.UserActivity.list('-created_date', 5000)
+    queryFn: () => base44.entities.UserActivity.list('-created_date', 5000),
+    enabled: isAdmin,
   });
 
   const { data: _users = [] } = useQuery({
     queryKey: ['all-users-report'],
-    queryFn: () => base44.entities.User.list('-created_date', 500)
+    queryFn: () => base44.entities.User.list('-created_date', 500),
+    enabled: isAdmin,
   });
 
   // Filter activities by time range
@@ -322,6 +331,18 @@ export default function UserActivityReport() {
       toast.error('Failed to generate PDF report: ' + error.message);
     }
   };
+
+  if (currentUser && !isAdmin) {
+    return (
+      <PageContainer>
+        <AccessDeniedState
+          title="Access restricted"
+          description="The User Activity Report is available to administrators only."
+          className="py-24"
+        />
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>

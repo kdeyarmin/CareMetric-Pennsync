@@ -18,6 +18,7 @@ import {
   ExternalLink
 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { requirementsFor } from "./visitTypeRequirements";
 
 export default function VisitTypeComplianceChecker({ 
   visitType, 
@@ -37,90 +38,10 @@ export default function VisitTypeComplianceChecker({
     if (!visitType || !noteContent) return;
 
     try {
-      const visitTypeRequirements = {
-        admission: {
-          display: "Start of Care/Admission",
-          cms_reference: "42 CFR 484.55(c)",
-          required_elements: [
-            "Complete patient assessment within 5 days of SOC",
-            "Physician orders obtained and documented",
-            "Patient/caregiver rights and responsibilities reviewed",
-            "Emergency preparedness plan established",
-            "Comprehensive care plan developed",
-            "OASIS-E assessment completed",
-            "Initial skilled nursing assessment",
-            "Patient's understanding of plan of care documented",
-            "Medication reconciliation completed",
-            "Safety assessment of home environment",
-            "Infection control procedures reviewed"
-          ]
-        },
-        recertification: {
-          display: "Recertification",
-          cms_reference: "42 CFR 484.60",
-          required_elements: [
-            "Updated physician orders for continuing care",
-            "Progress toward care plan goals documented",
-            "Comprehensive reassessment completed",
-            "OASIS-E recertification assessment",
-            "Justification for continuing skilled services",
-            "Patient's current functional status compared to baseline",
-            "Medication review and reconciliation",
-            "Evidence of ongoing skilled need",
-            "Plan of care updates based on current condition",
-            "Physician communication documented"
-          ]
-        },
-        discharge: {
-          display: "Discharge/Transfer",
-          cms_reference: "42 CFR 484.50",
-          required_elements: [
-            "Reason for discharge clearly stated",
-            "OASIS-E discharge assessment completed",
-            "Final visit comprehensive assessment",
-            "Summary of care provided and outcomes achieved",
-            "Patient's discharge condition and functional status",
-            "Discharge instructions provided to patient/caregiver",
-            "Post-discharge plan documented",
-            "Community resources/referrals provided",
-            "Physician notification of discharge",
-            "Equipment needs for post-discharge period",
-            "Follow-up appointments scheduled/recommended"
-          ]
-        },
-        skilled_nursing: {
-          display: "Skilled Nursing Visit",
-          cms_reference: "42 CFR 484.75",
-          required_elements: [
-            "Skilled assessment of patient's condition",
-            "Comparison to previous visit findings",
-            "Intervention(s) requiring nursing skill",
-            "Patient response to treatment/interventions",
-            "Progress toward care plan goals",
-            "Patient/caregiver education provided",
-            "Vital signs and clinical observations",
-            "Medication management/teaching",
-            "Safety and environmental assessment"
-          ]
-        },
-        routine_visit: {
-          display: "Routine Visit",
-          cms_reference: "42 CFR 484.75",
-          required_elements: [
-            "Assessment of patient's current condition",
-            "Skilled interventions performed",
-            "Patient response to care",
-            "Progress notes related to care plan goals",
-            "Vital signs documentation",
-            "Patient/caregiver teaching as appropriate",
-            "Changes in condition reported"
-          ]
-        }
-      };
+      const requirements = requirementsFor(visitType, patientData?.care_type || careType);
+      const isHospice = String(patientData?.care_type || careType).toLowerCase() === "hospice";
 
-      const requirements = visitTypeRequirements[visitType] || visitTypeRequirements.routine_visit;
-
-      const prompt = `You are a Medicare compliance expert specializing in home health documentation. Perform a detailed compliance review for this ${requirements.display} visit.
+      const prompt = `You are a Medicare compliance expert specializing in ${isHospice ? "hospice" : "home health"} documentation. Perform a detailed compliance review for this ${requirements.display} visit.
 
 CMS REGULATION: ${requirements.cms_reference}
 
@@ -128,7 +49,7 @@ REQUIRED ELEMENTS FOR ${requirements.display.toUpperCase()}:
 ${requirements.required_elements.map((el, idx) => `${idx + 1}. ${el}`).join('\n')}
 
 VISIT TYPE: ${visitType}
-CARE TYPE: ${careType === 'hospice' ? 'Hospice' : 'Home Health'}
+CARE TYPE: ${isHospice ? 'Hospice (surveyed under 42 CFR Part 418 — OASIS does NOT apply)' : 'Home Health (surveyed under 42 CFR Part 484)'}
 
 DOCUMENTATION TO REVIEW:
 ${noteContent}

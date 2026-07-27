@@ -134,3 +134,18 @@ test("markStartOfCareCompleted closes the intake→SOC clock", () => {
 test("TIMELY_INITIATION_DAYS is the CMS 2-day window", () => {
   assert.equal(TIMELY_INITIATION_DAYS, 2);
 });
+
+// ── Regression: calendar-day turnaround + unknown status (2026-07 review) ───
+
+test("a datetime SOC on calendar day 2 is timely (no ms rounding)", () => {
+  const t = computeTurnaround({ referral_date: "2026-07-20", soc_date: "2026-07-22T14:30:00Z", status: "soc_completed" });
+  assert.equal(t.turnaround_days, 2);
+  assert.equal(t.timely, true);
+  assert.equal(t.status, "timely");
+});
+
+test("a completed referral with no dates reports status 'unknown', not 'timely'", () => {
+  const t = computeTurnaround({ soc_date: "2026-07-22", status: "soc_completed" });
+  assert.equal(t.timely, null);
+  assert.equal(t.status, "unknown");
+});

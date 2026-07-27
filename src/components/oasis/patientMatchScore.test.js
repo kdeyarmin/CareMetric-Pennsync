@@ -123,3 +123,18 @@ test('a patient missing first_name does not score a spurious "undefined" name ma
   const r = calculatePatientMatchScore('undefined Smith', { last_name: 'Smith' });
   assert.ok(!r.matchFactors.includes('Exact name match'));
 });
+
+test('accented names exact-match their own record (accents fold on both sides)', () => {
+  // Regression: the extracted side stripped diacritics ("José García" → "jos
+  // garca") while the patient side kept them, so an accented name could never
+  // exact-match its own record.
+  const p = { first_name: 'José', last_name: 'García' };
+  const r = calculatePatientMatchScore('José García', p);
+  assert.ok(r.matchFactors.includes('Exact name match'));
+});
+
+test('unaccented extraction matches the accented record, comma format included', () => {
+  const p = { first_name: 'José', last_name: 'García' };
+  assert.ok(calculatePatientMatchScore('Jose Garcia', p).matchFactors.includes('Exact name match'));
+  assert.ok(calculatePatientMatchScore('García, José', p).matchFactors.includes('Comma-separated format match'));
+});

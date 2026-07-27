@@ -103,10 +103,23 @@ Deno.serve(async (req) => {
         next = [...history, newEntry];
         verify = (h) => h.some((e) => e && e.entry_id === entryId);
       } else {
-        // Prefer the entry documented for THIS visit; fall back to the last
-        // entry for history written before visit_id/entry_id existed.
+        // Prefer the entry documented for THIS visit. The last-entry fallback
+        // is ONLY for true legacy rows (no visit_id/entry_id metadata at all)
+        // — falling back whenever the visit_id merely didn't match let a
+        // typo'd/foreign visit_id silently rewrite a DIFFERENT visit's note.
         let idx = history.findIndex((e) => e && e.visit_id === String(entry.visit_id));
-        if (idx === -1) idx = history.length - 1;
+        if (idx === -1) {
+          const lastIsLegacy = history.length > 0 &&
+            !history[history.length - 1]?.visit_id && !history[history.length - 1]?.entry_id;
+          if (lastIsLegacy) {
+            idx = history.length - 1;
+          } else if (history.length > 0) {
+            return Response.json(
+              { error: 'No note-history entry exists for this visit — refusing to overwrite another visit\'s note.' },
+              { status: 404 },
+            );
+          }
+        }
         if (idx < 0) {
           // Nothing to update (no history yet) — just keep the mirror in step.
           if (clinical_notes !== undefined) await Patients.update(patient_id, notesPatch);

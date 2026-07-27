@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { toLocalISODate } from "@/lib/dateLocal";
+import { subMonths } from "date-fns";
 import { isAdminView } from "@/lib/roles";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
@@ -33,7 +34,9 @@ const tabLoader = <LoadingState className="py-12" />;
 
 export default function ReportsAnalytics() {
   const [dateRange, _setDateRange] = useState({
-    start: toLocalISODate(new Date(new Date().setMonth(new Date().getMonth() - 3))),
+    // subMonths clamps month-end overflow — raw setMonth on May 31 slid the
+    // window start to Mar 3, silently dropping Feb 28-Mar 2 from every tab.
+    start: toLocalISODate(subMonths(new Date(), 3)),
     end: toLocalISODate()
   });
   const { data: currentUser } = useQuery({

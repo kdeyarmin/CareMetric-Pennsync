@@ -153,6 +153,19 @@ Deno.serve(async (req) => {
     }
     const targetUser = users[0];
 
+    // Privilege boundary (mirrors resetUserPassword): a facility/agency admin
+    // must not be able to reset a privileged account's password — that would
+    // hand them a fresh set-password link for a super admin / peer admin and
+    // let them take that account over. Only a super admin may reset another
+    // administrator's password.
+    const callerIsSuperAdmin = currentUser.account_type === 'super_admin';
+    const targetIsPrivileged = targetUser.account_type === 'super_admin'
+      || targetUser.account_type === 'agency_admin'
+      || targetUser.role === 'admin';
+    if (targetIsPrivileged && !callerIsSuperAdmin) {
+      return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
+    }
+
     // Re-invite the user — this sends them a fresh link to set/reset their password
     await base44.users.inviteUser(userEmail, targetUser.role || 'user');
 

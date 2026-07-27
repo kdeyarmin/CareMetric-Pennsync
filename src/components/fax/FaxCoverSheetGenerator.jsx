@@ -325,11 +325,14 @@ export default function FaxCoverSheetGenerator({
             <div className="space-y-1">
               <Label className="text-xs">Sender Fax #</Label>
               <Input
-                placeholder="+1234567890"
+                placeholder="Office fax (default)"
                 value={form.sender_number}
                 onChange={(e) => setForm(f => ({ ...f, sender_number: e.target.value }))}
                 className="h-11 text-sm"
               />
+              <p className="text-[10px] text-slate-400">
+                Leave blank to show the office fax number, so replies go to the office.
+              </p>
             </div>
           </div>
 

@@ -34,10 +34,29 @@ export default function MedicareRuleSeeder() {
         await base44.entities.MedicareComplianceRule.create(rule);
         created += 1;
       }
-      return created;
+      // Backfill service_line onto rules seeded before that field existed —
+      // rulesToSeed skips existing names, so without this an already-seeded
+      // agency's home-health rules keep hard-blocking hospice notes (a missing
+      // service_line reads as "applies to both").
+      const nameKey = (n) => String(n || "").trim().toLowerCase();
+      const byName = new Map((existing || []).map((r) => [nameKey(r.rule_name), r]));
+      let patched = 0;
+      for (const def of DEFAULT_MEDICARE_RULES) {
+        const cur = byName.get(nameKey(def.rule_name));
+        if (cur && def.service_line && cur.service_line !== def.service_line) {
+          await base44.entities.MedicareComplianceRule.update(cur.id, { service_line: def.service_line });
+          patched += 1;
+        }
+      }
+      return { created, patched };
     },
-    onSuccess: (created) => {
-      toast.success(created ? `Loaded ${created} default Medicare rule${created > 1 ? "s" : ""}.` : "Default rules already loaded.");
+    onSuccess: ({ created, patched }) => {
+      const msg = created
+        ? `Loaded ${created} default Medicare rule${created > 1 ? "s" : ""}.`
+        : patched
+          ? `Default rules already loaded; updated ${patched} rule${patched > 1 ? "s" : ""}.`
+          : "Default rules already loaded.";
+      toast.success(msg);
       queryClient.invalidateQueries({ queryKey: ["medicareComplianceRules"] });
     },
     onError: () => toast.error("Couldn't load the default rules. Please try again."),

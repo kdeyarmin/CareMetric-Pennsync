@@ -103,17 +103,20 @@ export default function AnalyticsDashboard() {
     }),
   });
 
+  // Average only rows that actually carry the metric — treating a missing
+  // value as 0 halved the averages whenever legacy rows lacked the field.
+  const avgOf = (rows, pick) => {
+    const vals = rows.map(pick).filter((v) => Number.isFinite(v));
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  };
+
   // Calculate key metrics
   const metrics = useMemo(() => {
     // Documentation time metrics
-    const avgDocTime = noteConversions.length > 0
-      ? noteConversions.reduce((sum, nc) => sum + (nc.conversion_time_ms || 0), 0) / noteConversions.length / 1000 / 60
-      : 0;
+    const avgDocTime = avgOf(noteConversions, (nc) => nc.conversion_time_ms) / 1000 / 60;
 
     // Compliance score metrics
-    const avgComplianceScore = complianceAudits.length > 0
-      ? complianceAudits.reduce((sum, ca) => sum + (ca.compliance_score || 0), 0) / complianceAudits.length
-      : 0;
+    const avgComplianceScore = avgOf(complianceAudits, (ca) => ca.compliance_score);
 
     // AI utilization
     const aiActions = userActivities.filter(ua => 
@@ -127,9 +130,7 @@ export default function AnalyticsDashboard() {
       : 0;
 
     // Quality metrics
-    const avgQualityScore = noteConversions.length > 0
-      ? noteConversions.reduce((sum, nc) => sum + (nc.quality_score || 0), 0) / noteConversions.length
-      : 0;
+    const avgQualityScore = avgOf(noteConversions, (nc) => nc.quality_score);
 
     // Compliance improvement metrics - safely handle undefined fields
     const conversionsWithCompliance = noteConversions.filter(nc => 

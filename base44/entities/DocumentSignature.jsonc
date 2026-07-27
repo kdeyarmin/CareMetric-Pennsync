@@ -186,6 +186,10 @@
       "type": "string",
       "description": "Algorithm used for signature_hash"
     },
+    "signature_hash_payload_v": {
+      "type": "number",
+      "description": "Canonical-payload version the integrity MAC was stamped with (v2 adds document_content)"
+    },
     "signature_hash_at": {
       "type": "string",
       "format": "date-time",

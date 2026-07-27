@@ -104,3 +104,13 @@ test("low deficit, non-hospice → home_health", () => {
   assert.equal(computeCareScope({ m1800: 1, m1810: 1 }), "home_health");
   assert.equal(computeCareScope({}), "home_health");
 });
+
+test('M1900 "Unknown" (4) does not trigger a fall-prevention suggestion', () => {
+  // 4 is "Unknown" prior functioning, not an impairment level.
+  assert.equal(evaluateOASIS({ m1900: 4 }).find((r) => r.domain === "Fall Prevention"), undefined);
+});
+
+test('completed high-risk drug education (m2010 = 1) is not a medication gap', () => {
+  assert.equal(evaluateOASIS({ m2010: 1 }).find((r) => r.domain === "Medication Management"), undefined);
+  assert.ok(evaluateOASIS({ m2010: 2 }).find((r) => r.domain === "Medication Management"));
+});

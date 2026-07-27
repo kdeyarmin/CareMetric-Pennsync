@@ -77,8 +77,18 @@ export default function NumberPoolPanel() {
   const [buyOpen, setBuyOpen] = useState(false);
   const [searchArea, setSearchArea] = useState("");
   const [found, setFound] = useState([]);
+  // What the number is for: a per-nurse voice+SMS line (default) or the single
+  // blind OUTBOUND fax line. Fax purchases are wired to the Telnyx fax
+  // connection and stored as AgencySettings.outbound_fax_number_e164 by the
+  // backend; recipients see the office fax number instead (masked).
+  const [buyPurpose, setBuyPurpose] = useState("voice_sms");
+  const pickPurpose = (p) => {
+    setBuyPurpose(p);
+    setFound([]); // results are purpose-specific (feature filter differs)
+  };
   const search = useMutation({
-    mutationFn: () => base44.functions.invoke("searchPurchaseTelnyxNumbers", { action: "search", area_code: searchArea }),
+    mutationFn: () =>
+      base44.functions.invoke("searchPurchaseTelnyxNumbers", { action: "search", area_code: searchArea, purpose: buyPurpose }),
     onSuccess: (res) => {
       const data = res?.data || res;
       setFound(data?.numbers || []);
@@ -87,11 +97,22 @@ export default function NumberPoolPanel() {
     onError: (err) => toast.error(err?.message || "Number search failed"),
   });
   const purchase = useMutation({
-    mutationFn: (e164) => base44.functions.invoke("searchPurchaseTelnyxNumbers", { action: "purchase", e164 }),
+    mutationFn: (e164) =>
+      base44.functions.invoke("searchPurchaseTelnyxNumbers", {
+        action: "purchase",
+        e164,
+        purpose: buyPurpose,
+        ...(buyPurpose === "fax" ? { set_as_outbound_fax: true } : {}),
+      }),
     onSuccess: (res, e164) => {
       invalidate();
+      queryClient.invalidateQueries({ queryKey: ["agency-settings"] });
       setFound((prev) => prev.filter((n) => n.e164 !== e164));
-      toast.success("Number purchased and added to the pool");
+      toast.success(
+        buyPurpose === "fax"
+          ? "Fax number purchased — wired to your fax connection and set as the outbound fax line"
+          : "Number purchased and added to the pool",
+      );
     },
     onError: (err) => toast.error(err?.message || "Purchase failed"),
   });
@@ -136,6 +157,36 @@ export default function NumberPoolPanel() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Find &amp; buy a Telnyx number</DialogTitle></DialogHeader>
+              <div>
+                <Label className="text-xs text-slate-500">What is this number for?</Label>
+                <div className="flex gap-2 mt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={buyPurpose === "voice_sms" ? "default" : "outline"}
+                    className={buyPurpose === "voice_sms" ? "bg-indigo-600 hover:bg-indigo-700" : ""}
+                    onClick={() => pickPurpose("voice_sms")}
+                  >
+                    Nurse line (voice + SMS)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={buyPurpose === "fax" ? "default" : "outline"}
+                    className={buyPurpose === "fax" ? "bg-indigo-600 hover:bg-indigo-700" : ""}
+                    onClick={() => pickPurpose("fax")}
+                  >
+                    Outbound fax line
+                  </Button>
+                </div>
+                {buyPurpose === "fax" && (
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Searches fax-capable numbers. Buying wires the number to your Telnyx fax connection and
+                    sets it as the single blind line every fax transmits from — recipients see the office
+                    fax number instead, so replies go straight to the office machine.
+                  </p>
+                )}
+              </div>
               <div className="flex items-end gap-2">
                 <div className="flex-1">
                   <Label className="text-xs text-slate-500">Area code (optional)</Label>

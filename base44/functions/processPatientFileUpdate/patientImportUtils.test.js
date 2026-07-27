@@ -324,3 +324,33 @@ test("active census treats a 2-digit DOB re-upload as an existing match (no dupl
   assert.deepEqual(summary.created, []);
   assert.equal(summary.matchedExisting, 1);
 });
+
+test("an MRN match with a conflicting row name errors instead of matching the wrong patient", () => {
+  // Regression: "John Smith, MRN-777" matched (and would discharge) Mary
+  // Jones because she owned MRN-777 — the row's name was never checked.
+  const mary = { id: "p1", first_name: "Mary", last_name: "Jones", medical_record_number: "MRN-777" };
+  const byMrn = new Map([["mrn777", [mary]]]);
+  const byNameDob = new Map();
+  const res = resolveMatch(
+    { first_name: "John", last_name: "Smith", medical_record_number: "MRN-777" },
+    byMrn,
+    byNameDob,
+  );
+  assert.ok(res.error, "expected an error row");
+  assert.match(res.error, /different patient/i);
+
+  // Same name (married-name change on last only, first agrees) still matches.
+  const marriedRes = resolveMatch(
+    { first_name: "Mary", last_name: "Smith", medical_record_number: "MRN-777" },
+    byMrn,
+    byNameDob,
+  );
+  assert.equal(marriedRes.match?.id, "p1");
+  // Exact same name matches.
+  const sameRes = resolveMatch(
+    { first_name: "Mary", last_name: "Jones", medical_record_number: "MRN-777" },
+    byMrn,
+    byNameDob,
+  );
+  assert.equal(sameRes.match?.id, "p1");
+});

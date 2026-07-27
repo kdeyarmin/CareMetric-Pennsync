@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Phone, PhoneOff, Save, Info, CalendarClock, CalendarDays, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { scheduleState, getUpcomingWeekend, WEEK_MS } from "@/components/voice/dutyUtils";
+import { scheduleState, getUpcomingWeekend, WEEK_MS, isPastAutoOffHour, DEFAULT_AUTO_OFF_HOUR } from "@/components/voice/dutyUtils";
 import { cn } from "@/lib/utils";
 
 /** ISO string -> value for an <input type="datetime-local"> (local time). */
@@ -56,6 +56,17 @@ export default function DutyStatusCard() {
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
   });
+
+  // Agency settings drive the auto-off cutoff (default 5pm): after it, the
+  // routing treats every nurse as off duty regardless of the toggle — surface
+  // that here so the card never claims "Available" while calls go to the office.
+  const { data: settingsArr = [] } = useQuery({
+    queryKey: ["agency-settings"],
+    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+    refetchOnWindowFocus: false,
+    initialData: [],
+  });
+  const agencySettings = settingsArr[0];
 
   useEffect(() => {
     if (!user) return;
@@ -215,6 +226,26 @@ export default function DutyStatusCard() {
           </div>
         </div>
       </Card>
+
+      {/* Heads-up when the agency's auto-off hour is overriding the toggle:
+          without this, the card says "Available" after 5pm while the routing
+          sends every call/text to the office. */}
+      {onDuty && agencySettings && isPastAutoOffHour(agencySettings) && (
+        <Alert className="bg-amber-50 border-amber-200">
+          <CalendarClock className="w-4 h-4 text-amber-600" />
+          <AlertDescription className="text-amber-800 text-sm">
+            It's past the agency's end-of-day cutoff (
+            {(() => {
+              const h = Number.isFinite(Number(agencySettings.auto_off_duty_hour))
+                ? Number(agencySettings.auto_off_duty_hour)
+                : DEFAULT_AUTO_OFF_HOUR;
+              return `${((h + 11) % 12) + 1}${h >= 12 ? " PM" : " AM"}`;
+            })()}
+            ) — calls and texts route to the main office overnight even while you're toggled on. You'll be
+            reachable again when you toggle on tomorrow.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Heads-up when a schedule is overriding an on-duty status right now */}
       {onDuty && savedState === "active" && (

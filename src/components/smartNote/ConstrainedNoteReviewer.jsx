@@ -421,7 +421,12 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const generate = async () => {
     if (!analysis) return;
     const { required } = analysis;
-    const criticalUnanswered = computeCriticalGaps(effectivePresence, required).filter(e => !answers[e.id]?.trim());
+    // A confirmed standard negative COUNTS as answering a critical gap: the
+    // confirm checkbox hides the answer box, and its phrase is real
+    // documentation that goes into the note — so requiring a typed answer on
+    // top would deadlock generation (reachable when an agency rule promotes an
+    // element with a standardNegative, e.g. safety, to critical).
+    const criticalUnanswered = computeCriticalGaps(effectivePresence, required).filter(e => !answers[e.id]?.trim() && !confirmedNegatives.has(e.id));
     if (criticalUnanswered.length) {
       toast.error(`Required before generating: ${criticalUnanswered.map(e => e.label).join(", ")}`);
       return;
@@ -525,7 +530,8 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const thinCritical = analysis ? findInadequateCritical(analysis.required, answers) : [];
   const answeredOrConfirmed = (id) => !!answers[id]?.trim() || confirmedNegatives.has(id);
   const answeredCount = gaps.filter(g => answeredOrConfirmed(g.id)).length;
-  const criticalUnanswered = analysis ? computeCriticalGaps(effectivePresence, analysis.required).filter(e => !answers[e.id]?.trim()) : [];
+  // Mirrors generate(): a confirmed standard negative satisfies a critical gap.
+  const criticalUnanswered = analysis ? computeCriticalGaps(effectivePresence, analysis.required).filter(e => !answers[e.id]?.trim() && !confirmedNegatives.has(e.id)) : [];
   const documentedCount = analysis ? analysis.required.filter(e => { const p = effectivePresence.find(r => r.id === e.id); return (p && p.present) || answeredOrConfirmed(e.id); }).length : 0;
   const liveCoverage = analysis ? computeCoverageScore({ requiredElements: analysis.required, presenceResults: effectivePresence, answeredIds: analysis.required.filter(e => answers[e.id]?.trim()).map(e => e.id), confirmedNegativeIds: Array.from(confirmedNegatives) }) : 0;
   const tone = liveCoverage >= 90 ? "green" : liveCoverage >= 70 ? "orange" : "red";

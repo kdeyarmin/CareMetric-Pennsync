@@ -33,25 +33,65 @@ function optionLabel(question, value) {
   return opt ? opt.label : String(value);
 }
 
+// Words that flip an option's clinical meaning. A fragment match across a
+// negation boundary drafts the OPPOSITE answer — "short of breath" is a
+// substring of "Patient is not short of breath" — so both sides must agree
+// on polarity before any label match counts.
+const NEGATION_TOKENS = new Set(["no", "not", "never", "none", "without", "denies", "denied", "unable"]);
+
+const tokenize = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+const hasNegation = (toks) => toks.some((t) => NEGATION_TOKENS.has(t));
+
+/**
+ * Whole-token label match: exact token-sequence equality, or a multi-token
+ * contiguous run inside the longer side. Single-token needles ("no", "yes")
+ * only match by full equality — substring/fragment matching is how "…noted"
+ * used to match the "No" option.
+ */
+function labelTokensMatch(a, b) {
+  if (!a.length || !b.length) return false;
+  if (hasNegation(a) !== hasNegation(b)) return false;
+  const [needle, hay] = a.length <= b.length ? [a, b] : [b, a];
+  if (needle.length === hay.length) return needle.every((t, i) => t === hay[i]);
+  if (needle.length === 1) return false;
+  for (let i = 0; i <= hay.length - needle.length; i++) {
+    if (needle.every((t, j) => t === hay[i + j])) return true;
+  }
+  return false;
+}
+
 /**
  * Resolve a suggestion's value to a valid numeric option for the item, or null.
- * Tries the raw numeric value first, then an option-label match.
+ * Tries the raw numeric value first, then a whole-token option-label match.
  */
 function resolveValue(suggestion, question) {
   // Primary: the raw numeric value must be one of the item's real options.
-  const n = parseInt(String(suggestion.suggested_value ?? "").trim(), 10);
+  const raw = String(suggestion.suggested_value ?? "").trim();
+  const n = parseInt(raw, 10);
   if (!Number.isNaN(n) && question.values.has(n)) return n;
 
-  // Fallback: match the descriptive suggested_value_label against option labels
-  // (never the raw numeric — a bare "9" must NOT substring-match an option).
-  const label = String(suggestion.suggested_value_label || "").toLowerCase().trim();
-  if (label.length >= 4) {
-    const stripPrefix = (s) => s.replace(/^\s*\d+\s*[—-]\s*/, "").trim();
-    const opt = (question.options || []).find((o) => {
-      const optLabel = String(o.label).toLowerCase();
-      return optLabel.includes(label) || label.includes(stripPrefix(optLabel));
-    });
-    if (opt) return opt.value;
+  // Fallback: match the descriptive label (or a non-numeric suggested_value
+  // like "yes") against option labels on whole-token boundaries with matching
+  // negation polarity. Plain substring matching drafted opposite values:
+  // "Unhealed pressure injury noted" contains "no" → M1306 = 0. A bare
+  // numeric ("9") still never matches an option by label.
+  const stripPrefix = (s) => String(s).replace(/^\s*\d+\s*[—–-]\s*/, "");
+  const candidates = [suggestion.suggested_value_label, /\d/.test(raw) ? "" : raw]
+    .map(tokenize)
+    .filter((toks) => toks.length > 0);
+  for (const cand of candidates) {
+    const matches = (question.options || []).filter((o) => labelTokensMatch(cand, tokenize(stripPrefix(o.label))));
+    if (matches.length === 1) return matches[0].value;
+    if (matches.length > 1) {
+      // Ambiguous fragment ("short of breath" appears in several severity
+      // levels) — only an exact whole-label match may resolve it; otherwise
+      // skip rather than draft an arbitrary level.
+      const exact = matches.filter((o) => {
+        const ot = tokenize(stripPrefix(o.label));
+        return ot.length === cand.length && ot.every((t, i) => t === cand[i]);
+      });
+      if (exact.length === 1) return exact[0].value;
+    }
   }
   return null;
 }

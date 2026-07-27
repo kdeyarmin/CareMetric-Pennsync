@@ -18,8 +18,9 @@ Deno.serve(async (req) => {
     // silently caps at the SDK default of 50). Re-run if more remain.
     const allPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
 
-    // Filter patients without first_name
-    const candidates = allPatients.filter(p => !p.first_name || p.first_name.trim() === '');
+    // Filter patients without first_name. Skip already-archived records —
+    // re-archiving flipped e.g. a 'discharged' status to 'merged'.
+    const candidates = allPatients.filter(p => (!p.first_name || p.first_name.trim() === '') && !p.is_archived);
 
     // Surface candidates that still carry identifying data — archiving one of
     // these is far more consequential than removing an empty stub, so the admin
@@ -58,8 +59,21 @@ Deno.serve(async (req) => {
     // so a mistaken cleanup can be undone by clearing is_archived/status.
     let archivedCount = 0;
     const failed = [];
+    const skippedFlagged = [];
 
     for (const patient of candidates) {
+      // A candidate that still carries identifying data (last name, MRN, DOB)
+      // may be a REAL patient hit by an import bug — never archive those in
+      // the blanket confirm; they need individual review. Only bare stubs go.
+      const flagged = Boolean(
+        (patient.last_name && patient.last_name.trim()) ||
+        (patient.medical_record_number && String(patient.medical_record_number).trim()) ||
+        patient.date_of_birth
+      );
+      if (flagged && body?.include_flagged !== true) {
+        skippedFlagged.push({ id: patient.id, last_name: patient.last_name || null });
+        continue;
+      }
       try {
         await base44.asServiceRole.entities.Patient.update(patient.id, {
           is_archived: true,
@@ -83,6 +97,10 @@ Deno.serve(async (req) => {
       message: `Archived ${archivedCount} patient(s) without first name`,
       archivedCount,
       failed,
+      skippedFlagged,
+      ...(skippedFlagged.length
+        ? { note: `${skippedFlagged.length} candidate(s) with identifying data were skipped — review individually (re-send with { include_flagged: true } only after verifying each is a stub).` }
+        : {}),
       totalProcessed: candidates.length,
     });
   } catch (error) {

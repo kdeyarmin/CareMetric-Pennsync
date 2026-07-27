@@ -4,8 +4,9 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     
-    // Verify admin access
-    const user = await base44.auth.me();
+    // Verify admin access (an unauthenticated session must get a 401, not a
+    // 500 from an uncaught auth.me() rejection)
+    const user = await base44.auth.me().catch(() => null);
     if (!user || user.role !== 'admin') {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }

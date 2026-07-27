@@ -10,7 +10,9 @@ const RULES = [
     triggers: [
       { questionId: "m1910", values: [1, 2], severity: "high" },
       { questionId: "m1860", values: [2, 3, 4, 5], severity: "high" },  // ambulation impairment
-      { questionId: "m1900", values: [1, 2, 3, 4], severity: "medium" }, // current medication effect
+      // M1900 Prior Functioning: 1–3 are real impairment levels; 4 = "Unknown"
+      // and must not trigger a fall-risk suggestion.
+      { questionId: "m1900", values: [1, 2, 3], severity: "medium" },
     ],
     reason: (ans) => {
       const risk = ans["m1910"];
@@ -36,7 +38,9 @@ const RULES = [
     domain: "Medication Management",
     triggers: [
       { questionId: "m2001", values: [1, 2], severity: "high" },
-      { questionId: "m2010", values: [1, 2], severity: "high" },
+      // M2010 High-Risk Drug Education: 1 = education COMPLETED (fine);
+      // only 2 = "Education not completed" is a medication-management gap.
+      { questionId: "m2010", values: [2], severity: "high" },
       { questionId: "m2020", values: [1, 2, 3], severity: "medium" },
     ],
     reason: (ans) => {

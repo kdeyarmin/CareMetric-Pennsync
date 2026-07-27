@@ -78,8 +78,17 @@ export default function AIComplianceAuditor({
 
       const _targetVisit = visitId ? visits.find(v => v.id === visitId) : visits[0];
       const latestOASIS = oasisData[0];
+      // The regulatory frame must follow the patient's care type: hospice is
+      // surveyed under 42 CFR 418 (no OASIS, no homebound requirement); home
+      // health under 42 CFR 484. Auditing a hospice chart against 484/OASIS
+      // produces wrong-regulation findings presented as fact.
+      const isHospice = String(patient.care_type || 'home_health').toLowerCase() === 'hospice';
 
       const prompt = `You are an expert healthcare compliance auditor specializing in home health and hospice regulations. Perform a comprehensive compliance audit of this patient record WITH EMPHASIS ON CONTINUITY OF CARE AND TREND ANALYSIS.
+
+REGULATORY FRAME: ${isHospice
+  ? 'This is a HOSPICE patient — audit under 42 CFR Part 418 (hospice Conditions of Participation). OASIS and homebound status do NOT apply to hospice; do not cite 42 CFR Part 484.'
+  : 'This is a HOME HEALTH patient — audit under 42 CFR Part 484 (home health Conditions of Participation).'}
 
 ${historyContext}
 
@@ -199,7 +208,7 @@ ${incidents.map(i => `${i.incident_date}: ${i.incident_type} - ${i.severity} sev
 COMPLIANCE AUDIT REQUIREMENTS:
 Analyze this comprehensive patient record against the following compliance areas:
 
-1. DOCUMENTATION COMPLETENESS (CMS CoP 484.50)
+1. DOCUMENTATION COMPLETENESS (CMS CoP ${isHospice ? '418.104 — clinical records' : '484.50'})
    - Is admission documentation complete?
    - Are baseline assessments documented?
    - Are all required patient demographics captured?
@@ -207,7 +216,7 @@ Analyze this comprehensive patient record against the following compliance areas
    - Are advance directives documented?
    - Is insurance information complete?
 
-2. CLINICAL ASSESSMENT (CMS CoP 484.55)
+2. CLINICAL ASSESSMENT (CMS CoP ${isHospice ? '418.54 — initial and comprehensive assessment' : '484.55'})
    - Are baseline vitals documented?
    - Is functional status properly assessed?
    - Is pain assessed and managed?
@@ -215,7 +224,7 @@ Analyze this comprehensive patient record against the following compliance areas
    - Is mental health screening completed?
    - Are social determinants addressed?
 
-3. MEDICATION MANAGEMENT (CMS CoP 484.60)
+3. MEDICATION MANAGEMENT (CMS CoP ${isHospice ? '418.56 — IDG care planning and coordination' : '484.60'})
    - Is current medication list complete and accurate?
    - Are medication reconciliation processes followed?
    - Are high-risk medications identified?
@@ -223,15 +232,19 @@ Analyze this comprehensive patient record against the following compliance areas
 
 4. VISIT DOCUMENTATION (Medicare Guidelines)
    - Are skilled nursing interventions documented?
-   - Is homebound status justified?
+   ${isHospice
+     ? '- Does documentation support the terminal prognosis (decline or continued eligibility)?'
+     : '- Is homebound status justified?'}
    - Is patient response documented?
    - Are teaching efforts and comprehension noted?
    - Are vital signs trended and compared to baseline?
 
-5. OASIS COMPLIANCE (OASIS-E Requirements) ${latestOASIS ? '- OASIS exists, verify alignment:' : '- No OASIS data (skip if not required for this patient/visit):'}
+5. ${isHospice
+  ? 'OASIS COMPLIANCE — NOT APPLICABLE: OASIS does not apply to hospice. Skip this area entirely; do not report OASIS findings.'
+  : `OASIS COMPLIANCE (OASIS-E Requirements) ${latestOASIS ? '- OASIS exists, verify alignment:' : '- No OASIS data (skip if not required for this patient/visit):'}
    ${latestOASIS ? `- Is OASIS assessment current (within 5 days of SOC)?
    - Does clinical documentation support OASIS answers?
-   - Are discrepancies between OASIS and clinical notes identified?` : '- OASIS not applicable - skip this compliance area'}
+   - Are discrepancies between OASIS and clinical notes identified?` : '- OASIS not applicable - skip this compliance area'}`}
 
 6. SAFETY AND RISK MANAGEMENT
    - Is fall risk assessed and addressed?

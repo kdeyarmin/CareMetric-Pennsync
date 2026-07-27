@@ -30,6 +30,18 @@ describe("validateRateNumbers", () => {
     expect(validateRateNumbers({ basePaymentRate: 19000 })).toEqual([]);
   });
 
+  it("rejects a labor share entered as a percentage instead of a fraction", () => {
+    const pct = validateRateNumbers({ laborShare: 74.9 });
+    expect(pct).toHaveLength(1);
+    expect(pct[0]).toMatch(/Labor-related share 74\.9/);
+    expect(pct[0]).toMatch(/fraction between 0 and 1/);
+
+    expect(validateRateNumbers({ laborShare: 0 })).toHaveLength(1);
+    expect(validateRateNumbers({ laborShare: -0.5 })).toHaveLength(1);
+    expect(validateRateNumbers({ laborShare: 0.749 })).toEqual([]);
+    expect(validateRateNumbers({ laborShare: 1 })).toEqual([]);
+  });
+
   it(`rejects weight/multiplier cells outside the sane ${RATE_CELL_MIN}–${RATE_CELL_MAX} range, naming the cell`, () => {
     const errors = validateRateNumbers({
       clinicalGroupWeights: { MMTA_Wounds: { community_early: 12 } },

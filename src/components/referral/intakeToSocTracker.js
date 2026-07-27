@@ -17,16 +17,6 @@ export const AGING_BUCKET = { ON_TRACK: "on_track", DUE_SOON: "due_soon", OVERDU
 // Statuses that mean the intake→SOC clock is no longer running.
 const CLOSED_STATUSES = new Set(["soc_completed", "declined"]);
 
-function toDate(v) {
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-function daysBetween(a, b) {
-  if (!a || !b) return null;
-  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
-}
-
 // Parse a date-only ("YYYY-MM-DD") value as LOCAL midnight (matching
 // src/lib/dateLocal.js); other values fall through to the platform parser. Kept
 // inline so this module stays dependency-free and `node --test`-runnable.
@@ -73,18 +63,21 @@ function agingBucket(ageDays) {
  */
 export function computeTurnaround(referral = {}, opts = {}) {
   const asOf = opts.asOf ? toLocalDate(opts.asOf) : new Date();
-  const referralDate = toDate(referral.referral_date);
-  const socDate = toDate(referral.soc_date || referral.first_visit_date);
-  const orderedSoc = toDate(referral.estimated_start_date);
+  // CALENDAR-day parsing/differencing throughout (same as the aging path): the
+  // raw-ms parser classified a calendar-day-2 SOC as late whenever a datetime
+  // value carried a time-of-day (2.6 days rounds to 3).
+  const referralDate = toLocalDate(referral.referral_date);
+  const socDate = toLocalDate(referral.soc_date || referral.first_visit_date);
+  const orderedSoc = toLocalDate(referral.estimated_start_date);
 
   if (socDate) {
-    const turnaround = daysBetween(referralDate, socDate);
-    const orderedDays = daysBetween(referralDate, orderedSoc);
+    const turnaround = calendarDaysBetween(referralDate, socDate);
+    const orderedDays = calendarDaysBetween(referralDate, orderedSoc);
     // Timely if within 2 days of referral, OR the SOC happened on/before the
     // physician-specified SOC date (+2-day grace).
     const withinReferralWindow = turnaround != null && turnaround <= TIMELY_INITIATION_DAYS;
-    const withinOrderedWindow =
-      orderedSoc != null && socDate.getTime() <= orderedSoc.getTime() + TIMELY_INITIATION_DAYS * 86400000;
+    const daysPastOrdered = calendarDaysBetween(orderedSoc, socDate);
+    const withinOrderedWindow = daysPastOrdered != null && daysPastOrdered <= TIMELY_INITIATION_DAYS;
     const timely = referralDate || orderedSoc ? withinReferralWindow || withinOrderedWindow : null;
     return {
       completed: true,
@@ -92,7 +85,9 @@ export function computeTurnaround(referral = {}, opts = {}) {
       turnaround_days: turnaround,
       ordered_soc_days: orderedDays,
       timely,
-      status: timely === false ? "late" : "timely",
+      // Three-way: an unknown (no dates to measure against) must not be
+      // labeled "timely" in any UI that renders the status string.
+      status: timely === false ? "late" : timely === true ? "timely" : "unknown",
       age_days: null,
       aging_bucket: null,
     };
@@ -105,7 +100,7 @@ export function computeTurnaround(referral = {}, opts = {}) {
     completed: false,
     open: !closed,
     turnaround_days: null,
-    ordered_soc_days: daysBetween(referralDate, orderedSoc),
+    ordered_soc_days: calendarDaysBetween(referralDate, orderedSoc),
     timely: null,
     status: closed ? "closed" : "open",
     age_days: ageDays,

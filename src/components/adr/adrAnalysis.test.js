@@ -97,3 +97,16 @@ test("runAdrPacketVerification uses a long single-retry window", async () => {
   assert.equal(captured.options.retries, 1);
   assert.equal(captured.options.timeoutMs, 300000);
 });
+
+test("the verification prompt renders each item's Applies: condition", () => {
+  // Regression: the NOT-APPLICABLE RULES told the model to use the "Applies:"
+  // condition, but checklistForPrompt never rendered it — the model couldn't
+  // tell conditional items from always-required ones.
+  const checklist = buildAdrChecklist({ letterItems: [], auditType: "mac_adr" });
+  const rendered = checklistForPrompt(checklist);
+  const conditional = checklist.filter((it) => it.when && it.when !== "always");
+  assert.ok(conditional.length > 0, "expected conditional baseline items");
+  for (const it of conditional.slice(0, 3)) {
+    assert.ok(rendered.includes(`Applies: ${it.when}`), `missing Applies: for ${it.id}`);
+  }
+});

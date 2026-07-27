@@ -7,7 +7,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Upload, Plus, Trash2, Send, FileText, LayoutTemplate, Bell, BookOpen } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { generateSecureToken } from '@/components/utils/security';
 import { toast } from 'sonner';
 import { hostedAbsoluteUrl } from '@/lib/assetPath';
 import { ROUTER_PATHS } from '@/routes';
@@ -199,16 +198,22 @@ export default function SignatureRequestCreator({ onCancel }) {
           reminder_days_before: parseInt(reminderInterval)
         });
 
-        // Security: signing tokens are bearer credentials for PHI document access.
-        // Use a CSPRNG (~190 bits), not the predictable Math.random().
-        const token = generateSecureToken(32);
-        await base44.entities.DocumentPackageToken.create({
+        // Security: signing tokens are bearer credentials for PHI document
+        // access. Mint them through the backend generateSignerToken function,
+        // which stores ONLY the SHA-256 hash at rest (plus expiry clamping) —
+        // a client-side DocumentPackageToken.create persisted the PLAINTEXT
+        // token, re-opening the at-rest signing-link exposure the backend was
+        // written to close (and its write RLS is service-role-only anyway).
+        const tokenResponse = await base44.functions.invoke('generateSignerToken', {
           package_id: pkg.id,
-          token: token,
           signer_email: signer.email,
           signer_name: signer.name,
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+          expires_in_days: 7,
         });
+        const token = tokenResponse?.data?.token;
+        if (!token) {
+          throw new Error(tokenResponse?.data?.error || 'Failed to create the signing link');
+        }
 
         const signingUrl = hostedAbsoluteUrl(`/signer?token=${token}`, { routerPaths: ROUTER_PATHS });
         

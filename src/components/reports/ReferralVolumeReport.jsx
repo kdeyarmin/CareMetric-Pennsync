@@ -32,7 +32,13 @@ export default function ReferralVolumeReport({ dateRange }) {
   });
 
   const filteredReferrals = referrals.filter(r => {
-    const date = new Date(r.referral_date);
+    // referral_date is an unconstrained string (AI-extracted, may be
+    // "07/03/2026" or a full ISO timestamp). Anchor date-ONLY values to local
+    // midnight; parse anything else as-is — appending "T00:00:00" to a
+    // non-date-only value makes an invalid date and drops the referral.
+    const raw = String(r.referral_date || '');
+    const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T00:00:00' : raw);
+    if (Number.isNaN(date.getTime())) return false;
     return date >= new Date(dateRange.start + 'T00:00:00') && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 

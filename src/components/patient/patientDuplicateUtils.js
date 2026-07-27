@@ -183,6 +183,7 @@ export const REASON = {
   BOTH_NAMES_SIMILAR: 'Both names similar',
   PARTIAL_NAME: 'Partial name match',
   NAME_VARIATION: 'Name variation match',
+  POSSIBLE_TWINS: 'Possible twins — verify before merging',
   DOB: 'DOB match',
   DOB_SWAPPED: 'DOB month/day swapped',
   DOB_YEAR_TYPO: 'DOB year typo',
@@ -586,7 +587,30 @@ export function scorePatientPair(p1, p2, options = {}) {
     return { score: 0, matches: [] };
   }
 
-  return { score, matches };
+  // ---- Twins flag ---------------------------------------------------------
+  // Twins share last name, DOB, address, and phone — everything EXCEPT the
+  // first name — and were scoring ~100 with no warning ("Ella"/"Emma Smith",
+  // same DOB+address+phone → one click from a wrong-patient merge). When both
+  // first names are well-formed and clearly different (similarity < 85 with no
+  // containment, so "Jon"/"John" and "Katherine"/"Catherine" stay unflagged)
+  // while last name + DOB agree, flag the pair for human verification. The
+  // score is kept (hiding the pair would remove it from review entirely).
+  const twinFirst1 = normalizeName(p1.first_name);
+  const twinFirst2 = normalizeName(p2.first_name);
+  const possibleTwins =
+    hasDobCredit &&
+    twinFirst1.length >= 3 && twinFirst2.length >= 3 &&
+    twinFirst1 !== twinFirst2 &&
+    !twinFirst1.includes(twinFirst2) && !twinFirst2.includes(twinFirst1) &&
+    similarity(twinFirst1, twinFirst2) < 85 &&
+    // A single-edit variant that KEEPS the first letter is a typo/short
+    // nickname ("Jon"/"John"), not a sibling; a leading-letter substitution
+    // ("Jason"/"Mason") is exactly the twin-name pattern and stays flagged.
+    !(levenshtein(twinFirst1, twinFirst2) <= 1 && twinFirst1[0] === twinFirst2[0]) &&
+    similarity(normalizeName(p1.last_name), normalizeName(p2.last_name)) >= 95;
+  if (possibleTwins) matches.push(REASON.POSSIBLE_TWINS);
+
+  return { score, matches, ...(possibleTwins ? { possibleTwins: true } : {}) };
 }
 
 // ---------------------------------------------------------------------------

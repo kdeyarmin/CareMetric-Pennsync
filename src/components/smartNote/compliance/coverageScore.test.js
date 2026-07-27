@@ -71,3 +71,25 @@ test("structured visit fields flip with homebound/skilled coverage", () => {
   assert.equal(fields.skilled_intervention_documented, true); // answered
   assert.match(fields.homebound_justification, /taxing effort/);
 });
+
+// ── Regression: service-line-aware structured fields (2026-07 review) ───────
+
+test("hospice visits derive skilled_intervention_documented from comfort_skilled_need", () => {
+  const presence = [
+    { id: "comfort_skilled_need", present: true, evidence: "Skilled comfort assessment." },
+    { id: "symptom_management", present: true, evidence: "Pain managed." },
+  ];
+  const out = deriveStructuredVisitFields(presence, {});
+  assert.equal(out.skilled_intervention_documented, true, "a documented comfort skilled need must count");
+  assert.equal(out.homebound_status_verified, true, "no homebound element in the hospice set — nothing can be missing");
+});
+
+test("a home-health visit still reports a genuinely missing skilled need", () => {
+  const presence = [
+    { id: "skilled_need", present: false, evidence: null },
+    { id: "homebound", present: false, evidence: null },
+  ];
+  const out = deriveStructuredVisitFields(presence, {});
+  assert.equal(out.skilled_intervention_documented, false);
+  assert.equal(out.homebound_status_verified, false);
+});

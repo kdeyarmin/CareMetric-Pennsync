@@ -11,26 +11,30 @@ import { base44 } from "@/api/base44Client";
 // Reassignment is best-effort per entity/record (see mergePatientInto): an entity
 // the caller can't write (RLS) is skipped and logged, and the soft-archive +
 // merged_into_id pointer keeps anything left behind recoverable.
+// The list is pinned against the entity schemas by mergePatients.entityList.test.js
+// (it scans base44/entities/*.jsonc for patient_id) — a new patient-linked entity
+// that isn't added here fails the test instead of silently orphaning records.
 export const PATIENT_RELATED_ENTITIES = [
-  // Visits / alerts / pending updates
-  "Visit", "PatientAlert", "PendingPatientUpdate",
-  "CareCoordinationAlert", "PatientRecommendation", "PatientRiskAssessment",
-  // OASIS
-  "OASISAssessment", "OASISUpload", "OASISAudit", "OASISFeedback", "OASISScenario",
-  "OASISWorkflowExecution",
-  // Clinical events / documents / referrals / discharge
-  "ClinicalEvent", "Incident", "DischargeSummary", "Document", "DocumentSignature",
-  "DocumentPackage", "Referral", "NoteConversion", "ComplianceAudit", "Task", "TeamNote",
-  // Medications
-  "Medication", "MedicationReconciliation",
-  // Education
-  "PatientEducationAssignment", "PatientEducationDelivery", "SentEducationMaterial",
-  "TrainingRecommendation",
-  // Telehealth / supplies
-  "TelehealthSession", "SupplyUsageLog", "SupplyPrediction", "PDFIndex",
-  // Communications history
-  "CallLog", "SmsMessage", "SmsConsent", "ScheduledSms", "FaxLog", "ScheduledFax",
-  "FaxDraft", "Message",
+  "AdrAuditCase", "AppliedDataLog", "AppointmentForm", "Billing", "CallLog",
+  "CareCoordinationAlert", "CarePlan", "CarePlanProposal", "ClinicalEvent",
+  "ClinicalLibraryTemplate", "ComplianceAudit", "DigitalSignature",
+  "DischargeSummary", "Document", "DocumentAnalysisHistory", "DocumentPackage",
+  "DocumentRecord", "DocumentSignature", "FaceToFaceEncounter", "FaxDraft",
+  "FaxHistory", "FaxLog", "GeneratedDocument", "HealthRecord", "Immunization",
+  "Incident", "InterventionLog", "Invoice", "MaterialInteraction", "MedicalCode",
+  "Medication", "MedicationReconciliation", "Message", "NoteConversion",
+  "NoteFeedback", "OASISAssessment", "OASISAudit", "OASISFeedback",
+  "OASISScenario", "OASISUpload", "OASISWorkflowExecution", "PDFIndex",
+  "PDGMCaseMix", "PatientAlert", "PatientBillingInfo", "PatientDocument",
+  "PatientEducationAssignment", "PatientEducationDelivery",
+  "PatientEducationDraft", "PatientEducationEngagement", "PatientMessage",
+  "PatientOutcome", "PatientOutcomeMetric", "PatientPathwayAssignment",
+  "PatientRecommendation", "PatientRiskAssessment", "Payment", "PaymentRecord",
+  "PendingPatientUpdate", "ProviderPatientAssignment", "Referral", "RiskAlert",
+  "RiskAnalysis", "ScheduledFax", "ScheduledSms", "SentEducationMaterial",
+  "SmsConsent", "SmsMessage", "SuggestedIntervention", "SupplyPrediction",
+  "SupplyUsageLog", "Task", "TeamMessage", "TeamNote", "TelehealthSession",
+  "TimeSavings", "TrainingRecommendation", "Visit",
 ];
 
 // Page size for reassigning related records. `filter` with no explicit limit
@@ -62,6 +66,18 @@ export async function mergePatientInto(primaryId, duplicateId, { mergedBy = null
   if (primaryId === duplicateId) {
     throw new Error("Cannot merge a patient into itself");
   }
+
+  // The survivor must be a real, live chart. A typo'd/ghost id would re-point
+  // the entire clinical history to a chart that doesn't exist; an archived or
+  // already-merged survivor would chain live records onto an invisible record.
+  const [primary] = await base44.entities.Patient.filter({ id: primaryId }, undefined, 1);
+  if (!primary) {
+    throw new Error("The surviving patient record was not found — refusing to merge into a nonexistent chart.");
+  }
+  if (primary.is_archived || primary.status === "merged") {
+    throw new Error("The surviving patient record is archived/merged — restore it (or pick its survivor) before merging into it.");
+  }
+  const [duplicate] = await base44.entities.Patient.filter({ id: duplicateId }, undefined, 1);
 
   const reassigned = {};
   for (const entityName of PATIENT_RELATED_ENTITIES) {
@@ -104,6 +120,19 @@ export async function mergePatientInto(primaryId, duplicateId, { mergedBy = null
     reassigned[entityName] = moved;
   }
 
+  // Field-level merge: the winner keeps everything it has, and inherits what
+  // it LACKS from the loser — before this, the loser's allergies, meds, DOB,
+  // MRN, and notes history survived only on the invisible archived record
+  // while the active chart showed blanks.
+  const fieldPatch = buildFieldMergePatch(primary, duplicate);
+  if (Object.keys(fieldPatch).length > 0) {
+    try {
+      await base44.entities.Patient.update(primaryId, fieldPatch);
+    } catch (err) {
+      console.error("mergePatientInto: field merge onto survivor failed:", err?.message);
+    }
+  }
+
   await base44.entities.Patient.update(duplicateId, {
     status: "merged",
     is_archived: true,
@@ -112,7 +141,64 @@ export async function mergePatientInto(primaryId, duplicateId, { mergedBy = null
     ...(mergedBy ? { merged_by: mergedBy } : {}),
   });
 
-  return { reassigned };
+  return { reassigned, fieldsMerged: Object.keys(fieldPatch) };
+}
+
+// Scalar chart fields the survivor inherits when ITS OWN value is empty. The
+// winner's populated values are never overwritten.
+const FILL_EMPTY_FIELDS = [
+  "date_of_birth", "medical_record_number", "phone", "email", "address",
+  "primary_diagnosis", "allergies", "physician_name", "physician_phone",
+  "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship",
+  "insurance_primary", "insurance_secondary", "care_type", "admission_date",
+  "advance_directives", "baseline_vitals", "functional_status",
+];
+// Array fields that are UNIONED (dedupe by JSON identity).
+const UNION_ARRAY_FIELDS = ["secondary_diagnoses", "current_medications", "past_medical_history", "wounds"];
+
+const isEmpty = (v) =>
+  v === undefined || v === null || (typeof v === "string" && v.trim() === "") ||
+  (Array.isArray(v) && v.length === 0) ||
+  (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0);
+
+/**
+ * Pure: compute the patch of loser fields the winner should inherit.
+ * Exported for unit tests.
+ */
+export function buildFieldMergePatch(winner, loser) {
+  const patch = {};
+  if (!winner || !loser) return patch;
+  for (const field of FILL_EMPTY_FIELDS) {
+    if (isEmpty(winner[field]) && !isEmpty(loser[field])) patch[field] = loser[field];
+  }
+  for (const field of UNION_ARRAY_FIELDS) {
+    const w = Array.isArray(winner[field]) ? winner[field] : [];
+    const l = Array.isArray(loser[field]) ? loser[field] : [];
+    if (!l.length) continue;
+    const seen = new Set(w.map((x) => JSON.stringify(x)));
+    const merged = [...w];
+    for (const item of l) {
+      const key = JSON.stringify(item);
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(item);
+      }
+    }
+    if (merged.length > w.length) patch[field] = merged;
+  }
+  // Notes history: concatenate, deduped by entry_id, ordered oldest→newest.
+  const wHist = Array.isArray(winner.enhanced_notes_history) ? winner.enhanced_notes_history : [];
+  const lHist = Array.isArray(loser.enhanced_notes_history) ? loser.enhanced_notes_history : [];
+  if (lHist.length) {
+    const seenIds = new Set(wHist.map((e) => e?.entry_id).filter(Boolean));
+    const additions = lHist.filter((e) => !e?.entry_id || !seenIds.has(e.entry_id));
+    if (additions.length) {
+      patch.enhanced_notes_history = [...wHist, ...additions].sort((a, b) =>
+        String(a?.timestamp || a?.date || "").localeCompare(String(b?.timestamp || b?.date || "")),
+      );
+    }
+  }
+  return patch;
 }
 
 /**

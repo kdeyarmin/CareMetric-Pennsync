@@ -91,3 +91,12 @@ test("validateIntakeDiagnoses passes a good primary and previews its group", () 
   assert.equal(res.clinical_group_preview.clinical_group, "MMTA - Respiratory");
   assert.equal(res.findings.length, 0);
 });
+
+// ── Regression: preview vs RTP coherence (2026-07 review) ───────────────────
+
+test("an RTP-unacceptable principal never previews with high confidence", () => {
+  const rtp = validatePrimaryDiagnosis("Z47.1");
+  const preview = previewClinicalGroup("Z47.1");
+  assert.equal(rtp.acceptable, false);
+  assert.equal(preview.confidence, "low", "the preview must not confidently group a guaranteed-RTP code");
+});

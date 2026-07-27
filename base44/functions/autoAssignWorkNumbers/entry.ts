@@ -35,9 +35,12 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // Same admin surface as managePhoneNumberPool / the isAdminLike frontend
+    // gate — an agency_admin can reach the panel, so the backend must accept them.
     const isAdmin =
       user.role === 'admin' ||
-      user.account_type === 'super_admin';
+      user.account_type === 'super_admin' ||
+      user.account_type === 'agency_admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can provision work numbers' }, { status: 403 });
     }
@@ -54,6 +57,19 @@ Deno.serve(async (req) => {
     const inUse = new Set(
       allUsers.map((u) => normalizeE164(u.work_phone_number)).filter(Boolean),
     );
+    // The office fax, outbound fax, and main office lines are reserved: they
+    // can sit in the pool (e.g. bought in-app), but handing one to a nurse
+    // would break fax transmission/masking or office call routing. Treat them
+    // as in-use.
+    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+    for (const reserved of [
+      settingsRows[0]?.office_fax_number_e164,
+      settingsRows[0]?.outbound_fax_number_e164,
+      settingsRows[0]?.main_office_number_e164,
+    ]) {
+      const norm = normalizeE164(reserved);
+      if (norm) inUse.add(norm);
+    }
 
     // Candidate users: those missing a work number (optionally limited to `emails`).
     const candidates = allUsers.filter((u) => {

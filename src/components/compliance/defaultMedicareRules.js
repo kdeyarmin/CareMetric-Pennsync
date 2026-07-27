@@ -14,6 +14,10 @@
 // physician_orders, infection_control). Severity MUST be critical|high|medium.
 // Visit types use the smart-note keys (routine_visit, admission, recertification,
 // discharge, prn); an empty/omitted list means "all visit types".
+// service_line scopes a rule to "home_health" or "hospice" (omitted = both).
+// Every rule below is a home-health (42 CFR 484 / PA home-health) rule —
+// without the scope, seeding injected homebound/skilled-need CRITICALS into
+// hospice notes, hard-blocking them on requirements hospice does not have.
 //
 // Pure data + a pure idempotent seed helper — unit-testable offline.
 
@@ -25,7 +29,9 @@ const EFFECTIVE = "2024-01-01";
 export const DEFAULT_MEDICARE_RULES = [
   {
     rule_name: "Homebound Status Documentation",
-    cop_reference: "42 CFR 484.55(c)",
+    // Confined-to-home ELIGIBILITY lives in 42 CFR 409.42(a) (484.55(c) is the
+    // comprehensive-assessment content list and does not contain homebound).
+    cop_reference: "42 CFR 409.42(a)",
     category: "homebound_status",
     description:
       "Each visit must document that the patient is confined to the home: a normal inability to leave home, and that leaving requires a considerable and taxing effort.",
@@ -39,6 +45,7 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["Patient is homebound.", "Homebound this visit."],
     keywords: ["homebound", "confined to home", "taxing effort", "assist to leave"],
     remediation_guidance: "Add the medical reason for confinement and what makes leaving home require considerable and taxing effort.",
+    service_line: "home_health",
     pennsylvania_specific: false,
     is_active: true,
     effective_date: EFFECTIVE,
@@ -59,6 +66,7 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["Provided nursing care.", "Routine visit completed."],
     keywords: ["skilled", "observation and assessment", "wound care", "medication management", "teaching"],
     remediation_guidance: "Name the specific skilled service and why it required a nurse's professional judgment.",
+    service_line: "home_health",
     pennsylvania_specific: false,
     is_active: true,
     effective_date: EFFECTIVE,
@@ -76,6 +84,7 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["Patient seen.", "No issues."],
     keywords: ["tolerated", "responded", "patient reports", "no adverse"],
     remediation_guidance: "Describe how the patient responded to and tolerated the interventions.",
+    service_line: "home_health",
     pennsylvania_specific: false,
     is_active: true,
     effective_date: EFFECTIVE,
@@ -93,6 +102,7 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["Educated patient.", "Provided teaching."],
     keywords: ["education", "taught", "teach-back", "verbalized understanding", "return demonstration"],
     remediation_guidance: "Add the topic taught and how you confirmed the patient/caregiver understood.",
+    service_line: "home_health",
     pennsylvania_specific: false,
     is_active: true,
     effective_date: EFFECTIVE,
@@ -110,6 +120,7 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["Followed plan.", "No change."],
     keywords: ["plan of care", "goal", "progress", "toward goal"],
     remediation_guidance: "Tie the visit to the plan-of-care goals and note measurable progress.",
+    service_line: "home_health",
     pennsylvania_specific: false,
     is_active: true,
     effective_date: EFFECTIVE,
@@ -127,6 +138,7 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["Orders on file."],
     keywords: ["physician order", "order obtained", "plan of care signed", "provider order"],
     remediation_guidance: "Document the ordering practitioner and that orders were obtained/authenticated.",
+    service_line: "home_health",
     pennsylvania_specific: false,
     is_active: true,
     effective_date: EFFECTIVE,
@@ -144,6 +156,7 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["Team aware."],
     keywords: ["coordination", "interdisciplinary", "notified physician", "care team", "communicated"],
     remediation_guidance: "Document who you coordinated with and what was communicated.",
+    service_line: "home_health",
     pennsylvania_specific: false,
     is_active: true,
     effective_date: EFFECTIVE,
@@ -161,13 +174,16 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["Home safe.", "No fall."],
     keywords: ["safety", "fall risk", "hazard", "grab bar", "environment"],
     remediation_guidance: "Document the safety/fall-risk assessment and any hazards or interventions.",
+    service_line: "home_health",
     pennsylvania_specific: false,
     is_active: true,
     effective_date: EFFECTIVE,
   },
   {
     rule_name: "Functional Status Assessment",
-    cop_reference: "42 CFR 484.55(c)(5)",
+    // 484.55(c)(1) covers current health/psychosocial/functional/cognitive status;
+    // (c)(5) is the medication-review item.
+    cop_reference: "42 CFR 484.55(c)(1)",
     category: "functional_status",
     description: "Document the patient's functional status (ADLs, ambulation, transfers) as part of the comprehensive assessment.",
     required_elements: ["ADL status", "ambulation/transfer ability"],
@@ -178,6 +194,7 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["ADLs WNL."],
     keywords: ["functional", "adl", "ambulation", "transfer", "mobility"],
     remediation_guidance: "Document ADL independence and ambulation/transfer ability.",
+    service_line: "home_health",
     pennsylvania_specific: false,
     is_active: true,
     effective_date: EFFECTIVE,
@@ -195,13 +212,16 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["No infection."],
     keywords: ["infection", "aseptic", "hand hygiene", "signs of infection"],
     remediation_guidance: "Document assessment for infection and the infection-control measures used.",
+    service_line: "home_health",
     pennsylvania_specific: false,
     is_active: true,
     effective_date: EFFECTIVE,
   },
   {
     rule_name: "PA Home Health Aide Supervision",
-    cop_reference: "28 Pa. Code § 601.31",
+    // 28 Pa. Code § 601.35 is "Home health aide services" (601.31 is acceptance
+    // of patients / plan of treatment).
+    cop_reference: "28 Pa. Code § 601.35",
     category: "coordination_of_care",
     description: "Pennsylvania requires periodic on-site supervision of the home health aide by a registered nurse; document the supervisory assessment when due.",
     required_elements: ["aide supervision performed", "aide competency/plan adherence"],
@@ -212,13 +232,16 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["Aide fine."],
     keywords: ["aide supervision", "supervisory visit", "home health aide"],
     remediation_guidance: "When an aide is on the case, document the RN supervisory assessment and aide competency per PA requirements.",
+    service_line: "home_health",
     pennsylvania_specific: true,
     is_active: true,
     effective_date: EFFECTIVE,
   },
   {
     rule_name: "PA Plan of Treatment Review",
-    cop_reference: "28 Pa. Code § 601.32",
+    // Periodic plan-of-treatment review (at least every 60 days) is
+    // 28 Pa. Code § 601.31(c); 601.32 is "Skilled nursing service".
+    cop_reference: "28 Pa. Code § 601.31(c)",
     category: "plan_of_care",
     description: "Pennsylvania requires the plan of treatment to be reviewed by the physician at the required intervals; document the review at recertification.",
     required_elements: ["plan of treatment reviewed", "physician review interval met"],
@@ -229,6 +252,7 @@ export const DEFAULT_MEDICARE_RULES = [
     examples_non_compliant: ["POC reviewed."],
     keywords: ["plan of treatment", "review", "recertification", "physician review"],
     remediation_guidance: "Document the physician's periodic review of the plan of treatment per PA requirements.",
+    service_line: "home_health",
     pennsylvania_specific: true,
     is_active: true,
     effective_date: EFFECTIVE,

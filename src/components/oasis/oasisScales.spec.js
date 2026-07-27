@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { OASIS_ITEM_MAX, scaleOptions, optionsForItem, PAIN_FREQUENCY_OPTIONS } from './oasisScales.js';
+import { ITEM_LABELS, OASIS_ITEM_MAX, scaleOptions, optionsForItem, PAIN_FREQUENCY_OPTIONS } from './oasisScales.js';
+import { OASIS_SECTIONS } from './oasisQuestions.jsx';
 
 describe('oasisScales', () => {
   it('gives each OASIS-E item its correct number of responses', () => {
@@ -37,5 +38,31 @@ describe('oasisScales', () => {
 
   it('pain frequency is its own 0–4 scale (OASIS-E M1242)', () => {
     expect(PAIN_FREQUENCY_OPTIONS.map((o) => o.value)).toEqual(['0', '1', '2', '3', '4']);
+  });
+
+  it('quick-entry labels carry each code\'s FORM meaning, not a generic assist scale', () => {
+    // Regression: generic labels offered M1830 code 6 as "Unable to perform",
+    // but the form (and outcome engine) read 6 as "Unable to rate — artificial
+    // opening" — quick-entry would record a dependent bather as not-ratable.
+    const m1830 = optionsForItem('m1830');
+    expect(m1830[6].label).toMatch(/artificial opening/i);
+    expect(m1830[4].label).toMatch(/total person assistance/i);
+    expect(m1830[5].label).toMatch(/refused/i);
+  });
+
+  it('every quick-entry label matches the main OASIS form label for the same code', () => {
+    const formById = {};
+    for (const section of OASIS_SECTIONS) {
+      for (const q of section.questions || []) formById[q.id] = q;
+    }
+    const normalize = (s) => String(s).replace(/^\s*\d+\s*[—–-]\s*/, '').trim().toLowerCase();
+    for (const [itemKey, labels] of Object.entries(ITEM_LABELS)) {
+      const form = formById[itemKey];
+      if (!form) continue; // items not on the main form only need internal consistency
+      expect(labels.length).toBe(form.options.length);
+      labels.forEach((label, code) => {
+        expect(normalize(label), `${itemKey} code ${code}`).toBe(normalize(form.options[code].label));
+      });
+    }
   });
 });

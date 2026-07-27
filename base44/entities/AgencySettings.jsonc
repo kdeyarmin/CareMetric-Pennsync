@@ -144,7 +144,11 @@
     },
     "office_fax_number_e164": {
       "type": "string",
-      "description": "Office fax number in E.164 format"
+      "description": "The OFFICE fax machine's number in E.164 format (e.g. +17244650444). This is what recipients see as the sender/reply-to on cover sheets and the fax display name, so replies go straight to the physical office machine — it does not need to be a Telnyx number."
+    },
+    "outbound_fax_number_e164": {
+      "type": "string",
+      "description": "The single Telnyx fax-capable number used to TRANSMIT outbound faxes (the technical 'from', attached to the Programmable Fax connection). Presented to recipients under the office fax number's name; the app expects no inbound faxes on it."
     },
     "default_off_duty_template": {
       "type": "string",

@@ -34,7 +34,7 @@ export default function FollowUpAnalytics() {
 
   const { data: referrals } = useQuery({
     queryKey: ["referrals"],
-    queryFn: () => base44.entities.Referral.list("-created_date", 200),
+    queryFn: () => base44.entities.Referral.list("-created_date", 10000),
   });
 
   const { data: rateConfig } = useQuery({

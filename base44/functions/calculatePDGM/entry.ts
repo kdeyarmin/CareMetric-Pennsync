@@ -6,7 +6,10 @@ const BASE_PAYMENT_RATE_2026 = 2038.22; // CY2026 national standardized 30-day p
 // CY2026 national labor-related share of the 30-day base payment (CMS-1828-F). The
 // wage index adjusts ONLY this labor portion; the non-labor remainder is paid
 // unadjusted. Overridable per rate year via PDGMRateConfig.rates.laborShare.
-const PDGM_LABOR_SHARE_2026 = 0.7676;
+// 0.749 per the VERIFIED value in docs/pdgm-cy2026.md (was 0.7676, which
+// contradicted the repo's own verified table and skewed every wage-adjusted
+// payment).
+const PDGM_LABOR_SHARE_2026 = 0.749;
 
 // Clinical Group Weights by Admission Source and Episode Timing (CMS PDGM model)
 // Format: { [clinicalGroup]: { community_early, community_late, institutional_early, institutional_late } }
@@ -117,8 +120,16 @@ function deepMergeNumbers(base, over) {
   for (const key of Object.keys(over)) {
     const ov = over[key];
     if (ov && typeof ov === 'object' && !Array.isArray(ov)) {
-      out[key] = deepMergeNumbers(base?.[key] || {}, ov);
-    } else if (typeof ov === 'number' && Number.isFinite(ov)) {
+      // Mirror the frontend guard (pdgmRates.js): when the base value isn't an
+      // object, merge over {} — without this a malformed stored override (e.g.
+      // clinicalGroupWeights.MMTA_Wounds: 2) clobbered the whole subtree and
+      // the engine silently priced with the 1.0 fallback while the FE preview
+      // showed the correct number.
+      const baseVal = base?.[key];
+      out[key] = deepMergeNumbers(baseVal && typeof baseVal === 'object' && !Array.isArray(baseVal) ? baseVal : {}, ov);
+    } else if (typeof ov === 'number' && Number.isFinite(ov) && !(base?.[key] && typeof base[key] === 'object')) {
+      // A stored scalar must not clobber an object subtree (e.g. rates.
+      // functionalThresholds.community_early: 5 over { low, high }).
       out[key] = ov;
     }
   }
@@ -424,7 +435,10 @@ function validateAdmissionSource(data) {
   const m1000Val = String(m1000 || '').trim();
 
   let expectedSource = 'community';
-  if (['2', '3', '4'].includes(m1000Val) ||
+  // 2=acute hospital, 3=LTCH, 4=SNF, 5=IRF, 6=psychiatric hospital/unit — ALL
+  // institutional under PDGM (5/6 previously classified community, validating
+  // and even auto-correcting an institutional period to community pricing).
+  if (['2', '3', '4', '5', '6'].includes(m1000Val) ||
       m1000Val.toLowerCase().includes('hospital') ||
       m1000Val.toLowerCase().includes('snf') ||
       m1000Val.toLowerCase().includes('skilled nursing') ||
@@ -555,7 +569,9 @@ function validateEpisodeTiming(data) {
       if (!Number.isNaN(soc.getTime()) && !Number.isNaN(assessment.getTime())) {
         daysSinceSoc = Math.floor((assessment - soc) / (1000 * 60 * 60 * 24));
 
-        if (daysSinceSoc > 30) {
+        // Day 31 of care (daysSinceSoc >= 30, zero-based) starts the second
+        // 30-day period — '> 30' validated day 31 as "early".
+        if (daysSinceSoc >= 30) {
           expectedTiming = 'late';
         }
       }
@@ -617,17 +633,21 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'No PDGM data provided' }, { status: 400 });
     }
 
-    // Fetch agency settings for wage index
-    let appliedWageIndex = wageIndex || 1.0;
-    try {
-      const agencySettings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1);
-      if (agencySettings && agencySettings.length > 0 && agencySettings[0].wage_index) {
-        appliedWageIndex = agencySettings[0].wage_index;
+    // Wage index: an EXPLICIT caller value wins (e.g. the admin rate-verification
+    // preview passes 1.0 to show the national-standardized amount); the agency's
+    // saved wage_index applies only when the caller didn't specify one.
+    let appliedWageIndex = Number.isFinite(Number(wageIndex)) && Number(wageIndex) > 0 ? Number(wageIndex) : 0;
+    if (!appliedWageIndex) {
+      try {
+        const agencySettings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1);
+        if (agencySettings && agencySettings.length > 0 && agencySettings[0].wage_index) {
+          appliedWageIndex = agencySettings[0].wage_index;
+        }
+      } catch (e) {
+        console.log('No agency settings found, using default wage index');
       }
-    } catch (e) {
-      // If no settings found, use default or provided value
-      console.log('No agency settings found, using default wage index');
     }
+    if (!appliedWageIndex) appliedWageIndex = 1.0;
 
     // Load the admin-editable PDGM rate set (PDGMRateConfig) and merge it over the
     // built-in defaults, so the agency can keep their case-mix weights / base rate
@@ -828,8 +848,24 @@ function calculatePDGMRevenue(data, wageIndex = 1.0, rates = DEFAULT_RATES, isOf
   }
 
   const comorbidities = data.comorbidities || [];
-  const admissionSource = (data.admission_source || 'community').toLowerCase();
-  const episodeTiming = (data.episode_timing || 'early').toLowerCase();
+  // Normalize free-text variants onto the two real PDGM buckets. An
+  // unrecognized value ("inpatient", "hospital", "2nd") used to build a key
+  // like "inpatient_early" that missed every rate table and silently priced
+  // the period at the community_early fallback.
+  const rawSource = String(data.admission_source || 'community').trim().toLowerCase();
+  const admissionSource =
+    /inst|inpatient|hospital|snf|skilled|facility|rehab|acute|ltch|irf/.test(rawSource)
+      ? 'institutional'
+      : 'community';
+  const rawTiming = String(data.episode_timing || 'early').trim().toLowerCase();
+  const episodeTiming = /late|subsequent|second|(?:^|\D)0?2(?:\D|$)/.test(rawTiming) ? 'late' : 'early';
+  const inputWarnings = [];
+  if (rawSource !== admissionSource) {
+    inputWarnings.push(`Admission source "${data.admission_source}" interpreted as ${admissionSource}`);
+  }
+  if (rawTiming !== episodeTiming) {
+    inputWarnings.push(`Episode timing "${data.episode_timing}" interpreted as ${episodeTiming}`);
+  }
   const functionalData = data.functional_scores || {};
 
   // Create source-timing key for lookups
@@ -872,6 +908,7 @@ function calculatePDGMRevenue(data, wageIndex = 1.0, rates = DEFAULT_RATES, isOf
     estimateDisclaimer: isOfficial
       ? null
       : 'Estimate only — based on approximate case-mix weights, not confirmed official CMS PDGM rates. Set your official numbers in Admin → PDGM Rate Settings and mark them official.',
+    ...(inputWarnings.length ? { inputWarnings } : {}),
     basePayment: basePayment,
     wageIndex: wageIndex,
     adjustedBasePayment: adjustedBasePayment,
