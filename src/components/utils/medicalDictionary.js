@@ -101,11 +101,6 @@ export const MEDICAL_TERMS = {
   }
 };
 
-/**
- * Enhance transcribed text with medical term corrections
- * @param {string} text - Raw transcribed text from speech recognition
- * @returns {string} Enhanced text with corrected medical terms
- */
 // Case-aware replacement: an identity-up-to-case "correction" keeps the
 // nurse's own casing ("no chest pain" must NOT become "no Chest pain"
 // mid-sentence), and a real correction inherits the source's leading case so a
@@ -117,6 +112,11 @@ function applyCase(source, replacement) {
   return replacement;
 }
 
+/**
+ * Enhance transcribed text with medical term corrections
+ * @param {string} text - Raw transcribed text from speech recognition
+ * @returns {string} Enhanced text with corrected medical terms
+ */
 export function enhanceTranscription(text) {
   if (!text) return text;
   
