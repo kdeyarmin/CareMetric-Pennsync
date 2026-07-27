@@ -169,3 +169,50 @@ test("groups follow the display order and letter items sort first in a group", (
   const clinical = groups.find((g) => g.category === "clinical_notes");
   assert.equal(clinical.items[0].id, "wound_care_documentation", "letter-sourced item should lead its category");
 });
+
+// ── matchCatalogItem word boundaries (regression) ──
+
+test("catalog keywords match whole words only — no substring merges", () => {
+  // Regression: the needle was trimmed AFTER padding, so 'abn' matched inside
+  // "abnormal", 'claim' inside "disclaimer", 'poc' inside "epoch" — merging
+  // unrelated letter items into the wrong catalog row (and out of the
+  // checklist entirely).
+  assert.equal(matchCatalogItem("Records of abnormal lab findings"), null);
+  assert.equal(matchCatalogItem("Signed disclaimer form"), null);
+  assert.equal(matchCatalogItem("Combination therapy flow sheets"), null);
+  assert.equal(matchCatalogItem("Epoch summary of care"), null);
+  // Real keyword hits still match.
+  assert.ok(matchCatalogItem("Copy of the UB-04 claim form"));
+  assert.ok(matchCatalogItem("Signed plan of care (CMS-485)"));
+});
+
+test("distinct letter items no longer merge into one catalog row", () => {
+  const checklist = buildAdrChecklist({
+    letterItems: [
+      { text: "Copy of UB-04 claim form" },
+      { text: "Signed disclaimer form for wound photography" },
+    ],
+    auditType: "mac_adr",
+  });
+  const letterRows = checklist.filter((it) => it.source !== "cms_baseline");
+  assert.equal(letterRows.length, 2);
+  assert.ok(letterRows.some((it) => it.source === "letter" && /disclaimer/i.test(it.letter_text)));
+});
+
+test("an unmatched letter item is always severity high — AI fields cannot downgrade it", () => {
+  const checklist = buildAdrChecklist({
+    letterItems: [{ text: "Signed disclaimer form for wound photography", severity: "medium" }],
+    auditType: "mac_adr",
+  });
+  const row = checklist.find((it) => it.source === "letter");
+  assert.equal(row.severity, "high");
+});
+
+test("groupChecklistByCategory keeps rows with drifted categories visible", () => {
+  const groups = groupChecklistByCategory([
+    { id: "a", seq: 1, category: "orders_certification", source: "cms_baseline", title: "A" },
+    { id: "b", seq: 2, category: "weird_cat", source: "letter", title: "B" },
+  ]);
+  const flat = groups.flatMap((g) => g.items.map((it) => it.id));
+  assert.ok(flat.includes("b"), "a drifted-category row must not vanish from the checklist");
+});

@@ -95,7 +95,13 @@ Deno.serve(async (req) => {
            const jsonMatch = soapText.match(/\{[\s\S]*\}/);
            soapNote = JSON.parse(jsonMatch ? jsonMatch[0] : soapText);
         } catch (e) {
-           soapNote = { subjective: "Error parsing response.", objective: "", assessment: "", plan: "" };
+           // Degrade to the nurse's actual words, never placeholder junk: the
+           // client renders these fields, and "Error parsing response." could
+           // otherwise end up pasted into a draft note.
+           soapNote = {
+             subjective: String(transcript || '').trim() || 'Transcription unavailable — please re-record.',
+             objective: "", assessment: "", plan: "", parse_error: true,
+           };
         }
 
         soapNote.raw_transcript = transcript;

@@ -47,11 +47,14 @@ function getSchedulerAuthError(req, user) {
 // src/components/oasis/dischargeComplianceEnforcer.js — Deno cannot import from
 // src/). Flags episodes that ended without a completed Discharge OASIS, which
 // silently drops the patient's demonstrated improvement and erodes the
-// 20-episode / 5-of-7-measure star-rating eligibility floor.
+// 20-episode / 5-measure star-rating eligibility floor. Status and visit-type
+// values compare case-insensitively so casing drift in stored records never
+// creates false "missing discharge" alarms.
 const STAR_MIN_EPISODES = 20;
 const STAR_MIN_MEASURES = 5;
 const DC_COMPLETE_STATUSES = new Set(['completed', 'submitted']);
-const DC_START_TYPES = new Set(['Start of Care', 'Resumption of Care']);
+const DC_START_TYPES = new Set(['start of care', 'resumption of care']);
+const dcLower = (v) => String(v || '').trim().toLowerCase();
 
 function daysBetween(a, b) {
   const t1 = new Date(a).getTime();
@@ -66,10 +69,10 @@ function detectMissingDischargeOASIS(ctx, opts = {}) {
   const asOf = opts.asOf ? new Date(opts.asOf) : new Date();
   const staleDays = opts.staleDays ?? 14;
 
-  const dischargeAssessments = oasisAssessments.filter((a) => a?.visit_type === 'Discharge');
-  const hasCompletedDischarge = dischargeAssessments.some((a) => DC_COMPLETE_STATUSES.has(a?.status));
+  const dischargeAssessments = oasisAssessments.filter((a) => dcLower(a?.visit_type) === 'discharge');
+  const hasCompletedDischarge = dischargeAssessments.some((a) => DC_COMPLETE_STATUSES.has(dcLower(a?.status)));
   const hasDraftDischarge = dischargeAssessments.length > 0 && !hasCompletedDischarge;
-  const hasBaseline = oasisAssessments.some((a) => DC_START_TYPES.has(a?.visit_type));
+  const hasBaseline = oasisAssessments.some((a) => DC_START_TYPES.has(dcLower(a?.visit_type)));
   if (hasCompletedDischarge) return null;
 
   const status = String(patient.status || '').toLowerCase();
@@ -93,7 +96,7 @@ function detectMissingDischargeOASIS(ctx, opts = {}) {
   if (!hasBaseline) factors.push('No SOC/ROC assessment on file to pair for a change score');
   factors.push(
     'Without a completed Discharge OASIS this episode contributes no demonstrated improvement',
-    `Missing episodes erode the ${STAR_MIN_EPISODES}-episode / ${STAR_MIN_MEASURES}-of-7-measure star eligibility floor`,
+    `Missing episodes erode the ${STAR_MIN_EPISODES}-episode / ${STAR_MIN_MEASURES}-measure star eligibility floor`,
   );
 
   return {

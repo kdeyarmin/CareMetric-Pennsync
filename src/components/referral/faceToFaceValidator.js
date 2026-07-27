@@ -35,17 +35,50 @@ function toDate(v) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Parse the first recognizable credential token out of a free-text string. */
-export function parseCredential(str) {
-  const tokens = String(str || "")
-    .toLowerCase()
-    .split(/[^a-z-]+/)
-    .filter(Boolean);
-  for (const t of tokens) {
-    if (ELIGIBLE_CREDENTIALS.includes(t)) return { credential: t.toUpperCase(), eligible: true };
+// Spelled-out practitioner types → canonical credential (checked before
+// tokenizing, so "Nurse Practitioner" doesn't land unknown).
+const SPELLED_CREDENTIALS = [
+  [/nurse\s+practitioner/i, "NP", true],
+  [/physician\s+assistant/i, "PA", true],
+  [/clinical\s+nurse\s+specialist/i, "CNS", true],
+  [/certified\s+nurse[- ]midwife/i, "CNM", true],
+  [/physical\s+therap/i, "PT", false],
+  [/occupational\s+therap/i, "OT", false],
+  [/registered\s+nurse/i, "RN", false],
+];
+
+/**
+ * Parse the first recognizable credential token out of a free-text string.
+ * `fromName: true` (parsing a practitioner NAME, not a credential field)
+ * applies a strict rule: a token only counts as a credential when it was
+ * written UPPERCASE/dotted ("MD", "D.O.") or follows a comma — otherwise the
+ * surname "Do" (or "Pa") reads as an eligible DO and an unverified
+ * practitioner false-PASSES the 42 CFR 424.22 check.
+ */
+export function parseCredential(str, { fromName = false } = {}) {
+  const raw = String(str || "");
+  for (const [re, cred, ok] of SPELLED_CREDENTIALS) {
+    if (re.test(raw)) return { credential: cred, eligible: ok };
   }
-  for (const t of tokens) {
-    if (INELIGIBLE_CREDENTIALS.includes(t)) return { credential: t.toUpperCase(), eligible: false };
+  // Strip periods so "M.D." / "D.O." / "PA-C." tokenize as md/do/pa-c — the
+  // single most common physician signature format previously parsed as m + d.
+  const undotted = raw.replace(/\.(?=[a-z-]|\s|$)/gi, "");
+  const rawTokens = undotted.split(/[^A-Za-z-]+/).filter(Boolean);
+  const credentialLike = (i) => {
+    if (!fromName) return true;
+    const t = rawTokens[i];
+    if (t === t.toUpperCase()) return true; // written as an all-caps credential
+    // ...or it follows a comma in the original ("Smith, Md")
+    const idx = undotted.indexOf(t);
+    return idx > 0 && /,\s*$/.test(undotted.slice(0, idx));
+  };
+  for (let i = 0; i < rawTokens.length; i++) {
+    const t = rawTokens[i].toLowerCase();
+    if (ELIGIBLE_CREDENTIALS.includes(t) && credentialLike(i)) return { credential: t.toUpperCase(), eligible: true };
+  }
+  for (let i = 0; i < rawTokens.length; i++) {
+    const t = rawTokens[i].toLowerCase();
+    if (INELIGIBLE_CREDENTIALS.includes(t) && credentialLike(i)) return { credential: t.toUpperCase(), eligible: false };
   }
   return { credential: null, eligible: null }; // unknown
 }
@@ -75,8 +108,12 @@ export function validateFaceToFace({ encounter = {}, socDate, primaryDiagnosis }
   const checks = {};
 
   // ── 1. Eligible practitioner ──
-  const credSource = encounter.practitioner_credential || encounter.practitioner_type || encounter.practitioner_name || "";
-  const { credential, eligible } = parseCredential(credSource);
+  // The NAME fallback parses strictly (see parseCredential): a surname that
+  // happens to spell a credential ("Nguyen Do") must not validate the encounter.
+  const credField = encounter.practitioner_credential || encounter.practitioner_type || "";
+  const { credential, eligible } = credField
+    ? parseCredential(credField)
+    : parseCredential(encounter.practitioner_name || "", { fromName: true });
   checks.practitioner = { credential, eligible };
   if (eligible === true) {
     reasons.push(`Eligible certifying practitioner (${credential}).`);
@@ -141,7 +178,32 @@ export function validateFaceToFace({ encounter = {}, socDate, primaryDiagnosis }
       reasons.push("Primary diagnosis is an abbreviation/short code — diagnosis linkage needs manual review.");
     }
   } else {
-    linked = dxTokens.some((t) => reasonText.includes(t));
+    // Word-level matching in BOTH directions:
+    //  - a shared 7-char prefix links word forms ("hypertension" ↔
+    //    "hypertensive"), so a compliant encounter isn't hard-failed;
+    //  - a GENERIC token alone ("failure", "infection") does NOT link, so
+    //    "congestive heart failure" can't validate against "acute renal
+    //    failure" — require a specific token, two matches, or the acronym.
+    const GENERIC_DX_TOKENS = new Set([
+      "failure", "syndrome", "infection", "injury", "pain", "weakness",
+      "deficiency", "condition", "exacerbation", "problems",
+    ]);
+    const reasonWords = reasonText.split(/[^a-z0-9]+/).filter(Boolean);
+    const wordMatches = (t) =>
+      reasonWords.some((w) =>
+        w === t ||
+        (t.length >= 7 && w.startsWith(t.slice(0, 7))) ||
+        (w.length >= 7 && t.startsWith(w.slice(0, 7))),
+      );
+    const matches = dxTokens.filter(wordMatches);
+    const specificMatches = matches.filter((t) => !GENERIC_DX_TOKENS.has(t));
+    // Standard clinical acronym of the diagnosis ("congestive heart failure" →
+    // "chf"), so an encounter documented with the abbreviation still links.
+    const dxWords = String(primaryDiagnosis).toLowerCase().split(/[^a-z0-9]+/)
+      .filter((w) => w.length >= 3 && !["the", "and", "with", "due", "for"].includes(w));
+    const acronym = dxWords.map((w) => w[0]).join("");
+    const acronymHit = acronym.length >= 2 && reasonWords.includes(acronym);
+    linked = specificMatches.length >= 1 || matches.length >= 2 || acronymHit;
     reasons.push(
       linked
         ? "Encounter substantively links to the primary diagnosis."

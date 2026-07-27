@@ -185,7 +185,9 @@ export default function UserManagement() {
           entity_id: invitationId
         });
       }
-      return base44.entities.UserInvitation.delete(invitationId);
+      // UserInvitation writes are service-role-only — cancel through the
+      // userManagement function instead of a direct (now RLS-blocked) delete.
+      return base44.functions.invoke('userManagement', { action: 'cancel_invitation', invitation_id: invitationId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });

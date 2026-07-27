@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { validateFileUpload } from "@/components/utils/security";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -53,8 +54,16 @@ export default function DocumentIngestionUploader({ onDataExtracted, _patientId 
   };
 
   const processFile = async (file) => {
-    if (!file.type.includes("pdf") && !file.type.includes("image")) {
-      setError("Please upload a PDF or image file (JPG, PNG)");
+    // Shared strict validation (type allowlist + extension + size cap) — the
+    // old substring check accepted image/svg+xml (stored-XSS vector) and
+    // anything containing "pdf", with no size limit.
+    const check = validateFileUpload(file, {
+      maxSize: 50 * 1024 * 1024,
+      allowedTypes: ['application/pdf', 'image/jpeg', 'image/png'],
+      allowedExtensions: ['.pdf', '.jpg', '.jpeg', '.png'],
+    });
+    if (!check.valid) {
+      setError(check.error);
       return;
     }
 

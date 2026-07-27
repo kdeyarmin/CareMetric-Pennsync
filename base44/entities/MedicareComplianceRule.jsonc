@@ -80,6 +80,15 @@
       "default": false,
       "description": "Whether this is a Pennsylvania-specific requirement"
     },
+    "service_line": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice",
+        "both"
+      ],
+      "description": "Which service line this rule applies to. Omitted/both applies to all. Home-health rules (homebound, skilled need) must NOT hard-block hospice notes — ruleLibrary.appliesToService filters on this."
+    },
     "remediation_guidance": {
       "type": "string",
       "description": "How to fix non-compliance"

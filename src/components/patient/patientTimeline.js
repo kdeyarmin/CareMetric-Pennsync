@@ -33,11 +33,15 @@ export function buildPatientTimeline({ patientId, visits = [], documents = [], i
   for (const [type, rows] of Object.entries(sources)) {
     const config = EVENT_CONFIG[type];
     for (const record of Array.isArray(rows) ? rows : []) {
-      if (patientId && record?.patient_id && record.patient_id !== patientId) continue;
+      // When filtering for a specific patient, a record with NO patient_id is
+      // unattributed — it must not appear on every patient's timeline.
+      if (patientId && record?.patient_id !== patientId) continue;
       const occurredAt = firstDate(record, config.dateFields);
       if (!occurredAt) continue;
       events.push({
-        id: `${type}:${record.id || record.client_request_id || occurredAt}`,
+        // Include the index so id-less same-day records don't collide on an
+        // identical event id (React key collisions).
+        id: `${type}:${record.id || record.client_request_id || `${occurredAt}:${events.length}`}`,
         type,
         label: config.label,
         title: eventTitle(type, record),

@@ -1,11 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
 
-    if (!user || user.role !== 'admin') {
+    // Same admin gate as generateSignerToken/archiveSignedDocument —
+    // role==='admin' alone rejected agency_admin/super_admin.
+    if (!isAdminLike(user)) {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
@@ -63,6 +72,11 @@ Deno.serve(async (req) => {
             status: 'pending',
             signers: [
               {
+                // A stable id per signer row: the in-person signing page and
+                // submitDocumentSignatures key signatures by signer.id —
+                // id-less rows all collide on `undefined` for multi-signer
+                // documents, attaching a signature to the wrong signer row.
+                id: `signer_${crypto.randomUUID()}`,
                 name: signerName,
                 email: signerEmail || '',
                 role: 'patient',

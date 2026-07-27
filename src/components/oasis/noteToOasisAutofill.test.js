@@ -30,6 +30,19 @@ const OASIS_SECTIONS = [
     ],
   },
   {
+    id: "integumentary",
+    questions: [
+      {
+        id: "m1306",
+        label: "M1306 — Unhealed Pressure Ulcer/Injury at Stage 2 or Higher",
+        options: [
+          { value: 0, label: "0 — No" },
+          { value: 1, label: "1 — Yes" },
+        ],
+      },
+    ],
+  },
+  {
     id: "respiratory",
     questions: [
       {
@@ -120,6 +133,48 @@ test("resolves a value from an option label when the numeric value is absent", (
   );
   assert.ok(drafts.m1400);
   assert.equal(drafts.m1400.value, 3);
+});
+
+test("a positive label never fragment-matches a negated option (\"noted\" is not \"no\")", () => {
+  // Regression: the old substring fallback resolved this to 0 (No) because
+  // "unhealed pressure injury NOted" contains "no" — drafting the OPPOSITE
+  // answer. The non-numeric suggested_value "yes" must resolve it to 1.
+  const { drafts } = buildOasisAutofill(
+    [sugg({ item_number: "M1306", suggested_value: "yes", suggested_value_label: "Unhealed pressure injury noted" })],
+    OASIS_SECTIONS,
+  );
+  assert.ok(drafts.m1306, "expected a draft for m1306");
+  assert.equal(drafts.m1306.value, 1);
+});
+
+test("a positive phrase never matches its own negation across polarity", () => {
+  // Regression: "short of breath" is a substring of "0 — Not short of breath",
+  // so the old fallback drafted dyspnea = 0 for a SHORT-OF-BREATH patient. The
+  // fragment is also ambiguous across levels 1-4, so it must skip, not draft.
+  const { drafts, skipped } = buildOasisAutofill(
+    [sugg({ item_number: "M1400", suggested_value: "", suggested_value_label: "short of breath" })],
+    OASIS_SECTIONS,
+  );
+  assert.equal(drafts.m1400, undefined);
+  assert.ok(skipped.some((s) => s.id === "m1400" && s.reason === "unresolved_value"));
+});
+
+test("an exact negated label still resolves to the negated option", () => {
+  const { drafts } = buildOasisAutofill(
+    [sugg({ item_number: "M1400", suggested_value: "", suggested_value_label: "Not short of breath" })],
+    OASIS_SECTIONS,
+  );
+  assert.ok(drafts.m1400);
+  assert.equal(drafts.m1400.value, 0);
+});
+
+test("a bare non-option numeric still never resolves via labels", () => {
+  const { drafts, skipped } = buildOasisAutofill(
+    [sugg({ item_number: "M1306", suggested_value: "9", suggested_value_label: "" })],
+    OASIS_SECTIONS,
+  );
+  assert.equal(drafts.m1306, undefined);
+  assert.ok(skipped.some((s) => s.reason === "unresolved_value"));
 });
 
 test("carries the discrepancy flag through to the draft", () => {

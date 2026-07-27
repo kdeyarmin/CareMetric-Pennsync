@@ -43,9 +43,27 @@ export function isIcdCode(text) {
 }
 
 // Words that precede a code-shaped token when it is NOT a diagnosis code.
-const NON_CODE_PRECEDING = /(?:vitamin|vit\.?|room|rm\.?|apt\.?|unit|iv)\s*$/i;
-// Code-shaped tokens that are never diagnosis codes (common IV fluids).
-const NON_CODE_TOKENS = new Set(["D5W", "D10W", "D5NS", "D5LR"]);
+// Includes med-administration context so "amp of D50" / "bolus of D25" (IV
+// dextrose) isn't harvested as an anemia code (D50 = iron-deficiency anemia).
+const NON_CODE_PRECEDING = /(?:vitamin|vit\.?|room|rm\.?|apt\.?|unit|iv|amp(?:ule)?s?(?:\s+of)?|bolus(?:\s+of)?|push(?:ed)?|gave|administered)\s*$/i;
+// Code-shaped tokens that are never diagnosis codes. B12 is not assigned in
+// ICD-10-CM (the B11–B14 block is unused), so a bare "B12" in referral prose is
+// always the vitamin ("B12 deficiency anemia") — harvesting it fabricated an
+// infectious-disease principal that outweighed the real documented primary.
+const NON_CODE_TOKENS = new Set(["D5W", "D10W", "D25W", "D50W", "D5NS", "D5LR", "B12"]);
+
+// Bare letter+digits tokens that are VERTEBRAL LEVELS, not codes, when the
+// number is within the anatomic range for that spine segment ("T12 compression
+// fracture", "fracture at T10-T11"). Dotted forms and dedicated code fields
+// are unaffected; a bare token past the anatomic max (e.g. C50, S72) still
+// harvests. (Single-digit levels like L4/T9 never matched the bare-code shape.)
+const VERTEBRAL_MAX = { C: 7, T: 12, L: 5, S: 5 };
+function looksLikeVertebralLevel(token) {
+  const m = /^([CTLS])(\d{2})$/i.exec(token);
+  if (!m) return false;
+  const n = parseInt(m[2], 10);
+  return n >= 1 && n <= (VERTEBRAL_MAX[m[1].toUpperCase()] || 0);
+}
 
 /**
  * Extract ICD-10 codes from a free-text field. Dotted codes are always taken;
@@ -67,10 +85,13 @@ export function extractIcdCodesFromText(text) {
   };
   for (const m of s.matchAll(ICD_DOTTED)) push(m[0]);
   for (const m of s.matchAll(ICD_BARE)) {
-    // Skip the stem of a dotted code (the "I50" inside "I50.9") — the dotted
-    // pass already captured the full code.
-    if (/^\.[0-9A-Z]/.test(s.slice(m.index + m[0].length))) continue;
+    // Skip the stem of a dotted code (the "I50" inside "I50.9") — but only when
+    // the dotted pass ACTUALLY matched here. A sentence period with no space
+    // ("Primary dx I10.Ambulates…", common OCR artifact) is not a dotted code,
+    // and skipping on the bare period discarded the genuine I10.
+    if (/^[A-Z][0-9][0-9A-Z]\.[0-9A-Z]{1,4}\b/.test(s.slice(m.index))) continue;
     if (NON_CODE_TOKENS.has(m[0].toUpperCase())) continue;
+    if (looksLikeVertebralLevel(m[0])) continue;
     if (NON_CODE_PRECEDING.test(s.slice(0, m.index))) continue;
     push(m[0]);
   }

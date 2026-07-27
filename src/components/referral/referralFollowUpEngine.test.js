@@ -322,7 +322,10 @@ test("toPersistedFollowUp produces the lean sorted Referral shape", () => {
   assert.equal(persisted.generated_at, "2026-07-02T12:00:00Z");
   assert.equal(persisted.sent_via, "fax");
   assert.equal(persisted.fax_log_id, "fx1");
-  assert.equal(persisted.portal_link, "https://x.example/followup?token=abc");
+  // Capability-token hygiene: the PLAINTEXT link must never be persisted on
+  // the Referral — only the fact that a link is active.
+  assert.equal(persisted.portal_link, undefined);
+  assert.equal(persisted.portal_link_active, true);
   // Per-item lifecycle starts open with no response.
   assert.equal(persisted.items[0].item_status, "open");
   assert.equal(persisted.items[0].response, null);

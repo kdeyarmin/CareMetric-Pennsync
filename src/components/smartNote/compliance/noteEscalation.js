@@ -9,7 +9,7 @@
 // IMPORTANT: loaded by the node test runner, so it may only import other plain
 // `.js` modules with explicit extensions (never `.jsx`).
 import { extractVitals } from "./factExtraction.js";
-import { extractPain } from "./visitComparison.js";
+import { extractPainRatings } from "./visitComparison.js";
 import { detectCriticalVitals } from "../../visit/vitalEscalation.js";
 
 /**
@@ -23,7 +23,9 @@ export function detectNoteCriticalVitals(noteText) {
   const vitals = {};
   if (v.bp_sys != null && v.bp_dia != null) vitals.bp = `${v.bp_sys}/${v.bp_dia}`;
   if (v.o2 != null) vitals.o2 = v.o2;
-  const pain = extractPain(noteText);
-  if (pain != null) vitals.pain = pain;
+  // Escalate on the WORST pain rating in the note: a note quoting a prior lower
+  // value first ("pain was 5/10 last visit, now 10/10") must still escalate.
+  const pains = extractPainRatings(noteText);
+  if (pains.length) vitals.pain = Math.max(...pains);
   return detectCriticalVitals(vitals);
 }

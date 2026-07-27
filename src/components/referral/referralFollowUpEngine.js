@@ -553,7 +553,13 @@ export function toPersistedFollowUp(
     generated_at: generatedAt || null,
     sent_via: sentVia, // "fax" | "manual" | null
     fax_log_id: faxLogId,
-    portal_link: portalLink,
+    // NEVER the plaintext link: generateFollowUpPortalToken stores only the
+    // token's SHA-256 precisely so that Referral/token reads can't yield live
+    // capability links — persisting the plaintext here defeated that one
+    // entity over. Only the fact that a link is active is recorded; the
+    // plaintext lives in UI state for the session that minted it, and staff
+    // can always rotate to get a fresh copyable link.
+    portal_link_active: Boolean(portalLink),
     counts: plan.counts,
     items: sortFollowUpItems(plan.items).map((it) => ({
       id: it.id,

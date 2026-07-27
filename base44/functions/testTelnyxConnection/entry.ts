@@ -94,9 +94,12 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // Same admin surface as the panels that invoke this (isAdminLike) — an
+    // agency_admin can reach the "Test live connection" button, so accept them.
     const isAdmin =
       user.role === 'admin' ||
-      user.account_type === 'super_admin';
+      user.account_type === 'super_admin' ||
+      user.account_type === 'agency_admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can test the Telnyx connection' }, { status: 403 });
     }
@@ -150,6 +153,46 @@ Deno.serve(async (req) => {
         : 'No fax connection id — outbound fax requires a Programmable Fax / FAX Application connection id.',
     });
 
+    // --- Fax numbers (saved AgencySettings, strict-ish E.164) ---
+    // Faxes TRANSMIT from the single blind outbound line and are PRESENTED
+    // under the office fax machine's number (replies go straight to the
+    // office). A missing/malformed outbound line (with no office fallback)
+    // fails every send, so surface both here alongside the connection check.
+    const validFaxNumber = (raw) => {
+      const d = raw.replace(/[^\d]/g, '');
+      return (
+        d.length === 10 ||
+        (d.length === 11 && d.startsWith('1')) ||
+        (raw.startsWith('+') && d.length >= 8 && d.length <= 15 && d[0] !== '0')
+      );
+    };
+    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+    const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
+    const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
+    const officeFaxValid = officeFaxRaw !== '' && validFaxNumber(officeFaxRaw);
+    const outboundFaxValid = outboundFaxRaw !== '' && validFaxNumber(outboundFaxRaw);
+    const faxFromValid = outboundFaxValid || officeFaxValid;
+    checks.push({
+      id: 'telnyx_fax_from',
+      label: 'Outbound fax line',
+      status: faxFromValid ? 'ok' : 'warn',
+      detail: outboundFaxValid
+        ? `Blind outbound fax line configured (${outboundFaxRaw}) — all faxes transmit from it.`
+        : officeFaxValid
+          ? 'No dedicated outbound line — faxes fall back to transmitting from the office fax number (set the outbound line so the office machine stays reply-only).'
+          : outboundFaxRaw || officeFaxRaw
+            ? 'Saved fax number doesn\'t look like a valid phone number — every outbound fax will fail until it\'s fixed.'
+            : 'No outbound fax number saved — outbound faxing is disabled until one is set in Agency Settings.',
+    });
+    checks.push({
+      id: 'telnyx_fax_reply',
+      label: 'Office fax machine (reply-to)',
+      status: officeFaxValid ? 'ok' : 'warn',
+      detail: officeFaxValid
+        ? `Recipients are shown ${officeFaxRaw} as the sender, so fax replies go straight to the office machine.`
+        : 'No office fax machine number saved — recipients won\'t be pointed at the office for replies.',
+    });
+
     // --- Live Telnyx API probe ---
     if (!creds.apiKey) {
       checks.push({ id: 'telnyx_api_live', label: 'Live Telnyx API', status: 'fail', detail: 'Skipped — Telnyx API key not configured.' });
@@ -158,11 +201,17 @@ Deno.serve(async (req) => {
       checks.push({ id: 'telnyx_api_live', label: 'Live Telnyx API', status: probe.status, detail: probe.detail });
     }
 
+    // Provisioning stats — rendered by PhoneProvisioningPanel under the live
+    // checklist ("X/Y users have a work number").
+    const allUsers = await base44.asServiceRole.entities.User.list('full_name', 2000).catch(() => []);
+    const isSetStr = (v) => v != null && String(v).trim() !== '';
     const stats = {
       messaging_ready: Boolean(creds.apiKey),
       voice_ready: Boolean(creds.apiKey && creds.voiceConnectionId),
-      fax_ready: Boolean(creds.apiKey && creds.faxConnectionId),
+      fax_ready: Boolean(creds.apiKey && creds.faxConnectionId && faxFromValid),
       webhooks_verifiable: Boolean(creds.publicKey),
+      total_users: allUsers.length,
+      nurses_with_work_number: allUsers.filter((u) => isSetStr(u.work_phone_number)).length,
     };
 
     return Response.json({ success: true, checks, stats, generated_at: new Date().toISOString() });

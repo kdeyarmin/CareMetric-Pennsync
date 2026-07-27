@@ -22,16 +22,22 @@ const REFERENCE_PATIENT = {
   admission_source: "community",
   episode_timing: "early",
   comorbidities: [],
-  m1800_grooming: "2",
-  m1810_dress_upper: "2",
-  m1820_dress_lower: "2",
-  m1830_bathing: "3",
-  m1840_toilet_transfer: "2",
-  m1850_transferring: "3",
-  m1860_ambulation: "3",
+  // The engine reads ONLY pdgmData.functional_scores — top-level m18xx keys
+  // were ignored, scoring the reference patient 0 points ("low", x0.82) while
+  // the card promised "medium functional impairment": the admin verification
+  // number was silently ~18% low.
+  functional_scores: {
+    m1800_grooming: "2",
+    m1810_dress_upper: "2",
+    m1820_dress_lower: "2",
+    m1830_bathing: "3",
+    m1840_toilet_transfer: "2",
+    m1850_transferring: "3",
+    m1860_ambulation: "3",
+  },
 };
 
-export default function PDGMCalculationPreview({ isDirty, isOfficial, baseRate }) {
+export default function PDGMCalculationPreview({ isDirty, baseRate }) {
   const [result, setResult] = useState(null);
 
   const calcMutation = useMutation({

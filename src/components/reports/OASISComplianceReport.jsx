@@ -21,11 +21,20 @@ export default function OASISComplianceReport({ dateRange }) {
     initialData: [],
   });
 
+  // assessment_date is a date-only field; anchor it to LOCAL midnight, but a
+  // non-date-only stored value (legacy/ISO timestamp) parses as-is so a bad
+  // "T00:00:00" suffix can't turn it into an invalid date and drop it.
+  const parseAssessmentDate = (raw) => {
+    const v = String(raw || '');
+    const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(v) ? v + 'T00:00:00' : v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
   const rangeStart = new Date(dateRange.start + 'T00:00:00');
 
   const filteredOASIS = oasisAssessments.filter(o => {
-    const date = new Date(o.assessment_date);
-    return date >= rangeStart && date <= new Date(dateRange.end + 'T23:59:59.999');
+    const date = parseAssessmentDate(o.assessment_date);
+    return date && date >= rangeStart && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
   const filteredAudits = complianceAudits.filter(a => {
@@ -65,8 +74,8 @@ export default function OASISComplianceReport({ dateRange }) {
     const monthName = date.toLocaleString('default', { month: 'short' });
     
     const monthOASIS = oasisAssessments.filter(o => {
-      const oasisDate = new Date(o.assessment_date);
-      return oasisDate.getMonth() === date.getMonth() && oasisDate.getFullYear() === date.getFullYear();
+      const oasisDate = parseAssessmentDate(o.assessment_date);
+      return oasisDate && oasisDate.getMonth() === date.getMonth() && oasisDate.getFullYear() === date.getFullYear();
     });
 
     return {

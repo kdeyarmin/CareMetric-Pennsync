@@ -20,6 +20,8 @@ const READY_INPUTS = {
   secretStatus: { configured: true, source: "config", api_key_last_four: "9abc" },
   agencySettings: {
     main_office_number_e164: "+12155550100",
+    office_fax_number_e164: "+17244650444",
+    outbound_fax_number_e164: "+12155550190",
     default_off_duty_template: "We are closed; call {office}.",
     sms_messaging_enabled: true,
   },
@@ -38,6 +40,8 @@ test("an empty config produces only warn checks (no required fields removed)", (
 test("a complete config is ready (no failures)", () => {
   const checks = evaluateAgencyConfig({
     main_office_number_e164: "+12155550100",
+    office_fax_number_e164: "+17244650444",
+    outbound_fax_number_e164: "+12155550190",
     default_off_duty_template: "We are closed; call {office}.",
     sms_messaging_enabled: true,
   });
@@ -67,6 +71,29 @@ test("the SMS kill switch surfaces as a warning when off", () => {
 test("missing off-duty template warns", () => {
   const checks = evaluateAgencyConfig({});
   assert.equal(byId(checks, "off_duty_template").status, "warn");
+});
+
+test("missing fax numbers warn (faxing disabled), never fail readiness", () => {
+  const checks = evaluateAgencyConfig({});
+  assert.equal(byId(checks, "office_fax").status, "warn");
+  assert.equal(byId(checks, "outbound_fax").status, "warn");
+  // With NO office fallback either, the outbound line's absence disables faxing.
+  assert.match(byId(checks, "outbound_fax").detail, /faxing is disabled/i);
+  assert.equal(summarize(checks).ready, true);
+});
+
+test("a missing outbound line with an office number set warns about the fallback", () => {
+  const checks = evaluateAgencyConfig({ office_fax_number_e164: "+17244650444" });
+  assert.equal(byId(checks, "office_fax").status, "ok");
+  assert.equal(byId(checks, "outbound_fax").status, "warn");
+  assert.match(byId(checks, "outbound_fax").detail, /fall back/i);
+});
+
+test("malformed fax numbers warn; valid ones are ok", () => {
+  assert.equal(byId(evaluateAgencyConfig({ office_fax_number_e164: "12" }), "office_fax").status, "warn");
+  assert.equal(byId(evaluateAgencyConfig({ office_fax_number_e164: "+17244650444" }), "office_fax").status, "ok");
+  assert.equal(byId(evaluateAgencyConfig({ outbound_fax_number_e164: "12" }), "outbound_fax").status, "warn");
+  assert.equal(byId(evaluateAgencyConfig({ outbound_fax_number_e164: "(215) 555-0190" }), "outbound_fax").status, "ok");
 });
 
 test("no sms_subaccount / voice_subaccount / region checks exist (removed)", () => {

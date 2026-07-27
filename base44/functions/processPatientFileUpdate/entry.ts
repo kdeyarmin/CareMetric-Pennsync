@@ -158,6 +158,14 @@ function buildExistingLookups(existingPatients) {
   const existingByMrn = new Map();
   const existingByNameDob = new Map();
   for (const p of existingPatients || []) {
+    // Merged losers keep their MRN forever — including them made every future
+    // row for that MRN error "Multiple existing patients share this MRN"
+    // (the survivor + the archived loser both matched). Their records belong
+    // to the survivor now, so they must never be a match target. Archived
+    // DISCHARGED patients stay matchable: the discharge path reports them as
+    // "already discharged — no change" and a census row for one flags a
+    // possible readmission instead of minting a duplicate chart.
+    if (p?.status === 'merged') continue;
     pushToLookup(existingByMrn, normalizeMrn(p.medical_record_number), p);
     pushToLookup(existingByNameDob, getNameDobKey(p), p);
   }
@@ -212,6 +220,22 @@ function buildUploadKeys(patient) {
 
 // Resolve a parsed patient against the existing lookups.
 // Returns { match, matchedBy } or { error } when it can't be safely verified.
+// An MRN match must AGREE with the row's name when the row carries one — a
+// single typo'd MRN digit used to match (and discharge/archive) whichever
+// patient owned that MRN, name unchecked. Different last names are a conflict
+// unless the first names agree exactly (married-name change). Mirrors
+// patientImportUtils.js.
+const foldNamePart = (v) => String(v || '').toLowerCase().replace(/[^a-z]/g, '');
+function mrnNameConflict(row, rec) {
+  const rowLast = foldNamePart(row.last_name);
+  const recLast = foldNamePart(rec?.last_name);
+  if (!rowLast || !recLast) return false;
+  if (rowLast === recLast || rowLast.includes(recLast) || recLast.includes(rowLast)) return false;
+  const rowFirst = foldNamePart(row.first_name);
+  const recFirst = foldNamePart(rec?.first_name);
+  return !(rowFirst && recFirst && rowFirst === recFirst);
+}
+
 function resolveMatch(patient, existingByMrn, existingByNameDob) {
   const mrn = normalizeMrn(patient.medical_record_number);
   const nameDobKey = getNameDobKey(patient);
@@ -228,6 +252,11 @@ function resolveMatch(patient, existingByMrn, existingByNameDob) {
   }
   if (mrnMatch && nameDobMatch && mrnMatch.id !== nameDobMatch.id) {
     return { error: 'MRN matched one patient, but name and DOB matched a different patient.' };
+  }
+  if (mrnMatch && !nameDobMatch && mrnNameConflict(patient, mrnMatch)) {
+    return {
+      error: `MRN belongs to ${mrnMatch.first_name || ''} ${mrnMatch.last_name || ''} but this row names a different patient — verify the MRN before importing.`.trim(),
+    };
   }
   if (!mrn && !nameDobKey) {
     return { error: 'Cannot safely verify this patient. Provide an MRN or a name with DOB.' };
@@ -424,11 +453,18 @@ Deno.serve(async (req) => {
         if (matchResult.match) {
           results.matchedExisting++;
           results.noChanges++;
+          // An ARCHIVED/discharged chart on an active-census row means the
+          // patient is back — silently reporting "already in system" hid the
+          // readmission. Flag it for review instead (this import never
+          // reactivates automatically).
+          const archivedMatch = matchResult.match.is_archived || matchResult.match.status === 'discharged';
           results.plan.push({
             row: rawRow.rowNumber,
-            action: 'matched',
+            action: archivedMatch ? 'needs_review' : 'matched',
             patient: patient.patientLabel,
-            detail: `Already in system — matched by ${matchResult.matchedBy} to ${existingLabel(matchResult.match)}`,
+            detail: archivedMatch
+              ? `On the active census but the chart is ${matchResult.match.status || 'archived'} (matched by ${matchResult.matchedBy} to ${existingLabel(matchResult.match)}) — possible readmission, restore/reactivate the chart manually`
+              : `Already in system — matched by ${matchResult.matchedBy} to ${existingLabel(matchResult.match)}`,
           });
           continue;
         }

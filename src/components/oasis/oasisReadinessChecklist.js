@@ -7,7 +7,12 @@ const normalizeText = (value) => String(value || '').trim().toLowerCase();
 
 const parseDateOnly = (value) => {
   if (!isPresent(value)) return null;
-  const date = new Date(value);
+  const s = String(value).trim();
+  // Date-only ISO strings parse as UTC midnight while datetime/US formats
+  // parse local — mixing the two skews a same-day comparison across the date
+  // line. Anchor date-only values to local midnight.
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  const date = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(s);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
@@ -133,7 +138,9 @@ const CHECKS = [
     evaluate: (data) => FUNCTIONAL_ITEMS.every((item) => {
       const rawValue = data.functional_scores?.[item.key] ?? data[item.key];
       if (!isPresent(rawValue)) return true;
-      const value = Number.parseInt(rawValue, 10);
+      // Number(), not parseInt(): parseInt truncates "3.7" to 3 and "6abc"
+      // to 6, passing values that are not valid OASIS responses.
+      const value = Number(rawValue);
       return Number.isInteger(value) && value >= 0 && value <= item.max;
     }),
     action: 'Correct out-of-range functional values before using the assessment for PDGM grouping.',
@@ -158,9 +165,16 @@ const CHECKS = [
     label: 'Clinician/reviewer attestation is captured',
     severity: 'critical',
     fields: ['reviewer_attested', 'review_status', 'reviewer_name'],
-    evaluate: (data) => data.reviewer_attested === true
-      || ['reviewed', 'approved', 'attested', 'ready'].includes(normalizeText(data.review_status))
-      || isPresent(data.reviewer_name),
+    evaluate: (data) => {
+      // A rejected/returned review is never attestation, no matter what other
+      // fields are filled in.
+      const status = normalizeText(data.review_status);
+      if (['rejected', 'declined', 'returned', 'needs_revision'].includes(status)) return false;
+      // A reviewer_name alone is who is ASSIGNED, not proof they attested —
+      // it must not satisfy this check by itself.
+      return data.reviewer_attested === true
+        || ['reviewed', 'approved', 'attested', 'ready'].includes(status);
+    },
     action: 'Capture reviewer attestation after resolving critical and high-priority checks.',
   },
 ];

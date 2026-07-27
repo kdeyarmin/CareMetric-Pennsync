@@ -71,7 +71,7 @@ const GROUP_BY_PREFIX = [
   { test: (c) => c[0] === "F", group: "Behavioral Health" },
   { test: (c) => c[0] === "G", group: "Neuro Rehabilitation" },
   { test: (c) => c[0] === "L", group: "Wound" },
-  { test: (c) => c.startsWith("T81") || c.startsWith("L89"), group: "Wound" },
+  { test: (c) => c.startsWith("T81"), group: "Wound" },
   { test: (c) => c[0] === "S", group: "Musculoskeletal Rehabilitation" },
   { test: (c) => c[0] === "A" || c[0] === "B" || c[0] === "C" || c[0] === "D", group: "MMTA - Infectious Disease, Neoplasms, and Blood-Forming Diseases" },
   { test: (c) => c.startsWith("Z47") || c.startsWith("Z48"), group: "MMTA - Surgical Aftercare" },
@@ -83,9 +83,13 @@ const GROUP_BY_PREFIX = [
  */
 export function previewClinicalGroup(icd10) {
   const code = normalizeIcd(icd10);
+  // An RTP-unacceptable principal (Z/R chapter, edit list) can't confidently
+  // drive ANY group — previewing "Surgical Aftercare (high)" for a code the
+  // validator simultaneously calls a guaranteed RTP was contradictory advice.
+  const rtp = code ? validatePrimaryDiagnosis(code) : null;
   for (const rule of GROUP_BY_PREFIX) {
     if (code && rule.test(code)) {
-      return { clinical_group: rule.group, confidence: "high" };
+      return { clinical_group: rule.group, confidence: rtp && !rtp.acceptable ? "low" : "high" };
     }
   }
   return { clinical_group: "MMTA - Other", confidence: "low" };

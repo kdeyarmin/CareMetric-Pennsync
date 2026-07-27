@@ -20,7 +20,10 @@ export default function SignDocument() {
   const queryClient = useQueryClient();
   const urlParams = new URLSearchParams(window.location.search);
   const signatureId = urlParams.get('signature_id');
-  const patientId = urlParams.get('patient_id');
+  // URL patient_id is a legacy fallback for records with no patient_id of
+  // their own — it must never OVERRIDE the record: a crafted link could show
+  // one patient's name beside another patient's document.
+  const urlPatientId = urlParams.get('patient_id');
 
   const [showSignatureDialog, setShowSignatureDialog] = useState(false);
   const [currentSignerIndex, setCurrentSignerIndex] = useState(0);
@@ -38,7 +41,7 @@ export default function SignDocument() {
     enabled: !!signatureId
   });
 
-  const effectivePatientId = patientId || signatureRecord?.patient_id || "";
+  const effectivePatientId = signatureRecord?.patient_id || urlPatientId || "";
 
   const { data: patient } = useQuery({
     queryKey: ['patient', effectivePatientId],
@@ -70,13 +73,19 @@ export default function SignDocument() {
     setShowSignatureDialog(true);
   };
 
+  // Stable per-row key even for legacy signer rows without an id — id-less
+  // rows all collided on `undefined`, attaching a signature to the wrong
+  // signer on multi-signer documents. Must match submitDocumentSignatures'
+  // fallback keying.
+  const signerKey = (signer, index) => signer?.id ?? `idx_${index}`;
+
   const handleSaveSignature = (dataUrl, method) => {
     const signer = signatureRecord?.signers[currentSignerIndex];
     if (!signer) return;
 
     setSignatures(prev => ({
       ...prev,
-      [signer.id]: { dataUrl, method, timestamp: new Date().toISOString() }
+      [signerKey(signer, currentSignerIndex)]: { dataUrl, method, timestamp: new Date().toISOString() }
     }));
 
     setShowSignatureDialog(false);
@@ -89,7 +98,7 @@ export default function SignDocument() {
     // Client-side completeness check for fast feedback; the server re-validates.
     const allRequiredSigned = signatureRecord.signers
       .filter(s => s.required)
-      .every(s => signatures[s.id]?.dataUrl || s.signature);
+      .every((s, i) => signatures[signerKey(s, i)]?.dataUrl || s.signature);
 
     if (!allRequiredSigned) {
       toast.error("Please complete all required signatures");
@@ -134,8 +143,8 @@ export default function SignDocument() {
     );
   }
 
-  const getSignerStatus = (signer) => {
-    if (signatures[signer.id]) {
+  const getSignerStatus = (signer, index) => {
+    if (signatures[signerKey(signer, index)]) {
       return { label: "Signed", color: "bg-emerald-600" };
     }
     if (signer.signed_date) {
@@ -188,11 +197,11 @@ export default function SignDocument() {
         <CardContent>
           <div className="space-y-3">
             {signatureRecord.signers.map((signer, index) => {
-              const status = getSignerStatus(signer);
+              const status = getSignerStatus(signer, index);
               
               return (
                 <div
-                  key={signer.id}
+                  key={signerKey(signer, index)}
                   className="flex items-center justify-between p-4 border rounded-lg"
                 >
                   <div className="flex items-center gap-3">
@@ -219,10 +228,10 @@ export default function SignDocument() {
                       </Button>
                     )}
                     
-                    {signatures[signer.id] && (
+                    {signatures[signerKey(signer, index)] && (
                       <div className="border rounded-lg p-1 bg-white">
                         <img 
-                          src={signatures[signer.id].dataUrl} 
+                          src={signatures[signerKey(signer, index)].dataUrl} 
                           alt="Signature"
                           className="h-8 w-24 object-contain"
                         />

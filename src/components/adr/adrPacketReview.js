@@ -107,6 +107,14 @@ export function summarizePacketVerification({ checklist = [], verification = {},
     };
   });
 
+  // A "missing" verdict has no evidence pages by definition — AI-supplied page
+  // numbers on a missing item would print a TOC page reference and a red
+  // KEY ITEM frame pointing the Medicare reviewer at evidence the
+  // verification itself says is absent.
+  for (const it of items) {
+    if (it.status === "missing" && it.pages.length) it.pages = [];
+  }
+
   const missing = items.filter((it) => it.status === "missing");
   const partial = items.filter((it) => it.status === "partial");
   const notApplicable = items.filter((it) => it.status === "not_applicable");
@@ -148,7 +156,16 @@ export function summarizePacketVerification({ checklist = [], verification = {},
   // status outright; everything else degrades the score.
   const blocking = [];
   for (const it of items) {
-    if (it.severity !== "critical") continue;
+    // A document the contractor requested BY NAME in the letter also blocks
+    // when missing, whatever its severity — omitting it invites denial even
+    // if it isn't a condition of payment.
+    const letterRequested = it.source && it.source !== "cms_baseline";
+    if (it.severity !== "critical") {
+      if (letterRequested && it.status === "missing") {
+        blocking.push({ id: it.id, title: it.title, reason: "missing_letter_item", citation: it.citation });
+      }
+      continue;
+    }
     if (it.status === "missing") blocking.push({ id: it.id, title: it.title, reason: "missing", citation: it.citation });
     else if (it.status === "partial") blocking.push({ id: it.id, title: it.title, reason: "incomplete", citation: it.citation });
     else if (it.issues.some((i) => i.severity === "critical")) {

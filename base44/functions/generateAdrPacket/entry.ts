@@ -69,17 +69,19 @@ const RED = [185, 28, 28];
 const SLATE = [71, 85, 105];
 const INK = [15, 23, 42];
 
+// Mirrors AUDIT_TYPES in src/components/adr/adrRequirements.js — the printed
+// program name must match what the screen shows.
 const AUDIT_TYPE_LABELS = {
-  mac_adr: 'MAC ADR (medical review)',
+  mac_adr: 'MAC ADR (prepayment/postpayment medical review)',
   tpe: 'Targeted Probe & Educate (TPE)',
   rcd: 'Review Choice Demonstration (RCD)',
   upic: 'UPIC investigation',
   smrc: 'SMRC review',
   cert: 'CERT audit',
   ra: 'Recovery Auditor (RAC)',
-  managed_care: 'Managed-care audit',
+  managed_care: 'Medicare Advantage / managed-care audit',
   state_survey: 'State survey / other',
-  other: 'Documentation request',
+  other: 'Other documentation request',
 };
 
 const STATUS_LABELS = { found: 'Included', partial: 'PARTIAL', missing: 'MISSING', not_applicable: 'N/A' };
@@ -89,7 +91,7 @@ const STATUS_LABELS = { found: 'Included', partial: 'PARTIAL', missing: 'MISSING
  * of front-matter pages that will precede the packet (0 on the counting pass).
  * Returns the number of pages rendered.
  */
-function renderFrontMatter(doc, adrCase, summary, offset) {
+function renderFrontMatter(doc, adrCase, summary, offset, packetPageCount = Infinity) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 16;
@@ -237,7 +239,12 @@ function renderFrontMatter(doc, adrCase, summary, offset) {
     doc.setTextColor(...(missing ? RED : SLATE));
     doc.text(STATUS_LABELS[entry.status] || '—', pageWidth - margin - 40, yPos);
     doc.setTextColor(...(missing ? RED : INK));
-    doc.text(entry.packet_page ? String(offset + entry.packet_page) : '—', pageWidth - margin, yPos, { align: 'right' });
+    // Clamp against the REAL packet: a hallucinated page number (possible when
+    // the client's local page count failed and the AI's own count was the
+    // fallback) must not print a TOC reference past the end of the final PDF.
+    const tocPage = Number(entry.packet_page);
+    const tocPageValid = Number.isInteger(tocPage) && tocPage >= 1 && tocPage <= packetPageCount;
+    doc.text(tocPageValid ? String(offset + tocPage) : '—', pageWidth - margin, yPos, { align: 'right' });
     yPos += titleLines.length * 4.6;
     if (citationLines.length) {
       doc.setFont('helvetica', 'normal');
@@ -358,9 +365,9 @@ Deno.serve(async (req) => {
     // renders TOC page numbers with the real offset. The page count cannot
     // change between passes — only the digits in a fixed-width column differ.
     const countingDoc = new jsPDF({ unit: 'mm', format: 'letter' });
-    const frontPages = renderFrontMatter(countingDoc, adrCase, summary, 0);
+    const frontPages = renderFrontMatter(countingDoc, adrCase, summary, 0, packetPageCount);
     const frontDoc = new jsPDF({ unit: 'mm', format: 'letter' });
-    renderFrontMatter(frontDoc, adrCase, summary, frontPages);
+    renderFrontMatter(frontDoc, adrCase, summary, frontPages, packetPageCount);
     const frontBytes = frontDoc.output('arraybuffer');
 
     // Merge front matter + packet, then stamp page numbers and key-item frames.

@@ -33,17 +33,21 @@ export function deriveComplianceIssueStats(
     return matchesSearch && matchesCategory && matchesSeverity;
   });
 
-  const groupedByUser = filteredIssues.reduce((acc, issue) => {
-    if (!acc[issue.userId]) {
-      acc[issue.userId] = {
+  // Null-prototype accumulator: a userId like "constructor" crashed the
+  // reduce on a plain {}. Issues with no userId each get their own bucket
+  // instead of collapsing into one "undefined" user.
+  const groupedByUser = filteredIssues.reduce((acc, issue, idx) => {
+    const key = issue.userId ?? `unknown-${idx}`;
+    if (!acc[key]) {
+      acc[key] = {
         userName: issue.userName,
         userRole: issue.userRole,
         issues: [],
       };
     }
-    acc[issue.userId].issues.push(issue);
+    acc[key].issues.push(issue);
     return acc;
-  }, {});
+  }, Object.create(null));
 
   return {
     filteredIssues,

@@ -138,15 +138,18 @@ export default function EventReport() {
       // server-side and notify admins in-app, but without the urgent email/PDF.
       const isStateReportable = formData.state_reportable === "Yes";
 
-      // Send the enum/code value (e.g. "HE"), not the long human-readable label.
       const eventTypeCode = formData.event_type_id;
+      // The official record, PDF, and email need the human-readable event name;
+      // the 2-letter code alone rendered "Event Type: HE" in the retained PDF.
+      const eventTypeLabel =
+        eventTypes.find((t) => t.id === eventTypeCode)?.description || eventTypeCode;
 
       let result;
       if (isStateReportable) {
         result = await submitStateReportableIncident({
           patient_id: formData.patient_id,
           patient_name: patientName,
-          event_type: eventTypeCode,
+          event_type: eventTypeLabel,
           event_type_id: formData.event_type_id,
           event_date: formData.date_of_event,
           event_time: formData.time_of_event,
@@ -184,8 +187,12 @@ export default function EventReport() {
 
       const data = result?.data || result || {};
       if (isStateReportable) {
-        if ((data.admin_count ?? 0) > 0 && (data.emails_sent ?? 0) === 0) {
+        if ((data.admin_count ?? 0) === 0) {
+          toast.warning("Event report saved, but NO administrators were found to alert. Notify your administrator directly and have admin accounts reviewed.");
+        } else if ((data.emails_sent ?? 0) === 0) {
           toast.warning("Event report saved, but admin email alerts could not be sent. Please notify your administrator directly.");
+        } else if (data.pdf_retained === false) {
+          toast.warning("Event report submitted and admins alerted, but the PDF copy could not be retained — print/save a copy manually.");
         } else {
           toast.success("State reportable event submitted. A PDF copy was retained and administrators were alerted immediately.");
         }

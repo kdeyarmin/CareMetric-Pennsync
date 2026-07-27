@@ -146,6 +146,9 @@ export default function ReferralFollowUp() {
     setExcludedItemIds(new Set());
     setAiItems([]);
     setAiAssessment("");
+    // The plaintext link is deliberately NOT persisted (capability-token
+    // hygiene) — legacy rows may still carry one; prefer it if present so old
+    // links stay copyable, otherwise staff rotate to mint a fresh link.
     setPortalLink(selected?.follow_up_requests?.portal_link || "");
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps -- selected derives from selectedId
 
@@ -573,13 +576,13 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                           <span className="text-xs font-normal text-slate-500">{new Date(tracking.generated_at).toLocaleString()}</span>
                         )}
                       </CardTitle>
-                      {tracking.portal_link && (
+                      {(portalLink || tracking.portal_link) ? (
                         <button
                           type="button"
                           className="text-xs text-blue-700 underline flex items-center gap-1 w-fit"
                           onClick={async () => {
                             try {
-                              await navigator.clipboard.writeText(tracking.portal_link);
+                              await navigator.clipboard.writeText(portalLink || tracking.portal_link);
                               toast.success("Portal link copied.");
                             } catch {
                               toast.error("Couldn't copy the link.");
@@ -588,7 +591,11 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                         >
                           <LinkIcon className="w-3 h-3" /> Copy provider response link
                         </button>
-                      )}
+                      ) : tracking.portal_link_active ? (
+                        <span className="text-xs text-slate-500 flex items-center gap-1 w-fit">
+                          <LinkIcon className="w-3 h-3" /> Online response link active — rotate below to copy a fresh one
+                        </span>
+                      ) : null}
                     </CardHeader>
                     <CardContent className="space-y-2">
                       {tracking.fax_back && (
@@ -801,6 +808,12 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                           <div>
                             <Label htmlFor="fu-fax" className="text-xs">Return fax (on the form)</Label>
                             <Input id="fu-fax" value={contactBackFax} onChange={(e) => setContactBackFax(e.target.value)} placeholder="(555) 555-0100" />
+                            {!agencySettings?.fax_receiving_enabled && (
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Faxed replies arrive at the office machine on paper — mark items resolved here when
+                                they do. (The online response link updates this page automatically.)
+                              </p>
+                            )}
                           </div>
                           <div>
                             <Label htmlFor="fu-phone" className="text-xs">Questions phone</Label>

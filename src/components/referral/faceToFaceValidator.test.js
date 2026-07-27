@@ -207,3 +207,52 @@ test("referralToF2FInput returns null when the referral carries no F2F block", (
   assert.equal(referralToF2FInput({ extracted_data: {} }), null);
   assert.equal(referralToF2FInput(null), null);
 });
+
+// ── Regression: credential parsing + linkage (2026-07 review) ───────────────
+
+test("dotted and spelled-out credentials parse ('M.D.', 'Nurse Practitioner')", () => {
+  assert.deepEqual(parseCredential("John Smith, M.D."), { credential: "MD", eligible: true });
+  assert.deepEqual(parseCredential("Jane Roe, D.O."), { credential: "DO", eligible: true });
+  assert.equal(parseCredential("Amy Lee, Nurse Practitioner").credential, "NP");
+});
+
+test("a surname spelling a credential does not validate the practitioner", () => {
+  const out = validateFaceToFace({
+    encounter: { practitioner_name: "Nguyen Do", encounter_date: "2026-07-01", clinical_reason: "Seen for congestive heart failure" },
+    socDate: "2026-07-10",
+    primaryDiagnosis: "Congestive heart failure",
+  });
+  assert.equal(out.checks.practitioner.eligible, null, "'Do' as a surname is not an eligible-credential claim");
+  assert.equal(out.status, "needs_review");
+  // Written as an actual credential, it still parses.
+  assert.equal(parseCredential("Nguyen Tran, DO", { fromName: true }).eligible, true);
+});
+
+test("an encounter documented with the standard abbreviation still links", () => {
+  const out = validateFaceToFace({
+    encounter: { practitioner_type: "MD", encounter_date: "2026-07-01", clinical_reason: "Seen for CHF exacerbation with worsening dyspnea" },
+    socDate: "2026-07-10",
+    primaryDiagnosis: "Congestive heart failure",
+  });
+  assert.equal(out.checks.linkage.linked, true);
+  assert.equal(out.status, "valid");
+});
+
+test("word forms of the diagnosis link ('hypertension' vs 'hypertensive')", () => {
+  const out = validateFaceToFace({
+    encounter: { practitioner_type: "MD", encounter_date: "2026-07-01", clinical_reason: "Hypertensive urgency managed with med adjustment" },
+    socDate: "2026-07-10",
+    primaryDiagnosis: "Hypertension",
+  });
+  assert.equal(out.checks.linkage.linked, true);
+});
+
+test("a generic shared token alone does not link (weak-necessity false pass)", () => {
+  const out = validateFaceToFace({
+    encounter: { practitioner_type: "MD", encounter_date: "2026-07-01", clinical_reason: "Evaluated for acute renal failure" },
+    socDate: "2026-07-10",
+    primaryDiagnosis: "Congestive heart failure",
+  });
+  assert.equal(out.checks.linkage.linked, false, "'failure' alone must not link CHF to renal failure");
+  assert.equal(out.status, "invalid");
+});

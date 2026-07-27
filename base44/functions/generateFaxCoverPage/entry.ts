@@ -34,6 +34,15 @@ Deno.serve(async (req) => {
     const patient = patientResults[0] || null;
     const document = documentResults[0] || null;
 
+    // Default the sender fax to the OFFICE fax machine (AgencySettings) so the
+    // cover sheet tells recipients to reply to the office — never the blind
+    // outbound line the fax actually transmits from.
+    let senderFax = (sender_number || '').toString().trim();
+    if (!senderFax) {
+      const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+      senderFax = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
+    }
+
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -41,7 +50,7 @@ Deno.serve(async (req) => {
     const prompt = `You are a medical administrative assistant. Generate a HIPAA-compliant professional fax cover sheet as a clean JSON object.
 
 Sender: ${sender_name || user.full_name}
-Sender Fax: ${sender_number || 'See letterhead'}
+Sender Fax: ${senderFax || 'See letterhead'}
 Recipient Name: ${recipient_name || 'To Whom It May Concern'}
 Recipient Organization: ${recipient_organization || ''}
 Recipient Fax: ${recipient_number || ''}

@@ -10,7 +10,17 @@ const { patientList, patientUpdate, visitFilter } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/api/base44Client', () => {
-  const patient = { list: patientList, filter: vi.fn(async () => []), update: patientUpdate };
+  const patient = {
+    list: patientList,
+    // mergePatientInto validates the survivor with Patient.filter({ id }) —
+    // answer from the same roster the list mock serves.
+    filter: vi.fn(async (query) => {
+      const rows = await patientList();
+      if (query && 'id' in query) return (rows || []).filter((r) => r.id === query.id);
+      return [];
+    }),
+    update: patientUpdate,
+  };
   const visit = { list: vi.fn(async () => []), filter: visitFilter, update: vi.fn(async () => ({})) };
   const generic = { list: vi.fn(async () => []), filter: vi.fn(async () => []), update: vi.fn(async () => ({})) };
   const entities = new Proxy(

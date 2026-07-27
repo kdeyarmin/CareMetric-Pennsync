@@ -25,6 +25,8 @@
         "refusal_of_care",
         "pressure_injury",
         "emergency_visit",
+        "wound_concern",
+        "safety_event",
         "other"
       ],
       "description": "Type of incident"

@@ -123,22 +123,37 @@ Deno.serve(async (req) => {
     if (authError) return authError;
 
     const todayIso = new Date().toISOString().slice(0, 10);
-    const cases = await base44.asServiceRole.entities.AdrAuditCase.list('-created_date', 300);
+    // Filter to OPEN statuses server-side: an unfiltered newest-300 scan let
+    // an older still-open case fall off the window as closed/submitted cases
+    // accumulated — and silently stop receiving reminders.
+    const cases = await base44.asServiceRole.entities.AdrAuditCase.filter(
+      { status: { $in: OPEN_ADR_STATUSES } },
+      '-created_date',
+      300,
+    );
     const plans = planAdrDeadlineReminders({ cases: cases || [], todayIso });
 
     let notified = 0;
     for (const plan of plans) {
-      await base44.asServiceRole.entities.Notification.create({
-        user_email: plan.user_email,
-        title: plan.title,
-        message: plan.message,
-        type: 'compliance_alert',
-        priority: plan.priority,
-        metadata: { related_entity: 'AdrAuditCase', related_entity_id: plan.case_id },
-        is_read: false,
-        action_url: '/ADRCenter',
-        action_label: 'Open ADR Center',
-      }).catch(() => {});
+      // Mark the day's reminder delivered ONLY after the notification actually
+      // persists — recording a failed create as delivered lost that day's
+      // reminder (possibly the due-day one) with no way to re-fire.
+      try {
+        await base44.asServiceRole.entities.Notification.create({
+          user_email: plan.user_email,
+          title: plan.title,
+          message: plan.message,
+          type: 'compliance_alert',
+          priority: plan.priority,
+          metadata: { related_entity: 'AdrAuditCase', related_entity_id: plan.case_id },
+          is_read: false,
+          action_url: '/ADRCenter',
+          action_label: 'Open ADR Center',
+        });
+      } catch (err) {
+        console.error('checkAdrDeadlines: notification create failed for case', plan.case_id, err);
+        continue;
+      }
 
       await base44.asServiceRole.entities.AdrAuditCase.update(plan.case_id, {
         deadline_reminders: { last_notified_date: todayIso, last_days_left: plan.days_left },

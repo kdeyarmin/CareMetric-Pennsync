@@ -31,8 +31,22 @@ export function crossCheckChart(noteText, patient) {
   const allergies = (patient.allergies || "").trim();
   if (allergies && !NO_ALLERGY.test(allergies)) {
     const allergyLower = allergies.toLowerCase();
+    // Tokenize the allergy field and match BOTH directions: a note med MORE
+    // specific than the allergy entry ("sulfamethoxazole" vs allergy "Sulfa")
+    // must still flag — the old one-directional substring check false-passed
+    // exactly that, the module's highest-stakes case. Functional words are
+    // skipped so reaction descriptions ("causes rash", "tolerates Tylenol"
+    // annotations aside) don't create phantom drug tokens.
+    const NON_DRUG_WORDS = new Set([
+      "with", "and", "food", "drug", "drugs", "known", "allergy", "allergies",
+      "causes", "cause", "rash", "hives", "severe", "mild", "anaphylaxis",
+      "reaction", "reactions", "intolerance", "environmental", "seasonal",
+      "tolerates", "tolerated", "except", "listed", "documented", "patient",
+    ]);
+    const allergyTokens = allergyLower.split(/[^a-z]+/).filter((t) => t.length >= 4 && !NON_DRUG_WORDS.has(t));
     for (const med of notedMeds) {
-      if (allergyLower.includes(med.toLowerCase())) {
+      const m = med.toLowerCase();
+      if (allergyLower.includes(m) || allergyTokens.some((t) => m.includes(t) || t.includes(m))) {
         findings.push({
           id: `allergy_${med.toLowerCase()}`,
           severity: "critical",

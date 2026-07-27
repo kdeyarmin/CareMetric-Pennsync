@@ -113,3 +113,13 @@ test("an agency clearing 5 measures at >= 20 episodes is not at risk", () => {
   assert.equal(gap.at_risk, false);
   assert.equal(gap.measures_needed, 0);
 });
+
+test("visit-type and status casing drift does not create a false missing-discharge alarm", () => {
+  // Regression: "DISCHARGE"/"Completed" failed the exact-match sets and raised
+  // a missing-discharge alert for an episode whose discharge OASIS was done.
+  const res = detectMissingDischargeOASIS(
+    { patient: patient({ status: "discharged" }), oasisAssessments: [{ visit_type: "DISCHARGE", status: "Completed" }], visits: [] },
+    { asOf: ASOF },
+  );
+  assert.equal(res, null);
+});

@@ -151,3 +151,18 @@ test("a colon-labeled kg weight is converted, so a unit switch isn't a phantom t
   const out = compareVisits("Weight: 80 kg.", "Weight: 176 lbs.");
   assert.equal(out.find((c) => c.key === "weight"), undefined);
 });
+
+// ── Regression: weight unit + loss handling (2026-07 review) ────────────────
+
+test("a captured lbs weight is not converted by a kg figure elsewhere in the note", () => {
+  const out = compareVisits("Weight 176 lbs per bath scale; family reports wt 80 kg on their scale.", "Weight 176 lbs.");
+  const w = out.find((r) => r.key === "weight");
+  assert.equal(w, undefined, "same 176 lbs both visits — no phantom doubling row");
+});
+
+test("a significant weight LOSS is flagged as a concern", () => {
+  const out = compareVisits("Weight 160 lbs today.", "Weight 176 lbs.");
+  const w = out.find((r) => r.key === "weight");
+  assert.ok(w, "a 16 lb change must surface");
+  assert.equal(w.concern, true, "a 16 lb loss is clinically concerning");
+});

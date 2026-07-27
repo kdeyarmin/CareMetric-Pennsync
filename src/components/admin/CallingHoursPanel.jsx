@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import {
   DAY_KEYS, defaultBusinessHours, isWithinBusinessHours, summarizeSchedule,
 } from "@/components/voice/businessHours";
+import { normalizeE164 } from "@/components/voice/phoneUtils";
 import { backfillTcpaQuietHours } from "@/functions/backfillTcpaQuietHours";
 
 const DAY_LABELS = {
@@ -127,9 +128,23 @@ export default function CallingHoursPanel() {
 
   const save = useMutation({
     mutationFn: () => {
+      // The transfer number becomes a Call Control `transfer` target, which
+      // Telnyx rejects unless it's E.164. REJECT the save on an unnormalizable
+      // value rather than persisting the raw string — a bad value silently
+      // breaks after-hours transfers at call time.
+      const normalizedTransfer = form.after_hours_transfer_number_e164
+        ? normalizeE164(form.after_hours_transfer_number_e164)
+        : "";
+      if (form.after_hours_transfer_number_e164 && !normalizedTransfer) {
+        throw new Error("Enter a valid after-hours transfer number (E.164, e.g. +17244650444) or clear the field.");
+      }
       // Parse the raw holidays text at save time so the saved array always
       // matches what's in the textarea, even if it never lost focus.
-      const payload = { ...form, business_hours_holidays: parseHolidays(holidaysText) };
+      const payload = {
+        ...form,
+        business_hours_holidays: parseHolidays(holidaysText),
+        after_hours_transfer_number_e164: normalizedTransfer,
+      };
       return settings?.id
         ? base44.entities.AgencySettings.update(settings.id, payload)
         : base44.entities.AgencySettings.create(payload);
@@ -300,8 +315,12 @@ export default function CallingHoursPanel() {
                     placeholder="Defaults to the main office number"
                     value={form.after_hours_transfer_number_e164}
                     onChange={(e) => setForm((f) => ({ ...f, after_hours_transfer_number_e164: e.target.value }))}
-                    className="mt-1"
+                    className={`mt-1 ${form.after_hours_transfer_number_e164 && !normalizeE164(form.after_hours_transfer_number_e164) ? "border-red-400 focus-visible:ring-red-400" : ""}`}
+                    aria-invalid={Boolean(form.after_hours_transfer_number_e164 && !normalizeE164(form.after_hours_transfer_number_e164))}
                   />
+                  {form.after_hours_transfer_number_e164 && !normalizeE164(form.after_hours_transfer_number_e164) && (
+                    <p className="text-[11px] text-red-600 mt-0.5">Enter a valid phone number (e.g. +17244650440).</p>
+                  )}
                 </div>
               )}
             </div>

@@ -28,7 +28,9 @@ export const DEFAULT_PDGM_RATES = {
   // CY2026 national labor-related share. The wage index adjusts ONLY this portion
   // of the base payment; the non-labor remainder is unadjusted (mirrors the backend
   // PDGM_LABOR_SHARE_2026 — kept in sync by pdgmRatesParity.test.js).
-  laborShare: 0.7676,
+  // 0.749 per the VERIFIED value in docs/pdgm-cy2026.md (was 0.7676, which
+  // contradicted the repo's own verified table).
+  laborShare: 0.749,
   clinicalGroupWeights: {
     MMTA_Surgical_Aftercare:  { community_early: 0.9234, community_late: 0.8512, institutional_early: 1.1456, institutional_late: 1.0534 },
     MMTA_Cardiac_Circulatory: { community_early: 0.9456, community_late: 0.8698, institutional_early: 1.0876, institutional_late: 1.0006 },

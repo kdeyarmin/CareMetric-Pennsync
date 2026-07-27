@@ -12,9 +12,12 @@
 import { STAR_MIN_EPISODES, STAR_MIN_MEASURES } from "./outcomeMeasureEngine.js";
 
 // A Discharge OASIS only "counts" as done once it is completed/submitted; a draft
-// left open is functionally missing for quality reporting.
+// left open is functionally missing for quality reporting. Status and visit-type
+// values are compared case-insensitively — "Completed" vs "completed" drift in
+// stored records must not create false "missing discharge" alarms.
 const COMPLETE_STATUSES = new Set(["completed", "submitted"]);
-const START_VISIT_TYPES = new Set(["Start of Care", "Resumption of Care"]);
+const START_VISIT_TYPES = new Set(["start of care", "resumption of care"]);
+const lower = (v) => String(v || "").trim().toLowerCase();
 
 function daysBetween(a, b) {
   const t1 = new Date(a).getTime();
@@ -43,10 +46,10 @@ export function detectMissingDischargeOASIS(ctx, opts = {}) {
   const asOf = opts.asOf ? new Date(opts.asOf) : new Date();
   const staleDays = opts.staleDays ?? 14;
 
-  const dischargeAssessments = oasisAssessments.filter((a) => a?.visit_type === "Discharge");
-  const hasCompletedDischarge = dischargeAssessments.some((a) => COMPLETE_STATUSES.has(a?.status));
+  const dischargeAssessments = oasisAssessments.filter((a) => lower(a?.visit_type) === "discharge");
+  const hasCompletedDischarge = dischargeAssessments.some((a) => COMPLETE_STATUSES.has(lower(a?.status)));
   const hasDraftDischarge = dischargeAssessments.length > 0 && !hasCompletedDischarge;
-  const hasBaseline = oasisAssessments.some((a) => START_VISIT_TYPES.has(a?.visit_type));
+  const hasBaseline = oasisAssessments.some((a) => START_VISIT_TYPES.has(lower(a?.visit_type)));
 
   // Already have a completed discharge assessment → nothing to enforce.
   if (hasCompletedDischarge) return null;
@@ -91,7 +94,7 @@ export function detectMissingDischargeOASIS(ctx, opts = {}) {
   if (!hasBaseline) factors.push("No SOC/ROC assessment on file to pair for a change score");
   factors.push(
     "Without a completed Discharge OASIS this episode contributes no demonstrated improvement",
-    `Missing episodes erode the ${STAR_MIN_EPISODES}-episode / ${STAR_MIN_MEASURES}-of-7-measure star eligibility floor`,
+    `Missing episodes erode the ${STAR_MIN_EPISODES}-episode / ${STAR_MIN_MEASURES}-measure star eligibility floor`,
   );
 
   const alert = {
@@ -128,7 +131,9 @@ export function detectMissingDischargeOASIS(ctx, opts = {}) {
  * Compute the agency-level star-eligibility gap from an outcome rollup
  * (rollupMeasures result). Surfaces which measures are short of the 20-episode
  * floor and how many more eligible episodes each needs, plus whether the agency
- * clears the 5-of-7-measure bar.
+ * clears the minimum-measure bar. (CMS requires >= 5 of its 7 rated measures;
+ * this app tracks the 5 OASIS-based ones, so every tracked measure must clear
+ * the episode floor.)
  *
  * @param {{measures: Array}} rollup
  * @returns {{

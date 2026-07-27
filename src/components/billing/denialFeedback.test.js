@@ -25,3 +25,24 @@ test('summarizeDenialFeedback totals categories and dollars', () => {
   assert.equal(summary.byCategory.authorization, 1);
   assert.equal(summary.byCategory.coding, 1);
 });
+
+test('currency-formatted denial amounts parse instead of collapsing to 0', () => {
+  // Regression: Number("$1,250.00") is NaN → the dashboard under-reported
+  // denial dollars as fact.
+  assert.equal(normalizeDenialFeedbackRow({ amount_denied: '$1,250.00' }).amount_denied, 1250);
+  assert.equal(normalizeDenialFeedbackRow({ amount_denied: '1,250.00' }).amount_denied, 1250);
+  assert.equal(normalizeDenialFeedbackRow({ amount_denied: 1250.5 }).amount_denied, 1250.5);
+  const summary = summarizeDenialFeedback([{ amount_denied: '$1,250.00' }, { amount_denied: '2,000' }]);
+  assert.equal(summary.totalAmountDenied, 3250);
+});
+
+test('classification matches on word starts, not raw substrings', () => {
+  // Regressions: 'order' inside "disORDER"/"BORDERline" routed to
+  // authorization; 'm0' inside "CM0234" routed to oasis.
+  assert.equal(classifyDenialFeedback({ reason: 'Panic disorder noted during visit' }).category, 'other');
+  assert.equal(classifyDenialFeedback({ reason: 'Borderline medical necessity' }).category, 'other');
+  assert.equal(classifyDenialFeedback({ reason: 'Claim CM0234 rejected' }).category, 'other');
+  // Real term hits still classify.
+  assert.equal(classifyDenialFeedback({ reason: 'Physician order missing' }).category, 'authorization');
+  assert.equal(classifyDenialFeedback({ reason: 'M0102 date discrepancy' }).category, 'oasis');
+});

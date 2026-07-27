@@ -1,5 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -7,8 +14,9 @@ Deno.serve(async (req) => {
     // Privileged operation: only an admin / super-admin may mutate User records.
     // Previously this was unauthenticated, so any caller could self-escalate via
     // { userId: <self>, updates: { role: 'admin', account_type: 'super_admin' } }.
+    // Uses the canonical admin triad (a legitimate agency_admin was denied before).
     const currentUser = await base44.auth.me();
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.account_type !== 'super_admin')) {
+    if (!isAdminLike(currentUser)) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
@@ -32,6 +40,21 @@ Deno.serve(async (req) => {
     }
     if (Object.keys(safeUpdates).length === 0) {
       return Response.json({ error: 'No permitted fields to update' }, { status: 400 });
+    }
+
+    // Target-privilege boundary: even after stripping the privilege fields, a
+    // facility admin must not be able to tamper with a super_admin's other
+    // fields (is_approved:false to lock them out, email/phone changes, …). Only
+    // a super admin may edit another privileged account.
+    const targetList = await base44.asServiceRole.entities.User.filter({ id: userId }).catch(() => []);
+    const targetUser = Array.isArray(targetList) ? targetList[0] : null;
+    const targetIsPrivileged = targetUser && (
+      targetUser.account_type === 'super_admin' ||
+      targetUser.account_type === 'agency_admin' ||
+      targetUser.role === 'admin'
+    );
+    if (targetIsPrivileged && !isSuperAdmin && targetUser.id !== currentUser.id) {
+      return Response.json({ error: 'Only a super admin can modify another administrator account.' }, { status: 403 });
     }
 
     const result = await base44.asServiceRole.entities.User.update(userId, safeUpdates);

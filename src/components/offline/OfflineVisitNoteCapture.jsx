@@ -137,6 +137,7 @@ export default function OfflineVisitNoteCapture({ patient, onComplete }) {
     const scanResult = scanOfflineNote({
       noteText: narrative,
       visitType: visitTypeKey(visitData.visit_type),
+      disciplineLabel: visitData.visit_type,
       patient,
     });
     setScan(scanResult);

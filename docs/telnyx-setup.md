@@ -135,10 +135,35 @@ using the same guest-token / staff authorization model as before. The client
 available number from the pool. (Or set them individually.) Add numbers to the
 pool with the in-app search/buy (`searchPurchaseTelnyxNumbers`).
 
-**Fax is shared.** Everyone faxes from the single office fax number
-(`AgencySettings.office_fax_number_e164`), so the office
-number is what recipients see and reply to — **incoming faxes go straight to the
-office**, never to an individual.
+**Fax: one blind outbound line, masked as the office machine.** All outbound
+faxes TRANSMIT from a single Telnyx fax-capable number
+(`AgencySettings.outbound_fax_number_e164`) but are PRESENTED to recipients
+under the office fax machine's number (`AgencySettings.office_fax_number_e164`,
+e.g. `+17244650444`): the office number rides on the Telnyx
+`from_display_name` caller-id name and on every cover sheet, so **fax replies
+are dialed straight to the physical office machine** — the app expects no
+inbound faxes. The office number does not need to be a Telnyx number.
+
+- Any stray fax dialed to the blind outbound line (e.g. a machine auto-redialing
+  the transmitting number) is **passed straight through to the office machine**
+  by `handleTelnyxStatusWebhook`, with an at-most-once `IncomingFax` record as
+  the audit/idempotency anchor. In-app ingestion (OCR + referral matching) is
+  opt-in via `AgencySettings.fax_receiving_enabled` and off by default.
+- Legacy fallback: with no outbound line configured, faxes transmit from the
+  office fax number itself (which must then be a Telnyx number).
+
+**Provisioning the outbound fax line** (requires the Programmable Fax
+connection id in the Telnyx Credentials panel):
+- *Buy it in-app:* Number Pool → **Find & buy numbers** → choose **Outbound fax
+  line**. The search filters fax-capable numbers; buying attaches the number to
+  your Programmable Fax connection and stores it as the outbound fax line.
+- *Already own the number?* Enter it as the outbound fax line and click
+  **Provision fax** — the app looks the number up in your Telnyx account,
+  re-points its connection at the Programmable Fax connection, and saves it.
+  (Backed by `searchPurchaseTelnyxNumbers` `purpose: 'fax'` / `provision_fax`.)
+- The office fax, outbound fax, and main office numbers are **reserved**:
+  assignment (manual, pool, or auto-assign) refuses to hand them out as
+  personal work numbers.
 
 **The duty toggle (default OFF).** A user is reachable on their work number ONLY
 while they've toggled **On Duty** (DutyStatusCard). They flip it on in the morning;

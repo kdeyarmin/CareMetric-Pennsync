@@ -1,11 +1,19 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const currentUser = await base44.auth.me();
 
-    if (!currentUser || currentUser.role !== 'admin') {
+    if (!isAdminLike(currentUser)) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 

@@ -12,7 +12,6 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Toaster } from "sonner";
 import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } from "@/lib/nav.manifest";
 import { getRoleView } from "@/lib/roles";
-import { MAIN_PAGE } from "@/routes";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 
 import DesktopSidebar from "@/components/layout/DesktopSidebar";
@@ -102,6 +101,12 @@ export default function Layout() {
   const isTestAgent = currentUser?.is_test_agent_user === true
     || (currentUser?.email || '').toLowerCase().endsWith('@testagent.base44.com');
   const isApproved = currentUser?.is_approved === true || isAdmin || isTestAgent;
+  // Offboarding sets is_active:false but never clears is_approved, and the
+  // approval gate has an isAdmin bypass — so without an explicit check a
+  // deactivated user (including a deactivated admin) kept full access. A
+  // deactivated account is locked out regardless of role/approval; the test
+  // agent is exempt (its account is never approved and must stay usable).
+  const isDeactivated = currentUser?.is_active === false && !isTestAgent;
   const isTimeOffApprover = isAdmin || currentUser?.is_manager === true;
 
   useEffect(() => {
@@ -284,7 +289,7 @@ export default function Layout() {
   // its "you are here" anchor. See isNavItemActive in nav.manifest.js.
   const isActive = useCallback((pageName) => isNavItemActive(currentPageName, pageName), [currentPageName]);
 
-  if (currentUser && !isApproved) {
+  if (currentUser && (isDeactivated || !isApproved)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-navy-50 via-white to-navy-100 flex items-center justify-center p-4">
         <div className="max-w-md w-full">
@@ -303,12 +308,16 @@ export default function Layout() {
               <div className="w-16 h-16 bg-gradient-to-br from-gold-100 to-gold-200 rounded-2xl flex items-center justify-center mx-auto mb-6 ring-1 ring-inset ring-gold-300/60">
                 <Clock className="w-8 h-8 text-gold-600" />
               </div>
-              <h1 className="text-2xl font-bold text-slate-900 mb-2">Account Pending Approval</h1>
-              <p className="text-slate-600 mb-6">Your account has been created successfully. Please wait for an administrator to approve your access.</p>
+              <h1 className="text-2xl font-bold text-slate-900 mb-2">{isDeactivated ? "Account Deactivated" : "Account Pending Approval"}</h1>
+              <p className="text-slate-600 mb-6">{isDeactivated
+                ? "Your access to this platform has been deactivated. If you believe this is an error, please contact your administrator."
+                : "Your account has been created successfully. Please wait for an administrator to approve your access."}</p>
               <div className="bg-navy-50 border border-navy-200 rounded-xl p-4 mb-6 text-left">
                 <p className="text-sm text-navy-900"><strong>Account Details:</strong><br />{currentUser.full_name}<br />{currentUser.email}</p>
               </div>
-              <p className="text-sm text-slate-500 mb-6">You will receive an email notification once your account is approved.</p>
+              {!isDeactivated && (
+                <p className="text-sm text-slate-500 mb-6">You will receive an email notification once your account is approved.</p>
+              )}
               <Button onClick={handleLogout} variant="outline" className="w-full">
                 <LogOut className="w-4 h-4 mr-2" /> Sign Out
               </Button>

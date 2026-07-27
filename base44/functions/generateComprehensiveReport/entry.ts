@@ -24,7 +24,10 @@ Deno.serve(async (req) => {
     }
 
     const today = new Date();
-    const daysAgo = parseInt(dateRange) || 30;
+    // Clamp to 1..365 (mirrors generateAIReport): a negative range produced an
+    // inverted window that rendered an all-zero report as fact, and a huge
+    // numeric overflowed Date into a 500.
+    const daysAgo = Math.min(Math.max(parseInt(dateRange) || 30, 1), 365);
     const startDate = new Date(today);
     startDate.setDate(startDate.getDate() - daysAgo);
     const startDateStr = startDate.toISOString().split('T')[0];
