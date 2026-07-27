@@ -271,3 +271,24 @@ test("toAgencyKPIs skips measures with an empty denominator", () => {
   const kpis = toAgencyKPIs(rollup, { periodStart: "2026-01-01", periodEnd: "2026-03-31" });
   assert.ok(!kpis.some((k) => k.metric_name.includes("Ambulation")));
 });
+
+test("an all-excluded episode omits overall_improvement_score instead of fabricating 0", () => {
+  // Every measure excluded (start values at 0 / not assessed) → score is null,
+  // which must NOT be written as a measured 0% improvement.
+  const outcome = computeEpisodeOutcome({ start: { m1860: 0 }, discharge: { m1860: 0 } });
+  assert.equal(outcome.overall_improvement_score, null);
+  const rec = toPatientOutcomeMetric({ patientId: "p1" }, outcome);
+  assert.ok(!("overall_improvement_score" in rec.functional_improvement));
+});
+
+test("toAgencyKPIs never claims on_target without a benchmark", () => {
+  // Regression: star_eligible (a VOLUME threshold) used to earn "on_target"
+  // (a PERFORMANCE status) when no benchmark was configured.
+  const outcomes = Array.from({ length: 25 }, (_, i) =>
+    computeEpisodeOutcome({ start: { m1860: 3 }, discharge: { m1860: i < 15 ? 1 : 3 } }),
+  );
+  const kpis = toAgencyKPIs(rollupMeasures(outcomes), { periodStart: "2026-01-01", periodEnd: "2026-03-31" });
+  const amb = kpis.find((k) => k.metric_name.includes("Ambulation"));
+  assert.equal(amb.status, "warning");
+  assert.ok(amb.contributing_factors.some((f) => /no national benchmark/i.test(f)));
+});

@@ -47,6 +47,18 @@ export function validateRateNumbers(rates, defaults = DEFAULT_PDGM_RATES) {
     }
   }
 
+  // Labor share is a FRACTION of the base payment (CY2026: 0.749). An
+  // out-of-range value (e.g. 74.9 entered as a percent) silently clamps to 1.0
+  // in the engine, applying the full wage index to the whole payment.
+  const laborShare = rates.laborShare;
+  if (laborShare !== undefined && typeof laborShare === "number") {
+    if (!(laborShare > 0 && laborShare <= 1)) {
+      errors.push(
+        `Labor-related share ${laborShare} must be a fraction between 0 and 1 (e.g. 0.749 for 74.9%). Did you enter a percentage?`,
+      );
+    }
+  }
+
   for (const { key, label } of CELL_TABLES) {
     const table = rates[key];
     if (!table || typeof table !== "object") continue;

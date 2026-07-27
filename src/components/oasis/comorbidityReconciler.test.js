@@ -82,3 +82,44 @@ test("reconcileFromOasis links derivation + reconciliation", () => {
   assert.ok(oppConditions.includes("Depression"));
   assert.ok(!oppConditions.includes("Heart Failure")); // already captured
 });
+
+// ── single-shared-token false captures ──
+
+test("one shared generic token does not mark a distinct condition captured", () => {
+  // Regression: "Heart Failure" used to be swallowed by coded "Renal failure"
+  // (shared token "failure"), hiding an adjustment-eligible Circulatory gap.
+  const res = reconcileComorbidities({
+    documentedConditions: ["Heart Failure"],
+    codedSecondaries: ["Renal failure"],
+  });
+  assert.equal(res.captured.length, 0);
+  assert.equal(res.gaps.length, 1);
+  assert.equal(res.comorbidity_opportunities.length, 1);
+  assert.equal(res.comorbidity_opportunities[0].subgroup, "Circulatory");
+});
+
+test("shared 'ulcer' token does not capture a pressure ulcer under a diabetic ulcer code", () => {
+  const res = reconcileComorbidities({
+    documentedConditions: ["Pressure Ulcer"],
+    codedSecondaries: ["Diabetic foot ulcer"],
+  });
+  assert.equal(res.captured.length, 0);
+  assert.equal(res.gaps.length, 1);
+});
+
+test("a real multi-token overlap still captures", () => {
+  const res = reconcileComorbidities({
+    documentedConditions: ["Heart Failure"],
+    codedSecondaries: ["Congestive heart failure, unspecified"],
+  });
+  assert.equal(res.captured.length, 1);
+  assert.equal(res.gaps.length, 0);
+});
+
+test("a single-token condition captures on its exact token", () => {
+  const res = reconcileComorbidities({
+    documentedConditions: ["Hypertension"],
+    codedSecondaries: ["Essential hypertension"],
+  });
+  assert.equal(res.captured.length, 1);
+});

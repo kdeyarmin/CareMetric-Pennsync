@@ -1,4 +1,4 @@
-import { soundex, streetKeyOf } from "../patient/patientDuplicateUtils.js";
+import { normalizeName, soundex, streetKeyOf } from "../patient/patientDuplicateUtils.js";
 
 /**
  * Fuzzy patient-matching score for OASIS document → patient-record linking.
@@ -24,13 +24,17 @@ export function calculatePatientMatchScore(extractedName, patient, extractedDOB,
   const matchFactors = [];
   let dobMatch = false;
 
+  // normalizeName (canonical, shared with the dedupe engine) folds accents to
+  // ASCII before the a-z strip. Lowercase-only on the patient side vs strip on
+  // the extracted side meant "José García" could NEVER exact-match its own
+  // record ("jos garca" vs "josé garcía") — both sides must fold identically.
   const extractedNameRaw = String(extractedName ?? '');
-  const extractedNameClean = extractedNameRaw.toLowerCase().replace(/[^a-z\s]/g, '').trim();
+  const extractedNameClean = normalizeName(extractedNameRaw);
   const nameParts = extractedNameClean.split(/\s+/).filter(p => p.length > 1);
 
-  const fullName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim().toLowerCase();
-  const firstName = (patient.first_name || '').toLowerCase();
-  const lastName = (patient.last_name || '').toLowerCase();
+  const fullName = normalizeName(`${patient.first_name || ''} ${patient.last_name || ''}`);
+  const firstName = normalizeName(patient.first_name || '');
+  const lastName = normalizeName(patient.last_name || '');
 
   // Levenshtein distance for typo tolerance
   const levenshteinDistance = (a, b) => {
@@ -74,7 +78,7 @@ export function calculatePatientMatchScore(extractedName, patient, extractedDOB,
 
   // Strategy 2: Handle "LastName, FirstName" format
   if (extractedNameRaw.includes(',')) {
-    const [lastPart, firstPart] = extractedNameRaw.split(',').map(s => s.trim().toLowerCase().replace(/[^a-z\s]/g, ''));
+    const [lastPart, firstPart] = extractedNameRaw.split(',').map(s => normalizeName(s));
     const lastSim = similarity(lastPart, lastName);
     const firstSim = similarity(firstPart, firstName);
 

@@ -77,12 +77,21 @@ export function deriveOasisConditions(answers = {}) {
   return out;
 }
 
-function isCaptured(condition, codedTokensList, codedRaw) {
-  // Token overlap with any coded secondary (skipped for short abbreviations
-  // like "CHF" that produce no significant tokens — the subgroup check below
-  // still catches those).
+function isCaptured(condition, codedTokenSets, codedRaw) {
+  // Whole-token overlap with ONE coded secondary. A single shared generic
+  // word must NOT mark a distinct condition captured — "Heart Failure" vs
+  // coded "renal failure", or "Pressure Ulcer" vs coded "diabetic foot
+  // ulcer", would silently swallow an adjustment-eligible gap. Multi-token
+  // conditions need at least 2 whole-token hits in the same coded diagnosis;
+  // single-token conditions ("COPD") need their exact token.
   const condTokens = tokens(condition);
-  if (condTokens.length && codedTokensList.some((ct) => condTokens.some((t) => ct.includes(t)))) return true;
+  if (condTokens.length) {
+    const need = condTokens.length === 1 ? 1 : Math.max(2, Math.ceil(condTokens.length / 2));
+    for (const set of codedTokenSets) {
+      const hits = condTokens.filter((t) => set.has(t)).length;
+      if (hits >= need) return true;
+    }
+  }
   // Same comorbidity subgroup already coded (e.g. "CHF" documented, "Heart failure" coded).
   const sub = comorbiditySubgroup(condition);
   if (sub && codedRaw.some((c) => comorbiditySubgroup(c) === sub)) return true;
@@ -103,14 +112,14 @@ function isCaptured(condition, codedTokensList, codedRaw) {
 export function reconcileComorbidities({ documentedConditions = [], codedSecondaries = [] } = {}) {
   const documented = documentedConditions.map((c) => (typeof c === "string" ? { condition: c } : c)).filter((c) => c && c.condition);
   const codedRaw = (codedSecondaries || []).map((c) => String(c || "")).filter(Boolean);
-  const codedTokensList = codedRaw.map((c) => tokens(c).join(" "));
+  const codedTokenSets = codedRaw.map((c) => new Set(tokens(c)));
 
   const captured = [];
   const gaps = [];
   for (const doc of documented) {
     const subgroup = comorbiditySubgroup(doc.condition);
     const entry = { condition: doc.condition, source: doc.source || null, subgroup };
-    if (isCaptured(doc.condition, codedTokensList, codedRaw)) captured.push(entry);
+    if (isCaptured(doc.condition, codedTokenSets, codedRaw)) captured.push(entry);
     else gaps.push(entry);
   }
 
