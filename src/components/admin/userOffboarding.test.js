@@ -18,6 +18,11 @@ test('buildUserOffboardingPatch deactivates without deleting audit history', () 
   assert.deepEqual(patch, {
     is_active: false,
     duty_status: 'off_duty',
+    // Routing fields are cleared so a deactivated user's record can never bridge
+    // an incoming/masked call to their personal cell.
+    personal_cell_e164: '',
+    scheduled_off_duty_start: '',
+    scheduled_off_duty_end: '',
     offboarded_at: '2026-07-22T00:00:00.000Z',
     offboarded_by: 'admin@example.com',
     offboarding_reason: 'Employment ended',
