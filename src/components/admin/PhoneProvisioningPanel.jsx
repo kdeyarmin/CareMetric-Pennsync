@@ -128,6 +128,15 @@ export default function PhoneProvisioningPanel() {
       const capNum = Number(agency.monthly_sms_cap);
       const payload = {
         ...agency,
+        // Store the office numbers in strict E.164 — sendFax/sendBatchFax use
+        // the fax number verbatim as the Telnyx `from`, and the voice webhook
+        // routes off the main office number, so formatting must not be saved.
+        main_office_number_e164: agency.main_office_number_e164
+          ? normalizeE164(agency.main_office_number_e164) || agency.main_office_number_e164
+          : "",
+        office_fax_number_e164: agency.office_fax_number_e164
+          ? normalizeE164(agency.office_fax_number_e164) || agency.office_fax_number_e164
+          : "",
         monthly_sms_cap: Number.isFinite(capNum) && capNum > 0 ? capNum : null,
       };
       return settings?.id
@@ -139,6 +148,19 @@ export default function PhoneProvisioningPanel() {
       toast.success("Agency phone settings saved");
     },
     onError: (err) => toast.error(err?.message || "Failed to save settings"),
+  });
+
+  // Provision fax capacity on the office fax number: points the number's Telnyx
+  // connection at the Programmable Fax connection so it can actually send and
+  // receive faxes (works for numbers bought in-app or ported/bought elsewhere).
+  const provisionFax = useMutation({
+    mutationFn: (e164) =>
+      base44.functions.invoke("searchPurchaseTelnyxNumbers", { action: "provision_fax", e164 }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agency-settings"] });
+      toast.success("Fax capacity provisioned — the number is wired to your Telnyx fax connection.");
+    },
+    onError: (err) => toast.error(err?.message || "Failed to provision fax capacity"),
   });
 
   const provision = useMutation({
@@ -382,19 +404,48 @@ export default function PhoneProvisioningPanel() {
                 placeholder="+17244650440"
                 value={agency.main_office_number_e164}
                 onChange={(e) => setAgency((a) => ({ ...a, main_office_number_e164: e.target.value }))}
-                className="mt-1"
+                className={`mt-1 ${invalidNumber(agency.main_office_number_e164) ? "border-red-400 focus-visible:ring-red-400" : ""}`}
+                aria-invalid={invalidNumber(agency.main_office_number_e164)}
               />
+              {invalidNumber(agency.main_office_number_e164) && (
+                <p className="text-[11px] text-red-600 mt-0.5">Enter a valid phone number (e.g. +17244650440).</p>
+              )}
               <p className="text-xs text-slate-500 mt-1">Off-duty / unanswered calls roll here; texts reference it.</p>
             </div>
             <div>
               <Label className="text-sm font-medium">Shared office fax number (E.164)</Label>
-              <Input
-                placeholder="+17244650441"
-                value={agency.office_fax_number_e164}
-                onChange={(e) => setAgency((a) => ({ ...a, office_fax_number_e164: e.target.value }))}
-                className="mt-1"
-              />
-              <p className="text-xs text-slate-500 mt-1">Every user faxes from this one number, so replies go to the office.</p>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  placeholder="+17244650441"
+                  value={agency.office_fax_number_e164}
+                  onChange={(e) => setAgency((a) => ({ ...a, office_fax_number_e164: e.target.value }))}
+                  className={invalidNumber(agency.office_fax_number_e164) ? "border-red-400 focus-visible:ring-red-400" : ""}
+                  aria-invalid={invalidNumber(agency.office_fax_number_e164)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-shrink-0"
+                  title="Wire this number to your Telnyx fax connection so it can send & receive faxes"
+                  disabled={
+                    provisionFax.isPending ||
+                    !agency.office_fax_number_e164 ||
+                    !normalizeE164(agency.office_fax_number_e164)
+                  }
+                  onClick={() => provisionFax.mutate(normalizeE164(agency.office_fax_number_e164))}
+                >
+                  {provisionFax.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                  Provision fax
+                </Button>
+              </div>
+              {invalidNumber(agency.office_fax_number_e164) && (
+                <p className="text-[11px] text-red-600 mt-0.5">Enter a valid fax number (e.g. +17244650441).</p>
+              )}
+              <p className="text-xs text-slate-500 mt-1">
+                Every user faxes from this one number, so replies go to the office.{" "}
+                <strong>Provision fax</strong> attaches it to your Telnyx fax connection (required for the
+                number to send &amp; receive faxes).
+              </p>
             </div>
           </div>
 
@@ -527,7 +578,15 @@ export default function PhoneProvisioningPanel() {
             )}
           </div>
           <div className="flex justify-end">
-            <Button onClick={() => saveAgency.mutate()} disabled={saveAgency.isPending} className="bg-indigo-600 hover:bg-indigo-700">
+            <Button
+              onClick={() => saveAgency.mutate()}
+              disabled={
+                saveAgency.isPending ||
+                invalidNumber(agency.main_office_number_e164) ||
+                invalidNumber(agency.office_fax_number_e164)
+              }
+              className="bg-indigo-600 hover:bg-indigo-700"
+            >
               <Save className="w-4 h-4 mr-2" />
               Save Agency Settings
             </Button>

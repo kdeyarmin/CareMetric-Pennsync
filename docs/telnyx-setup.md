@@ -140,6 +140,18 @@ pool with the in-app search/buy (`searchPurchaseTelnyxNumbers`).
 number is what recipients see and reply to — **incoming faxes go straight to the
 office**, never to an individual.
 
+**Provisioning the fax line** (requires the Programmable Fax connection id in
+the Telnyx Credentials panel):
+- *Buy it in-app:* Number Pool → **Find & buy numbers** → choose **Office fax
+  line**. The search filters fax-capable numbers; buying attaches the number to
+  your Programmable Fax connection and stores it as the office fax number.
+- *Already own the number?* Enter it as the shared office fax number and click
+  **Provision fax** — the app looks the number up in your Telnyx account,
+  re-points its connection at the Programmable Fax connection, and saves it.
+  (Backed by `searchPurchaseTelnyxNumbers` `purpose: 'fax'` / `provision_fax`.)
+- The office fax and main office numbers are **reserved**: assignment (manual,
+  pool, or auto-assign) refuses to hand them out as personal work numbers.
+
 **The duty toggle (default OFF).** A user is reachable on their work number ONLY
 while they've toggled **On Duty** (DutyStatusCard). They flip it on in the morning;
 calls ring their cell (masked) and texts reach them.

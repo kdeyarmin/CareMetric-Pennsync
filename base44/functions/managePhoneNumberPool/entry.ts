@@ -101,6 +101,17 @@ Deno.serve(async (req) => {
       const e164 = normalizeE164(row.e164);
       if (!e164) return Response.json({ error: 'Pool number is malformed.' }, { status: 400 });
 
+      // The shared office fax / main office lines are reserved: handing one to
+      // a nurse would break inbound fax ingestion or office call routing.
+      const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+      const reserved = [
+        normalizeE164(settingsRows[0]?.office_fax_number_e164),
+        normalizeE164(settingsRows[0]?.main_office_number_e164),
+      ].filter(Boolean);
+      if (reserved.includes(e164)) {
+        return Response.json({ error: `${e164} is the shared office fax / main office number — it can't be a personal work number.` }, { status: 409 });
+      }
+
       const cellNum = body.personal_cell_e164 ? normalizeE164(body.personal_cell_e164) : null;
       if (body.personal_cell_e164 && !cellNum) {
         return Response.json({ error: 'Invalid personal cell number.' }, { status: 400 });

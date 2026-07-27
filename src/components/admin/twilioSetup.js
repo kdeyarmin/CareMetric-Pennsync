@@ -92,6 +92,25 @@ export function evaluateAgencyConfig(settings) {
     });
   }
 
+  // Every outbound fax sends from this single shared number (sendFax /
+  // sendBatchFax resolve it server-side), so fax capacity is dead without it.
+  if (isBlank(s.office_fax_number_e164)) {
+    checks.push({
+      id: "office_fax",
+      label: "Shared office fax number",
+      status: "warn",
+      detail: "Not set — outbound faxing is disabled until the office fax number is set.",
+    });
+  } else {
+    const ok = looksLikePhone(s.office_fax_number_e164);
+    checks.push({
+      id: "office_fax",
+      label: "Shared office fax number",
+      status: ok ? "ok" : "warn",
+      detail: ok ? "Configured." : "Doesn't look like a valid fax number — every outbound fax will fail.",
+    });
+  }
+
   checks.push({
     id: "off_duty_template",
     label: "Default off-duty message",

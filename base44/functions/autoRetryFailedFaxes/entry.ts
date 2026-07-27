@@ -215,6 +215,20 @@ async function resolveTelnyxCreds(base44) {
  */
 
 // ---- fax retry policy (mirrors src/components/fax/faxRetry.js) ----
+// Strict E.164 normalization for the OFFICE FAX `from` number (null when it
+// can't normalize). The admin-entered office fax may carry formatting
+// ("(724) 465-0441"); Telnyx requires E.164 on `from`, so an unnormalizable
+// value must fail loudly rather than fail every send at the provider. Mirrors
+// sendFax.
+function normalizeFromE164(raw) {
+  if (!raw) return null;
+  const digits = String(raw).replace(/[^\d]/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (String(raw).trim().startsWith('+') && digits.length >= 8 && digits.length <= 15 && digits[0] !== '0') return `+${digits}`;
+  return null;
+}
+
 const PERMANENT_FAILURE_PATTERNS = [
   /invalid/i, /not a fax/i, /no fax machine/i, /incompatible/i, /unsupported/i,
   /rejected/i, /blocked/i, /do not call/i, /unallocated/i, /disconnected/i,
@@ -301,10 +315,11 @@ Deno.serve(async (req) => {
 
     const { apiKey, faxConnectionId } = await resolveTelnyxCreds(base44);
     // Resolve the office fax from-number the same way sendFax does: prefer the
-    // in-app AgencySettings.office_fax_number_e164.
+    // in-app AgencySettings.office_fax_number_e164, normalized strictly to
+    // E.164 (Telnyx rejects a formatted `from`; mirrors sendFax).
     const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const officeFax = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const fromNumber = officeFax || null;
+    const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
+    const fromNumber = normalizeFromE164(officeFaxRaw);
     // Include the same DLR webhook sendFax uses so the retried fax reports status.
     // Derive the functions base from this request's own URL — every backend
     // function (including handleTelnyxStatusWebhook) is served from the same
@@ -322,7 +337,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Telnyx API key or fax connection ID not configured. Store them in the Telnyx secret panel.' }, { status: 500 });
     }
     if (!fromNumber) {
-      return Response.json({ error: 'Office fax number not configured. Set office_fax_number_e164 in Agency Settings.' }, { status: 500 });
+      return Response.json({
+        error: officeFaxRaw
+          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`
+          : 'Office fax number not configured. Set office_fax_number_e164 in Agency Settings.',
+      }, { status: 500 });
     }
 
     for (const fax of dueFaxes) {

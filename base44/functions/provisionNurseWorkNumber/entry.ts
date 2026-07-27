@@ -32,9 +32,12 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // Same admin surface as managePhoneNumberPool / the isAdminLike frontend
+    // gate — an agency_admin can reach the panel, so the backend must accept them.
     const isAdmin =
       user.role === 'admin' ||
-      user.account_type === 'super_admin';
+      user.account_type === 'super_admin' ||
+      user.account_type === 'agency_admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can provision work numbers' }, { status: 403 });
     }
@@ -66,16 +69,53 @@ Deno.serve(async (req) => {
       if (conflict) {
         return Response.json({ error: `Work number ${workNum} is already assigned to ${conflict.email}` }, { status: 409 });
       }
+      // The shared office fax / main office lines are reserved: handing one to a
+      // nurse would break inbound fax ingestion or office call routing.
+      const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+      const reserved = [
+        normalizeE164(settingsRows[0]?.office_fax_number_e164),
+        normalizeE164(settingsRows[0]?.main_office_number_e164),
+      ].filter(Boolean);
+      if (reserved.includes(workNum)) {
+        return Response.json({ error: `${workNum} is the shared office fax / main office number — it can't be a personal work number.` }, { status: 409 });
+      }
     }
+
+    // If the typed number is tracked in the pool, adopt its stored Telnyx id so
+    // the User record stays complete without the admin re-entering it.
+    const poolMatches = workNum
+      ? await base44.asServiceRole.entities.PhoneNumber.filter({ e164: workNum }).catch(() => [])
+      : [];
+    const poolRow = poolMatches[0] || null;
 
     const update = {};
     if (workNum) update.work_phone_number = workNum;
     if (cellNum) update.personal_cell_e164 = cellNum;
     if (twilio_phone_number_sid !== undefined) update.twilio_phone_number_sid = twilio_phone_number_sid;
+    else if (poolRow?.twilio_phone_number_sid && workNum) update.twilio_phone_number_sid = poolRow.twilio_phone_number_sid;
     // Default new nurses to off duty so they aren't bridged before they're ready.
     if (target.duty_status === undefined || target.duty_status === null) update.duty_status = 'off_duty';
 
     await base44.asServiceRole.entities.User.update(target.id, update);
+
+    // Keep the pool inventory consistent with the masking mapping (mirrors
+    // managePhoneNumberPool 'assign'): mark the matching pool number assigned to
+    // this nurse and free any OTHER pool entry they used to hold. Without this,
+    // a manually-typed assignment left the pool row 'available' — wrong counts,
+    // and the number stayed offered to auto-assign/remove.
+    if (workNum) {
+      if (poolRow) {
+        await base44.asServiceRole.entities.PhoneNumber.update(poolRow.id, {
+          status: 'assigned', assigned_to_email: target_user_email,
+        }).catch(() => {});
+      }
+      const priorRows = await base44.asServiceRole.entities.PhoneNumber.filter({ assigned_to_email: target_user_email }).catch(() => []);
+      for (const pr of priorRows) {
+        if (!poolRow || pr.id !== poolRow.id) {
+          await base44.asServiceRole.entities.PhoneNumber.update(pr.id, { status: 'available', assigned_to_email: '' }).catch(() => {});
+        }
+      }
+    }
 
     // Audit — never store the full cell number.
     await base44.entities.UserActivity.create({

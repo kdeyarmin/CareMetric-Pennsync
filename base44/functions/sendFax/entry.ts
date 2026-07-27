@@ -42,6 +42,20 @@ function normalizeFaxDest(raw) {
   return String(raw).trim();
 }
 
+// Strict E.164 normalization for the OFFICE FAX `from` number (null when it
+// can't normalize — unlike normalizeFaxDest, which falls back to the raw
+// string). The admin-entered office fax may carry formatting ("(724) 465-0441");
+// Telnyx requires E.164 on `from`, so an unnormalizable value must fail loudly
+// rather than fail every send at the provider.
+function normalizeFromE164(raw) {
+  if (!raw) return null;
+  const digits = String(raw).replace(/[^\d]/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (String(raw).trim().startsWith('+') && digits.length >= 8 && digits.length <= 15 && digits[0] !== '0') return `+${digits}`;
+  return null;
+}
+
 // ---- cost controls (mirrors src/components/voice/costControls.js) ----
 const PREMIUM_AREA_CODES = new Set(['900', '976']);
 function isAllowedDestination(e164, settings = {}) {
@@ -111,8 +125,8 @@ Deno.serve(async (req) => {
     // straight to the office, never to an individual. Configurable in-app via
     // AgencySettings.office_fax_number_e164.
     const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const officeFax = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const fromNumber = officeFax || null;
+    const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
+    const fromNumber = normalizeFromE164(officeFaxRaw);
 
     // Cost control: block premium/blocked/international fax destinations by default.
     const faxDest = normalizeFaxDest(to_number);
@@ -121,8 +135,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: blockedReasonMessage(destAllowed.reason), reason: destAllowed.reason }, { status: 403 });
     }
 
-    if (!apiKey || !faxConnectionId || !fromNumber) {
+    if (!apiKey || !faxConnectionId) {
       return Response.json({ error: 'Telnyx fax credentials not configured' }, { status: 500 });
+    }
+    if (!fromNumber) {
+      return Response.json({
+        error: officeFaxRaw
+          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`
+          : 'Office fax number not configured. Set the shared office fax number in Agency Settings.',
+      }, { status: 500 });
     }
 
     // Idempotency: a double-submit would otherwise create a second FaxLog and

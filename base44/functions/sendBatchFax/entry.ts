@@ -38,6 +38,20 @@ function normalizeFaxDest(raw) {
   if (String(raw).trim().startsWith('+') && digits.length >= 8 && digits.length <= 15 && digits[0] !== '0') return `+${digits}`;
   return String(raw).trim();
 }
+// Strict E.164 normalization for the OFFICE FAX `from` number (null when it
+// can't normalize — unlike normalizeFaxDest, which falls back to the raw
+// string). The admin-entered office fax may carry formatting ("(724) 465-0441");
+// Telnyx requires E.164 on `from`, so an unnormalizable value must fail loudly
+// rather than fail every send at the provider. Mirrors sendFax.
+function normalizeFromE164(raw) {
+  if (!raw) return null;
+  const digits = String(raw).replace(/[^\d]/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (String(raw).trim().startsWith('+') && digits.length >= 8 && digits.length <= 15 && digits[0] !== '0') return `+${digits}`;
+  return null;
+}
+
 const PREMIUM_AREA_CODES = new Set(['900', '976']);
 function isAllowedDestination(e164, settings = {}) {
   const s = settings || {};
@@ -124,11 +138,18 @@ Deno.serve(async (req) => {
     // identical to sendFax — never trust a caller-supplied from_number.
     const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
     const agencySettings = settingsRows[0] || {};
-    const officeFax = (agencySettings.office_fax_number_e164 || '').toString().trim();
-    const telnyxFromNumber = officeFax || null;
+    const officeFaxRaw = (agencySettings.office_fax_number_e164 || '').toString().trim();
+    const telnyxFromNumber = normalizeFromE164(officeFaxRaw);
 
-    if (!apiKey || !faxConnectionId || !telnyxFromNumber) {
+    if (!apiKey || !faxConnectionId) {
       return Response.json({ error: 'Telnyx credentials not configured' }, { status: 500 });
+    }
+    if (!telnyxFromNumber) {
+      return Response.json({
+        error: officeFaxRaw
+          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`
+          : 'Office fax number not configured. Set the shared office fax number in Agency Settings.',
+      }, { status: 500 });
     }
 
     // AI Priority Analysis (uses the resolved office number, not a spoofable one).

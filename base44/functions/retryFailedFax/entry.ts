@@ -1,5 +1,19 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// Strict E.164 normalization for the OFFICE FAX `from` number (null when it
+// can't normalize). The admin-entered office fax may carry formatting
+// ("(724) 465-0441"); Telnyx requires E.164 on `from`, so an unnormalizable
+// value must fail loudly rather than fail every send at the provider. Mirrors
+// sendFax.
+function normalizeFromE164(raw) {
+  if (!raw) return null;
+  const digits = String(raw).replace(/[^\d]/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (String(raw).trim().startsWith('+') && digits.length >= 8 && digits.length <= 15 && digits[0] !== '0') return `+${digits}`;
+  return null;
+}
+
 // <<<BEGIN SHARED HELPER: isSafeFetchUrl — generated, edit base44/_shared/backendHelpers.mjs>>>
 // SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
 // internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
@@ -99,14 +113,23 @@ Deno.serve(async (req) => {
     // Get Telnyx credentials (env, then in-app IntegrationSecret)
     const { apiKey, faxConnectionId } = await resolveTelnyxCreds(base44);
     // Resolve the office fax from-number the same way sendFax does: prefer the
-    // in-app AgencySettings.office_fax_number_e164.
+    // in-app AgencySettings.office_fax_number_e164, normalized strictly to
+    // E.164 (Telnyx rejects a formatted `from`; mirrors sendFax).
     const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const officeFax = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const fromNumber = officeFax || null;
+    const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
+    const fromNumber = normalizeFromE164(officeFaxRaw);
 
-    if (!apiKey || !faxConnectionId || !fromNumber) {
+    if (!apiKey || !faxConnectionId) {
       return Response.json({
         error: 'Telnyx credentials not configured',
+        success: false
+      }, { status: 500 });
+    }
+    if (!fromNumber) {
+      return Response.json({
+        error: officeFaxRaw
+          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`
+          : 'Office fax number not configured. Set the shared office fax number in Agency Settings.',
         success: false
       }, { status: 500 });
     }
