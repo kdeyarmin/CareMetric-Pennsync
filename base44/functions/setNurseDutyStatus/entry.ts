@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       if (user.role !== 'admin') {
         return Response.json({ error: 'Only administrators can change another user\'s duty status' }, { status: 403 });
       }
-      const found = await base44.asServiceRole.entities.User.filter({ email: target_user_email });
+      const found = await base44.asServiceRole.entities.User.filter({ email: target_user_email }, undefined, 5000);
       if (!found[0]) return Response.json({ error: 'Target user not found' }, { status: 404 });
       target = found[0];
     }

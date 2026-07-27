@@ -65,7 +65,10 @@ export default function IntegrationsHealthPanel() {
     refetchOnWindowFocus: false,
   });
 
-  const items = data?.integrations || [];
+  // Memoized so the `|| []` fallback isn't a fresh array identity on every
+  // render, which would invalidate the useMemo below on renders where nothing
+  // actually changed.
+  const items = useMemo(() => data?.integrations || [], [data]);
 
   const summary = useMemo(() => {
     const counts = { ok: 0, warn: 0, fail: 0 };

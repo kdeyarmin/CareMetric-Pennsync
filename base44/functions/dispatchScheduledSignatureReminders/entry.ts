@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
       };
 
       const sigRows = await base44.asServiceRole.entities.DocumentSignature
-        .filter({ id: row.document_id }).catch(() => []);
+        .filter({ id: row.document_id }, undefined, 5000).catch(() => []);
       const sig = sigRows[0];
       if (!sig) {
         await fail('Signature request no longer exists');

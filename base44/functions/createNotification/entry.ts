@@ -193,7 +193,7 @@ Deno.serve(async (req) => {
       const chartedVisits = await base44.asServiceRole.entities.Visit.filter({
         patient_id: patient_id,
         created_by: user_email
-      });
+      }, undefined, 5000);
 
       if (!chartedVisits || chartedVisits.length === 0) {
         return Response.json({
@@ -206,7 +206,7 @@ Deno.serve(async (req) => {
     // Get user's notification preferences
     const preferences = await base44.asServiceRole.entities.NotificationPreference.filter({
       user_email: user_email
-    });
+    }, undefined, 5000);
 
     const userPrefs = preferences[0] || {
       email_notifications_enabled: true,

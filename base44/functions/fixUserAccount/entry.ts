@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     // facility admin must not be able to tamper with a super_admin's other
     // fields (is_approved:false to lock them out, email/phone changes, …). Only
     // a super admin may edit another privileged account.
-    const targetList = await base44.asServiceRole.entities.User.filter({ id: userId }).catch(() => []);
+    const targetList = await base44.asServiceRole.entities.User.filter({ id: userId }, undefined, 5000).catch(() => []);
     const targetUser = Array.isArray(targetList) ? targetList[0] : null;
     const targetIsPrivileged = targetUser && (
       targetUser.account_type === 'super_admin' ||

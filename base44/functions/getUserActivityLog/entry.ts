@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     if (!targetEmail) return Response.json({ error: 'target_user_email is required.' }, { status: 400 });
     const limit = Math.min(Number(body.limit) || 100, 500);
 
-    const targets = await base44.asServiceRole.entities.User.filter({ email: targetEmail }).catch(() => []);
+    const targets = await base44.asServiceRole.entities.User.filter({ email: targetEmail }, undefined, 5000).catch(() => []);
     const target = targets[0];
     if (!target) return Response.json({ error: 'User not found.' }, { status: 404 });
 

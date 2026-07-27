@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
     // the authoritative array of member signature ids.
     const packages = await base44.asServiceRole.entities.DocumentPackage.filter({
       document_signatures: signature.id,
-    }).catch(() => []);
+    }, undefined, 5000).catch(() => []);
     const pkg = (packages && packages.length > 0) ? packages[0] : null;
 
     if (!pkg) {

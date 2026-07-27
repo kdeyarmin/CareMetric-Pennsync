@@ -33,14 +33,14 @@ Deno.serve(async (req) => {
     // addresses (platform-blessed phishing) and flip reminder_sent on any
     // document they don't own. Mirror sendSignatureReminder's ownership model and
     // derive recipients from the document's own signer list.
-    const sigRows = await base44.asServiceRole.entities.DocumentSignature.filter({ id: document_id });
+    const sigRows = await base44.asServiceRole.entities.DocumentSignature.filter({ id: document_id }, undefined, 5000);
     if (!sigRows || sigRows.length === 0) {
       return Response.json({ error: 'Document not found' }, { status: 404 });
     }
     const sig = sigRows[0];
 
     const patientRows = sig.patient_id
-      ? await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id }).catch(() => [])
+      ? await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id }, undefined, 5000).catch(() => [])
       : [];
     const patient = patientRows[0] || {};
 

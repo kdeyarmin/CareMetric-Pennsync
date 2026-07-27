@@ -311,7 +311,7 @@ Deno.serve(async (req) => {
 
     // User-context read: RLS limits this to the caller's own cases (+ admins),
     // so the packet fetched below is one the caller is authorized to handle.
-    const cases = await base44.entities.AdrAuditCase.filter({ id: case_id });
+    const cases = await base44.entities.AdrAuditCase.filter({ id: case_id }, undefined, 5000);
     if (!cases || cases.length === 0) {
       return Response.json({ error: 'ADR case not found' }, { status: 404 });
     }
@@ -468,7 +468,7 @@ Deno.serve(async (req) => {
     // while this assembly ran, writing 'packet_generated' would make the stale
     // final PDF (built from the OLD file + summary) look current. Best-effort
     // guard — Base44 has no transactions, but this closes the practical race.
-    const recheck = await base44.entities.AdrAuditCase.filter({ id: case_id });
+    const recheck = await base44.entities.AdrAuditCase.filter({ id: case_id }, undefined, 5000);
     const current = recheck && recheck[0];
     if (
       !current ||

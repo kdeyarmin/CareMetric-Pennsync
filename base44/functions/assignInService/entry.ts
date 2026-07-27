@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'courseId and dueDate are required' }, { status: 400 });
     }
 
-    const courseList = await base44.asServiceRole.entities.TrainingCourse.filter({ id: courseId });
+    const courseList = await base44.asServiceRole.entities.TrainingCourse.filter({ id: courseId }, undefined, 5000);
     const course = courseList[0];
     if (!course) {
       return Response.json({ error: 'Course not found' }, { status: 404 });

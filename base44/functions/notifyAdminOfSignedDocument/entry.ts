@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
       // Find package containing this signature
       const packages = await base44.asServiceRole.entities.DocumentPackage.filter({
         document_signatures: signature.id,
-      });
+      }, undefined, 5000);
       pkg = packages.length > 0 ? packages[0] : null;
     } catch (e) {
       // Package may not exist yet

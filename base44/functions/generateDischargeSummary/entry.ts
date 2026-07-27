@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
     }
 
     // Fetch patient data
-    const [patient] = await base44.entities.Patient.filter({ id: patient_id });
+    const [patient] = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
     if (!patient) {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }
@@ -25,12 +25,12 @@ Deno.serve(async (req) => {
     const visits = await base44.entities.Visit.filter(
       { patient_id, status: 'completed' },
       '-visit_date'
-    );
+    , 5000);
 
     // Fetch education materials sent
     const educationMaterials = await base44.entities.SentEducationMaterial.filter(
       { patient_id }
-    );
+    , undefined, 5000);
 
     // Find admission date (earliest visit)
     const admissionDate = visits.length > 0

@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
     const isAdmin = user.role === 'admin';
     const assertPatientAccess = async (pid) => {
       if (!pid || isAdmin) return true;
-      const [p] = await base44.asServiceRole.entities.Patient.filter({ id: pid }).catch(() => []);
+      const [p] = await base44.asServiceRole.entities.Patient.filter({ id: pid }, undefined, 5000).catch(() => []);
       return Boolean(p) && (p.created_by === user.email
         || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email)));
     };
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
     // Create or update index
     const existingIndex = await base44.asServiceRole.entities.PDFIndex.filter({
       pdf_url
-    });
+    }, undefined, 5000);
 
     const indexData = {
       pdf_url,

@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     // RLS/tenant scoping) BEFORE writing active CarePlans via the service-role
     // client below. Without this, any authenticated user could attach care plans
     // to an arbitrary patient_id outside their scope.
-    const patientRows = await base44.entities.Patient.filter({ id: patient_id });
+    const patientRows = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
     if (!patientRows || patientRows.length === 0) {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }

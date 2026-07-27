@@ -22,6 +22,7 @@ import process from 'node:process';
  */
 
 const SRC = join(process.cwd(), 'src');
+const BACKEND = join(process.cwd(), 'base44/functions');
 
 /** "file:line" reads that are exempt, each with the reason it can't truncate. */
 const ALLOWED_UNLIMITED_READS = new Map([
@@ -37,13 +38,13 @@ const ALLOWED_UNLIMITED_READS = new Map([
   ['src/lib/offlineSync.js', 'idempotency probes keyed on a unique request id / visit id'],
 ]);
 
-function collectSourceFiles(dir) {
+function collectSourceFiles(dir, extensions = /\.(js|jsx)$/) {
   const out = [];
   for (const entry of readdirSync(dir)) {
     const p = join(dir, entry);
     if (statSync(p).isDirectory()) {
-      out.push(...collectSourceFiles(p));
-    } else if (/\.(js|jsx)$/.test(entry) && !/\.(test|spec)\./.test(entry)) {
+      out.push(...collectSourceFiles(p, extensions));
+    } else if (extensions.test(entry) && !/\.(test|spec)\./.test(entry)) {
       out.push(p);
     }
   }
@@ -91,9 +92,9 @@ function isSingleRecordQuery(query) {
   return false;
 }
 
-function findUnlimitedReads() {
+function findUnlimitedReads(files, { allowSingleRecordQueries = true } = {}) {
   const findings = [];
-  for (const file of collectSourceFiles(SRC)) {
+  for (const file of files) {
     const rel = file.slice(process.cwd().length + 1);
     const src = readFileSync(file, 'utf8');
     const re = /entities\.([A-Za-z0-9_]+)\s*\.\s*(list|filter)\s*\(/g;
@@ -117,7 +118,7 @@ function findUnlimitedReads() {
       const limitIndex = m[2] === 'list' ? 1 : 2;
       const limit = args[limitIndex]?.trim();
       if (limit && limit !== 'undefined') continue;
-      if (m[2] === 'filter' && isSingleRecordQuery(args[0])) continue;
+      if (allowSingleRecordQueries && m[2] === 'filter' && isSingleRecordQuery(args[0])) continue;
       if (ALLOWED_UNLIMITED_READS.has(rel)) continue;
       const line = src.slice(0, m.index).split('\n').length;
       findings.push(`${rel}:${line} — ${m[1]}.${m[2]}() has no row limit`);
@@ -127,13 +128,34 @@ function findUnlimitedReads() {
 }
 
 test('collection entity reads pass an explicit row limit', () => {
-  const unlimited = findUnlimitedReads();
+  const unlimited = findUnlimitedReads(collectSourceFiles(SRC));
   assert.deepEqual(
     unlimited,
     [],
     `Entity reads without a limit are silently capped at the server default (~50 rows).\n` +
       `Pass ALL_ROWS / PATIENT_HISTORY_ROWS from src/lib/queryLimits.js, or add the file to\n` +
       `ALLOWED_UNLIMITED_READS with the reason it can only return one row:\n  ` +
+      unlimited.join('\n  '),
+  );
+});
+
+test('EVERY backend function entity read passes an explicit row limit', () => {
+  // Stricter than the frontend rule: backend functions get no single-record
+  // exemption at all. A limit is a ceiling, not a fetch size — on a genuinely
+  // single-row lookup it costs nothing — and requiring it everywhere means no
+  // reviewer has to re-derive whether a given key is unique, which is exactly
+  // the judgement call that let these truncations survive. Backend files are
+  // self-contained Deno entries (shared helpers are inlined by codegen), so the
+  // limit is an inline literal rather than an import from lib/queryLimits.js.
+  const unlimited = findUnlimitedReads(
+    collectSourceFiles(BACKEND, /\.(ts|js)$/),
+    { allowSingleRecordQueries: false },
+  );
+  assert.deepEqual(
+    unlimited,
+    [],
+    `Backend entity reads without a limit are silently capped at the server default (~50 rows).\n` +
+      `Pass an explicit limit as the last argument (sort may be \`undefined\`):\n  ` +
       unlimited.join('\n  '),
   );
 });

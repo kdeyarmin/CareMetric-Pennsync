@@ -28,7 +28,7 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 
 - `pnpm run dev` starts only the Vite dev server (default `http://localhost:5173`) inside the cloud environment.
 - `pnpm test` runs `test:utils` (node `--test`) then `test:components` (Vitest/jsdom).
-- `pnpm run lint` currently reports warnings only (0 errors); treat lint as passing when there are still 0 errors.
+- `pnpm run lint` is clean: 0 errors AND 0 warnings. Keep it that way — a new warning is a real finding, not background noise. Coverage includes `src/App.jsx`, `src/main.jsx`, and `src/routes.jsx`.
 - `pnpm run typecheck` is an informational baseline in CI (`continue-on-error`); it may report pre-existing errors and is not a gate.
 - CI uses Node 24.18.0 with pnpm 11.9.0. Use `.nvmrc` / `.node-version` plus Corepack in cloud environments.
 

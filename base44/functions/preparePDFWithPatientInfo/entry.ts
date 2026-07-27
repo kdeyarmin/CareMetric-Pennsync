@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
 
     if (patient_id && field_mappings.length > 0) {
       try {
-        patientData = await base44.entities.Patient.filter({ id: patient_id });
+        patientData = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
         if (patientData.length > 0) patientData = patientData[0];
 
         // Get latest visit if needed

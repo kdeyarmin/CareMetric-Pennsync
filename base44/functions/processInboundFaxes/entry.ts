@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
 
-    const pending = (await base44.asServiceRole.entities.IncomingFax.filter({ processing_status: 'pending' }).catch(() => []))
+    const pending = (await base44.asServiceRole.entities.IncomingFax.filter({ processing_status: 'pending' }, undefined, 5000).catch(() => []))
       .slice(0, 10);
     if (pending.length === 0) {
       return Response.json({ success: true, processed: 0 });
@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
     for (const r of openRequests) {
       let sentToNumber = null;
       if (r.follow_up_requests.fax_log_id) {
-        const logs = await base44.asServiceRole.entities.FaxLog.filter({ id: r.follow_up_requests.fax_log_id }).catch(() => []);
+        const logs = await base44.asServiceRole.entities.FaxLog.filter({ id: r.follow_up_requests.fax_log_id }, undefined, 5000).catch(() => []);
         sentToNumber = logs[0]?.to_number || null;
       }
       candidates.push({

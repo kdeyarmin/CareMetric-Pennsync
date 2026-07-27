@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
     const { attempt_id } = await req.json();
 
     // Get the attempt
-    const attempt = await base44.entities.TrainingAttempt.filter({ id: attempt_id });
+    const attempt = await base44.entities.TrainingAttempt.filter({ id: attempt_id }, undefined, 5000);
     if (!attempt || attempt.length === 0) {
       return Response.json({ error: 'Attempt not found' }, { status: 404 });
     }
@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     }
     let ownerName = user.full_name;
     if (ownerEmail !== user.email) {
-      const owners = await base44.asServiceRole.entities.User.filter({ email: ownerEmail }).catch(() => []);
+      const owners = await base44.asServiceRole.entities.User.filter({ email: ownerEmail }, undefined, 5000).catch(() => []);
       ownerName = owners?.[0]?.full_name || ownerEmail;
     }
 
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
     const badgesAwarded = [];
 
     // Get or create leaderboard entry
-    let leaderboard = await base44.asServiceRole.entities.Leaderboard.filter({ user_id: ownerEmail });
+    let leaderboard = await base44.asServiceRole.entities.Leaderboard.filter({ user_id: ownerEmail }, undefined, 5000);
     if (!leaderboard || leaderboard.length === 0) {
       leaderboard = [await base44.asServiceRole.entities.Leaderboard.create({
         user_id: ownerEmail,
@@ -87,12 +87,12 @@ Deno.serve(async (req) => {
     const leaderboardEntry = leaderboard[0];
 
     // Get all available badges
-    const allBadges = await base44.entities.SkillBadge.filter({ active: true });
+    const allBadges = await base44.entities.SkillBadge.filter({ active: true }, undefined, 5000);
 
     // Resolve the assignment and whether this attempt actually PASSED up front, so
     // achievement badges (high score, early completion, streak) and the
     // streak/courses counters are never awarded for a failed attempt.
-    const assignment = await base44.entities.TrainingAssignment.filter({ id: attemptData.assignment_id });
+    const assignment = await base44.entities.TrainingAssignment.filter({ id: attemptData.assignment_id }, undefined, 5000);
     const passingScore = (assignment && assignment[0]?.passing_score_required) ?? 80;
     const passed = attemptData.pass_fail_result
       ? attemptData.pass_fail_result === 'passed'

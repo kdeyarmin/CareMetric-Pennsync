@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     let patientData = null;
 
     if (patient_id) {
-      const patients = await base44.entities.Patient.filter({ id: patient_id });
+      const patients = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
       patientData = patients[0];
       // Fail closed when a patient_id was given but is missing/unauthorized (the
       // read is RLS-scoped): otherwise contextData falls through to undefined and

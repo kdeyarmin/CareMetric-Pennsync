@@ -226,7 +226,7 @@ Deno.serve(async (req) => {
       );
 
       if (dueOffsets.length > 0) {
-        const userRecord = await base44.asServiceRole.entities.User.filter({ email: cred.user_id });
+        const userRecord = await base44.asServiceRole.entities.User.filter({ email: cred.user_id }, undefined, 5000);
 
         if (userRecord && userRecord.length > 0) {
           const userName = userRecord[0].full_name || cred.user_id;

@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
     const templates = await base44.asServiceRole.entities.ClinicalLibraryTemplate.filter({
       phrase: phrase.toLowerCase().trim(),
       is_active: true
-    });
+    }, undefined, 5000);
 
     // A phrase bound to THIS patient wins (e.g. that patient's specific wound-care
     // orders). Enforce patient access BEFORE honoring a patient-bound template: the
@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
       ? templates.find(t => t.patient_id && String(t.patient_id) === pid)
       : undefined;
     if (patientBound) {
-      const accessiblePatient = await base44.entities.Patient.filter({ id: patientBound.patient_id });
+      const accessiblePatient = await base44.entities.Patient.filter({ id: patientBound.patient_id }, undefined, 5000);
       if (!accessiblePatient || accessiblePatient.length === 0) {
         patientBound = undefined; // caller has no access to this patient — do not leak bound text
       }
@@ -97,7 +97,7 @@ Expanded documentation:`;
     }
 
     // Get patient data
-    const patient = await base44.entities.Patient.filter({ id: patientId });
+    const patient = await base44.entities.Patient.filter({ id: patientId }, undefined, 5000);
     if (!patient || patient.length === 0) {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }

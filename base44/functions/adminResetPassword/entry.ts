@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'userEmail is required' }, { status: 400 });
     }
 
-    const users = await base44.asServiceRole.entities.User.filter({ email: userEmail });
+    const users = await base44.asServiceRole.entities.User.filter({ email: userEmail }, undefined, 5000);
     if (!users || users.length === 0) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }

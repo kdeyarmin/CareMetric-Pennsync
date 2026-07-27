@@ -57,12 +57,12 @@ Deno.serve(async (req) => {
     if (action === 'add') {
       const e164 = normalizeE164(body.e164);
       if (!e164) return Response.json({ error: 'Enter a valid phone number.' }, { status: 400 });
-      const existing = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }).catch(() => []);
+      const existing = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 5000).catch(() => []);
       if (existing.length > 0) {
         return Response.json({ error: `${e164} is already in the pool.` }, { status: 409 });
       }
       // Reflect reality: if a nurse already holds this number, mark it assigned.
-      const holders = await base44.asServiceRole.entities.User.filter({ work_phone_number: e164 }).catch(() => []);
+      const holders = await base44.asServiceRole.entities.User.filter({ work_phone_number: e164 }, undefined, 5000).catch(() => []);
       const holder = holders[0];
       const row = await base44.asServiceRole.entities.PhoneNumber.create({
         e164,
@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     if (action === 'remove') {
       const id = String(body.id || '');
       if (!id) return Response.json({ error: 'Missing number id.' }, { status: 400 });
-      const rows = await base44.asServiceRole.entities.PhoneNumber.filter({ id }).catch(() => []);
+      const rows = await base44.asServiceRole.entities.PhoneNumber.filter({ id }, undefined, 5000).catch(() => []);
       const row = rows[0];
       if (!row) return Response.json({ error: 'Number not found.' }, { status: 404 });
       if (row.status === 'assigned') {
@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
       const targetEmail = String(body.target_user_email || '').trim();
       if (!targetEmail) return Response.json({ error: 'Choose a nurse to assign.' }, { status: 400 });
 
-      const rows = await base44.asServiceRole.entities.PhoneNumber.filter({ id }).catch(() => []);
+      const rows = await base44.asServiceRole.entities.PhoneNumber.filter({ id }, undefined, 5000).catch(() => []);
       const row = rows[0];
       if (!row) return Response.json({ error: 'Number not found.' }, { status: 404 });
       const e164 = normalizeE164(row.e164);
@@ -119,12 +119,12 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Invalid personal cell number.' }, { status: 400 });
       }
 
-      const targets = await base44.asServiceRole.entities.User.filter({ email: targetEmail }).catch(() => []);
+      const targets = await base44.asServiceRole.entities.User.filter({ email: targetEmail }, undefined, 5000).catch(() => []);
       const target = targets[0];
       if (!target) return Response.json({ error: 'Target nurse not found.' }, { status: 404 });
 
       // Work numbers must be unique across nurses.
-      const holders = await base44.asServiceRole.entities.User.filter({ work_phone_number: e164 }).catch(() => []);
+      const holders = await base44.asServiceRole.entities.User.filter({ work_phone_number: e164 }, undefined, 5000).catch(() => []);
       const conflict = holders.find((u) => u.email !== targetEmail);
       if (conflict) {
         return Response.json({ error: `${e164} is already assigned to ${conflict.email}.` }, { status: 409 });
@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
 
       // Free any OTHER pool entry this nurse used to hold, so one nurse maps to
       // one pool number.
-      const priorRows = await base44.asServiceRole.entities.PhoneNumber.filter({ assigned_to_email: targetEmail }).catch(() => []);
+      const priorRows = await base44.asServiceRole.entities.PhoneNumber.filter({ assigned_to_email: targetEmail }, undefined, 5000).catch(() => []);
       for (const pr of priorRows) {
         if (pr.id !== id) {
           await base44.asServiceRole.entities.PhoneNumber.update(pr.id, { status: 'available', assigned_to_email: '' }).catch(() => {});
@@ -157,14 +157,14 @@ Deno.serve(async (req) => {
     if (action === 'release') {
       const id = String(body.id || '');
       if (!id) return Response.json({ error: 'Missing number id.' }, { status: 400 });
-      const rows = await base44.asServiceRole.entities.PhoneNumber.filter({ id }).catch(() => []);
+      const rows = await base44.asServiceRole.entities.PhoneNumber.filter({ id }, undefined, 5000).catch(() => []);
       const row = rows[0];
       if (!row) return Response.json({ error: 'Number not found.' }, { status: 404 });
       const e164 = normalizeE164(row.e164) || row.e164;
 
       // Clear the nurse's work number only if it still matches this pool number.
       if (row.assigned_to_email) {
-        const targets = await base44.asServiceRole.entities.User.filter({ email: row.assigned_to_email }).catch(() => []);
+        const targets = await base44.asServiceRole.entities.User.filter({ email: row.assigned_to_email }, undefined, 5000).catch(() => []);
         const target = targets[0];
         if (target && normalizeE164(target.work_phone_number) === e164) {
           await base44.asServiceRole.entities.User.update(target.id, { work_phone_number: '' }).catch(() => {});

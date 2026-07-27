@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     }
 
     // Get the document
-    const documents = await base44.entities.Document.filter({ id: document_id });
+    const documents = await base44.entities.Document.filter({ id: document_id }, undefined, 5000);
     if (documents.length === 0) {
       return Response.json({ error: 'Document not found' }, { status: 404 });
     }

@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'planId is required' }, { status: 400 });
     }
 
-    const [plan] = await base44.asServiceRole.entities.LearningPlan.filter({ id: planId });
+    const [plan] = await base44.asServiceRole.entities.LearningPlan.filter({ id: planId }, undefined, 5000);
     if (!plan) {
       return Response.json({ error: 'Learning plan not found' }, { status: 404 });
     }

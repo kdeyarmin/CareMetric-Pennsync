@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       nurse_email: targetEmail,
       training_module_id,
       session_id
-    });
+    }, undefined, 5000);
 
     if (metrics.length === 0) {
       return Response.json({

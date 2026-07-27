@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'rejection_reason is required to reject a credential' }, { status: 400 });
     }
 
-    const rows = await base44.asServiceRole.entities.PersonnelCredential.filter({ id: credential_id });
+    const rows = await base44.asServiceRole.entities.PersonnelCredential.filter({ id: credential_id }, undefined, 5000);
     const credential = rows?.[0];
     if (!credential) {
       return Response.json({ error: 'Credential not found' }, { status: 404 });
@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
         user_id: credential.user_id,
         title: credential.title,
         status: 'approved',
-      }).catch(() => []);
+      }, undefined, 5000).catch(() => []);
       for (const old of oldCredentials) {
         if (old.id === credential.id) continue;
         await base44.asServiceRole.entities.PersonnelCredential.update(old.id, {

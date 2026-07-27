@@ -189,7 +189,7 @@ async function analyzeEvents(base44, params) {
   const events = await base44.entities.ClinicalEvent.filter({
     patient_id,
     verified: false
-  }, '-event_date');
+  }, '-event_date', 5000);
 
   if (events.length === 0) {
     return Response.json({
@@ -199,7 +199,7 @@ async function analyzeEvents(base44, params) {
     });
   }
 
-  const patients = await base44.entities.Patient.filter({ id: patient_id });
+  const patients = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
   const patient = patients[0];
 
   const eventsContext = events.map(e => ({
@@ -254,7 +254,7 @@ async function analyzeTrends(base44, params) {
   }
 
   const [patients, visits, clinicalEvents] = await Promise.all([
-    base44.entities.Patient.filter({ id: patient_id }),
+    base44.entities.Patient.filter({ id: patient_id }, undefined, 5000),
     base44.entities.Visit.filter({ patient_id }, '-visit_date', 100),
     base44.entities.ClinicalEvent.filter({ patient_id }, '-event_date', 100)
   ]);

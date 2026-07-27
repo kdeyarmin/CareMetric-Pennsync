@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     // every time. If AI follow-up tasks already exist for this visit it has been
     // processed; return the prior result instead of re-running.
     const existingAiTasks = await base44.entities.Task
-      .filter({ related_visit_id: visit_id, source: 'ai_generated' })
+      .filter({ related_visit_id: visit_id, source: 'ai_generated' }, undefined, 5000)
       .catch(() => []);
     if (existingAiTasks && existingAiTasks.length > 0) {
       return Response.json({

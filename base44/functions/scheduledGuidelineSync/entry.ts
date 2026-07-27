@@ -186,7 +186,7 @@ Extract and return JSON with:
         // Check if exists
         const existing = await base44.asServiceRole.entities.MedicareGuideline.filter({ 
           url: guidelineConfig.url 
-        });
+        }, undefined, 5000);
         
         const guidelineData = {
           title: analysis.title,

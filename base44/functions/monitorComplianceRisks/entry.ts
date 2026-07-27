@@ -131,7 +131,7 @@ async function persistAlerts(base44, patientAlerts, currentDate, sink) {
       patient_id: alert.patient_id,
       alert_type: alert.alert_type,
       status: 'active',
-    });
+    }, undefined, 5000);
     const isDuplicate = existingAlerts.some((ea) =>
       ea.title === alert.title &&
       new Date(ea.created_date) > new Date(currentDate.getTime() - 24 * 60 * 60 * 1000));

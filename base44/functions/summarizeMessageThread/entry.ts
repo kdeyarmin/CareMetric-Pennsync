@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     let patientContext = '';
     if (patient_id) {
       const [patients] = await Promise.all([
-        base44.entities.Patient.filter({ id: patient_id })
+        base44.entities.Patient.filter({ id: patient_id }, undefined, 5000)
       ]);
       const patient = patients[0];
 

@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     // API key). Requires an existing row — the API key must be set first.
     if (!apiKey && hasOptionalOnly) {
       const existing = await base44.asServiceRole.entities.IntegrationSecret
-        .filter({ provider: 'telnyx' })
+        .filter({ provider: 'telnyx' }, undefined, 5000)
         .catch(() => []);
       if (!existing[0]?.id) {
         return Response.json({ error: 'Set your Telnyx API key first.' }, { status: 400 });
@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
     }
 
     const existing = await base44.asServiceRole.entities.IntegrationSecret
-      .filter({ provider: 'telnyx' })
+      .filter({ provider: 'telnyx' }, undefined, 5000)
       .catch(() => []);
 
     let saved;

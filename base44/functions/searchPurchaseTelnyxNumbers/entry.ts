@@ -52,7 +52,7 @@ async function resolveTelnyxCreds(base44) {
   let voiceConnectionId = null;
   let faxConnectionId = null;
   try {
-    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' });
+    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' }, undefined, 5000);
     const rec = rows?.[0] || {};
     apiKey = pick(rec.api_key);
     publicKey = pick(rec.public_key);
@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
       // Resolve the Telnyx phone-number id by looking the number up in the
       // account (authoritative — the locally stored id can be a number-ORDER id
       // from an old purchase, which the phone_numbers PATCH would reject).
-      const poolRows = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }).catch(() => []);
+      const poolRows = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 5000).catch(() => []);
       const lookup = await fetchJson(
         `${TELNYX_API_BASE}/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
         { method: 'GET', headers: authHeaders },
@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
       // Don't double-buy: if it's already in the pool, just report it — but a
       // fax-purpose "purchase" of an owned number still provisions fax on it,
       // so the admin's intent (make this my fax line) is honored either way.
-      const existing = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }).catch(() => []);
+      const existing = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 5000).catch(() => []);
       if (existing.length > 0) {
         if (purpose === 'fax') return await provisionExistingFax(e164, { setAsOutboundFax });
         return Response.json({ success: true, already_in_pool: true, e164 });

@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
     const tempPassword = Array.from({ length: 14 }, () => PW_ALPHABET[randomIndex(PW_ALPHABET.length)]).join('');
 
     // Get user details
-    const users = await base44.asServiceRole.entities.User.filter({ email: userEmail });
+    const users = await base44.asServiceRole.entities.User.filter({ email: userEmail }, undefined, 5000);
     if (!users || users.length === 0) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }

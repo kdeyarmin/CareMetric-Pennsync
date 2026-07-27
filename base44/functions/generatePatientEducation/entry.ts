@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
     // Get patient via the RLS-scoped client (NOT asServiceRole) so the
     // platform enforces this caller may access this patient, and we avoid
     // loading every patient in the tenant via .list() (IDOR / over-fetch).
-    const patientResults = await base44.entities.Patient.filter({ id: patientId });
+    const patientResults = await base44.entities.Patient.filter({ id: patientId }, undefined, 5000);
     const patient = patientResults[0];
 
     if (!patient) {
@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     // Get recent visit if visitId provided (RLS-scoped)
     let visitData = null;
     if (visitId) {
-      const visits = await base44.entities.Visit.filter({ id: visitId });
+      const visits = await base44.entities.Visit.filter({ id: visitId }, undefined, 5000);
       visitData = visits[0];
     }
 

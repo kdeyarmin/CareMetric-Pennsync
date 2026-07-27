@@ -303,7 +303,7 @@ Deno.serve(async (req) => {
     // staff earn points; office staff and all hospice staff are hourly.
     let profile = null;
     try {
-      const profiles = await base44.asServiceRole.entities.EmployeePayrollProfile.filter({ employee_email: user.email });
+      const profiles = await base44.asServiceRole.entities.EmployeePayrollProfile.filter({ employee_email: user.email }, undefined, 5000);
       profile = (profiles || []).find((p) => p && p.active !== false) || (profiles || [])[0] || null;
     } catch (_profileError) {
       profile = null;
@@ -373,7 +373,7 @@ Deno.serve(async (req) => {
       const approved = await base44.asServiceRole.entities.TimeOffRequest.filter({
         employee_email: user.email,
         status: 'approved',
-      });
+      }, undefined, 5000);
       auto_pto_hours = computePtoHours(approved, pay_period_start, pay_period_end);
     } catch (_ptoError) {
       auto_pto_hours = 0; // Never block submission on the PTO lookup.
@@ -394,7 +394,7 @@ Deno.serve(async (req) => {
       if (manager_email === user.email) {
         return Response.json({ error: 'You cannot assign yourself as your own approver.' }, { status: 400 });
       }
-      const matches = await base44.asServiceRole.entities.User.filter({ email: manager_email });
+      const matches = await base44.asServiceRole.entities.User.filter({ email: manager_email }, undefined, 5000);
       const mgr = matches && matches[0];
       const mgrIsAdmin = mgr && (mgr.role === 'admin' || mgr.account_type === 'super_admin' || mgr.account_type === 'agency_admin');
       if (!mgr || !(mgrIsAdmin || mgr.is_manager === true)) {
@@ -437,7 +437,7 @@ Deno.serve(async (req) => {
           service_type,
           pay_period_start,
           pay_period_end,
-        })
+        }, undefined, 5000)
         .catch(() => []);
       return (matches || []).filter((m) => m && m.id !== excludeId);
     };

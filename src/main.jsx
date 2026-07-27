@@ -43,8 +43,11 @@ const safeStorage = (storage) => ({
 
 let localStorageRef = null;
 let sessionStorageRef = null;
-try { localStorageRef = window.localStorage; } catch {}
-try { sessionStorageRef = window.sessionStorage; } catch {}
+// Merely TOUCHING window.localStorage throws in some privacy modes and in
+// sandboxed iframes. Leaving the ref null is the intended outcome — safeStorage
+// below falls back to an in-memory shim — so both catches are deliberate no-ops.
+try { localStorageRef = window.localStorage; } catch { /* storage unavailable */ }
+try { sessionStorageRef = window.sessionStorage; } catch { /* storage unavailable */ }
 
 const safeLocalStorage = safeStorage(localStorageRef);
 const safeSessionStorage = safeStorage(sessionStorageRef);

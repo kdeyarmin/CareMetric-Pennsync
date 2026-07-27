@@ -99,7 +99,7 @@ Extract and return JSON with:
     ].filter((k, i, arr) => arr.indexOf(k) === i); // Remove duplicates
 
     // Check if guideline with this URL already exists
-    const existing = await base44.asServiceRole.entities.MedicareGuideline.filter({ url: url });
+    const existing = await base44.asServiceRole.entities.MedicareGuideline.filter({ url: url }, undefined, 5000);
     
     const guidelineData = {
       title: analysis.title,

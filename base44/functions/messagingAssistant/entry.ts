@@ -44,7 +44,7 @@ async function suggestMessageContent(base44, params) {
   }
 
   const [patients, recentVisits, incidents, threadMessages] = await Promise.all([
-    base44.entities.Patient.filter({ id: patient_id }),
+    base44.entities.Patient.filter({ id: patient_id }, undefined, 5000),
     base44.entities.Visit.filter({ patient_id }, '-visit_date', 5),
     base44.entities.Incident.filter({ patient_id }, '-incident_date', 5),
     thread_id ? base44.entities.Message.filter({ thread_id }, '-created_date', 10) : Promise.resolve([])
@@ -120,7 +120,7 @@ async function summarizeThread(base44, params) {
 
   let patientContext = '';
   if (patient_id) {
-    const patients = await base44.entities.Patient.filter({ id: patient_id });
+    const patients = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
     const patient = patients[0];
     
     if (patient) {
