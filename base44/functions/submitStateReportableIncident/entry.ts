@@ -126,11 +126,13 @@ function renderBrandedEmail(opts) {
 // Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG
 // secret was retired). console.error/warn remain ungated for visibility.
 // PA state event code -> Incident.incident_type (aggregation category).
+// Only map PA event codes with an unambiguous incident_type. IE = hospital
+// transfer, HC = medication-error death (verified against EventReport's list).
+// Everything else (incl. code 18 "Other") stays 'other' — guessing a 'fall'
+// for it contaminated fall analytics.
 const STATE_EVENT_TO_INCIDENT_TYPE = {
   IE: 'hospitalized',
   HC: 'medication_error',
-  '01': 'fall',
-  '18': 'fall',
 };
 
 const debugLog = (..._args) => {};

@@ -598,11 +598,17 @@ async function handleInboundFax(base44, payload) {
   const mediaUrl = payload?.media_url || payload?.original_media_url;
   if (!mediaUrl) return Response.json({ success: true, skipped: 'no media url' });
 
-  // Idempotency FIRST: Telnyx re-delivers webhooks; one IncomingFax row — and
-  // at most one office forward — per provider fax id (a PHI fax must never be
-  // re-faxed on a re-delivery).
+  // Idempotency: Telnyx re-delivers webhooks. Suppress a redelivery only once
+  // the fax is SETTLED — either routed to the office (status 'routed') or
+  // captured in-app for OCR (the ingestion path, processing_status 'pending').
+  // A FAILED office-forward row (created 'completed' but never 'routed') is
+  // left retryable so a redelivery can complete the forward — otherwise a
+  // transient forward error silently dropped the fax forever.
   const existing = await base44.asServiceRole.entities.IncomingFax.filter({ telnyx_fax_id: providerId }).catch(() => []);
-  if (existing.length > 0) {
+  const settled = (Array.isArray(existing) ? existing : []).find(
+    (r) => r?.status === 'routed' || r?.processing_status === 'pending',
+  );
+  if (settled) {
     return Response.json({ success: true, deduped: true });
   }
 
@@ -636,11 +642,14 @@ async function handleInboundFax(base44, payload) {
     return Response.json({ success: true, skipped: 'fax receiving disabled' });
   }
 
-  // The row is created BEFORE the forward as the at-most-once guard; marked
-  // 'routed' on success, left 'unread' on failure so a stray fax is never
-  // silently dropped (it stays visible to admins with its media URL).
-  // processing_status 'completed' keeps the OCR job away from it.
-  const record = await base44.asServiceRole.entities.IncomingFax.create({
+  // The row is the at-most-once guard; marked 'routed' on success, left
+  // 'unread' on failure so a stray fax is never silently dropped (it stays
+  // visible to admins with its media URL). processing_status 'completed' keeps
+  // the OCR job away from it. On a redelivery after a failed forward, REUSE the
+  // prior unrouted row instead of creating a duplicate.
+  const record = (Array.isArray(existing) ? existing : []).find(
+    (r) => r?.processing_status === 'completed' && r?.status !== 'routed',
+  ) || await base44.asServiceRole.entities.IncomingFax.create({
     user_email: settings?.created_by || 'unassigned',
     sender_fax_number: payload?.from || '',
     received_at: new Date().toISOString(),

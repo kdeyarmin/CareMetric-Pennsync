@@ -40,15 +40,18 @@ Deno.serve(async (req) => {
       return Response.json({ valid: false, error: 'This link is no longer valid.' }, { status: 401 });
     }
 
-    // Expiry — an unparseable expires_at counts as expired (fail closed). A
-    // submitted token skips this: it's already read-only, and the provider
-    // deserves the "completed" confirmation rather than an expiry error.
-    if (!alreadySubmitted) {
-      const expiresMs = Date.parse(record.expires_at);
-      if (!Number.isFinite(expiresMs) || expiresMs < Date.now()) {
+    // Expiry — an unparseable expires_at counts as expired (fail closed).
+    // Enforced for EVERY token, submitted or not: exempting submitted tokens
+    // let a completed link keep returning the patient's name/DOB/referral items
+    // indefinitely to anyone holding the URL. Within the original validity
+    // window a submitted token still resolves to the friendly "completed"
+    // state; past it, the link is simply expired like any other.
+    const expiresMs = Date.parse(record.expires_at);
+    if (!Number.isFinite(expiresMs) || expiresMs < Date.now()) {
+      if (!alreadySubmitted) {
         await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, { is_active: false, status: 'expired' }).catch(() => {});
-        return Response.json({ valid: false, error: 'This link has expired. Please contact the agency for a new one.' }, { status: 401 });
       }
+      return Response.json({ valid: false, error: 'This link has expired. Please contact the agency for a new one.' }, { status: 401 });
     }
 
     const referrals = await base44.asServiceRole.entities.Referral.filter({ id: record.referral_id });
