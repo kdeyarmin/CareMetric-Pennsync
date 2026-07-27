@@ -125,6 +125,14 @@ function renderBrandedEmail(opts) {
 
 // Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG
 // secret was retired). console.error/warn remain ungated for visibility.
+// PA state event code -> Incident.incident_type (aggregation category).
+const STATE_EVENT_TO_INCIDENT_TYPE = {
+  IE: 'hospitalized',
+  HC: 'medication_error',
+  '01': 'fall',
+  '18': 'fall',
+};
+
 const debugLog = (..._args) => {};
 
 // Canonical, human-readable report body. Mirrors the format the
@@ -223,12 +231,18 @@ Deno.serve(async (req) => {
     const incident = await base44.entities.Incident.create({
       patient_id: payload.patient_id,
       patient_name: payload.patient_name || payload.patient_id,
-      incident_type: 'other',
+      // Map the state event code onto a real incident_type so these — the most
+      // severe events — appear in falls/hospitalization/med-error aggregates
+      // instead of vanishing into 'other'.
+      incident_type: STATE_EVENT_TO_INCIDENT_TYPE[String(payload.event_type_id || '').toUpperCase()] || 'other',
       incident_name: `State Reportable: ${payload.event_type}`,
       incident_date: payload.event_date,
       incident_time: payload.event_time || '',
       severity: 'high',
       report: reportText,
+      // Evidence photos were silently dropped from the most serious incident
+      // class — the non-state path persists them, this one must too.
+      photo_urls: Array.isArray(payload.photo_urls) ? payload.photo_urls : [],
       state_reportable: true,
       status: 'reported',
       office_notified: true,
@@ -277,13 +291,20 @@ Deno.serve(async (req) => {
       });
       documentId = document.id;
     } catch (pdfErr) {
-      debugLog('State-reportable PDF/Document step failed:', pdfErr?.message);
+      // Retention failures must be visible in server logs (message-only, no PHI).
+      console.warn('State-reportable PDF/Document retention failed:', pdfErr?.message);
     }
 
     // 3) Notify every admin: in-app notification + immediate email (server-side,
     //    so it does not depend on the submitter's browser staying open).
-    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
-    const adminList = Array.isArray(admins) ? admins : [];
+    // Admin-tier recipients use the same predicate as isAdminLike — filtering
+    // on role==='admin' alone missed agency_admin/super_admin accounts, so an
+    // agency whose admins are account_type-based got ZERO notifications while
+    // the function still returned success.
+    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
+    const adminList = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+      u && (u.role === 'admin' || u.role === 'agency_admin' ||
+        u.account_type === 'agency_admin' || u.account_type === 'super_admin'));
 
     let notifiedCount = 0;
     const recipients = [];
@@ -372,6 +393,7 @@ Deno.serve(async (req) => {
       success: true,
       incident_id: incident.id,
       document_url: pdfUrl,
+      pdf_retained: !!documentId,
       admin_count: adminList.length,
       admins_notified: notifiedCount,
       emails_sent: recipients.length,

@@ -32,7 +32,7 @@ export default function ReferralVolumeReport({ dateRange }) {
   });
 
   const filteredReferrals = referrals.filter(r => {
-    const date = new Date(r.referral_date);
+    const date = new Date(r.referral_date + 'T00:00:00');
     return date >= new Date(dateRange.start + 'T00:00:00') && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 

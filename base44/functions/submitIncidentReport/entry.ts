@@ -36,7 +36,12 @@ Deno.serve(async (req) => {
       // Query admins directly rather than filtering the 200 newest users — in an
       // agency with >200 users the early-created admins (typically owners) were
       // silently dropped and never alerted. Mirrors submitStateReportableIncident.
-      const users = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+      // Same admin-tier predicate as isAdminLike — role==='admin' alone missed
+    // agency_admin/super_admin accounts, notifying nobody at some agencies.
+    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
+    const users = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+      u && (u.role === 'admin' || u.role === 'agency_admin' ||
+        u.account_type === 'agency_admin' || u.account_type === 'super_admin'));
       const adminUsers = (Array.isArray(users) ? users : []).filter((candidate) => candidate.role === 'admin');
 
       if (adminUsers.length > 0) {
@@ -45,7 +50,7 @@ Deno.serve(async (req) => {
             base44.asServiceRole.entities.Notification.create({
               user_email: adminUser.email,
               title: `Urgent incident: ${payload.incident_name || payload.incident_type}`,
-              message: `${user.full_name || user.email} submitted a ${payload.severity || 'high'} severity incident for ${payload.patient_name || 'a patient'}.`,
+              message: `${user.full_name || user.email} submitted a ${payload.severity || 'medium'} severity incident for ${payload.patient_name || 'a patient'}.`,
               type: payload.severity === 'high' ? 'critical_alert' : 'patient_alert',
               priority: payload.severity === 'high' ? 'critical' : 'high',
               action_url: '/Incidents',

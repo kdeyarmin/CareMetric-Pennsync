@@ -24,7 +24,7 @@ export default function OASISComplianceReport({ dateRange }) {
   const rangeStart = new Date(dateRange.start + 'T00:00:00');
 
   const filteredOASIS = oasisAssessments.filter(o => {
-    const date = new Date(o.assessment_date);
+    const date = new Date(o.assessment_date + 'T00:00:00');
     return date >= rangeStart && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
@@ -65,7 +65,7 @@ export default function OASISComplianceReport({ dateRange }) {
     const monthName = date.toLocaleString('default', { month: 'short' });
     
     const monthOASIS = oasisAssessments.filter(o => {
-      const oasisDate = new Date(o.assessment_date);
+      const oasisDate = new Date(o.assessment_date + 'T00:00:00');
       return oasisDate.getMonth() === date.getMonth() && oasisDate.getFullYear() === date.getFullYear();
     });
 
