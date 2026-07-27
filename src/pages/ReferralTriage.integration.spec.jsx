@@ -105,7 +105,10 @@ describe('ReferralTriage — create patient from triage', () => {
     await waitFor(() => expect(taskCreate).toHaveBeenCalledTimes(1));
     expect(taskCreate.mock.calls[0][0]).toMatchObject({
       title: 'Complete referral identity: Jane Doe',
-      type: 'referral_follow_up',
+      // Must be a member of Task.type's schema enum — 'referral_follow_up' was
+      // not, so the value never persisted. The referral linkage is carried by
+      // related_entity / related_entity_id, not by the type.
+      type: 'followup',
       related_entity: 'Referral',
       related_entity_id: 'referral-1',
     });

@@ -52,12 +52,37 @@ function collectSourceFiles(dir, extensions = /\.(js|jsx)$/) {
 }
 
 /** Split a call's argument text on top-level commas. */
+/**
+ * Index just past a comment starting at `i`, or `i` itself if none starts there.
+ *
+ * The scanners below track quote state, so a comment must be skipped rather than
+ * read character-by-character: an apostrophe in an ordinary contraction
+ * ("Don't refetch on window focus" sits directly above an AgencySettings.list
+ * call) would otherwise open a phantom string literal and desynchronise the
+ * parse, making the guard silently stop seeing later reads.
+ */
+function skipComment(src, i) {
+  if (src[i] === '/' && src[i + 1] === '/') {
+    const nl = src.indexOf('\n', i);
+    return nl === -1 ? src.length : nl;
+  }
+  if (src[i] === '/' && src[i + 1] === '*') {
+    const end = src.indexOf('*/', i + 2);
+    return end === -1 ? src.length : end + 2;
+  }
+  return i;
+}
+
 function splitArgs(text) {
   const out = [];
   let depth = 0;
   let cur = '';
   let quote = null;
   for (let i = 0; i < text.length; i++) {
+    if (!quote) {
+      const skipped = skipComment(text, i);
+      if (skipped !== i) { cur += text.slice(i, skipped); i = skipped - 1; continue; }
+    }
     const c = text[i];
     if (quote) {
       cur += c;
@@ -105,6 +130,11 @@ function findUnlimitedReads(files, { allowSingleRecordQueries = true } = {}) {
       let depth = 1;
       let quote = null;
       while (i < src.length && depth > 0) {
+        if (!quote) {
+          // See skipComment: an apostrophe in a comment must not open a string.
+          const skipped = skipComment(src, i);
+          if (skipped !== i) { i = skipped; continue; }
+        }
         const c = src[i];
         if (quote) {
           if (c === quote && src[i - 1] !== '\\') quote = null;
@@ -158,6 +188,21 @@ test('EVERY backend function entity read passes an explicit row limit', () => {
       `Pass an explicit limit as the last argument (sort may be \`undefined\`):\n  ` +
       unlimited.join('\n  '),
   );
+});
+
+test('an apostrophe inside a comment does not blind the argument scanner', () => {
+  // Regression guard. splitArgs tracks quote state, so before skipComment() a
+  // contraction in a comment ("Don't refetch...", which sits directly above a
+  // real AgencySettings.list call) opened a phantom string literal and swallowed
+  // the following commas — the limit argument stopped being seen, and the guard
+  // could report a limited read as unlimited or miss an unlimited one entirely.
+  const args = splitArgs("{ status: 'active' }, /* the caller's sort */ '-created_date', 500");
+  assert.equal(args.length, 3, 'all three arguments are still split apart');
+  assert.equal(args[2].trim(), '500', 'the limit argument survives the comment');
+
+  const withLineComment = splitArgs("{ id }, // don't sort here\n undefined, 100");
+  assert.equal(withLineComment.length, 3);
+  assert.equal(withLineComment[2].trim(), '100');
 });
 
 test('the exemption list stays honest about why each read is safe', () => {
