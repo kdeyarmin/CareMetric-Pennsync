@@ -9,12 +9,66 @@ export const STORES = {
   SYNC_QUEUE: 'sync_queue'
 };
 
-const openDB = () => {
+/**
+ * Resolve only once the TRANSACTION COMMITS.
+ *
+ * `request.onsuccess` fires when the operation is staged, NOT when it is
+ * durable — the transaction can still abort afterwards (quota exceeded, the tab
+ * closing mid-commit, a storage error). Resolving on request success therefore
+ * reported "saved offline" for writes that were then rolled back, which for
+ * addToSyncQueue and saveDraftNoteLocally means a nurse's visit note or incident
+ * silently disappearing in exactly the low-storage field conditions the offline
+ * queue exists to survive. Waiting for `oncomplete` makes the resolved promise
+ * mean the write is actually committed.
+ *
+ * Exported for direct testing of that contract.
+ *
+ * @param {IDBTransaction} tx
+ * @param {IDBRequest} [request] optional — its result becomes the resolved value
+ * @returns {Promise<any>}
+ */
+export function whenTransactionCommits(tx, request) {
   return new Promise((resolve, reject) => {
+    let result;
+    let failed = false;
+    if (request) {
+      request.onsuccess = () => { result = request.result; };
+      request.onerror = () => { failed = true; reject(request.error); };
+    }
+    tx.oncomplete = () => { if (!failed) resolve(result); };
+    tx.onerror = () => { failed = true; reject(tx.error); };
+    tx.onabort = () => {
+      failed = true;
+      reject(tx.error || new Error('IndexedDB transaction aborted'));
+    };
+  });
+}
+
+// One shared connection. Every exported call used to open its OWN connection and
+// never close it; useOfflineQueue polls the pending count every 5 seconds, so a
+// single shift leaked thousands of open IDBDatabase handles — and open
+// connections block a future `onupgradeneeded`, so a schema bump would hang.
+let dbPromise = null;
+
+const openDB = () => {
+  if (dbPromise) return dbPromise;
+
+  dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      // Drop the memo if the connection goes away (another tab upgrading the
+      // schema, or the browser evicting it) so the next call reopens instead of
+      // handing out a dead handle forever.
+      db.onclose = () => { dbPromise = null; };
+      db.onversionchange = () => {
+        dbPromise = null;
+        db.close();
+      };
+      resolve(db);
+    };
 
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
@@ -29,17 +83,18 @@ const openDB = () => {
       }
     };
   });
+
+  // A failed open must not be memoized, or every later call rejects forever.
+  dbPromise.catch(() => { dbPromise = null; });
+  return dbPromise;
 };
 
 export const savePatients = async (patients) => {
   const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORES.PATIENTS, 'readwrite');
-    const store = tx.objectStore(STORES.PATIENTS);
-    patients.forEach(p => store.put(p));
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  const tx = db.transaction(STORES.PATIENTS, 'readwrite');
+  const store = tx.objectStore(STORES.PATIENTS);
+  patients.forEach(p => store.put(p));
+  return whenTransactionCommits(tx);
 };
 
 export const getPatientsLocally = async () => {
@@ -55,13 +110,10 @@ export const getPatientsLocally = async () => {
 
 export const saveDraftNoteLocally = async (noteData) => {
   const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORES.DRAFT_NOTES, 'readwrite');
-    const store = tx.objectStore(STORES.DRAFT_NOTES);
-    const request = store.put({ ...noteData, updatedAt: Date.now() });
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+  const tx = db.transaction(STORES.DRAFT_NOTES, 'readwrite');
+  const store = tx.objectStore(STORES.DRAFT_NOTES);
+  const request = store.put({ ...noteData, updatedAt: Date.now() });
+  return whenTransactionCommits(tx, request);
 };
 
 /** Fetch a single draft by its (string) id, or null when absent. */
@@ -78,24 +130,19 @@ export const getDraftNoteLocally = async (id) => {
 
 export const deleteDraftNoteLocally = async (id) => {
   const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORES.DRAFT_NOTES, 'readwrite');
-    const store = tx.objectStore(STORES.DRAFT_NOTES);
-    const request = store.delete(id);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  const tx = db.transaction(STORES.DRAFT_NOTES, 'readwrite');
+  const store = tx.objectStore(STORES.DRAFT_NOTES);
+  const request = store.delete(id);
+  return whenTransactionCommits(tx, request);
 };
 
 export const addToSyncQueue = async (action, payload) => {
   const db = await openDB();
-  const id = await new Promise((resolve, reject) => {
-    const tx = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
-    const store = tx.objectStore(STORES.SYNC_QUEUE);
-    const request = store.put({ action, payload, createdAt: Date.now() });
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+  const tx = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
+  const store = tx.objectStore(STORES.SYNC_QUEUE);
+  const request = store.put({ action, payload, createdAt: Date.now() });
+  // Await the COMMIT before telling the caller (and the UI) the work is queued.
+  const id = await whenTransactionCommits(tx, request);
   // Let any mounted sync-status widget refresh its pending count immediately
   // instead of waiting for its poll tick. The event name is shared with
   // offlineSync.js via a dependency-free module so the two can't drift.
@@ -118,13 +165,10 @@ export const getSyncQueue = async () => {
 
 export const removeFromSyncQueue = async (id) => {
   const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
-    const store = tx.objectStore(STORES.SYNC_QUEUE);
-    const request = store.delete(id);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  const tx = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
+  const store = tx.objectStore(STORES.SYNC_QUEUE);
+  const request = store.delete(id);
+  return whenTransactionCommits(tx, request);
 };
 
 /**
@@ -138,11 +182,9 @@ export const removeFromSyncQueue = async (id) => {
  */
 export const clearCachedPatients = async () => {
   const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORES.PATIENTS, 'readwrite');
-    const store = tx.objectStore(STORES.PATIENTS);
-    const request = store.clear();
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  const tx = db.transaction(STORES.PATIENTS, 'readwrite');
+  const store = tx.objectStore(STORES.PATIENTS);
+  const request = store.clear();
+  // HIPAA purge: only report success once the clear is actually committed.
+  return whenTransactionCommits(tx, request);
 };
