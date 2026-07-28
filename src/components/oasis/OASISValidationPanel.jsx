@@ -471,7 +471,10 @@ function validateDiagnosis(data) {
   // Validate ICD-10 code format
   if (diagnosisCode) {
     const cleanCode = diagnosisCode.toUpperCase().replace(/[^A-Z0-9.]/g, '');
-    const validFormat = /^[A-Z]\d{2}\.?\d{0,4}$/.test(cleanCode);
+    // ICD-10-CM allows a letter in the 3rd position and alphabetic 7th-character
+    // extensions (e.g. M1A.0, C4A, Z3A, O9A, S72.001A). Mirror the canonical
+    // pattern in oasisReadinessChecklist.js so those valid codes aren't flagged.
+    const validFormat = /^[A-Z][0-9][0-9A-Z]\.?[A-Z0-9]{0,4}$/.test(cleanCode);
     
     if (!validFormat) {
       issues.push({
