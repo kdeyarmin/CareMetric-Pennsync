@@ -211,11 +211,18 @@ Deno.serve(async (req) => {
       // connection for a nurse line, the Programmable Fax connection for the
       // office fax line.
       const orderBody = { phone_numbers: [{ phone_number: e164 }] };
+      // A nurse line with no voice/messaging connection still ORDERS fine, but
+      // it can't route calls/texts until wired. We allow the purchase (admins
+      // may intentionally buy first, wire later) but return a warning so the UI
+      // can tell them what's still needed rather than leaving a silent dud.
+      const warnings = [];
       if (purpose === 'fax') {
         orderBody.connection_id = faxConnectionId;
       } else {
         if (messagingProfileId) orderBody.messaging_profile_id = messagingProfileId;
+        else warnings.push('No Messaging Profile is set, so this number can\'t send texts yet — add the Messaging Profile ID in Telnyx Credentials.');
         if (voiceConnectionId) orderBody.connection_id = voiceConnectionId;
+        else warnings.push('No Voice (Call Control) connection is set, so this number can\'t route calls yet — add the Voice connection ID in Telnyx Credentials.');
       }
       const res = await fetchJson(`${TELNYX_API_BASE}/number_orders`, {
         method: 'POST',
@@ -247,9 +254,9 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email, user_name: user.full_name,
         action: 'phone_number_purchased', entity_type: 'PhoneNumber', entity_id: row.id,
-        details: { e164, telnyx_number_id: telnyxNumberId, purpose, set_as_outbound_fax: setAsOutboundFax, timestamp: new Date().toISOString() }, status: 'success',
+        details: { e164, telnyx_number_id: telnyxNumberId, purpose, set_as_outbound_fax: setAsOutboundFax, warnings, timestamp: new Date().toISOString() }, status: 'success',
       }).catch(() => {});
-      return Response.json({ success: true, e164, id: row.id, telnyx_number_id: telnyxNumberId, purpose, outbound_fax_set: setAsOutboundFax });
+      return Response.json({ success: true, e164, id: row.id, telnyx_number_id: telnyxNumberId, purpose, outbound_fax_set: setAsOutboundFax, warnings });
     }
 
     if (action === 'provision_fax') {
