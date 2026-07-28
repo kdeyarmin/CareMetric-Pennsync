@@ -14,6 +14,7 @@ import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } fr
 import { getRoleView } from "@/lib/roles";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 
+import PageLoader from "@/components/ui/PageLoader";
 import DesktopSidebar from "@/components/layout/DesktopSidebar";
 import MobileHeader from "@/components/layout/MobileHeader";
 import MobileMenu from "@/components/layout/MobileMenu";
@@ -61,7 +62,7 @@ export default function Layout() {
     document.documentElement.classList.remove('dark');
   }, []);
 
-  const { data: currentUser } = useQuery({
+  const { data: currentUser, isPending: isUserPending } = useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
       try {
@@ -287,6 +288,20 @@ export default function Layout() {
   // sub-page (e.g. PatientDetails highlights "Patients") so the nav never loses
   // its "you are here" anchor. See isNavItemActive in nav.manifest.js.
   const isActive = useCallback((pageName) => isNavItemActive(currentPageName, pageName), [currentPageName]);
+
+  // Block the first paint until the user record loads. Previously the approval/
+  // deactivation gate below and the role-based nav were both evaluated while
+  // `currentUser` was still undefined — so an unapproved/deactivated user briefly
+  // saw the full app shell, and an admin saw a flash of nurse-tier navigation,
+  // before the query resolved. (The layout mounts once and persists across
+  // navigations, so this loader shows only on initial load.)
+  if (isUserPending) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <PageLoader />
+      </div>
+    );
+  }
 
   if (currentUser && (isDeactivated || !isApproved)) {
     return (
