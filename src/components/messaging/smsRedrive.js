@@ -21,7 +21,14 @@ export const TRANSIENT_FAILURE_PATTERNS = [
 // Reasons that are permanent — never auto-retry these (and they win over a
 // coincidental transient-looking substring).
 export const PERMANENT_FAILURE_PATTERNS = [
-  /opted out/i, /opt.?out/i, /unsubscrib/i, /invalid/i, /\b(400|401|403|404|422)\b/,
+  // "invalid" is scoped to a number/destination context. A bare /invalid/i also
+  // matched transient gateway errors like "Invalid response from Telnyx API
+  // (502)", which then never re-drove even though the 5xx is retryable. Genuine
+  // "invalid number / invalid 'To'" stays permanent; the 400/422 codes below
+  // still cover generic client-side rejects.
+  /opted out/i, /opt.?out/i, /unsubscrib/i,
+  /invalid\W*(to\b|number|destination|phone|recipient|address|msisdn)/i,
+  /\b(400|401|403|404|422)\b/,
   /blocked/i, /blacklist/i, /not configured/i, /disabled/i, /too long/i, /consent/i,
 ];
 

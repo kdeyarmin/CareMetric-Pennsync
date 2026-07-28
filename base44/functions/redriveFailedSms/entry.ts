@@ -65,7 +65,11 @@ const TRANSIENT_FAILURE_PATTERNS = [
   /connection/i, /EAI_AGAIN/i, /ECONN/i, /ETIMEDOUT/i, /socket/i,
 ];
 const PERMANENT_FAILURE_PATTERNS = [
-  /opted out/i, /opt.?out/i, /unsubscrib/i, /invalid/i, /\b(400|401|403|404|422)\b/,
+  // "invalid" scoped to a number/destination context so transient gateway
+  // errors like "Invalid response from Telnyx API (502)" still re-drive.
+  /opted out/i, /opt.?out/i, /unsubscrib/i,
+  /invalid\W*(to\b|number|destination|phone|recipient|address|msisdn)/i,
+  /\b(400|401|403|404|422)\b/,
   /blocked/i, /blacklist/i, /not configured/i, /disabled/i, /too long/i, /consent/i,
 ];
 function isTransientFailureReason(reason) {
