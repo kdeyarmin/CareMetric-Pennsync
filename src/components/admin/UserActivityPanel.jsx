@@ -11,8 +11,9 @@ import {
 
 const CALL_MODE_LABEL = {
   masked_bridge: "Masked bridge",
-  off_duty_transfer: "Off-duty transfer",
-  after_hours_transfer: "After-hours transfer",
+  office_transfer: "Transferred to office",
+  voicemail: "Voicemail",
+  unresolved: "Unresolved",
   outbound_clicktocall: "Click-to-call",
 };
 

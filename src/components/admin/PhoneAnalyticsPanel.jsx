@@ -167,8 +167,7 @@ export default function PhoneAnalyticsPanel() {
             <Stat label="Completed" value={stats.calls.completed} />
             <Stat label="Missed" value={stats.calls.missed} sub={`${stats.calls.missedRate}% of calls`} />
             <Stat label="Avg duration" value={formatDuration(stats.calls.avgDurationSec)} />
-            <Stat label="After-hours transfers" value={stats.calls.afterHoursTransfers} sub={`${stats.calls.autoTransferRate}% of inbound auto-handled`} />
-            <Stat label="Off-duty transfers" value={stats.calls.offDutyTransfers} />
+            <Stat label="Office transfers" value={stats.calls.officeTransfers} sub={`${stats.calls.autoTransferRate}% of inbound auto-handled`} />
           </div>
         </div>
 
