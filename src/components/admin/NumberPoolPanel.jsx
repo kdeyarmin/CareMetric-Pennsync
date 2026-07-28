@@ -127,8 +127,11 @@ export default function NumberPoolPanel() {
       );
       // Surface any "bought but not yet routable" warnings from the backend so
       // the admin knows to finish wiring (missing Messaging Profile / Voice id).
-      const warnings = (res?.data || res)?.warnings || [];
-      warnings.forEach((w) => toast.warning(w));
+      const result = res?.data || res;
+      (result?.warnings || []).forEach((w) => toast.warning(w));
+      if (result?.campaign_assigned) {
+        toast.success("Registered on your approved A2P 10DLC campaign — texts won't be carrier-filtered.");
+      }
     },
     onError: (err) => toast.error(err?.message || "Purchase failed"),
   });

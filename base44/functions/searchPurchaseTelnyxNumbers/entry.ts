@@ -251,12 +251,40 @@ Deno.serve(async (req) => {
           : 'Purchased in-app via Telnyx numbers API',
       });
       if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164);
+
+      // Auto-enroll a new SMS-capable line in the agency's approved A2P 10DLC
+      // campaign (AgencySettings.a2p_campaign_id) so its texts are carrier-
+      // registered from day one — an unregistered US 10DLC number is heavily
+      // filtered. Fax lines don't text, so they skip this. A failure here is a
+      // WARNING, not a failed purchase: the number is owned either way and can
+      // be enrolled manually in the Telnyx portal.
+      let campaignAssigned = false;
+      if (purpose !== 'fax') {
+        const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+        const campaignId = String(settingsRows[0]?.a2p_campaign_id || '').trim();
+        if (!campaignId) {
+          warnings.push('No A2P 10DLC campaign id is saved in Agency Settings, so this number was NOT campaign-registered — US carriers may filter its texts until you register it.');
+        } else {
+          const assign = await fetchJson(`${TELNYX_API_BASE}/10dlc/phone_number_campaigns`, {
+            method: 'POST',
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phoneNumber: e164, campaignId }),
+          }).catch((err) => ({ ok: false, status: 0, data: { message: String(err?.message || err) } }));
+          if (assign.ok) {
+            campaignAssigned = true;
+          } else {
+            const firstErr = Array.isArray(assign.data?.errors) ? assign.data.errors[0] : null;
+            warnings.push(`Purchased, but enrolling it in A2P campaign ${campaignId} failed (${firstErr?.detail || firstErr?.title || `HTTP ${assign.status}`}) — enroll it in the Telnyx portal or its texts may be carrier-filtered.`);
+          }
+        }
+      }
+
       await base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email, user_name: user.full_name,
         action: 'phone_number_purchased', entity_type: 'PhoneNumber', entity_id: row.id,
-        details: { e164, telnyx_number_id: telnyxNumberId, purpose, set_as_outbound_fax: setAsOutboundFax, warnings, timestamp: new Date().toISOString() }, status: 'success',
+        details: { e164, telnyx_number_id: telnyxNumberId, purpose, set_as_outbound_fax: setAsOutboundFax, campaign_assigned: campaignAssigned, warnings, timestamp: new Date().toISOString() }, status: 'success',
       }).catch(() => {});
-      return Response.json({ success: true, e164, id: row.id, telnyx_number_id: telnyxNumberId, purpose, outbound_fax_set: setAsOutboundFax, warnings });
+      return Response.json({ success: true, e164, id: row.id, telnyx_number_id: telnyxNumberId, purpose, outbound_fax_set: setAsOutboundFax, campaign_assigned: campaignAssigned, warnings });
     }
 
     if (action === 'provision_fax') {
