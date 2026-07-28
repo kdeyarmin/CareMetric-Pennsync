@@ -146,6 +146,17 @@ test("lookupClinicalGroup prefers the most specific prefix", () => {
   assert.equal(lookupClinicalGroup("S72.001A", DEFAULT_ICD10_CLINICAL_GROUPS), null); // no S entry on purpose
 });
 
+test("cerebrovascular sequelae (I6x) sequence as Neuro, not Cardiac", () => {
+  // Post-stroke sequelae and hemorrhage codes must match the intake preview
+  // (all I6* → Neuro) rather than falling through the "I" chapter to Cardiac.
+  assert.equal(lookupClinicalGroup("I69.351", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
+  assert.equal(lookupClinicalGroup("I61.9", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
+  assert.equal(lookupClinicalGroup("I60.0", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Neuro_Rehab");
+  // Non-cerebrovascular I codes are unchanged.
+  assert.equal(lookupClinicalGroup("I10", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Cardiac_Circulatory");
+  assert.equal(lookupClinicalGroup("I25.10", DEFAULT_ICD10_CLINICAL_GROUPS), "MMTA_Cardiac_Circulatory");
+});
+
 test("formatClinicalGroup humanizes group keys", () => {
   assert.equal(formatClinicalGroup("MMTA_Cardiac_Circulatory"), "Cardiac Circulatory");
   assert.equal(formatClinicalGroup(null), "Unmapped");
