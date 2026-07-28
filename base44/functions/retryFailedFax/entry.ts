@@ -101,7 +101,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const maxRetries = 3;
+    // Honor the admin-configured retry budget (FaxRetryConfig.max_retries) so a
+    // manual retry uses the same limit as the auto-retry cron, instead of a
+    // separate hardcoded value. Falls back to 3 when no config row exists.
+    const retryCfgRows = await base44.asServiceRole.entities.FaxRetryConfig
+      .list('-created_date', 1).catch(() => []);
+    const cfgMax = Number(retryCfgRows?.[0]?.max_retries);
+    const maxRetries = Number.isFinite(cfgMax) && cfgMax >= 0 ? cfgMax : 3;
 
     // Check retry limit
     if (originalFax.retry_count >= maxRetries) {
