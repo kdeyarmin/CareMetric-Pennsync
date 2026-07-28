@@ -70,15 +70,27 @@ export default function FaxReceivingToggle() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+        <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 rounded-lg">
           <div className="flex-1">
-            <Label className="text-base font-semibold">
-              {isEnabled ? "In-App Fax Receiving Active" : "In-App Fax Receiving Off"}
-            </Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="text-base font-semibold">
+                Receive incoming faxes inside the app
+              </Label>
+              <span
+                className={
+                  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold " +
+                  (isEnabled
+                    ? "bg-green-100 text-green-700"
+                    : "bg-slate-200 text-slate-700")
+                }
+              >
+                {isEnabled ? "ON" : "OFF (recommended)"}
+              </span>
+            </div>
             <p className="text-sm text-slate-600 mt-1">
               {isEnabled
-                ? "Incoming faxes on the outbound line are ingested into the app (OCR + referral matching)"
-                : "The app doesn't handle incoming faxes — replies go straight to the office fax machine"}
+                ? "Turned ON: incoming faxes are pulled into the app, scanned (OCR), and matched to referrals automatically."
+                : "Turned OFF: incoming faxes are NOT handled by the app. They go straight to your physical office fax machine, just like before."}
             </p>
           </div>
           <Switch
@@ -88,16 +100,14 @@ export default function FaxReceivingToggle() {
           />
         </div>
 
-        {!isEnabled && (
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-800">
-              <strong>Off is the normal setting:</strong> outbound faxes are presented under the office
-              fax number, so replies dial the office machine directly. Any stray fax dialed to the
-              outbound line is passed straight through to the office fax. Scheduled and outbound faxes
-              work normally.
-            </p>
-          </div>
-        )}
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-800">
+            <strong>Not sure? Leave this OFF.</strong> Off is the normal setting for most agencies:
+            incoming faxes and replies go to your office fax machine as usual, and sending faxes
+            (including scheduled faxes) keeps working exactly the same. Only turn it ON if you want
+            the app to capture and read incoming faxes for you.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
