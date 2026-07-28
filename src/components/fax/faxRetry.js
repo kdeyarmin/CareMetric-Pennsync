@@ -1,6 +1,6 @@
 /**
- * faxRetry — retry policy for outbound faxes (Twilio Programmable Fax), the fax
- * analogue of messaging/smsRedrive. The Twilio Fax API has no idempotency key,
+ * faxRetry — retry policy for outbound faxes (Telnyx Programmable Fax), the fax
+ * analogue of messaging/smsRedrive. The Telnyx Fax API has no idempotency key,
  * so the cron protects against double-sends with a claim token; this module is
  * the pure, unit-tested source of truth for the *decisions*:
  *
@@ -15,7 +15,7 @@
  */
 
 // Failure reasons/codes that won't succeed on retry — give up immediately
-// instead of burning the whole backoff schedule. Validate against your Twilio
+// instead of burning the whole backoff schedule. Validate against your Telnyx
 // account's fax error codes; matched against "code + message".
 export const PERMANENT_FAILURE_PATTERNS = [
   /invalid/i, /not a fax/i, /no fax machine/i, /incompatible/i, /unsupported/i,

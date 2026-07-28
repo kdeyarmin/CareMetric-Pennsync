@@ -1,5 +1,5 @@
 /**
- * dutyUtils — shared on/off-duty logic for the Twilio phone integration.
+ * dutyUtils — shared on/off-duty logic for the Telnyx phone integration.
  *
  * A nurse is "off duty" either because they flipped the manual switch, or
  * because a scheduled time-off window (e.g. the weekend) is active right now.

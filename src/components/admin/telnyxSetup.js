@@ -1,5 +1,5 @@
 /**
- * twilioSetup — pure helpers for the admin "Telnyx Setup & Health" panel.
+ * telnyxSetup — pure helpers for the admin "Telnyx Setup & Health" panel.
  *
  * This is the unit-tested source of truth for the *configuration readiness*
  * checklist an admin sees in Admin → Settings → Telnyx Phone. It evaluates only
@@ -206,7 +206,7 @@ export function buildIntegrationSteps({ secretStatus, agencySettings, provisioni
     id: "agency_config",
     title: "Configure agency phone settings",
     kind: "required",
-    anchor: "twilio-settings",
+    anchor: "telnyx-settings",
     status: configSummary.fail > 0 ? "attention" : "done",
     detail:
       configSummary.fail > 0
@@ -233,7 +233,7 @@ export function buildIntegrationSteps({ secretStatus, agencySettings, provisioni
     id: "provisioning",
     title: "Provision a nurse work number",
     kind: "required",
-    anchor: "twilio-nurses",
+    anchor: "telnyx-nurses",
     status: provStatus,
     detail: provDetail,
   });
@@ -243,7 +243,7 @@ export function buildIntegrationSteps({ secretStatus, agencySettings, provisioni
     id: "webhooks",
     title: "Point your Telnyx webhooks at this app",
     kind: "manual",
-    anchor: "twilio-webhooks",
+    anchor: "telnyx-webhooks",
     status: "todo",
     detail:
       "Set your Telnyx messaging/fax profile and voice connection webhook URLs to the matching function. This can't be auto-detected — confirm it in the Telnyx Portal.",
@@ -258,7 +258,7 @@ export function buildIntegrationSteps({ secretStatus, agencySettings, provisioni
     id: "live_test",
     title: "Verify the live connection",
     kind: "verify",
-    anchor: "twilio-health",
+    anchor: "telnyx-health",
     status: !liveSummary ? "todo" : liveSummary.fail > 0 ? "attention" : "done",
     detail: !liveSummary
       ? "Run the live test to confirm your Telnyx API key actually authenticates."

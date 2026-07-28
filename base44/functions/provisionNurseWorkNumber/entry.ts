@@ -1,10 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
- * provisionNurseWorkNumber — admin-only. Assigns a nurse their dedicated Twilio
+ * provisionNurseWorkNumber — admin-only. Assigns a nurse their dedicated Telnyx
  * work number and stores their PRIVATE personal cell (the masked bridge target).
  *
- * The Twilio number must already be purchased in your Twilio account with its
+ * The Telnyx number must already be purchased in your Telnyx account with its
  * SMS/Voice webhooks pointed at this app's functions. This call records the
  * mapping in PennSync.
  */

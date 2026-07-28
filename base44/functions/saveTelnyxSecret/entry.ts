@@ -6,7 +6,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * IntegrationSecret entity (provider 'telnyx'), so the Telnyx integration can be
  * configured entirely in-app without touching dashboard environment variables.
  *
- * Mirrors saveTwilioSecret: every value is written via the service role and is
+ * Every value is written via the service role and is
  * NEVER returned to the client — the response only carries presence + the last 4
  * characters so the UI can confirm what is set.
  *

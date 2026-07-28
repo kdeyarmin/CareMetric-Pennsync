@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       // overlapping runs (or this processor + processScheduledFaxesByPriority)
       // both read 'pending' and both flip it, double-sending the fax. The
       // claim-token + re-read makes the loser detect it lost and skip. (Mirrors
-      // dispatchScheduledSms — Twilio fax has no client idempotency key.)
+      // dispatchScheduledSms — Telnyx fax has no client idempotency key.)
       const runId = crypto.randomUUID();
       try {
         await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {

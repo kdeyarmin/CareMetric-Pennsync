@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
 /**
  * sendFax — outbound fax via the Telnyx Programmable Fax API. Mirrors
- * sendFax (the Twilio path): idempotent on a recent identical send, logs to the
+ * sendFax (the Telnyx path): idempotent on a recent identical send, logs to the
  * same FaxLog entity (the existing telnyx_fax_id field stores the provider fax
  * id), and never echoes PHI-bearing provider detail to the client.
  *

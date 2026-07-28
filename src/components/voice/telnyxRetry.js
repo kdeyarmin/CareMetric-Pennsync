@@ -1,9 +1,9 @@
 /**
- * twilioRetry — retry/backoff policy for outbound Twilio API calls.
+ * telnyxRetry — retry/backoff policy for outbound Telnyx API calls.
  *
- * Every outbound Twilio path (sendSms, startMaskedCall, dispatchScheduledSms,
- * sendTestSms) makes a single bounded fetch to Twilio. A transient hiccup — a
- * 429 rate-limit, a 502/503/504 from a Twilio edge, or a dropped connection —
+ * Every outbound Telnyx path (sendSms, startMaskedCall, dispatchScheduledSms,
+ * sendTestSms) makes a single bounded fetch to Telnyx. A transient hiccup — a
+ * 429 rate-limit, a 502/503/504 from a Telnyx edge, or a dropped connection —
  * would otherwise fail the whole send and strand the patient, when a second
  * attempt a fraction of a second later would have gone through. This module is
  * the unit-tested source of truth for *whether* to retry and *how long* to wait
@@ -11,12 +11,12 @@
  * this policy (the Base44 deploy model forbids cross-file imports).
  *
  * Why retries are safe (no double-send): an explicit retryable HTTP status
- * (429/5xx) means Twilio told us the request failed, so re-sending cannot
+ * (429/5xx) means Telnyx told us the request failed, so re-sending cannot
  * deliver twice. A *thrown* network error is ambiguous (the request may have
- * landed). Because Twilio's REST API has no client idempotency key, the
+ * landed). Because Telnyx's REST API has no client idempotency key, the
  * non-idempotent send paths set `retryNetworkErrors: false` so an ambiguous
  * transport failure is surfaced rather than blindly re-sent — a later redrive
- * pass handles anything Twilio actually reported as failed.
+ * pass handles anything Telnyx actually reported as failed.
  *
  * What is NOT retried: permanent client errors (400/401/403/404/422). Those
  * mean the request itself is wrong (bad number, bad credentials, opted-out) and

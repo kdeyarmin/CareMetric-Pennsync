@@ -108,8 +108,8 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     // Authorization: privileged status-poll job (service-role FaxLog reads/writes
-    // + Twilio calls, no end user). Opt-in lockdown like checkExpiredInvitations
-    // (see §4); mirrors the admin-gated syncTwilioFaxStatuses.
+    // + Telnyx calls, no end user). Opt-in lockdown like checkExpiredInvitations
+    // (see §4); mirrors the admin-gated syncFaxStatuses.
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
