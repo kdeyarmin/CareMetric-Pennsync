@@ -45,6 +45,7 @@ export default function NumberPoolPanel() {
   const [newNumber, setNewNumber] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [pickedUser, setPickedUser] = useState({}); // pool id -> email
+  const [pickedCell, setPickedCell] = useState({}); // pool id -> personal cell (bridge target)
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["phone-pool"] });
@@ -58,8 +59,19 @@ export default function NumberPoolPanel() {
     onError: (err) => toast.error(err?.message || "Failed to add number"),
   });
   const assign = useMutation({
-    mutationFn: ({ id, email }) => call({ action: "assign", id, target_user_email: email }),
-    onSuccess: () => { invalidate(); toast.success("Number assigned"); },
+    mutationFn: ({ id, email, cell }) => call({
+      action: "assign",
+      id,
+      target_user_email: email,
+      // Set the private bridge cell at the same time so masked calling works
+      // immediately; omitted when left blank (keeps the nurse's existing cell).
+      ...(cell && cell.trim() ? { personal_cell_e164: cell.trim() } : {}),
+    }),
+    onSuccess: (_res, vars) => {
+      invalidate();
+      setPickedCell((p) => ({ ...p, [vars.id]: "" }));
+      toast.success("Number assigned");
+    },
     onError: (err) => toast.error(err?.message || "Failed to assign number"),
   });
   const release = useMutation({
@@ -113,6 +125,10 @@ export default function NumberPoolPanel() {
           ? "Fax number purchased — wired to your fax connection and set as the outbound fax line"
           : "Number purchased and added to the pool",
       );
+      // Surface any "bought but not yet routable" warnings from the backend so
+      // the admin knows to finish wiring (missing Messaging Profile / Voice id).
+      const warnings = (res?.data || res)?.warnings || [];
+      warnings.forEach((w) => toast.warning(w));
     },
     onError: (err) => toast.error(err?.message || "Purchase failed"),
   });
@@ -122,6 +138,10 @@ export default function NumberPoolPanel() {
   const userName = (email) => {
     const u = users.find((x) => x.email === email);
     return u?.full_name || email;
+  };
+  const userCell = (email) => {
+    const u = users.find((x) => x.email === email);
+    return u?.personal_cell_e164 || "";
   };
   const newNumberValid = !newNumber || !!normalizeE164(newNumber);
   const busy = add.isPending || assign.isPending || release.isPending || remove.isPending;
@@ -139,8 +159,9 @@ export default function NumberPoolPanel() {
           </Badge>
         </CardTitle>
         <CardDescription>
-          Add the Telnyx numbers you've purchased here, then assign one to a nurse with a single dropdown — no retyping.
-          Releasing a number frees it for someone else and clears it from that nurse.
+          Add the Telnyx numbers you've purchased here, then assign one to a nurse with a single dropdown — and enter
+          their private cell in the same step so masked calling works right away. Releasing a number frees it for
+          someone else and clears it from that nurse.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -272,6 +293,11 @@ export default function NumberPoolPanel() {
                         <span className="text-slate-500">Available</span>
                       )}
                     </p>
+                    {assigned && !userCell(n.assigned_to_email) && (
+                      <p className="text-xs text-amber-700 inline-flex items-center gap-1 mt-0.5">
+                        <UserPlus className="w-3 h-3" /> No bridge cell on file — masked calls won&apos;t connect. Set it in Nurse Work Numbers.
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {assigned ? (
@@ -288,10 +314,19 @@ export default function NumberPoolPanel() {
                             ))}
                           </SelectContent>
                         </Select>
+                        {/* Private bridge cell captured at assign time so masked
+                            calling works immediately. Pre-filled when the chosen
+                            nurse already has one on file. */}
+                        <Input
+                          value={pickedCell[n.id] ?? (pickedUser[n.id] ? (userCell(pickedUser[n.id]) || "") : "")}
+                          onChange={(e) => setPickedCell((p) => ({ ...p, [n.id]: e.target.value }))}
+                          placeholder="Nurse cell (masked bridge)"
+                          className="h-9 w-44"
+                        />
                         <Button
                           size="sm"
                           disabled={busy || !pickedUser[n.id]}
-                          onClick={() => assign.mutate({ id: n.id, email: pickedUser[n.id] })}
+                          onClick={() => assign.mutate({ id: n.id, email: pickedUser[n.id], cell: pickedCell[n.id] ?? userCell(pickedUser[n.id]) })}
                           className="bg-indigo-600 hover:bg-indigo-700"
                         >
                           <UserPlus className="w-3.5 h-3.5 mr-1.5" /> Assign
