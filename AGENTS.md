@@ -2,6 +2,13 @@
 
 Instructions for Codex cloud and other AI coding agents working in this repository.
 
+## Cursor Cloud specific instructions
+
+- The VM's default `node` (`/exec-daemon/node`) is v22 and takes PATH precedence, but this repo requires Node `>=24.18.0`. Node 24.18.0 is installed via nvm and prepended to `PATH` in `~/.bashrc`, so a normal interactive shell already resolves the correct node. If a command reports the wrong version, run `export PATH="$HOME/.nvm/versions/node/v24.18.0/bin:$PATH"` (or `nvm use 24.18.0`) first. The startup update script also runs `nvm use 24.18.0` before `pnpm install`.
+- Frontend-only SPA: `pnpm run dev` serves Vite on `http://localhost:5173`. There is no local backend; `[base44] Proxy not enabled` is expected/harmless.
+- No Base44 credentials are set in this environment, so authenticated routes redirect to `/login` and render blank. To verify the running app in a browser, use the public capability-token pages: `/signer` (renders an "Access Denied" card) and `/join` (renders an "Invalid Visit Link" card). Hitting `/signer?token=...` triggers the real client-side validation call and returns a 404 error card without a valid backend — this is expected, not a crash.
+- Standard commands (install/dev/build/lint/test/typecheck) are in `package.json` and the table below; do not duplicate them elsewhere.
+
 ## Codex cloud environment
 
 - Configure this repository in Codex cloud settings with Node 24.18.0 or newer and pnpm 11.9.0.
