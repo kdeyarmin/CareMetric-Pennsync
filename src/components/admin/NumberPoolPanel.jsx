@@ -309,7 +309,15 @@ export default function NumberPoolPanel() {
                       </Button>
                     ) : (
                       <>
-                        <Select value={pickedUser[n.id] || ""} onValueChange={(v) => setPickedUser((p) => ({ ...p, [n.id]: v }))}>
+                        <Select
+                          value={pickedUser[n.id] || ""}
+                          onValueChange={(v) => {
+                            setPickedUser((p) => ({ ...p, [n.id]: v }));
+                            // Reset any typed bridge cell so the new nurse's stored
+                            // cell is pre-filled rather than the previous entry.
+                            setPickedCell((p) => { const next = { ...p }; delete next[n.id]; return next; });
+                          }}
+                        >
                           <SelectTrigger className="h-9 w-48"><SelectValue placeholder="Assign to nurse…" /></SelectTrigger>
                           <SelectContent>
                             {users.map((u) => (

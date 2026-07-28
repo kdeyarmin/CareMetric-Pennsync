@@ -30,7 +30,18 @@ export const AuthProvider = ({ children }) => {
       if (!silent) setIsLoadingAuth(false);
     } catch (error) {
       console.error('User auth check failed:', error);
-      if (silent) return; // keep the current session/UI on a transient refresh error
+      if (silent) {
+        // 401/403 means the token has expired or been revoked — the session is
+        // genuinely invalid, not just transiently unreachable, so propagate the
+        // auth error even in silent mode. Other errors (network, 5xx) are
+        // transient; leave the existing session intact.
+        if (error.status === 401 || error.status === 403) {
+          setUser(null);
+          setIsAuthenticated(false);
+          setAuthError({ type: 'auth_required', message: 'Authentication required' });
+        }
+        return;
+      }
       setIsLoadingAuth(false);
       setIsAuthenticated(false);
 
