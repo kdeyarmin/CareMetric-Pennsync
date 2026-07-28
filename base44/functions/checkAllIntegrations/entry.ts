@@ -144,6 +144,21 @@ Deno.serve(async (req) => {
       detail: notifyreKey ? 'NOTIFYRE_API_KEY is set.' : 'NOTIFYRE_API_KEY is not set (optional fax fallback).',
     });
 
+    // ---- Twilio (legacy SMS / voice) ----
+    const twilioSid = env('TWILIO_ACCOUNT_SID');
+    const twilioToken = env('TWILIO_AUTH_TOKEN');
+    if (twilioSid && twilioToken) {
+      const r = await probe(
+        `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(twilioSid)}.json`,
+        { headers: { Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}` } },
+        'Authenticated with Twilio.',
+        'Twilio',
+      );
+      integrations.push({ id: 'twilio', label: 'Twilio (SMS / voice)', category: 'Telephony', configured: true, editable_in_app: false, ...r });
+    } else {
+      integrations.push({ id: 'twilio', label: 'Twilio (SMS / voice)', category: 'Telephony', configured: false, editable_in_app: false, status: 'warn', detail: 'Twilio credentials are not fully set (optional — Telnyx is the primary provider).' });
+    }
+
     // ---- Telnyx (SMS / voice / fax) — delegate to the dedicated live test ----
     try {
       const res = await base44.functions.invoke('testTelnyxConnection', {});
