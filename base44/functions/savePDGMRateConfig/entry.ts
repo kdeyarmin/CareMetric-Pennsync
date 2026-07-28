@@ -5,7 +5,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  *
  * The PDGMRateConfig entity is service-role-write only (see its RLS), so it can't
  * be written directly from the browser. This function is the gated server-side
- * writer, mirroring how saveTwilioSecret guards the IntegrationSecret entity.
+ * writer, mirroring how saveTelnyxSecret guards the IntegrationSecret entity.
  *
  * Authorization mirrors src/lib/superAdmin.js `isAdminLike` (role admin OR an
  * agency_admin / super_admin account_type OR the designated owner email). A plain

@@ -2,7 +2,7 @@
  * telnyxUtils — pure, dependency-free helpers shared by the Telnyx integration
  * (text / voice / video / fax). This is the unit-tested source of truth for the
  * value-mapping logic that the backend Deno functions inline (single-file deploy
- * model), mirroring how the Twilio helpers in src/components/voice/* are the
+ * model), mirroring how the Telnyx helpers in src/components/voice/* are the
  * source of truth for their inlined copies.
  *
  * Nothing here touches the network or any framework — it can be exercised in
@@ -14,7 +14,7 @@
  * Normalize a free-form phone number to E.164. US-centric (assumes +1 for bare
  * 10/11-digit numbers) but accepts any already-+-prefixed international number of
  * a plausible length. Returns null when it can't produce a valid E.164 number.
- * Mirrors normalizeE164() used across the Twilio handlers so a number stored by
+ * Mirrors normalizeE164() used across the Telnyx handlers so a number stored by
  * one provider resolves identically under the other.
  */
 export function normalizeE164(raw) {
@@ -31,8 +31,8 @@ export function normalizeE164(raw) {
 /**
  * Stable, order-independent conversation key for a pair of numbers, so an
  * inbound and outbound message between the same two parties share one thread.
- * Mirrors getThreadId() in sendSms so SMS sent through Telnyx threads with SMS
- * sent through Twilio for the same patient.
+ * Mirrors getThreadId() in sendSms so an outbound message and the inbound reply
+ * to it land in the same thread for the same patient.
  */
 export function getThreadId(a, b) {
   const na = normalizeE164(a) || a;
@@ -45,8 +45,8 @@ export function getThreadId(a, b) {
  * vocabulary ('queued' | 'sent' | 'delivered' | 'failed'). Telnyx reports a
  * per-recipient status inside `data.payload.to[].status` on `message.*` webhooks.
  * Unknown statuses return null so callers can ack-without-write (never regress a
- * terminal row to a non-terminal state). Matches the conservative mapping the
- * Twilio SMS path uses.
+ * terminal row to a non-terminal state). handleTelnyxStatusWebhook inlines an
+ * identical copy, drift-guarded by base44/functions/telnyxInlineParity.test.js.
  */
 export function mapMessageStatus(status) {
   switch (String(status || "").toLowerCase()) {
@@ -72,8 +72,10 @@ export function mapMessageStatus(status) {
  * Map a Telnyx Programmable Fax status to the internal FaxLog status vocabulary
  * ('queued' | 'sending' | 'sent' | 'delivered' | 'failed'). Telnyx fax webhooks
  * carry `data.payload.status` plus an event type like `fax.delivered`. Unknown
- * statuses return null (ack without write). Mirrors mapTwilioStatus so both fax
- * webhook handlers compute the same terminal/non-terminal transitions.
+ * statuses return null (ack without write) — the same ack-without-write contract
+ * mapMessageStatus uses for SMS. handleTelnyxStatusWebhook inlines an identical
+ * copy of this function (single-file Deno deploy); the two are drift-guarded by
+ * base44/functions/telnyxInlineParity.test.js.
  */
 export function mapFaxStatus(status) {
   switch (String(status || "").toLowerCase()) {

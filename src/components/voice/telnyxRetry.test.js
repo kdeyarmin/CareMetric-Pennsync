@@ -8,7 +8,7 @@ import {
   backoffDelayMs,
   nextRetryDelayMs,
   sendWithRetry,
-} from "./twilioRetry.js";
+} from "./telnyxRetry.js";
 
 test("isRetryableStatus flags transient gateway/rate-limit statuses", () => {
   for (const s of [408, 425, 429, 500, 502, 503, 504]) {
@@ -217,11 +217,11 @@ test("sendWithRetry with retryNetworkErrors=false never retries a thrown error",
       sendWithRetry(
         async () => {
           calls++;
-          throw new Error("network error reaching Twilio");
+          throw new Error("network error reaching Telnyx");
         },
         { sleep, retryNetworkErrors: false, maxAttempts: 3 },
       ),
-    /network error reaching Twilio/,
+    /network error reaching Telnyx/,
   );
   assert.equal(calls, 1); // only one attempt — never retried
   assert.deepEqual(delays, []);
@@ -253,11 +253,11 @@ test("sendWithRetry re-throws a transient error once attempts are exhausted", as
       sendWithRetry(
         async () => {
           calls++;
-          throw new Error("network error reaching Twilio");
+          throw new Error("network error reaching Telnyx");
         },
         { sleep, jitter: false, baseMs: 300, maxAttempts: 2 },
       ),
-    /network error reaching Twilio/,
+    /network error reaching Telnyx/,
   );
   assert.equal(calls, 2);
   assert.deepEqual(delays, [300]); // slept once between the two tries

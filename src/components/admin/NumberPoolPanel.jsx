@@ -127,7 +127,7 @@ export default function NumberPoolPanel() {
   const busy = add.isPending || assign.isPending || release.isPending || remove.isPending;
 
   return (
-    <Card id="twilio-pool" className="scroll-mt-24">
+    <Card id="telnyx-pool" className="scroll-mt-24">
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-2">

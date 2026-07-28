@@ -1,5 +1,5 @@
 /**
- * phoneUtils — shared phone-number helpers for the Twilio phone integration.
+ * phoneUtils — shared phone-number helpers for the Telnyx phone integration.
  *
  * These mirror the inline helpers in the Deno backend functions (which must
  * stay single-file for the Base44 deploy model). Keeping the algorithm here —

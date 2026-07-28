@@ -4,7 +4,7 @@
 // the two diverge, the editor's "defaults" and the estimate the engine produces
 // disagree — a silent billing-correctness bug. This test parses the backend
 // constants and asserts they equal the frontend copy (same convention as
-// twilioInlineParity / faxRetryInlineParity).
+// telnyxInlineParity / faxRetryInlineParity).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

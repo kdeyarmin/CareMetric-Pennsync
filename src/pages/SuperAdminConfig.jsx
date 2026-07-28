@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -16,6 +16,8 @@ import IntegrationsHealthPanel from "@/components/admin/IntegrationsHealthPanel"
 import PhoneProvisioningPanel from "@/components/admin/PhoneProvisioningPanel";
 import A2PCompliancePanel from "@/components/admin/A2PCompliancePanel";
 import ConsentLedgerPanel from "@/components/admin/ConsentLedgerPanel";
+import SetupStage from "@/components/admin/SetupStage";
+import { SETUP_STAGES, stageStatus, stageIdForAnchor, defaultExpandedStageIds } from "@/components/admin/setupStages";
 import { isSuperAdmin, isSuperAdminEmail, SUPER_ADMIN_EMAIL } from "@/lib/superAdmin";
 
 /**
@@ -32,6 +34,54 @@ import { isSuperAdmin, isSuperAdminEmail, SUPER_ADMIN_EMAIL } from "@/lib/superA
  */
 export default function SuperAdminConfig() {
   const queryClient = useQueryClient();
+
+  // Integration steps published by the progress card, and which stages are open.
+  const [steps, setSteps] = useState([]);
+  const [stepsMeta, setStepsMeta] = useState({ ready: false, secretStatus: null });
+  const [expanded, setExpanded] = useState(null); // null = not yet auto-decided
+
+  const handleStepsChange = useCallback((nextSteps, meta) => {
+    setSteps(nextSteps);
+    setStepsMeta({ ready: Boolean(meta?.ready), secretStatus: meta?.secretStatus ?? null });
+  }, []);
+
+  // Open the unfinished stages once — but only once the underlying queries have
+  // SETTLED. The checklist is non-empty from the first render, derived from
+  // still-loading data where every step looks unfinished; freezing on that would
+  // open every stage on an already-configured install and never correct itself.
+  // Still one-shot after that: re-deriving on every change would slam a stage
+  // shut under the admin the moment their edit satisfied its last check.
+  useEffect(() => {
+    if (expanded === null && stepsMeta.ready && steps.length > 0) {
+      setExpanded(defaultExpandedStageIds(steps, stepsMeta.secretStatus));
+    }
+  }, [steps, stepsMeta, expanded]);
+
+  const openStages = expanded ?? SETUP_STAGES.map((s) => s.id);
+
+  const toggleStage = useCallback((id) => {
+    setExpanded((prev) => {
+      const current = prev ?? SETUP_STAGES.map((s) => s.id);
+      return current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+    });
+  }, []);
+
+  // A "Go" button in the checklist targets an anchor that may sit inside a
+  // collapsed stage. Expand the owner first, then scroll on the next frame once
+  // the panel is visible and has a layout position.
+  const navigateToAnchor = useCallback((anchor) => {
+    const stageId = stageIdForAnchor(anchor);
+    if (stageId) {
+      setExpanded((prev) => {
+        const current = prev ?? SETUP_STAGES.map((s) => s.id);
+        return current.includes(stageId) ? current : [...current, stageId];
+      });
+    }
+    requestAnimationFrame(() => {
+      const el = typeof document === "undefined" ? null : document.getElementById(anchor);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
 
   const { data: currentUser, isLoading } = useQuery({
     queryKey: ["currentUser"],
@@ -140,23 +190,40 @@ export default function SuperAdminConfig() {
         <IntegrationsHealthPanel />
 
         {/* Guided setup command center — progress + "what's next", links below */}
-        <TelnyxSetupProgress />
+        <TelnyxSetupProgress onStepsChange={handleStepsChange} onNavigate={navigateToAnchor} />
 
-        {/* Telnyx API key */}
-        <div id="telnyx-secret" className="scroll-mt-24">
-          <TelnyxSecretPanel />
-        </div>
-
-        {/* Telnyx provisioning + health + agency settings */}
-        <PhoneProvisioningPanel />
-
-        {/* A2P 10DLC registration status + SMS consent ledger (compliance) */}
-        <div id="a2p-compliance" className="scroll-mt-24">
-          <A2PCompliancePanel />
-        </div>
-        <div id="consent-ledger" className="scroll-mt-24">
-          <ConsentLedgerPanel />
-        </div>
+        {/* The panels below are grouped into collapsible stages so a finished
+            setup collapses to a short page instead of stacking every panel at
+            full height. Status per stage is derived from the same steps the
+            checklist above computes (see setupStages.js). */}
+        {SETUP_STAGES.map((stage, i) => (
+          <SetupStage
+            key={stage.id}
+            index={i + 1}
+            title={stage.title}
+            description={stage.description}
+            status={stageStatus(stage, steps, stepsMeta.secretStatus)}
+            expanded={openStages.includes(stage.id)}
+            onToggle={() => toggleStage(stage.id)}
+          >
+            {stage.id === "connect" && (
+              <div id="telnyx-secret" className="scroll-mt-24">
+                <TelnyxSecretPanel />
+              </div>
+            )}
+            {stage.id === "numbers" && <PhoneProvisioningPanel />}
+            {stage.id === "compliance" && (
+              <>
+                <div id="a2p-compliance" className="scroll-mt-24">
+                  <A2PCompliancePanel />
+                </div>
+                <div id="consent-ledger" className="scroll-mt-24">
+                  <ConsentLedgerPanel />
+                </div>
+              </>
+            )}
+          </SetupStage>
+        ))}
       </div>
     </PageContainer>
   );

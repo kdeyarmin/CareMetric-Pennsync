@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { maskPhone, formatPhoneDisplay, normalizeE164 } from "@/components/voice/phoneUtils";
 import {
   evaluateAgencyConfig, summarize, WEBHOOK_FUNCTIONS, functionUrlBase,
-} from "@/components/admin/twilioSetup";
+} from "@/components/admin/telnyxSetup";
 import { isAdminLike } from "@/lib/superAdmin";
 import CallingHoursPanel from "@/components/admin/CallingHoursPanel";
 import NumberPoolPanel from "@/components/admin/NumberPoolPanel";
@@ -242,7 +242,7 @@ export default function PhoneProvisioningPanel() {
   return (
     <div className="space-y-6">
       {/* Setup & Health — readiness checklist + live connection test */}
-      <Card id="twilio-health" className="scroll-mt-24">
+      <Card id="telnyx-health" className="scroll-mt-24">
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
@@ -343,8 +343,8 @@ export default function PhoneProvisioningPanel() {
         </CardContent>
       </Card>
 
-      {/* Webhook endpoints to register in Twilio */}
-      <Card id="twilio-webhooks" className="scroll-mt-24">
+      {/* Webhook endpoints to register in Telnyx */}
+      <Card id="telnyx-webhooks" className="scroll-mt-24">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Webhook className="w-5 h-5 text-indigo-600" />
@@ -390,7 +390,7 @@ export default function PhoneProvisioningPanel() {
         </CardContent>
       </Card>
 
-      <Card id="twilio-settings" className="scroll-mt-24">
+      <Card id="telnyx-settings" className="scroll-mt-24">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Phone className="w-5 h-5 text-indigo-600" />
@@ -625,7 +625,7 @@ export default function PhoneProvisioningPanel() {
       {/* Easy provisioning: a pool of numbers assignable in one click */}
       <NumberPoolPanel />
 
-      <Card id="twilio-nurses" className="scroll-mt-24">
+      <Card id="telnyx-nurses" className="scroll-mt-24">
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
             <span className="flex items-center gap-2">

@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { KeyRound, Save, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ShieldCheck, Info } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { KeyRound, Save, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ShieldCheck, Info, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 /**
@@ -28,6 +29,14 @@ export default function TelnyxSecretPanel() {
   const [messagingProfileId, setMessagingProfileId] = useState("");
   const [voiceConnectionId, setVoiceConnectionId] = useState("");
   const [faxConnectionId, setFaxConnectionId] = useState("");
+  // Resource lists fetched from the admin's own Telnyx account, so the three
+  // connection ids become a pick-from-a-list instead of a copy-paste from the
+  // Telnyx portal. Null until discovery has run.
+  const [discovered, setDiscovered] = useState(null);
+  // Per-field override of picker-vs-text-input, keyed by field. Undefined means
+  // "decide automatically"; an explicit true/false is the admin's own choice and
+  // always wins. See renderResourceField for why the escape hatch has to exist.
+  const [manualEntry, setManualEntry] = useState({});
 
   const { data: status, isLoading } = useQuery({
     queryKey: ["telnyx-secret-status"],
@@ -52,6 +61,119 @@ export default function TelnyxSecretPanel() {
     },
     onError: (err) => toast.error(err?.message || "Failed to save the Telnyx API key"),
   });
+
+  const discover = useMutation({
+    mutationFn: async () => {
+      const res = await base44.functions.invoke("discoverTelnyxResources", {});
+      return res?.data || res;
+    },
+    onSuccess: (data) => {
+      const resources = data?.resources || {};
+      setDiscovered(resources);
+      setShowAdvanced(true);
+      // Re-running discovery is an explicit "look again", so let each field
+      // re-decide picker-vs-manual from the new result. Otherwise a truncated or
+      // failed first run would pin fields to manual entry forever, even once a
+      // later run returns the complete list.
+      setManualEntry({});
+
+      // Auto-select the obvious case: exactly one of a resource type and nothing
+      // configured yet. With several, the admin picks — we never silently
+      // overwrite a value they already chose.
+      const autoFill = (resource, current, configuredId, setter) => {
+        const items = resource?.items || [];
+        if (items.length === 1 && !current && !configuredId) setter(items[0].id);
+      };
+      const current = data?.current || {};
+      autoFill(resources.messaging_profiles, messagingProfileId, current.messaging_profile_id, setMessagingProfileId);
+      autoFill(resources.voice_connections, voiceConnectionId, current.voice_connection_id, setVoiceConnectionId);
+      autoFill(resources.fax_connections, faxConnectionId, current.fax_connection_id, setFaxConnectionId);
+
+      const failed = Object.values(resources).filter((r) => r?.status === "fail");
+      if (failed.length) {
+        toast.warning(`Found what we could — ${failed[0].detail}`);
+      } else {
+        const total = Object.values(resources).reduce((n, r) => n + (r?.items?.length || 0), 0);
+        toast.success(total ? `Found ${total} Telnyx resource${total === 1 ? "" : "s"}` : "No resources found in this Telnyx account");
+      }
+    },
+    onError: (err) => toast.error(err?.message || "Could not reach Telnyx to discover resources"),
+  });
+
+  /**
+   * A discovered resource renders as a picker; anything else (not yet
+   * discovered, or the lookup failed) keeps the original free-text input.
+   *
+   * The picker must never be the ONLY way to set a value. A list can be
+   * incomplete — discovery pages to a bound and reports `truncated`, an API key
+   * can be scoped to a subset of the account, and a value configured earlier (or
+   * from another account) may simply not appear. Swapping the input for a picker
+   * in those cases would leave the id neither selectable NOR enterable, which is
+   * strictly worse than the copy-paste field this was meant to replace. So:
+   * every picker carries a manual-entry toggle, and a value that isn't in the
+   * list opens in manual mode by default so the admin can see it at all.
+   */
+  const renderResourceField = (fieldKey, label, resource, value, setValue, placeholder) => {
+    const items = resource?.status === "ok" ? resource.items : null;
+    const unlisted = Boolean(value) && Boolean(items) && !items.some((i) => i.id === value);
+    const manual = manualEntry[fieldKey] ?? (unlisted || Boolean(resource?.truncated));
+    const showPicker = Boolean(items?.length) && !manual;
+    const setManual = (next) => setManualEntry((prev) => ({ ...prev, [fieldKey]: next }));
+
+    return (
+      <div>
+        <Label className="text-xs font-medium text-slate-600">{label}</Label>
+        {showPicker ? (
+          <Select value={value || undefined} onValueChange={setValue}>
+            <SelectTrigger className="mt-1">
+              <SelectValue placeholder="Leave unchanged, or pick one" />
+            </SelectTrigger>
+            <SelectContent>
+              {items.map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  {item.name} — {item.id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input
+            type="text"
+            placeholder={placeholder}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoComplete="off"
+            className="mt-1"
+          />
+        )}
+        {resource?.truncated && (
+          <p className="mt-1 text-xs text-amber-700">
+            {resource.detail} This Telnyx account has more than the lookup returns.
+          </p>
+        )}
+        {unlisted && (
+          <p className="mt-1 text-xs text-slate-500">
+            The id currently entered isn&apos;t in the discovered list — keeping it as typed.
+          </p>
+        )}
+        {resource?.status === "fail" && (
+          <p className="mt-1 text-xs text-amber-700">{resource.detail} Enter the id manually.</p>
+        )}
+        {resource?.status === "ok" && !items?.length && (
+          <p className="mt-1 text-xs text-slate-500">None found in this Telnyx account.</p>
+        )}
+        {Boolean(items?.length) && (
+          <button
+            type="button"
+            className="mt-1 text-xs text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
+            onClick={() => setManual(!manual)}
+          >
+            {manual ? "Choose from the discovered list" : "Enter an id manually instead"}
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const configured = status?.configured;
   const sourceLabel = status?.source === "config" ? "in-app config" : null;
@@ -184,39 +306,54 @@ export default function TelnyxSecretPanel() {
                   className="mt-1"
                 />
               </div>
-              <div>
-                <Label className="text-xs font-medium text-slate-600">Messaging profile id</Label>
-                <Input
-                  type="text"
-                  placeholder="Optional — leave blank to keep the current setting"
-                  value={messagingProfileId}
-                  onChange={(e) => setMessagingProfileId(e.target.value)}
-                  autoComplete="off"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs font-medium text-slate-600">Voice (Call Control) connection id</Label>
-                <Input
-                  type="text"
-                  placeholder="Optional — leave blank to keep the current setting"
-                  value={voiceConnectionId}
-                  onChange={(e) => setVoiceConnectionId(e.target.value)}
-                  autoComplete="off"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs font-medium text-slate-600">Fax connection id</Label>
-                <Input
-                  type="text"
-                  placeholder="Optional — leave blank to keep the current setting"
-                  value={faxConnectionId}
-                  onChange={(e) => setFaxConnectionId(e.target.value)}
-                  autoComplete="off"
-                  className="mt-1"
-                />
-              </div>
+              {/* One click replaces three copy-pastes from the Telnyx portal.
+                  Only offered once a key is stored — discovery authenticates
+                  with the saved key, which the browser never sees. */}
+              {configured && (
+                <div className="flex items-center justify-between gap-3 rounded-md border border-indigo-100 bg-indigo-50/60 p-2.5">
+                  <p className="text-xs text-slate-600">
+                    Look these up from your Telnyx account instead of pasting them.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => discover.mutate()}
+                    disabled={discover.isPending}
+                  >
+                    {discover.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <Wand2 className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    {discovered ? "Refresh" : "Find my resources"}
+                  </Button>
+                </div>
+              )}
+              {renderResourceField(
+                "messaging_profile_id",
+                "Messaging profile id",
+                discovered?.messaging_profiles,
+                messagingProfileId,
+                setMessagingProfileId,
+                "Optional — leave blank to keep the current setting",
+              )}
+              {renderResourceField(
+                "voice_connection_id",
+                "Voice (Call Control) connection id",
+                discovered?.voice_connections,
+                voiceConnectionId,
+                setVoiceConnectionId,
+                "Optional — leave blank to keep the current setting",
+              )}
+              {renderResourceField(
+                "fax_connection_id",
+                "Fax connection id",
+                discovered?.fax_connections,
+                faxConnectionId,
+                setFaxConnectionId,
+                "Optional — leave blank to keep the current setting",
+              )}
               <p className="text-xs text-slate-500 flex items-start gap-1">
                 <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                 The webhook public key lets the app verify inbound Telnyx webhook signatures. The

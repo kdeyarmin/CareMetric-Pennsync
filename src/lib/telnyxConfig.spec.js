@@ -9,7 +9,7 @@ const readRepoFile = (filePath) => fs.readFileSync(path.join(repoRoot, filePath)
 describe('Telnyx in-app configuration guardrails', () => {
   it('does not present retired dashboard-env Telnyx sources in admin UI', () => {
     const panel = readRepoFile('src/components/admin/TelnyxSecretPanel.jsx');
-    const setup = readRepoFile('src/components/admin/twilioSetup.js');
+    const setup = readRepoFile('src/components/admin/telnyxSetup.js');
 
     expect(panel).not.toContain('Base44 dashboard env');
     expect(panel).not.toContain('source === "env"');

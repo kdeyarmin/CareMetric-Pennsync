@@ -2,8 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
  * createTelehealthToken — mint a Telnyx Video join token for a telehealth
- * session, using the SAME authorization model as createTelehealthToken (the
- * Twilio Video path):
+ * session. Two authorization paths:
  *
  *  - PATIENT (guest) path: access via possession of the high-entropy, per-session
  *    join token carried in the private invite link (?t=...). Unguessable, scoped
@@ -135,8 +134,9 @@ Deno.serve(async (req) => {
 
     const roomId = await findOrCreateRoom(apiKey, String(room_name));
 
-    // Mint a per-session client token for this room (1 hour TTL, matching the
-    // Twilio path). The token authorizes the bearer to join this room only.
+    // Mint a per-session client token for this room. The token authorizes the
+    // bearer to join this room only, and expires after an hour — long enough for
+    // a full visit, short enough that a captured token is not a standing grant.
     const tokenResp = await fetch(`${TELNYX_API_BASE}/rooms/${roomId}/actions/generate_join_client_token`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },

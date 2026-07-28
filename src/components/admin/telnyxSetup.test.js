@@ -7,7 +7,7 @@ import {
   WEBHOOK_FUNCTIONS,
   buildIntegrationSteps,
   summarizeSteps,
-} from "./twilioSetup.js";
+} from "./telnyxSetup.js";
 
 function byId(checks, id) {
   return checks.find((c) => c.id === id);

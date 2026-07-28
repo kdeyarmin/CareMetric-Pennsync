@@ -3,16 +3,16 @@ import assert from "node:assert/strict";
 import { isTransientFailureReason, shouldRedriveSms } from "./smsRedrive.js";
 
 test("isTransientFailureReason flags retryable reasons", () => {
-  assert.equal(isTransientFailureReason("Timed out after 15000 ms reaching Twilio"), true);
-  assert.equal(isTransientFailureReason("Network error reaching Twilio: fetch failed"), true);
-  assert.equal(isTransientFailureReason("Twilio API error (503)"), true);
+  assert.equal(isTransientFailureReason("Timed out after 15000 ms reaching Telnyx"), true);
+  assert.equal(isTransientFailureReason("Network error reaching Telnyx: fetch failed"), true);
+  assert.equal(isTransientFailureReason("Telnyx API error (503)"), true);
   assert.equal(isTransientFailureReason("rate limit exceeded"), true);
 });
 
 test("isTransientFailureReason refuses permanent reasons", () => {
   assert.equal(isTransientFailureReason("This patient has opted out of text messages (replied STOP)."), false);
   assert.equal(isTransientFailureReason("Invalid destination phone number"), false);
-  assert.equal(isTransientFailureReason("Twilio API error (403)"), false);
+  assert.equal(isTransientFailureReason("Telnyx API error (403)"), false);
   assert.equal(isTransientFailureReason("SMS messaging disabled for the agency"), false);
   // A permanent signal wins even if a transient word is also present.
   assert.equal(isTransientFailureReason("invalid number, connection refused"), false);
@@ -24,7 +24,7 @@ test("isTransientFailureReason refuses permanent reasons", () => {
 const baseRow = {
   status: "failed",
   direction: "outbound",
-  failure_reason: "Timed out reaching Twilio",
+  failure_reason: "Timed out reaching Telnyx",
   retry_count: 0,
   created_date: new Date("2026-06-04T12:00:00Z").toISOString(),
   last_retry_at: null,

@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
- * managePhoneNumberPool — admin-only CRUD + assignment for the Twilio number
+ * managePhoneNumberPool — admin-only CRUD + assignment for the Telnyx number
  * pool (the PhoneNumber entity). One backend entry point keeps the pool inventory
  * and the actual masking mapping (User.work_phone_number) consistent, with the
  * same uniqueness rules as provisionNurseWorkNumber.
