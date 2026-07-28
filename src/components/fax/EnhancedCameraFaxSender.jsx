@@ -32,7 +32,6 @@ export default function EnhancedCameraFaxSender() {
         } 
       });
       setStream(mediaStream);
-      if (videoRef.current) videoRef.current.srcObject = mediaStream;
     } catch (error) {
       toast.error("Failed to access camera: " + error.message);
     }
@@ -44,6 +43,13 @@ export default function EnhancedCameraFaxSender() {
       setStream(null);
     }
   };
+
+  // Bind the stream to the <video> element once both exist. The video is only
+  // mounted after `stream` state is set, so it can't be attached inline in
+  // startCamera (videoRef.current is still null at that point).
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = stream;
+  }, [stream]);
 
   // Release the camera when the stream changes or the component unmounts, so the
   // camera isn't left live on a shared clinical device after navigating away
