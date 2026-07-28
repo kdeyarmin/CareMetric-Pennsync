@@ -23,10 +23,20 @@ export const PERMANENT_FAILURE_PATTERNS = [
   /forbidden/i, /not in service/i, /no such number/i, /malformed/i,
 ];
 
+// Transient signals that WIN over a coincidental permanent-looking word. Telnyx
+// reports a busy line / no-answer as "rejected - line busy" / "rejected - no
+// answer"; a raw /rejected/i above gave up on those, burning zero retries on a
+// fax that would very likely go through moments later. Checked first.
+export const TRANSIENT_FAILURE_PATTERNS = [
+  /busy/i, /no.?answer/i, /temporar/i, /timeout/i, /timed out/i,
+  /try again/i, /congestion/i, /\b(429|500|502|503|504)\b/,
+];
+
 /** 'permanent' when the failure clearly won't recover; 'transient' otherwise. */
 export function classifyFaxFailure(errorCode, errorMessage) {
   const s = `${errorCode ?? ""} ${errorMessage ?? ""}`.trim();
   if (!s) return "transient"; // unknown → treat as retryable (prior behavior)
+  if (TRANSIENT_FAILURE_PATTERNS.some((re) => re.test(s))) return "transient";
   return PERMANENT_FAILURE_PATTERNS.some((re) => re.test(s)) ? "permanent" : "transient";
 }
 
