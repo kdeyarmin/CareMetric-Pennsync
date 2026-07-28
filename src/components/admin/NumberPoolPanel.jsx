@@ -315,7 +315,7 @@ export default function NumberPoolPanel() {
                             setPickedUser((p) => ({ ...p, [n.id]: v }));
                             // Reset any typed bridge cell so the new nurse's stored
                             // cell is pre-filled rather than the previous entry.
-                            setPickedCell((p) => { const next = { ...p }; delete next[n.id]; return next; });
+                            setPickedCell(({ [n.id]: _, ...rest }) => rest);
                           }}
                         >
                           <SelectTrigger className="h-9 w-48"><SelectValue placeholder="Assign to nurse…" /></SelectTrigger>
