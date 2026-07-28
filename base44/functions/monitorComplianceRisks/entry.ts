@@ -56,11 +56,31 @@ const DC_COMPLETE_STATUSES = new Set(['completed', 'submitted']);
 const DC_START_TYPES = new Set(['start of care', 'resumption of care']);
 const dcLower = (v) => String(v || '').trim().toLowerCase();
 
+// Parse a date-only ("YYYY-MM-DD") value as LOCAL midnight; other values fall
+// through to the platform parser (mirror of dischargeComplianceEnforcer.js).
+function dcToLocalDate(v) {
+  if (!v) return null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(v).trim());
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Whole CALENDAR days between two dates (local components), not a raw-ms floor.
+// A raw-ms floor undercounts by a day when the later timestamp has a smaller
+// time-of-day than the earlier one, which could let a 14-day-stale episode read
+// as 13 and skip the missing-Discharge-OASIS alert. Mirrors the unit-tested
+// dischargeComplianceEnforcer.js.
 function daysBetween(a, b) {
-  const t1 = new Date(a).getTime();
-  const t2 = new Date(b).getTime();
-  if (Number.isNaN(t1) || Number.isNaN(t2)) return null;
-  return Math.floor((t2 - t1) / (1000 * 60 * 60 * 24));
+  const da = dcToLocalDate(a);
+  const db = dcToLocalDate(b);
+  if (!da || !db) return null;
+  const dayA = Date.UTC(da.getFullYear(), da.getMonth(), da.getDate());
+  const dayB = Date.UTC(db.getFullYear(), db.getMonth(), db.getDate());
+  return Math.round((dayB - dayA) / (1000 * 60 * 60 * 24));
 }
 
 function detectMissingDischargeOASIS(ctx, opts = {}) {

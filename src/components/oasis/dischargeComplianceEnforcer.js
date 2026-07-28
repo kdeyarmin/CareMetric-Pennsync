@@ -19,11 +19,34 @@ const COMPLETE_STATUSES = new Set(["completed", "submitted"]);
 const START_VISIT_TYPES = new Set(["start of care", "resumption of care"]);
 const lower = (v) => String(v || "").trim().toLowerCase();
 
+// Parse a date-only ("YYYY-MM-DD") value as LOCAL midnight (matching
+// src/lib/dateLocal.js and the intake-to-SOC tracker); other values fall
+// through to the platform parser. Kept inline so this module stays
+// dependency-free and node --test-runnable.
+function toLocalDate(v) {
+  if (!v) return null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(v).trim());
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Whole CALENDAR days between two dates (compared by local date components),
+// not a raw-millisecond floor. A raw-ms floor UNDERcounts by a day whenever the
+// later timestamp carries a smaller time-of-day than the earlier one (e.g. a
+// morning "as of" vs. an evening last visit) — which could let a 14-day-stale
+// episode read as 13 and silently skip the missing-Discharge-OASIS alert. This
+// mirrors calendarDaysBetween in intakeToSocTracker.js.
 function daysBetween(a, b) {
-  const t1 = new Date(a).getTime();
-  const t2 = new Date(b).getTime();
-  if (Number.isNaN(t1) || Number.isNaN(t2)) return null;
-  return Math.floor((t2 - t1) / (1000 * 60 * 60 * 24));
+  const da = toLocalDate(a);
+  const db = toLocalDate(b);
+  if (!da || !db) return null;
+  const dayA = Date.UTC(da.getFullYear(), da.getMonth(), da.getDate());
+  const dayB = Date.UTC(db.getFullYear(), db.getMonth(), db.getDate());
+  return Math.round((dayB - dayA) / (1000 * 60 * 60 * 24));
 }
 
 /**
