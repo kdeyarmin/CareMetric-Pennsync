@@ -2,6 +2,15 @@
 
 Instructions for Codex cloud and other AI coding agents working in this repository.
 
+## Cursor Cloud specific instructions
+
+- The VM's default `node` (`/exec-daemon/node`) is v22 and takes PATH precedence, but this repo requires Node `>=24.18.0`. Node 24.18.0 is installed via nvm and prepended to `PATH` in `~/.bashrc`, so a normal interactive shell already resolves the correct node. If a command reports the wrong version, run `export PATH="$HOME/.nvm/versions/node/v24.18.0/bin:$PATH"` (or `nvm use 24.18.0`) first. The startup update script also runs `nvm use 24.18.0` before `pnpm install`.
+- Frontend-only SPA: `pnpm run dev` serves Vite on `http://localhost:5173`. There is no local backend; `[base44] Proxy not enabled` is expected/harmless.
+- Base44 config comes from `VITE_BASE44_APP_ID` and `VITE_BASE44_BACKEND_URL`, provided as Cursor secrets (Vite reads them at dev-server startup, so restart `pnpm run dev` after they change). When they are set, the app root renders the real branded "Welcome to PennSync" login screen and the sign-in form POSTs to the hosted `base44.app` backend end-to-end; `403 "You must be logged in"` console errors before login are expected. Full authenticated patient/clinical flows additionally require valid login credentials, which are not present by default.
+- When the config secrets are absent, authenticated routes redirect to `/login` and render blank. To verify rendering without config, use the public capability-token pages: `/signer` (renders an "Access Denied" card) and `/join` (renders an "Invalid Visit Link" card). Hitting `/signer?token=...` triggers the real client-side validation call and returns a 404/error card without a valid backend — this is expected, not a crash.
+- Authenticated login/write flows work end-to-end when valid login credentials exist as secrets (e.g. `PENNSYNC_TEST_EMAIL` / `PENNSYNC_TEST_PASSWORD`): sign-in POSTs to `/api/apps/<appId>/auth/login`, and profile writes (`base44.auth.updateMe`, i.e. `PUT /api/apps/<appId>/entities/User/me`) persist. When browser-testing, note that in-app left-nav navigation sometimes changes the URL without re-rendering the page content until a manual reload (F5); this is a client-side routing quirk, not a broken environment. Also, form fields backed by `base44.auth.me()` (react-query) briefly show empty/grey placeholder text on reload before the real value loads — wait a few seconds before judging persistence.
+- Standard commands (install/dev/build/lint/test/typecheck) are in `package.json` and the table below; do not duplicate them elsewhere.
+
 ## Codex cloud environment
 
 - Configure this repository in Codex cloud settings with Node 24.18.0 or newer and pnpm 11.9.0.
