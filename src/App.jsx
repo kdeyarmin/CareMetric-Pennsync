@@ -160,6 +160,10 @@ const AuthenticatedApp = () => {
           <Route path="/followup/*" element={<ProviderFollowUpPortal />} />
           {/* Public privacy policy — required in-app pre-auth (App Store 5.1.1(i)) */}
           <Route path="/privacy" element={<PrivacyPolicy />} />
+          {/* Catch-all so a public-segment URL that matches no inner route (e.g.
+              /privacy/extra) renders the not-found page instead of a blank
+              screen — this <Routes> block has no fallback otherwise. */}
+          <Route path="*" element={<PageNotFound />} />
         </Routes>
       </Suspense>
     );
@@ -186,6 +190,12 @@ const AuthenticatedApp = () => {
       // so deep links survive sign-in.
       return <SignInScreen />;
     }
+    // Any other error type (e.g. 'unknown' from a failed public-settings fetch,
+    // or a server-supplied reason we don't special-case) is an app-load
+    // failure, NOT a missing session. Falling through to <SignInScreen /> would
+    // mislead the user into trying to sign in to fix a backend outage — surface
+    // the actual error instead.
+    return <ConfigurationErrorScreen message={authError.message} />;
   }
 
   // Gate the whole app on authentication. The no-token path does NOT set an

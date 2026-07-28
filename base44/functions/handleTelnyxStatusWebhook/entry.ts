@@ -109,9 +109,16 @@ const PERMANENT_FAILURE_PATTERNS = [
   /rejected/i, /blocked/i, /do not call/i, /unallocated/i, /disconnected/i,
   /forbidden/i, /not in service/i, /no such number/i, /malformed/i,
 ];
+// Transient signals win over a coincidental permanent word ("rejected - line
+// busy" is retryable). Checked first. Mirrors src/components/fax/faxRetry.js.
+const TRANSIENT_FAILURE_PATTERNS = [
+  /busy/i, /no.?answer/i, /temporar/i, /timeout/i, /timed out/i,
+  /try again/i, /congestion/i, /\b(429|500|502|503|504)\b/,
+];
 function classifyFaxFailure(errorCode, errorMessage) {
   const s = `${errorCode ?? ''} ${errorMessage ?? ''}`.trim();
   if (!s) return 'transient';
+  if (TRANSIENT_FAILURE_PATTERNS.some((re) => re.test(s))) return 'transient';
   return PERMANENT_FAILURE_PATTERNS.some((re) => re.test(s)) ? 'permanent' : 'transient';
 }
 function faxRetryConfig(config) {
@@ -777,14 +784,22 @@ async function handleFaxEvent(base44, payload) {
 // ============================ VOICE ============================
 // ---- find-me-follow-me ringdown (mirrors src/components/voice/onCall.js) ----
 const RING_TIMEOUT_SECS_DEFAULT = 20;
+// Dedupe key so two spellings of the same number (e.g. "+12155550100" vs
+// "2155550100") count as ONE ringdown target. Mirrors src/components/voice/onCall.js.
+function ringdownDedupeKey(n) {
+  const digits = String(n).replace(/\D/g, '');
+  return digits.length >= 10 ? digits.slice(-10) : String(n).trim().toLowerCase();
+}
 function buildRingdown(opts) {
   const { primary = null, others = [], office = null, maxTargets = 4 } = opts || {};
   const seen = new Set();
   const out = [];
   const push = (num, kind) => {
     const n = String(num || '').trim();
-    if (!n || seen.has(n)) return;
-    seen.add(n);
+    if (!n) return;
+    const key = ringdownDedupeKey(n);
+    if (seen.has(key)) return;
+    seen.add(key);
     out.push({ to: n, kind });
   };
   push(primary, 'primary');

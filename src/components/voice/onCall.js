@@ -15,13 +15,26 @@
  *
  * @param {{ primary?: string|null, others?: string[], office?: string|null, maxTargets?: number }} opts
  */
+// Dedupe key for a destination. Two spellings of the same phone number
+// (e.g. "+12155550100" and "2155550100") must count as ONE target, otherwise a
+// nurse's cell and a same-number "office" both ring — or worse, the same
+// handset rings twice while a real backup nurse is pushed past the cap. Uses
+// the last 10 digits (NANP) when the value looks like a phone number; falls
+// back to the trimmed/lowercased literal for anything non-numeric.
+function ringdownDedupeKey(n) {
+  const digits = String(n).replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : String(n).trim().toLowerCase();
+}
+
 export function buildRingdown({ primary = null, others = [], office = null, maxTargets = 4 } = {}) {
   const seen = new Set();
   const out = [];
   const push = (num, kind) => {
     const n = String(num || "").trim();
-    if (!n || seen.has(n)) return;
-    seen.add(n);
+    if (!n) return;
+    const key = ringdownDedupeKey(n);
+    if (seen.has(key)) return;
+    seen.add(key);
     out.push({ to: n, kind });
   };
   push(primary, "primary");

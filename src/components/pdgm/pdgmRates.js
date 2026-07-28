@@ -89,6 +89,13 @@ export const DEFAULT_PDGM_RATES = {
 // edit/add/remove any of these on the PDGM Rate Settings page.
 export const DEFAULT_ICD10_CLINICAL_GROUPS = {
   G: "MMTA_Neuro_Rehab",
+  // Cerebrovascular disease block (I60–I69): stroke, hemorrhage, and post-stroke
+  // sequelae (e.g. I61 intracerebral hemorrhage, I69 sequelae) are Neuro/Stroke
+  // Rehab, not Cardiac. A bare "I" chapter entry previously sent everything
+  // except the two explicit I63/I64 codes to Cardiac — disagreeing with the
+  // intake preview (which groups all "I6*" as Neuro) and understating the
+  // Neuro case-mix. Longest-prefix wins, so I50/I10/I25 stay Cardiac.
+  I6: "MMTA_Neuro_Rehab",
   I63: "MMTA_Neuro_Rehab",
   I64: "MMTA_Neuro_Rehab",
   I: "MMTA_Cardiac_Circulatory",

@@ -213,6 +213,12 @@ ring timeout is ~20s. (`AgencySettings.ringdown_max` caps the number of targets.
 **A2P 10DLC + consent ledger** (Super Admin): the A2P panel records your
 registration status/brand/campaign (`a2p_10dlc_status`, `a2p_brand_id`,
 `a2p_campaign_id`) — US 10DLC registration is required or carriers filter texts.
+With `a2p_campaign_id` saved, every SMS-capable number bought in-app is
+**automatically enrolled in that campaign** at purchase time (Telnyx
+`POST /10dlc/phone_number_campaigns`); an enrollment failure surfaces as a
+warning toast, never a failed purchase. Numbers added manually (bought in the
+portal) must be enrolled in the portal — the in-app auto-enroll only runs on
+in-app purchases. Fax lines don't text and are never enrolled.
 The consent ledger (`manageSmsConsent`) browses `SmsConsent`, shows opted-in/out
 counts, supports a manual opt-out / opt-back-in, and CSV export.
 

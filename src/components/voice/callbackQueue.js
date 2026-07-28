@@ -28,8 +28,14 @@ export function callbackReason(call) {
   if (call.disposition === "callback_requested") return REASONS.callback_requested.label;
   if (call.disposition === "follow_up_needed") return REASONS.follow_up_needed.label;
   if (call.has_voicemail) return REASONS.voicemail.label;
+  // Any unanswered INBOUND call needs a callback, regardless of call_mode. The
+  // old `call_mode === "masked_bridge"` guard silently dropped after-hours /
+  // off-duty misses, which the router logs as "office_transfer" (and
+  // de-provisioned-number calls as "unresolved") — so a patient who called and
+  // reached no one never surfaced in the worklist. This matches how
+  // CallHistoryList flags a missed inbound call.
   const missed = call.status === "no_answer" || call.status === "failed";
-  if (missed && call.direction === "inbound" && call.call_mode === "masked_bridge") return REASONS.missed.label;
+  if (missed && call.direction === "inbound") return REASONS.missed.label;
   return null;
 }
 

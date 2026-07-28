@@ -22,6 +22,21 @@ test("buildRingdown caps the number of targets", () => {
   assert.equal(r[0].kind, "primary");
 });
 
+test("buildRingdown dedupes the same number across E.164 / national formats", () => {
+  // The nurse's cell and the configured office are the same line in two
+  // spellings — it must ring once, not twice (which would also crowd out a
+  // real backup nurse under the cap).
+  const r = buildRingdown({
+    primary: "+12155550100",
+    others: ["2155550100", "+12155550122"],
+    office: "(215) 555-0100",
+  });
+  assert.deepEqual(r, [
+    { to: "+12155550100", kind: "primary" },
+    { to: "+12155550122", kind: "backup" },
+  ]);
+});
+
 test("buildRingdown tolerates a missing primary (office-only fallback)", () => {
   const r = buildRingdown({ primary: null, others: [], office: "+17244650440" });
   assert.deepEqual(r, [{ to: "+17244650440", kind: "office" }]);

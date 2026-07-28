@@ -35,6 +35,16 @@ test("classifyFaxFailure treats busy/no-answer/unknown as transient", () => {
   assert.equal(classifyFaxFailure("", ""), "transient");
 });
 
+test("classifyFaxFailure lets a busy/no-answer signal win over 'rejected'", () => {
+  // Regression: Telnyx reports a busy line as "rejected - line busy"; a raw
+  // /rejected/i classified it permanent, so the fax never auto-retried even
+  // though a busy line clears on the next attempt.
+  assert.equal(classifyFaxFailure(null, "rejected - line busy"), "transient");
+  assert.equal(classifyFaxFailure(null, "Call rejected - no answer"), "transient");
+  // A genuine hard rejection with no transient signal stays permanent.
+  assert.equal(classifyFaxFailure(null, "rejected - number blocked"), "permanent");
+});
+
 test("faxRetryConfig applies safe defaults and honors overrides", () => {
   const d = faxRetryConfig(undefined);
   assert.equal(d.enabled, true);

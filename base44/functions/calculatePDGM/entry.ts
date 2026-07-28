@@ -180,6 +180,10 @@ const MEDIUM_VALUE_COMORBIDITIES = [
 const ICD10_CLINICAL_GROUPS = {
   // Neuro/Rehab (G codes, stroke, etc.)
   'G': 'MMTA_Neuro_Rehab',
+  // Cerebrovascular block I60–I69 (stroke, hemorrhage, post-stroke sequelae like
+  // I61/I69) is Neuro/Stroke Rehab, not Cardiac. Longest-prefix wins so the
+  // Cardiac I50/I10/I25 below are unaffected. Matches the intake preview.
+  'I6': 'MMTA_Neuro_Rehab',
   'I63': 'MMTA_Neuro_Rehab', // Cerebral infarction
   'I64': 'MMTA_Neuro_Rehab', // Stroke
 

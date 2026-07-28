@@ -171,6 +171,56 @@ test("searchPurchaseTelnyxNumbers posts the Telnyx number-order contract", async
   assert.deepEqual(call.body.phone_numbers, [{ phone_number: "+12155550177" }]);
 });
 
+test("a nurse-line purchase auto-enrolls the number in the saved A2P campaign", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_3", phone_numbers: [{ id: "np_2", phone_number: "+12155550188" }] } } }) },
+    { match: (u) => u.includes("/v2/10dlc/phone_number_campaigns"), respond: () => ({ status: 200, json: { phoneNumber: "+12155550188", campaignId: "CAMP1" } }) },
+  ]);
+  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({
+      user: { email: "a@x.com", account_type: "super_admin" },
+      data: {
+        IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }],
+        AgencySettings: [{ id: "as_1", a2p_campaign_id: "CAMP1" }],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+    method: "POST", body: JSON.stringify({ action: "purchase", e164: "2155550188" }),
+  }));
+  const data = await res.json();
+  const enroll = calls.find((c) => c.url.includes("/v2/10dlc/phone_number_campaigns"));
+  assert.ok(enroll, "posted the 10DLC phone-number-campaign assignment");
+  assert.equal(enroll.method, "POST");
+  assert.equal(enroll.body.phoneNumber, "+12155550188");
+  assert.equal(enroll.body.campaignId, "CAMP1");
+  assert.equal(data.campaign_assigned, true);
+  assert.deepEqual(data.warnings, []);
+});
+
+test("a nurse-line purchase with NO saved campaign warns instead of enrolling", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_4", phone_numbers: [{ id: "np_3", phone_number: "+12155550190" }] } } }) },
+  ]);
+  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({
+      user: { email: "a@x.com", account_type: "super_admin" },
+      data: { IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }] },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+    method: "POST", body: JSON.stringify({ action: "purchase", e164: "2155550190" }),
+  }));
+  const data = await res.json();
+  assert.equal(calls.some((c) => c.url.includes("/v2/10dlc/")), false, "no 10DLC call without a saved campaign");
+  assert.equal(data.campaign_assigned, false);
+  assert.ok(data.warnings.some((w) => /campaign/i.test(w)), "warns that the number is not campaign-registered");
+});
+
 // A minimal spy-able client: like makeBase44 but with stable per-entity objects
 // so update/create calls can be recorded, and per-entity overrides.
 function makeSpyBase44({ user = { email: "a@x.com", account_type: "super_admin", full_name: "Ada" }, data = {}, writes = [] } = {}) {
