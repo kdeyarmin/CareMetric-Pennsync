@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
- * startMaskedCall — outbound click-to-call masking (via Telnyx) (nurse -> patient) via the
- * Telnyx Call Control API. Mirrors startMaskedCall (the Telnyx path).
+ * startMaskedCall — outbound click-to-call masking (nurse -> patient) via the
+ * Telnyx Call Control API.
  *
  * Flow: ring the nurse's personal cell first (`to` = cell, caller id = work
  * number). The patient leg is bridged when the nurse answers: the answered-leg

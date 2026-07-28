@@ -1,14 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
- * sendSms — outbound SMS (via Telnyx) from a nurse's dedicated work number to a patient,
- * sent via the Telnyx Messaging API. Behaviorally identical to sendSms (the
- * Telnyx path): the patient only ever sees the nurse's work number (`from`); the
- * nurse's personal cell is never exposed; refuses to send to numbers that have
- * opted out (TCPA) or during the recipient's TCPA quiet hours; the message body
- * is never written to the audit log (PHI minimization) — only its length and the
- * thread id are recorded. Logs to the same SmsMessage entity so Telnyx and Telnyx
- * messages thread together.
+ * sendSms — outbound SMS from a nurse's dedicated work number to a patient, sent
+ * via the Telnyx Messaging API. The patient only ever sees the nurse's work
+ * number (`from`); the nurse's personal cell is never exposed; refuses to send to
+ * numbers that have opted out (TCPA) or during the recipient's TCPA quiet hours;
+ * the message body is never written to the audit log (PHI minimization) — only
+ * its length and the thread id are recorded. Logs to the same SmsMessage entity
+ * that handleTelnyxStatusWebhook writes inbound messages to, under a thread id
+ * computed the same way, so both directions of a conversation thread together.
  */
 
 // ---- inline helpers (single-file Deno deploy; do not rely on imports) ----

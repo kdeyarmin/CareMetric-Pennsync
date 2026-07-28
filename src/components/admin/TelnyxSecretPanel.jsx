@@ -33,6 +33,10 @@ export default function TelnyxSecretPanel() {
   // connection ids become a pick-from-a-list instead of a copy-paste from the
   // Telnyx portal. Null until discovery has run.
   const [discovered, setDiscovered] = useState(null);
+  // Per-field override of picker-vs-text-input, keyed by field. Undefined means
+  // "decide automatically"; an explicit true/false is the admin's own choice and
+  // always wins. See renderResourceField for why the escape hatch has to exist.
+  const [manualEntry, setManualEntry] = useState({});
 
   const { data: status, isLoading } = useQuery({
     queryKey: ["telnyx-secret-status"],
@@ -67,6 +71,11 @@ export default function TelnyxSecretPanel() {
       const resources = data?.resources || {};
       setDiscovered(resources);
       setShowAdvanced(true);
+      // Re-running discovery is an explicit "look again", so let each field
+      // re-decide picker-vs-manual from the new result. Otherwise a truncated or
+      // failed first run would pin fields to manual entry forever, even once a
+      // later run returns the complete list.
+      setManualEntry({});
 
       // Auto-select the obvious case: exactly one of a resource type and nothing
       // configured yet. With several, the admin picks — we never silently
@@ -93,15 +102,28 @@ export default function TelnyxSecretPanel() {
 
   /**
    * A discovered resource renders as a picker; anything else (not yet
-   * discovered, or the lookup failed) keeps the original free-text input, so the
-   * manual path never disappears.
+   * discovered, or the lookup failed) keeps the original free-text input.
+   *
+   * The picker must never be the ONLY way to set a value. A list can be
+   * incomplete — discovery pages to a bound and reports `truncated`, an API key
+   * can be scoped to a subset of the account, and a value configured earlier (or
+   * from another account) may simply not appear. Swapping the input for a picker
+   * in those cases would leave the id neither selectable NOR enterable, which is
+   * strictly worse than the copy-paste field this was meant to replace. So:
+   * every picker carries a manual-entry toggle, and a value that isn't in the
+   * list opens in manual mode by default so the admin can see it at all.
    */
-  const renderResourceField = (label, resource, value, setValue, placeholder) => {
+  const renderResourceField = (fieldKey, label, resource, value, setValue, placeholder) => {
     const items = resource?.status === "ok" ? resource.items : null;
+    const unlisted = Boolean(value) && Boolean(items) && !items.some((i) => i.id === value);
+    const manual = manualEntry[fieldKey] ?? (unlisted || Boolean(resource?.truncated));
+    const showPicker = Boolean(items?.length) && !manual;
+    const setManual = (next) => setManualEntry((prev) => ({ ...prev, [fieldKey]: next }));
+
     return (
       <div>
         <Label className="text-xs font-medium text-slate-600">{label}</Label>
-        {items?.length ? (
+        {showPicker ? (
           <Select value={value || undefined} onValueChange={setValue}>
             <SelectTrigger className="mt-1">
               <SelectValue placeholder="Leave unchanged, or pick one" />
@@ -124,11 +146,30 @@ export default function TelnyxSecretPanel() {
             className="mt-1"
           />
         )}
+        {resource?.truncated && (
+          <p className="mt-1 text-xs text-amber-700">
+            {resource.detail} This Telnyx account has more than the lookup returns.
+          </p>
+        )}
+        {unlisted && (
+          <p className="mt-1 text-xs text-slate-500">
+            The id currently entered isn&apos;t in the discovered list — keeping it as typed.
+          </p>
+        )}
         {resource?.status === "fail" && (
           <p className="mt-1 text-xs text-amber-700">{resource.detail} Enter the id manually.</p>
         )}
         {resource?.status === "ok" && !items?.length && (
           <p className="mt-1 text-xs text-slate-500">None found in this Telnyx account.</p>
+        )}
+        {Boolean(items?.length) && (
+          <button
+            type="button"
+            className="mt-1 text-xs text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
+            onClick={() => setManual(!manual)}
+          >
+            {manual ? "Choose from the discovered list" : "Enter an id manually instead"}
+          </button>
         )}
       </div>
     );
@@ -290,6 +331,7 @@ export default function TelnyxSecretPanel() {
                 </div>
               )}
               {renderResourceField(
+                "messaging_profile_id",
                 "Messaging profile id",
                 discovered?.messaging_profiles,
                 messagingProfileId,
@@ -297,6 +339,7 @@ export default function TelnyxSecretPanel() {
                 "Optional — leave blank to keep the current setting",
               )}
               {renderResourceField(
+                "voice_connection_id",
                 "Voice (Call Control) connection id",
                 discovered?.voice_connections,
                 voiceConnectionId,
@@ -304,6 +347,7 @@ export default function TelnyxSecretPanel() {
                 "Optional — leave blank to keep the current setting",
               )}
               {renderResourceField(
+                "fax_connection_id",
                 "Fax connection id",
                 discovered?.fax_connections,
                 faxConnectionId,

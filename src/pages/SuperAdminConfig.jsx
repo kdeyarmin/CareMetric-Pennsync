@@ -37,14 +37,25 @@ export default function SuperAdminConfig() {
 
   // Integration steps published by the progress card, and which stages are open.
   const [steps, setSteps] = useState([]);
+  const [stepsMeta, setStepsMeta] = useState({ ready: false, secretStatus: null });
   const [expanded, setExpanded] = useState(null); // null = not yet auto-decided
 
-  // Open the unfinished stages once, when the first real checklist arrives.
-  // Deliberately one-shot: re-deriving on every step change would slam a stage
+  const handleStepsChange = useCallback((nextSteps, meta) => {
+    setSteps(nextSteps);
+    setStepsMeta({ ready: Boolean(meta?.ready), secretStatus: meta?.secretStatus ?? null });
+  }, []);
+
+  // Open the unfinished stages once — but only once the underlying queries have
+  // SETTLED. The checklist is non-empty from the first render, derived from
+  // still-loading data where every step looks unfinished; freezing on that would
+  // open every stage on an already-configured install and never correct itself.
+  // Still one-shot after that: re-deriving on every change would slam a stage
   // shut under the admin the moment their edit satisfied its last check.
   useEffect(() => {
-    if (expanded === null && steps.length > 0) setExpanded(defaultExpandedStageIds(steps));
-  }, [steps, expanded]);
+    if (expanded === null && stepsMeta.ready && steps.length > 0) {
+      setExpanded(defaultExpandedStageIds(steps, stepsMeta.secretStatus));
+    }
+  }, [steps, stepsMeta, expanded]);
 
   const openStages = expanded ?? SETUP_STAGES.map((s) => s.id);
 
@@ -179,7 +190,7 @@ export default function SuperAdminConfig() {
         <IntegrationsHealthPanel />
 
         {/* Guided setup command center — progress + "what's next", links below */}
-        <TelnyxSetupProgress onStepsChange={setSteps} onNavigate={navigateToAnchor} />
+        <TelnyxSetupProgress onStepsChange={handleStepsChange} onNavigate={navigateToAnchor} />
 
         {/* The panels below are grouped into collapsible stages so a finished
             setup collapses to a short page instead of stacking every panel at
@@ -191,7 +202,7 @@ export default function SuperAdminConfig() {
             index={i + 1}
             title={stage.title}
             description={stage.description}
-            status={stageStatus(stage, steps)}
+            status={stageStatus(stage, steps, stepsMeta.secretStatus)}
             expanded={openStages.includes(stage.id)}
             onToggle={() => toggleStage(stage.id)}
           >

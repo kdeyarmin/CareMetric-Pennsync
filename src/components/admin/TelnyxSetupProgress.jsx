@@ -86,7 +86,7 @@ function StepRow({ step, onNavigate }) {
 
 export default function TelnyxSetupProgress({ onStepsChange, onNavigate } = {}) {
   // Shared query keys → this card and the panels below read/write one cache.
-  const { data: secretStatus, isLoading: secretLoading } = useQuery({
+  const { data: secretStatus, isLoading: secretLoading, isFetched: secretFetched } = useQuery({
     queryKey: ["telnyx-secret-status"],
     queryFn: async () => {
       const res = await base44.functions.invoke("getTelnyxSecretStatus", {});
@@ -95,7 +95,7 @@ export default function TelnyxSetupProgress({ onStepsChange, onNavigate } = {}) 
     refetchOnWindowFocus: false,
   });
 
-  const { data: settingsArr = [] } = useQuery({
+  const { data: settingsArr = [], isFetched: settingsFetched } = useQuery({
     queryKey: ["agency-settings"],
     queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
     refetchOnWindowFocus: false,
@@ -103,7 +103,7 @@ export default function TelnyxSetupProgress({ onStepsChange, onNavigate } = {}) 
   });
   const settings = settingsArr[0];
 
-  const { data: users = [] } = useQuery({
+  const { data: users = [], isFetched: usersFetched } = useQuery({
     queryKey: ["phone-users"],
     queryFn: () => base44.entities.User.list("full_name", 200),
     initialData: [],
@@ -140,9 +140,15 @@ export default function TelnyxSetupProgress({ onStepsChange, onNavigate } = {}) 
   // Publish the computed steps so a parent can group the panels below into
   // stages without re-running these queries or re-deriving readiness — one
   // source of truth for "what's done", shared by the checklist and the stages.
+  // `ready` matters: on the very first render every query is still in flight,
+  // so buildIntegrationSteps returns a full checklist derived from undefined
+  // data — every step looks unfinished. A parent that froze its layout on that
+  // would open every stage on an already-configured install and never correct
+  // itself. Publish whether the underlying queries have actually settled.
+  const stepsReady = Boolean(secretFetched && settingsFetched && usersFetched);
   useEffect(() => {
-    if (onStepsChange) onStepsChange(steps);
-  }, [steps, onStepsChange]);
+    if (onStepsChange) onStepsChange(steps, { ready: stepsReady, secretStatus });
+  }, [steps, stepsReady, secretStatus, onStepsChange]);
 
   // Persistent surfacing of a rejected Telnyx API key. The live test flags this
   // as the `telnyx_api_live` check failing (HTTP 401) even though the key is

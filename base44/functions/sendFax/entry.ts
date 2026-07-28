@@ -1,10 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
 /**
- * sendFax — outbound fax via the Telnyx Programmable Fax API. Mirrors
- * sendFax (the Telnyx path): idempotent on a recent identical send, logs to the
- * same FaxLog entity (the existing telnyx_fax_id field stores the provider fax
- * id), and never echoes PHI-bearing provider detail to the client.
+ * sendFax — outbound fax via the Telnyx Programmable Fax API. Idempotent on a
+ * recent identical send, logs to the FaxLog entity (telnyx_fax_id stores the
+ * provider fax id), and never echoes PHI-bearing provider detail to the client.
  *
  * Telnyx faxes require a Programmable Fax connection id (the in-app
  * fax_connection_id on IntegrationSecret) and a from number on that connection

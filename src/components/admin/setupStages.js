@@ -26,6 +26,14 @@ export const SETUP_STAGES = [
     title: "Connect Telnyx",
     description: "Your API key, webhook key, and the messaging / voice / fax connections.",
     stepIds: ["api_secret"],
+    // The only step mapped here is the API key, but this stage also OWNS the
+    // webhook key and the three connection ids — and those are not cosmetic:
+    // startMaskedCall refuses to dial without voice_connection_id, sendFax
+    // refuses to send without fax_connection_id, and inbound webhooks fail
+    // closed without the public key. Reporting "Done" on the API key alone would
+    // collapse the section and tell the admin telephony was set up while calls
+    // and faxes still could not go out.
+    secretFlags: ["public_key_set", "messaging_profile_set", "voice_connection_set", "fax_connection_set"],
     anchors: ["telnyx-secret"],
   },
   {
@@ -51,13 +59,21 @@ export const SETUP_STAGES = [
  * @param {Array<{id: string, status: string}>} steps from buildIntegrationSteps
  * @returns {'done'|'attention'|'todo'}
  */
-export function stageStatus(stage, steps) {
+export function stageStatus(stage, steps, secretStatus) {
   const ids = new Set(stage?.stepIds || []);
   const mine = (Array.isArray(steps) ? steps : []).filter((s) => s && ids.has(s.id));
   // No mapped steps means nothing is measurable — never claim "done".
   if (mine.length === 0) return "todo";
   if (mine.some((s) => s.status === "attention")) return "attention";
-  return mine.every((s) => s.status === "done") ? "done" : "todo";
+  if (!mine.every((s) => s.status === "done")) return "todo";
+
+  // Steps all done — but a stage may additionally own credential fields the
+  // checklist doesn't model as steps. Missing any of them is "attention": the
+  // prerequisite (the API key) is in place, yet the stage is not actually
+  // finished, so it must not collapse as though it were.
+  const flags = stage?.secretFlags || [];
+  if (flags.length && !flags.every((f) => Boolean(secretStatus?.[f]))) return "attention";
+  return "done";
 }
 
 /**
@@ -79,7 +95,7 @@ export function stageIdForAnchor(anchor) {
  * @param {Array} steps
  * @returns {string[]} stage ids
  */
-export function defaultExpandedStageIds(steps) {
-  const open = SETUP_STAGES.filter((s) => stageStatus(s, steps) !== "done").map((s) => s.id);
+export function defaultExpandedStageIds(steps, secretStatus) {
+  const open = SETUP_STAGES.filter((s) => stageStatus(s, steps, secretStatus) !== "done").map((s) => s.id);
   return open.length ? open : [SETUP_STAGES[0].id];
 }

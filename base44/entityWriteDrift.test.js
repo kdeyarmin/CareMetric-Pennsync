@@ -194,9 +194,17 @@ function findWriteDrift() {
 
       if (method === 'update') {
         // Skip the id argument; the payload is the second one.
+        // skipComment here too: `update(/* the caller's row */ id, {...})` would
+        // otherwise open a phantom string on the apostrophe, never find the
+        // comma, and skip the payload — reintroducing the exact false negative
+        // this file exists to prevent, in the update form specifically.
         const comma = (() => {
           let depth = 0, quote = null;
           for (let i = 0; i < rest.length; i++) {
+            if (!quote) {
+              const skipped = skipComment(rest, i);
+              if (skipped !== i) { i = skipped - 1; continue; }
+            }
             const c = rest[i];
             if (quote) { if (c === quote && rest[i - 1] !== '\\') quote = null; continue; }
             if (c === '"' || c === "'" || c === '`') { quote = c; continue; }

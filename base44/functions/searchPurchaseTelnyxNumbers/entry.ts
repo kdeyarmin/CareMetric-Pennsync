@@ -3,8 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 /**
  * searchPurchaseTelnyxNumbers — admin-only. Search Telnyx for available local
  * phone numbers and order one straight into the local pool (PhoneNumber), so an
- * admin never has to leave the app to provision a line. Replaces the old Telnyx
- * numbers flow.
+ * admin never has to leave the app to provision a line.
  *
  * Body: { action: 'search'|'purchase'|'provision_fax', ... }
  *   - search        { area_code?, country?, limit?, purpose? }

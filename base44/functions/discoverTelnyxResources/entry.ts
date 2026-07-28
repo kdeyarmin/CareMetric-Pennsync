@@ -16,8 +16,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  *  - Uses the STORED api key, read service-role. The key is never accepted from
  *    the client and never returned — only resource ids and display names, which
  *    are not secrets.
- *  - Read-only: GET only, and it creates/updates nothing. Choosing a value is a
- *    separate, explicit saveTelnyxSecret call.
+ *  - Read-only in effect, not by HTTP method: Base44 clients invoke functions
+ *    over POST, so the request method is not a meaningful gate here. What makes
+ *    it read-only is that every upstream call is a GET and nothing is written —
+ *    no entity, no secret. Choosing a value is a separate saveTelnyxSecret call.
  *  - Never throws on a partial failure: each resource type reports its own
  *    status so one unavailable endpoint doesn't block the other two.
  *
@@ -28,43 +30,74 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const PROBE_TIMEOUT_MS = 10000;
 
-/** One read-only Telnyx list call, normalised to { id, name } rows. */
+const PAGE_SIZE = 100;
+// Bound the paging loop so a backend that ignores `page[number]` can't spin
+// forever; far above any realistic Telnyx account.
+const MAX_PAGES = 20;
+
+/**
+ * Read-only Telnyx list call, paged to exhaustion and normalised to { id, name }.
+ *
+ * Paging matters here rather than being theoretical: the UI swaps the free-text
+ * field for a picker as soon as this returns anything, so a resource stranded on
+ * page 2 would be neither selectable NOR enterable. `truncated` reports the case
+ * where the cap was hit, so the UI can keep manual entry visible.
+ */
 async function listTelnyxResource(apiKey, path, nameField) {
-  const url = `https://api.telnyx.com/v2/${path}?page[size]=100`;
+  const items = [];
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    const resp = await fetch(url, {
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
-      signal: controller.signal,
-    });
-    if (resp.status === 401 || resp.status === 403) {
-      return { status: 'fail', items: [], detail: `Telnyx rejected the credentials (HTTP ${resp.status}). Check the API key.` };
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const url = `https://api.telnyx.com/v2/${path}?page[size]=${PAGE_SIZE}&page[number]=${page}`;
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+        signal: controller.signal,
+      });
+      if (resp.status === 401 || resp.status === 403) {
+        return { status: 'fail', items: [], truncated: false, detail: `Telnyx rejected the credentials (HTTP ${resp.status}). Check the API key.` };
+      }
+      if (!resp.ok) {
+        return { status: 'fail', items: [], truncated: false, detail: `Telnyx returned HTTP ${resp.status} for ${path}.` };
+      }
+      const body = await resp.json().catch(() => null);
+      const rows = Array.isArray(body?.data) ? body.data : [];
+      for (const row of rows) {
+        const id = typeof row?.id === 'string' ? row.id : String(row?.id ?? '');
+        if (!id) continue;
+        items.push({
+          // Fall back through the plausible name fields so a profile with no
+          // friendly name still renders as something the admin can choose between.
+          name: String(row?.[nameField] ?? row?.name ?? row?.friendly_name ?? '').trim() || '(unnamed)',
+          id,
+        });
+      }
+      // Stop on the last page. Prefer Telnyx's own page count; fall back to a
+      // short page, and treat an empty page as the end either way.
+      const totalPages = Number(body?.meta?.total_pages);
+      const done = rows.length < PAGE_SIZE || (Number.isFinite(totalPages) && page >= totalPages);
+      if (done) {
+        return {
+          status: 'ok',
+          items,
+          truncated: false,
+          detail: items.length ? `${items.length} found.` : 'None found in this Telnyx account.',
+        };
+      }
     }
-    if (!resp.ok) {
-      return { status: 'fail', items: [], detail: `Telnyx returned HTTP ${resp.status} for ${path}.` };
-    }
-    const body = await resp.json().catch(() => null);
-    const rows = Array.isArray(body?.data) ? body.data : [];
-    const items = rows
-      .map((row) => ({
-        id: typeof row?.id === 'string' ? row.id : String(row?.id ?? ''),
-        // Fall back through the plausible name fields so a profile with no
-        // friendly name still renders as something the admin can choose between.
-        name: String(row?.[nameField] ?? row?.name ?? row?.friendly_name ?? '').trim() || '(unnamed)',
-      }))
-      .filter((row) => row.id);
     return {
       status: 'ok',
       items,
-      detail: items.length ? `${items.length} found.` : 'None found in this Telnyx account.',
+      truncated: true,
+      detail: `Showing the first ${items.length}. Enter the id manually if the one you need isn't listed.`,
     };
   } catch (err) {
     const aborted = err?.name === 'AbortError';
     return {
       status: 'fail',
       items: [],
+      truncated: false,
       detail: aborted
         ? `Timed out after ${PROBE_TIMEOUT_MS} ms reaching api.telnyx.com.`
         : `Could not reach api.telnyx.com — verify network egress. (${err?.message})`,

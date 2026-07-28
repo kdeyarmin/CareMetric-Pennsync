@@ -38,7 +38,55 @@ test('unknown or missing steps do not fabricate completion', () => {
   assert.equal(stageStatus(connect, []), 'todo');
   assert.equal(stageStatus(connect, undefined), 'todo');
   assert.equal(stageStatus(connect, steps({ something_else: 'done' })), 'todo');
-  assert.equal(stageStatus(connect, steps({ api_secret: 'done' })), 'done');
+});
+
+// The connect stage owns credential fields the checklist has no step for. The
+// API key alone is not a working telephony setup: startMaskedCall refuses to
+// dial without voice_connection_id, sendFax refuses to send without
+// fax_connection_id, and inbound webhooks fail closed without the public key.
+// Reporting "done" off api_secret alone would collapse the section and tell the
+// admin telephony was configured while calls and faxes still could not go out.
+const allConnectFlags = (value) =>
+  Object.fromEntries(SETUP_STAGES.find((s) => s.id === 'connect').secretFlags.map((f) => [f, value]));
+
+test('the connect stage stays open until its unstepped credentials are set too', () => {
+  const connect = SETUP_STAGES.find((s) => s.id === 'connect');
+  const apiKeyDone = steps({ api_secret: 'done' });
+
+  assert.ok(connect.secretFlags.length > 0, 'connect must declare the fields it owns beyond api_secret');
+
+  // API key stored, nothing else — the stage is not finished.
+  assert.equal(stageStatus(connect, apiKeyDone, {}), 'attention');
+  assert.equal(stageStatus(connect, apiKeyDone, undefined), 'attention');
+  assert.equal(stageStatus(connect, apiKeyDone, allConnectFlags(false)), 'attention');
+
+  // Every owned field set — now it may collapse.
+  assert.equal(stageStatus(connect, apiKeyDone, allConnectFlags(true)), 'done');
+});
+
+test('a single missing connect credential is enough to hold the stage open', () => {
+  const connect = SETUP_STAGES.find((s) => s.id === 'connect');
+  const apiKeyDone = steps({ api_secret: 'done' });
+  for (const flag of connect.secretFlags) {
+    const status = { ...allConnectFlags(true), [flag]: false };
+    assert.equal(stageStatus(connect, apiKeyDone, status), 'attention', `${flag} missing must not read as done`);
+  }
+});
+
+test('secretFlags never override an unfinished step', () => {
+  // Credentials present but the step itself not done still means not done —
+  // the flags are an additional requirement, never a substitute.
+  const connect = SETUP_STAGES.find((s) => s.id === 'connect');
+  assert.equal(stageStatus(connect, steps({ api_secret: 'todo' }), allConnectFlags(true)), 'todo');
+  assert.equal(stageStatus(connect, steps({ api_secret: 'attention' }), allConnectFlags(true)), 'attention');
+});
+
+test('a stage without secretFlags is unaffected by secretStatus', () => {
+  const numbers = SETUP_STAGES.find((s) => s.id === 'numbers');
+  assert.equal(numbers.secretFlags, undefined);
+  const allDone = steps({ agency_config: 'done', provisioning: 'done', webhooks: 'done', live_test: 'done' });
+  assert.equal(stageStatus(numbers, allDone, undefined), 'done');
+  assert.equal(stageStatus(numbers, allDone, {}), 'done');
 });
 
 test('every anchor resolves to exactly one stage', () => {
@@ -70,8 +118,10 @@ test('expanded-by-default opens the unfinished stages', () => {
   assert.deepEqual(defaultExpandedStageIds(nothingDone), SETUP_STAGES.map((s) => s.id));
 
   const connectDone = steps({ api_secret: 'done' });
-  assert.ok(!defaultExpandedStageIds(connectDone).includes('connect'));
-  assert.ok(defaultExpandedStageIds(connectDone).includes('numbers'));
+  // Only once the connection ids are stored as well does connect collapse.
+  assert.ok(defaultExpandedStageIds(connectDone, allConnectFlags(false)).includes('connect'));
+  assert.ok(!defaultExpandedStageIds(connectDone, allConnectFlags(true)).includes('connect'));
+  assert.ok(defaultExpandedStageIds(connectDone, allConnectFlags(true)).includes('numbers'));
 });
 
 test('never collapses the whole page when everything is done', () => {
@@ -81,6 +131,6 @@ test('never collapses the whole page when everything is done', () => {
     api_secret: 'done', agency_config: 'done', provisioning: 'done',
     webhooks: 'done', live_test: 'done',
   });
-  const open = defaultExpandedStageIds(all);
+  const open = defaultExpandedStageIds(all, allConnectFlags(true));
   assert.ok(open.length >= 1);
 });
