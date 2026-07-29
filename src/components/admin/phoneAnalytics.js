@@ -61,7 +61,7 @@ export function summarizePhoneActivity({ smsMessages = [], callLogs = [], consen
   // off-duty, after-hours, quiet-hours and no-personal-cell routing into a
   // single `office_transfer` call_mode (see handleTelnyxStatusWebhook), so
   // count that value rather than modes the backend never writes.
-  const officeTransfers = calls.filter((c) => c.call_mode === "office_transfer").length;
+  const officeTransfers = inboundCalls.filter((c) => c.call_mode === "office_transfer").length;
   const callStats = {
     total: calls.length,
     inbound: inboundCalls.length,
