@@ -169,13 +169,38 @@ export default function TrainingCoursePlayer() {
     }];
   }, [rawModules, course]);
 
-  const randomizedQuestions = useMemo(
-    () => shuffle(questions).map((q) => ({
-      ...q,
-      options_json: Array.isArray(q.options_json) ? shuffle(q.options_json) : q.options_json,
-    })),
-    [questions]
-  );
+  // Shuffle ONCE per question set and keep the order stable for the whole
+  // attempt. `questions` is a react-query result: any background refetch (e.g.
+  // network reconnect, cache invalidation) returns a fresh array reference, and
+  // re-shuffling on every new reference rearranged the questions AND their
+  // answer options under the learner mid-test. Cache the shuffled question-id
+  // order and each question's option permutation, keyed by the set of question
+  // ids, and re-apply them to the latest data — so refreshed content flows
+  // through without anything jumping around.
+  const shuffleOrderRef = useRef(null);
+  const randomizedQuestions = useMemo(() => {
+    const key = questions.map((q) => q.id).sort().join('|');
+    if (!shuffleOrderRef.current || shuffleOrderRef.current.key !== key) {
+      shuffleOrderRef.current = {
+        key,
+        questionOrder: shuffle(questions.map((q) => q.id)),
+        optionOrders: new Map(questions.map((q) => [
+          q.id,
+          Array.isArray(q.options_json) ? shuffle(q.options_json.map((_, i) => i)) : null,
+        ])),
+      };
+    }
+    const byId = new Map(questions.map((q) => [q.id, q]));
+    return shuffleOrderRef.current.questionOrder
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .map((q) => {
+        const perm = shuffleOrderRef.current.optionOrders.get(q.id);
+        const applies =
+          Array.isArray(q.options_json) && Array.isArray(perm) && perm.length === q.options_json.length;
+        return { ...q, options_json: applies ? perm.map((i) => q.options_json[i]) : q.options_json };
+      });
+  }, [questions]);
 
   const passingScore = assignment?.passing_score_required || course?.passing_score || 80;
   const isAdmin = isAdminView(currentUser);
