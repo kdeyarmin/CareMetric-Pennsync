@@ -24,6 +24,18 @@ test("extractor vocabulary maps onto the right requirement sets", () => {
   }
 });
 
+test("psychosocial/social-work visits are NOT graded as admissions", () => {
+  // Regression: an unanchored /soc/ matched inside "psychosocial" and
+  // "social work", grading an MSW note against the full admission checklist
+  // (election statement, comprehensive assessment, ...) with cascading false
+  // "missing element" findings. A real "SOC" still maps to admission.
+  for (const raw of ["psychosocial", "Social Work", "MSW psychosocial visit"]) {
+    assert.notEqual(normalizeVisitTypeKey(raw).key, "admission", raw);
+  }
+  assert.equal(normalizeVisitTypeKey("SOC").key, "admission");
+  assert.equal(normalizeVisitTypeKey("soc visit").key, "admission");
+});
+
 test("exact keys and unknowns behave sanely", () => {
   assert.deepEqual(normalizeVisitTypeKey("admission"), { key: "admission", recognized: true });
   assert.deepEqual(normalizeVisitTypeKey("skilled_nursing"), { key: "skilled_nursing", recognized: true });

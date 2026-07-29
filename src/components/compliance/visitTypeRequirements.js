@@ -171,7 +171,10 @@ const KEY_PATTERNS = [
   { re: /recert/, key: "recertification" },
   { re: /resumption|\broc\b/, key: "recertification" },
   { re: /discharge|transfer|revocation/, key: "discharge" },
-  { re: /soc|start.?of.?care|admission|admit|initial/, key: "admission" },
+  // \bsoc\b, not bare /soc/: an unanchored "soc" matches inside
+  // "psychosocial"/"social work", grading an MSW visit against the full
+  // admission checklist (mirrors the \broc\b anchoring above).
+  { re: /\bsoc\b|start.?of.?care|admission|admit|initial/, key: "admission" },
   { re: /skilled/, key: "skilled_nursing" },
   { re: /routine|follow.?up|supervis/, key: "routine_visit" },
 ];

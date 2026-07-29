@@ -917,7 +917,9 @@ Return JSON:
       // M1000 → community vs institutional (mirrors calculatePDGM validation).
       const m1000Raw = String(output?.m1000_from_where_admitted || '').trim();
       const m1000Lower = m1000Raw.toLowerCase();
-      const m1000Code = (m1000Raw.match(/\b([1-7])\b/) || [])[1] || '';
+      // Strip a leading zero first so a zero-padded code ("02") still matches
+      // the single-digit pattern. Mirrors calculatePDGM's validateAdmissionSource.
+      const m1000Code = (m1000Raw.replace(/^0+(?=\d)/, '').match(/\b([1-7])\b/) || [])[1] || '';
       let admissionSource = 'community';
       if (
         ['2', '3', '4', '5', '6'].includes(m1000Code) ||
@@ -947,10 +949,21 @@ Return JSON:
         if (!isNaN(days) && days >= 30) episodeTiming = 'late';
       } else if (output?.soc_date && output?.assessment_date) {
         try {
-          const soc = new Date(output.soc_date);
-          const assessment = new Date(output.assessment_date);
-          if (!Number.isNaN(soc.getTime()) && !Number.isNaN(assessment.getTime())) {
-            const diffDays = Math.floor((assessment - soc) / (1000 * 60 * 60 * 24));
+          // Calendar-day diff, not a raw-ms floor: a floor undercounts by one
+          // across spring-forward DST or when the two dates parse in different
+          // zones (local MM/DD/YYYY vs UTC YYYY-MM-DD) — letting day 31 of
+          // care read as "early". Date-only ISO strings parse as UTC, so use
+          // UTC components for those and local otherwise, then diff UTC days.
+          const parseDay = (v) => {
+            const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(v).trim());
+            if (iso) return Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+            const d = new Date(v);
+            return Number.isNaN(d.getTime()) ? NaN : Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+          };
+          const socDay = parseDay(output.soc_date);
+          const assessmentDay = parseDay(output.assessment_date);
+          if (!Number.isNaN(socDay) && !Number.isNaN(assessmentDay)) {
+            const diffDays = Math.round((assessmentDay - socDay) / (1000 * 60 * 60 * 24));
             if (diffDays >= 30) episodeTiming = 'late';
           }
         } catch {

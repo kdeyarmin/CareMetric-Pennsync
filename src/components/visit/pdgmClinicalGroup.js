@@ -8,6 +8,12 @@
  * and the outputs are plain objects.
  */
 
+// Case-insensitive whole-word matcher for a keyword (spaces allowed).
+function keywordRe(keyword) {
+  const escaped = String(keyword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`, 'i');
+}
+
 /**
  * Determine the most likely PDGM clinical group from the patient's diagnoses.
  *
@@ -79,7 +85,10 @@ export function determineClinicalGroup(primaryDx, secondaryDx = []) {
       }
     }
     for (const keyword of group.keywords) {
-      if (dxText.includes(keyword.toLowerCase())) {
+      // Whole-word match, not substring: short abbreviations like "MS", "TIA",
+      // and "THR" otherwise match inside unrelated words ("symptoms",
+      // "dementia", "arthritis") and misgroup the episode.
+      if (keywordRe(keyword).test(dxText)) {
         score += 1;
         if (!matchedPatterns.includes(keyword)) matchedPatterns.push(keyword);
       }
@@ -103,9 +112,13 @@ export function determineClinicalGroup(primaryDx, secondaryDx = []) {
  * Identify CMS-recognized comorbidities for the PDGM comorbidity adjustment.
  *
  * Scans the combined diagnosis + narrative text for high- and low-impact
- * comorbidity patterns and derives the adjustment tier per CMS rules: a single
- * high-impact comorbidity yields a `high` adjustment; two or more low-impact
- * comorbidities yield a `low` adjustment; otherwise `none`.
+ * comorbidity patterns and derives the adjustment tier. Tier thresholds mirror
+ * the canonical backend (base44/functions/calculatePDGM) and CMS's
+ * interaction-based model: `high` requires two or more high-impact
+ * comorbidities (or one high-impact plus two or more low-impact); a single
+ * high-impact or two or more low-impact comorbidities yield `low`; otherwise
+ * `none`. (A single high-impact comorbidity previously yielded `high`, which
+ * overstated the adjustment relative to CMS and the backend.)
  *
  * @param {string} primaryDx
  * @param {string[]} [secondaryDx]
@@ -162,10 +175,14 @@ export function identifyComorbidities(primaryDx, secondaryDx = [], narrativeText
     }
   }
 
-  // Determine adjustment level per CMS rules
-  if (foundComorbidities.high.length >= 1) {
+  // Determine adjustment level — mirrors calculatePDGM's comorbidity tiering
+  // (CMS's high tier is interaction-based, so one high-impact dx alone is not
+  // enough for the high adjustment).
+  const highCount = foundComorbidities.high.length;
+  const lowCount = foundComorbidities.low.length;
+  if (highCount >= 2 || (highCount >= 1 && lowCount >= 2)) {
     foundComorbidities.adjustment = 'high';
-  } else if (foundComorbidities.low.length >= 2) {
+  } else if (highCount >= 1 || lowCount >= 2) {
     foundComorbidities.adjustment = 'low';
   }
 
