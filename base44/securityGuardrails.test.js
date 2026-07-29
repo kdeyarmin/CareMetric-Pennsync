@@ -286,7 +286,57 @@ for (const file of SCHEDULER_AUTH_FILES) {
   });
 }
 
-// 12. Operational logs from backend service-role functions must not include
+// 12. notifySignerOfPackage is an unauthenticated entity trigger that mints a
+//     30-day signer-portal bearer token. It must claim the signer_notified_at
+//     idempotency marker before doing that privileged work, so a trigger
+//     re-fire (or a re-POST of a real package id) cannot re-mint and re-email
+//     portal links indefinitely.
+test('notifySignerOfPackage claims the signer_notified_at idempotency marker', () => {
+  const src = read('base44/functions/notifySignerOfPackage/entry.ts');
+  assert.ok(
+    /if \(pkg\.signer_notified_at\)/.test(src),
+    'notifySignerOfPackage must skip packages whose signer has already been notified.',
+  );
+  assert.ok(
+    /DocumentPackage\.update\(pkg\.id,\s*\{\s*signer_notified_at:/.test(src),
+    'notifySignerOfPackage must claim signer_notified_at before minting the signer token.',
+  );
+  const entity = read('base44/entities/DocumentPackage.jsonc');
+  assert.ok(
+    /"signer_notified_at"/.test(entity),
+    'DocumentPackage must define the signer_notified_at idempotency field.',
+  );
+});
+
+// 13. validateSignerToken is a public endpoint whose access tracking stores
+//     caller-controlled values (x-forwarded-for, user-agent). The arrays must
+//     stay capped so a client cycling spoofed values cannot grow the token
+//     record without bound.
+test('validateSignerToken caps its ip/user-agent access tracking', () => {
+  const src = read('base44/functions/validateSignerToken/entry.ts');
+  assert.ok(
+    /MAX_TRACKED_ENTRIES/.test(src) && /\.slice\(-MAX_TRACKED_ENTRIES\)/.test(src),
+    'validateSignerToken must cap ip_addresses/user_agents (slice(-MAX_TRACKED_ENTRIES)) — they store caller-controlled header values on a public endpoint.',
+  );
+});
+
+// 14. submitDocumentSignatures must authorize with the platform's real role
+//     model (role 'admin' + account_type agency/super admin). 'clinician' and
+//     'nurse_manager' are not role values in this platform — branches keyed on
+//     them silently never fire, masking the intended authorization behavior.
+test('submitDocumentSignatures uses the real admin role model', () => {
+  const src = read('base44/functions/submitDocumentSignatures/entry.ts');
+  assert.ok(
+    !/===\s*'clinician'|===\s*'nurse_manager'/.test(src),
+    "submitDocumentSignatures must not gate on nonexistent role values ('clinician'/'nurse_manager').",
+  );
+  assert.ok(
+    /account_type === 'agency_admin'/.test(src) && /account_type === 'super_admin'/.test(src),
+    'submitDocumentSignatures must accept the agency_admin/super_admin account types like the rest of the backend.',
+  );
+});
+
+// 15. Operational logs from backend service-role functions must not include
 //     direct patient/staff identifiers. Console output can be retained outside
 //     the app UI, so diagnostics should be aggregate/status-only unless a
 //     reviewed, redacted logging helper is introduced.
