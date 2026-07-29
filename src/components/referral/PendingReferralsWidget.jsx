@@ -11,7 +11,7 @@ import {
   ChevronRight,
   Bell
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
 

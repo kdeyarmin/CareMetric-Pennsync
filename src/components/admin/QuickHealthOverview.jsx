@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, ArrowRight, CheckCircle2, Database } from "lucide-react";
 import { parseLocalDate } from "@/lib/dateLocal";

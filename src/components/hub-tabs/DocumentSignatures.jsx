@@ -17,7 +17,7 @@ import {
   Search
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { getNormalizedSignatureStatus, isSignatureOverdue } from "@/components/signature/signatureUtils";

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useMemo, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";

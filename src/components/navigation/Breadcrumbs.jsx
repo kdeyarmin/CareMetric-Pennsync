@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { ChevronRight, Home } from "lucide-react";
 import { buildBreadcrumbs } from "@/lib/nav.manifest";

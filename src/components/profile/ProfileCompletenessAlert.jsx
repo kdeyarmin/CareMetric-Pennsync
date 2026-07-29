@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";

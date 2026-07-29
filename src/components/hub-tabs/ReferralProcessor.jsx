@@ -2,7 +2,7 @@ import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { toLocalISODate } from "@/lib/dateLocal";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { createPageUrl } from "@/utils";
 import ReferralPDFSummarizer from "@/components/referral/ReferralPDFSummarizer";
 import ReferralAnalyzer from "@/components/referral/ReferralAnalyzer";

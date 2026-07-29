@@ -14,7 +14,7 @@ import {
   Calendar
 } from "lucide-react";
 import { differenceInDays } from "date-fns";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { formatEastern } from "@/components/utils/timezone";
 import { ALL_ROWS } from '@/lib/queryLimits';

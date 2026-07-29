@@ -11,7 +11,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { toast } from "sonner";
 import { createPageUrl } from "@/utils";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import SignatureCanvas from "../components/documents/SignatureCanvas";
 import { sanitizeHtml } from "@/components/utils/security";
 

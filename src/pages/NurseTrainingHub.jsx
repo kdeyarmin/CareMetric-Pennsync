@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
