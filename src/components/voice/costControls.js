@@ -8,7 +8,10 @@
  */
 
 // NANP premium/disallowed area codes: 900 = premium-rate, 976 = legacy premium.
-const PREMIUM_AREA_CODES = new Set(["900", "976"]);
+// Exported so base44/_shared/backendHelpers.mjs can generate the inlined backend
+// copies (sendSms / sendFax / sendBatchFax / startMaskedCall / dispatchScheduledSms)
+// from this single source.
+export const PREMIUM_AREA_CODES = new Set(["900", "976"]);
 
 /**
  * Decide whether an E.164 destination is allowed to be contacted.
