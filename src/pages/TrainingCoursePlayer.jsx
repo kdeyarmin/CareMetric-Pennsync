@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   AlertTriangle, CheckCircle2, RotateCcw, Award, ChevronRight, ChevronLeft,
   BookOpen, Clock, Star, FileText, Send, Eye, RefreshCw, Home,

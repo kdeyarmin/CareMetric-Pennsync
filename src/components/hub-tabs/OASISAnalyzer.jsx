@@ -5,7 +5,7 @@ import { invokeLLM } from "@/lib/invokeLLM";
 import { calculatePatientMatchScore } from "@/components/oasis/patientMatchScore";
 import OASISAnalyticsDashboard from "@/components/oasis/OASISAnalyticsDashboard";
 import { getScoreColor, getScoreBg, getSeverityBadge } from "@/components/oasis/oasisScoreColors";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

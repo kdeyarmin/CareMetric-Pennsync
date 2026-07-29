@@ -14,7 +14,7 @@
  */
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { act, render } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog";
 // routes.jsx derives ROUTES from nav.manifest.js; import it as the app does so

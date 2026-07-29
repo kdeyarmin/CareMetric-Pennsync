@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Award, Printer, CheckCircle2, AlertTriangle, BookOpen, RefreshCcw } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import { createCertificateBlobUrl } from "@/components/learning/certificatePdf";

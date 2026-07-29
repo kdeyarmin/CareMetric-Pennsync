@@ -61,7 +61,7 @@ import EmptyState from "@/components/ui/empty-state";
 import StatCard from "@/components/ui/stat-card";
 import PageContainer from "@/components/ui/PageContainer";
 import LoadingState from "@/components/ui/LoadingState";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { formatEastern } from "../components/utils/timezone";
 

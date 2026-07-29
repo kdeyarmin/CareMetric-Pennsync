@@ -2,7 +2,7 @@
 // data-quality, system-health, settings. Deep-linkable via ?tab=<key>.
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
