@@ -9,10 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Eye, CheckCircle2, RotateCcw, Sparkles, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { getCourseReadiness } from "./courseReadiness";
 
-// SME (subject-matter-expert) review queue. AI-generated courses are created as
-// status:'draft' + needs_sme_review:true; this connects them to an approval
-// step so a human signs off before staff are assigned the content.
+// SME (subject-matter-expert) review queue. AI-generated courses stay as drafts
+// while their author edits them, then enter this queue as pending_review so a
+// human signs off before staff can receive the content.
 export default function SMEReviewQueue() {
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState(null);
@@ -23,7 +24,11 @@ export default function SMEReviewQueue() {
 
   const { data: pendingCourses = [], isLoading } = useQuery({
     queryKey: ["sme-review-queue"],
-    queryFn: () => base44.entities.TrainingCourse.filter({ needs_sme_review: true }, "-updated_date", 200),
+    queryFn: () => base44.entities.TrainingCourse.filter(
+      { needs_sme_review: true, status: "pending_review" },
+      "-updated_date",
+      200
+    ),
     initialData: [],
     enabled: isAdminUser,
   });
@@ -72,6 +77,16 @@ export default function SMEReviewQueue() {
   const approve = async (course) => {
     setBusyId(course.id);
     try {
+      const [modules, questions] = await Promise.all([
+        base44.entities.TrainingModule.filter({ course_id: course.id }, "order_index", 100),
+        base44.entities.TrainingQuestion.filter({ course_id: course.id, active: true }, "order_index", 200),
+      ]);
+      const readiness = getCourseReadiness(course, modules, questions);
+      if (!readiness.readyForReview) {
+        toast.error(`Course is not ready to publish: ${readiness.blockers.join(" ")}`);
+        return;
+      }
+
       await base44.entities.TrainingCourse.update(course.id, {
         status: "published",
         needs_sme_review: false,
@@ -98,7 +113,7 @@ export default function SMEReviewQueue() {
     try {
       await base44.entities.TrainingCourse.update(course.id, {
         status: "draft",
-        needs_sme_review: false,
+        needs_sme_review: true,
       });
       await writeAudit(course, "content_rejected", { status: "draft", review_note: note }, "sme_changes_requested");
       await notifyAuthor(course, "Course changes requested", `"${course.title}" needs revisions before publishing.${note ? ` Reviewer note: ${note}` : ""}`);
@@ -123,7 +138,7 @@ export default function SMEReviewQueue() {
           <div>
             <h2 className="font-semibold text-slate-900">SME Review Queue</h2>
             <p className="text-sm text-slate-600">
-              AI-generated and draft courses flagged for subject-matter-expert review. Preview the content, then approve to publish or send back with notes. Nothing reaches staff until it is approved.
+              AI-generated courses submitted by their author. Preview the complete lessons, quiz, and certificate settings, then approve to publish or send back with notes. Nothing reaches staff until it is approved.
             </p>
           </div>
         </CardContent>
@@ -132,7 +147,7 @@ export default function SMEReviewQueue() {
       {isLoading ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-amber-600" /></div>
       ) : pendingCourses.length === 0 ? (
-        <Card><CardContent className="py-12 text-center text-slate-500">No courses are awaiting review. AI-generated drafts will appear here automatically.</CardContent></Card>
+        <Card><CardContent className="py-12 text-center text-slate-500">No courses are awaiting review. Completed AI-generated drafts appear here after their author submits them.</CardContent></Card>
       ) : (
         pendingCourses.map((course) => (
           <Card key={course.id}>
