@@ -20,7 +20,10 @@ globalThis.Deno = globalThis.Deno || { serve() {}, env: { get: () => undefined }
 
 async function loadInline(entryPath, names) {
   let src = await readFile(new URL(entryPath, import.meta.url), "utf8");
-  src = src.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/g, "");
+  // Strip the npm imports (createClientFromRequest, jsPDF) and stub them: the
+  // helpers under test are pure and never touch either.
+  src = src.replace(/import[^;]*from\s+'npm:[^']*';?/g, "");
+  src = `const createClientFromRequest = () => ({}); class jsPDF {}\n${src}`;
   const present = names.filter((n) => new RegExp(`(function|const)\\s+${n}\\b`).test(src));
   const js = ts.transpileModule(src, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
@@ -35,7 +38,7 @@ async function loadInline(entryPath, names) {
 }
 
 const ENTRY = "./generateLearningTranscriptPDF/entry.ts";
-const NAMES = ["creditYear", "round1"];
+const NAMES = ["creditYear", "round1", "dedupeCreditRecords", "groupByCreditYear"];
 
 const CERTIFICATES = [
   { completion_date: "2026-03-04", issued_at: "2027-01-01" },
@@ -81,4 +84,75 @@ test("inline credit-year helpers match ceTranscript.js", async () => {
     { now: new Date("2026-06-01T00:00:00Z") }
   ).totalCeHours;
   assert.equal(inlineTotal, uiTotal);
+});
+
+// A mixed record set covering every rule the credit ledger applies:
+//   1 — credited.
+//   2 — a retake of assignment a1, so it must NOT be credited twice.
+//   3 — a second course, credited.
+//   4 — a separate assignment for course c-falls later the same year (how a
+//       quarterly-recurring in-service arrives): credited on its own.
+//   5 — a prior credit year.
+//   6 — revoked, never credited.
+//   7 — no completion or issue date, so it can't be placed in a credit year.
+const MIXED = [
+  { id: '1', assignment_id: 'a1', course_id: 'c-hipaa', hours: 1, completion_date: '2026-02-01' },
+  { id: '2', assignment_id: 'a1', course_id: 'c-hipaa', hours: 1, completion_date: '2026-04-01' },
+  { id: '3', assignment_id: 'a2', course_id: 'c-falls', hours: 0.5, completion_date: '2026-06-01' },
+  { id: '4', assignment_id: 'a3', course_id: 'c-falls', hours: 0.5, completion_date: '2026-08-01' },
+  { id: '5', assignment_id: 'a4', course_id: 'c-oasis', hours: 1.5, completion_date: '2025-05-01' },
+  { id: '6', assignment_id: 'a9', course_id: 'c-hipaa', hours: 1, completion_date: '2026-03-01', revoked: true },
+  { id: '7', assignment_id: 'a8', course_id: 'c-hipaa', hours: 1 },
+];
+
+test("inline dedupe keeps the same credit records as the in-app transcript", async () => {
+  const { mod } = await loadInline(ENTRY, NAMES);
+
+  const inlineIds = mod.dedupeCreditRecords(MIXED).map((record) => record.certificate.id);
+  const uiIds = ceTranscript.dedupeCreditRecords(MIXED).map((record) => record.certificate.id);
+
+  assert.deepEqual(inlineIds, uiIds);
+  assert.deepEqual(inlineIds, ['1', '3', '4', '5']);
+});
+
+test("a legacy row without an assignment id can't double-credit its course", async () => {
+  const { mod } = await loadInline(ENTRY, NAMES);
+  const legacy = [
+    { id: 'x', course_id: 'c-hipaa', hours: 1, completion_date: '2026-02-01' },
+    { id: 'y', course_id: 'c-hipaa', hours: 1, completion_date: '2026-09-01' },
+    // A later credit year is a genuine renewal and counts again.
+    { id: 'z', course_id: 'c-hipaa', hours: 1, completion_date: '2027-02-01' },
+  ];
+
+  const inlineIds = mod.dedupeCreditRecords(legacy).map((record) => record.certificate.id);
+  assert.deepEqual(inlineIds, ceTranscript.dedupeCreditRecords(legacy).map((r) => r.certificate.id));
+  assert.deepEqual(inlineIds, ['x', 'z']);
+});
+
+test("printed credit-year subtotals match the in-app transcript exactly", async () => {
+  const { mod } = await loadInline(ENTRY, NAMES);
+
+  const printed = mod.groupByCreditYear(MIXED);
+  const onScreen = ceTranscript.buildCeTranscript(MIXED, { now: new Date('2026-09-01T00:00:00Z') });
+
+  // Same years, in the same newest-first order.
+  assert.deepEqual(
+    printed.yearTotals.map((entry) => entry.year),
+    onScreen.years.map((entry) => entry.year)
+  );
+  // Same CE hours credited per year, and the same grand total on the header.
+  assert.deepEqual(
+    printed.yearTotals.map((entry) => entry.hours),
+    onScreen.years.map((entry) => entry.ceHours)
+  );
+  assert.equal(printed.grandTotalHours, onScreen.totalCeHours);
+  // Every row the PDF prints is a credited record, and the counts agree.
+  assert.deepEqual(
+    printed.yearTotals.map((entry) => entry.courseCount),
+    onScreen.years.map((entry) => entry.courseCount)
+  );
+  assert.deepEqual(
+    printed.yearGroups.map(([year, rows]) => [year, rows.length]),
+    [[2026, 3], [2025, 1]]
+  );
 });

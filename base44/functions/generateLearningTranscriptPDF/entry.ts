@@ -1,10 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@4.0.0';
 
-// creditYear / round1 are inline copies of the unit-tested source in
-// src/components/learning/ceTranscript.js so the printed transcript groups
-// completions into exactly the same credit years the in-app transcript shows.
-// base44/functions/ceTranscriptInlineParity.test.js guards against drift.
+// creditYear / round1 / dedupeCreditRecords are inline copies of the
+// unit-tested source in src/components/learning/ceTranscript.js. The printed
+// transcript must credit exactly what the in-app transcript credits — a PDF
+// whose CE total disagrees with the screen is a compliance problem, not a
+// cosmetic one. base44/functions/ceTranscriptInlineParity.test.js guards
+// against drift.
 
 // Credit year of a completion, read from the leading YYYY of the ISO date so a
 // record always lands in the same year for every reader regardless of timezone.
@@ -18,6 +20,50 @@ function creditYear(certificate) {
 }
 
 const round1 = (value) => Math.round(value * 10) / 10;
+
+// One credit-earning record per assignment (or per course within a credit year
+// for older rows without an assignment id), so a retake isn't printed as two
+// separate credits while a genuine renewal in a later year still counts.
+function dedupeCreditRecords(certificates = []) {
+  const seen = new Set();
+  const kept = [];
+  for (const certificate of certificates) {
+    if (!certificate || certificate.revoked === true) continue;
+    const year = creditYear(certificate);
+    if (year === null) continue;
+    const key = certificate.assignment_id
+      ? `assignment:${certificate.assignment_id}`
+      : `course:${certificate.course_id || certificate.course_title || certificate.id}:${year}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push({ certificate, year });
+  }
+  return kept;
+}
+
+/** Credit-year blocks (newest first) plus the grand CE total for the header. */
+function groupByCreditYear(certificates = []) {
+  const byYear = new Map();
+  for (const { certificate, year } of dedupeCreditRecords(certificates)) {
+    if (!byYear.has(year)) byYear.set(year, []);
+    byYear.get(year).push(certificate);
+  }
+  const yearGroups = [...byYear.entries()].sort((a, b) => b[0] - a[0]);
+  return {
+    yearGroups,
+    yearTotals: yearGroups.map(([year, rows]) => ({
+      year,
+      hours: round1(rows.reduce((sum, cert) => sum + (Number(cert.hours) || 0), 0)),
+      courseCount: rows.length,
+    })),
+    grandTotalHours: round1(
+      yearGroups.reduce(
+        (sum, [, rows]) => sum + rows.reduce((rowSum, cert) => rowSum + (Number(cert.hours) || 0), 0),
+        0,
+      ),
+    ),
+  };
+}
 
 Deno.serve(async (req) => {
   try {
@@ -60,23 +106,9 @@ Deno.serve(async (req) => {
       5000,
     );
 
-    // Group by credit year, newest first, so the transcript reads the way a CE
-    // transcript is expected to: yearly blocks each carrying an hours subtotal.
-    const byYear = new Map();
-    for (const certificate of certificates) {
-      const year = creditYear(certificate);
-      const key = year === null ? 'Undated' : year;
-      if (!byYear.has(key)) byYear.set(key, []);
-      byYear.get(key).push(certificate);
-    }
-    const yearGroups = [...byYear.entries()].sort((a, b) => {
-      if (a[0] === 'Undated') return 1;
-      if (b[0] === 'Undated') return -1;
-      return b[0] - a[0];
-    });
-    const grandTotalHours = round1(
-      certificates.reduce((sum, certificate) => sum + (Number(certificate.hours) || 0), 0),
-    );
+    // Yearly blocks, newest first, each carrying an hours subtotal — the shape a
+    // CE transcript is expected to have.
+    const { yearGroups, yearTotals, grandTotalHours } = groupByCreditYear(certificates);
 
     // Create PDF
     const doc = new jsPDF();
@@ -137,8 +169,8 @@ Deno.serve(async (req) => {
       return true;
     };
 
-    yearGroups.forEach(([year, rows]) => {
-      const yearHours = round1(rows.reduce((sum, cert) => sum + (Number(cert.hours) || 0), 0));
+    yearGroups.forEach(([year, rows], groupIndex) => {
+      const { hours: yearHours, courseCount } = yearTotals[groupIndex];
 
       ensureSpace(34);
       doc.setFontSize(11);
@@ -147,7 +179,7 @@ Deno.serve(async (req) => {
       doc.setFontSize(9);
       doc.setTextColor(80, 80, 80);
       doc.text(
-        `${rows.length} course${rows.length === 1 ? '' : 's'} · ${yearHours} CE hour${yearHours === 1 ? '' : 's'}`,
+        `${courseCount} course${courseCount === 1 ? '' : 's'} - ${yearHours} CE hour${yearHours === 1 ? '' : 's'}`,
         40,
         yPosition,
       );
@@ -164,7 +196,7 @@ Deno.serve(async (req) => {
         const completedValue = cert.completion_date || cert.issued_at;
         const completedDate = completedValue ? new Date(completedValue).toLocaleDateString() : 'N/A';
         const score = cert.score ? `${cert.score}%` : 'N/A';
-        const hours = Number(cert.hours) > 0 ? String(round1(Number(cert.hours))) : '—';
+        const hours = Number(cert.hours) > 0 ? String(round1(Number(cert.hours))) : '-';
 
         let cellX = 20;
         doc.text(completedDate, cellX, yPosition, { maxWidth: 23 });

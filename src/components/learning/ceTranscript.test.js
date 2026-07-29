@@ -56,6 +56,17 @@ test('dedupeCreditRecords drops revoked/undated rows and double-counted retakes'
   );
 });
 
+test('dedupeCreditRecords credits each assignment of a recurring course', () => {
+  // A quarterly in-service arrives as separate assignments for the same course,
+  // so each completion is its own training time and earns credit again.
+  const records = dedupeCreditRecords([
+    cert({ id: 'q1', assignment_id: 'asg-q1', course_id: 'course-falls', completion_date: '2026-01-10' }),
+    cert({ id: 'q2', assignment_id: 'asg-q2', course_id: 'course-falls', completion_date: '2026-04-10' }),
+  ]);
+
+  assert.deepEqual(records.map((record) => record.certificate.id), ['q1', 'q2']);
+});
+
 test('buildCeTranscript groups CE credit and clock hours by credit year', () => {
   const transcript = buildCeTranscript(
     [
