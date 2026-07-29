@@ -275,7 +275,7 @@ Return detailed risk assessment:`,
           <div className="text-center py-8">
             <Activity className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <p className="text-slate-600 mb-4">Click "Analyze" to assess hospitalization risk for all active patients</p>
-            <p className="text-xs text-slate-500">AI analyzes vitals, medications, and clinical notes</p>
+            <p className="text-xs text-slate-500">AI analyzes vitals and clinical notes</p>
           </div>
         )}
 
@@ -283,7 +283,7 @@ Return detailed risk assessment:`,
           <div className="text-center py-8">
             <RefreshCw className="w-12 h-12 text-blue-500 mx-auto mb-3 animate-spin" />
             <p className="text-slate-600 font-medium">Analyzing {patients.length} patients...</p>
-            <p className="text-xs text-slate-500 mt-2">Reviewing vitals, medications, and clinical patterns</p>
+            <p className="text-xs text-slate-500 mt-2">Reviewing vitals and clinical patterns</p>
           </div>
         )}
 

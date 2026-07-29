@@ -96,8 +96,9 @@ Deno.serve(async (req) => {
 
     const originalFax = faxLogs[0];
 
-    // Ownership: only the original sender (or an admin) may resend a PHI fax.
-    if (originalFax.sent_by && originalFax.sent_by !== user.email && user.role !== 'admin') {
+    // Ownership: only the original sender (or an admin-tier user) may resend a PHI fax.
+    const isAdmin = user.role === 'admin' || user.account_type === 'agency_admin' || user.account_type === 'super_admin';
+    if (originalFax.sent_by && originalFax.sent_by !== user.email && !isAdmin) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -109,8 +110,9 @@ Deno.serve(async (req) => {
     const cfgMax = Number(retryCfgRows?.[0]?.max_retries);
     const maxRetries = Number.isFinite(cfgMax) && cfgMax >= 0 ? cfgMax : 3;
 
-    // Check retry limit
-    if (originalFax.retry_count >= maxRetries) {
+    // Check retry limit — coerce undefined retry_count to 0 so max_retries: 0
+    // actually blocks (undefined >= 0 is false in JS).
+    if ((Number(originalFax.retry_count) || 0) >= maxRetries) {
       return Response.json({
         error: `Maximum retries (${maxRetries}) exceeded`,
         success: false

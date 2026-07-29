@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
     // retry instead of being declared final (mirrors pollFaxStatuses).
     const cfgRows = await base44.asServiceRole.entities.FaxRetryConfig.list('-created_date', 1).catch(() => []);
     const cfg = cfgRows[0] || {};
-    const maxRetries = faxRetryConfig(cfg).maxRetries;
+    const retryCfg = faxRetryConfig(cfg);
 
     let updatedCount = 0;
 
@@ -192,12 +192,11 @@ Deno.serve(async (req) => {
               priority: faxLog.priority || 'normal',
               config: cfg,
             });
-            if (plan.willRetry && plan.nextRetryCount < maxRetries) {
+            if (plan.willRetry) {
               update.next_retry_at = plan.nextRetryAt;
               update.retry_count = plan.nextRetryCount;
             } else {
-              if (plan.willRetry) update.retry_count = plan.nextRetryCount;
-              notifyFailure = faxLog.sent_by && !faxLog.final_failure_notified;
+              notifyFailure = retryCfg.notifyOnFinalFailure && faxLog.sent_by && !faxLog.final_failure_notified;
               update.final_failure_notified = true;
             }
           } else if (newStatus === 'delivered') {

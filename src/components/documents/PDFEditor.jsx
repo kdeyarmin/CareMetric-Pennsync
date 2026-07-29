@@ -106,48 +106,55 @@ export default function PDFEditor({ pdfUrl, onSave }) {
     }
   }, [pdfDoc, renderPage]);
 
-  const handleCanvasClick = (e) => {
+  const getCanvasPoint = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     // Store in PDF-point space (canvas renders at `scale`) so saved coords match
     // the backend, which applies annotation.x/y directly as PDF points.
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
-
-    if (tool === 'text') {
-      const text = prompt('Enter text:');
-      if (text) {
-        addAnnotation({
-          type: 'text',
-          text,
-          x,
-          y,
-          color,
-          fontSize: 16,
-          page: currentPage
-        });
-      }
-    }
+    return {
+      x: (clientX - rect.left) / scale,
+      y: (clientY - rect.top) / scale,
+    };
   };
 
-  const handleMouseDown = (e) => {
+  const [textDraft, setTextDraft] = useState(null); // { x, y } when placing text
+
+  const handleCanvasClick = (e) => {
+    if (tool !== 'text') return;
+    const { x, y } = getCanvasPoint(e);
+    setTextDraft({ x, y, value: '' });
+  };
+
+  const commitTextDraft = () => {
+    if (!textDraft?.value?.trim()) {
+      setTextDraft(null);
+      return;
+    }
+    addAnnotation({
+      type: 'text',
+      text: textDraft.value.trim(),
+      x: textDraft.x,
+      y: textDraft.y,
+      color,
+      fontSize: 16,
+      page: currentPage
+    });
+    setTextDraft(null);
+  };
+
+  const handlePointerDown = (e) => {
     if (tool !== 'draw' && tool !== 'highlight') return;
-
-    const rect = canvasRef.current.getBoundingClientRect();
-    // Store in PDF-point space (canvas renders at `scale`).
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
-
+    e.preventDefault?.();
+    const { x, y } = getCanvasPoint(e);
     setIsDrawing(true);
     setCurrentPath([{ x, y }]);
   };
 
-  const handleMouseMove = (e) => {
+  const handlePointerMove = (e) => {
     if (!isDrawing) return;
-    
-    const rect = canvasRef.current.getBoundingClientRect();
-    // Store in PDF-point space (canvas renders at `scale`).
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
+    e.preventDefault?.();
+    const { x, y } = getCanvasPoint(e);
 
     setCurrentPath(prev => [...prev, { x, y }]);
 
@@ -161,7 +168,7 @@ export default function PDFEditor({ pdfUrl, onSave }) {
     }
   };
 
-  const handleMouseUp = () => {
+  const handlePointerUp = () => {
     if (!isDrawing) return;
     
     setIsDrawing(false);
@@ -316,16 +323,36 @@ export default function PDFEditor({ pdfUrl, onSave }) {
         </div>
 
         {/* Canvas */}
-        <div className="border rounded-lg overflow-auto bg-slate-100 p-4" style={{ maxHeight: '600px' }}>
+        <div className="border rounded-lg overflow-auto bg-slate-100 p-4 relative" style={{ maxHeight: '600px' }}>
           <canvas
             ref={canvasRef}
             onClick={handleCanvasClick}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            className="mx-auto bg-white shadow-lg cursor-crosshair"
+            onMouseDown={handlePointerDown}
+            onMouseMove={handlePointerMove}
+            onMouseUp={handlePointerUp}
+            onMouseLeave={handlePointerUp}
+            onTouchStart={handlePointerDown}
+            onTouchMove={handlePointerMove}
+            onTouchEnd={handlePointerUp}
+            className="mx-auto bg-white shadow-lg cursor-crosshair touch-none"
           />
+          {textDraft && (
+            <div className="absolute inset-x-4 bottom-4 flex gap-2 items-center bg-white/95 border border-slate-200 rounded-lg p-2 shadow-md">
+              <Input
+                autoFocus
+                value={textDraft.value}
+                onChange={(e) => setTextDraft((d) => ({ ...d, value: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitTextDraft();
+                  if (e.key === 'Escape') setTextDraft(null);
+                }}
+                placeholder="Type annotation text…"
+                className="flex-1"
+              />
+              <Button size="sm" onClick={commitTextDraft}>Add</Button>
+              <Button size="sm" variant="outline" onClick={() => setTextDraft(null)}>Cancel</Button>
+            </div>
+          )}
         </div>
 
         {/* Page Navigation */}

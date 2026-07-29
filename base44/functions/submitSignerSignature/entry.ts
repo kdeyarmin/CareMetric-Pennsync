@@ -152,6 +152,9 @@ Deno.serve(async (req) => {
           const embedResult = await base44.asServiceRole.functions.invoke('stampSignatureOnPDF', {
             pdf_url: sourcePdf,
             signature_data_url: stampImage,
+            // Public signer portal has no user session; authorize the nested
+            // stamp via the shared internal secret.
+            internal_secret: Deno.env.get('INTERNAL_FN_SECRET') || '',
           });
           const signedUrl = embedResult?.data?.file_url;
           if (signedUrl) {

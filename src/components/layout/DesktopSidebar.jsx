@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Shield, ChevronLeft, ChevronRight, Sparkles, Users, LogOut, Search } from "lucide-react";
 import FeedbackButton from "@/components/feedback/FeedbackButton";
 import { BRAND_LOGO_URL } from "@/lib/brand";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
 
 // Active nav item: light navy tint with a gold left indicator bar.
 function navItemClasses(active) {
@@ -25,6 +27,23 @@ export default function DesktopSidebar({
   navCategories, adminItems,
   isActive, onLogout,
 }) {
+  const favoriteIds = (currentUser?.favorited_patients || [])
+    .map((p) => (typeof p === 'string' ? p : p?.id))
+    .filter(Boolean);
+  // Resolve display names for favorited patient IDs (schema stores strings).
+  const { data: favoritePatients = [] } = useQuery({
+    queryKey: ['sidebar-favorite-patients', favoriteIds.join(',')],
+    queryFn: async () => {
+      if (favoriteIds.length === 0) return [];
+      const rows = await base44.entities.Patient.filter({ id: { $in: favoriteIds } }, undefined, favoriteIds.length);
+      return rows || [];
+    },
+    enabled: favoriteIds.length > 0,
+    staleTime: 60_000,
+  });
+  const favoriteNameById = Object.fromEntries(
+    favoritePatients.map((p) => [p.id, `${p.first_name || ''} ${p.last_name || ''}`.trim() || p.id])
+  );
   return (
     <aside className={`hidden md:flex flex-col bg-navy-800 border-r border-navy-900 transition-all duration-300 ${collapsed ? 'w-16' : 'w-56'} print:hidden h-screen sticky top-0 flex-shrink-0`}>
       {/* Logo */}
@@ -78,20 +97,15 @@ export default function DesktopSidebar({
         )}
 
         {/* Favorites */}
-        {currentUser?.favorited_patients?.length > 0 && (
+        {favoriteIds.length > 0 && (
           <>
             {!collapsed && (
               <p className="px-3 py-1 text-xs font-semibold text-gold-600 uppercase flex items-center gap-1 mt-2">
                 <Sparkles className="w-3 h-3" /> Favorites
               </p>
             )}
-            {currentUser?.favorited_patients?.map((patient) => {
-              // favorited_patients holds patient-ID strings (User schema); tolerate
-              // legacy {id,name} objects and skip anything without a usable id so we
-              // never render a `?id=undefined` link or a blank label.
-              const id = typeof patient === 'string' ? patient : patient?.id;
-              if (!id) return null;
-              const label = (patient && typeof patient === 'object' && patient.name) ? patient.name : id;
+            {favoriteIds.map((id) => {
+              const label = favoriteNameById[id] || id;
               return (
                 <Link
                   key={`fav-patient-${id}`}
