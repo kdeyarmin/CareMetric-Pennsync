@@ -22,6 +22,7 @@ const MODE_LABEL = {
   office_transfer: "Transferred to office",
   voicemail: "Voicemail",
   outbound_clicktocall: "Outgoing",
+  unresolved: "Unresolved",
 };
 
 // Post-call disposition options the nurse can tag a call with.
