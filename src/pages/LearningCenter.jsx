@@ -42,7 +42,7 @@ import {
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { isAdminView } from '@/lib/roles';
-import { parseLocalDate, toLocalISODate } from '@/lib/dateLocal';
+import { parseLocalDate, formatLocalDate, toLocalISODate } from '@/lib/dateLocal';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import EmbeddedPage from '@/components/ui/embeddedPage';
@@ -78,19 +78,22 @@ const TAB_KEYS = [
 
 const tabLoader = <LoadingState className="py-12" />;
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '—';
+// Due/renewal dates are date-only strings ("2026-08-15"); `new Date(...)` parses
+// those as UTC midnight, so rendering in a US (negative-offset) timezone showed
+// the PREVIOUS day. parseLocalDate/formatLocalDate treat them as local calendar days.
+const formatDate = (value) => (value && formatLocalDate(value)) || '—';
 
 // Build an all-day .ics calendar from renewal items (client-side, browser only)
 const icsEscape = (s) => String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
 const toIcsDate = (value) => {
-  const d = new Date(value);
+  const d = parseLocalDate(value) || new Date(value);
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 };
 const buildRenewalIcs = (items) => {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PENNSync//Learning//EN', 'CALSCALE:GREGORIAN'];
   items.forEach((item) => {
-    const start = new Date(item.date);
+    const start = parseLocalDate(item.date) || new Date(item.date);
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
     lines.push(
@@ -939,8 +942,10 @@ export default function LearningCenter() {
             />
           ) : (
             activePlans.map(enrollment => {
+              // daysUntil treats the date-only due date as a local calendar day, so a
+              // plan due TODAY isn't flagged overdue all day (UTC-midnight parse bug).
               const isOverdue = enrollment.status === 'overdue' ||
-                (enrollment.due_date && new Date(enrollment.due_date) < new Date() && enrollment.status !== 'completed');
+                (enrollment.due_date && daysUntil(enrollment.due_date) < 0 && enrollment.status !== 'completed');
               return (
                 <Card key={enrollment.id} className={`border transition-all hover:shadow-md ${
                   isOverdue ? 'border-red-200 bg-red-50/20' : 'border-slate-200'
@@ -1263,7 +1268,7 @@ export default function LearningCenter() {
               {(() => {
               let lastMonth = null;
               return renewals.map(item => {
-                const monthLabel = new Date(item.date).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+                const monthLabel = formatLocalDate(item.date, { month: 'long', year: 'numeric' });
                 const showHeader = monthLabel !== lastMonth;
                 lastMonth = monthLabel;
                 const days = daysUntil(item.date);

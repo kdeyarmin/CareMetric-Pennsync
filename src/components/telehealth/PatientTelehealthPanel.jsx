@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import SessionDocumentation from "@/components/telehealth/SessionDocumentation";
 import TelehealthCall from "@/components/telehealth/TelehealthCall";
-import { generateJoinToken, buildPatientJoinLink } from "@/components/telehealth/telehealthUtils";
+import { generateJoinToken, buildPatientJoinLink, hashJoinToken } from "@/components/telehealth/telehealthUtils";
+import { rememberJoinLink, getPatientJoinLink } from "@/components/telehealth/joinLinkAccess";
 import { toast } from "sonner";
 import { hostedAbsoluteUrl } from '@/lib/assetPath';
 import { ROUTER_PATHS } from '@/routes';
@@ -67,16 +68,23 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
     onError: (e) => toast.error(e?.message || "Couldn't send the text")
   });
 
-  const textPatient = (session) => {
+  const textPatient = async (session) => {
     const phone = patient?.phone || patient?.phone_number || patient?.cell;
     if (!phone) {
       toast.error("No phone number on file for this patient");
       return;
     }
+    let link;
+    try {
+      link = await getPatientJoinLink(session);
+    } catch (e) {
+      toast.error(e?.message || "Couldn't generate the join link");
+      return;
+    }
     const greeting = patient?.first_name ? `Hi ${patient.first_name}, ` : "Hi, ";
     textLink.mutate({
       to_number: phone,
-      body: `${greeting}here's your secure telehealth visit link: ${session.invite_link}`
+      body: `${greeting}here's your secure telehealth visit link: ${link}`
     });
   };
 
@@ -158,7 +166,10 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
   const createSession = async () => {
     const roomName = `telehealth-${patient.id}-${Date.now()}`;
     // Patient-facing capability link: the token is the patient's access grant.
-    const inviteLink = buildPatientJoinLink(hostedAbsoluteUrl('/', { routerPaths: ROUTER_PATHS }), roomName, generateJoinToken());
+    // Only the token's SHA-256 hash is persisted; the raw link stays in this
+    // tab's memory (rememberJoinLink) for the copy/text actions.
+    const joinToken = generateJoinToken();
+    rememberJoinLink(roomName, buildPatientJoinLink(hostedAbsoluteUrl('/', { routerPaths: ROUTER_PATHS }), roomName, joinToken));
     await createMutation.mutateAsync({
       room_name: roomName,
       patient_id: patient.id,
@@ -168,7 +179,7 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
       visit_type: newSession.visit_type,
       scheduled_at: newSession.scheduled_at || new Date().toISOString(),
       status: "scheduled",
-      invite_link: inviteLink,
+      join_token_hash: await hashJoinToken(joinToken),
       participant_list: [currentUser?.full_name || currentUser?.email, `${patient.first_name} ${patient.last_name}`].filter(Boolean),
     });
   };
@@ -233,9 +244,9 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
                 <div>
                   <p className="font-semibold text-slate-900">{visitTypes[session.visit_type]?.label || session.visit_type}</p>
                   <p className="text-sm text-slate-500 flex items-center gap-2"><Calendar className="w-3 h-3" />{session.scheduled_at ? new Date(session.scheduled_at).toLocaleString() : 'Now'}</p>
-                  {session.invite_link && (
+                  {(session.join_token_hash || session.invite_link) && (
                     <div className="flex flex-wrap items-center gap-3 mt-1">
-                      <button type="button" className="text-sm text-indigo-600 underline flex items-center gap-1" onClick={async () => { try { await navigator.clipboard.writeText(session.invite_link); toast.success('Join link copied'); } catch { toast.error("Couldn't copy the link — copy it manually."); } }}><Copy className="w-3 h-3" />Copy join link</button>
+                      <button type="button" className="text-sm text-indigo-600 underline flex items-center gap-1" onClick={async () => { try { const link = await getPatientJoinLink(session); await navigator.clipboard.writeText(link); toast.success('Join link copied'); } catch (e) { toast.error(e?.message || "Couldn't copy the link — copy it manually."); } }}><Copy className="w-3 h-3" />Copy join link</button>
                       <button type="button" className="text-sm text-indigo-600 underline flex items-center gap-1 disabled:opacity-50" disabled={textLink.isPending} onClick={() => textPatient(session)}><MessageSquare className="w-3 h-3" />Text to patient</button>
                     </div>
                   )}

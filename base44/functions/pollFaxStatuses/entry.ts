@@ -126,6 +126,31 @@ Deno.serve(async (req) => {
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
 
+    // Release stale retry claims: if a retryFailedFax isolate died between its
+    // claim (status 'retrying') and settle/release, the row would otherwise be
+    // stranded forever — no poller or cron looks at 'retrying', so the fax
+    // silently never goes out. A claim older than 15 minutes is dead (the retry
+    // send itself takes seconds); put the row back to a retriable 'failed'.
+    let releasedStale = 0;
+    try {
+      const staleCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const retrying = await base44.asServiceRole.entities.FaxLog.filter(
+        { status: 'retrying' }, '-created_date', 20,
+      ).catch(() => []);
+      for (const fax of Array.isArray(retrying) ? retrying : []) {
+        if (fax.retry_claimed_at && fax.retry_claimed_at < staleCutoff) {
+          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+            status: 'failed',
+            retry_claimed_by: null,
+            failure_reason: fax.failure_reason || 'Retry attempt was interrupted before completing',
+          }).catch(() => {});
+          releasedStale++;
+        }
+      }
+    } catch (err) {
+      console.error('stale retry-claim release failed:', err?.message);
+    }
+
     // Only poll faxes from the last 48 hours that are still pending
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     
@@ -139,7 +164,7 @@ Deno.serve(async (req) => {
     const faxesToCheck = pendingFaxes.filter(f => f.telnyx_fax_id && f.created_date > cutoff);
 
     if (faxesToCheck.length === 0) {
-      return Response.json({ success: true, checked: 0, updated: 0 });
+      return Response.json({ success: true, checked: 0, updated: 0, released_stale_retries: releasedStale });
     }
 
     const { apiKey } = await resolveTelnyxCreds(base44);
@@ -236,7 +261,7 @@ Deno.serve(async (req) => {
       }
     }));
 
-    return Response.json({ success: true, checked: faxesToCheck.length, updated });
+    return Response.json({ success: true, checked: faxesToCheck.length, updated, released_stale_retries: releasedStale });
   } catch (error) {
     console.error('pollFaxStatuses failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

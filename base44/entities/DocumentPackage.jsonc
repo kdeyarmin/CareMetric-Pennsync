@@ -58,6 +58,11 @@
       "format": "date-time",
       "description": "When the last reminder was sent"
     },
+    "signer_notified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Idempotency marker: when notifySignerOfPackage emailed the signer their portal link (one initial notification per package)"
+    },
     "signer_email": {
       "type": "string",
       "description": "Primary signer email for reminder notifications"

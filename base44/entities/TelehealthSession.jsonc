@@ -70,7 +70,11 @@
     },
     "invite_link": {
       "type": "string",
-      "description": "Patient-facing join link"
+      "description": "LEGACY patient-facing join link with the plaintext ?t= token embedded. New sessions store only join_token_hash; this field remains solely so links already texted to patients on pre-hash sessions keep working."
+    },
+    "join_token_hash": {
+      "type": "string",
+      "description": "SHA-256 hex of the patient's guest join token (the ?t= capability in the invite link). Only the hash is stored at rest; the raw token exists client-side at mint time and in the link sent to the patient."
     },
     "recording_url": {
       "type": "string",

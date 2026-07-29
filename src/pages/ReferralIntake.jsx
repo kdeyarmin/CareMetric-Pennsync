@@ -483,6 +483,27 @@ Actions available:
       const priorityAnalysis = priorityResponse.data?.priorityAnalysis || {};
       const intakeAnalysis = intakeAnalysisResponse.data?.analysis || {};
 
+      // Merge DEFENSIVELY against the existing record: extraction can miss
+      // fields the intake staff already typed in (patient name, source,
+      // referral date). Overwriting them with null removed the referral from
+      // the aging board and CMS timely-initiation tracking (which skip rows
+      // with no referral_date) and erased manual entries.
+      const existing =
+        (await base44.entities.Referral.filter({ id: referralId }).then((rows) => rows?.[0]).catch(() => null)) ||
+        referrals.find((r) => r.id === referralId) ||
+        {};
+
+      // Never DOWNGRADE a staff-selected priority: if intake marked the
+      // referral urgent and the AI analysis returns nothing (or a lower
+      // level), keep the higher one.
+      const PRIORITY_RANK = { low: 0, normal: 1, high: 2, urgent: 3 };
+      const aiPriority = priorityAnalysis.priority;
+      const existingPriority = existing.priority;
+      const priority =
+        (PRIORITY_RANK[aiPriority] ?? -1) >= (PRIORITY_RANK[existingPriority] ?? -1)
+          ? (aiPriority || existingPriority || 'normal')
+          : existingPriority;
+
       // Extract and update referral fields from AI-processed data
       const updates = {
         status: 'ready_for_admission',
@@ -492,16 +513,18 @@ Actions available:
           priority_analysis: priorityAnalysis,
           intake_analysis: intakeAnalysis
         },
-        patient_name: extractedData.demographics?.full_name || null,
-        patient_dob: extractedData.demographics?.date_of_birth || null,
-        referral_source: extractedData.admission_details?.admission_source || 
-                         extractedData.demographics?.referring_physician || 
+        patient_name: extractedData.demographics?.full_name || existing.patient_name || null,
+        patient_dob: extractedData.demographics?.date_of_birth || existing.patient_dob || null,
+        referral_source: extractedData.admission_details?.admission_source ||
+                         extractedData.demographics?.referring_physician ||
+                         existing.referral_source ||
                          null,
-        referral_date: extractedData.admission_details?.referral_date || 
-                       extractedData.admission_details?.admission_date || 
+        referral_date: extractedData.admission_details?.referral_date ||
+                       extractedData.admission_details?.admission_date ||
+                       existing.referral_date ||
                        null,
-        diagnosis: extractedData.diagnoses?.primary_diagnosis || null,
-        priority: priorityAnalysis.priority || 'normal'
+        diagnosis: extractedData.diagnoses?.primary_diagnosis || existing.diagnosis || null,
+        priority
       };
 
       // Deterministic PDGM-sequenced diagnosis coding (codes only ever
@@ -581,6 +604,7 @@ Actions available:
         // Score each patient for match likelihood
         const scoredPatients = allPatients.map(p => {
           let score = 0;
+          let nameMatched = false;
           const reasons = [];
           
           // Name matching (40 points max)
@@ -588,6 +612,7 @@ Actions available:
             const firstNameSim = similarity(normalize(firstName), normalize(p.first_name));
             if (firstNameSim >= 0.8) {
               score += firstNameSim * 20;
+              nameMatched = true;
               reasons.push(`First name: ${(firstNameSim * 100).toFixed(0)}%`);
             }
           }
@@ -596,6 +621,7 @@ Actions available:
             const lastNameSim = similarity(normalize(lastName), normalize(p.last_name));
             if (lastNameSim >= 0.8) {
               score += lastNameSim * 20;
+              nameMatched = true;
               reasons.push(`Last name: ${(lastNameSim * 100).toFixed(0)}%`);
             }
           }
@@ -644,14 +670,19 @@ Actions available:
             }
           }
           
-          return { patient: p, score, reasons };
+          return { patient: p, score, nameMatched, reasons };
         });
         
         // Sort by score and get best match
         const bestMatch = scoredPatients.sort((a, b) => b.score - a.score)[0];
         
-        // Match threshold: 60+ points = high confidence match
-        if (bestMatch && bestMatch.score >= 60) {
+        // Match threshold: 60+ points = high confidence match. A NAME signal is
+        // also required: without it, exact DOB (30) + phone (15) + address (10)
+        // + middle initial (5) reaches 60 on their own — which is precisely a
+        // twin/household member sharing DOB, phone, and address. Auto-linking a
+        // referral to the WRONG person's chart is a patient-safety error; the
+        // dedupe engine (patientDuplicateUtils) enforces the same identity guard.
+        if (bestMatch && bestMatch.score >= 60 && bestMatch.nameMatched) {
           existingPatient = bestMatch.patient;
         }
       }

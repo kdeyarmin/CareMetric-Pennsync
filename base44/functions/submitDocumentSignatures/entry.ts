@@ -20,8 +20,12 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  */
 
 async function canActOnDocument(base44, user, sig) {
-  const role = user.role;
-  if (role === 'admin' || role === 'clinician' || role === 'nurse_manager') return true;
+  // Admin predicate matches the rest of the backend (role 'admin' plus the
+  // agency/super admin account types). The previous check listed 'clinician' /
+  // 'nurse_manager' — role values that don't exist in this platform's model
+  // (roles are 'admin'/'user'; tiers live on account_type) — so those branches
+  // never fired, while a legitimate agency_admin (base role 'user') was denied.
+  if (user.role === 'admin' || user.account_type === 'agency_admin' || user.account_type === 'super_admin') return true;
   if (sig.created_by === user.email || sig.created_by_email === user.email
     || sig.requested_by === user.email || sig.sender_email === user.email) return true;
   if (sig.patient_id) {

@@ -425,7 +425,10 @@ async function handleOutboundMessageStatus(base44, payload) {
   if (!mapped) return Response.json({ success: true, skipped: 'unknown status', status: recipientStatus });
 
   const rows = await base44.asServiceRole.entities.SmsMessage.filter({ provider_message_id: providerId }, '-created_date', 1).catch(() => []);
-  if (!rows.length) return Response.json({ success: false, message: 'SmsMessage not found' });
+  // 404 (not 200) so Telnyx redelivers: sendSms persists provider_message_id
+  // only AFTER the API round-trip, so a fast DLR can race the write. Acking it
+  // would lose the status forever — SMS has no poller to reconcile later.
+  if (!rows.length) return Response.json({ success: false, message: 'SmsMessage not found' }, { status: 404 });
   const row = rows[0];
   // Forward-only: ignore an unchanged or out-of-order (lower-rank) transition.
   if ((SMS_RANK[mapped] || 0) <= (SMS_RANK[row.status] || 0)) {
@@ -531,8 +534,14 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
   if (START_WORDS.includes(keyword)) {
     await recordConsent('opted_in', 'keyword_start');
     await sendReply('You are now subscribed to texts from your care team. Reply STOP to opt out, HELP for help.');
+    // The sender just re-subscribed — the rest of this handler (after-hours /
+    // off-duty auto-replies) must treat them as opted in, not the stale
+    // pre-keyword ledger state.
+    priorOptedOut = false;
   } else if (HELP_WORDS.includes(keyword)) {
-    if (!priorOptedOut && smsEnabled) {
+    // CTIA requires a HELP response regardless of opt-out state — it's an
+    // informational carrier keyword, not marketing, and contains no PHI.
+    if (smsEnabled) {
       const office = config.mainOfficeDisplay ? ` or call our office at ${config.mainOfficeDisplay}` : '';
       await sendReply(`This is your home-health care team. Reply STOP to unsubscribe${office}.`);
     }
@@ -590,7 +599,11 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
 // 'delivered', which would re-open the fax and re-poll/re-send a delivered PHI
 // document). Mirrors the SMS_RANK/CALL_RANK guards. 'delivered' and 'failed' are
 // both terminal and share the top rank so neither can overwrite the other.
-const FAX_RANK = { queued: 1, sending: 2, sent: 3, delivered: 4, failed: 4 };
+// 'retrying'/'retried' (set by retryFailedFax) must also rank as terminal for
+// the ORIGINAL fax id: a redelivered 'failed' webhook for a row already claimed
+// by a retry would otherwise pass the guard (unranked -> 0), re-plan a retry,
+// and cause a duplicate PHI transmission on top of the in-flight attempt.
+const FAX_RANK = { queued: 1, sending: 2, sent: 3, delivered: 4, failed: 4, retrying: 4, retried: 5 };
 
 // Inbound fax handling: Telnyx delivers a received fax as `fax.received` with
 // the media URL. The app does NOT expect inbound faxes by default — outbound
@@ -707,7 +720,9 @@ async function handleFaxEvent(base44, payload) {
   if (!mapped) return Response.json({ success: true, skipped: 'unknown status', status: payload?.status });
 
   const rows = await base44.asServiceRole.entities.FaxLog.filter({ telnyx_fax_id: providerId }, undefined, 5000).catch(() => []);
-  if (!rows.length) return Response.json({ success: false, message: 'FaxLog not found' });
+  // 404 so Telnyx redelivers after the sender persists telnyx_fax_id (senders
+  // write the id only after the API call, so a fast status callback can race it).
+  if (!rows.length) return Response.json({ success: false, message: 'FaxLog not found' }, { status: 404 });
   const faxLog = rows[0];
   // Idempotency + forward-only: ignore an unchanged or out-of-order (lower-rank)
   // transition. Telnyx re-delivers webhooks and can deliver them out of order, so

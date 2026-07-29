@@ -8,8 +8,11 @@ export const filterRecentFaxLogs = (logs = [], now = Date.now(), rangeMs = TWENT
 
 // Equivalent statuses collapse into the same summary bucket: a successfully
 // transmitted fax ('sent') counts as delivered, and an in-progress 'sending' fax
-// counts as queued — otherwise both would fall through to 'pending'.
-const STATUS_GROUP = { sent: 'delivered', sending: 'queued' };
+// counts as queued — otherwise both would fall through to 'pending'. A fax
+// mid-retry ('retrying') is in flight, so it counts as queued; a 'retried' fax
+// is a failed attempt that was superseded by a new FaxLog row, so it counts as
+// failed (the retry row reports its own outcome).
+const STATUS_GROUP = { sent: 'delivered', sending: 'queued', retrying: 'queued', retried: 'failed' };
 
 // Normalize a raw fax status to its canonical bucket so the row/detail display
 // and the summary counts agree (a 'sent' fax reads/counts as delivered, a

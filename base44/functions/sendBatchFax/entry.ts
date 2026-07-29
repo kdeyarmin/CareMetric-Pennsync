@@ -63,21 +63,33 @@ function officeFaxDisplayName(officeE164) {
   return `Office Fax ${ten.slice(0, 3)}-${ten.slice(3, 6)}-${ten.slice(6)}`;
 }
 
-const PREMIUM_AREA_CODES = new Set(['900', '976']);
+// <<<BEGIN SHARED HELPER: isAllowedDestination — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Cost-control destination gate. Single source of truth is the frontend
+// src/components/voice/costControls.js — this copy is generated from it verbatim.
+const PREMIUM_AREA_CODES = new Set(["900", "976"]);
 function isAllowedDestination(e164, settings = {}) {
   const s = settings || {};
-  const e = String(e164 || '').trim();
-  if (/^\+1\d{10}$/.test(e)) {
+  const e = String(e164 || "").trim();
+  const isNanp = /^\+1\d{10}$/.test(e);
+
+  if (isNanp) {
     const areaCode = e.slice(2, 5);
-    if (PREMIUM_AREA_CODES.has(areaCode)) return { allowed: false, reason: 'premium_number_blocked' };
-    const blocked = Array.isArray(s.blocked_area_codes) ? s.blocked_area_codes.map((a) => String(a).replace(/[^\d]/g, '')) : [];
-    if (blocked.includes(areaCode)) return { allowed: false, reason: 'blocked_area_code' };
-    return { allowed: true, reason: 'allowed' };
+    if (PREMIUM_AREA_CODES.has(areaCode)) return { allowed: false, reason: "premium_number_blocked" };
+    const blocked = Array.isArray(s.blocked_area_codes) ? s.blocked_area_codes.map((a) => String(a).replace(/[^\d]/g, "")) : [];
+    if (blocked.includes(areaCode)) return { allowed: false, reason: "blocked_area_code" };
+    return { allowed: true, reason: "allowed" };
   }
-  if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: 'invalid_destination' };
-  if (s.allow_international === true) return { allowed: true, reason: 'international_allowed' };
-  return { allowed: false, reason: 'international_blocked' };
+
+  // A +1-prefixed number that isn't exactly 10 NANP digits is malformed, not
+  // international — never let the international toggle dial/text a broken US number.
+  if (/^\+1/.test(e)) return { allowed: false, reason: "invalid_destination" };
+
+  // Not a +1 NANP number → treat as international.
+  if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: "invalid_destination" };
+  if (s.allow_international === true) return { allowed: true, reason: "international_allowed" };
+  return { allowed: false, reason: "international_blocked" };
 }
+// <<<END SHARED HELPER: isAllowedDestination>>>
 function blockedReasonMessage(reason) {
   switch (reason) {
     case 'premium_number_blocked': return 'Premium-rate numbers (900/976) are blocked.';
@@ -288,18 +300,29 @@ Deno.serve(async (req) => {
 
         const telnyxData = await telnyxResponse.json().catch(() => ({}));
 
+        // Bookkeeping uses the service role (matching the create above): the
+        // scheduled-fax cron invokes this function with NO user session, so a
+        // user-scoped update would be rejected by RLS AFTER Telnyx already
+        // accepted the fax — reporting a transmitted PHI fax as failed and
+        // stranding the row 'queued' with no telnyx_fax_id (unreconcilable by
+        // the DLR webhook and both pollers). A bookkeeping failure after a 2xx
+        // must also not be reported as a send failure, so it's caught here.
         if (telnyxResponse.ok) {
-          await base44.entities.FaxLog.update(faxLog.id, {
-            telnyx_fax_id: telnyxData?.data?.id,
-            status: 'sending'
-          });
+          try {
+            await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
+              telnyx_fax_id: telnyxData?.data?.id,
+              status: 'sending'
+            });
+          } catch (postErr) {
+            console.error('sendBatchFax post-send bookkeeping failed:', postErr);
+          }
           results.push({ to_number, success: true, fax_id: telnyxData?.data?.id });
         } else {
           const failureReason = telnyxData?.errors?.[0]?.detail || telnyxData?.errors?.[0]?.title || 'Failed to send';
-          await base44.entities.FaxLog.update(faxLog.id, {
+          await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
             status: 'failed',
             failure_reason: failureReason
-          });
+          }).catch((err) => console.error('sendBatchFax failure bookkeeping failed:', err));
           results.push({ to_number, success: false, error: failureReason });
         }
       } catch (error) {
