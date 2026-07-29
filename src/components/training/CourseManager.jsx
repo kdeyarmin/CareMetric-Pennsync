@@ -218,10 +218,9 @@ export default function CourseManager() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-xl font-bold">Training Courses</h2>
         <div className="flex flex-wrap gap-2">
-          <AICourseGenerator onGenerated={handleGenerated} />
           <Button onClick={() => openBuilder(null)}>
             <Plus className="w-4 h-4 mr-2" />
-            Add Course
+            Build manually
           </Button>
         </div>
         <Dialog open={showForm} onOpenChange={(next) => (next ? setShowForm(true) : closeBuilder())}>
@@ -331,6 +330,8 @@ export default function CourseManager() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <AICourseGenerator onGenerated={handleGenerated} />
 
       <Card>
         <CardContent className="pt-6">
