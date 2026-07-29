@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Video, Calendar, User, Clock, Copy, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { getPatientJoinLink } from "@/components/telehealth/joinLinkAccess";
 
 const statusColors = {
   scheduled: "bg-blue-100 text-blue-700",
@@ -22,13 +23,18 @@ const visitLabels = {
 };
 
 export default function SessionCard({ session, onJoin, onCancel, onTextPatient }) {
+  // A session is shareable when it has EITHER the hashed token (new sessions —
+  // the raw link is cached in-tab or minted on demand) or a legacy plaintext
+  // invite_link (pre-hash sessions).
+  const hasJoinLink = Boolean(session.join_token_hash || session.invite_link);
+
   const copyLink = async () => {
-    if (!session.invite_link) return;
     try {
-      await navigator.clipboard.writeText(session.invite_link);
+      const link = await getPatientJoinLink(session);
+      await navigator.clipboard.writeText(link);
       toast.success("Invite link copied!");
-    } catch {
-      toast.error("Couldn't copy the link — copy it manually.");
+    } catch (e) {
+      toast.error(e?.message || "Couldn't copy the link — copy it manually.");
     }
   };
 
@@ -72,13 +78,13 @@ export default function SessionCard({ session, onJoin, onCancel, onTextPatient }
                 Join
               </Button>
             )}
-            {session.invite_link && session.status !== "completed" && (
+            {hasJoinLink && session.status !== "completed" && (
               <Button size="sm" variant="outline" onClick={copyLink} className="gap-1.5">
                 <Copy className="w-3 h-3" />
                 Copy Link
               </Button>
             )}
-            {onTextPatient && session.invite_link && session.status !== "completed" && session.status !== "cancelled" && (
+            {onTextPatient && hasJoinLink && session.status !== "completed" && session.status !== "cancelled" && (
               <Button size="sm" variant="outline" onClick={() => onTextPatient(session)} className="gap-1.5">
                 <MessageSquare className="w-3 h-3" />
                 Text link

@@ -18,6 +18,21 @@ export function generateJoinToken() {
 }
 
 /**
+ * SHA-256 (hex) of a join token. Only this hash is persisted on the
+ * TelehealthSession (join_token_hash) — the raw token lives in the link handed
+ * to the patient, so a database read can't be replayed into room access.
+ * @param {string} token
+ * @returns {Promise<string>}
+ */
+export async function hashJoinToken(token) {
+  const digest = await (globalThis.crypto || crypto).subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(String(token)),
+  );
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
  * Build the public patient join link for a session.
  * @param {string} appBaseUrl - absolute app base URL, including any hosted mount path
  * @param {string} roomName

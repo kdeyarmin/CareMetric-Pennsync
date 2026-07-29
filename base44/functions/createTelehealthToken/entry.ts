@@ -40,6 +40,27 @@ function extractJoinToken(inviteLink) {
   }
 }
 
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(value)));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Guest tokens are stored hashed at rest (session.join_token_hash) so a leaked
+ * database export or over-broad entity read can't be replayed into live A/V
+ * access. Pre-hash sessions still carry the plaintext token inside invite_link;
+ * fall back to that ONLY when no hash exists, so links already texted to
+ * patients keep working until those sessions age out.
+ */
+async function isValidGuestToken(session, providedToken) {
+  if (session.join_token_hash) {
+    const providedHash = await sha256Hex(providedToken);
+    return timingSafeEqual(providedHash, String(session.join_token_hash));
+  }
+  const expected = extractJoinToken(session.invite_link);
+  return !!expected && timingSafeEqual(String(providedToken), expected);
+}
+
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
   let apiKey = null;
@@ -98,8 +119,7 @@ Deno.serve(async (req) => {
     let participantIdentity;
 
     if (join_token) {
-      const expected = extractJoinToken(session.invite_link);
-      if (!expected || !timingSafeEqual(String(join_token), expected)) {
+      if (!(await isValidGuestToken(session, join_token))) {
         return Response.json({ error: 'Invalid or expired join link' }, { status: 403 });
       }
       if (session.status !== 'scheduled' && session.status !== 'active') {

@@ -4,7 +4,7 @@ import { readFile, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { generateKeyPairSync, sign as nodeSign } from "node:crypto";
+import { createHash, generateKeyPairSync, sign as nodeSign } from "node:crypto";
 import ts from "typescript";
 
 /**
@@ -504,6 +504,115 @@ test("createTelehealthToken provisions a room and mints a join token", async () 
   const tokenCall = calls.find((c) => c.url.includes("/v2/rooms/room_1/actions/generate_join_client_token"));
   assert.ok(tokenCall, "minted a join client token for the room");
   assert.match(BEARER(tokenCall.headers), /^Bearer KEYtest$/);
+});
+
+// Guest join tokens are stored HASHED at rest (TelehealthSession.join_token_hash);
+// the guest path must accept the raw token whose SHA-256 matches, reject others,
+// and only fall back to the legacy plaintext invite_link when no hash exists.
+test("createTelehealthToken validates guest tokens against join_token_hash", async () => {
+  const rawToken = "a".repeat(48);
+  const session = {
+    room_name: "visit-2", host_email: "host@x.com", status: "scheduled",
+    scheduled_at: new Date().toISOString(),
+    join_token_hash: createHash("sha256").update(rawToken).digest("hex"),
+    // A stale plaintext link must be IGNORED once a hash exists.
+    invite_link: "https://app/join?room=visit-2&t=stale-different-token",
+  };
+  const mkHandler = () => loadHandler("./createTelehealthToken/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({
+      user: null,
+      data: { IntegrationSecret: [{ api_key: "KEYtest" }], TelehealthSession: [session] },
+    }),
+    fetchImpl: makeFetch([
+      { match: (u) => /\/v2\/rooms\?/.test(u), respond: () => ({ status: 200, json: { data: [{ id: "room_2", unique_name: "visit-2" }] } }) },
+      { match: (u) => u.includes("/actions/generate_join_client_token"), respond: () => ({ status: 200, json: { data: { token: "JOIN2" } } }) },
+    ]).impl,
+  });
+
+  let handler = await mkHandler();
+  const ok = await handler(new Request("https://app/functions/createTelehealthToken", {
+    method: "POST", body: JSON.stringify({ room_name: "visit-2", join_token: rawToken }),
+  }));
+  assert.equal(ok.status, 200, "the raw token matching the stored hash is accepted");
+  assert.equal((await ok.json()).token, "JOIN2");
+
+  handler = await mkHandler();
+  const wrong = await handler(new Request("https://app/functions/createTelehealthToken", {
+    method: "POST", body: JSON.stringify({ room_name: "visit-2", join_token: "b".repeat(48) }),
+  }));
+  assert.equal(wrong.status, 403, "a non-matching token is rejected");
+
+  // The stale plaintext token embedded in invite_link must NOT work once a hash exists.
+  handler = await mkHandler();
+  const stale = await handler(new Request("https://app/functions/createTelehealthToken", {
+    method: "POST", body: JSON.stringify({ room_name: "visit-2", join_token: "stale-different-token" }),
+  }));
+  assert.equal(stale.status, 403, "the retired invite_link token is rejected when a hash exists");
+});
+
+test("createTelehealthToken still honors legacy plaintext invite_link sessions (no hash)", async () => {
+  const handler = await loadHandler("./createTelehealthToken/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({
+      user: null,
+      data: {
+        IntegrationSecret: [{ api_key: "KEYtest" }],
+        TelehealthSession: [{
+          room_name: "visit-legacy", host_email: "host@x.com", status: "scheduled",
+          scheduled_at: new Date().toISOString(),
+          invite_link: "https://app/join?room=visit-legacy&t=legacy-token-123",
+        }],
+      },
+    }),
+    fetchImpl: makeFetch([
+      { match: (u) => /\/v2\/rooms\?/.test(u), respond: () => ({ status: 200, json: { data: [{ id: "room_l", unique_name: "visit-legacy" }] } }) },
+      { match: (u) => u.includes("/actions/generate_join_client_token"), respond: () => ({ status: 200, json: { data: { token: "JOINL" } } }) },
+    ]).impl,
+  });
+  const res = await handler(new Request("https://app/functions/createTelehealthToken", {
+    method: "POST", body: JSON.stringify({ room_name: "visit-legacy", join_token: "legacy-token-123" }),
+  }));
+  assert.equal(res.status, 200, "pre-hash sessions keep working via the invite_link token");
+});
+
+test("rotateTelehealthJoinToken mints a fresh token and stores only its hash", async () => {
+  const writes = [];
+  const sessionRow = { id: "ts1", room_name: "visit-3", host_email: "host@x.com", status: "scheduled", participant_list: [] };
+  const mkHandler = (user) => loadHandler("./rotateTelehealthJoinToken/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ user, writes, data: { TelehealthSession: [sessionRow] } }),
+    fetchImpl: makeFetch([]).impl,
+  });
+
+  let handler = await mkHandler({ email: "host@x.com", role: "user" });
+  const res = await handler(new Request("https://app/functions/rotateTelehealthJoinToken", {
+    method: "POST", body: JSON.stringify({ session_id: "ts1" }),
+  }));
+  assert.equal(res.status, 200);
+  const out = await res.json();
+  assert.match(out.token, /^[0-9a-f]{48}$/, "returns a 192-bit hex token to the authorized staff caller");
+  const write = writes.find((w) => w.entity === "TelehealthSession" && w.op === "update" && w.id === "ts1");
+  assert.ok(write, "persists the rotation on the session");
+  assert.equal(write.patch.join_token_hash, createHash("sha256").update(out.token).digest("hex"), "stores the SHA-256 of the token, not the token");
+  assert.equal(write.patch.invite_link, null, "retires any legacy plaintext invite_link");
+  assert.ok(!JSON.stringify(write.patch).includes(out.token), "the raw token is never written at rest");
+
+  // A non-host, non-participant, non-admin caller must be refused.
+  handler = await mkHandler({ email: "other@x.com", role: "user" });
+  const forbidden = await handler(new Request("https://app/functions/rotateTelehealthJoinToken", {
+    method: "POST", body: JSON.stringify({ session_id: "ts1" }),
+  }));
+  assert.equal(forbidden.status, 403);
+
+  // Closed sessions must not get new capabilities minted.
+  sessionRow.status = "completed";
+  handler = await mkHandler({ email: "host@x.com", role: "user" });
+  const closed = await handler(new Request("https://app/functions/rotateTelehealthJoinToken", {
+    method: "POST", body: JSON.stringify({ session_id: "ts1" }),
+  }));
+  assert.equal(closed.status, 409);
+  sessionRow.status = "scheduled";
 });
 
 // ============================ WEBHOOK + CALL CONTROL BRIDGE ============================
