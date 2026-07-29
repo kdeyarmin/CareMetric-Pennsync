@@ -468,6 +468,11 @@ function isAllowedDestination(e164, settings = {}) {
     if (blocked.includes(areaCode)) return { allowed: false, reason: 'blocked_area_code' };
     return { allowed: true, reason: 'allowed' };
   }
+  // A +1-prefixed number that isn't exactly 10 NANP digits is malformed, not
+  // international — never let the international toggle dial/text a broken US
+  // number (it would also bypass the NANP premium/blocked-area-code checks).
+  // Mirrors src/components/voice/costControls.js.
+  if (/^\+1/.test(e)) return { allowed: false, reason: 'invalid_destination' };
   if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: 'invalid_destination' };
   if (s.allow_international === true) return { allowed: true, reason: 'international_allowed' };
   return { allowed: false, reason: 'international_blocked' };
@@ -529,6 +534,19 @@ Deno.serve(async (req) => {
       const claimCheck = await base44.asServiceRole.entities.ScheduledSms
         .filter({ id: row.id }, '-created_date', 1).catch(() => []);
       if (!claimCheck[0] || claimCheck[0].claimed_by !== runId) {
+        result.skipped++;
+        continue;
+      }
+      // A cancel can race the claim two ways: it can land between the due-list
+      // fetch and the claim (the claim then overwrites status 'canceled' back to
+      // 'sending' — but canceled_at survives), or between the claim and this
+      // re-read (claimed_by still matches). Either way the user explicitly
+      // canceled; honoring the send would text a patient after a cancel.
+      // canceled_at is the reliable signal because the claim never clears it.
+      if (claimCheck[0].canceled_at || claimCheck[0].status === 'canceled') {
+        await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
+          status: 'canceled', claimed_by: '', claimed_at: null,
+        }).catch(() => {});
         result.skipped++;
         continue;
       }

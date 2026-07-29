@@ -74,6 +74,11 @@ function isAllowedDestination(e164, settings = {}) {
     if (blocked.includes(areaCode)) return { allowed: false, reason: 'blocked_area_code' };
     return { allowed: true, reason: 'allowed' };
   }
+  // A +1-prefixed number that isn't exactly 10 NANP digits is malformed, not
+  // international — never let the international toggle dial/text a broken US
+  // number (it would also bypass the NANP premium/blocked-area-code checks).
+  // Mirrors src/components/voice/costControls.js.
+  if (/^\+1/.test(e)) return { allowed: false, reason: 'invalid_destination' };
   if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: 'invalid_destination' };
   if (s.allow_international === true) return { allowed: true, reason: 'international_allowed' };
   return { allowed: false, reason: 'international_blocked' };
@@ -288,18 +293,29 @@ Deno.serve(async (req) => {
 
         const telnyxData = await telnyxResponse.json().catch(() => ({}));
 
+        // Bookkeeping uses the service role (matching the create above): the
+        // scheduled-fax cron invokes this function with NO user session, so a
+        // user-scoped update would be rejected by RLS AFTER Telnyx already
+        // accepted the fax — reporting a transmitted PHI fax as failed and
+        // stranding the row 'queued' with no telnyx_fax_id (unreconcilable by
+        // the DLR webhook and both pollers). A bookkeeping failure after a 2xx
+        // must also not be reported as a send failure, so it's caught here.
         if (telnyxResponse.ok) {
-          await base44.entities.FaxLog.update(faxLog.id, {
-            telnyx_fax_id: telnyxData?.data?.id,
-            status: 'sending'
-          });
+          try {
+            await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
+              telnyx_fax_id: telnyxData?.data?.id,
+              status: 'sending'
+            });
+          } catch (postErr) {
+            console.error('sendBatchFax post-send bookkeeping failed:', postErr);
+          }
           results.push({ to_number, success: true, fax_id: telnyxData?.data?.id });
         } else {
           const failureReason = telnyxData?.errors?.[0]?.detail || telnyxData?.errors?.[0]?.title || 'Failed to send';
-          await base44.entities.FaxLog.update(faxLog.id, {
+          await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
             status: 'failed',
             failure_reason: failureReason
-          });
+          }).catch((err) => console.error('sendBatchFax failure bookkeeping failed:', err));
           results.push({ to_number, success: false, error: failureReason });
         }
       } catch (error) {

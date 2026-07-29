@@ -423,6 +423,11 @@ function isAllowedDestination(e164, settings = {}) {
     if (blocked.includes(areaCode)) return { allowed: false, reason: 'blocked_area_code' };
     return { allowed: true, reason: 'allowed' };
   }
+  // A +1-prefixed number that isn't exactly 10 NANP digits is malformed, not
+  // international — never let the international toggle dial/text a broken US
+  // number (it would also bypass the NANP premium/blocked-area-code checks).
+  // Mirrors src/components/voice/costControls.js.
+  if (/^\+1/.test(e)) return { allowed: false, reason: 'invalid_destination' };
   if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: 'invalid_destination' };
   if (s.allow_international === true) return { allowed: true, reason: 'international_allowed' };
   return { allowed: false, reason: 'international_blocked' };
