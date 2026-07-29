@@ -336,7 +336,53 @@ test('submitDocumentSignatures uses the real admin role model', () => {
   );
 });
 
-// 15. Operational logs from backend service-role functions must not include
+// 15. Every backend function that dials/texts/faxes a destination must gate it
+//     through the SHARED isAllowedDestination helper (generated from the
+//     frontend costControls.js). Hand-maintained inline copies are exactly how
+//     the malformed-+1 bypass drifted in before.
+for (const fn of ['sendSms', 'sendFax', 'sendBatchFax', 'startMaskedCall', 'dispatchScheduledSms']) {
+  test(`${fn} consumes the shared isAllowedDestination helper`, () => {
+    const src = read(`base44/functions/${fn}/entry.ts`);
+    assert.ok(
+      src.includes('<<<BEGIN SHARED HELPER: isAllowedDestination'),
+      `${fn} must inline isAllowedDestination via the shared-helper markers (npm run sync:shared-helpers), not a hand-maintained copy.`,
+    );
+    assert.ok(
+      /isAllowedDestination\(/.test(src.split('<<<END SHARED HELPER: isAllowedDestination>>>')[1] || ''),
+      `${fn} must actually call isAllowedDestination on its destination number.`,
+    );
+  });
+}
+
+// 16. Telehealth guest join tokens are bearer capabilities for live A/V access.
+//     They must be stored HASHED at rest (join_token_hash) — the create flows
+//     must never persist the plaintext token (the old invite_link pattern), and
+//     the backend must validate guests against the hash.
+test('telehealth join tokens are hashed at rest, never persisted in plaintext', () => {
+  const backend = read('base44/functions/createTelehealthToken/entry.ts');
+  assert.ok(
+    /join_token_hash/.test(backend),
+    'createTelehealthToken must validate guest tokens against session.join_token_hash.',
+  );
+  const entity = read('base44/entities/TelehealthSession.jsonc');
+  assert.ok(
+    /"join_token_hash"/.test(entity),
+    'TelehealthSession must define the join_token_hash field.',
+  );
+  for (const file of ['src/pages/Telehealth.jsx', 'src/components/telehealth/PatientTelehealthPanel.jsx']) {
+    const src = read(file);
+    assert.ok(
+      !/invite_link:/.test(src),
+      `${file} must not persist a plaintext invite_link on session create — store join_token_hash and keep the raw link in-tab (rememberJoinLink).`,
+    );
+    assert.ok(
+      /join_token_hash:\s*await hashJoinToken/.test(src),
+      `${file} must persist only the hashed join token at session create.`,
+    );
+  }
+});
+
+// 17. Operational logs from backend service-role functions must not include
 //     direct patient/staff identifiers. Console output can be retained outside
 //     the app UI, so diagnostics should be aggregate/status-only unless a
 //     reviewed, redacted logging helper is introduced.
