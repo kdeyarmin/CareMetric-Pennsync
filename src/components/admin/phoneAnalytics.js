@@ -57,9 +57,11 @@ export function summarizePhoneActivity({ smsMessages = [], callLogs = [], consen
   const avgDurationSec = durations.length
     ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
     : 0;
-  // Auto-handled inbound: global after-hours transfers vs per-nurse off-duty.
-  const afterHoursTransfers = calls.filter((c) => c.call_mode === "after_hours_transfer").length;
-  const offDutyTransfers = calls.filter((c) => c.call_mode === "off_duty_transfer").length;
+  // Auto-handled inbound calls routed to the office. The backend collapses
+  // off-duty, after-hours, quiet-hours and no-personal-cell routing into a
+  // single `office_transfer` call_mode (see handleTelnyxStatusWebhook), so
+  // count that value rather than modes the backend never writes.
+  const officeTransfers = inboundCalls.filter((c) => c.call_mode === "office_transfer").length;
   const callStats = {
     total: calls.length,
     inbound: inboundCalls.length,
@@ -68,9 +70,8 @@ export function summarizePhoneActivity({ smsMessages = [], callLogs = [], consen
     completed,
     missedRate: pct(missed, calls.length),
     avgDurationSec,
-    afterHoursTransfers,
-    offDutyTransfers,
-    autoTransferRate: pct(afterHoursTransfers + offDutyTransfers, inboundCalls.length),
+    officeTransfers,
+    autoTransferRate: pct(officeTransfers, inboundCalls.length),
   };
 
   // --- Consent (latest status per phone; ledger assumed newest-first) ---

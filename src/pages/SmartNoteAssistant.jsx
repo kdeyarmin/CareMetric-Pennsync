@@ -138,6 +138,11 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const noteRef = useRef(note);
   patientIdRef.current = patientId;
   noteRef.current = note;
+  // Track what the autosave effect last saw so it can distinguish a user
+  // emptying the note (clear the draft) from an empty note produced by initial
+  // hydration or a bucket switch (leave any in-flight restore alone).
+  const autosaveBucketRef = useRef(undefined);
+  const autosavePrevNoteRef = useRef("");
 
   // Durable cross-session restore: a draft persisted to IndexedDB survives a full
   // browser restart (sessionStorage does not). Apply it only if we're still on
@@ -166,7 +171,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const careScope = currentUser?.care_scope || "home_health";
-  const VISIT_TYPES = getVisitTypes(careScope);
   const { data: patients = [] } = useQuery({
     queryKey: ["patients", "active-200"],
     // Without 'always', React Query's default networkMode PAUSES the queryFn
@@ -212,6 +216,11 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const effectiveCareType = (patientDetail || patient)?.care_type || careScope;
   const isHospice = effectiveCareType === "hospice";
   const serviceLine = isHospice ? "hospice" : "home_health";
+  // Visit-type labels follow the PATIENT's program too (hospice and home-health
+  // share the same values but differ in wording). Basing this on careScope alone
+  // meant a hospice patient under a 'both'-scope nurse saw home-health labels,
+  // because getVisitTypes('both') drops the hospice entries (identical values).
+  const VISIT_TYPES = getVisitTypes(effectiveCareType);
   // Facility-specific documentation requirements (e.g. "on oxygen → SpO2 in every
   // note") — admin-authored, applied to the selected patient. Used for the live
   // STEP 1 checklist and a non-blocking nudge before the nurse advances to review.
@@ -326,8 +335,20 @@ export default function SmartNoteAssistant({ visitId = null }) {
   // Autosave under the ACTIVE patient (via ref) — deliberately not keyed on
   // patientId, so a patient switch never writes the old note under the new key.
   useEffect(() => {
-    if (!note.trim()) return;
     const pid = patientIdRef.current;
+    const bucketChanged = autosaveBucketRef.current !== pid;
+    const prevNote = autosavePrevNoteRef.current;
+    autosaveBucketRef.current = pid;
+    autosavePrevNoteRef.current = note;
+    if (!note.trim()) {
+      // The nurse emptied a note that previously had content on this same
+      // patient bucket — clear the persisted draft so a deleted note isn't
+      // "restored" on the next visit. Skip when the empty state comes from
+      // initial hydration or a just-loaded bucket (a durable restore may still
+      // be in flight and must not be wiped).
+      if (!bucketChanged && prevNote.trim()) clearDraft(pid);
+      return;
+    }
     sessionStorage.setItem(draftKeyFor(pid), JSON.stringify({ note, visitType, patientId: pid }));
     import('@/lib/indexedDB').then(({ saveDraftNoteLocally }) => {
         saveDraftNoteLocally({ id: `draft_${pid || 'unassigned'}`, note, visitType, patientId: pid });

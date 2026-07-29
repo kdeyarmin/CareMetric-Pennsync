@@ -178,7 +178,7 @@ export default function EnhancedFaxHistory({ patientId }) {
                           <Download className="w-4 h-4" />
                         </Button>
                       )}
-                      {log.status === 'failed' && log.retry_count < 3 && (
+                      {log.status === 'failed' && (log.retry_count || 0) < 3 && (
                         <Button
                           variant="outline"
                           size="sm"
