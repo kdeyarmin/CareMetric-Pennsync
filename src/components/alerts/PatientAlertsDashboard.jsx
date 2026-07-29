@@ -45,7 +45,7 @@ import {
 import { getAlertIcon, getSeverityColor } from "@/components/alerts/alertPresentation";
 import { buildSafetyHuddle, formatSlaTime } from "@/components/alerts/safetyHuddle";
 import { format, formatDistanceToNow } from "date-fns";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { createPageUrl } from "@/utils";
 import { isAdminView } from "@/lib/roles";
 

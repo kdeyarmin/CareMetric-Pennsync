@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router";
 import { createPageUrl } from "@/utils";
 import { Home, Users, Brain, Send, Mail, FileText, Pen } from "lucide-react";
 

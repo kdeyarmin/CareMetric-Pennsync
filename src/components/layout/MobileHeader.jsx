@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { Shield, Bell, Menu, X, ChevronLeft, Search } from "lucide-react";

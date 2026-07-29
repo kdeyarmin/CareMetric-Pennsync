@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { ShieldCheck, AlertTriangle, CalendarClock, ArrowRight } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { safePercent } from "@/lib/safePercent";

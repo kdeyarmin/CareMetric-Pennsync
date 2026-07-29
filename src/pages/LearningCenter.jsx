@@ -47,7 +47,7 @@ import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import EmbeddedPage from '@/components/ui/embeddedPage';
 import { createPageUrl } from '@/utils';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import CertificateDownloadButton from '@/components/training/CertificateDownloadButton';
 import LearnerPolicyAcknowledgments from '@/components/training/LearnerPolicyAcknowledgments';
 import LearnerMemoryBoosters from '@/components/training/LearnerMemoryBoosters';
