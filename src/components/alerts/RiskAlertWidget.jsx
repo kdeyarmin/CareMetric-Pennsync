@@ -10,7 +10,7 @@ import {
   Eye,
   Users
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { severityBadgeClass } from "@/lib/severityStyles";
 

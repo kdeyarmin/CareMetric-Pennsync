@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, User, Sparkles, FileText, Copy, CheckCircle2, Bot } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { createPageUrl } from "@/utils";
 import ClinicalTemplateLibrary from "../components/templates/ClinicalTemplateLibrary";

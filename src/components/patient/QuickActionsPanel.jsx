@@ -10,7 +10,7 @@ import {
   Mail,
   Clock
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { format, isValid } from "date-fns";
 

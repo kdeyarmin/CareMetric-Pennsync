@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import EnrollmentSummaryDashboard from '../components/learning/EnrollmentSummaryDashboard';
 import EmployeeTranscriptCenter from '../components/learning/EmployeeTranscriptCenter';
 import CourseRosterReport from '../components/learning/CourseRosterReport';

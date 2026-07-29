@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { formatLocalDate } from "@/lib/dateLocal";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 export default function PatientOverviewCard({ patient, visits, alerts, isSelected, onSelect, view }) {
   // Copy before sorting — sort() mutates in place, and `visits` is a prop owned

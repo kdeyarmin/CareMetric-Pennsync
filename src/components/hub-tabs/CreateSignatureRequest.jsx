@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import SignatureRequestCreator from '@/components/signer/SignatureRequestCreator';
 
 export default function CreateSignatureRequest() {
