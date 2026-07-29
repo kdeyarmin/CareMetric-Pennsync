@@ -234,6 +234,7 @@ async function runOutlinePhase(base44, user, body) {
     passing_score = 80,
     enable_certificate = true,
     certificate_valid_months = null,
+    generate_videos = false,
   } = body;
 
   if (!topic) {
@@ -390,6 +391,7 @@ Design principles:
       passing_score: normalizedPassingScore,
       enable_certificate: enable_certificate !== false,
       certificate_valid_months: normalizedCertificateMonths ?? null,
+      generate_videos: !!generate_videos,
       requested_status: status,
       generation_method: 'phased',
       outline_title: outline.title || topic,
