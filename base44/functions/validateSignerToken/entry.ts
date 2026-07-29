@@ -105,10 +105,18 @@ Deno.serve(async (req) => {
 
     const validSignatures = signatures.filter((s) => s !== null);
 
-    // Update access tracking
-    const userAgent = req.headers.get('user-agent') || '';
-    const clientIp = req.headers.get('cf-connecting-ip') ||
-      req.headers.get('x-forwarded-for') || 'unknown';
+    // Update access tracking. This endpoint is public (token-authenticated), and
+    // both x-forwarded-for and user-agent are caller-controlled: without caps a
+    // client cycling spoofed values could grow these arrays without bound and
+    // balloon the token record on every request. Truncate each value and keep
+    // only the most recent entries.
+    const MAX_TRACKED_ENTRIES = 20;
+    const userAgent = (req.headers.get('user-agent') || '').slice(0, 256);
+    const clientIp = (
+      req.headers.get('cf-connecting-ip') ||
+      (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() ||
+      'unknown'
+    ).slice(0, 64);
 
     const updatedIPs = tokenRecord.ip_addresses || [];
     if (!updatedIPs.includes(clientIp)) {
@@ -125,8 +133,8 @@ Deno.serve(async (req) => {
       {
         access_count: (tokenRecord.access_count || 0) + 1,
         last_accessed_at: new Date().toISOString(),
-        ip_addresses: updatedIPs,
-        user_agents: updatedUAs,
+        ip_addresses: updatedIPs.slice(-MAX_TRACKED_ENTRIES),
+        user_agents: updatedUAs.slice(-MAX_TRACKED_ENTRIES),
       }
     );
 
