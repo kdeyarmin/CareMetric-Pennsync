@@ -96,6 +96,23 @@ const ComprehensiveOASISReviewer = lazy(() => import("@/components/oasis/Compreh
 import OASISPDFComparison from "@/components/oasis/OASISPDFComparison";
 import { toast } from 'sonner';
 
+/** Map OASIS M-item codes (UI / AI output) onto pdgmData.functional_scores keys. */
+const FUNCTIONAL_M_ITEM_FIELDS = {
+  M1800: 'm1800_grooming', m1800: 'm1800_grooming', m1800_grooming: 'm1800_grooming',
+  M1810: 'm1810_dress_upper', m1810: 'm1810_dress_upper', m1810_dress_upper: 'm1810_dress_upper',
+  M1820: 'm1820_dress_lower', m1820: 'm1820_dress_lower', m1820_dress_lower: 'm1820_dress_lower',
+  M1830: 'm1830_bathing', m1830: 'm1830_bathing', m1830_bathing: 'm1830_bathing',
+  M1840: 'm1840_toilet_transfer', m1840: 'm1840_toilet_transfer', m1840_toilet_transfer: 'm1840_toilet_transfer',
+  M1850: 'm1850_transferring', m1850: 'm1850_transferring', m1850_transferring: 'm1850_transferring',
+  M1860: 'm1860_ambulation', m1860: 'm1860_ambulation', m1860_ambulation: 'm1860_ambulation',
+};
+
+function functionalFieldForMItem(code) {
+  if (!code) return null;
+  const raw = String(code).trim();
+  return FUNCTIONAL_M_ITEM_FIELDS[raw] || FUNCTIONAL_M_ITEM_FIELDS[raw.toUpperCase()] || FUNCTIONAL_M_ITEM_FIELDS[raw.toLowerCase()] || null;
+}
+
 export default function OASISAnalyzer() {
   const [activeTab, setActiveTab] = useState("single");
   const [file, setFile] = useState(null);
@@ -165,8 +182,14 @@ export default function OASISAnalyzer() {
           functional: o.pdgm_data?.functional_impairment_level
         })),
         hospitalizations: visits.filter(v => v.visit_type === 'admission'),
-        functionalDecline: previousOASIS.length >= 2 && 
-          previousOASIS[0].pdgm_data?.functional_impairment_level > previousOASIS[1].pdgm_data?.functional_impairment_level
+        // Compare ordinal levels — string ">" is lexicographic ("Low" > "High").
+        functionalDecline: (() => {
+          if (previousOASIS.length < 2) return false;
+          const rank = { low: 1, medium: 2, high: 3 };
+          const a = rank[String(previousOASIS[0].pdgm_data?.functional_impairment_level || '').toLowerCase()] || 0;
+          const b = rank[String(previousOASIS[1].pdgm_data?.functional_impairment_level || '').toLowerCase()] || 0;
+          return a > b;
+        })()
       });
     } catch (error) {
       console.error('Error loading historical data:', error);
@@ -540,10 +563,15 @@ export default function OASISAnalyzer() {
             assessment_reason: { type: "string", description: "M0100 reason for assessment" },
 
             // Episode timing - critical for PDGM
-            m0110_episode_timing: { type: "string", description: "M0110 Episode Timing: 1=Early (within 30 days of SOC/ROC), 2=Late (31+ days), or NA" },
+            m0110_episode_timing: { type: "string", description: "M0110 Episode Timing: 01=Early (days 1-30 of period), 02=Late (day 31+), or NA" },
             soc_date: { type: "string", description: "M0030 Start of Care date" },
             referral_date: { type: "string", description: "M0104 Referral date" },
             days_since_soc: { type: "string", description: "Number of days since start of care if mentioned" },
+            // Admission source - critical for PDGM community vs institutional payment
+            m1000_from_where_admitted: {
+              type: "string",
+              description: "M1000 From where was the patient admitted? Codes: 1=Community (home/physician), 2=Hospital, 3=SNF, 4=IRF/rehab hospital, 5=LTCH, 6=Inpatient psych, 7=Other. Extract the checked code(s) or the facility type text."
+            },
 
             // DIAGNOSES - SEARCH THE ENTIRE DOCUMENT FOR THESE
             m1021_primary_diagnosis_code: { 
@@ -869,36 +897,61 @@ Return JSON:
       }
 
       
-      // Parse scores helper
-      const parseScore = (val) => {
-        if (!val) return 0;
-        const num = parseInt(String(val).replace(/[^0-9]/g, ''));
-        return isNaN(num) ? 0 : num;
+      // Parse OASIS item scores carefully. Values often arrive as "M1830: 4" or
+      // "Bathing - 3"; stripping ALL non-digits would turn that into 18304 and
+      // blow functional points / case-mix. Prefer an isolated 0–max digit; missing
+      // stays null (0 is a real OASIS response meaning independent).
+      const parseScore = (val, max = 6) => {
+        if (val == null || val === '') return null;
+        const s = String(val).trim();
+        if (/^\d+$/.test(s)) {
+          const n = parseInt(s, 10);
+          return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
+        }
+        const matches = [...s.matchAll(/\b([0-6])\b/g)];
+        if (matches.length === 0) return null;
+        const n = parseInt(matches[matches.length - 1][1], 10);
+        return Number.isFinite(n) && n <= max ? n : null;
       };
 
-      // Default admission source
+      // M1000 → community vs institutional (mirrors calculatePDGM validation).
+      const m1000Raw = String(output?.m1000_from_where_admitted || '').trim();
+      const m1000Lower = m1000Raw.toLowerCase();
+      const m1000Code = (m1000Raw.match(/\b([1-7])\b/) || [])[1] || '';
       let admissionSource = 'community';
+      if (
+        ['2', '3', '4', '5', '6'].includes(m1000Code) ||
+        /hospital|snf|skilled nursing|inpatient|acute|rehab|ltch|irf|psych/.test(m1000Lower)
+      ) {
+        admissionSource = 'institutional';
+      } else if (
+        m1000Code === '1' ||
+        /community|home|physician|clinic|outpatient/.test(m1000Lower)
+      ) {
+        admissionSource = 'community';
+      }
 
-      // Determine episode timing from M0110 or calculated from dates
+      // Episode timing: prefer exact M0110 01/02 (as calculatePDGM), then dates.
+      // Day 31 of care (daysSinceSoc >= 30) starts the late period — NOT > 30.
+      // Do NOT treat a bare "30" as early (that matched late "30+" wording).
       let episodeTiming = 'early';
-      const m0110 = String(output?.m0110_episode_timing || '').toLowerCase();
-      if (m0110.includes('2') || m0110.includes('late') || m0110.includes('31')) {
+      const m0110Raw = String(output?.m0110_episode_timing || '').trim();
+      const m0110Digits = m0110Raw.replace(/\D/g, '');
+      const m0110Lower = m0110Raw.toLowerCase();
+      if (m0110Digits === '02' || m0110Digits === '2' || m0110Lower.includes('late')) {
         episodeTiming = 'late';
-      } else if (m0110.includes('1') || m0110.includes('early') || m0110.includes('30') || m0110.includes('within')) {
+      } else if (m0110Digits === '01' || m0110Digits === '1' || m0110Lower.includes('early')) {
         episodeTiming = 'early';
       } else if (output?.days_since_soc) {
-        const days = parseInt(output.days_since_soc);
-        if (!isNaN(days) && days > 30) {
-          episodeTiming = 'late';
-        }
+        const days = parseInt(output.days_since_soc, 10);
+        if (!isNaN(days) && days >= 30) episodeTiming = 'late';
       } else if (output?.soc_date && output?.assessment_date) {
-        // Try to calculate from dates
         try {
           const soc = new Date(output.soc_date);
           const assessment = new Date(output.assessment_date);
-          const diffDays = Math.floor((assessment - soc) / (1000 * 60 * 60 * 24));
-          if (diffDays > 30) {
-            episodeTiming = 'late';
+          if (!Number.isNaN(soc.getTime()) && !Number.isNaN(assessment.getTime())) {
+            const diffDays = Math.floor((assessment - soc) / (1000 * 60 * 60 * 24));
+            if (diffDays >= 30) episodeTiming = 'late';
           }
         } catch {
           // Keep default early
@@ -977,28 +1030,29 @@ Return JSON:
         admission_source: admissionSource,
         episode_timing: episodeTiming,
         m0110_episode_timing: output?.m0110_episode_timing || null,
+        m1000_from_where_admitted: output?.m1000_from_where_admitted || null,
         soc_date: output?.soc_date || null,
         functional_scores: {
-          m1800_grooming: parseScore(output?.m1800_grooming),
-          m1810_dress_upper: parseScore(output?.m1810_dress_upper),
-          m1820_dress_lower: parseScore(output?.m1820_dress_lower),
-          m1830_bathing: parseScore(output?.m1830_bathing),
-          m1840_toilet_transfer: parseScore(output?.m1840_toilet_transfer),
-          m1850_transferring: parseScore(output?.m1850_transferring),
-          m1860_ambulation: parseScore(output?.m1860_ambulation)
+          m1800_grooming: parseScore(output?.m1800_grooming, 3),
+          m1810_dress_upper: parseScore(output?.m1810_dress_upper, 3),
+          m1820_dress_lower: parseScore(output?.m1820_dress_lower, 3),
+          m1830_bathing: parseScore(output?.m1830_bathing, 6),
+          m1840_toilet_transfer: parseScore(output?.m1840_toilet_transfer, 4),
+          m1850_transferring: parseScore(output?.m1850_transferring, 5),
+          m1860_ambulation: parseScore(output?.m1860_ambulation, 6)
         },
         gg_scores: { 
           self_care: output?.gg0130_self_care || null, 
           mobility: output?.gg0170_mobility || null 
         },
         clinical_items: {
-          dyspnea: parseScore(output?.m1400_dyspnea),
-          pain_frequency: parseScore(output?.m1242_pain_freq),
-          pressure_ulcer_present: output?.m1306_pressure_ulcer === '1' || String(output?.m1306_pressure_ulcer).toLowerCase().includes('yes'),
+          dyspnea: parseScore(output?.m1400_dyspnea, 4),
+          pain_frequency: parseScore(output?.m1242_pain_freq, 4),
+          pressure_ulcer_present: output?.m1306_pressure_ulcer === '1' || String(output?.m1306_pressure_ulcer || '').toLowerCase().includes('yes'),
           pressure_ulcer_stage: output?.m1307_pressure_ulcer_stage || null,
-          pressure_ulcer_count: parseScore(output?.m1311_pressure_ulcer_count),
-          stasis_ulcer: output?.m1322_stasis_ulcer === '1' || String(output?.m1322_stasis_ulcer).toLowerCase().includes('yes'),
-          surgical_wound: output?.m1330_surgical_wound === '1' || String(output?.m1330_surgical_wound).toLowerCase().includes('yes'),
+          pressure_ulcer_count: parseScore(output?.m1311_pressure_ulcer_count, 9),
+          stasis_ulcer: output?.m1322_stasis_ulcer === '1' || String(output?.m1322_stasis_ulcer || '').toLowerCase().includes('yes'),
+          surgical_wound: output?.m1330_surgical_wound === '1' || String(output?.m1330_surgical_wound || '').toLowerCase().includes('yes'),
           surgical_wound_status: output?.m1340_surgical_wound_status || null
         },
         cognitive_status: {
@@ -1544,10 +1598,25 @@ Return scores (0-100) and top 3-5 issues in each category.`,
           patientHistory={patientHistoricalData}
           autoValidate={true}
           onCorrection={(correction) => {
-            setPdgmData(prev => ({
-              ...prev,
-              [correction.m_item_code]: correction.suggested_value
-            }));
+            const field = functionalFieldForMItem(correction.m_item_code || correction.m_item);
+            const value = correction.suggested_value ?? correction.recommended_score ?? correction.suggested_score;
+            setPdgmData((prev) => {
+              if (!prev) return prev;
+              if (field) {
+                return {
+                  ...prev,
+                  functional_scores: {
+                    ...prev.functional_scores,
+                    [field]: value,
+                  },
+                };
+              }
+              // Non-functional corrections (e.g. timing/source) land at top level.
+              if (correction.m_item_code) {
+                return { ...prev, [correction.m_item_code]: value };
+              }
+              return prev;
+            });
           }}
         />
       )}
@@ -1756,7 +1825,7 @@ Return scores (0-100) and top 3-5 issues in each category.`,
 
           {/* Key Takeaways Summary (includes potential-revenue figures) — financial, admins only */}
           <FinancialGate>
-            <KeyTakeawaysSummary analysisResults={analysisResults} revenueData={null} />
+            <KeyTakeawaysSummary analysisResults={analysisResults} revenueData={revenueData} />
           </FinancialGate>
 
           {/* AI-Powered Automatic Document Review */}
@@ -2104,7 +2173,7 @@ Return scores (0-100) and top 3-5 issues in each category.`,
           <AutomatedPDGMNavigator
             analysisResults={analysisResults} 
             pdgmData={pdgmData}
-            revenueData={null}
+            revenueData={revenueData}
             onNavigationComplete={(navData) => setNavigationData(navData)}
           />
 
@@ -2124,8 +2193,10 @@ Return scores (0-100) and top 3-5 issues in each category.`,
                 functional_improvements: analysisResults.specific_rescore_opportunities
                   ?.filter(opp => opp.category === 'functional')
                   ?.reduce((acc, opp) => {
-                    if (opp.m_item && opp.suggested_score !== undefined) {
-                      acc[opp.m_item] = opp.suggested_score;
+                    const score = opp.recommended_score ?? opp.suggested_score;
+                    const field = functionalFieldForMItem(opp.m_item);
+                    if (field && score !== undefined && score !== null) {
+                      acc[field] = score;
                     }
                     return acc;
                   }, {}),
@@ -2237,7 +2308,14 @@ Return scores (0-100) and top 3-5 issues in each category.`,
             <AIDocumentationAssistant 
               analysisResults={analysisResults} 
               pdgmData={pdgmData}
-              onInsertText={() => {}}
+              onInsertText={async (text) => {
+                try {
+                  await navigator.clipboard.writeText(text || '');
+                  toast.success('Documentation text copied to clipboard');
+                } catch {
+                  toast.error('Could not copy documentation text');
+                }
+              }}
             />
             <AIAuditRiskPredictor 
               analysisResults={analysisResults} 

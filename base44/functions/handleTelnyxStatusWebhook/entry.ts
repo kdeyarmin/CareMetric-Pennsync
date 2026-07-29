@@ -335,8 +335,10 @@ function decodeClientState(b64) {
 // ---- Call Control command helper ----
 // Returns { ok, status } so callers can fall back on failure instead of
 // silently stranding a live (billed) call leg.
-// TODO(verify): confirm Call Control action paths/field names against the live
-// Telnyx v2 API for your account (answer/transfer/speak/hangup/record_start).
+// TODO(verify): confirm Call Control action paths against your live Telnyx
+// account if command routing ever changes. Field names for record_start
+// (max_length) / transcription_start (transcription_engine_config.language)
+// and hangup_cause enum values are verified against Telnyx v2 docs/SDK.
 async function callCommand(apiKey, callControlId, command, payload = {}) {
   try {
     const resp = await fetch(`https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/${command}`, {
@@ -809,8 +811,9 @@ function buildRingdown(opts) {
   return out.slice(0, cap);
 }
 const UNANSWERED_CAUSES = new Set([
-  'no_answer', 'no_user_response', 'user_busy', 'call_rejected', 'timeout',
-  'normal_temporary_failure', 'unallocated_number', 'recovery_on_timer_expire', 'originator_cancel',
+  // Telnyx call.hangup HangupCause enum (docs + SDK). Keep in sync with
+  // src/components/voice/onCall.js UNANSWERED_HANGUP_CAUSES.
+  'no_answer', 'user_busy', 'call_rejected', 'timeout', 'not_found', 'originator_cancel',
 ]);
 function isUnansweredHangup(cause) {
   return UNANSWERED_CAUSES.has(String(cause || '').toLowerCase());
