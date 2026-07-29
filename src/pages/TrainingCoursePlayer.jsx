@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle, CheckCircle2, RotateCcw, Award, ChevronRight, ChevronLeft,
   BookOpen, Clock, Star, FileText, Send, Eye, RefreshCw, Home,
@@ -52,10 +52,15 @@ const formatElapsed = (ms) => {
 
 export default function TrainingCoursePlayer() {
   const navigate = useNavigate();
-  const params = new URLSearchParams(window.location.search);
-  const assignmentId = params.get("assignment");
-  const courseId = params.get("courseId");
-  const previewMode = params.get("preview") === "true";
+  // useSearchParams (not window.location.search read at render) so a
+  // same-route navigation to a different course/assignment re-renders with the
+  // new ids and the reset effect below actually fires — App.jsx memoizes route
+  // elements, so only location-context subscribers re-render on a query-only
+  // navigation.
+  const [searchParams] = useSearchParams();
+  const assignmentId = searchParams.get("assignment");
+  const courseId = searchParams.get("courseId");
+  const previewMode = searchParams.get("preview") === "true";
 
   const [step, setStep] = useState("objectives");
   const [completedModules, setCompletedModules] = useState([]);

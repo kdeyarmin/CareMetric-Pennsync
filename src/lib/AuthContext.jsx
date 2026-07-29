@@ -51,6 +51,17 @@ export const AuthProvider = ({ children }) => {
           type: 'auth_required',
           message: 'Authentication required'
         });
+      } else {
+        // Non-auth failure (network blip, 5xx) with a token still in storage:
+        // this is a backend/connectivity outage, not a missing session. With no
+        // authError set, AuthenticatedApp would fall through to <SignInScreen />
+        // and mislead the user into re-entering credentials to "fix" an outage
+        // — the exact failure mode the public-settings fetch already guards
+        // against. Surface the real error instead.
+        setAuthError({
+          type: 'unknown',
+          message: error.message || 'Could not reach the server. Check your connection and try again.'
+        });
       }
     }
   }, []);

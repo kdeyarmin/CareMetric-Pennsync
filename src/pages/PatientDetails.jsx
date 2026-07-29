@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { ArrowLeft, Calendar, Plus, User, FileText, AlertTriangle, Phone, MapPin, Heart, Stethoscope, Activity, ClipboardList, ExternalLink, Users, Sparkles, Send } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
@@ -58,8 +58,13 @@ import PatientContactActions from "../components/voice/PatientContactActions";
 export default function PatientDetails() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const urlParams = new URLSearchParams(window.location.search);
-  const patientId = urlParams.get('id') || urlParams.get('patientId');
+  // useSearchParams (not window.location.search read at render) so navigating
+  // between two patients on the same route (/PatientDetails?id=A -> ?id=B,
+  // e.g. via sidebar favorites) re-renders with the new id — App.jsx memoizes
+  // route elements, so only location-context subscribers re-render on a
+  // query-only navigation.
+  const [searchParams] = useSearchParams();
+  const patientId = searchParams.get('id') || searchParams.get('patientId');
 
   const [showVisitForm, setShowVisitForm] = useState(false);
   const [showOASISPrompt, setShowOASISPrompt] = useState(false);

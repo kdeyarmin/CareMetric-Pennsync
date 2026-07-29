@@ -5,6 +5,7 @@
 import './App.css'
 import { lazy, Suspense, useMemo } from 'react';
 import { Toaster } from "@/components/ui/toaster"
+import { Toaster as SonnerToaster } from "sonner"
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -80,11 +81,24 @@ const RedirectTo = ({ to }) => {
   const location = useLocation();
   const [path, targetQuery = ''] = to.split('?');
   const params = new URLSearchParams(targetQuery);
+  const incomingKeys = new Set();
   for (const [key, value] of new URLSearchParams(location.search)) {
-    if (!params.has(key)) params.set(key, value);
+    // append (not set) so repeated incoming keys (?id=1&id=2) all survive;
+    // target params still win on conflict.
+    if (!params.has(key) || incomingKeys.has(key)) {
+      params.append(key, value);
+      incomingKeys.add(key);
+    }
   }
   const query = params.toString();
-  return <Navigate to={query ? `${path}?${query}` : path} state={location.state} replace />;
+  // Forward the hash too — an old bookmark's #anchor must survive the redirect.
+  return (
+    <Navigate
+      to={{ pathname: path, search: query ? `?${query}` : '', hash: location.hash }}
+      state={location.state}
+      replace
+    />
+  );
 };
 
 const RoutePageLoader = () => (
@@ -248,6 +262,24 @@ function App() {
               <AuthenticatedApp />
             </Router>
             <Toaster />
+            {/* The whole app toasts through sonner (query-client,
+                useMutationWithToast, OfflineManager, alert-shim). Mounted HERE —
+                not inside Layout — so toasts fired while Layout isn't rendered
+                (sign-in screen, AI-agreement gate, pending-approval screen)
+                still appear instead of being silently dropped. */}
+            <SonnerToaster
+              position="top-right"
+              richColors
+              closeButton
+              theme="light"
+              toastOptions={{
+                classNames: {
+                  toast: "rounded-xl border shadow-lg",
+                  title: "font-semibold",
+                  description: "text-slate-600",
+                },
+              }}
+            />
             <OfflineManager />
             <VisualEditAgent />
           </ConfirmDialogProvider>
