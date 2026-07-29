@@ -153,6 +153,9 @@ Deno.serve(async (req) => {
       package_id: pkg.id,
       signer_email: pkg.signer_email,
       signer_name: pkg.signer_name,
+      // Entity triggers have no user session; pass the shared secret so the
+      // callee accepts this nested service-role invoke.
+      internal_secret: Deno.env.get('INTERNAL_FN_SECRET') || '',
     });
 
     const tokenData = tokenResult?.data || tokenResult;

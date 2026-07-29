@@ -34,10 +34,14 @@ export default function TemplateLibrary() {
     setTemplateContent(data.content?.template_content || '');
   };
 
-  const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(templateContent);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(templateContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Could not copy to clipboard');
+    }
   };
 
   const handleUseInVisit = async () => {

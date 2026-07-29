@@ -66,6 +66,7 @@ const safeDate = (value) => {
   return isValid(d) ? format(d, "MM/dd/yyyy") : "N/A";
 };
 import { toast } from "sonner";
+import { parseDob } from "@/components/patient/patientDuplicateUtils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -609,19 +610,17 @@ Actions available:
             }
           }
           
-          // DOB matching (30 points)
+          // DOB matching (30 points) — tolerate MM/DD/YYYY vs YYYY-MM-DD via parseDob
+          // (same helper OASIS patient matching already uses).
           if (dob && p.date_of_birth) {
-            if (dob === p.date_of_birth) {
+            const a = parseDob(dob);
+            const b = parseDob(p.date_of_birth);
+            if (a && b && a.year === b.year && a.month === b.month && a.day === b.day) {
               score += 30;
               reasons.push('Exact DOB match');
-            } else {
-              // Partial DOB match (year and month)
-              const [y1, m1] = dob.split('-');
-              const [y2, m2] = p.date_of_birth.split('-');
-              if (y1 === y2 && m1 === m2) {
-                score += 15;
-                reasons.push('Partial DOB match');
-              }
+            } else if (a && b && a.year === b.year && a.month === b.month) {
+              score += 15;
+              reasons.push('Partial DOB match');
             }
           }
           
@@ -826,8 +825,15 @@ Actions available:
         console.error('F2F encounter persistence skipped:', f2fError);
       }
 
-      // Create comprehensive AI-generated tasks from multiple sources
+      // Create comprehensive AI-generated tasks from multiple sources.
+      // Link to the Referral via related_entity/related_entity_id (NOT
+      // related_visit_id — that FK is for Visit rows; stuffing a referral id
+      // there broke triage linkage and could mis-associate Visit filters).
       const allSuggestedTasks = [];
+      const taskReferralLink = {
+        related_entity: 'Referral',
+        related_entity_id: referralId,
+      };
       
       // Tasks from intake analysis
       if (intakeAnalysis.suggested_next_steps?.length > 0) {
@@ -842,7 +848,7 @@ Actions available:
             status: 'pending',
             source: 'ai_generated',
             ai_reason: `Referral intake analysis identified this as ${step.priority} priority action`,
-            related_visit_id: referralId
+            ...taskReferralLink,
           }));
         allSuggestedTasks.push(...analysisTasksToCreate);
       }
@@ -874,7 +880,7 @@ Actions available:
           status: "pending",
           source: "ai_generated",
           ai_reason: "Wound care identified in referral document",
-          related_visit_id: referralId
+          ...taskReferralLink,
         });
       }
 
@@ -888,7 +894,7 @@ Actions available:
           status: "pending",
           source: "ai_generated",
           ai_reason: "IV therapy identified in referral document",
-          related_visit_id: referralId
+          ...taskReferralLink,
         });
       }
 
@@ -902,7 +908,7 @@ Actions available:
           status: "pending",
           source: "ai_generated",
           ai_reason: `Therapy requirements identified: ${therapyRequirements.join(', ')}`,
-          related_visit_id: referralId
+          ...taskReferralLink,
         });
       }
 
@@ -916,7 +922,7 @@ Actions available:
           status: "pending",
           source: "ai_generated",
           ai_reason: `DME needs identified: ${dmeNeeds.join(', ')}`,
-          related_visit_id: referralId
+          ...taskReferralLink,
         });
       }
 
@@ -1229,7 +1235,7 @@ Actions available:
                   <SelectItem value="awaiting_info">Awaiting Info</SelectItem>
                   <SelectItem value="ready_for_admission">Ready for Admission</SelectItem>
                   <SelectItem value="soc_completed">SOC Completed</SelectItem>
-                  <SelectItem value="archived">Archived</SelectItem>
+                  <SelectItem value="declined">Declined</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -100,10 +100,18 @@ Return the enhanced, complete clinical note ready for documentation. Keep all fa
     }
   };
 
-  const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyToClipboard = async () => {
+    if (requiredFields.length > 0) {
+      toast.error(`Fill required fields before copying: ${requiredFields.slice(0, 3).join(', ')}${requiredFields.length > 3 ? '…' : ''}`);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Could not copy to clipboard');
+    }
   };
 
   const handleContentChange = (newContent) => {

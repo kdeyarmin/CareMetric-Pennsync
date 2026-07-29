@@ -15,7 +15,8 @@ import {
   AlertTriangle,
   Activity,
   Users,
-  Filter
+  Filter,
+  Loader2
 } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
@@ -34,29 +35,30 @@ export default function PredictiveAnalytics() {
   const [riskFilter, setRiskFilter] = useState("all");
 
   // Fetch patients
-  const { data: patients = [] } = useQuery({
+  const { data: patients = [], isPending: patientsLoading } = useQuery({
     queryKey: ['predictivePatients'],
     queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS),
   });
 
   // Fetch OASIS data
-  const { data: oasisData = [] } = useQuery({
+  const { data: oasisData = [], isPending: oasisLoading } = useQuery({
     queryKey: ['predictiveOASIS'],
     queryFn: () => base44.entities.OASISUpload.list('-created_date', 200),
   });
 
   // Fetch visits
-  const { data: visits = [] } = useQuery({
+  const { data: visits = [], isPending: visitsLoading } = useQuery({
     queryKey: ['predictiveVisits'],
     queryFn: () => base44.entities.Visit.list('-created_date', 500),
   });
 
   // Fetch alerts
-  const { data: alerts = [] } = useQuery({
+  const { data: alerts = [], isPending: alertsLoading } = useQuery({
     queryKey: ['predictiveAlerts'],
     queryFn: () => base44.entities.PatientAlert.filter({ status: 'active' }, undefined, PATIENT_HISTORY_ROWS),
   });
 
+  const isLoading = patientsLoading || oasisLoading || visitsLoading || alertsLoading;
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
   return (
@@ -118,6 +120,13 @@ export default function PredictiveAnalytics() {
           </TabsList>
         </div>
 
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+            <p className="text-sm font-medium">Loading predictive data…</p>
+          </div>
+        ) : (
+          <>
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-4 sm:space-y-6">
           <PopulationRiskOverview 
@@ -172,6 +181,8 @@ export default function PredictiveAnalytics() {
             selectedPatientId={selectedPatientId}
           />
         </TabsContent>
+          </>
+        )}
       </Tabs>
     </PageContainer>
   );

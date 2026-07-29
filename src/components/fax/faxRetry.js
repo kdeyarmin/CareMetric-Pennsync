@@ -104,11 +104,12 @@ export function isFaxRetryDue(fax, now = Date.now(), config) {
   if (!fax || fax.status !== "failed") return false;
   if (!fax.next_retry_at) return false;
   if (!fax.document_url) return false; // nothing to re-send
-  // Use >= so the budget is spent at retry_count === maxRetries, matching
-  // planFaxRetry's `attempts >= maxRetries` cap. With `>`, a fax sitting at
-  // exactly maxRetries (with next_retry_at still set from the prior attempt)
-  // would get one extra send/charge beyond the configured budget.
-  if ((Number(fax.retry_count) || 0) >= c.maxRetries) return false;
+  // Use > so a scheduled retry with retry_count === maxRetries is still sent
+  // (that IS the last allowed attempt). planFaxRetry refuses to schedule past
+  // that (attempts >= maxRetries), so after the final send fails no further
+  // next_retry_at is written. With `>=`, max_retries=N only ever delivered N-1
+  // retries and max_retries=1 delivered zero.
+  if ((Number(fax.retry_count) || 0) > c.maxRetries) return false;
   const t = new Date(fax.next_retry_at).getTime();
   return Number.isFinite(t) && now >= t;
 }

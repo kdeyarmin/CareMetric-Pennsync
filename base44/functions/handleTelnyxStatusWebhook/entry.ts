@@ -123,10 +123,15 @@ function classifyFaxFailure(errorCode, errorMessage) {
 }
 function faxRetryConfig(config) {
   const c = config || {};
+  // Coerce first: entity fields can arrive as numeric strings ("5") from a JSON/form
+  // round-trip, and Number.isFinite("5") is false — which would silently drop the
+  // admin's configured value in favor of the default. Mirrors src/components/fax/faxRetry.js.
+  const maxRetriesNum = Number(c.max_retries);
+  const baseDelayNum = Number(c.retry_delay_minutes);
   return {
     enabled: c.auto_retry_enabled !== false,
-    maxRetries: Number.isFinite(c.max_retries) ? Math.max(0, c.max_retries) : 3,
-    baseDelayMinutes: Number.isFinite(c.retry_delay_minutes) && c.retry_delay_minutes > 0 ? c.retry_delay_minutes : 15,
+    maxRetries: Number.isFinite(maxRetriesNum) ? Math.max(0, maxRetriesNum) : 3,
+    baseDelayMinutes: Number.isFinite(baseDelayNum) && baseDelayNum > 0 ? baseDelayNum : 15,
     notifyOnFinalFailure: c.notify_on_final_failure !== false,
     priorityMultiplier: c.priority_multiplier && typeof c.priority_multiplier === 'object' ? c.priority_multiplier : {},
   };
@@ -330,8 +335,10 @@ function decodeClientState(b64) {
 // ---- Call Control command helper ----
 // Returns { ok, status } so callers can fall back on failure instead of
 // silently stranding a live (billed) call leg.
-// TODO(verify): confirm Call Control action paths/field names against the live
-// Telnyx v2 API for your account (answer/transfer/speak/hangup/record_start).
+// TODO(verify): confirm Call Control action paths against your live Telnyx
+// account if command routing ever changes. Field names for record_start
+// (max_length) / transcription_start (transcription_engine_config.language)
+// and hangup_cause enum values are verified against Telnyx v2 docs/SDK.
 async function callCommand(apiKey, callControlId, command, payload = {}) {
   try {
     const resp = await fetch(`https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/${command}`, {
@@ -724,7 +731,7 @@ async function handleFaxEvent(base44, payload) {
     // Honor the admin FaxRetryConfig: schedule a retry or give up (and notify once).
     const cfgRows = await base44.asServiceRole.entities.FaxRetryConfig.list('-created_date', 1).catch(() => []);
     const cfg = cfgRows[0] || {};
-    const maxRetries = faxRetryConfig(cfg).maxRetries;
+    const retryCfg = faxRetryConfig(cfg);
     const plan = planFaxRetry({
       retryCount: faxLog.retry_count || 0,
       errorCode: payload?.failure_code || payload?.error_code,
@@ -732,20 +739,15 @@ async function handleFaxEvent(base44, payload) {
       priority: faxLog.priority || 'normal',
       config: cfg,
     });
-    // Only schedule a retry the cron will actually honor. planFaxRetry plans a
-    // retry whenever attempts < maxRetries (nextRetryCount = attempts + 1), but the
-    // cron's isFaxRetryDue refuses any fax whose retry_count >= maxRetries — so a
-    // planned retry with nextRetryCount === maxRetries would be written yet never
-    // re-sent AND never notified (stranded forever). Treat that boundary case as
-    // exhausted so the sender is told the fax failed.
-    if (plan.willRetry && plan.nextRetryCount < maxRetries) {
+    // planFaxRetry already encodes the budget (attempts < maxRetries). Schedule
+    // whenever it says willRetry — including nextRetryCount === maxRetries, which
+    // is the last allowed send (isFaxRetryDue uses `>` so the cron still honors it).
+    if (plan.willRetry) {
       update.next_retry_at = plan.nextRetryAt;
       update.retry_count = plan.nextRetryCount;
     } else {
-      exhaustedNow = !faxLog.final_failure_notified;
+      exhaustedNow = retryCfg.notifyOnFinalFailure && !faxLog.final_failure_notified;
       update.final_failure_notified = true;
-      // Record that we reached the retry cap even though no further send is scheduled.
-      if (plan.willRetry) update.retry_count = plan.nextRetryCount;
     }
     update.failure_reason = failureReason;
   }
@@ -809,8 +811,9 @@ function buildRingdown(opts) {
   return out.slice(0, cap);
 }
 const UNANSWERED_CAUSES = new Set([
-  'no_answer', 'no_user_response', 'user_busy', 'call_rejected', 'timeout',
-  'normal_temporary_failure', 'unallocated_number', 'recovery_on_timer_expire', 'originator_cancel',
+  // Telnyx call.hangup HangupCause enum (docs + SDK). Keep in sync with
+  // src/components/voice/onCall.js UNANSWERED_HANGUP_CAUSES.
+  'no_answer', 'user_busy', 'call_rejected', 'timeout', 'not_found', 'originator_cancel',
 ]);
 function isUnansweredHangup(cause) {
   return UNANSWERED_CAUSES.has(String(cause || '').toLowerCase());
@@ -895,8 +898,9 @@ async function logInboundCall(base44, callControlId, callerNum, workNum, route) 
   // (no nurse) must NOT be mislabeled as an off-duty transfer.
   const callMode = !route.nurse ? 'unresolved'
     : route.action === 'voicemail' ? 'voicemail'
-      : (route.action === 'ringdown' || (route.action === 'bridge' && route.nurse?.personal_cell_e164)) ? 'masked_bridge'
-        : 'office_transfer';
+      : route.action === 'hangup' ? 'unresolved'
+        : (route.action === 'ringdown' || (route.action === 'bridge' && route.nurse?.personal_cell_e164)) ? 'masked_bridge'
+          : 'office_transfer';
   const logRow = await base44.asServiceRole.entities.CallLog.create({
     direction: 'inbound', from_number: callerNum, to_number: route.to || '', displayed_number: workNum,
     nurse_email: route.nurse?.email || null, call_mode: callMode, status: 'ringing', provider_call_id: callControlId,
@@ -1101,16 +1105,19 @@ async function continueAfterGreeting(base44, apiKey, callControlId, action, to, 
     }
   } else if (action === 'voicemail') {
     // Bound the recording so a silent/abandoned line can't leave a billed leg
-    // open indefinitely (matches the old 120s voicemail cap). TODO(verify):
-    // record_start field names (format/channels/max_length_secs) against the API.
+    // open indefinitely (matches the old 120s voicemail cap). Telnyx field is
+    // max_length (seconds), not max_length_secs.
     await callCommand(apiKey, callControlId, 'record_start', {
-      format: 'mp3', channels: 'single', max_length_secs: 120,
+      format: 'mp3', channels: 'single', max_length: 120,
       client_state: encodeClientState({ t: 'voicemail' }),
     });
-    // Restore the voicemail transcription the old handler captured. Best-effort:
-    // transcripts arrive on call.transcription events. TODO(verify): transcription_start
-    // field names against the live API.
-    await callCommand(apiKey, callControlId, 'transcription_start', { language: 'en', client_state: encodeClientState({ t: 'voicemail' }) });
+    // Real-time transcription: language lives under transcription_engine_config
+    // (top-level `language` is not a valid TranscriptionStartRequest field).
+    await callCommand(apiKey, callControlId, 'transcription_start', {
+      transcription_engine: 'A',
+      transcription_engine_config: { language: 'en', transcription_engine: 'A' },
+      client_state: encodeClientState({ t: 'voicemail' }),
+    });
   } else {
     await callCommand(apiKey, callControlId, 'hangup', {});
   }

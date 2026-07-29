@@ -99,12 +99,17 @@ Resilience built in:
 - `callCommand` returns `{ ok, status }`; a **failed transfer falls back** to a
   spoken apology + `hangup` (and, for the outbound bridge, marks the `CallLog`
   failed) rather than leaving the caller/nurse on dead air.
-- Voicemail recording is bounded (`max_length_secs`) and **transcribed**
-  (`transcription_start` → `call.transcription` events append to the `CallLog`,
-  setting `has_voicemail` and surfacing a transcript preview in the notification).
+- Voicemail recording is bounded (`max_length`) and **transcribed**
+  (`transcription_start` with `transcription_engine_config.language` →
+  `call.transcription` events append to the `CallLog`, setting `has_voicemail`
+  and surfacing a transcript preview in the notification).
+- Ringdown advances on Telnyx `hangup_cause` values verified against the Call
+  Control HangupCause enum: `no_answer`, `user_busy`, `call_rejected`,
+  `timeout`, `not_found`, `originator_cancel` (see `src/components/voice/onCall.js`).
 
-> Call Control action/field names are annotated with `TODO(verify)` in the
-> webhook and should be confirmed against your live Telnyx account during rollout.
+> Call Control *action path* URLs should still be smoke-tested against your live
+> Telnyx account during rollout; hangup_cause / record_start / transcription_start
+> field names are pinned to the published Telnyx v2 docs/SDK.
 
 **MMS:** `sendSms` accepts an optional `media_urls` array (up to 10 `https` URLs);
 when present, Telnyx sends an MMS. Non-https or oversized payloads are rejected

@@ -14,7 +14,7 @@ test("classifyFaxFailure flags permanent failures", () => {
   assert.equal(classifyFaxFailure("", "Number not in service"), "permanent");
 });
 
-test("isFaxRetryDue stops at retry_count === maxRetries (no extra send/charge)", () => {
+test("isFaxRetryDue allows retry_count === maxRetries (last attempt) then stops", () => {
   const now = Date.now();
   const fax = (retry_count) => ({
     status: "failed",
@@ -24,8 +24,11 @@ test("isFaxRetryDue stops at retry_count === maxRetries (no extra send/charge)",
   });
   const cfg = { max_retries: 3 };
   assert.equal(isFaxRetryDue(fax(2), now, cfg), true);  // budget remains
-  assert.equal(isFaxRetryDue(fax(3), now, cfg), false); // budget spent at == max
-  assert.equal(isFaxRetryDue(fax(4), now, cfg), false);
+  assert.equal(isFaxRetryDue(fax(3), now, cfg), true);  // last allowed send
+  assert.equal(isFaxRetryDue(fax(4), now, cfg), false); // over budget
+  // max_retries=1 must still schedule/send exactly one retry
+  assert.equal(isFaxRetryDue(fax(1), now, { max_retries: 1 }), true);
+  assert.equal(isFaxRetryDue(fax(2), now, { max_retries: 1 }), false);
 });
 
 test("classifyFaxFailure treats busy/no-answer/unknown as transient", () => {

@@ -88,6 +88,18 @@ function blockedReasonMessage(reason) {
   }
 }
 
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+function isInternalInvoke(body) {
+  const expected = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expected) return false;
+  return timingSafeEqualStr(String(body?.internal_secret || '').trim(), expected);
+}
+
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
   let apiKey = null;
@@ -110,16 +122,20 @@ async function resolveTelnyxCreds(base44) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    const user = await base44.auth.me().catch(() => null);
     // NOTE: from_number is intentionally NOT read from the body. Every fax goes
     // out from the single shared office number (resolved server-side below) so a
     // caller can't spoof the agency's caller-ID or misroute reply/DLR traffic.
-    const { file_url, to_numbers, document_name, patient_id, cover_page_details, priority, from_name } = await req.json();
+    const body = await req.json();
+    const internalOk = isInternalInvoke(body);
+    if (!user && !internalOk) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { file_url, to_numbers, document_name, patient_id, cover_page_details, priority, from_name, sent_by: bodySentBy } = body;
+    // Scheduled-fax cron has no session; attribute FaxLog.sent_by to the
+    // ScheduledFax creator (or a stable system marker) so DLR notifications still route.
+    const senderEmail = user?.email || (typeof bodySentBy === 'string' && bodySentBy.trim() ? bodySentBy.trim() : 'scheduler@system');
 
     const normalizedRecipients = Array.isArray(to_numbers)
       ? to_numbers.map((num) => typeof num === 'string' ? num.trim() : '').filter(Boolean)
@@ -215,7 +231,7 @@ Deno.serve(async (req) => {
         // Idempotency: skip a recent identical (recipient + document + sender) send
         // so a double-submit doesn't fax + charge the same PHI document twice.
         const recent = await base44.asServiceRole.entities.FaxLog
-          .filter({ to_number, document_url: file_url, sent_by: user.email }, '-created_date', 5)
+          .filter({ to_number, document_url: file_url, sent_by: senderEmail }, '-created_date', 5)
           .catch(() => []);
         const dupe = (recent || []).find((f) => f.created_date && f.created_date >= recentCutoff && f.status !== 'failed');
         if (dupe) {
@@ -223,14 +239,14 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const faxLog = await base44.entities.FaxLog.create({
+        const faxLog = await base44.asServiceRole.entities.FaxLog.create({
           from_number: telnyxFromNumber,
           to_number,
           document_url: file_url,
           document_name: document_name || 'Batch Fax',
           status: 'queued',
           patient_id: patient_id || null,
-          sent_by: user.email,
+          sent_by: senderEmail,
           cover_page_details: cover_page_details || null,
           priority: finalPriority,
           estimated_cost: estimatedCostPerPage

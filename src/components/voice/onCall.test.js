@@ -52,12 +52,19 @@ test("nextRingdownTarget walks the list and stops at the end", () => {
   assert.equal(nextRingdownTarget(null, 0), null);
 });
 
-test("isUnansweredHangup advances only on callee-no-answer causes", () => {
-  for (const c of ["no_answer", "user_busy", "call_rejected", "timeout", "originator_cancel"]) {
+test("isUnansweredHangup advances only on Telnyx callee-no-answer causes", () => {
+  // Official Telnyx HangupCause values that mean the dialed party didn't answer.
+  for (const c of ["no_answer", "user_busy", "call_rejected", "timeout", "not_found", "originator_cancel"]) {
     assert.equal(isUnansweredHangup(c), true, c);
+    assert.equal(isUnansweredHangup(c.toUpperCase()), true, c);
   }
-  // A plain caller hangup should NOT keep ringing.
-  assert.equal(isUnansweredHangup("normal_clearing"), false);
-  assert.equal(isUnansweredHangup(""), false);
+  // Answered-then-cleared / duration-cap / unknown — do NOT keep ringing.
+  for (const c of ["normal_clearing", "time_limit", "unspecified", ""]) {
+    assert.equal(isUnansweredHangup(c), false, c);
+  }
+  // FreeSWITCH-era leftovers must not be treated as Telnyx vocabulary.
+  assert.equal(isUnansweredHangup("unallocated_number"), false);
+  assert.equal(isUnansweredHangup("no_user_response"), false);
+  assert.equal(isUnansweredHangup("recovery_on_timer_expire"), false);
   assert.equal(isUnansweredHangup(undefined), false);
 });
