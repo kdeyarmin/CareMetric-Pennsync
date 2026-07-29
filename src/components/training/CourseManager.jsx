@@ -7,8 +7,9 @@ import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Edit2, Trash2, BookOpen, Eye, BarChart3, Copy, Loader2, CheckCircle2, AlertTriangle, Rocket, Clapperboard, ShieldCheck } from "lucide-react";
+import { Plus, Edit2, Trash2, BookOpen, Eye, BarChart3, Copy, Loader2, CheckCircle2, AlertTriangle, Rocket, Clapperboard, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { resumeTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
 import CourseForm from "./CourseForm";
 import CourseLessonBuilder from "./CourseLessonBuilder";
 import CourseQuizBuilder from "./CourseQuizBuilder";
@@ -61,6 +62,7 @@ export default function CourseManager() {
   // once the Details tab is saved — which is what unlocks the Lessons/Quiz tabs.
   const [builderCourse, setBuilderCourse] = useState(null);
   const [builderTab, setBuilderTab] = useState("details");
+  const [resumeProgress, setResumeProgress] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -235,6 +237,32 @@ export default function CourseManager() {
   const builderReadiness = getCourseReadiness(builderCourse, builderModules, builderQuestions);
   const requiresSmeReview = builderCourse?.ai_generated === true || builderCourse?.needs_sme_review === true;
 
+  // Finish an AI generation that was interrupted mid-run (missing lessons
+  // and/or quiz). The backend phases are idempotent, so this only fills gaps.
+  const resumeMutation = useMutation({
+    mutationFn: () =>
+      resumeTrainingCourseStepwise(
+        builderCourse,
+        {
+          missingModuleIndexes: builderReadiness.missingModuleIndexes,
+          regenerateAssessment: builderReadiness.questionCount === 0,
+        },
+        setResumeProgress
+      ),
+    onSuccess: () => {
+      setResumeProgress(null);
+      queryClient.invalidateQueries({ queryKey: ['training-modules', builderCourseId] });
+      queryClient.invalidateQueries({ queryKey: ['training-questions', builderCourseId] });
+      queryClient.invalidateQueries({ queryKey: ['training-courses'] });
+      toast.success('AI generation finished — review the lessons and quiz, then submit for review.');
+    },
+    onError: (err) => {
+      setResumeProgress(null);
+      console.error('Resume AI generation error:', err);
+      toast.error(err?.message || 'Could not resume the AI generation. Please try again.');
+    },
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -345,6 +373,24 @@ export default function CourseManager() {
                           ? `Complete before review: ${blockers.join(' ')}`
                           : blockers.join(' ')}
                       </p>
+                    )}
+                    {!isPublished && builderReadiness.aiResumable && (
+                      <div className="mt-3 flex items-center gap-3 flex-wrap rounded-lg border border-navy-200 bg-navy-50/60 p-3">
+                        <Button
+                          size="sm"
+                          onClick={() => resumeMutation.mutate()}
+                          disabled={resumeMutation.isPending}
+                        >
+                          {resumeMutation.isPending ? (
+                            <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />{resumeProgress ? `Step ${resumeProgress.step} of ${resumeProgress.totalSteps}: ${resumeProgress.label}` : 'Resuming…'}</>
+                          ) : (
+                            <><Sparkles className="w-4 h-4 mr-1.5" /> Resume AI generation</>
+                          )}
+                        </Button>
+                        <p className="text-xs text-slate-600 flex-1 min-w-[200px]">
+                          This AI course generation stopped early. Resume finishes the missing lessons and quiz using the original topic settings — nothing already generated is redone.
+                        </p>
+                      </div>
                     )}
                   </div>
                 );

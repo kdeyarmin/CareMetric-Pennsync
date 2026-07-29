@@ -235,6 +235,8 @@ async function runOutlinePhase(base44, user, body) {
     enable_certificate = true,
     certificate_valid_months = null,
     generate_videos = false,
+    video_avatar_id = '',
+    video_voice_id = '',
   } = body;
 
   if (!topic) {
@@ -392,6 +394,10 @@ Design principles:
       enable_certificate: enable_certificate !== false,
       certificate_valid_months: normalizedCertificateMonths ?? null,
       generate_videos: !!generate_videos,
+      // Presenter choice is stored so an interrupted generation can be resumed
+      // with the same avatar/voice the admin originally picked.
+      video_avatar_id: String(video_avatar_id || ''),
+      video_voice_id: String(video_voice_id || ''),
       requested_status: status,
       generation_method: 'phased',
       outline_title: outline.title || topic,

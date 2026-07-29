@@ -50,4 +50,65 @@ describe("getCourseReadiness", () => {
       videosReady: false,
     });
   });
+
+  it("flags an interrupted AI draft as resumable with the missing lesson indexes", () => {
+    const readiness = getCourseReadiness(
+      {
+        ai_generated: true,
+        status: "draft",
+        enable_certificate: true,
+        ai_prompt_json: { outline_modules: [{ title: "M1" }, { title: "M2" }, { title: "M3" }] },
+      },
+      [{ id: "module-1", order_index: 0 }],
+      []
+    );
+
+    expect(readiness).toMatchObject({
+      aiResumable: true,
+      outlineModuleCount: 3,
+      missingModuleIndexes: [1, 2],
+    });
+  });
+
+  it("marks a resumable draft when only the quiz is missing", () => {
+    const readiness = getCourseReadiness(
+      {
+        ai_generated: true,
+        status: "draft",
+        enable_certificate: true,
+        ai_prompt_json: { outline_modules: [{ title: "M1" }] },
+      },
+      [{ id: "module-1", order_index: 0 }],
+      []
+    );
+
+    expect(readiness).toMatchObject({ aiResumable: true, missingModuleIndexes: [] });
+  });
+
+  it("does not offer resume for complete drafts, manual courses, or non-drafts", () => {
+    const complete = getCourseReadiness(
+      {
+        ai_generated: true,
+        status: "draft",
+        enable_certificate: true,
+        ai_prompt_json: { outline_modules: [{ title: "M1" }] },
+      },
+      [{ id: "module-1", order_index: 0 }],
+      [{ id: "question-1", active: true }]
+    );
+    const manual = getCourseReadiness({ status: "draft" }, [], []);
+    const pendingReview = getCourseReadiness(
+      {
+        ai_generated: true,
+        status: "pending_review",
+        ai_prompt_json: { outline_modules: [{ title: "M1" }, { title: "M2" }] },
+      },
+      [{ id: "module-1", order_index: 0 }],
+      []
+    );
+
+    expect(complete.aiResumable).toBe(false);
+    expect(manual.aiResumable).toBe(false);
+    expect(pendingReview.aiResumable).toBe(false);
+  });
 });
