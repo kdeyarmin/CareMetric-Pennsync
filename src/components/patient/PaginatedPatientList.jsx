@@ -10,14 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Search
-} from "lucide-react";
+import { Search } from "lucide-react";
 import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { getPatientDisplayName, getPatientInitials } from "@/components/patient/patientDisplay";
+import { clampPageSize, paginateRows } from "@/lib/pagination";
+import ListPaginationControls from "@/components/ui/ListPaginationControls";
 
 export default function PaginatedPatientList({ 
   patients = [], 
@@ -32,7 +30,7 @@ export default function PaginatedPatientList({
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const [sortBy, setSortBy] = useState("name");
 
-  // Filter and sort patients
+  // Filter and sort patients (search/sort stay local; page window uses pure helper).
   const filteredAndSortedPatients = useMemo(() => {
     let filtered = patients.filter(p => {
       const searchLower = search.toLowerCase();
@@ -41,7 +39,6 @@ export default function PaginatedPatientList({
       return fullName.includes(searchLower) || mrn.includes(searchLower);
     });
 
-    // Sort
     filtered.sort((a, b) => {
       if (sortBy === 'name') {
         return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
@@ -56,26 +53,21 @@ export default function PaginatedPatientList({
     return filtered;
   }, [patients, search, sortBy]);
 
-  // Pagination
-  const totalPages = Math.ceil(filteredAndSortedPatients.length / itemsPerPage);
+  const pageSize = clampPageSize(itemsPerPage, { max: 100, fallback: 20 });
 
-  // Clamp the current page when the result set shrinks (filtering, deletion, or a
-  // smaller page size). Without this, being on e.g. page 5 and narrowing results
-  // to 1 page leaves startIndex past the end → an empty list with the pagination
-  // controls hidden, stranding the user with no visible rows.
+  const pageWindow = useMemo(
+    () => paginateRows(filteredAndSortedPatients, { page: currentPage, pageSize, maxPageSize: 100 }),
+    [filteredAndSortedPatients, currentPage, pageSize],
+  );
+
+  // Keep page in range when filters shrink the result set (same contract as paginateRows).
   useEffect(() => {
-    if (totalPages > 0 && currentPage > totalPages) {
-      setCurrentPage(totalPages);
+    if (currentPage !== pageWindow.page) {
+      setCurrentPage(pageWindow.page);
     }
-  }, [totalPages, currentPage]);
+  }, [currentPage, pageWindow.page]);
 
-  const safePage = totalPages > 0 ? Math.min(currentPage, totalPages) : 1;
-  const startIndex = (safePage - 1) * itemsPerPage;
-  const paginatedPatients = filteredAndSortedPatients.slice(startIndex, startIndex + itemsPerPage);
-
-  const handlePageChange = (newPage) => {
-    setCurrentPage(Math.max(1, Math.min(newPage, totalPages)));
-  };
+  const paginatedPatients = pageWindow.items;
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -115,8 +107,8 @@ export default function PaginatedPatientList({
               <SelectItem value="created">Recently Added</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={String(itemsPerPage)} onValueChange={(v) => {
-            setItemsPerPage(Number(v));
+          <Select value={String(pageSize)} onValueChange={(v) => {
+            setItemsPerPage(clampPageSize(v, { max: 100, fallback: 20 }));
             setCurrentPage(1);
           }}>
             <SelectTrigger className="w-full sm:w-32">
@@ -135,9 +127,9 @@ export default function PaginatedPatientList({
       {/* Results Summary */}
       <div className="flex items-center justify-between text-sm text-slate-600">
         <span>
-          {filteredAndSortedPatients.length === 0
+          {pageWindow.totalItems === 0
             ? 'No patients'
-            : `Showing ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, filteredAndSortedPatients.length)} of ${filteredAndSortedPatients.length} patients`}
+            : `Showing ${pageWindow.startIndex + 1}-${pageWindow.endIndex + 1} of ${pageWindow.totalItems} patients`}
         </span>
         {search && (
           <Button variant="ghost" size="sm" onClick={() => setSearch("")}>
@@ -208,57 +200,17 @@ export default function PaginatedPatientList({
         ))}
       </div>
 
-      {/* Pagination Controls */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-4 border-t">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handlePageChange(safePage - 1)}
-            disabled={safePage === 1}
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Previous
-          </Button>
-          
-          <div className="flex items-center gap-2">
-            {[...Array(Math.min(5, totalPages))].map((_, idx) => {
-              let pageNum;
-              if (totalPages <= 5) {
-                pageNum = idx + 1;
-              } else if (safePage <= 3) {
-                pageNum = idx + 1;
-              } else if (safePage >= totalPages - 2) {
-                pageNum = totalPages - 4 + idx;
-              } else {
-                pageNum = safePage - 2 + idx;
-              }
-              
-              return (
-                <Button
-                  key={pageNum}
-                  variant={safePage === pageNum ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => handlePageChange(pageNum)}
-                  className="w-8 h-8 p-0"
-                >
-                  {pageNum}
-                </Button>
-              );
-            })}
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handlePageChange(safePage + 1)}
-            disabled={safePage === totalPages}
-          >
-            Next
-            <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
-        </div>
-      )}
+      <ListPaginationControls
+        page={pageWindow.page}
+        totalPages={pageWindow.totalPages}
+        totalItems={pageWindow.totalItems}
+        startIndex={pageWindow.startIndex}
+        endIndex={pageWindow.endIndex}
+        hasPreviousPage={pageWindow.hasPreviousPage}
+        hasNextPage={pageWindow.hasNextPage}
+        onPageChange={setCurrentPage}
+        itemLabel="patients"
+      />
     </div>
   );
 }
