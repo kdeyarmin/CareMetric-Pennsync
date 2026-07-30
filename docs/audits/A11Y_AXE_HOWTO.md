@@ -1,67 +1,46 @@
 # Accessibility / axe testing (P2-02) — How to run
 
-## What was added
+## No local machine required
 
-| Layer | Location | Runs without staging? |
+If you cannot run Node/pnpm on your computer:
+
+1. Open the repo on GitHub → **Actions**
+2. Select **Install a11y deps (no local machine)**
+3. **Run workflow** on branch `wire-p1-pure-helpers`
+4. That job installs `vitest-axe`, `@playwright/test`, and `@axe-core/playwright`, then **commits** the lockfile
+5. After it finishes, PR #107 CI should stay green and a11y assertions will activate
+6. Optionally run **Accessibility (axe)** for Playwright public-route scans
+
+Until that install job runs, component a11y tests **soft-skip** (they do not fail CI). New packages are **not** listed in `package.json` yet so `pnpm install --frozen-lockfile` stays green.
+
+## What is already on the branch
+
+| Layer | Location | Needs package install? |
 |---|---|---|
-| Smoke matrix (public + auth inventory) | `src/lib/accessibilitySmokeMatrix.js` | Yes (metadata only) |
-| Component axe (Vitest + jsdom) | `*.a11y.test.jsx` | Yes |
-| Browser axe (Playwright) | `e2e/a11y-public.spec.js` | Yes for public routes |
-| Authenticated routes | Matrix only | **No** — needs LR-02 staging |
+| Smoke matrix (public + auth) | `src/lib/accessibilitySmokeMatrix.js` | No |
+| Component axe specs | `*.a11y.test.jsx` + `src/test/axeHelpers.js` | Soft-skip without `vitest-axe` |
+| Browser axe | `e2e/a11y-public.spec.js` | Yes (after install workflow) |
+| Auth routes | Matrix inventory only | Staging / LR-02 |
 
-## Install (once)
-
-```bash
-pnpm install
-pnpm run test:a11y:e2e:install   # Chromium for Playwright
-```
-
-## Component-level axe (CI-friendly)
+## After the install workflow
 
 ```bash
 pnpm run test:a11y
-# or included in:
-pnpm run test:components
+pnpm run build && pnpm run test:a11y:e2e:install && pnpm run test:a11y:e2e
 ```
 
-Scans:
-
-- `AccessDeniedState`
-- `PrivacyPolicy` (public)
-- `JoinTelehealth` invalid-link state
-
-Color-contrast is disabled under jsdom (not reliable). Contrast is enforced in the Playwright suite.
-
-## Public route browser axe
-
-```bash
-pnpm run build
-pnpm run test:a11y:e2e
-```
-
-Against staging (no local server):
+Staging:
 
 ```bash
 PLAYWRIGHT_BASE_URL=https://your-staging.example pnpm run test:a11y:e2e
 ```
 
-Driven by `publicAccessibilityRoutes()` from the matrix (`/privacy`, `/join`, `/signer`, `/followup`).
-Fails on **serious** or **critical** violations only.
+Public routes: `/privacy`, `/join`, `/signer`, `/followup`. Fails on **serious/critical** only.
 
 ## Authenticated routes (LR-02)
 
-`AUTHENTICATED_ACCESSIBILITY_SMOKE_ROUTES` lists Dashboard, Patients, ClinicalDocumentation, UserManagement, ReportsAnalytics, OfflineMode.
-
-Do **not** enable these in CI until:
-
-1. Staging URL + nurse/admin test users exist (LR-02)
-2. A Playwright auth setup (storageState) is added
-3. Product agrees on WCAG target level
-
-## Optional CI workflow
-
-`.github/workflows/a11y.yml` is **workflow_dispatch** only so main PR CI stays green until deps are installed on runners and public routes are confirmed clean.
+`AUTHENTICATED_ACCESSIBILITY_SMOKE_ROUTES` lists Dashboard, Patients, ClinicalDocumentation, UserManagement, ReportsAnalytics, OfflineMode. Not CI-runnable without staging credentials.
 
 ## ESLint
 
-`eslint-plugin-jsx-a11y` remains **warn**-level for static JSX. Promote individual rules to error after the backlog is clean.
+`eslint-plugin-jsx-a11y` stays **warn**-level for static JSX.
