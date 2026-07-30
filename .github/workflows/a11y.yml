@@ -1,0 +1,46 @@
+name: Accessibility (axe)
+
+on:
+  workflow_dispatch:
+  # Optional: enable pull_request after public routes are green locally.
+  # pull_request:
+  #   paths:
+  #     - 'src/**'
+  #     - 'e2e/**'
+  #     - 'playwright.config.js'
+  #     - 'package.json'
+
+jobs:
+  component-a11y:
+    name: Component axe (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:a11y
+
+  public-route-a11y:
+    name: Public route axe (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:a11y:e2e:install
+      - run: pnpm run build
+      - run: pnpm run test:a11y:e2e
+        env:
+          CI: true
