@@ -108,6 +108,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [saved, setSaved] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState(null);
   const [savedAuditId, setSavedAuditId] = useState(null);
+  // Stable idempotency key for a still-offline brand-new visit. Threaded into
+  // persistVisitNote so a re-save upserts the same CREATE_VISIT queue item
+  // instead of enqueuing a second one (which would create a duplicate on drain).
+  const [offlineClientRequestId, setOfflineClientRequestId] = useState(null);
   // When documenting a specific existing visit (deep-linked via ?visitId), the
   // save COMPLETES that visit instead of creating a new one. Cleared once bound or
   // when the user switches to a different patient than the bound visit's.
@@ -305,6 +309,9 @@ export default function SmartNoteAssistant({ visitId = null }) {
     // Vitals are per-visit, not part of the draft store — clear them on a patient
     // switch so one patient's readings never carry onto another's chart.
     setVitals({});
+    // A patient switch starts a new visit session — drop any offline re-save key
+    // so the next offline CREATE_VISIT is independent of the prior patient's.
+    setOfflineClientRequestId(null);
     // Drop the visit binding if the nurse switches to a different patient than the
     // bound visit's — so the save can't complete the wrong patient's visit.
     if (patientId !== boundPatientRef.current) setExistingVisitId(null);
@@ -414,6 +421,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     setSaved(false);
     setSavedVisitId(null);
     setSavedAuditId(null);
+    setOfflineClientRequestId(null);
     setFacilityAck(false);
     setStep(2);
   };
@@ -462,6 +470,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
       result, patientId, visitDate, visitType, roughNote: note, vitals,
       currentUser, patientDiagnosis: patientDetail?.primary_diagnosis || patient?.primary_diagnosis || "",
       savedVisitId, savedAuditId, existingVisitId,
+      offlineClientRequestId,
     });
     if (!out) return;
     if (out.mode === 'create') {
@@ -469,10 +478,14 @@ export default function SmartNoteAssistant({ visitId = null }) {
       // The visit (new or the just-completed bound one) is now the same-session
       // target, so further re-saves go through the savedVisitId update path.
       setExistingVisitId(null);
+      setOfflineClientRequestId(null);
       // Remember the audit so a later re-save updates it in place.
       if (out.auditId) setSavedAuditId(out.auditId);
       generateTasksFromNote(out.finalText, out.visitId);
       analyzeSupplyUsage(out.finalText, out.visitId);
+    } else if (out.mode === 'offline' && out.offlineClientRequestId) {
+      // Remember the key so a still-offline re-save upserts the same queue item.
+      setOfflineClientRequestId(out.offlineClientRequestId);
     }
   };
 
@@ -508,6 +521,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
   const reset = () => {
     setNote(""); setSaved(false); setSavedVisitId(null); setSavedAuditId(null);
+    setOfflineClientRequestId(null);
     setStep(1); setDraftRestored(false); setSignatureImage(null); setFollowUpTasks([]);
     setVitals({}); setExistingVisitId(null); setFacilityAck(false);
     clearDraft(patientIdRef.current);
