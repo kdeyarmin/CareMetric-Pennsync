@@ -8,6 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, ShieldAlert, Image as ImageIcon, CheckCircle2, Eye, Clock } from "lucide-react";
 import { toast } from "sonner";
+import {
+  canTransitionIncidentStatus,
+  createIncidentReviewEvent,
+  incidentNeedsCorrectiveAction,
+} from "@/components/incident/incidentLifecycle";
 
 const severityClasses = {
   low: "bg-emerald-100 text-emerald-800",
@@ -18,6 +23,7 @@ const severityClasses = {
 const statusClasses = {
   reported: "bg-blue-100 text-blue-700",
   under_review: "bg-amber-100 text-amber-800",
+  corrective_action: "bg-orange-100 text-orange-800",
   resolved: "bg-slate-100 text-slate-600",
 };
 
@@ -25,14 +31,17 @@ const STATUS_FILTERS = [
   { value: "open", label: "Open" },
   { value: "reported", label: "New" },
   { value: "under_review", label: "Under Review" },
+  { value: "corrective_action", label: "CAP" },
   { value: "resolved", label: "Resolved" },
   { value: "all", label: "All" },
 ];
 
-function IncidentReviewCard({ incident }) {
+function IncidentReviewCard({ incident, actorEmail }) {
   const queryClient = useQueryClient();
   const [notes, setNotes] = useState(incident.resolution_notes || "");
+  const [capPlan, setCapPlan] = useState(incident.corrective_action_plan || "");
   const [expanded, setExpanded] = useState(false);
+  const needsCap = incidentNeedsCorrectiveAction(incident);
 
   const update = useMutation({
     mutationFn: (data) => base44.entities.Incident.update(incident.id, data),
@@ -40,19 +49,71 @@ function IncidentReviewCard({ incident }) {
     onError: (e) => toast.error(e?.message || "Couldn't update the incident"),
   });
 
-  const acknowledge = () =>
-    update.mutate({ status: "under_review", office_notified: true }, { onSuccess: () => toast.success("Marked under review") });
+  const applyTransition = (toStatus, extra = {}) => {
+    const fromStatus = incident.status || "reported";
+    if (!canTransitionIncidentStatus(fromStatus, toStatus)) {
+      toast.error(`Cannot move incident from ${fromStatus.replace(/_/g, " ")} to ${toStatus.replace(/_/g, " ")}`);
+      return;
+    }
+    try {
+      // Validate + shape audit metadata (pure helper). Entity update carries the operational fields.
+      createIncidentReviewEvent({
+        incidentId: incident.id,
+        fromStatus,
+        toStatus,
+        actorEmail: actorEmail || "system",
+        reason: extra.resolution_notes || extra.corrective_action_plan || `Status -> ${toStatus}`,
+      });
+    } catch (err) {
+      toast.error(err?.message || "Invalid incident transition");
+      return;
+    }
+    const at = new Date().toISOString();
+    const payload = {
+      status: toStatus,
+      ...extra,
+    };
+    if (toStatus === "under_review" || toStatus === "corrective_action") {
+      payload.reviewed_by = actorEmail || undefined;
+      payload.reviewed_at = at;
+      payload.investigator_email = actorEmail || incident.investigator_email || undefined;
+      payload.office_notified = true;
+    }
+    if (toStatus === "resolved") {
+      payload.closed_by = actorEmail || undefined;
+      payload.closed_at = at;
+      payload.reviewed_by = actorEmail || incident.reviewed_by || undefined;
+      payload.reviewed_at = incident.reviewed_at || at;
+    }
+    update.mutate(payload, {
+      onSuccess: () => {
+        const labels = {
+          under_review: "Marked under review",
+          corrective_action: "Moved to corrective action",
+          resolved: "Incident resolved",
+        };
+        toast.success(labels[toStatus] || "Incident updated");
+      },
+    });
+  };
 
-  const resolve = () =>
-    update.mutate(
-      { status: "resolved", resolution_notes: notes },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ["admin-incidents"] });
-          toast.success("Incident resolved");
-        },
-      }
-    );
+  const acknowledge = () => applyTransition("under_review");
+
+  const startCorrectiveAction = () =>
+    applyTransition("corrective_action", {
+      corrective_action_plan: capPlan.trim() || notes.trim() || "Corrective action required",
+    });
+
+  const resolve = () => {
+    if (needsCap && !(capPlan.trim() || incident.corrective_action_plan || notes.trim())) {
+      toast.error("High-severity or state-reportable incidents need a corrective action note before resolve");
+      return;
+    }
+    applyTransition("resolved", {
+      resolution_notes: notes,
+      corrective_action_plan: capPlan.trim() || incident.corrective_action_plan || undefined,
+    });
+  };
 
   return (
     <Card className={incident.state_reportable ? "border-red-300" : ""}>
@@ -69,6 +130,9 @@ function IncidentReviewCard({ incident }) {
                   <ShieldAlert className="w-3 h-3" /> State Reportable
                 </Badge>
               )}
+              {needsCap && incident.status !== "resolved" && (
+                <Badge className="bg-orange-100 text-orange-800">CAP recommended</Badge>
+              )}
             </div>
             <p className="font-semibold text-slate-900 truncate">
               {incident.incident_name || (incident.incident_type || "").replace(/_/g, " ")}
@@ -77,10 +141,11 @@ function IncidentReviewCard({ incident }) {
               {incident.patient_name || "Patient"} • {incident.incident_date}
               {incident.incident_time ? ` ${incident.incident_time}` : ""}
               {incident.created_by ? ` • reported by ${incident.created_by}` : ""}
+              {incident.reviewed_by ? ` • reviewed by ${incident.reviewed_by}` : ""}
             </p>
           </div>
           <div className="flex flex-col gap-2 flex-shrink-0">
-            {incident.status !== "under_review" && incident.status !== "resolved" && (
+            {incident.status !== "under_review" && incident.status !== "corrective_action" && incident.status !== "resolved" && (
               <Button size="sm" variant="outline" onClick={acknowledge} disabled={update.isPending} className="gap-1.5">
                 <Eye className="w-3.5 h-3.5" /> Review
               </Button>
@@ -124,23 +189,49 @@ function IncidentReviewCard({ incident }) {
 
             {incident.status !== "resolved" ? (
               <div className="space-y-2">
+                {needsCap && (
+                  <Textarea
+                    value={capPlan}
+                    onChange={(e) => setCapPlan(e.target.value)}
+                    placeholder="Corrective action plan…"
+                    className="min-h-[64px]"
+                  />
+                )}
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Resolution notes…"
                   className="min-h-[72px]"
                 />
-                <Button size="sm" onClick={resolve} disabled={update.isPending} className="gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" /> Resolve incident
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {needsCap && incident.status !== "corrective_action" && (
+                    <Button size="sm" variant="outline" onClick={startCorrectiveAction} disabled={update.isPending} className="gap-1.5">
+                      Start CAP
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={resolve} disabled={update.isPending} className="gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" /> Resolve incident
+                  </Button>
+                </div>
               </div>
             ) : (
-              incident.resolution_notes && (
-                <div className="rounded-lg bg-slate-50 border p-3 text-sm text-slate-700">
-                  <p className="text-xs font-semibold text-slate-500 mb-1">Resolution</p>
-                  {incident.resolution_notes}
-                </div>
-              )
+              <>
+                {incident.corrective_action_plan && (
+                  <div className="rounded-lg bg-orange-50 border border-orange-100 p-3 text-sm text-slate-700">
+                    <p className="text-xs font-semibold text-orange-700 mb-1">Corrective action</p>
+                    {incident.corrective_action_plan}
+                  </div>
+                )}
+                {incident.resolution_notes && (
+                  <div className="rounded-lg bg-slate-50 border p-3 text-sm text-slate-700">
+                    <p className="text-xs font-semibold text-slate-500 mb-1">Resolution</p>
+                    {incident.resolution_notes}
+                    {incident.closed_by && (
+                      <p className="text-xs text-slate-400 mt-2">Closed by {incident.closed_by}</p>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -152,6 +243,11 @@ function IncidentReviewCard({ incident }) {
 export default function IncidentReviewQueue() {
   const [statusFilter, setStatusFilter] = useState("open");
 
+  const { data: currentUser } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me(),
+  });
+
   const { data: incidents = [], isLoading } = useQuery({
     queryKey: ["admin-incidents"],
     queryFn: () => base44.entities.Incident.list("-created_date", 500),
@@ -161,16 +257,16 @@ export default function IncidentReviewQueue() {
 
   const filtered = useMemo(() => {
     if (statusFilter === "all") return incidents;
-    if (statusFilter === "open") return incidents.filter((i) => i.status !== "resolved");
+    if (statusFilter === "open") return incidents.filter((i) => i.status !== "resolved" && i.status !== "archived");
     return incidents.filter((i) => (i.status || "reported") === statusFilter);
   }, [incidents, statusFilter]);
 
-  const openCount = incidents.filter((i) => i.status !== "resolved").length;
+  const openCount = incidents.filter((i) => i.status !== "resolved" && i.status !== "archived").length;
 
   return (
     <div className="space-y-4">
       <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-6">
           {STATUS_FILTERS.map((f) => (
             <TabsTrigger key={f.value} value={f.value} className="min-h-[44px]">
               {f.label}
@@ -193,7 +289,7 @@ export default function IncidentReviewQueue() {
       ) : (
         <div className="space-y-3">
           {filtered.map((incident) => (
-            <IncidentReviewCard key={incident.id} incident={incident} />
+            <IncidentReviewCard key={incident.id} incident={incident} actorEmail={currentUser?.email} />
           ))}
         </div>
       )}
