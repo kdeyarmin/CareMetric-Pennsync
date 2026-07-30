@@ -1,15 +1,12 @@
-import { useVirtualList, VIRTUALIZE_THRESHOLD } from '@/hooks/useVirtualList';
+import { useVirtualList } from '@/hooks/useVirtualList';
+import { VIRTUALIZE_THRESHOLD } from '@/lib/virtualListConfig';
 import { cn } from '@/lib/utils';
 
 /**
  * Headless-style virtual list for large row collections (P2-03).
  *
  * Below VIRTUALIZE_THRESHOLD items, renders a normal stacked list (no virtualizer).
- * Above the threshold, only visible rows mount — keeps mobile patient / offline
- * cache lists snappy with 100s–1000s of rows still in memory from Base44 fetches.
- *
- * Note: this does not reduce network size; server-side paging is still required
- * for true multi-tenant scale past ALL_ROWS ceilings.
+ * Above the threshold, only visible rows mount.
  */
 export default function VirtualList({
   items = [],
@@ -38,7 +35,6 @@ export default function VirtualList({
 
   if (count === 0) return empty;
 
-  // Small lists: plain render — avoids virtualizer overhead and keeps tests simple.
   if (!shouldVirtualize) {
     return (
       <div
