@@ -20,6 +20,10 @@ import { QUEUE_CHANGED_EVENT } from '@/lib/offlineQueueEvent';
  * idempotency (client_request_id for CREATE_VISIT, visit_id for UPDATE_VISIT) and
  * ComplianceAudit reconciliation are unchanged; CREATE_INCIDENT was added for the
  * OfflineMode incident form that previously wrote to its own queue.
+ *
+ * Smart Note / Visit Scribe offline CREATE payloads may also carry:
+ *   __history         → appendPatientNoteHistory (stable entry_id for retries)
+ *   __noteConversion  → NoteConversion.create (only on first create, not reuse)
  */
 
 // Re-exported for callers that already import it from here; the name itself lives
@@ -32,7 +36,7 @@ export function notifyQueueChanged() {
   }
 }
 
-// The single in-flight drain, shared by every caller (the global OfflineManager
+// The single in-flight drain, shared by every caller (the global offlineManager
 // mount AND any manual "Sync now" button). syncItem has no per-item lock and the
 // idempotency checks are read-then-write, so two concurrent drains could both
 // create the same record — coalescing onto one promise serializes them.
@@ -75,9 +79,35 @@ function drainWithCrossTabLock(deps) {
   return drainOnce(deps);
 }
 
+/** Peel offline-only meta keys off a visit payload before entity writes. */
+function peelVisitMeta(payload = {}) {
+  const {
+    __audit,
+    __history,
+    __noteConversion,
+    visit_id,
+    ...visitPayload
+  } = payload;
+  return { __audit, __history, __noteConversion, visit_id, visitPayload };
+}
+
+async function applyHistorySideEffect(functions, __history, visitId) {
+  if (!__history || !functions?.invoke) return;
+  const mode = __history.mode === 'update' ? 'update' : 'append';
+  const entry = { ...(__history.entry || {}) };
+  if (visitId && !entry.visit_id) entry.visit_id = visitId;
+  await functions.invoke('appendPatientNoteHistory', {
+    patient_id: __history.patient_id,
+    mode,
+    clinical_notes: __history.clinical_notes,
+    entry,
+  });
+}
+
 async function drainOnce(deps) {
   const {
     entities = base44.entities,
+    functions = base44.functions,
     getQueue = getSyncQueue,
     removeItem = removeFromSyncQueue,
   } = deps;
@@ -95,10 +125,10 @@ async function drainOnce(deps) {
         const existing = key
           ? await entities.Visit.filter({ client_request_id: key })
           : [];
-        // `__audit` is reporting meta, not a Visit field — peel it off before the
-        // create so the offline visit also produces a ComplianceAudit.
-        const { __audit, ...visitPayload } = item.payload || {};
-        const visit = (existing && existing.length > 0)
+        // Offline-only meta is not a Visit field — peel before create/update.
+        const { __audit, __history, __noteConversion, visitPayload } = peelVisitMeta(item.payload || {});
+        const wasExisting = !!(existing && existing.length > 0);
+        const visit = wasExisting
           ? existing[0]
           : await entities.Visit.create(visitPayload);
         // Guarantee the ComplianceAudit exists for this visit, keyed on visit_id
@@ -113,13 +143,20 @@ async function drainOnce(deps) {
             });
           }
         }
+        // Patient note history — stable entry_id makes append retries idempotent.
+        await applyHistorySideEffect(functions, __history, visit.id);
+        // NoteConversion only on first create of this visit (reuse path already
+        // had a successful prior drain that wrote it, or online create did).
+        if (!wasExisting && __noteConversion && entities.NoteConversion?.create) {
+          await entities.NoteConversion.create(__noteConversion);
+        }
         await removeItem(item.id);
         synced += 1;
       } else if (item.action === 'UPDATE_VISIT') {
         // A visit that already exists server-side was edited/documented offline.
         // UPDATE it in place instead of creating a duplicate. `visit_id` is the
-        // real server id; `__audit` is reporting meta peeled off the Visit fields.
-        const { __audit, visit_id, ...visitPayload } = item.payload || {};
+        // real server id; offline meta is peeled off the Visit fields.
+        const { __audit, __history, visit_id, visitPayload } = peelVisitMeta(item.payload || {});
         if (!visit_id) {
           // A malformed UPDATE_VISIT (no target id) can never be processed — drop
           // it so it doesn't re-warn and clog the queue on every drain.
@@ -144,6 +181,8 @@ async function drainOnce(deps) {
             });
           }
         }
+        // Update-mode history targets this visit_id (no duplicate append).
+        await applyHistorySideEffect(functions, __history || (item.payload?.__history), visit_id);
         await removeItem(item.id);
         synced += 1;
       } else if (item.action === 'CREATE_TASK') {

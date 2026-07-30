@@ -43,7 +43,13 @@ export async function persistVisitNote({
   // Stable idempotency key from a prior offline save in this same session. When
   // present, a still-offline re-save upserts the queued CREATE_VISIT instead of
   // enqueuing a second one (which would create a duplicate visit on drain).
+  // When the session has come back online, the same key resolves the drained
+  // Visit by client_request_id so an online re-save updates it instead of creating.
   offlineClientRequestId = null,
+  // Optional facility-doc override trail (critical unmet FacilityDocumentationRule
+  // acknowledged by the nurse). Merged into ComplianceAudit.acknowledgment with
+  // namespaced facility:<rule> finding ids, same shape as chart/denial acks.
+  facilityAcknowledgment = null,
 }) {
   if (!result || !patientId || !currentUser?.email) return null;
   const {
@@ -64,7 +70,18 @@ export async function persistVisitNote({
   // persisting them unconditionally could stamp a false ack trail. Both trails
   // share the ComplianceAudit.acknowledgment field (denial findings carry
   // namespaced `denial:<cluster>` ids, so the sources stay distinguishable).
-  const ackSources = [result.acknowledgment, result.denialAcknowledgment].filter((a) => a?.acknowledged);
+  // Facility critical-doc overrides use the same field with `facility:<rule>` ids.
+  const facilityAckSource = facilityAcknowledgment?.acknowledged
+    ? {
+        acknowledged: true,
+        justification: facilityAcknowledgment.justification
+          || (Array.isArray(facilityAcknowledgment.unmet_requirements) && facilityAcknowledgment.unmet_requirements.length
+            ? `Facility documentation override: ${facilityAcknowledgment.unmet_requirements.join(", ")}`
+            : "Facility documentation requirement acknowledged as unmet"),
+        finding_ids: (facilityAcknowledgment.unmet_requirements || []).map((r) => `facility:${r}`),
+      }
+    : null;
+  const ackSources = [result.acknowledgment, result.denialAcknowledgment, facilityAckSource].filter((a) => a?.acknowledged);
   const acknowledgment = ackSources.length
     ? {
         acknowledged_by: currentUser.email,
@@ -74,6 +91,12 @@ export async function persistVisitNote({
       }
     : null;
   const auditFields = buildAuditFields({ coverageScore, chartFindings, acknowledgment, appliedRules, denialFindings });
+  const noteConversionFields = toNoteConversionFields({
+    coverageScore, draftPresenceScore: draftScore,
+    roughLen: roughNote.length, enhancedLen: finalText.length,
+    visitType, diagnosis: patientDiagnosis || "",
+    nurseEmail: currentUser.email, patientId,
+  });
 
   if (!navigator.onLine) {
     const { addToSyncQueue, upsertCreateVisitInSyncQueue } = await import('@/lib/indexedDB');
@@ -88,6 +111,22 @@ export async function persistVisitNote({
       grounding_pending: true, ...structured, ...reportingFields,
     };
     const audit = { nurse_email: currentUser.email, ...auditFields, status: "pending_review" };
+    // Stable history entry_id so a retried drain cannot double-append (the backend
+    // is idempotent on entry_id). NoteConversion payload mirrors the online create.
+    const historyEntryId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `hist-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const historyMeta = {
+      patient_id: patientId,
+      clinical_notes: finalText,
+      entry: {
+        entry_id: historyEntryId,
+        date: visitDate,
+        visit_type: visitType,
+        note: finalText,
+        compliance_score: coverageScore,
+      },
+    };
 
     // A visit that already exists server-side (a same-session online save, or a
     // deep-linked scheduled visit) must be UPDATED on reconnect, not re-created —
@@ -95,7 +134,11 @@ export async function persistVisitNote({
     // the original open/overdue.
     const targetVisitId = savedVisitId || existingVisitId;
     if (targetVisitId) {
-      await addToSyncQueue('UPDATE_VISIT', { visit_id: targetVisitId, ...visitFields, __audit: audit });
+      await addToSyncQueue('UPDATE_VISIT', {
+        visit_id: targetVisitId, ...visitFields, __audit: audit,
+        // Update-mode history targets this visit_id; entry_id is unused for update.
+        __history: { ...historyMeta, mode: 'update', entry: { ...historyMeta.entry, visit_id: targetVisitId } },
+      });
       toast.success("Saved offline. Will sync when reconnected.");
       logActivity(ActivityActions.NOTE_ENHANCED, { patient_id: patientId, visit_type: visitType, overall_score: coverageScore });
       return { mode: 'offline', visitId: targetVisitId, auditId: savedAuditId || null, finalText, coverageScore };
@@ -113,6 +156,8 @@ export async function persistVisitNote({
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     await upsertCreateVisitInSyncQueue({
       client_request_id: clientRequestId, ...visitFields, __audit: audit,
+      __history: { ...historyMeta, mode: 'append' },
+      __noteConversion: noteConversionFields,
     });
     toast.success("Saved offline. Will sync when reconnected.");
     logActivity(ActivityActions.NOTE_ENHANCED, { patient_id: patientId, visit_type: visitType, overall_score: coverageScore });
@@ -149,17 +194,54 @@ export async function persistVisitNote({
     return { mode: 'update', visitId: savedVisitId, auditId: savedAuditId, finalText, coverageScore };
   }
 
+  // Same-session online re-save after an offline CREATE that already drained:
+  // the UI still holds offlineClientRequestId but not savedVisitId. Resolve the
+  // Visit by that key and UPDATE it — never create a second chart row.
+  if (offlineClientRequestId) {
+    const matched = await base44.entities.Visit.filter({ client_request_id: offlineClientRequestId });
+    if (matched?.length) {
+      const vid = matched[0].id;
+      let auditId = savedAuditId || null;
+      if (!auditId) {
+        const audits = await base44.entities.ComplianceAudit.filter({ visit_id: vid });
+        auditId = audits?.[0]?.id || null;
+      }
+      await Promise.all([
+        base44.entities.Visit.update(vid, {
+          nurse_notes: finalText, compliance_score: coverageScore, vital_signs: vitals,
+          grounding_pending: false, status: "completed", ...structured, ...reportingFields,
+        }),
+        base44.functions.invoke('appendPatientNoteHistory', {
+          patient_id: patientId, mode: 'update', clinical_notes: finalText,
+          entry: { visit_id: vid, note: finalText, compliance_score: coverageScore },
+        }),
+        auditId
+          ? base44.entities.ComplianceAudit.update(auditId, auditFields)
+          : base44.entities.ComplianceAudit.create({
+              visit_id: vid, nurse_email: currentUser.email, patient_id: patientId,
+              audit_date: new Date().toISOString(), audit_type: "automated",
+              ...auditFields,
+            }).then((a) => { auditId = a?.id || null; }),
+      ]);
+      toast.success("Chart updated.");
+      return { mode: 'update', visitId: vid, auditId, finalText, coverageScore };
+    }
+  }
+
   // First documentation of this visit. When an existingVisitId was provided (e.g.
   // documenting a scheduled/overdue visit deep-linked from a compliance alert or
   // the patient's visit list), COMPLETE that visit in place instead of creating a
   // duplicate — so the original visit closes and stops triggering overdue alerts.
   // A brand-new visit is created only when no existing one was given.
+  // If offlineClientRequestId is still set but no Visit matched yet (drain in
+  // flight / failed), stamp the same key on create so a concurrent drain dedupes.
   const visitFields = {
     patient_id: patientId, visit_date: visitDate, visit_type: visitType,
     status: "completed", nurse_notes: finalText, raw_transcription: roughNote,
     compliance_score: coverageScore, vital_signs: vitals, documentation_source: source,
     // Online save → grounding ran and passed (save is gated on a passing recheck).
     grounding_pending: false,
+    ...(offlineClientRequestId ? { client_request_id: offlineClientRequestId } : {}),
     ...structured, ...reportingFields,
   };
   const visit = existingVisitId
@@ -173,12 +255,7 @@ export async function persistVisitNote({
       patient_id: patientId, mode: 'append', clinical_notes: finalText,
       entry: { visit_id: visit.id, date: visitDate, visit_type: visitType, note: finalText, compliance_score: coverageScore },
     }),
-    base44.entities.NoteConversion.create(toNoteConversionFields({
-      coverageScore, draftPresenceScore: draftScore,
-      roughLen: roughNote.length, enhancedLen: finalText.length,
-      visitType, diagnosis: patientDiagnosis || "",
-      nurseEmail: currentUser.email, patientId,
-    })),
+    base44.entities.NoteConversion.create(noteConversionFields),
     base44.entities.ComplianceAudit.create({
       visit_id: visit.id, nurse_email: currentUser.email, patient_id: patientId,
       audit_date: new Date().toISOString(), audit_type: "automated",
