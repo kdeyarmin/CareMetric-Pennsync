@@ -54,8 +54,8 @@ export const DEFAULT_PDGM_RATES = {
   // bucket (community/institutional × early/late) — the SAME shape the backend
   // calculatePDGM uses (FUNCTIONAL_THRESHOLDS), parity-locked by
   // pdgmRatesParity.test.js. Each entry is { low, high }: points >= high → High,
-  // points >= low → Medium, else Low (see calculateFunctionalLevel in
-  // base44/functions/calculatePDGM/entry.ts).
+  // points >= low → Medium, else Low (see computeFunctionalLevelHighShape below
+  // and calculateFunctionalLevel in base44/functions/calculatePDGM/entry.ts).
   //
   // NOTE: this is intentionally a DIFFERENT shape from the one
   // pdgmGrouper.groupPeriod() consumes (clinical-group-keyed { low, medium }).
@@ -122,6 +122,33 @@ export const DEFAULT_ICD10_CLINICAL_GROUPS = {
   Z48: "MMTA_Surgical_Aftercare",
   F: "MMTA_Behavioral_Health",
 };
+
+/**
+ * Live revenue-estimator functional level from points + a { low, high } threshold
+ * set (the calculatePDGM / DEFAULT_PDGM_RATES shape).
+ *
+ * Boundary contract (pinned by tests; mirrors entry.ts calculateFunctionalLevel):
+ *   - points >= high  → "high"
+ *   - points >= low   → "medium"   (so points == low is medium)
+ *   - otherwise       → "low"
+ *
+ * This is intentionally NOT the same operator as pdgmGrouper.computeFunctionalLevel,
+ * which uses a { low, medium } shape and treats points <= low as "low". The grouper
+ * is the table-driven CMS reference (currently unwired); this helper is the live
+ * estimate path. Do not "reconcile" the operators without loading official CMS
+ * Table 9 cut-points — the threshold *values* and shapes differ by design.
+ *
+ * @param {number} points
+ * @param {{ low?: number, high?: number } | null | undefined} thresholds
+ * @returns {'low'|'medium'|'high'|null}
+ */
+export function computeFunctionalLevelHighShape(points, thresholds) {
+  if (!thresholds || typeof points !== "number" || !Number.isFinite(points)) return null;
+  if (typeof thresholds.low !== "number" || typeof thresholds.high !== "number") return null;
+  if (points >= thresholds.high) return "high";
+  if (points >= thresholds.low) return "medium";
+  return "low";
+}
 
 /**
  * Effective ICD-10 → clinical-group map. Unlike the numeric rate tables (which
