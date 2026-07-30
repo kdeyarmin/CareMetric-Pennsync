@@ -24,6 +24,7 @@ import { toast } from "sonner";
  *   auditId: string | null,
  *   finalText: string,
  *   coverageScore: number,
+ *   offlineClientRequestId?: string | null,
  * }>} null when the inputs are insufficient to save.
  */
 export async function persistVisitNote({
@@ -39,6 +40,10 @@ export async function persistVisitNote({
   savedAuditId = null,
   existingVisitId = null,
   source = "smart_note",
+  // Stable idempotency key from a prior offline save in this same session. When
+  // present, a still-offline re-save upserts the queued CREATE_VISIT instead of
+  // enqueuing a second one (which would create a duplicate visit on drain).
+  offlineClientRequestId = null,
 }) {
   if (!result || !patientId || !currentUser?.email) return null;
   const {
@@ -71,7 +76,7 @@ export async function persistVisitNote({
   const auditFields = buildAuditFields({ coverageScore, chartFindings, acknowledgment, appliedRules, denialFindings });
 
   if (!navigator.onLine) {
-    const { addToSyncQueue } = await import('@/lib/indexedDB');
+    const { addToSyncQueue, upsertCreateVisitInSyncQueue } = await import('@/lib/indexedDB');
     // Offline save → the AI grounding pass was deferred. Mark the queued visit so
     // the record shows live grounding hadn't run yet, and surface the audit as
     // "pending_review" (rather than the coverage-derived passed/flagged) so a
@@ -96,23 +101,29 @@ export async function persistVisitNote({
       return { mode: 'offline', visitId: targetVisitId, auditId: savedAuditId || null, finalText, coverageScore };
     }
 
-    // First save of a brand-new visit while offline. Each offline save is queued
-    // independently — we deliberately do NOT drop prior queued CREATE_VISITs for the
-    // same patient+date: two genuinely distinct same-day visits share that key, and
-    // dropping one would lose a clinical note. A re-save while still offline can thus
-    // create a duplicate visit on drain, which is recoverable (merge) — the safer
-    // trade than unrecoverable data loss. A precise re-save collapse would need a
-    // stable per-edit id threaded from the caller.
-    // Stable client-generated idempotency key so a retried DRAIN stays idempotent.
-    // crypto.randomUUID is only defined in secure contexts; fall back so the offline
-    // save (the whole point of this branch) never throws in the field.
-    const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    await addToSyncQueue('CREATE_VISIT', { client_request_id: clientRequestId, ...visitFields, __audit: audit });
+    // First save (or still-offline re-save) of a brand-new visit. Reuse the
+    // caller's offlineClientRequestId when present so a re-save upserts the
+    // same queue item — otherwise a new key would create a second visit on drain.
+    // Distinct same-day visits are still separate: each session starts without
+    // an offlineClientRequestId and gets its own key. crypto.randomUUID is only
+    // defined in secure contexts; fall back so the offline save never throws.
+    const clientRequestId = offlineClientRequestId
+      || ((typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    await upsertCreateVisitInSyncQueue({
+      client_request_id: clientRequestId, ...visitFields, __audit: audit,
+    });
     toast.success("Saved offline. Will sync when reconnected.");
     logActivity(ActivityActions.NOTE_ENHANCED, { patient_id: patientId, visit_type: visitType, overall_score: coverageScore });
-    return { mode: 'offline', visitId: null, auditId: null, finalText, coverageScore };
+    return {
+      mode: 'offline',
+      visitId: null,
+      auditId: null,
+      finalText,
+      coverageScore,
+      offlineClientRequestId: clientRequestId,
+    };
   }
 
   // Re-save after an edit → update the same visit, never duplicate. Also keep the

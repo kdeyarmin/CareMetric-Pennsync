@@ -160,6 +160,74 @@ export const addToSyncQueue = async (action, payload) => {
   return id;
 };
 
+/**
+ * Enqueue a CREATE_VISIT, collapsing a same-session offline re-save onto the
+ * existing queue item when the caller reuses `client_request_id`.
+ *
+ * Without this, editing-and-re-saving a brand-new visit while still offline
+ * would enqueue a second CREATE_VISIT with a new idempotency key, and the drain
+ * would create two visits. Reusing `client_request_id` + upsert keeps one queue
+ * entry (with the latest note payload) and one visit on reconnect.
+ *
+ * The drain still dedupes by `client_request_id` server-side as a safety net;
+ * upsert is what ensures the *latest* edit is what gets created (a second queue
+ * item with the same key would otherwise leave the visit at the first payload).
+ *
+ * @param {object} payload must include `client_request_id` for collapse; falls
+ *   back to a plain add when the key is missing.
+ * @returns {Promise<number>} the queue item id
+ */
+export const upsertCreateVisitInSyncQueue = async (payload) => {
+  const clientRequestId = payload?.client_request_id;
+  if (!clientRequestId) {
+    return addToSyncQueue('CREATE_VISIT', payload);
+  }
+
+  const db = await openDB();
+  const tx = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
+  const store = tx.objectStore(STORES.SYNC_QUEUE);
+
+  // getAll + put must share one transaction so a concurrent tab can't insert a
+  // sibling CREATE_VISIT between the lookup and the write. The queue is small
+  // (field notes, not bulk), so a full scan is fine.
+  return new Promise((resolve, reject) => {
+    const asError = (value, fallback) =>
+      value instanceof Error ? value : new Error(value?.message || fallback);
+
+    let putRequest = null;
+    let failed = false;
+    const fail = (value, fallback) => {
+      failed = true;
+      reject(asError(value, fallback));
+    };
+
+    const getAllReq = store.getAll();
+    getAllReq.onsuccess = () => {
+      const all = getAllReq.result || [];
+      const existing = all.find(
+        (item) =>
+          item.action === 'CREATE_VISIT' &&
+          item.payload?.client_request_id === clientRequestId
+      );
+      putRequest = existing
+        ? store.put({ ...existing, payload, createdAt: Date.now() })
+        : store.put({ action: 'CREATE_VISIT', payload, createdAt: Date.now() });
+      putRequest.onerror = () => fail(putRequest.error, 'IndexedDB request failed');
+    };
+    getAllReq.onerror = () => fail(getAllReq.error, 'IndexedDB request failed');
+
+    tx.oncomplete = () => {
+      if (failed) return;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(QUEUE_CHANGED_EVENT));
+      }
+      resolve(putRequest?.result);
+    };
+    tx.onerror = () => fail(tx.error, 'IndexedDB transaction failed');
+    tx.onabort = () => fail(tx.error, 'IndexedDB transaction aborted');
+  });
+};
+
 export const getSyncQueue = async () => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
