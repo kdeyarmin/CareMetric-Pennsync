@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { toLocalISODate } from "@/lib/dateLocal";
+import { calculateAge, toLocalISODate } from "@/lib/dateLocal";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -55,18 +55,6 @@ export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = fal
     enabled: !!patientId,
     initialData: []
   });
-
-  const calculateAge = React.useCallback((dob) => {
-    if (!dob) return null;
-    const birthDate = new Date(dob);
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-    return age;
-  }, []);
 
   const performOASISAnalysis = React.useCallback(async () => {
     if (!patient) return;
@@ -243,7 +231,7 @@ Provide detailed, actionable recommendations that a home health nurse can immedi
       toast.error('Failed to perform OASIS analysis. Please try again.');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
-  }, [patient, visits, incidents, existingOASIS, patientId, queryClient, calculateAge]);
+  }, [patient, visits, incidents, existingOASIS, patientId, queryClient]);
 
   React.useEffect(() => {
     if (autoAnalyze && patient && !analysis && !ai.loading) {
