@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { WifiOff, Wifi, Users, FileText, Database, Activity, Upload } from "luci
 import OfflinePatientSelector from "../components/mobile/OfflinePatientSelector";
 import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
 import OfflineTaskManager from "../components/mobile/OfflineTaskManager";
+import MobileVisitReadinessStrip from "@/components/mobile/MobileVisitReadinessStrip";
 import { useOfflineQueue } from "@/lib/offlineSync";
 import { getPatientsLocally } from "@/lib/indexedDB";
 import { mergeOfflinePatientCaches } from "@/lib/offlinePatients";
@@ -105,6 +106,36 @@ export default function OfflineMode() {
 
   const cachedPatientsSizeKb = (JSON.stringify(cachedPatients).length / 1024).toFixed(0);
 
+  const selectedCache = useMemo(
+    () => cachedPatients.find((c) => c?.patient?.id === selectedPatientId) || null,
+    [cachedPatients, selectedPatientId],
+  );
+
+  const readinessProps = useMemo(() => {
+    const patientCached = Boolean(selectedCache?.patient?.id);
+    const hasPatientContext = Boolean(
+      selectedCache?.patient
+      && (
+        (selectedCache.carePlans && selectedCache.carePlans.length > 0)
+        || selectedCache.patient.primary_diagnosis
+        || selectedCache.patient.allergies
+        || (selectedCache.recentVisits && selectedCache.recentVisits.length > 0)
+      ),
+    );
+    return {
+      patientCached: selectedPatientId ? patientCached : cachedPatients.length > 0,
+      hasPatientContext: selectedPatientId ? hasPatientContext : cachedPatients.length > 0,
+      // Draft note detection is queue-level; treat any pending item as a soft signal.
+      hasDraftNote: pendingCount > 0,
+      pendingSyncCount: pendingCount,
+      isOnline,
+      hasRequiredForms: true,
+      patientName: selectedPatient
+        ? `${selectedPatient.first_name || ''} ${selectedPatient.last_name || ''}`.trim()
+        : undefined,
+    };
+  }, [selectedCache, selectedPatientId, selectedPatient, cachedPatients.length, pendingCount, isOnline]);
+
   return (
     <PageContainer>
       <PageHeader
@@ -121,7 +152,7 @@ export default function OfflineMode() {
           <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
             <TabsTrigger value="status" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
               <Activity className="h-4 w-4 mr-2" />
-              Status &amp; Sync
+              Status & Sync
             </TabsTrigger>
             <TabsTrigger value="visit" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
               <FileText className="h-4 w-4 mr-2" />
@@ -150,6 +181,8 @@ export default function OfflineMode() {
           )}
         </AlertDescription>
       </Alert>
+
+      <MobileVisitReadinessStrip {...readinessProps} />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
         <StatCard label="Cached Patients" value={cachedPatients.length} icon={Users} tone="blue" />
@@ -225,6 +258,7 @@ export default function OfflineMode() {
         </TabsContent>
 
         <TabsContent value="visit">
+          <MobileVisitReadinessStrip {...readinessProps} />
           <Suspense fallback={tabLoader}>
             <OfflineVisitDocumentation />
           </Suspense>
