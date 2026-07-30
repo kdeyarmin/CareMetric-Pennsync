@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -360,12 +360,9 @@ export default function UserManagement() {
   }), [allUsers, roleFilter, statusFilter, searchQuery]);
 
   // Reset to page 1 when filters change so an empty page never strands the admin.
-  const filterKey = `${roleFilter}|${statusFilter}|${searchQuery}`;
-  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
-  if (filterKey !== lastFilterKey) {
-    setLastFilterKey(filterKey);
-    if (userPage !== 1) setUserPage(1);
-  }
+  useEffect(() => {
+    setUserPage(1);
+  }, [roleFilter, statusFilter, searchQuery]);
 
   const pageSize = clampPageSize(userPageSize, { max: 100, fallback: 25 });
   const userPageWindow = useMemo(
