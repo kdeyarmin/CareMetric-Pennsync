@@ -18,7 +18,8 @@ or chase phantom bugs.
 **The codebase is healthy.** Of the candidate issues surfaced (from both the finders and the
 prior audit docs), the overwhelming majority were either already fixed, false positives, or
 intentional design. Only two small, verified correctness items warranted a code change at
-audit time; a third (offline re-save duplication) was closed in a later pure-logic pass.
+audit time; offline re-save duplication and live-path PDGM boundary pinning were closed in a
+later pure-logic pass (2026-07-30).
 
 ## Fixes applied
 
@@ -48,6 +49,15 @@ audit time; a third (offline re-save duplication) was closed in a later pure-log
      `src/pages/SmartNoteAssistant.jsx`,
      `src/components/visit/AudioVisitCapture.jsx`,
      `src/components/smartNote/persistVisitNote.spec.js`.
+
+4. **PDGM live-path functional boundary pinned (2026-07-30).** Documented and unit-tested the
+   live revenue-estimator contract via `computeFunctionalLevelHighShape` in `pdgmRates.js`:
+   `points >= high → high`, `points >= low → medium` (so `points == low` is medium). This
+   matches `calculatePDGM/entry.ts` and is intentionally **not** the same operator as the
+   unwired `pdgmGrouper.computeFunctionalLevel` (`points <= low → low` on a `{ low, medium }`
+   shape). Official CMS Table 9 reconciliation remains a product/data task when rates are
+   marked official.
+   - `src/components/pdgm/pdgmRates.js`, `src/components/pdgm/pdgmRates.test.js`.
 
 ## Verified already-fixed (prior-doc claims that no longer hold)
 
@@ -79,24 +89,17 @@ Recorded so future readers don't re-chase them. Each was confirmed resolved in c
 
 These are real but were left for an explicit decision rather than changed blind:
 
-- **PDGM functional-level boundary inconsistency.** The live billing path
-  `base44/functions/calculatePDGM/entry.ts:348` uses `points >= thresholds.low → medium`,
-  while the tested reference `pdgmGrouper.js:computeFunctionalLevel` documents
-  `points <= low → low`. With identical threshold values (`community_early {low:9, high:18}`,
-  etc.) the two disagree at exactly `points == low`. **Not auto-fixed** because the functional
-  point/threshold tables are explicitly non-official placeholders (see `docs/pdgm-cy2026.md`:
-  real CMS Table 9 cut-points vary by clinical group and are not yet loaded), every estimate
-  is gated behind `isEstimate`, and the CMS-correct boundary cannot be determined from the
-  repo. **Recommendation:** reconcile the operator when the official Table 9 is loaded and
-  marked official; add a cross-check test asserting the two engines agree on a fixture set.
-- **PDGM dual-engine divergence.** `groupPeriod()` (table-driven, tested) is orphaned; the live
-  path reimplements grouping in `entry.ts`. Both flag `isEstimate`, so no live mis-billing, but
-  they can drift. Reconcile alongside the official-rates work above.
+- **PDGM dual models (not a same-table operator bug).** The live path uses timing-bucket
+  `{ low, high }` thresholds (`points >= low → medium`). The unwired table-driven
+  `pdgmGrouper` uses clinical-group `{ low, medium }` thresholds (`points <= low → low`).
+  They must not be force-aligned without official CMS Table 9; live estimates stay behind
+  `isEstimate` until `PDGMRateConfig.is_official`. Live-path boundary is now pinned by
+  `computeFunctionalLevelHighShape` + tests (see fix #4).
 - **Fax notification races.** `retryFailedFax` can leave a fax in `retrying` if two requests
   both lose the claim race; webhook + poller can both send a `delivered` notification in a
-  narrow TOCTOU window. Both are without-transactions races already accepted in prior review;
-  the `delivery_confirmation_sent` flag covers the common case. **Recommendation:** a stale-
-  `retrying` reclaim and a single claimed notification token if these prove noisy in production.
+  narrow TOCTOU window. Mitigations already in tree: `delivery_confirmation_sent` /
+  `final_failure_notified` markers, and `pollFaxStatuses` releases stale `retrying` claims
+  older than 15 minutes. **Recommendation:** only escalate further if production noise appears.
 - **`isPageAllowedForRole` unknown → `true`** (`nav.manifest.js:925`). Reviewed and left as-is:
   the documented contract is that this function only gates tier-escalation for *known* admin
   pages, with unknown/derived pages gated elsewhere; it is currently unused, and flipping to
@@ -108,3 +111,4 @@ These are real but were left for an explicit decision rather than changed blind:
 (241 pass, 50 files), `npm run build` (exit 0), `npm run check:backend-transpile`
 (204 functions), `npm run check:shared-helpers` (16 consumers in sync) — all green at audit time.
 Offline re-save collapse covered by `persistVisitNote.spec.js` (2026-07-30).
+Live-path PDGM boundary covered by `pdgmRates.test.js` (2026-07-30).
