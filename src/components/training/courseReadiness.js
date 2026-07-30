@@ -20,7 +20,11 @@ export function getCourseReadiness(course, modules = [], questions = []) {
   const outlineModules = Array.isArray(course?.ai_prompt_json?.outline_modules)
     ? course.ai_prompt_json.outline_modules
     : [];
-  const presentIndexes = new Set(modules.map((module) => Number(module.order_index) || 0));
+  const presentIndexes = new Set(
+    modules
+      .map((module) => Number(module.order_index))
+      .filter((index) => Number.isFinite(index))
+  );
   const missingModuleIndexes = outlineModules
     .map((_, index) => index)
     .filter((index) => !presentIndexes.has(index));
