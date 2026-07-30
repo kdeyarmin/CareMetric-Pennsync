@@ -20,8 +20,9 @@ offboards a user from User Management:
 Reactivate path (`action: 'reactivate'`) restores `is_active` and clears
 offboarding markers (does not re-assign patients/numbers).
 
-Client: `UserManagement` should invoke `offboardUser` (not a bare
-`User.update`) so the cleanup runs with service role.
+**Client wired:** `UserManagement.confirmToggleActive` calls
+`base44.functions.invoke('offboardUser', buildOffboardInvokeArgs(...))` so the
+full cleanup always runs with service role (not a bare `User.update`).
 
 ## Still platform-dependent
 
@@ -37,5 +38,6 @@ evidence path for inactive-user isolation.
   network tests (V1–V6)
 - **LR-02** seeded staging E2E — requires authenticated smoke (S1–S9)
 
-See `docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md` and
-`docs/audits/live-readiness-evidence.template.json`.
+See `docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md`,
+`docs/audits/LIVE_READINESS_EVIDENCE_HOWTO.md`, and
+`docs/audits/live-readiness-evidence.draft.json`.
