@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { axe } from 'vitest-axe';
+import { describe, it } from 'vitest';
 import { renderWithProviders } from '@/test/testUtils';
+import { expectNoAxeViolations } from '@/test/axeHelpers';
 import AccessDeniedState from '@/components/ui/AccessDeniedState';
 
 describe('AccessDeniedState a11y', () => {
@@ -11,10 +11,6 @@ describe('AccessDeniedState a11y', () => {
         description="Only administrators can access User Management."
       />,
     );
-    const results = await axe(container, {
-      // jsdom cannot compute real contrast; exclude color-contrast for component unit scans.
-      rules: { 'color-contrast': { enabled: false } },
-    });
-    expect(results).toHaveNoViolations();
+    await expectNoAxeViolations(container);
   });
 });
