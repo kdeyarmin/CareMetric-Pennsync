@@ -34,23 +34,14 @@ import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { HOME_HEALTH_VISIT_TYPES, HOSPICE_VISIT_TYPES } from "@/components/visit/visitTypes";
 
-// Returns the right visit types based on care scope
 const getVisitTypes = (careScope) => {
   if (careScope === "hospice") return HOSPICE_VISIT_TYPES;
   if (careScope === "both") return [...HOME_HEALTH_VISIT_TYPES, ...HOSPICE_VISIT_TYPES.filter(v => !HOME_HEALTH_VISIT_TYPES.find(h => h.value === v.value))];
   return HOME_HEALTH_VISIT_TYPES;
 };
 
-// Drafts are saved per patient (plus an "unassigned" bucket for notes typed
-// before a patient is picked) so switching patients never clobbers another
-// patient's in-progress note.
 const draftKeyFor = (pid) => `smart_note_draft_v2:${pid || "unassigned"}`;
 
-// Real findings for the exported PDF's "Compliance Report & Findings" section
-// ({ severity, issue, suggestion } — the shape SmartNotePDFExporterEnhanced
-// renders): the elements the note honestly reports as not documented, plus any
-// failing denial-guardrail clusters — so a printed/faxed note carries its own
-// gap summary instead of an always-empty findings list.
 const buildExportFindings = (result) => {
   if (!result) return [];
   const answered = new Set(result.answeredIds || []);
@@ -59,8 +50,6 @@ const buildExportFindings = (result) => {
   const missing = (result.required || [])
     .filter((e) => !present.has(e.id) && !answered.has(e.id) && !negated.has(e.id))
     .map((e) => ({
-      // Critical elements can't reach the final note unanswered (the reviewer
-      // hard-gates them), so these are almost always the non-critical gaps.
       severity: e.severity === "critical" ? "critical" : "medium",
       issue: e.notDocumentedPhrase || `${e.label} was not documented this visit.`,
       suggestion: e.hint || e.question || "",
@@ -83,8 +72,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const queryVisitType = searchParams.get("visitType") || searchParams.get("visit_type") || "";
   const referralDraftNote = useMemo(() => {
     if (searchParams.get("referral_mode") !== "true") return "";
-    // The prepopulation payload (PHI) is passed via sessionStorage keyed by
-    // referral id, not the URL, so it can't leak into history/proxy logs.
     const referralId = searchParams.get("referral_id");
     if (!referralId) return "";
     try {
@@ -100,23 +87,17 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [visitType, setVisitType] = useState(queryVisitType || "routine_visit");
   const visitDate = todayEastern();
   const [note, setNote] = useState(referralDraftNote);
-  // Structured vital signs (canonical vital_signs shape) saved onto the visit so
-  // they reach the chart, trends, and escalation — restoring the capture the
-  // retired Document Visit page provided.
   const [vitals, setVitals] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState(null);
   const [savedAuditId, setSavedAuditId] = useState(null);
-  // Stable idempotency key for a still-offline brand-new visit. Threaded into
-  // persistVisitNote so a re-save upserts the same CREATE_VISIT queue item
-  // instead of enqueuing a second one (which would create a duplicate on drain).
   const [offlineClientRequestId, setOfflineClientRequestId] = useState(null);
-  // When documenting a specific existing visit (deep-linked via ?visitId), the
-  // save COMPLETES that visit instead of creating a new one. Cleared once bound or
-  // when the user switches to a different patient than the bound visit's.
   const [existingVisitId, setExistingVisitId] = useState(null);
   const boundPatientRef = useRef(null);
+  // Facility override captured at save-click time so persistVisitNote can stamp
+  // ComplianceAudit.acknowledgment without lifting the render-prop evaluation.
+  const facilityOverrideRef = useRef(null);
   const [step, setStep] = useState(1);
   const [copied, setCopied] = useState(false);
   const [listening, setListening] = useState(false);
@@ -124,33 +105,20 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [draftRestored, setDraftRestored] = useState(false);
   const [signatureImage, setSignatureImage] = useState(null);
   const [followUpTasks, setFollowUpTasks] = useState([]);
-  // Explicit override when the nurse saves despite an unmet *critical* facility
-  // documentation requirement (keyword detection can miss, so this is an
-  // acknowledged override rather than a hard block). Reset for each review.
   const [facilityAck, setFacilityAck] = useState(false);
   const [generatingTasks, setGeneratingTasks] = useState(false);
   const recRef = useRef(null);
   const recStopRef = useRef(null);
   const textareaRef = useRef(null);
   const SAVED_PATIENT_KEY = "smart_note_patient_v1";
-  // Mirror the latest patient so the autosave effect can write under the active
-  // patient without re-subscribing on patientId (which would clobber drafts on
-  // switch). prevPatientRef drives the on-switch draft swap. noteRef guards the
-  // async durable-draft restore from clobbering text the nurse has started typing.
   const patientIdRef = useRef(patientId);
   const prevPatientRef = useRef(patientId);
   const noteRef = useRef(note);
   patientIdRef.current = patientId;
   noteRef.current = note;
-  // Track what the autosave effect last saw so it can distinguish a user
-  // emptying the note (clear the draft) from an empty note produced by initial
-  // hydration or a bucket switch (leave any in-flight restore alone).
   const autosaveBucketRef = useRef(undefined);
   const autosavePrevNoteRef = useRef("");
 
-  // Durable cross-session restore: a draft persisted to IndexedDB survives a full
-  // browser restart (sessionStorage does not). Apply it only if we're still on
-  // the same bucket and the nurse hasn't already started typing.
   const tryRestoreDurableDraft = (pid) => {
     import('@/lib/indexedDB')
       .then(({ getDraftNoteLocally }) => getDraftNoteLocally(`draft_${pid || 'unassigned'}`))
@@ -164,8 +132,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
       .catch(() => {});
   };
 
-  // Clear a patient's draft from both stores once the note is saved or reset, so
-  // drafts don't accumulate (one PHI-bearing row per patient) indefinitely.
   const clearDraft = (pid) => {
     sessionStorage.removeItem(draftKeyFor(pid));
     import('@/lib/indexedDB')
@@ -177,9 +143,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const careScope = currentUser?.care_scope || "home_health";
   const { data: patients = [] } = useQuery({
     queryKey: ["patients", "active-200"],
-    // Without 'always', React Query's default networkMode PAUSES the queryFn
-    // while offline — so the IndexedDB fallback below could never run in the
-    // exact situation it exists for.
     networkMode: 'always',
     queryFn: async () => {
         try {
@@ -195,39 +158,21 @@ export default function SmartNoteAssistant({ visitId = null }) {
     }
   });
   const patient = patients.find(p => p.id === patientId);
-  // Agency-configured Medicare compliance rules (incl. Pennsylvania-specific).
-  // Optional: an empty list keeps the static offline defaults. Folded into the
-  // required-element set inside ConstrainedNoteReviewer via ruleLibrary.
   const { data: complianceRules = [] } = useQuery({
     queryKey: ["medicareComplianceRules"],
     queryFn: () => base44.entities.MedicareComplianceRule.list(undefined, ALL_ROWS),
     initialData: [],
     staleTime: 5 * 60 * 1000,
   });
-  // Full record for the selected patient (the list query may not include the
-  // note history). Used to pre-fill carry-forward answers from the last visit.
   const { data: patientDetail } = useQuery({
     queryKey: ["patientDetail", patientId],
     queryFn: () => base44.entities.Patient.get(patientId),
     enabled: !!patientId,
   });
-  // The regulatory frame follows the PATIENT's program when known (mirrors
-  // AudioVisitCapture, the sibling flow): a home-health/'both'-scope nurse
-  // documenting a hospice patient must get the hospice required elements +
-  // 42 CFR 418 framing (terminal prognosis, comfort-focused skilled need),
-  // not homebound/skilled-need — and vice versa. Falls back to the nurse's
-  // care_scope when no patient is selected yet.
   const effectiveCareType = (patientDetail || patient)?.care_type || careScope;
   const isHospice = effectiveCareType === "hospice";
   const serviceLine = isHospice ? "hospice" : "home_health";
-  // Visit-type labels follow the PATIENT's program too (hospice and home-health
-  // share the same values but differ in wording). Basing this on careScope alone
-  // meant a hospice patient under a 'both'-scope nurse saw home-health labels,
-  // because getVisitTypes('both') drops the hospice entries (identical values).
   const VISIT_TYPES = getVisitTypes(effectiveCareType);
-  // Facility-specific documentation requirements (e.g. "on oxygen → SpO2 in every
-  // note") — admin-authored, applied to the selected patient. Used for the live
-  // STEP 1 checklist and a non-blocking nudge before the nurse advances to review.
   const { data: facilityDocRules = [] } = useQuery({
     queryKey: ["facility-doc-rules"],
     queryFn: () => base44.entities.FacilityDocumentationRule.list("-severity", 200),
@@ -238,10 +183,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
     if (currentUser?.email) logActivity(ActivityActions.PAGE_VISIT, { page: "SmartNoteAssistant" });
   }, [currentUser?.email]);
 
-  // Visit binding: when deep-linked with ?visitId (e.g. from a compliance alert or
-  // the patient's visit list), load that visit and pre-select its patient + visit
-  // type so saving COMPLETES it rather than creating a duplicate. Vitals are left
-  // for the nurse to enter fresh (the scheduled visit has none yet).
   const { data: boundVisit } = useQuery({
     queryKey: ["visit", visitId],
     queryFn: () => base44.entities.Visit.get(visitId),
@@ -255,7 +196,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
     if (boundVisit.visit_type) setVisitType(boundVisit.visit_type);
   }, [boundVisit]);
 
-  // Restore saved patient context across tabs
   useEffect(() => {
     if (queryPatientId || queryVisitType) {
       if (queryPatientId) setPatientId(queryPatientId);
@@ -272,13 +212,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
     }
   }, [queryPatientId, queryVisitType]);
 
-  // Persist patient context across tabs
   useEffect(() => {
     sessionStorage.setItem(SAVED_PATIENT_KEY, JSON.stringify({ patientId, visitType }));
   }, [patientId, visitType]);
 
-  // On first mount, restore the draft for whatever bucket we start in (the saved
-  // patient, or the unassigned bucket) so an in-progress note survives a reload.
   useEffect(() => {
     if (referralDraftNote) {
       setNote(referralDraftNote);
@@ -297,23 +234,12 @@ export default function SmartNoteAssistant({ visitId = null }) {
     } catch { /* ignore a corrupt draft */ }
   }, [referralDraftNote]);
 
-  // When the selected patient changes, load that patient's saved draft (resume
-  // where you left off). The outgoing patient's note was already autosaved under
-  // their own key, so switching never loses or cross-contaminates a draft. When
-  // arriving from the no-patient-yet state with a note already typed, carry it
-  // over (migrate) instead of wiping it.
   useEffect(() => {
     const prev = prevPatientRef.current;
     if (prev === patientId) return;
     prevPatientRef.current = patientId;
-    // Vitals are per-visit, not part of the draft store — clear them on a patient
-    // switch so one patient's readings never carry onto another's chart.
     setVitals({});
-    // A patient switch starts a new visit session — drop any offline re-save key
-    // so the next offline CREATE_VISIT is independent of the prior patient's.
     setOfflineClientRequestId(null);
-    // Drop the visit binding if the nurse switches to a different patient than the
-    // bound visit's — so the save can't complete the wrong patient's visit.
     if (patientId !== boundPatientRef.current) setExistingVisitId(null);
     let incoming = null;
     const saved = sessionStorage.getItem(draftKeyFor(patientId));
@@ -328,19 +254,12 @@ export default function SmartNoteAssistant({ visitId = null }) {
       setNote(incoming);
       setDraftRestored(incoming.trim().length > 20);
     } else if (prev) {
-      // Switching between two real patients and the incoming one has no session
-      // draft — clear, then check the durable store (covers a post-restart switch
-      // where the only copy of their draft is in IndexedDB).
       setNote("");
       setDraftRestored(false);
       tryRestoreDurableDraft(patientId);
     }
-    // else: came from the unassigned bucket with nothing saved — keep the typed
-    // note so it isn't lost; it will autosave under the newly-selected patient.
   }, [patientId]);
 
-  // Autosave under the ACTIVE patient (via ref) — deliberately not keyed on
-  // patientId, so a patient switch never writes the old note under the new key.
   useEffect(() => {
     const pid = patientIdRef.current;
     const bucketChanged = autosaveBucketRef.current !== pid;
@@ -348,11 +267,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
     autosaveBucketRef.current = pid;
     autosavePrevNoteRef.current = note;
     if (!note.trim()) {
-      // The nurse emptied a note that previously had content on this same
-      // patient bucket — clear the persisted draft so a deleted note isn't
-      // "restored" on the next visit. Skip when the empty state comes from
-      // initial hydration or a just-loaded bucket (a durable restore may still
-      // be in flight and must not be wiped).
       if (!bucketChanged && prevNote.trim()) clearDraft(pid);
       return;
     }
@@ -388,21 +302,14 @@ export default function SmartNoteAssistant({ visitId = null }) {
     rec.onerror = () => { setListening(false); releaseDictation(stop); };
     rec.onend = () => { setListening(false); releaseDictation(stop); };
     recRef.current = rec;
-    // Stop any per-question dictation mic first — only one recognizer at a time.
     claimDictation(stop);
     rec.start();
     setListening(true);
   };
   const stopDictation = () => { recRef.current?.stop(); setListening(false); releaseDictation(recStopRef.current); };
 
-  // Step 1 → 2. The deterministic scan + questions + generation + fact-check all
-  // live in <ConstrainedNoteReviewer>, which scans `note` on mount.
   const startReview = () => {
     if (!note || note.trim().length < 20) return;
-    // Non-blocking nudge: surface any facility documentation requirement this
-    // patient triggers that the draft doesn't yet satisfy. The nurse can still
-    // proceed (keyword detection can miss), and the same items stay visible in the
-    // STEP 1 checklist.
     const facilityResults = evaluateFacilityRules({
       rules: facilityDocRules,
       patient: patientDetail || patient,
@@ -423,12 +330,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
     setSavedAuditId(null);
     setOfflineClientRequestId(null);
     setFacilityAck(false);
+    facilityOverrideRef.current = null;
     setStep(2);
   };
 
-  // Save to the patient's chart. Re-verifies any edits first (via the reviewer),
-  // then persists — updating the same Visit on re-save so editing never creates a
-  // duplicate. Optional: the note is fully usable (copy/PDF) without saving.
   const handleSave = async (api) => {
     if (!patientId || !currentUser?.email) {
       toast.error("Select a patient to save this note to their chart.");
@@ -447,12 +352,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
       let result = api.result;
       if (api.dirty) {
         result = await api.recheck();
-        if (!result) { setSaving(false); return; } // fact-check failed → reviewer shows the fix panel
+        if (!result) { setSaving(false); return; }
       }
       await persistNote(result);
       setSaved(true);
-      // The work is now persisted (online) or queued (offline) — drop the local
-      // draft so it doesn't linger as stale PHI for this patient.
       clearDraft(patientId);
     } catch (err) {
       console.error("Save to chart error:", err);
@@ -462,29 +365,28 @@ export default function SmartNoteAssistant({ visitId = null }) {
     }
   };
 
-  // Create-or-update the chart records from the reviewer's save-ready result via
-  // the shared persistVisitNote helper (also used by the Visit Scribe audio flow),
-  // then run the host-only follow-up (state + task/supply analysis) on a fresh save.
   const persistNote = async (result) => {
     const out = await persistVisitNote({
       result, patientId, visitDate, visitType, roughNote: note, vitals,
       currentUser, patientDiagnosis: patientDetail?.primary_diagnosis || patient?.primary_diagnosis || "",
       savedVisitId, savedAuditId, existingVisitId,
       offlineClientRequestId,
+      facilityAcknowledgment: facilityOverrideRef.current,
     });
     if (!out) return;
     if (out.mode === 'create') {
       setSavedVisitId(out.visitId);
-      // The visit (new or the just-completed bound one) is now the same-session
-      // target, so further re-saves go through the savedVisitId update path.
       setExistingVisitId(null);
       setOfflineClientRequestId(null);
-      // Remember the audit so a later re-save updates it in place.
       if (out.auditId) setSavedAuditId(out.auditId);
       generateTasksFromNote(out.finalText, out.visitId);
       analyzeSupplyUsage(out.finalText, out.visitId);
+    } else if (out.mode === 'update') {
+      // Includes online rebind after offline CREATE drained (resolved by client_request_id).
+      setSavedVisitId(out.visitId);
+      setOfflineClientRequestId(null);
+      if (out.auditId) setSavedAuditId(out.auditId);
     } else if (out.mode === 'offline' && out.offlineClientRequestId) {
-      // Remember the key so a still-offline re-save upserts the same queue item.
       setOfflineClientRequestId(out.offlineClientRequestId);
     }
   };
@@ -524,13 +426,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
     setOfflineClientRequestId(null);
     setStep(1); setDraftRestored(false); setSignatureImage(null); setFollowUpTasks([]);
     setVitals({}); setExistingVisitId(null); setFacilityAck(false);
+    facilityOverrideRef.current = null;
     clearDraft(patientIdRef.current);
   };
 
-  // Turn critical chart conflicts / vitals flagged in the reviewer into high-
-  // priority provider follow-up tasks. A critical follow-up must never be lost,
-  // so offline (or on a failed create) it is queued to the offline sync drain
-  // instead of being dropped.
   const escalateToTasks = async (items) => {
     if (!items?.length || !currentUser?.email) return;
     const newReqId = () =>
@@ -538,9 +437,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const payloads = items.map((it) => ({
-      // Stable idempotency key so a queued task (offline or failed-online retry)
-      // is created exactly once even if a drain is interrupted or two tabs drain
-      // the shared queue concurrently.
       client_request_id: newReqId(),
       patient_id: patientId || undefined,
       title: it.title,
@@ -558,7 +454,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
       await Promise.all(toQueue.map((p) => addToSyncQueue('CREATE_TASK', p)));
     };
 
-    // Offline: queue everything; the OfflineManager drain creates them on reconnect.
     if (!navigator.onLine) {
       try {
         await queueForSync(payloads);
@@ -571,9 +466,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
       return;
     }
 
-    // Online: create each individually so a partial failure can't re-create the
-    // ones that already succeeded (Promise.all would reject the whole batch and
-    // the retry would duplicate the successes).
     const results = await Promise.allSettled(payloads.map((p) => base44.entities.Task.create(p)));
     const created = [];
     const failed = [];
@@ -583,9 +475,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
       toast.success(`Created ${created.length} provider follow-up task${created.length !== 1 ? "s" : ""}.`);
       return;
     }
-    // Queue ONLY the failures (a transient 5xx, not necessarily a disconnect),
-    // then kick the sync drain so they retry now — not just on the next
-    // offline→online transition, which may never come while we stay online.
     console.error("Some escalation task creates failed; queuing for retry:", results.find((r) => r.status === "rejected")?.reason);
     try {
       await queueForSync(failed);
@@ -609,39 +498,30 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
       <SmartNoteTabs activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      {/* ── TAB: DRAFT FROM VITALS ── */}
       {activeTab === "drafter" && (
         <StructuredNoteDrafter
           patient={patient}
           onDraftReady={(draft, vType, structuredVitals) => {
             setNote(draft);
             setVisitType(vType);
-            // Carry the structured vitals into the same canonical state the main
-            // form uses, so they reach the verified pipeline (coverage, trends,
-            // critical-vital escalation, chart cross-check) — not just the prose.
             if (structuredVitals) setVitals(structuredVitals);
             setActiveTab("builder");
           }}
         />
       )}
 
-      {/* ── TAB: VISIT SUMMARY ── */}
       {activeTab === "summary" && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <VisitSummaryGenerator patientId={patientId} />
         </div>
       )}
 
-      {/* ── TAB: VITAL TRENDS ── */}
       {activeTab === "trends" && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <VitalsTrendAnalysis patientId={patientId} />
         </div>
       )}
 
-
-
-      {/* ── TAB: NOTE BUILDER ── */}
       {activeTab === "builder" && (
         <>
           {draftRestored && (
@@ -653,7 +533,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
           <StepIndicator step={step} />
 
-          {/* STEP 1: WRITE */}
           {step === 1 && (
             <div className="space-y-3">
               <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 space-y-4">
@@ -707,8 +586,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
                 </div>
               )}
 
-              {/* Structured vitals — saved to the visit's vital_signs (feeds the
-                  chart, vitals trends, and critical-vitals escalation). */}
               <VitalSignsForm vitalSigns={vitals} onChange={setVitals} />
 
               <NoteTemplateSelector currentVisitType={visitType} onSelect={(content, type) => {
@@ -738,9 +615,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     </Button>
                   </div>
                 </div>
-                {/* Voice input — one consolidated group: speak live, or record &
-                    transcribe. All paths append your own words to the draft below;
-                    none rewrite or embellish it. */}
                 <div className="px-4 py-2 bg-navy-50 border-b border-navy-100">
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <Mic className="w-3 h-3 text-navy-500" />
@@ -754,7 +628,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     >
                       {listening ? <><Square className="w-4 h-4 fill-current" /> Stop Dictation</> : <><Mic className="w-4 h-4" /> Live Dictation</>}
                     </Button>
-                    {/* One record-and-transcribe control (Narrative or SOAP). */}
                     <VisitAudioRecorder
                       onTranscribed={(text) => setNote(prev => prev ? prev + "\n\n" + text : text)}
                     />
@@ -790,7 +663,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
             </div>
           )}
 
-          {/* STEP 2: QUESTIONS / GENERATE / REVIEW — shared constrained-scribe flow */}
           {step === 2 && (
             <ConstrainedNoteReviewer
               roughNote={note}
@@ -804,9 +676,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
               onEscalate={escalateToTasks}
               onBack={() => setStep(1)}
               renderFinalNote={(api) => {
-                // Enforce facility documentation requirements against the FINAL
-                // note (not just the rough draft). Critical unmet requirements gate
-                // the save behind an explicit, audit-logged override.
                 const facilityResults = evaluateFacilityRules({
                   rules: facilityDocRules,
                   patient: patientDetail || patient,
@@ -889,11 +758,18 @@ export default function SmartNoteAssistant({ visitId = null }) {
                         return;
                       }
                       if (facilityMissingCritical.length > 0 && facilityAck) {
+                        const unmet = facilityMissingCritical.map((r) => r.rule.rule_name);
+                        facilityOverrideRef.current = {
+                          acknowledged: true,
+                          unmet_requirements: unmet,
+                        };
                         logActivity(ActivityActions.NOTE_COMPLIANCE_CHECK, {
                           patientId,
                           facility_override: true,
-                          unmet_requirements: facilityMissingCritical.map((r) => r.rule.rule_name),
+                          unmet_requirements: unmet,
                         });
+                      } else {
+                        facilityOverrideRef.current = null;
                       }
                       handleSave(api);
                     }}
