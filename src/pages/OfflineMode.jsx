@@ -10,6 +10,7 @@ import OfflinePatientSelector from "../components/mobile/OfflinePatientSelector"
 import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
 import OfflineTaskManager from "../components/mobile/OfflineTaskManager";
 import MobileVisitReadinessStrip from "@/components/mobile/MobileVisitReadinessStrip";
+import VirtualList from "@/components/ui/VirtualList";
 import { useOfflineQueue } from "@/lib/offlineSync";
 import { getPatientsLocally } from "@/lib/indexedDB";
 import { mergeOfflinePatientCaches } from "@/lib/offlinePatients";
@@ -200,7 +201,7 @@ export default function OfflineMode() {
         </div>
 
         <div className="space-y-4 sm:space-y-6">
-          {/* Cached Patients List */}
+          {/* Cached Patients List — virtualized for large offline rosters */}
           <Card>
             <CardHeader className="p-3 sm:p-4 md:p-6">
               <CardTitle className="text-sm sm:text-base">Cached Patients</CardTitle>
@@ -213,19 +214,24 @@ export default function OfflineMode() {
                   <p className="text-xs mt-1">Download patient data to work offline</p>
                 </div>
               ) : (
-                <div className="space-y-2 max-h-64 sm:max-h-96 overflow-y-auto">
-                  {cachedPatients.map((cache, idx) => (
+                <VirtualList
+                  items={cachedPatients}
+                  estimateSize={88}
+                  height={384}
+                  className="pr-1"
+                  itemClassName="pb-2"
+                  getItemKey={(cache, idx) => cache?.patient?.id ?? idx}
+                  renderItem={(cache) => (
                     <div
-                     key={idx}
-                     className={`p-3 sm:p-4 border rounded-lg cursor-pointer transition-colors min-h-[60px] touch-target ${
-                       selectedPatientId === cache.patient.id 
-                         ? 'bg-blue-50 border-blue-300' 
-                         : 'bg-white hover:bg-slate-50'
-                     }`}
-                     onClick={() => {
-                       setSelectedPatientId(cache.patient.id);
-                       setSelectedPatient(cache.patient);
-                     }}
+                      className={`p-3 sm:p-4 border rounded-lg cursor-pointer transition-colors min-h-[60px] touch-target ${
+                        selectedPatientId === cache.patient.id
+                          ? 'bg-blue-50 border-blue-300'
+                          : 'bg-white hover:bg-slate-50'
+                      }`}
+                      onClick={() => {
+                        setSelectedPatientId(cache.patient.id);
+                        setSelectedPatient(cache.patient);
+                      }}
                     >
                       <p className="font-medium text-sm sm:text-base">
                         {cache.patient.first_name} {cache.patient.last_name}
@@ -240,8 +246,8 @@ export default function OfflineMode() {
                         </Badge>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  )}
+                />
               )}
             </CardContent>
           </Card>
