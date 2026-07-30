@@ -1,10 +1,7 @@
 // Vitest setup shared by all component/integration tests.
 import '@testing-library/jest-dom/vitest';
-import { vi, afterEach, expect } from 'vitest';
+import { vi, afterEach } from 'vitest';
 import { cleanup, configure } from '@testing-library/react';
-import * as axeMatchers from 'vitest-axe/matchers';
-
-expect.extend(axeMatchers);
 
 // Raise the default async-utility budget (waitFor/findBy default is 1000ms). Heavy
 // page mounts + their consolidated data fetches can exceed it when the full suite
