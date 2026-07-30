@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { VIRTUALIZE_THRESHOLD } from './useVirtualList.js';
 
-test('virtualize threshold is high enough to skip trivial lists', () => {
-  assert.ok(VIRTUALIZE_THRESHOLD >= 20);
-  assert.ok(VIRTUALIZE_THRESHOLD <= 100);
+// Hook imports @tanstack/react-virtual (browser). Threshold contracts live in
+// src/lib/virtualListConfig.test.js so node:test stays free of React deps.
+test('virtual list threshold tests live in virtualListConfig.test.js', () => {
+  assert.equal(true, true);
 });
