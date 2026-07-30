@@ -57,6 +57,13 @@ describe("calculateAge", () => {
   it("returns null for missing/invalid dob", () => {
     expect(calculateAge("")).toBeNull();
     expect(calculateAge(null)).toBeNull();
+    expect(calculateAge("2026-02-31", new Date(2026, 6, 28))).toBeNull();
+    expect(calculateAge("2027-01-01", new Date(2026, 6, 28))).toBeNull();
+  });
+
+  it("keeps a date-only birthday on its local calendar day", () => {
+    expect(calculateAge("1961-12-01", new Date(2026, 10, 30))).toBe(64);
+    expect(calculateAge("1961-12-01", new Date(2026, 11, 1))).toBe(65);
   });
 
   it("computes a plausible whole-year age", () => {
