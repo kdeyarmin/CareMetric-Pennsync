@@ -15,13 +15,26 @@
  *
  * @param {{ primary?: string|null, others?: string[], office?: string|null, maxTargets?: number }} opts
  */
+// Dedupe key for a destination. Two spellings of the same phone number
+// (e.g. "+12155550100" and "2155550100") must count as ONE target, otherwise a
+// nurse's cell and a same-number "office" both ring — or worse, the same
+// handset rings twice while a real backup nurse is pushed past the cap. Uses
+// the last 10 digits (NANP) when the value looks like a phone number; falls
+// back to the trimmed/lowercased literal for anything non-numeric.
+function ringdownDedupeKey(n) {
+  const digits = String(n).replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : String(n).trim().toLowerCase();
+}
+
 export function buildRingdown({ primary = null, others = [], office = null, maxTargets = 4 } = {}) {
   const seen = new Set();
   const out = [];
   const push = (num, kind) => {
     const n = String(num || "").trim();
-    if (!n || seen.has(n)) return;
-    seen.add(n);
+    if (!n) return;
+    const key = ringdownDedupeKey(n);
+    if (seen.has(key)) return;
+    seen.add(key);
     out.push({ to: n, kind });
   };
   push(primary, "primary");
@@ -39,20 +52,25 @@ export function nextRingdownTarget(targets, idx) {
   return list[i];
 }
 
-// Telnyx Call Control hangup causes that mean the DIALED party didn't pick up
-// (so we should roll to the next target), as opposed to the caller hanging up.
-// TODO(verify): confirm the exact hangup_cause vocabulary against a live account.
-const UNANSWERED_CAUSES = new Set([
+// Telnyx Call Control hangup_cause values that mean the DIALED party didn't
+// pick up (so we should roll to the next ringdown target). Official enum from
+// Telnyx call.hangup webhook docs / SDK HangupCause:
+//   call_rejected | no_answer | normal_clearing | originator_cancel |
+//   timeout | time_limit | user_busy | not_found | unspecified
+// Only the "didn't answer / unreachable / we cancelled the dial" causes advance
+// ringdown. normal_clearing / time_limit / unspecified do not.
+export const UNANSWERED_HANGUP_CAUSES = Object.freeze([
   "no_answer",
-  "no_user_response",
   "user_busy",
   "call_rejected",
   "timeout",
-  "normal_temporary_failure",
-  "unallocated_number",
-  "recovery_on_timer_expire",
-  "originator_cancel", // ringing leg cancelled because the timeout fired
+  "not_found", // formerly FreeSWITCH-style "unallocated_number"
+  // Dial timeout / transfer cancel of the B-leg (client_state.t === 'ringdown'
+  // already scopes this so a caller A-leg hangup does not keep ringing).
+  "originator_cancel",
 ]);
+
+const UNANSWERED_CAUSES = new Set(UNANSWERED_HANGUP_CAUSES);
 
 /**
  * True when a hangup means "the person we dialed didn't answer", so the ringdown

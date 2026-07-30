@@ -4,14 +4,24 @@ Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
         
-        // This function should be called by the system, not directly by users
-        // Verify it's being called internally or by admin
-        const user = await base44.auth.me();
-        if (!user) {
+        const user = await base44.auth.me().catch(() => null);
+        const body = await req.json();
+        const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+        const providedSecret = String(body?.internal_secret || '').trim();
+        let internalOk = false;
+        if (expectedSecret && providedSecret.length === expectedSecret.length) {
+          let mismatch = 0;
+          for (let i = 0; i < expectedSecret.length; i++) {
+            mismatch |= expectedSecret.charCodeAt(i) ^ providedSecret.charCodeAt(i);
+          }
+          internalOk = mismatch === 0;
+        }
+        // Direct user call OR nested invoke from gradeTrainingAttempt (service-role
+        // invoke has no end-user session).
+        if (!user && !internalOk) {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const body = await req.json();
         const { assignment_id, user_id, course_id } = body;
 
         if (!assignment_id || !user_id || !course_id) {
@@ -46,12 +56,15 @@ Deno.serve(async (req) => {
         // BEFORE invoking this, so the internal flow always qualifies. An admin
         // caller may additionally issue manually from the assignment's recorded
         // state (pass_fail_result / status).
-        const callerIsAdmin = user.role === 'admin' ||
-            user.account_type === 'super_admin' || user.account_type === 'agency_admin';
+        const callerIsAdmin = !!user && (user.role === 'admin' ||
+            user.account_type === 'super_admin' || user.account_type === 'agency_admin');
+        // Nested service-role path (gradeTrainingAttempt) is trusted like an admin
+        // for the assignmentPassed fallback once a server-written attempt exists —
+        // but we still require a passed TrainingAttempt for non-admin callers.
         const attempts = await base44.asServiceRole.entities.TrainingAttempt
             .filter({ assignment_id }, '-created_date', 20).catch(() => []);
         const passedAttempt = (attempts || []).find((a) => a.passed === true) || null;
-        const assignmentPassed = callerIsAdmin &&
+        const assignmentPassed = (callerIsAdmin || internalOk) &&
             (assignment.pass_fail_result === 'passed' || assignment.status === 'completed');
         if (!passedAttempt && !assignmentPassed) {
             return Response.json({ error: 'Certificate can only be issued for a passed assignment.' }, { status: 403 });
@@ -61,7 +74,7 @@ Deno.serve(async (req) => {
         // non-admin caller the only trusted source is the server-written attempt;
         // the assignee-writable assignment score is honored for admin issuance only.
         const verifiedScore = passedAttempt?.score ??
-            (callerIsAdmin ? (assignment.score_percentage ?? null) : null);
+            ((callerIsAdmin || internalOk) ? (assignment.score_percentage ?? null) : null);
 
         const userName = userData && userData.length > 0 ? userData[0].full_name : user_id;
 
@@ -130,7 +143,8 @@ Deno.serve(async (req) => {
         // Generate PDF asynchronously by calling the PDF generation function
         try {
             await base44.asServiceRole.functions.invoke('generateTrainingCertificatePDF', {
-                certificate_id: certificateId
+                certificate_id: certificateId,
+                internal_secret: Deno.env.get('INTERNAL_FN_SECRET') || '',
             });
         } catch (pdfError) {
             console.error('PDF generation failed, but certificate created:', pdfError);

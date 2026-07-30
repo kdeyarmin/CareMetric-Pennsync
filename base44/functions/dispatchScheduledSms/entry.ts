@@ -457,21 +457,33 @@ function quietHoursCheck(toNumber, now, settings) {
 }
 
 // ---- cost controls (mirrors sendSms / src/components/voice/costControls.js) ----
-const PREMIUM_AREA_CODES = new Set(['900', '976']);
+// <<<BEGIN SHARED HELPER: isAllowedDestination — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Cost-control destination gate. Single source of truth is the frontend
+// src/components/voice/costControls.js — this copy is generated from it verbatim.
+const PREMIUM_AREA_CODES = new Set(["900", "976"]);
 function isAllowedDestination(e164, settings = {}) {
   const s = settings || {};
-  const e = String(e164 || '').trim();
-  if (/^\+1\d{10}$/.test(e)) {
+  const e = String(e164 || "").trim();
+  const isNanp = /^\+1\d{10}$/.test(e);
+
+  if (isNanp) {
     const areaCode = e.slice(2, 5);
-    if (PREMIUM_AREA_CODES.has(areaCode)) return { allowed: false, reason: 'premium_number_blocked' };
-    const blocked = Array.isArray(s.blocked_area_codes) ? s.blocked_area_codes.map((a) => String(a).replace(/[^\d]/g, '')) : [];
-    if (blocked.includes(areaCode)) return { allowed: false, reason: 'blocked_area_code' };
-    return { allowed: true, reason: 'allowed' };
+    if (PREMIUM_AREA_CODES.has(areaCode)) return { allowed: false, reason: "premium_number_blocked" };
+    const blocked = Array.isArray(s.blocked_area_codes) ? s.blocked_area_codes.map((a) => String(a).replace(/[^\d]/g, "")) : [];
+    if (blocked.includes(areaCode)) return { allowed: false, reason: "blocked_area_code" };
+    return { allowed: true, reason: "allowed" };
   }
-  if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: 'invalid_destination' };
-  if (s.allow_international === true) return { allowed: true, reason: 'international_allowed' };
-  return { allowed: false, reason: 'international_blocked' };
+
+  // A +1-prefixed number that isn't exactly 10 NANP digits is malformed, not
+  // international — never let the international toggle dial/text a broken US number.
+  if (/^\+1/.test(e)) return { allowed: false, reason: "invalid_destination" };
+
+  // Not a +1 NANP number → treat as international.
+  if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: "invalid_destination" };
+  if (s.allow_international === true) return { allowed: true, reason: "international_allowed" };
+  return { allowed: false, reason: "international_blocked" };
 }
+// <<<END SHARED HELPER: isAllowedDestination>>>
 function monthStartISO(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
@@ -529,6 +541,19 @@ Deno.serve(async (req) => {
       const claimCheck = await base44.asServiceRole.entities.ScheduledSms
         .filter({ id: row.id }, '-created_date', 1).catch(() => []);
       if (!claimCheck[0] || claimCheck[0].claimed_by !== runId) {
+        result.skipped++;
+        continue;
+      }
+      // A cancel can race the claim two ways: it can land between the due-list
+      // fetch and the claim (the claim then overwrites status 'canceled' back to
+      // 'sending' — but canceled_at survives), or between the claim and this
+      // re-read (claimed_by still matches). Either way the user explicitly
+      // canceled; honoring the send would text a patient after a cancel.
+      // canceled_at is the reliable signal because the claim never clears it.
+      if (claimCheck[0].canceled_at || claimCheck[0].status === 'canceled') {
+        await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
+          status: 'canceled', claimed_by: '', claimed_at: null,
+        }).catch(() => {});
         result.skipped++;
         continue;
       }

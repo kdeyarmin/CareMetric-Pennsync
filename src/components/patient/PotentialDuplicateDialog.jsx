@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { createPageUrl } from "@/utils";
 import { formatLocalDate } from "@/lib/dateLocal";
 import {

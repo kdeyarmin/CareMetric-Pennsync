@@ -14,6 +14,7 @@
 
 import { AREA_CODE_TIMEZONE } from '../../src/components/voice/quietHours.js';
 import { DEFAULT_URGENT_KEYWORDS } from '../../src/components/voice/urgentKeywords.js';
+import { isAllowedDestination, PREMIUM_AREA_CODES } from '../../src/components/voice/costControls.js';
 
 // The area-code -> timezone table's single source of truth is the FRONTEND
 // quietHours.js (a 915-was-Central drift bug across the backend copies is exactly
@@ -33,10 +34,23 @@ function urgentKeywordsSource() {
   return `const DEFAULT_URGENT_KEYWORDS = [${items}];`;
 }
 
+// Cost-control destination gate — single source of truth is the frontend
+// costControls.js (a missing malformed-+1 guard was drift across the five backend
+// copies). The function body is taken verbatim from the live frontend function via
+// toString(), so a frontend fix auto-propagates to every backend send function.
+function isAllowedDestinationSource() {
+  const codes = [...PREMIUM_AREA_CODES].map((c) => JSON.stringify(c)).join(', ');
+  return `// Cost-control destination gate. Single source of truth is the frontend
+// src/components/voice/costControls.js — this copy is generated from it verbatim.
+const PREMIUM_AREA_CODES = new Set([${codes}]);
+${isAllowedDestination.toString()}`;
+}
+
 export const SHARED_HELPERS = {
   // Generated from the frontend table (see above) — do not hand-edit consumers.
   areaCodeTimezone: areaCodeTimezoneSource(),
   urgentKeywords: urgentKeywordsSource(),
+  isAllowedDestination: isAllowedDestinationSource(),
 
   // SSRF guard used by every function that fetches or hands a user-supplied URL to
   // a provider integration. Keep in step with src/components/utils/security.

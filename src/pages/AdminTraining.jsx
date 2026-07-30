@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";

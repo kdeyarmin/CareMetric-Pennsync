@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { isAdminView } from "@/lib/roles";
@@ -54,7 +54,11 @@ const normName = (s) => String(s || "").toLowerCase().replace(/\bdr\.?\b/g, "").
 export default function ReferralFollowUp() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedId, setSelectedId] = useState(searchParams.get("id") || null);
+  // The selection IS the ?id= param (selectReferral writes it, deep links from
+  // ReferralIntake/OverdueFollowUpsWidget set it, back/forward restores it) —
+  // a mount-time useState snapshot froze the page on the first referral when
+  // the URL later changed without a remount.
+  const selectedId = searchParams.get("id") || null;
   const [excludedItemIds, setExcludedItemIds] = useState(new Set());
   const [aiItems, setAiItems] = useState([]);
   const [aiAssessment, setAiAssessment] = useState("");
@@ -193,7 +197,6 @@ export default function ReferralFollowUp() {
   };
 
   const selectReferral = (id) => {
-    setSelectedId(id);
     setSearchParams(id ? { id } : {}, { replace: true });
   };
 

@@ -23,6 +23,7 @@ import OASISSuggestionPanel from "@/components/oasis/OASISSuggestionPanel";
 import OASISComplianceWarnings, { getComplianceIssues } from "@/components/oasis/OASISComplianceWarnings";
 import OASISClinicalReasoningEngine, { getClinicalReasoningIssues } from "@/components/oasis/OASISClinicalReasoningEngine";
 import OASISQuestionGuidance from "@/components/oasis/OASISQuestionGuidance";
+import { OASIS_GUIDANCE } from "@/components/oasis/oasisGuidanceData";
 import NoteToOasisPrefill from "@/components/oasis/NoteToOasisPrefill";
 import { OASIS_SECTIONS } from "@/components/oasis/oasisQuestions";
 import { VISIT_TYPES, completeReferralSocForPatient } from "@/components/clinical/OASISQuickUpdate";
@@ -138,18 +139,28 @@ function SectionCard({ section, answers, onChange, onShowGuidance }) {
           {section.questions.map(q => (
             <div key={q.id} className="px-4 py-4">
               <div className="mb-2">
-                <button
-                  onClick={() => onShowGuidance(q.id, q.label)}
-                  className="text-left w-full hover:bg-indigo-50 -mx-2 px-2 py-1 rounded-lg transition-colors group"
-                >
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-indigo-700 flex items-center gap-2">
-                    {q.label}
-                    <Lightbulb className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500" />
-                  </p>
-                  <p className="text-xs text-slate-400 mt-0.5 leading-relaxed group-hover:text-indigo-600">
-                    {q.description} • Click for real-world scenarios & guidance
-                  </p>
-                </button>
+                {OASIS_GUIDANCE[q.id] ? (
+                  <button
+                    type="button"
+                    onClick={() => onShowGuidance(q.id, q.label)}
+                    className="text-left w-full hover:bg-indigo-50 -mx-2 px-2 py-1 rounded-lg transition-colors group"
+                  >
+                    <p className="text-sm font-semibold text-slate-800 group-hover:text-indigo-700 flex items-center gap-2">
+                      {q.label}
+                      <Lightbulb className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500" />
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5 leading-relaxed group-hover:text-indigo-600">
+                      {q.description} • Click for real-world scenarios & guidance
+                    </p>
+                  </button>
+                ) : (
+                  <div className="px-2 py-1 -mx-2">
+                    <p className="text-sm font-semibold text-slate-800">{q.label}</p>
+                    {q.description && (
+                      <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{q.description}</p>
+                    )}
+                  </div>
+                )}
               </div>
               <QuestionField question={q} value={answers[q.id]} onChange={onChange} onShowGuidance={onShowGuidance} />
             </div>

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router";
 import { createPageUrl } from "@/utils";
 import { Home, Users, Brain, Send, Mail, FileText, Pen } from "lucide-react";
 
@@ -55,8 +55,14 @@ export default function MobileBottomNav({ isActive, unreadMessageCount, isAdmin 
         {items.map(({ page, Icon, label, hasBadge }) => {
           const badge = hasBadge ? unreadMessageCount : 0;
           const active = isActive(page);
+          // Standard mobile tab convention: tapping the ALREADY-ACTIVE tab pops
+          // to the section root (e.g. the /Patients roster from a patient
+          // chart). The saved deep link is only restored when switching TO a
+          // tab — otherwise the active tab pointed at the page you're already
+          // on, making it a permanent no-op with no way back to the roster.
+          const target = active ? createPageUrl(page) : getTabTarget(page);
           return (
-            <Link key={page} to={getTabTarget(page)}
+            <Link key={page} to={target}
               className={`flex flex-col items-center justify-center gap-0.5 relative transition-colors active:scale-95 ${
                 active ? "text-navy-700 dark:text-navy-200" : "text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
               }`}

@@ -33,21 +33,33 @@ function phoneVariants(value) {
 }
 
 // ---- cost controls (mirrors src/components/voice/costControls.js) ----
-const PREMIUM_AREA_CODES = new Set(['900', '976']);
+// <<<BEGIN SHARED HELPER: isAllowedDestination — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Cost-control destination gate. Single source of truth is the frontend
+// src/components/voice/costControls.js — this copy is generated from it verbatim.
+const PREMIUM_AREA_CODES = new Set(["900", "976"]);
 function isAllowedDestination(e164, settings = {}) {
   const s = settings || {};
-  const e = String(e164 || '').trim();
-  if (/^\+1\d{10}$/.test(e)) {
+  const e = String(e164 || "").trim();
+  const isNanp = /^\+1\d{10}$/.test(e);
+
+  if (isNanp) {
     const areaCode = e.slice(2, 5);
-    if (PREMIUM_AREA_CODES.has(areaCode)) return { allowed: false, reason: 'premium_number_blocked' };
-    const blocked = Array.isArray(s.blocked_area_codes) ? s.blocked_area_codes.map((a) => String(a).replace(/[^\d]/g, '')) : [];
-    if (blocked.includes(areaCode)) return { allowed: false, reason: 'blocked_area_code' };
-    return { allowed: true, reason: 'allowed' };
+    if (PREMIUM_AREA_CODES.has(areaCode)) return { allowed: false, reason: "premium_number_blocked" };
+    const blocked = Array.isArray(s.blocked_area_codes) ? s.blocked_area_codes.map((a) => String(a).replace(/[^\d]/g, "")) : [];
+    if (blocked.includes(areaCode)) return { allowed: false, reason: "blocked_area_code" };
+    return { allowed: true, reason: "allowed" };
   }
-  if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: 'invalid_destination' };
-  if (s.allow_international === true) return { allowed: true, reason: 'international_allowed' };
-  return { allowed: false, reason: 'international_blocked' };
+
+  // A +1-prefixed number that isn't exactly 10 NANP digits is malformed, not
+  // international — never let the international toggle dial/text a broken US number.
+  if (/^\+1/.test(e)) return { allowed: false, reason: "invalid_destination" };
+
+  // Not a +1 NANP number → treat as international.
+  if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: "invalid_destination" };
+  if (s.allow_international === true) return { allowed: true, reason: "international_allowed" };
+  return { allowed: false, reason: "international_blocked" };
 }
+// <<<END SHARED HELPER: isAllowedDestination>>>
 function blockedReasonMessage(reason) {
   switch (reason) {
     case 'premium_number_blocked': return 'Premium-rate numbers (900/976) are blocked.';

@@ -6,6 +6,7 @@ import AIConfigurationManager from "@/components/admin/AIConfigurationManager";
 import PhoneProvisioningPanel from "@/components/admin/PhoneProvisioningPanel";
 import PhoneAnalyticsPanel from "@/components/admin/PhoneAnalyticsPanel";
 import FaxReceivingToggle from "@/components/admin/FaxReceivingToggle";
+import FaxRetryConfigPanel from "@/components/admin/FaxRetryConfigPanel";
 
 export default function SystemSettingsPage() {
   return (
@@ -34,6 +35,7 @@ export default function SystemSettingsPage() {
       <PhoneProvisioningPanel />
       <PhoneAnalyticsPanel />
       <FaxReceivingToggle />
+      <FaxRetryConfigPanel />
       <AnnouncementManager />
       <AIConfigurationManager />
     </div>

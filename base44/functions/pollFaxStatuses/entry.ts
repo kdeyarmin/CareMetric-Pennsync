@@ -69,17 +69,29 @@ const PERMANENT_FAILURE_PATTERNS = [
   /rejected/i, /blocked/i, /do not call/i, /unallocated/i, /disconnected/i,
   /forbidden/i, /not in service/i, /no such number/i, /malformed/i,
 ];
+// Transient signals win over a coincidental permanent word ("rejected - line
+// busy" is retryable). Checked first. Mirrors src/components/fax/faxRetry.js.
+const TRANSIENT_FAILURE_PATTERNS = [
+  /busy/i, /no.?answer/i, /temporar/i, /timeout/i, /timed out/i,
+  /try again/i, /congestion/i, /\b(429|500|502|503|504)\b/,
+];
 function classifyFaxFailure(errorCode, errorMessage) {
   const s = `${errorCode ?? ''} ${errorMessage ?? ''}`.trim();
   if (!s) return 'transient';
+  if (TRANSIENT_FAILURE_PATTERNS.some((re) => re.test(s))) return 'transient';
   return PERMANENT_FAILURE_PATTERNS.some((re) => re.test(s)) ? 'permanent' : 'transient';
 }
 function faxRetryConfig(config) {
   const c = config || {};
+  // Coerce first: entity fields can arrive as numeric strings ("5") from a JSON/form
+  // round-trip, and Number.isFinite("5") is false — which would silently drop the
+  // admin's configured value in favor of the default. Mirrors src/components/fax/faxRetry.js.
+  const maxRetriesNum = Number(c.max_retries);
+  const baseDelayNum = Number(c.retry_delay_minutes);
   return {
     enabled: c.auto_retry_enabled !== false,
-    maxRetries: Number.isFinite(c.max_retries) ? Math.max(0, c.max_retries) : 3,
-    baseDelayMinutes: Number.isFinite(c.retry_delay_minutes) && c.retry_delay_minutes > 0 ? c.retry_delay_minutes : 15,
+    maxRetries: Number.isFinite(maxRetriesNum) ? Math.max(0, maxRetriesNum) : 3,
+    baseDelayMinutes: Number.isFinite(baseDelayNum) && baseDelayNum > 0 ? baseDelayNum : 15,
     notifyOnFinalFailure: c.notify_on_final_failure !== false,
     priorityMultiplier: c.priority_multiplier && typeof c.priority_multiplier === 'object' ? c.priority_multiplier : {},
   };
@@ -114,6 +126,31 @@ Deno.serve(async (req) => {
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
 
+    // Release stale retry claims: if a retryFailedFax isolate died between its
+    // claim (status 'retrying') and settle/release, the row would otherwise be
+    // stranded forever — no poller or cron looks at 'retrying', so the fax
+    // silently never goes out. A claim older than 15 minutes is dead (the retry
+    // send itself takes seconds); put the row back to a retriable 'failed'.
+    let releasedStale = 0;
+    try {
+      const staleCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const retrying = await base44.asServiceRole.entities.FaxLog.filter(
+        { status: 'retrying' }, '-created_date', 20,
+      ).catch(() => []);
+      for (const fax of Array.isArray(retrying) ? retrying : []) {
+        if (fax.retry_claimed_at && fax.retry_claimed_at < staleCutoff) {
+          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+            status: 'failed',
+            retry_claimed_by: null,
+            failure_reason: fax.failure_reason || 'Retry attempt was interrupted before completing',
+          }).catch(() => {});
+          releasedStale++;
+        }
+      }
+    } catch (err) {
+      console.error('stale retry-claim release failed:', err?.message);
+    }
+
     // Only poll faxes from the last 48 hours that are still pending
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     
@@ -127,7 +164,7 @@ Deno.serve(async (req) => {
     const faxesToCheck = pendingFaxes.filter(f => f.telnyx_fax_id && f.created_date > cutoff);
 
     if (faxesToCheck.length === 0) {
-      return Response.json({ success: true, checked: 0, updated: 0 });
+      return Response.json({ success: true, checked: 0, updated: 0, released_stale_retries: releasedStale });
     }
 
     const { apiKey } = await resolveTelnyxCreds(base44);
@@ -140,7 +177,7 @@ Deno.serve(async (req) => {
     // a Telnyx-reported failure schedules a retry instead of being declared final.
     const cfgRows = await base44.asServiceRole.entities.FaxRetryConfig.list('-created_date', 1).catch(() => []);
     const cfg = cfgRows[0] || {};
-    const maxRetries = faxRetryConfig(cfg).maxRetries;
+    const retryCfg = faxRetryConfig(cfg);
 
     let updated = 0;
 
@@ -188,14 +225,15 @@ Deno.serve(async (req) => {
               priority: fax.priority || 'normal',
               config: cfg,
             });
-            // Only schedule a retry the cron will actually honor (isFaxRetryDue refuses
-            // retry_count >= maxRetries), matching the webhook's boundary handling.
-            if (plan.willRetry && plan.nextRetryCount < maxRetries) {
+            // planFaxRetry already encodes the budget; schedule whenever willRetry
+            // (including nextRetryCount === maxRetries — the last allowed send).
+            if (plan.willRetry) {
               update.next_retry_at = plan.nextRetryAt;
               update.retry_count = plan.nextRetryCount;
             } else {
-              if (plan.willRetry) update.retry_count = plan.nextRetryCount;
-              if (fax.sent_by && !fax.final_failure_notified) notifyType = 'fax_failed';
+              if (retryCfg.notifyOnFinalFailure && fax.sent_by && !fax.final_failure_notified) {
+                notifyType = 'fax_failed';
+              }
               update.final_failure_notified = true;
             }
           }
@@ -223,7 +261,7 @@ Deno.serve(async (req) => {
       }
     }));
 
-    return Response.json({ success: true, checked: faxesToCheck.length, updated });
+    return Response.json({ success: true, checked: faxesToCheck.length, updated, released_stale_retries: releasedStale });
   } catch (error) {
     console.error('pollFaxStatuses failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

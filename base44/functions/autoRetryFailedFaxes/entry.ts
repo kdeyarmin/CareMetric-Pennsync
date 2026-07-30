@@ -245,17 +245,29 @@ const PERMANENT_FAILURE_PATTERNS = [
   /rejected/i, /blocked/i, /do not call/i, /unallocated/i, /disconnected/i,
   /forbidden/i, /not in service/i, /no such number/i, /malformed/i,
 ];
+// Transient signals win over a coincidental permanent word ("rejected - line
+// busy" is retryable). Checked first. Mirrors src/components/fax/faxRetry.js.
+const TRANSIENT_FAILURE_PATTERNS = [
+  /busy/i, /no.?answer/i, /temporar/i, /timeout/i, /timed out/i,
+  /try again/i, /congestion/i, /\b(429|500|502|503|504)\b/,
+];
 function classifyFaxFailure(errorCode, errorMessage) {
   const s = `${errorCode ?? ''} ${errorMessage ?? ''}`.trim();
   if (!s) return 'transient';
+  if (TRANSIENT_FAILURE_PATTERNS.some((re) => re.test(s))) return 'transient';
   return PERMANENT_FAILURE_PATTERNS.some((re) => re.test(s)) ? 'permanent' : 'transient';
 }
 function faxRetryConfig(config) {
   const c = config || {};
+  // Coerce first: entity fields can arrive as numeric strings ("5") from a JSON/form
+  // round-trip, and Number.isFinite("5") is false — which would silently drop the
+  // admin's configured value in favor of the default. Mirrors src/components/fax/faxRetry.js.
+  const maxRetriesNum = Number(c.max_retries);
+  const baseDelayNum = Number(c.retry_delay_minutes);
   return {
     enabled: c.auto_retry_enabled !== false,
-    maxRetries: Number.isFinite(c.max_retries) ? Math.max(0, c.max_retries) : 3,
-    baseDelayMinutes: Number.isFinite(c.retry_delay_minutes) && c.retry_delay_minutes > 0 ? c.retry_delay_minutes : 15,
+    maxRetries: Number.isFinite(maxRetriesNum) ? Math.max(0, maxRetriesNum) : 3,
+    baseDelayMinutes: Number.isFinite(baseDelayNum) && baseDelayNum > 0 ? baseDelayNum : 15,
     notifyOnFinalFailure: c.notify_on_final_failure !== false,
     priorityMultiplier: c.priority_multiplier && typeof c.priority_multiplier === 'object' ? c.priority_multiplier : {},
   };
@@ -273,9 +285,10 @@ function isFaxRetryDue(fax, now, config) {
   if (!fax || fax.status !== 'failed') return false;
   if (!fax.next_retry_at) return false;
   if (!fax.document_url) return false;
-  // >= so the budget is spent at retry_count === maxRetries (matches
-  // planFaxRetry's `attempts >= maxRetries`); `>` allowed one extra send/charge.
-  if ((Number(fax.retry_count) || 0) >= c.maxRetries) return false;
+  // Use > so a scheduled retry with retry_count === maxRetries is still sent
+  // (the last allowed attempt). planFaxRetry refuses to schedule past that.
+  // Mirrors src/components/fax/faxRetry.js.
+  if ((Number(fax.retry_count) || 0) > c.maxRetries) return false;
   const t = new Date(fax.next_retry_at).getTime();
   return Number.isFinite(t) && now >= t;
 }

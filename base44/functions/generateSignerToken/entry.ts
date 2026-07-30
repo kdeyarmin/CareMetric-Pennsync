@@ -7,22 +7,36 @@ const isAdminLike = (u) => !!u && (
 );
 // <<<END SHARED HELPER: isAdminLike>>>
 
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+/** True when the body carries a valid INTERNAL_FN_SECRET (nested service-role invoke). */
+function isInternalInvoke(body) {
+  const expected = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expected) return false;
+  return timingSafeEqualStr(String(body?.internal_secret || '').trim(), expected);
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
+    const body = await req.json();
+    const internalOk = isInternalInvoke(body);
 
-    // Canonical admin-tier gate (facility admin / agency_admin / super_admin),
-    // matching generateFollowUpPortalToken and the rest of the admin surfaces.
-    if (!isAdminLike(user)) {
+    // Admin UI path OR trusted nested invoke from notifySignerOfPackage (entity
+    // trigger has no user session; asServiceRole.functions.invoke strips identity).
+    if (!isAdminLike(user) && !internalOk) {
       return Response.json(
         { error: 'Forbidden: Admin access required' },
         { status: 403 }
       );
     }
 
-    const { package_id, signer_email, signer_name, expires_in_days = 30 } =
-      await req.json();
+    const { package_id, signer_email, signer_name, expires_in_days = 30 } = body;
 
     if (!package_id || !signer_email) {
       return Response.json(
@@ -31,12 +45,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify package exists
-    const pkg = await base44.entities.DocumentPackage.get(package_id).catch(
+    // Verify package exists (service-role for internal/trigger callers)
+    const pkg = await base44.asServiceRole.entities.DocumentPackage.get(package_id).catch(
       () => null
     );
     if (!pkg) {
       return Response.json({ error: 'Package not found' }, { status: 404 });
+    }
+    // Internal callers must mint for the package's own signer — never an
+    // attacker-chosen address via a forged package_id + email pair.
+    if (internalOk && pkg.signer_email &&
+        String(pkg.signer_email).trim().toLowerCase() !== String(signer_email).trim().toLowerCase()) {
+      return Response.json({ error: 'signer_email does not match package' }, { status: 403 });
     }
 
     // Generate secure token. Persist ONLY its SHA-256 hash (in the token field):

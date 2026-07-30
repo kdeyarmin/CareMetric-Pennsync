@@ -345,7 +345,14 @@ export default function VideoRoom({ roomName, identity, onDisconnect, onParticip
     try {
       await room.addStream("screen", { video: screenStream.getVideoTracks()[0] });
     } catch (e) {
+      // Publish failed — do NOT fall through to preview + setScreenSharing(true),
+      // which would show a fake "sharing" state and leave the capture running
+      // while remote participants receive nothing. Stop the capture we just
+      // started and rethrow so toggleScreenShare surfaces the error and resets.
       console.error("Screen publish error:", e);
+      screenStreamRef.current = null;
+      try { screenStream.getTracks().forEach((t) => t.stop()); } catch { /* already stopped */ }
+      throw e;
     }
 
     // Preview the shared screen locally.

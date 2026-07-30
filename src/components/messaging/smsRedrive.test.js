@@ -21,6 +21,15 @@ test("isTransientFailureReason refuses permanent reasons", () => {
   assert.equal(isTransientFailureReason(null), false);
 });
 
+test("a transient 5xx described as an 'invalid response' is still retryable", () => {
+  // Regression: bare /invalid/ classified this gateway error as permanent, so
+  // the redrive cron skipped it forever despite the retryable 502.
+  assert.equal(isTransientFailureReason("Invalid response from Telnyx API (502)"), true);
+  assert.equal(isTransientFailureReason("Got an invalid/garbled reply, timed out"), true);
+  // But a genuine invalid-number reject stays permanent.
+  assert.equal(isTransientFailureReason("Invalid 'To' number (503 while validating)"), false);
+});
+
 const baseRow = {
   status: "failed",
   direction: "outbound",

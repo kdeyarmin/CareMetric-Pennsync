@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,8 @@ import TelehealthCall from "../components/telehealth/TelehealthCall";
 import SessionCard from "../components/telehealth/SessionCard";
 import SessionDocumentation from "../components/telehealth/SessionDocumentation";
 import RealtimeVitalMonitor from "../components/telehealth/RealtimeVitalMonitor";
-import { generateJoinToken, buildPatientJoinLink } from "../components/telehealth/telehealthUtils";
+import { generateJoinToken, buildPatientJoinLink, hashJoinToken } from "../components/telehealth/telehealthUtils";
+import { rememberJoinLink, getPatientJoinLink } from "../components/telehealth/joinLinkAccess";
 import { hostedAbsoluteUrl } from '@/lib/assetPath';
 import { ROUTER_PATHS } from '@/routes';
 
@@ -86,17 +87,24 @@ export default function Telehealth() {
     onError: (e) => toast.error(e?.message || "Couldn't send the text")
   });
 
-  const handleTextPatient = (session) => {
+  const handleTextPatient = async (session) => {
     const patient = patients.find((p) => p.id === session.patient_id);
     const phone = patient?.phone || patient?.phone_number || patient?.cell;
     if (!phone) {
       toast.error("No phone number on file for this patient");
       return;
     }
+    let link;
+    try {
+      link = await getPatientJoinLink(session);
+    } catch (e) {
+      toast.error(e?.message || "Couldn't generate the join link");
+      return;
+    }
     const greeting = patient?.first_name ? `Hi ${patient.first_name}, ` : "Hi, ";
     textLink.mutate({
       to_number: phone,
-      body: `${greeting}here's your secure telehealth visit link: ${session.invite_link}`,
+      body: `${greeting}here's your secure telehealth visit link: ${link}`,
       patient_id: session.patient_id
     });
   };
@@ -295,13 +303,16 @@ function NewSessionForm({ patients, currentUser, onSubmit, loading }) {
     scheduled_at: ""
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const patient = patients.find(p => p.id === form.patient_id);
     const roomName = `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const patientName = patient ? `${patient.first_name} ${patient.last_name}` : "Unknown";
     // Patient-facing capability link: the token is the patient's access grant.
-    const inviteLink = buildPatientJoinLink(hostedAbsoluteUrl('/', { routerPaths: ROUTER_PATHS }), roomName, generateJoinToken());
+    // Only the token's SHA-256 hash is persisted; the raw link stays in this
+    // tab's memory (rememberJoinLink) for the copy/text actions.
+    const joinToken = generateJoinToken();
+    rememberJoinLink(roomName, buildPatientJoinLink(hostedAbsoluteUrl('/', { routerPaths: ROUTER_PATHS }), roomName, joinToken));
     onSubmit({
       room_name: roomName,
       patient_id: form.patient_id,
@@ -311,7 +322,7 @@ function NewSessionForm({ patients, currentUser, onSubmit, loading }) {
       visit_type: form.visit_type,
       scheduled_at: form.scheduled_at || new Date().toISOString(),
       status: "scheduled",
-      invite_link: inviteLink,
+      join_token_hash: await hashJoinToken(joinToken),
       participant_list: [currentUser?.full_name || currentUser?.email, patientName].filter(Boolean)
     });
   };

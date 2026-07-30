@@ -25,7 +25,13 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const isAdmin = user.role === 'admin' || user.account_type === 'super_admin';
+    // Mirror the frontend isAdminLike / the fax functions' isSchedulerAdmin so an
+    // agency_admin who can open the provisioning UI can also READ (never see) the
+    // config presence flags. Saving credentials stays super-admin-only in
+    // saveTelnyxSecret; this endpoint returns no secret values.
+    const isAdmin = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
     if (!isAdmin) {
       return Response.json({ error: 'Administrator access required.' }, { status: 403 });
     }

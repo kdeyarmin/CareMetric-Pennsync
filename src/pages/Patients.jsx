@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { calculateAge, toLocalISODate } from "@/lib/dateLocal";
+import { calculateAge, parseLocalDate, toLocalISODate } from "@/lib/dateLocal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Plus, User, ArrowUpDown, Users, UserCheck, CalendarPlus } from "lucide-react";
@@ -158,7 +158,18 @@ export default function Patients() {
     };
   }, [patients]);
 
-  const filteredPatients = useMemo(() => (patients || []).filter(patient => {
+  const filteredPatients = useMemo(() => {
+    // Date-range bounds, hoisted out of the per-patient loop. The pickers emit
+    // date-only strings ("2026-07-01"); `new Date(...)` parsed them as UTC
+    // midnight, so comparing against full created_date timestamps (a) excluded
+    // every patient added ON the "To" day and (b) shifted both bounds by the
+    // local UTC offset. Parse as local calendar days and make "To" inclusive
+    // through end of day.
+    const afterStart = filters.createdAfter ? parseLocalDate(filters.createdAfter) : null;
+    const beforeEnd = filters.createdBefore ? parseLocalDate(filters.createdBefore) : null;
+    if (beforeEnd) beforeEnd.setHours(23, 59, 59, 999);
+
+    return (patients || []).filter(patient => {
     if (!patient) return false;
 
     // Fuzzy search across name, MRN, phone, diagnosis (debounced)
@@ -182,10 +193,10 @@ export default function Patients() {
       (filters.hasVisits === 'yes' && patientVisitCount > 0) ||
       (filters.hasVisits === 'no' && patientVisitCount === 0);
 
-    // Date range filter
+    // Date range filter (bounds computed above; inclusive of both boundary days)
     const createdDate = new Date(patient.created_date);
-    const matchesAfter = !filters.createdAfter || createdDate >= new Date(filters.createdAfter);
-    const matchesBefore = !filters.createdBefore || createdDate <= new Date(filters.createdBefore);
+    const matchesAfter = !afterStart || createdDate >= afterStart;
+    const matchesBefore = !beforeEnd || createdDate <= beforeEnd;
 
     return matchesSearch && matchesStatus && matchesDiagnosis &&
            matchesAgeMin && matchesAgeMax && matchesVisits &&
@@ -213,7 +224,8 @@ export default function Patients() {
       default:
         return 0;
     }
-  }), [patients, filters, debouncedSearch, sortBy, visitCountByPatientId, lastVisitDateByPatientId]);
+  });
+  }, [patients, filters, debouncedSearch, sortBy, visitCountByPatientId, lastVisitDateByPatientId]);
 
   const togglePatientSelection = (patient) => {
     setSelectedPatients(prev => {

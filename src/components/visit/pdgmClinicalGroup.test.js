@@ -44,12 +44,18 @@ test('determineClinicalGroup: a lone keyword (no pattern) match scores 1 -> low 
   assert.ok(r.matchedPatterns.includes('HTN'));
 });
 
-test('identifyComorbidities: a single high-impact comorbidity yields a high adjustment', () => {
+test('identifyComorbidities: a single high-impact comorbidity yields a LOW adjustment (CMS interaction model)', () => {
   const r = identifyComorbidities('Congestive heart failure', [], '');
-  assert.equal(r.adjustment, 'high');
+  assert.equal(r.adjustment, 'low');
   assert.equal(r.high.length, 1);
   assert.equal(r.high[0].name, 'Heart Failure');
   assert.equal(r.count, 1);
+});
+
+test('identifyComorbidities: two high-impact comorbidities yield a high adjustment', () => {
+  const r = identifyComorbidities('Congestive heart failure', ['COPD'], '');
+  assert.equal(r.adjustment, 'high');
+  assert.equal(r.high.length, 2);
 });
 
 test('identifyComorbidities: two low-impact comorbidities yield a low adjustment', () => {
@@ -76,7 +82,7 @@ test('identifyComorbidities: bare "OA" shorthand is detected as osteoarthritis',
   assert.equal(r2.low.length, 1);
 });
 
-test('identifyComorbidities: high adjustment takes precedence over multiple low ones', () => {
+test('identifyComorbidities: one high plus two low comorbidities yield a high adjustment', () => {
   const r = identifyComorbidities('COPD', ['hypertension', 'osteoarthritis'], '');
   assert.equal(r.adjustment, 'high');
   assert.ok(r.high.length >= 1);
@@ -84,7 +90,7 @@ test('identifyComorbidities: high adjustment takes precedence over multiple low 
 
 test('identifyComorbidities: scans the narrative text, not just diagnoses', () => {
   const r = identifyComorbidities('General weakness', [], 'History significant for chronic kidney disease (CKD).');
-  assert.equal(r.adjustment, 'high');
+  assert.equal(r.adjustment, 'low');
   assert.equal(r.high[0].name, 'Chronic Kidney Disease');
 });
 
@@ -105,10 +111,28 @@ test('identifyComorbidities: complicated diabetes counts once (high), not in bot
   assert.equal(r.high[0].name, 'Diabetes with Complications');
   assert.equal(r.low.length, 0);
   assert.equal(r.count, 1);
-  assert.equal(r.adjustment, 'high');
+  assert.equal(r.adjustment, 'low');
 });
 
 test('identifyComorbidities: returns empty result for no matches', () => {
   const r = identifyComorbidities('Routine visit', [], '');
   assert.deepEqual(r, { high: [], low: [], count: 0, adjustment: 'none' });
+});
+
+test('determineClinicalGroup: short keywords match whole words only, not substrings', () => {
+  // "MS" must not match inside "symptoms", "TIA" not inside "dementia",
+  // "THR" not inside "arthritis" — substring matching misgrouped generic
+  // symptom text as Neuro Rehabilitation.
+  const r = determineClinicalGroup('generalized symptoms of fatigue');
+  assert.equal(r.group, 'MMTA-05');
+  assert.deepEqual(r.matchedPatterns, []);
+
+  const r2 = determineClinicalGroup('early dementia noted by family');
+  assert.equal(r2.group, 'MMTA-06');
+  assert.ok(!r2.matchedPatterns.includes('TIA'));
+
+  // A real whole-word abbreviation still matches.
+  const r3 = determineClinicalGroup('History of MS with progressive weakness');
+  assert.equal(r3.group, 'MMTA-02');
+  assert.ok(r3.matchedPatterns.includes('MS'));
 });

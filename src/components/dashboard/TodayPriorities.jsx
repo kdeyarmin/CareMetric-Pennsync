@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, ClipboardList, ShieldAlert, Sparkles } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

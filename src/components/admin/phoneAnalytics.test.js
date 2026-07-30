@@ -50,17 +50,18 @@ test("call stats count missed, completed, and average duration of real calls", (
   assert.equal(r.calls.avgDurationSec, 90); // (60+120)/2, zero/absent excluded
 });
 
-test("call stats count after-hours and off-duty auto-transfers", () => {
+test("call stats count office auto-transfers using the backend call_mode", () => {
+  // The backend logs every office-routed inbound call (off-duty, after-hours,
+  // quiet-hours, no personal cell) as call_mode "office_transfer".
   const r = summarizePhoneActivity({
     callLogs: [
-      { direction: "inbound", status: "forwarded_office", call_mode: "after_hours_transfer", created_date: iso(1) },
-      { direction: "inbound", status: "forwarded_office", call_mode: "after_hours_transfer", created_date: iso(1) },
-      { direction: "inbound", status: "forwarded_office", call_mode: "off_duty_transfer", created_date: iso(1) },
+      { direction: "inbound", status: "forwarded_office", call_mode: "office_transfer", created_date: iso(1) },
+      { direction: "inbound", status: "forwarded_office", call_mode: "office_transfer", created_date: iso(1) },
+      { direction: "inbound", status: "forwarded_office", call_mode: "office_transfer", created_date: iso(1) },
       { direction: "inbound", status: "bridged", call_mode: "masked_bridge", created_date: iso(1) },
     ],
   });
-  assert.equal(r.calls.afterHoursTransfers, 2);
-  assert.equal(r.calls.offDutyTransfers, 1);
+  assert.equal(r.calls.officeTransfers, 3);
   assert.equal(r.calls.autoTransferRate, 75); // 3 of 4 inbound auto-handled
 });
 

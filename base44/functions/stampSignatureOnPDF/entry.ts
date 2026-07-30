@@ -31,13 +31,30 @@ function isSafeFetchUrl(raw) {
   return true;
 }
 
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+function isInternalInvoke(body) {
+  const expected = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expected) return false;
+  return timingSafeEqualStr(String(body?.internal_secret || '').trim(), expected);
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await base44.auth.me().catch(() => null);
+    const body = await req.json();
+    // Authenticated user OR trusted nested invoke from submitSignerSignature
+    // (public capability-token portal has no session).
+    if (!user && !isInternalInvoke(body)) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    const { pdf_url, signature_data_url } = await req.json();
+    const { pdf_url, signature_data_url } = body;
     if (!pdf_url || !signature_data_url) {
       return Response.json({ error: 'Missing pdf_url or signature_data_url' }, { status: 400 });
     }

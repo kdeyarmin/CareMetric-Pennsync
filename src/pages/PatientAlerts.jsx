@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,8 +27,19 @@ import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function PatientAlerts() {
   const [searchParams] = useSearchParams();
-  const [selectedPatientId, setSelectedPatientId] = useState(searchParams.get("patientId") || searchParams.get("id") || "");
+  const urlPatientId = searchParams.get("patientId") || searchParams.get("id") || "";
+  const [selectedPatientId, setSelectedPatientId] = useState(urlPatientId);
   const [analysisResults, setAnalysisResults] = useState(null);
+
+  // Follow same-route deep-link changes (?patientId=A -> ?patientId=B): the
+  // mount-time snapshot froze the page on the first patient. Manual dropdown
+  // selection still works because this only fires when the URL param changes.
+  useEffect(() => {
+    if (urlPatientId) {
+      setSelectedPatientId(urlPatientId);
+      setAnalysisResults(null);
+    }
+  }, [urlPatientId]);
 
   const { data: patients = [] } = useQuery({
     // Namespaced: this is the ACTIVE-only patient set. The bare ['patients'] key is

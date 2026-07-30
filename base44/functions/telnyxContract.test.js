@@ -4,7 +4,7 @@ import { readFile, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { generateKeyPairSync, sign as nodeSign } from "node:crypto";
+import { createHash, generateKeyPairSync, sign as nodeSign } from "node:crypto";
 import ts from "typescript";
 
 /**
@@ -169,6 +169,56 @@ test("searchPurchaseTelnyxNumbers posts the Telnyx number-order contract", async
   assert.ok(call, "posted to the Telnyx number_orders endpoint");
   assert.match(BEARER(call.headers), /^Bearer KEYtest$/);
   assert.deepEqual(call.body.phone_numbers, [{ phone_number: "+12155550177" }]);
+});
+
+test("a nurse-line purchase auto-enrolls the number in the saved A2P campaign", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_3", phone_numbers: [{ id: "np_2", phone_number: "+12155550188" }] } } }) },
+    { match: (u) => u.includes("/v2/10dlc/phone_number_campaigns"), respond: () => ({ status: 200, json: { phoneNumber: "+12155550188", campaignId: "CAMP1" } }) },
+  ]);
+  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({
+      user: { email: "a@x.com", account_type: "super_admin" },
+      data: {
+        IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }],
+        AgencySettings: [{ id: "as_1", a2p_campaign_id: "CAMP1" }],
+      },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+    method: "POST", body: JSON.stringify({ action: "purchase", e164: "2155550188" }),
+  }));
+  const data = await res.json();
+  const enroll = calls.find((c) => c.url.includes("/v2/10dlc/phone_number_campaigns"));
+  assert.ok(enroll, "posted the 10DLC phone-number-campaign assignment");
+  assert.equal(enroll.method, "POST");
+  assert.equal(enroll.body.phoneNumber, "+12155550188");
+  assert.equal(enroll.body.campaignId, "CAMP1");
+  assert.equal(data.campaign_assigned, true);
+  assert.deepEqual(data.warnings, []);
+});
+
+test("a nurse-line purchase with NO saved campaign warns instead of enrolling", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_4", phone_numbers: [{ id: "np_3", phone_number: "+12155550190" }] } } }) },
+  ]);
+  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({
+      user: { email: "a@x.com", account_type: "super_admin" },
+      data: { IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }] },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+    method: "POST", body: JSON.stringify({ action: "purchase", e164: "2155550190" }),
+  }));
+  const data = await res.json();
+  assert.equal(calls.some((c) => c.url.includes("/v2/10dlc/")), false, "no 10DLC call without a saved campaign");
+  assert.equal(data.campaign_assigned, false);
+  assert.ok(data.warnings.some((w) => /campaign/i.test(w)), "warns that the number is not campaign-registered");
 });
 
 // A minimal spy-able client: like makeBase44 but with stable per-entity objects
@@ -454,6 +504,115 @@ test("createTelehealthToken provisions a room and mints a join token", async () 
   const tokenCall = calls.find((c) => c.url.includes("/v2/rooms/room_1/actions/generate_join_client_token"));
   assert.ok(tokenCall, "minted a join client token for the room");
   assert.match(BEARER(tokenCall.headers), /^Bearer KEYtest$/);
+});
+
+// Guest join tokens are stored HASHED at rest (TelehealthSession.join_token_hash);
+// the guest path must accept the raw token whose SHA-256 matches, reject others,
+// and only fall back to the legacy plaintext invite_link when no hash exists.
+test("createTelehealthToken validates guest tokens against join_token_hash", async () => {
+  const rawToken = "a".repeat(48);
+  const session = {
+    room_name: "visit-2", host_email: "host@x.com", status: "scheduled",
+    scheduled_at: new Date().toISOString(),
+    join_token_hash: createHash("sha256").update(rawToken).digest("hex"),
+    // A stale plaintext link must be IGNORED once a hash exists.
+    invite_link: "https://app/join?room=visit-2&t=stale-different-token",
+  };
+  const mkHandler = () => loadHandler("./createTelehealthToken/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({
+      user: null,
+      data: { IntegrationSecret: [{ api_key: "KEYtest" }], TelehealthSession: [session] },
+    }),
+    fetchImpl: makeFetch([
+      { match: (u) => /\/v2\/rooms\?/.test(u), respond: () => ({ status: 200, json: { data: [{ id: "room_2", unique_name: "visit-2" }] } }) },
+      { match: (u) => u.includes("/actions/generate_join_client_token"), respond: () => ({ status: 200, json: { data: { token: "JOIN2" } } }) },
+    ]).impl,
+  });
+
+  let handler = await mkHandler();
+  const ok = await handler(new Request("https://app/functions/createTelehealthToken", {
+    method: "POST", body: JSON.stringify({ room_name: "visit-2", join_token: rawToken }),
+  }));
+  assert.equal(ok.status, 200, "the raw token matching the stored hash is accepted");
+  assert.equal((await ok.json()).token, "JOIN2");
+
+  handler = await mkHandler();
+  const wrong = await handler(new Request("https://app/functions/createTelehealthToken", {
+    method: "POST", body: JSON.stringify({ room_name: "visit-2", join_token: "b".repeat(48) }),
+  }));
+  assert.equal(wrong.status, 403, "a non-matching token is rejected");
+
+  // The stale plaintext token embedded in invite_link must NOT work once a hash exists.
+  handler = await mkHandler();
+  const stale = await handler(new Request("https://app/functions/createTelehealthToken", {
+    method: "POST", body: JSON.stringify({ room_name: "visit-2", join_token: "stale-different-token" }),
+  }));
+  assert.equal(stale.status, 403, "the retired invite_link token is rejected when a hash exists");
+});
+
+test("createTelehealthToken still honors legacy plaintext invite_link sessions (no hash)", async () => {
+  const handler = await loadHandler("./createTelehealthToken/entry.ts", {
+    env: {},
+    makeClient: () => makeBase44({
+      user: null,
+      data: {
+        IntegrationSecret: [{ api_key: "KEYtest" }],
+        TelehealthSession: [{
+          room_name: "visit-legacy", host_email: "host@x.com", status: "scheduled",
+          scheduled_at: new Date().toISOString(),
+          invite_link: "https://app/join?room=visit-legacy&t=legacy-token-123",
+        }],
+      },
+    }),
+    fetchImpl: makeFetch([
+      { match: (u) => /\/v2\/rooms\?/.test(u), respond: () => ({ status: 200, json: { data: [{ id: "room_l", unique_name: "visit-legacy" }] } }) },
+      { match: (u) => u.includes("/actions/generate_join_client_token"), respond: () => ({ status: 200, json: { data: { token: "JOINL" } } }) },
+    ]).impl,
+  });
+  const res = await handler(new Request("https://app/functions/createTelehealthToken", {
+    method: "POST", body: JSON.stringify({ room_name: "visit-legacy", join_token: "legacy-token-123" }),
+  }));
+  assert.equal(res.status, 200, "pre-hash sessions keep working via the invite_link token");
+});
+
+test("rotateTelehealthJoinToken mints a fresh token and stores only its hash", async () => {
+  const writes = [];
+  const sessionRow = { id: "ts1", room_name: "visit-3", host_email: "host@x.com", status: "scheduled", participant_list: [] };
+  const mkHandler = (user) => loadHandler("./rotateTelehealthJoinToken/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ user, writes, data: { TelehealthSession: [sessionRow] } }),
+    fetchImpl: makeFetch([]).impl,
+  });
+
+  let handler = await mkHandler({ email: "host@x.com", role: "user" });
+  const res = await handler(new Request("https://app/functions/rotateTelehealthJoinToken", {
+    method: "POST", body: JSON.stringify({ session_id: "ts1" }),
+  }));
+  assert.equal(res.status, 200);
+  const out = await res.json();
+  assert.match(out.token, /^[0-9a-f]{48}$/, "returns a 192-bit hex token to the authorized staff caller");
+  const write = writes.find((w) => w.entity === "TelehealthSession" && w.op === "update" && w.id === "ts1");
+  assert.ok(write, "persists the rotation on the session");
+  assert.equal(write.patch.join_token_hash, createHash("sha256").update(out.token).digest("hex"), "stores the SHA-256 of the token, not the token");
+  assert.equal(write.patch.invite_link, null, "retires any legacy plaintext invite_link");
+  assert.ok(!JSON.stringify(write.patch).includes(out.token), "the raw token is never written at rest");
+
+  // A non-host, non-participant, non-admin caller must be refused.
+  handler = await mkHandler({ email: "other@x.com", role: "user" });
+  const forbidden = await handler(new Request("https://app/functions/rotateTelehealthJoinToken", {
+    method: "POST", body: JSON.stringify({ session_id: "ts1" }),
+  }));
+  assert.equal(forbidden.status, 403);
+
+  // Closed sessions must not get new capabilities minted.
+  sessionRow.status = "completed";
+  handler = await mkHandler({ email: "host@x.com", role: "user" });
+  const closed = await handler(new Request("https://app/functions/rotateTelehealthJoinToken", {
+    method: "POST", body: JSON.stringify({ session_id: "ts1" }),
+  }));
+  assert.equal(closed.status, 409);
+  sessionRow.status = "scheduled";
 });
 
 // ============================ WEBHOOK + CALL CONTROL BRIDGE ============================

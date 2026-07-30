@@ -69,6 +69,9 @@ async function checkInvokedBackendFunctionsExist() {
 
 async function checkClientWrappersTargetMatchingBackendFunctions() {
   for await (const file of sourceFiles(wrappersRoot)) {
+    // Colocated test files exercise the wrappers (mocking the client), they
+    // are not wrappers themselves — the one-invocation rule doesn't apply.
+    if (/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(file)) continue;
     const wrapperName = relative(wrappersRoot, file).replace(/\.[cm]?[jt]sx?$/, "");
     const src = await readFile(file, "utf8");
     const targets = [...src.matchAll(wrapperInvokePattern)].map((match) => match[1]);

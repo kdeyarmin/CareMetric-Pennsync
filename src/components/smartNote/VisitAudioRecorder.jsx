@@ -60,7 +60,11 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
         if (modeRef.current === "soap") {
           await processSOAP();
         } else {
-          const blob = new Blob(audioChunksRef.current, { type: "audio/mp3" });
+          // Use the recorder's actual container type. MediaRecorder with no
+          // explicit mimeType produces audio/webm (Opus) in Chromium, so
+          // labeling it audio/mp3 makes Whisper mis-decode by extension.
+          const type = mediaRecorderRef.current?.mimeType || "audio/webm";
+          const blob = new Blob(audioChunksRef.current, { type });
           setAudioUrl(URL.createObjectURL(blob));
           await processNarrative(blob);
         }
@@ -89,7 +93,9 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
   const processNarrative = async (blob) => {
     setProcessing(true);
     try {
-      const audioFile = new File([blob], `recording-${Date.now()}.mp3`, { type: "audio/mp3" });
+      const mime = blob.type || "audio/webm";
+      const ext = mime.split(";")[0].split("/")[1] || "webm";
+      const audioFile = new File([blob], `recording-${Date.now()}.${ext}`, { type: mime });
       const response = await base44.functions.invoke("transcribeAudioWithWhisper", { file: audioFile });
       const enhanced = enhanceTranscription(response.data?.text || "");
       setTranscript(enhanced);

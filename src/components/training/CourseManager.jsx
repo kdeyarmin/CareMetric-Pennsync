@@ -1,19 +1,22 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Edit2, Trash2, BookOpen, Eye, BarChart3, Copy, Loader2, CheckCircle2, AlertTriangle, Rocket } from "lucide-react";
+import { Plus, Edit2, Trash2, BookOpen, Eye, BarChart3, Copy, Loader2, CheckCircle2, AlertTriangle, Rocket, Clapperboard, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { resumeTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
 import CourseForm from "./CourseForm";
 import CourseLessonBuilder from "./CourseLessonBuilder";
 import CourseQuizBuilder from "./CourseQuizBuilder";
 import CourseAssignDialog from "./CourseAssignDialog";
 import AICourseGenerator from "./AICourseGenerator";
+import TrainingVideoStudio from "./TrainingVideoStudio";
+import { getCourseReadiness } from "./courseReadiness";
 import { createPageUrl } from "@/utils";
 import {
   Dialog,
@@ -59,6 +62,7 @@ export default function CourseManager() {
   // once the Details tab is saved — which is what unlocks the Lessons/Quiz tabs.
   const [builderCourse, setBuilderCourse] = useState(null);
   const [builderTab, setBuilderTab] = useState("details");
+  const [resumeProgress, setResumeProgress] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -173,6 +177,24 @@ export default function CourseManager() {
     },
   });
 
+  const submitReviewMutation = useMutation({
+    mutationFn: (courseId) =>
+      base44.entities.TrainingCourse.update(courseId, {
+        status: 'pending_review',
+        needs_sme_review: true,
+      }),
+    onSuccess: () => {
+      setBuilderCourse((prev) => (prev ? { ...prev, status: 'pending_review', needs_sme_review: true } : prev));
+      queryClient.invalidateQueries({ queryKey: ['training-courses'] });
+      queryClient.invalidateQueries({ queryKey: ['sme-review-queue'] });
+      toast.success('Course submitted for educator review. It will remain unavailable to learners until approved.');
+    },
+    onError: (err) => {
+      console.error('Review submission error:', err);
+      toast.error('Could not submit the course for review. Please try again.');
+    },
+  });
+
   const openBuilder = (course) => {
     setBuilderCourse(course);
     setBuilderTab("details");
@@ -212,20 +234,47 @@ export default function CourseManager() {
   };
 
   const hasCourseId = !!builderCourse?.id;
+  const builderReadiness = getCourseReadiness(builderCourse, builderModules, builderQuestions);
+  const requiresSmeReview = builderCourse?.ai_generated === true || builderCourse?.needs_sme_review === true;
+
+  // Finish an AI generation that was interrupted mid-run (missing lessons
+  // and/or quiz). The backend phases are idempotent, so this only fills gaps.
+  const resumeMutation = useMutation({
+    mutationFn: () =>
+      resumeTrainingCourseStepwise(
+        builderCourse,
+        {
+          missingModuleIndexes: builderReadiness.missingModuleIndexes,
+          regenerateAssessment: builderReadiness.questionCount === 0,
+        },
+        setResumeProgress
+      ),
+    onSuccess: () => {
+      setResumeProgress(null);
+      queryClient.invalidateQueries({ queryKey: ['training-modules', builderCourseId] });
+      queryClient.invalidateQueries({ queryKey: ['training-questions', builderCourseId] });
+      queryClient.invalidateQueries({ queryKey: ['training-courses'] });
+      toast.success('AI generation finished — review the lessons and quiz, then submit for review.');
+    },
+    onError: (err) => {
+      setResumeProgress(null);
+      console.error('Resume AI generation error:', err);
+      toast.error(err?.message || 'Could not resume the AI generation. Please try again.');
+    },
+  });
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-xl font-bold">Training Courses</h2>
         <div className="flex flex-wrap gap-2">
-          <AICourseGenerator onGenerated={handleGenerated} />
           <Button onClick={() => openBuilder(null)}>
             <Plus className="w-4 h-4 mr-2" />
-            Add Course
+            Build manually
           </Button>
         </div>
         <Dialog open={showForm} onOpenChange={(next) => (next ? setShowForm(true) : closeBuilder())}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
             <div className="bg-white rounded-2xl">
               <DialogHeader>
                 <DialogTitle>{builderCourse ? `Edit: ${builderCourse.title}` : 'Create New Course'}</DialogTitle>
@@ -234,6 +283,9 @@ export default function CourseManager() {
                 <TabsList>
                   <TabsTrigger value="details">Details</TabsTrigger>
                   <TabsTrigger value="lessons" disabled={!hasCourseId}>Lessons</TabsTrigger>
+                  <TabsTrigger value="videos" disabled={!hasCourseId}>
+                    <Clapperboard className="w-4 h-4 mr-1.5" /> Videos
+                  </TabsTrigger>
                   <TabsTrigger value="quiz" disabled={!hasCourseId}>Quiz</TabsTrigger>
                 </TabsList>
 
@@ -261,12 +313,30 @@ export default function CourseManager() {
                 <TabsContent value="quiz" className="mt-4">
                   <CourseQuizBuilder courseId={builderCourse?.id} />
                 </TabsContent>
+
+                <TabsContent value="videos" className="mt-4">
+                  <TrainingVideoStudio course={builderCourse} />
+                </TabsContent>
               </Tabs>
 
               {hasCourseId && (() => {
-                const lessonCount = builderModules.length;
-                const questionCount = builderQuestions.length;
+                const {
+                  lessonCount,
+                  questionCount,
+                  videoRequested,
+                  completedVideoCount,
+                  processingVideoCount,
+                  videosReady,
+                  blockers,
+                } = builderReadiness;
                 const isPublished = builderCourse.status === 'published';
+                const videoLabel = videoRequested
+                  ? videosReady
+                    ? `${completedVideoCount} presenter video${completedVideoCount === 1 ? '' : 's'} ready`
+                    : processingVideoCount > 0
+                      ? `${processingVideoCount} video${processingVideoCount === 1 ? '' : 's'} rendering`
+                      : 'Presenter videos need attention'
+                  : 'Presenter videos optional';
                 const ReadyRow = ({ ok, label, warn }) => (
                   <div className="flex items-center gap-2 text-sm">
                     {ok ? (
@@ -287,15 +357,40 @@ export default function CourseManager() {
                         <Badge className="bg-slate-200 text-slate-700">{builderCourse.status || 'draft'}</Badge>
                       )}
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                       <ReadyRow ok={lessonCount > 0} label={`${lessonCount} lesson${lessonCount === 1 ? '' : 's'}`} warn="Add at least one lesson" />
+                      <ReadyRow
+                        ok={!videoRequested || videosReady}
+                        label={videoLabel}
+                        warn={videoLabel}
+                      />
                       <ReadyRow ok={questionCount > 0} label={`${questionCount}-question test`} warn="Add quiz questions for the end-of-course test" />
                       <ReadyRow ok={builderCourse.enable_certificate !== false} label="Certificate on completion" warn="Certificate disabled" />
                     </div>
-                    {!isPublished && questionCount === 0 && (
+                    {!isPublished && blockers.length > 0 && (
                       <p className="text-xs text-amber-700 mt-3">
-                        Heads up: this course has no test yet. You can still publish it, but learners won&rsquo;t be graded or earn a certificate.
+                        {requiresSmeReview
+                          ? `Complete before review: ${blockers.join(' ')}`
+                          : blockers.join(' ')}
                       </p>
+                    )}
+                    {!isPublished && builderReadiness.aiResumable && (
+                      <div className="mt-3 flex items-center gap-3 flex-wrap rounded-lg border border-navy-200 bg-navy-50/60 p-3">
+                        <Button
+                          size="sm"
+                          onClick={() => resumeMutation.mutate()}
+                          disabled={resumeMutation.isPending}
+                        >
+                          {resumeMutation.isPending ? (
+                            <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />{resumeProgress ? `Step ${resumeProgress.step} of ${resumeProgress.totalSteps}: ${resumeProgress.label}` : 'Resuming…'}</>
+                          ) : (
+                            <><Sparkles className="w-4 h-4 mr-1.5" /> Resume AI generation</>
+                          )}
+                        </Button>
+                        <p className="text-xs text-slate-600 flex-1 min-w-[200px]">
+                          This AI course generation stopped early. Resume finishes the missing lessons and quiz using the original topic settings — nothing already generated is redone.
+                        </p>
+                      </div>
                     )}
                   </div>
                 );
@@ -313,16 +408,38 @@ export default function CourseManager() {
                 </div>
                 <div className="flex gap-2">
                   {hasCourseId && builderCourse.status !== 'published' && (
-                    <Button
-                      onClick={() => publishMutation.mutate(builderCourse.id)}
-                      disabled={publishMutation.isPending}
-                    >
-                      {publishMutation.isPending ? (
-                        <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Publishing…</>
+                    requiresSmeReview ? (
+                      builderCourse.status === 'pending_review' ? (
+                        <Button asChild variant="outline">
+                          <Link to={`${createPageUrl('AdminTraining')}?tab=review`}>
+                            <ShieldCheck className="w-4 h-4 mr-1.5" /> Open review queue
+                          </Link>
+                        </Button>
                       ) : (
-                        <><Rocket className="w-4 h-4 mr-1.5" /> Publish</>
-                      )}
-                    </Button>
+                        <Button
+                          onClick={() => submitReviewMutation.mutate(builderCourse.id)}
+                          disabled={submitReviewMutation.isPending || !builderReadiness.readyForReview}
+                          title={!builderReadiness.readyForReview ? builderReadiness.blockers.join(' ') : undefined}
+                        >
+                          {submitReviewMutation.isPending ? (
+                            <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Submitting…</>
+                          ) : (
+                            <><ShieldCheck className="w-4 h-4 mr-1.5" /> Submit for review</>
+                          )}
+                        </Button>
+                      )
+                    ) : (
+                      <Button
+                        onClick={() => publishMutation.mutate(builderCourse.id)}
+                        disabled={publishMutation.isPending}
+                      >
+                        {publishMutation.isPending ? (
+                          <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Publishing…</>
+                        ) : (
+                          <><Rocket className="w-4 h-4 mr-1.5" /> Publish</>
+                        )}
+                      </Button>
+                    )
                   )}
                   <Button variant="outline" onClick={closeBuilder}>Done</Button>
                 </div>
@@ -331,6 +448,8 @@ export default function CourseManager() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <AICourseGenerator onGenerated={handleGenerated} />
 
       <Card>
         <CardContent className="pt-6">

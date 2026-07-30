@@ -180,6 +180,10 @@ const MEDIUM_VALUE_COMORBIDITIES = [
 const ICD10_CLINICAL_GROUPS = {
   // Neuro/Rehab (G codes, stroke, etc.)
   'G': 'MMTA_Neuro_Rehab',
+  // Cerebrovascular block I60–I69 (stroke, hemorrhage, post-stroke sequelae like
+  // I61/I69) is Neuro/Stroke Rehab, not Cardiac. Longest-prefix wins so the
+  // Cardiac I50/I10/I25 below are unaffected. Matches the intake preview.
+  'I6': 'MMTA_Neuro_Rehab',
   'I63': 'MMTA_Neuro_Rehab', // Cerebral infarction
   'I64': 'MMTA_Neuro_Rehab', // Stroke
 
@@ -435,14 +439,17 @@ function validateAdmissionSource(data) {
   const m1000Val = String(m1000 || '').trim();
 
   let expectedSource = 'community';
+  // The extraction prompt emits "the checked code(s) or the facility type text"
+  // (e.g. "5 - IRF", "02", "Inpatient rehabilitation facility"), so match the
+  // digit anywhere in the value and the full facility-keyword set — a bare
+  // equality check classified "5 - IRF" / "LTCH" / "Inpatient psych" as
+  // community, producing false discrepancies and community-priced corrections.
+  // Mirrors the M1000 handling in src/components/hub-tabs/OASISAnalyzer.jsx.
   // 2=acute hospital, 3=LTCH, 4=SNF, 5=IRF, 6=psychiatric hospital/unit — ALL
-  // institutional under PDGM (5/6 previously classified community, validating
-  // and even auto-correcting an institutional period to community pricing).
-  if (['2', '3', '4', '5', '6'].includes(m1000Val) ||
-      m1000Val.toLowerCase().includes('hospital') ||
-      m1000Val.toLowerCase().includes('snf') ||
-      m1000Val.toLowerCase().includes('skilled nursing') ||
-      m1000Val.toLowerCase().includes('acute')) {
+  // institutional under PDGM.
+  const m1000Digit = (m1000Val.replace(/^0+(?=\d)/, '').match(/\b([1-7])\b/) || [])[1];
+  if (['2', '3', '4', '5', '6'].includes(m1000Digit) ||
+      /hospital|snf|skilled nursing|acute|inpatient|rehab|irf|ltch|psych/i.test(m1000Val)) {
     expectedSource = 'institutional';
   }
 
@@ -487,9 +494,12 @@ function validatePrimaryDiagnosis(data) {
   let diagnosisCode = data.primary_diagnosis_code || '';
   const diagnosisDescription = data.primary_diagnosis || data.primary_diagnosis_description || '';
 
-  // If no explicit code, try to extract from description
+  // If no explicit code, try to extract from description. Allow alphanumerics
+  // in the 3rd character and after the decimal — 7th-character extensions
+  // (S72.001A), M1A/C4A/Z3A codes — or the old digits-only pattern captured a
+  // dangling "S72." out of "S72.001A - hip fx".
   if (!diagnosisCode && diagnosisDescription) {
-    const codeMatch = diagnosisDescription.match(/\b([A-Z]\d{2}\.?\d{0,2})\b/i);
+    const codeMatch = diagnosisDescription.match(/\b([A-Z][0-9][0-9A-Z]\.?[A-Z0-9]{0,4})\b/i);
     if (codeMatch) {
       diagnosisCode = codeMatch[1].toUpperCase();
     }
@@ -500,10 +510,15 @@ function validatePrimaryDiagnosis(data) {
     diagnosisCode = data.m1021_primary_diagnosis_code || '';
   }
 
-  // Validate the code format if we have one
+  // Validate the code format if we have one. The 3rd character may be a letter
+  // in valid ICD-10-CM codes (M1A.0, C4A, Z3A, O9A) and the characters after
+  // the decimal may include letters (7th-character extensions like S72.001A —
+  // the norm for fracture/aftercare codes). Mirrors the readiness-checklist
+  // pattern in src/components/oasis/oasisReadinessChecklist.js; the previous
+  // digits-only pattern flagged those valid, common codes as invalid.
   if (diagnosisCode) {
     const cleanCode = diagnosisCode.toUpperCase().replace(/[^A-Z0-9.]/g, '');
-    const validFormat = /^[A-Z]\d{2}\.?\d{0,4}$/.test(cleanCode);
+    const validFormat = /^[A-Z][0-9][0-9A-Z]\.?[A-Z0-9]{0,4}$/.test(cleanCode);
 
     if (!validFormat) {
       discrepancies.push({
@@ -534,6 +549,22 @@ function validatePrimaryDiagnosis(data) {
   };
 }
 
+// Parse a date value for calendar-day math: date-only "YYYY-MM-DD" strings are
+// parsed as LOCAL midnight (a bare `new Date("2025-01-31")` is UTC midnight,
+// which mixes badly with locally-parsed "01/01/2025" values); everything else
+// falls through to the platform parser. Returns null when unparseable. Mirrors
+// toLocalDate in src/components/oasis/dischargeComplianceEnforcer.js.
+function parseDateForDayMath(v) {
+  if (!v) return null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(v).trim());
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 // Validate episode timing from dates
 function validateEpisodeTiming(data) {
   const discrepancies = [];
@@ -561,13 +592,19 @@ function validateEpisodeTiming(data) {
   // Calculate from dates if available
   if (socDate && assessmentDate) {
     try {
-      const soc = new Date(socDate);
-      const assessment = new Date(assessmentDate);
-      // Invalid dates produce NaN (no throw), which would leave daysSinceSoc as
-      // NaN and surface "Days since SOC: NaN" in the evidence. Only compute when
-      // both dates parse.
-      if (!Number.isNaN(soc.getTime()) && !Number.isNaN(assessment.getTime())) {
-        daysSinceSoc = Math.floor((assessment - soc) / (1000 * 60 * 60 * 24));
+      // Whole CALENDAR days, not a raw-millisecond floor: a floor-of-ms diff
+      // undercounts by one across spring-forward DST (03/01 -> 03/31 in a US
+      // zone is 29.96 days of ms) and whenever the formats mix local-parsed
+      // (MM/DD/YYYY) with UTC-parsed (YYYY-MM-DD) dates — letting day 31 of
+      // care validate as "early". Mirrors daysBetween in
+      // src/components/oasis/dischargeComplianceEnforcer.js.
+      const soc = parseDateForDayMath(socDate);
+      const assessment = parseDateForDayMath(assessmentDate);
+      if (soc && assessment) {
+        daysSinceSoc = Math.round(
+          (Date.UTC(assessment.getFullYear(), assessment.getMonth(), assessment.getDate()) -
+            Date.UTC(soc.getFullYear(), soc.getMonth(), soc.getDate())) / (1000 * 60 * 60 * 24)
+        );
 
         // Day 31 of care (daysSinceSoc >= 30, zero-based) starts the second
         // 30-day period — '> 30' validated day 31 as "early".
@@ -754,9 +791,13 @@ Deno.serve(async (req) => {
       },
       original: originalRevenue,
       corrected: correctedRevenue,
-      revenueDifference: revenueDifference ? Math.round(revenueDifference * 100) / 100 : null,
-      percentageIncrease: percentageIncrease ? parseFloat(percentageIncrease) : null,
-      financialImpact: revenueDifference ? {
+      // Gate on "a correction was computed" (revenueDifference != null), not on
+      // truthiness — a legitimate $0.00 delta was reported as null while
+      // percentageIncrease (the truthy string '0.00') was reported as 0, so
+      // consumers couldn't distinguish "no correction" from "no change".
+      revenueDifference: revenueDifference != null ? Math.round(revenueDifference * 100) / 100 : null,
+      percentageIncrease: percentageIncrease != null ? parseFloat(percentageIncrease) : null,
+      financialImpact: revenueDifference != null ? {
         perEpisode: Math.round(revenueDifference * 100) / 100,
         annual30Episodes: Math.round(revenueDifference * 30 * 100) / 100,
         annual60Episodes: Math.round(revenueDifference * 60 * 100) / 100

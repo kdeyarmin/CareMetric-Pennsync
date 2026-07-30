@@ -6,13 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Sparkles, Loader2, AlertTriangle, Film, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Sparkles, Loader2, AlertTriangle, Film, ChevronDown, ChevronUp,
+  BookOpenCheck, FileQuestion, Award, CheckCircle2,
+} from "lucide-react";
 import { generateTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
 import PresenterPicker from "@/components/training/PresenterPicker";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
@@ -27,6 +28,12 @@ const AUDIENCE_ROLES = [
 ];
 
 const DEFAULT_QUESTION_TYPES = ["mcq", "true_false", "scenario_based"];
+const COURSE_OUTPUTS = [
+  { icon: BookOpenCheck, label: "Course design & lessons" },
+  { icon: Film, label: "Presenter scripts & HeyGen videos" },
+  { icon: FileQuestion, label: "End-of-course quiz" },
+  { icon: Award, label: "Certificate after passing" },
+];
 
 // One-topic-and-go AI course creation. The heavy lifting (course + lessons +
 // quiz + optional HeyGen presenter videos) is done by the generateTrainingCourse
@@ -35,11 +42,11 @@ const DEFAULT_QUESTION_TYPES = ["mcq", "true_false", "scenario_based"];
 // required input to just a topic and hands the new course id back so the caller
 // can open it in the builder for review.
 export default function AICourseGenerator({ onGenerated }) {
-  const [open, setOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState("");
+  const [failedDraftId, setFailedDraftId] = useState(null);
   const [form, setForm] = useState({
     topic: "",
     training_category: "compliance",
@@ -48,9 +55,11 @@ export default function AICourseGenerator({ onGenerated }) {
     lesson_length: 30,
     question_count: 10,
     custom_instructions: "",
-    generate_videos: false,
+    generate_videos: true,
     video_avatar_id: "",
     video_voice_id: "",
+    passing_score: 80,
+    certificate_valid_months: 12,
   });
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
@@ -68,6 +77,7 @@ export default function AICourseGenerator({ onGenerated }) {
 
   const reset = () => {
     setError("");
+    setFailedDraftId(null);
     setLoading(false);
     setProgress(null);
   };
@@ -79,6 +89,7 @@ export default function AICourseGenerator({ onGenerated }) {
     }
     setLoading(true);
     setError("");
+    setFailedDraftId(null);
     try {
       const payload = {
         topic: form.topic.trim(),
@@ -94,6 +105,9 @@ export default function AICourseGenerator({ onGenerated }) {
         generate_videos: form.generate_videos,
         video_avatar_id: form.video_avatar_id.trim(),
         video_voice_id: form.video_voice_id.trim(),
+        passing_score: Number(form.passing_score) || 80,
+        enable_certificate: true,
+        certificate_valid_months: Number(form.certificate_valid_months) || 12,
       };
       const data = await generateTrainingCourseStepwise(payload, setProgress);
       if (!data?.success || !data?.course_id) {
@@ -110,20 +124,23 @@ export default function AICourseGenerator({ onGenerated }) {
         toast.success("Course generated as a draft. Review and publish when ready.");
       }
 
-      setOpen(false);
       reset();
       onGenerated?.(data.course_id);
     } catch (err) {
       const friendly = configNotReadyMessage(err);
       if (!friendly) console.error("AI course generation failed:", err);
       const base = friendly || err?.message || "Failed to generate the course. Please try again.";
-      // A later phase failed after the draft was created — tell the admin where
-      // the partial draft is instead of leaving a mystery course in the list.
-      setError(
-        err?.course_id
-          ? `${base} A draft ("${err.course_title || "Untitled"}") was created with partial content — you can finish or delete it in the course builder.`
-          : base
-      );
+      // A later phase failed after the draft was created — point the admin at
+      // the partial draft (the builder offers "Resume AI generation" there)
+      // instead of leaving a mystery course in the list.
+      if (err?.course_id) {
+        setFailedDraftId(err.course_id);
+        setError(
+          `${base} A draft ("${err.course_title || "Untitled"}") was created with partial content — open it to resume the AI generation, or delete it.`
+        );
+      } else {
+        setError(base);
+      }
     } finally {
       setLoading(false);
       setProgress(null);
@@ -131,49 +148,67 @@ export default function AICourseGenerator({ onGenerated }) {
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (loading) return; // don't drop the dialog mid-generation
-        setOpen(next);
-        if (!next) reset();
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="outline" className="border-navy-200 text-navy-700 hover:bg-navy-50">
-          <Sparkles className="w-4 h-4 mr-2" />
-          Generate with AI
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-navy-600" /> Generate a Course with AI
-          </DialogTitle>
-        </DialogHeader>
+    <Card className="overflow-hidden border-navy-200 bg-gradient-to-br from-navy-50 via-white to-blue-50">
+      <CardContent className="p-5 sm:p-6 space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-navy-100 px-3 py-1 text-xs font-semibold text-navy-700 mb-2">
+              <Sparkles className="w-3.5 h-3.5" /> AI Course Studio
+            </div>
+            <h2 className="text-xl font-bold text-slate-900">What should your team learn?</h2>
+            <p className="text-sm text-slate-600 mt-1 max-w-2xl">
+              Enter one topic. AI builds the complete draft course, writes every presenter script, creates the quiz, and prepares certificate issuance.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs text-slate-700 shrink-0">
+            {COURSE_OUTPUTS.map(({ icon: Icon, label }) => (
+              <span key={label} className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <Icon className="w-3.5 h-3.5 text-navy-600" />
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
 
-        <Alert className="bg-amber-50 border-amber-200">
+        <Alert className="bg-amber-50/80 border-amber-200">
           <AlertTriangle className="w-4 h-4 text-amber-600" />
           <AlertDescription className="text-amber-900 text-sm">
-            AI-generated courses are created as a <strong>draft</strong> for you to review, edit, and publish. Nothing reaches learners until you publish it.
+            The finished course stays in <strong>draft</strong> until an educator reviews and publishes it.
           </AlertDescription>
         </Alert>
 
-        <div className="space-y-4 mt-2">
+        <div className="space-y-4">
           <div>
-            <Label className="text-sm font-semibold">Training Topic *</Label>
-            <Input
-              value={form.topic}
-              onChange={(e) => set({ topic: e.target.value })}
-              placeholder="e.g. Infection Control, Falls Prevention, OASIS M-Item Documentation"
-              className="h-11 mt-1"
-              disabled={loading}
-              autoFocus
-            />
+            <Label htmlFor="ai-course-topic" className="text-sm font-semibold">Course topic *</Label>
+            <div className="flex flex-col sm:flex-row gap-2 mt-1.5">
+              <Input
+                id="ai-course-topic"
+                value={form.topic}
+                onChange={(e) => set({ topic: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && form.topic.trim() && !loading && isAdminUser) handleGenerate();
+                }}
+                placeholder="e.g. Preventing falls during home health visits"
+                className="h-12 bg-white text-base"
+                disabled={loading}
+              />
+              <Button
+                onClick={handleGenerate}
+                disabled={loading || !form.topic.trim() || !isAdminUser}
+                className="h-12 px-6 whitespace-nowrap"
+              >
+                {loading ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Building course…</>
+                ) : (
+                  <><Sparkles className="w-4 h-4 mr-2" /> Build complete course</>
+                )}
+              </Button>
+            </div>
             <p className="text-xs text-slate-400 mt-1">This is the only required field — everything else has sensible defaults.</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-white/80 p-4">
             <div>
               <Label className="text-sm font-semibold">Category</Label>
               <Select value={form.training_category} onValueChange={(v) => set({ training_category: v })} disabled={loading}>
@@ -251,8 +286,7 @@ export default function AICourseGenerator({ onGenerated }) {
             </div>
           </div>
 
-          {/* HeyGen presenter videos */}
-          <div className="rounded-xl border border-slate-200 p-3">
+          <div className="rounded-xl border border-slate-200 bg-white/80 p-3">
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -286,7 +320,6 @@ export default function AICourseGenerator({ onGenerated }) {
             )}
           </div>
 
-          {/* Advanced */}
           <div>
             <button
               type="button"
@@ -295,24 +328,66 @@ export default function AICourseGenerator({ onGenerated }) {
               disabled={loading}
             >
               {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              Extra instructions (optional)
+              More course settings
             </button>
             {showAdvanced && (
-              <Textarea
-                value={form.custom_instructions}
-                onChange={(e) => set({ custom_instructions: e.target.value })}
-                placeholder="Anything specific to emphasize, cite, or avoid — e.g. 'focus on CMS CoP §484.50 and include a hand-hygiene scenario'."
-                rows={3}
-                className="mt-2"
-                disabled={loading}
-              />
+              <div className="mt-3 rounded-xl border border-slate-200 bg-white/80 p-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="ai-course-passing-score" className="text-sm font-semibold">Passing score (%)</Label>
+                    <Input
+                      id="ai-course-passing-score"
+                      type="number" min="1" max="100"
+                      value={form.passing_score}
+                      onChange={(e) => set({ passing_score: e.target.value })}
+                      className="h-11 mt-1"
+                      disabled={loading}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="ai-course-certificate-validity" className="text-sm font-semibold">Certificate valid for (months)</Label>
+                    <Input
+                      id="ai-course-certificate-validity"
+                      type="number" min="1" max="120"
+                      value={form.certificate_valid_months}
+                      onChange={(e) => set({ certificate_valid_months: e.target.value })}
+                      className="h-11 mt-1"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="ai-course-instructions" className="text-sm font-semibold">Extra instructions (optional)</Label>
+                  <Textarea
+                    id="ai-course-instructions"
+                    value={form.custom_instructions}
+                    onChange={(e) => set({ custom_instructions: e.target.value })}
+                    placeholder="Anything specific to emphasize, cite, or avoid — e.g. 'focus on CMS CoP §484.50 and include a hand-hygiene scenario'."
+                    rows={3}
+                    className="mt-1"
+                    disabled={loading}
+                  />
+                </div>
+              </div>
             )}
           </div>
 
           {error && (
             <Alert className="border-red-200 bg-red-50">
               <AlertTriangle className="w-4 h-4 text-red-600" />
-              <AlertDescription className="text-red-800">{error}</AlertDescription>
+              <AlertDescription className="text-red-800">
+                {error}
+                {failedDraftId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 block"
+                    onClick={() => onGenerated?.(failedDraftId)}
+                  >
+                    Open the draft
+                  </Button>
+                )}
+              </AlertDescription>
             </Alert>
           )}
 
@@ -324,25 +399,18 @@ export default function AICourseGenerator({ onGenerated }) {
             </Alert>
           )}
 
-          <div className="flex items-center gap-3 pt-1">
-            <Button onClick={handleGenerate} disabled={loading || !form.topic.trim() || !isAdminUser}>
-              {loading ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating…</>
-              ) : (
-                <><Sparkles className="w-4 h-4 mr-2" /> Generate Course</>
-              )}
-            </Button>
-            {loading && (
-              <span className="text-sm text-slate-500">
+          {loading && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3" role="status">
+              <p className="text-sm font-medium text-blue-900">
                 {progress
                   ? `Step ${progress.step} of ${progress.totalSteps}: ${progress.label}`
-                  : "Starting generation…"}{" "}
-                This can take a few minutes.
-              </span>
-            )}
-          </div>
+                  : "Starting generation…"}
+              </p>
+              <p className="text-xs text-blue-700 mt-0.5">Keep this page open. HeyGen videos continue rendering in the background after the draft is ready.</p>
+            </div>
+          )}
         </div>
-      </DialogContent>
-    </Dialog>
+      </CardContent>
+    </Card>
   );
 }

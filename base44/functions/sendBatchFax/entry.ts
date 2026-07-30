@@ -63,21 +63,33 @@ function officeFaxDisplayName(officeE164) {
   return `Office Fax ${ten.slice(0, 3)}-${ten.slice(3, 6)}-${ten.slice(6)}`;
 }
 
-const PREMIUM_AREA_CODES = new Set(['900', '976']);
+// <<<BEGIN SHARED HELPER: isAllowedDestination — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Cost-control destination gate. Single source of truth is the frontend
+// src/components/voice/costControls.js — this copy is generated from it verbatim.
+const PREMIUM_AREA_CODES = new Set(["900", "976"]);
 function isAllowedDestination(e164, settings = {}) {
   const s = settings || {};
-  const e = String(e164 || '').trim();
-  if (/^\+1\d{10}$/.test(e)) {
+  const e = String(e164 || "").trim();
+  const isNanp = /^\+1\d{10}$/.test(e);
+
+  if (isNanp) {
     const areaCode = e.slice(2, 5);
-    if (PREMIUM_AREA_CODES.has(areaCode)) return { allowed: false, reason: 'premium_number_blocked' };
-    const blocked = Array.isArray(s.blocked_area_codes) ? s.blocked_area_codes.map((a) => String(a).replace(/[^\d]/g, '')) : [];
-    if (blocked.includes(areaCode)) return { allowed: false, reason: 'blocked_area_code' };
-    return { allowed: true, reason: 'allowed' };
+    if (PREMIUM_AREA_CODES.has(areaCode)) return { allowed: false, reason: "premium_number_blocked" };
+    const blocked = Array.isArray(s.blocked_area_codes) ? s.blocked_area_codes.map((a) => String(a).replace(/[^\d]/g, "")) : [];
+    if (blocked.includes(areaCode)) return { allowed: false, reason: "blocked_area_code" };
+    return { allowed: true, reason: "allowed" };
   }
-  if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: 'invalid_destination' };
-  if (s.allow_international === true) return { allowed: true, reason: 'international_allowed' };
-  return { allowed: false, reason: 'international_blocked' };
+
+  // A +1-prefixed number that isn't exactly 10 NANP digits is malformed, not
+  // international — never let the international toggle dial/text a broken US number.
+  if (/^\+1/.test(e)) return { allowed: false, reason: "invalid_destination" };
+
+  // Not a +1 NANP number → treat as international.
+  if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: "invalid_destination" };
+  if (s.allow_international === true) return { allowed: true, reason: "international_allowed" };
+  return { allowed: false, reason: "international_blocked" };
 }
+// <<<END SHARED HELPER: isAllowedDestination>>>
 function blockedReasonMessage(reason) {
   switch (reason) {
     case 'premium_number_blocked': return 'Premium-rate numbers (900/976) are blocked.';
@@ -86,6 +98,18 @@ function blockedReasonMessage(reason) {
     case 'invalid_destination': return "That doesn't look like a valid fax number.";
     default: return "That destination isn't allowed.";
   }
+}
+
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+function isInternalInvoke(body) {
+  const expected = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expected) return false;
+  return timingSafeEqualStr(String(body?.internal_secret || '').trim(), expected);
 }
 
 async function resolveTelnyxCreds(base44) {
@@ -110,16 +134,20 @@ async function resolveTelnyxCreds(base44) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    const user = await base44.auth.me().catch(() => null);
     // NOTE: from_number is intentionally NOT read from the body. Every fax goes
     // out from the single shared office number (resolved server-side below) so a
     // caller can't spoof the agency's caller-ID or misroute reply/DLR traffic.
-    const { file_url, to_numbers, document_name, patient_id, cover_page_details, priority, from_name } = await req.json();
+    const body = await req.json();
+    const internalOk = isInternalInvoke(body);
+    if (!user && !internalOk) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { file_url, to_numbers, document_name, patient_id, cover_page_details, priority, from_name, sent_by: bodySentBy } = body;
+    // Scheduled-fax cron has no session; attribute FaxLog.sent_by to the
+    // ScheduledFax creator (or a stable system marker) so DLR notifications still route.
+    const senderEmail = user?.email || (typeof bodySentBy === 'string' && bodySentBy.trim() ? bodySentBy.trim() : 'scheduler@system');
 
     const normalizedRecipients = Array.isArray(to_numbers)
       ? to_numbers.map((num) => typeof num === 'string' ? num.trim() : '').filter(Boolean)
@@ -215,7 +243,7 @@ Deno.serve(async (req) => {
         // Idempotency: skip a recent identical (recipient + document + sender) send
         // so a double-submit doesn't fax + charge the same PHI document twice.
         const recent = await base44.asServiceRole.entities.FaxLog
-          .filter({ to_number, document_url: file_url, sent_by: user.email }, '-created_date', 5)
+          .filter({ to_number, document_url: file_url, sent_by: senderEmail }, '-created_date', 5)
           .catch(() => []);
         const dupe = (recent || []).find((f) => f.created_date && f.created_date >= recentCutoff && f.status !== 'failed');
         if (dupe) {
@@ -223,14 +251,14 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const faxLog = await base44.entities.FaxLog.create({
+        const faxLog = await base44.asServiceRole.entities.FaxLog.create({
           from_number: telnyxFromNumber,
           to_number,
           document_url: file_url,
           document_name: document_name || 'Batch Fax',
           status: 'queued',
           patient_id: patient_id || null,
-          sent_by: user.email,
+          sent_by: senderEmail,
           cover_page_details: cover_page_details || null,
           priority: finalPriority,
           estimated_cost: estimatedCostPerPage
@@ -272,18 +300,29 @@ Deno.serve(async (req) => {
 
         const telnyxData = await telnyxResponse.json().catch(() => ({}));
 
+        // Bookkeeping uses the service role (matching the create above): the
+        // scheduled-fax cron invokes this function with NO user session, so a
+        // user-scoped update would be rejected by RLS AFTER Telnyx already
+        // accepted the fax — reporting a transmitted PHI fax as failed and
+        // stranding the row 'queued' with no telnyx_fax_id (unreconcilable by
+        // the DLR webhook and both pollers). A bookkeeping failure after a 2xx
+        // must also not be reported as a send failure, so it's caught here.
         if (telnyxResponse.ok) {
-          await base44.entities.FaxLog.update(faxLog.id, {
-            telnyx_fax_id: telnyxData?.data?.id,
-            status: 'sending'
-          });
+          try {
+            await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
+              telnyx_fax_id: telnyxData?.data?.id,
+              status: 'sending'
+            });
+          } catch (postErr) {
+            console.error('sendBatchFax post-send bookkeeping failed:', postErr);
+          }
           results.push({ to_number, success: true, fax_id: telnyxData?.data?.id });
         } else {
           const failureReason = telnyxData?.errors?.[0]?.detail || telnyxData?.errors?.[0]?.title || 'Failed to send';
-          await base44.entities.FaxLog.update(faxLog.id, {
+          await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
             status: 'failed',
             failure_reason: failureReason
-          });
+          }).catch((err) => console.error('sendBatchFax failure bookkeeping failed:', err));
           results.push({ to_number, success: false, error: failureReason });
         }
       } catch (error) {

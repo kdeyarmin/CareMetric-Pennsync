@@ -4,20 +4,30 @@ import { jsPDF } from 'npm:jspdf@2.5.2';
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
-        const user = await base44.auth.me();
-
-        if (!user) {
+        const user = await base44.auth.me().catch(() => null);
+        const body = await req.json();
+        const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+        const providedSecret = String(body?.internal_secret || '').trim();
+        let internalOk = false;
+        if (expectedSecret && providedSecret.length === expectedSecret.length) {
+          let mismatch = 0;
+          for (let i = 0; i < expectedSecret.length; i++) {
+            mismatch |= expectedSecret.charCodeAt(i) ^ providedSecret.charCodeAt(i);
+          }
+          internalOk = mismatch === 0;
+        }
+        if (!user && !internalOk) {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { certificate_id } = await req.json();
+        const { certificate_id } = body;
 
         if (!certificate_id) {
             return Response.json({ error: 'certificate_id is required' }, { status: 400 });
         }
 
-        // Fetch certificate record
-        const certificates = await base44.entities.TrainingCertificate.filter({ certificate_id }, undefined, 5000);
+        // Fetch certificate record (service-role for nested issueCertificate path)
+        const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ certificate_id }, undefined, 5000);
         
         if (!certificates || certificates.length === 0) {
             return Response.json({ error: 'Certificate not found' }, { status: 404 });
@@ -25,9 +35,12 @@ Deno.serve(async (req) => {
 
         const certificate = certificates[0];
 
-        // Verify user owns this certificate or is admin
-        if (certificate.user_id !== user.email && user.role !== 'admin') {
-            return Response.json({ error: 'Forbidden' }, { status: 403 });
+        // Verify user owns this certificate or is admin (skip when trusted internal invoke)
+        if (!internalOk) {
+            const isAdmin = user.role === 'admin' || user.account_type === 'agency_admin' || user.account_type === 'super_admin';
+            if (certificate.user_id !== user.email && !isAdmin) {
+                return Response.json({ error: 'Forbidden' }, { status: 403 });
+            }
         }
 
         // Generate PDF

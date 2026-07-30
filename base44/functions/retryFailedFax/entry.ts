@@ -96,15 +96,34 @@ Deno.serve(async (req) => {
 
     const originalFax = faxLogs[0];
 
-    // Ownership: only the original sender (or an admin) may resend a PHI fax.
-    if (originalFax.sent_by && originalFax.sent_by !== user.email && user.role !== 'admin') {
+    // Ownership: only the original sender (or an admin-tier user) may resend a PHI fax.
+    const isAdmin = user.role === 'admin' || user.account_type === 'agency_admin' || user.account_type === 'super_admin';
+    if (originalFax.sent_by && originalFax.sent_by !== user.email && !isAdmin) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const maxRetries = 3;
+    // Only a FAILED fax may be retried. Without this, a stale UI (or a direct
+    // call) can re-fax a document that is queued/in-flight/delivered — a
+    // duplicate PHI transmission the claim token below does not prevent (it
+    // only guards CONCURRENT retries, not retries of non-failed faxes).
+    if (originalFax.status !== 'failed') {
+      return Response.json({
+        error: `Only failed faxes can be retried (current status: ${originalFax.status || 'unknown'})`,
+        success: false
+      }, { status: 409 });
+    }
 
-    // Check retry limit
-    if (originalFax.retry_count >= maxRetries) {
+    // Honor the admin-configured retry budget (FaxRetryConfig.max_retries) so a
+    // manual retry uses the same limit as the auto-retry cron, instead of a
+    // separate hardcoded value. Falls back to 3 when no config row exists.
+    const retryCfgRows = await base44.asServiceRole.entities.FaxRetryConfig
+      .list('-created_date', 1).catch(() => []);
+    const cfgMax = Number(retryCfgRows?.[0]?.max_retries);
+    const maxRetries = Number.isFinite(cfgMax) && cfgMax >= 0 ? cfgMax : 3;
+
+    // Check retry limit — coerce undefined retry_count to 0 so max_retries: 0
+    // actually blocks (undefined >= 0 is false in JS).
+    if ((Number(originalFax.retry_count) || 0) >= maxRetries) {
       return Response.json({
         error: `Maximum retries (${maxRetries}) exceeded`,
         success: false

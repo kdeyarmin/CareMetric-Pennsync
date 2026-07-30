@@ -15,16 +15,33 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
 
-  const checkUserAuth = useCallback(async () => {
+  // `silent` re-fetches the current user WITHOUT flipping the global
+  // isLoadingAuth flag — used by refreshUser() so re-reading the user (e.g.
+  // after accepting the AI content agreement) doesn't unmount the whole route
+  // tree behind the boot-time <PageLoader />. A failed silent refresh also
+  // leaves the existing session intact rather than tearing it down on a
+  // transient error.
+  const checkUserAuth = useCallback(async ({ silent = false } = {}) => {
     try {
-      // Now check if the user is authenticated
-      setIsLoadingAuth(true);
+      if (!silent) setIsLoadingAuth(true);
       const currentUser = await base44.auth.me();
       setUser(currentUser);
       setIsAuthenticated(true);
-      setIsLoadingAuth(false);
+      if (!silent) setIsLoadingAuth(false);
     } catch (error) {
       console.error('User auth check failed:', error);
+      if (silent) {
+        // 401/403 means the token has expired or been revoked — the session is
+        // genuinely invalid, not just transiently unreachable, so propagate the
+        // auth error even in silent mode. Other errors (network, 5xx) are
+        // transient; leave the existing session intact.
+        if (error.status === 401 || error.status === 403) {
+          setUser(null);
+          setIsAuthenticated(false);
+          setAuthError({ type: 'auth_required', message: 'Authentication required' });
+        }
+        return;
+      }
       setIsLoadingAuth(false);
       setIsAuthenticated(false);
 
@@ -33,6 +50,17 @@ export const AuthProvider = ({ children }) => {
         setAuthError({
           type: 'auth_required',
           message: 'Authentication required'
+        });
+      } else {
+        // Non-auth failure (network blip, 5xx) with a token still in storage:
+        // this is a backend/connectivity outage, not a missing session. With no
+        // authError set, AuthenticatedApp would fall through to <SignInScreen />
+        // and mislead the user into re-entering credentials to "fix" an outage
+        // — the exact failure mode the public-settings fetch already guards
+        // against. Surface the real error instead.
+        setAuthError({
+          type: 'unknown',
+          message: error.message || 'Could not reach the server. Check your connection and try again.'
         });
       }
     }
@@ -163,7 +191,8 @@ export const AuthProvider = ({ children }) => {
       checkAppState,
       // Re-fetch the current user (e.g. after they accept the AI content
       // responsibility agreement) so gates keyed off `user` re-evaluate.
-      refreshUser: checkUserAuth
+      // Silent so it doesn't flash the full-app boot loader mid-session.
+      refreshUser: () => checkUserAuth({ silent: true })
     }}>
       {children}
     </AuthContext.Provider>

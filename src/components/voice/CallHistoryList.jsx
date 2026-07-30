@@ -19,8 +19,10 @@ import { PhoneEmptyState } from "@/components/phone/PhoneFrame";
 
 const MODE_LABEL = {
   masked_bridge: "Incoming",
-  off_duty_transfer: "Off-duty transfer",
+  office_transfer: "Transferred to office",
+  voicemail: "Voicemail",
   outbound_clicktocall: "Outgoing",
+  unresolved: "Unresolved",
 };
 
 // Post-call disposition options the nurse can tag a call with.
@@ -46,7 +48,7 @@ function isMissed(call) {
 }
 
 function CallTypeIcon({ call }) {
-  if (call.call_mode === "off_duty_transfer") return <PhoneForwarded className="h-3.5 w-3.5 text-navy-600" />;
+  if (call.call_mode === "office_transfer") return <PhoneForwarded className="h-3.5 w-3.5 text-navy-600" />;
   if (call.direction === "outbound") return <PhoneOutgoing className="h-3.5 w-3.5 text-slate-500" />;
   if (isMissed(call)) return <PhoneMissed className="h-3.5 w-3.5 text-red-500" />;
   return <PhoneIncoming className="h-3.5 w-3.5 text-green-600" />;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,23 +11,35 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { toast } from "sonner";
 import { createPageUrl } from "@/utils";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import SignatureCanvas from "../components/documents/SignatureCanvas";
 import { sanitizeHtml } from "@/components/utils/security";
 
 export default function SignDocument() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const urlParams = new URLSearchParams(window.location.search);
-  const signatureId = urlParams.get('signature_id');
+  // useSearchParams (not window.location.search read at render) so a
+  // same-route navigation to a different ?signature_id re-renders with the new
+  // id — App.jsx memoizes route elements, so only location-context subscribers
+  // re-render on a query-only navigation.
+  const [searchParams] = useSearchParams();
+  const signatureId = searchParams.get('signature_id');
   // URL patient_id is a legacy fallback for records with no patient_id of
   // their own — it must never OVERRIDE the record: a crafted link could show
   // one patient's name beside another patient's document.
-  const urlPatientId = urlParams.get('patient_id');
+  const urlPatientId = searchParams.get('patient_id');
 
   const [showSignatureDialog, setShowSignatureDialog] = useState(false);
   const [currentSignerIndex, setCurrentSignerIndex] = useState(0);
   const [signatures, setSignatures] = useState({});
+
+  // A same-route id change shows a different document — partially collected
+  // signatures from the previous one must never carry over.
+  useEffect(() => {
+    setSignatures({});
+    setCurrentSignerIndex(0);
+    setShowSignatureDialog(false);
+  }, [signatureId]);
 
   const { data: _currentUser } = useQuery({
     queryKey: ['currentUser'],

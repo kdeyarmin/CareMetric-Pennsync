@@ -1,4 +1,4 @@
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import OASISNoAnalysisCard from "@/components/oasis/OASISNoAnalysisCard";
 import OASISDocumentationQualityScorer from "@/components/oasis/OASISDocumentationQualityScorer";
 import AIDocumentReviewer from "@/components/oasis/AIDocumentReviewer";

@@ -8,6 +8,7 @@ import {
 import { base44 } from "@/api/base44Client";
 import { manageTrainingVideos } from "@/functions/manageTrainingVideos";
 import PresenterPicker from "@/components/training/PresenterPicker";
+import ModuleScriptPanel from "@/components/training/ModuleScriptPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,9 +27,10 @@ const statusMeta = {
   none: { label: "No video", cls: "bg-slate-100 text-slate-600", icon: Video },
 };
 
-export default function TrainingVideoStudio() {
+export default function TrainingVideoStudio({ course = null }) {
   const queryClient = useQueryClient();
-  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedCourseIdState, setSelectedCourseId] = useState("");
+  const selectedCourseId = course?.id || selectedCourseIdState;
   const [avatarId, setAvatarId] = useState("");
   const [voiceId, setVoiceId] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -49,6 +51,7 @@ export default function TrainingVideoStudio() {
       );
     },
     initialData: [],
+    enabled: !course?.id,
   });
 
   const statusKey = ["training-video-status", selectedCourseId];
@@ -65,6 +68,20 @@ export default function TrainingVideoStudio() {
   });
 
   const modules = useMemo(() => statusData?.modules || [], [statusData]);
+
+  // Full module records (with content_json) back the per-lesson script panels.
+  // Shares its query key with the course builder's Lessons tab so an edit in
+  // either place refreshes both.
+  const { data: fullModules = [] } = useQuery({
+    queryKey: ["training-modules", selectedCourseId],
+    queryFn: () => base44.entities.TrainingModule.filter({ course_id: selectedCourseId }, "order_index", 100),
+    enabled: !!selectedCourseId,
+    initialData: [],
+  });
+  const fullModuleById = useMemo(
+    () => Object.fromEntries(fullModules.map((m) => [m.id, m])),
+    [fullModules]
+  );
   const heygenConfigured = statusData?.heygen_configured;
   const anyProcessing = modules.some((m) => m.video_status === "processing");
   const missingCount = modules.filter((m) => m.video_status !== "completed").length;
@@ -80,27 +97,31 @@ export default function TrainingVideoStudio() {
     onError: (e) => toast.error(`Could not start video generation: ${e.message}`),
   });
 
-  const selectedCourse = courses.find((c) => c.id === selectedCourseId);
+  const selectedCourse = course?.id === selectedCourseId
+    ? course
+    : courses.find((c) => c.id === selectedCourseId);
 
   return (
     <div className="space-y-6">
-      <Card className="border-indigo-200 bg-indigo-50/40">
-        <CardContent className="p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center flex-shrink-0">
-              <Clapperboard className="w-5 h-5" />
+      {!course && (
+        <Card className="border-indigo-200 bg-indigo-50/40">
+          <CardContent className="p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center flex-shrink-0">
+                <Clapperboard className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-semibold text-slate-900">AI Presenter Video Studio</h2>
+                <p className="text-sm text-slate-600">
+                  Generate an AI presenter video for each lesson from its script, or regenerate to
+                  enhance an existing one. Videos generate in the background and attach to the module
+                  automatically — staff see the video at the top of the lesson, then take the quiz.
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h2 className="font-semibold text-slate-900">AI Presenter Video Studio</h2>
-              <p className="text-sm text-slate-600">
-                Generate an AI presenter video for each lesson from its script, or regenerate to
-                enhance an existing one. Videos generate in the background and attach to the module
-                automatically — staff see the video at the top of the lesson, then take the quiz.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* HeyGen not configured */}
       {selectedCourseId && heygenConfigured === false && (
@@ -121,24 +142,31 @@ export default function TrainingVideoStudio() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <Video className="w-4 h-4 text-indigo-600" /> Choose a course
+            <Video className="w-4 h-4 text-indigo-600" />
+            {course ? `Presenter videos for “${course.title}”` : "Choose a course"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
-            <div className="flex-1">
-              <Label className="text-xs text-slate-500">Course</Label>
-              <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                <SelectTrigger><SelectValue placeholder="Select a course to add videos to" /></SelectTrigger>
-                <SelectContent>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.title}{c.status === "draft" ? " — Draft" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {course ? (
+              <p className="flex-1 text-sm text-slate-600">
+                Each lesson’s AI-written narration script becomes a presenter video. Status refreshes automatically while HeyGen renders.
+              </p>
+            ) : (
+              <div className="flex-1">
+                <Label className="text-xs text-slate-500">Course</Label>
+                <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+                  <SelectTrigger><SelectValue placeholder="Select a course to add videos to" /></SelectTrigger>
+                  <SelectContent>
+                    {courses.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.title}{c.status === "draft" ? " — Draft" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {selectedCourseId && (
               <Button
                 onClick={() => startMutation.mutate({ course_id: selectedCourseId, action: missingCount > 0 ? "start" : "regenerate" })}
@@ -212,7 +240,8 @@ export default function TrainingVideoStudio() {
                 const Icon = meta.icon;
                 const busy = m.video_status === "processing";
                 return (
-                  <div key={m.module_id} className="flex items-center gap-3 p-3 rounded-xl border bg-white">
+                  <div key={m.module_id} className="p-3 rounded-xl border bg-white">
+                    <div className="flex items-center gap-3">
                     <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
                       {i + 1}
                     </span>
@@ -262,6 +291,12 @@ export default function TrainingVideoStudio() {
                         )}
                       </Button>
                     </div>
+                    </div>
+                    <ModuleScriptPanel
+                      module={fullModuleById[m.module_id]}
+                      courseId={selectedCourseId}
+                      disabled={busy}
+                    />
                   </div>
                 );
               })

@@ -18,6 +18,15 @@ test("a completed call with no flag does not need a callback", () => {
   assert.equal(needsCallback({ direction: "inbound", call_mode: "masked_bridge", status: "completed" }), false);
 });
 
+test("a missed inbound call needs a callback regardless of call_mode", () => {
+  // After-hours / off-duty misses are logged as office_transfer (or unresolved
+  // for a de-provisioned number), not masked_bridge — they must still queue.
+  assert.equal(needsCallback({ direction: "inbound", call_mode: "office_transfer", status: "no_answer" }), true);
+  assert.equal(needsCallback({ direction: "inbound", call_mode: "unresolved", status: "failed" }), true);
+  // Outbound failures are not inbound misses, so they still don't auto-queue.
+  assert.equal(needsCallback({ direction: "outbound", status: "no_answer" }), false);
+});
+
 test("a resolved/no-action disposition clears the call even if missed or with voicemail", () => {
   assert.equal(needsCallback({ ...missedInbound, disposition: "resolved" }), false);
   assert.equal(needsCallback({ ...missedInbound, disposition: "no_action", has_voicemail: true }), false);

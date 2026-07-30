@@ -26,6 +26,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: `This message can no longer be canceled (status: ${row.status}).` }, { status: 409 });
     }
 
+    // The cancel write races the dispatcher's claim (pending -> sending). The
+    // dispatcher re-reads the row after claiming and honors canceled_at (which
+    // its claim never clears), so writing canceled_at here is what makes a
+    // cancel that lands mid-claim actually stop the send.
     await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
       status: 'canceled',
       canceled_by: user.email,

@@ -61,18 +61,31 @@ export default function SearchablePatientSelect({
     setLocalPatients(patientArray);
   }, [patients]);
 
-  // Load current user and their preferences
+  // Load current user and their preferences. Favorites live on User.favorited_patients
+  // (sidebar + alerts read that field); localStorage is a fast cache / offline fallback.
   useEffect(() => {
     const loadUserPreferences = async () => {
       try {
         const user = await base44.auth.me();
         const userEmail = user?.email || 'default';
         setCurrentUserEmail(userEmail);
-        
+
         const recent = JSON.parse(localStorage.getItem(`recentPatients_${userEmail}`) || '[]');
-        const favorited = JSON.parse(localStorage.getItem(`favoritedPatients_${userEmail}`) || '[]');
         setRecentPatients(recent);
-        setFavoritedPatients(favorited);
+
+        const fromUser = (user?.favorited_patients || [])
+          .map((fav) => (typeof fav === 'string' ? fav : fav?.id))
+          .filter(Boolean);
+        const fromLocal = JSON.parse(localStorage.getItem(`favoritedPatients_${userEmail}`) || '[]');
+        // Prefer the persisted User field; merge any local-only stars so we don't
+        // silently drop favorites that never got written to the profile.
+        const merged = [...new Set([...fromUser, ...fromLocal])];
+        setFavoritedPatients(merged);
+        if (fromLocal.length > 0 && fromUser.length === 0) {
+          // One-time migration: promote localStorage favorites onto the user profile
+          // so the sidebar / alerts dashboard can see them.
+          base44.auth.updateMe({ favorited_patients: merged }).catch(() => {});
+        }
       } catch (error) {
         console.error('Error loading patient preferences:', error);
       }
@@ -97,7 +110,8 @@ export default function SearchablePatientSelect({
     try { localStorage.setItem(`recentPatients_${currentUserEmail}`, JSON.stringify(updatedRecent)); } catch { /* no-op */ }
   };
 
-  // Toggle favorite
+  // Toggle favorite — persist to User.favorited_patients (and local cache) so the
+  // sidebar Favorites rail and PatientAlertsDashboard can read the same list.
   const toggleFavorite = (patientId, e) => {
     e.stopPropagation();
     if (!currentUserEmail) return;
@@ -110,6 +124,9 @@ export default function SearchablePatientSelect({
     
     setFavoritedPatients(updatedFavorites);
     try { localStorage.setItem(`favoritedPatients_${currentUserEmail}`, JSON.stringify(updatedFavorites)); } catch { /* no-op */ }
+    base44.auth.updateMe({ favorited_patients: updatedFavorites }).catch((err) => {
+      toast.error(err?.message || 'Could not save favorite');
+    });
   };
 
   // Create new patient

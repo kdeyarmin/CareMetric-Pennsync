@@ -5,13 +5,14 @@
 import './App.css'
 import { lazy, Suspense, useMemo } from 'react';
 import { Toaster } from "@/components/ui/toaster"
+import { Toaster as SonnerToaster } from "sonner"
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import VisualEditAgent from '@/lib/VisualEditAgent'
 import NavigationTracker from '@/lib/NavigationTracker'
 import OfflineManager from '@/components/offline/OfflineManager'
-import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router';
 import PageNotFound from './lib/PageNotFound';
 import PageLoader from '@/components/ui/PageLoader';
 import SignerPortal from '@/pages/SignerPortal';
@@ -80,11 +81,24 @@ const RedirectTo = ({ to }) => {
   const location = useLocation();
   const [path, targetQuery = ''] = to.split('?');
   const params = new URLSearchParams(targetQuery);
+  const incomingKeys = new Set();
   for (const [key, value] of new URLSearchParams(location.search)) {
-    if (!params.has(key)) params.set(key, value);
+    // append (not set) so repeated incoming keys (?id=1&id=2) all survive;
+    // target params still win on conflict.
+    if (!params.has(key) || incomingKeys.has(key)) {
+      params.append(key, value);
+      incomingKeys.add(key);
+    }
   }
   const query = params.toString();
-  return <Navigate to={query ? `${path}?${query}` : path} state={location.state} replace />;
+  // Forward the hash too — an old bookmark's #anchor must survive the redirect.
+  return (
+    <Navigate
+      to={{ pathname: path, search: query ? `?${query}` : '', hash: location.hash }}
+      state={location.state}
+      replace
+    />
+  );
 };
 
 const RoutePageLoader = () => (
@@ -160,6 +174,10 @@ const AuthenticatedApp = () => {
           <Route path="/followup/*" element={<ProviderFollowUpPortal />} />
           {/* Public privacy policy — required in-app pre-auth (App Store 5.1.1(i)) */}
           <Route path="/privacy" element={<PrivacyPolicy />} />
+          {/* Catch-all so a public-segment URL that matches no inner route (e.g.
+              /privacy/extra) renders the not-found page instead of a blank
+              screen — this <Routes> block has no fallback otherwise. */}
+          <Route path="*" element={<PageNotFound />} />
         </Routes>
       </Suspense>
     );
@@ -186,6 +204,12 @@ const AuthenticatedApp = () => {
       // so deep links survive sign-in.
       return <SignInScreen />;
     }
+    // Any other error type (e.g. 'unknown' from a failed public-settings fetch,
+    // or a server-supplied reason we don't special-case) is an app-load
+    // failure, NOT a missing session. Falling through to <SignInScreen /> would
+    // mislead the user into trying to sign in to fix a backend outage — surface
+    // the actual error instead.
+    return <ConfigurationErrorScreen message={authError.message} />;
   }
 
   // Gate the whole app on authentication. The no-token path does NOT set an
@@ -238,6 +262,24 @@ function App() {
               <AuthenticatedApp />
             </Router>
             <Toaster />
+            {/* The whole app toasts through sonner (query-client,
+                useMutationWithToast, OfflineManager, alert-shim). Mounted HERE —
+                not inside Layout — so toasts fired while Layout isn't rendered
+                (sign-in screen, AI-agreement gate, pending-approval screen)
+                still appear instead of being silently dropped. */}
+            <SonnerToaster
+              position="top-right"
+              richColors
+              closeButton
+              theme="light"
+              toastOptions={{
+                classNames: {
+                  toast: "rounded-xl border shadow-lg",
+                  title: "font-semibold",
+                  description: "text-slate-600",
+                },
+              }}
+            />
             <OfflineManager />
             <VisualEditAgent />
           </ConfirmDialogProvider>

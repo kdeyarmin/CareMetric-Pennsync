@@ -41,11 +41,15 @@ vi.mock('@/api/base44Client', () => {
   };
 });
 
+// The page reads its ?id= via useSearchParams (reactive router state), so the
+// tests pass the URL through the MemoryRouter route instead of mutating
+// window.history (which a MemoryRouter ignores).
+const ROUTE = '/PatientDetails?id=p1';
+
 beforeEach(() => {
   invoke.mockReset();
   state.ctx = CTX;
   invoke.mockImplementation(async (name) => (name === 'getPatientContext' ? { data: state.ctx } : { data: {} }));
-  window.history.pushState({}, '', '/PatientDetails?id=p1');
 });
 
 describe('PatientDetails — getPatientContext seeding', () => {
@@ -53,7 +57,7 @@ describe('PatientDetails — getPatientContext seeding', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     // Import lazily so the vi.mock factory is in place first.
     const { default: PatientDetails } = await import('@/pages/PatientDetails');
-    renderWithProviders(<PatientDetails />, { queryClient: qc });
+    renderWithProviders(<PatientDetails />, { queryClient: qc, route: ROUTE });
 
     // The single consolidated fetch ran with the URL's patient id. (Explicit 10s
     // timeout — this heavy page mount can exceed the default under full-suite
@@ -79,7 +83,7 @@ describe('PatientDetails — getPatientContext seeding', () => {
   it('re-seeds child caches after a context invalidation (post-mutation cycle)', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     const { default: PatientDetails } = await import('@/pages/PatientDetails');
-    renderWithProviders(<PatientDetails />, { queryClient: qc });
+    renderWithProviders(<PatientDetails />, { queryClient: qc, route: ROUTE });
 
     await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(CTX.visits), { timeout: 10000 });
     const callsAfterLoad = invoke.mock.calls.filter((c) => c[0] === 'getPatientContext').length;

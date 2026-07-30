@@ -151,9 +151,19 @@ export function buildOasisAutofill(suggestions, sections, opts = {}) {
 }
 
 /**
- * Build an `answers` patch ({ id: value }) from the drafts the nurse attested.
+ * Build an `answers` patch ({ id: value }) from OASIS autofill drafts.
+ *
+ * This is a pure patch-builder: it does NOT itself enforce attestation. Every
+ * draft starts with `attested: false`, and the ATTESTATION GATE is the caller's
+ * responsibility — the nurse attests specific items in the UI and the caller
+ * passes exactly those ids. Omitting `ids` applies every draft and must only be
+ * used where the whole set has already been attested (e.g. an "accept all"
+ * action or a test fixture); never wire an automated/bulk caller to the
+ * no-`ids` form, or it would silently overwrite the chart with unattested AI
+ * suggestions.
+ *
  * @param {Object} drafts        buildOasisAutofill().drafts
- * @param {Array<string>} [ids]  ids to apply; omit to apply all
+ * @param {Array<string>} [ids]  attested ids to apply; omit only for a fully-attested set
  */
 export function answersFromDrafts(drafts, ids) {
   const keys = ids || Object.keys(drafts || {});

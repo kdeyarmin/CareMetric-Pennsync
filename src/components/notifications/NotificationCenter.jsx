@@ -24,7 +24,7 @@ import {
   X
 } from "lucide-react";
 import { formatEastern, formatRelativeEastern } from "@/components/utils/timezone";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 export default function NotificationCenter({ currentUser, onClose }) {
   const queryClient = useQueryClient();

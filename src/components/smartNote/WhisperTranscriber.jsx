@@ -22,11 +22,16 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
   const audioChunksRef = useRef([]);
   const timerRef = useRef(null);
   const streamRef = useRef(null);
+  const mountedRef = useRef(true);
 
   // Release the mic, timer, and recorder if the component unmounts mid-recording
   // (navigating away without pressing Stop) so the microphone isn't left live.
+  // Also flip mountedRef so an in-flight transcription can't setState/onTranscribe
+  // after unmount (this control is rendered inside a dialog that can close mid-run).
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       if (timerRef.current) clearInterval(timerRef.current);
       const mr = mediaRecorderRef.current;
@@ -133,6 +138,7 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
       });
       const result = response.data;
 
+      if (!mountedRef.current) return;
       if (result?.text) {
         setTranscript(result.text);
         onTranscribe?.(result.text);
@@ -141,11 +147,12 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
         setError('Could not transcribe audio. Please try again.');
       }
     } catch (err) {
+      if (!mountedRef.current) return;
       const friendly = configNotReadyMessage(err);
       setError(friendly || err.message || 'Transcription error');
       if (!friendly) console.error('Transcription error:', err);
     } finally {
-      setIsTranscribing(false);
+      if (mountedRef.current) setIsTranscribing(false);
     }
   };
 

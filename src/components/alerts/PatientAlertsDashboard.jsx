@@ -45,7 +45,7 @@ import {
 import { getAlertIcon, getSeverityColor } from "@/components/alerts/alertPresentation";
 import { buildSafetyHuddle, formatSlaTime } from "@/components/alerts/safetyHuddle";
 import { format, formatDistanceToNow } from "date-fns";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { createPageUrl } from "@/utils";
 import { isAdminView } from "@/lib/roles";
 
@@ -85,15 +85,17 @@ export default function PatientAlertsDashboard({ patientId = null }) {
     }
   });
 
-  // Filter alerts to only favorited patients (unless viewing specific patient or admin)
+  // Favorites are a UX narrow, not an access boundary. Match RealTimePatientAlerts:
+  // when the nurse has starred patients, show only those; when they haven't, show
+  // all server-scoped alerts (assigned patients). An empty/missing favorites list
+  // previously short-circuited to [] and hid overdue visits / high-risk alerts.
   const alerts = React.useMemo(() => {
     if (patientId || isAdmin) return allAlerts;
-    if (!currentUser?.favorited_patients) return [];
-    return allAlerts.filter(alert =>
-      // favorited_patients holds patient-ID strings; tolerate legacy {id} objects.
-      currentUser.favorited_patients.some(fav =>
-        (typeof fav === 'string' ? fav : fav?.id) === alert.patient_id)
-    );
+    const favoritedIds = (currentUser?.favorited_patients || [])
+      .map((fav) => (typeof fav === 'string' ? fav : fav?.id))
+      .filter(Boolean);
+    if (favoritedIds.length === 0) return allAlerts;
+    return allAlerts.filter((alert) => favoritedIds.includes(alert.patient_id));
   }, [allAlerts, patientId, currentUser, isAdmin]);
 
   // Fetch patients for lookup

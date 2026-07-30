@@ -231,6 +231,12 @@ async function runOutlinePhase(base44, user, body) {
     annual_cycle_year = null,
     skill_level = 'intermediate',
     num_modules = 0,
+    passing_score = 80,
+    enable_certificate = true,
+    certificate_valid_months = null,
+    generate_videos = false,
+    video_avatar_id = '',
+    video_voice_id = '',
   } = body;
 
   if (!topic) {
@@ -326,6 +332,11 @@ Design principles:
   }));
 
   const learningObjectives = (Array.isArray(outline.learning_objectives) ? outline.learning_objectives : []).map(String);
+  const normalizedPassingScore = Math.max(1, Math.min(Number(passing_score) || 80, 100));
+  const normalizedCertificateMonths =
+    certificate_valid_months === null || certificate_valid_months === ''
+      ? undefined
+      : Math.max(1, Math.min(Number(certificate_valid_months) || 12, 120));
 
   const course = await base44.asServiceRole.entities.TrainingCourse.create({
     title: outline.title || topic,
@@ -343,10 +354,11 @@ Design principles:
     status: 'draft',
     created_by: user.email,
     learning_objectives: learningObjectives,
-    passing_score: 80,
+    passing_score: normalizedPassingScore,
     ai_generated: true,
     needs_sme_review: true,
-    enable_certificate: true,
+    enable_certificate: enable_certificate !== false,
+    certificate_valid_months: normalizedCertificateMonths,
     requires_attestation: include_acknowledgement,
     attestation_text: outline.attestation_text || 'I have reviewed and understand this training and agree to follow agency policy.',
     certificate_wording: outline.certificate_wording || 'This certifies successful completion of the assigned compliance in-service.',
@@ -378,6 +390,14 @@ Design principles:
       policy_ids,
       skill_level,
       num_modules: moduleCount,
+      passing_score: normalizedPassingScore,
+      enable_certificate: enable_certificate !== false,
+      certificate_valid_months: normalizedCertificateMonths ?? null,
+      generate_videos: !!generate_videos,
+      // Presenter choice is stored so an interrupted generation can be resumed
+      // with the same avatar/voice the admin originally picked.
+      video_avatar_id: String(video_avatar_id || ''),
+      video_voice_id: String(video_voice_id || ''),
       requested_status: status,
       generation_method: 'phased',
       outline_title: outline.title || topic,

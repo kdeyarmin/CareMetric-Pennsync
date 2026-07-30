@@ -66,6 +66,7 @@ const safeDate = (value) => {
   return isValid(d) ? format(d, "MM/dd/yyyy") : "N/A";
 };
 import { toast } from "sonner";
+import { parseDob } from "@/components/patient/patientDuplicateUtils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,7 +78,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { todayEastern } from "@/components/utils/timezone";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router";
 import ReferralPDFSummarizer from "../components/referral/ReferralPDFSummarizer";
 import { validateReferralFile, getDocumentType } from "../components/referral/referralUploadUtils";
 import { generateDiagnosisCodes, toPersistedCoding } from "../components/referral/diagnosisCodeGenerator";
@@ -482,6 +483,27 @@ Actions available:
       const priorityAnalysis = priorityResponse.data?.priorityAnalysis || {};
       const intakeAnalysis = intakeAnalysisResponse.data?.analysis || {};
 
+      // Merge DEFENSIVELY against the existing record: extraction can miss
+      // fields the intake staff already typed in (patient name, source,
+      // referral date). Overwriting them with null removed the referral from
+      // the aging board and CMS timely-initiation tracking (which skip rows
+      // with no referral_date) and erased manual entries.
+      const existing =
+        (await base44.entities.Referral.filter({ id: referralId }).then((rows) => rows?.[0]).catch(() => null)) ||
+        referrals.find((r) => r.id === referralId) ||
+        {};
+
+      // Never DOWNGRADE a staff-selected priority: if intake marked the
+      // referral urgent and the AI analysis returns nothing (or a lower
+      // level), keep the higher one.
+      const PRIORITY_RANK = { low: 0, normal: 1, high: 2, urgent: 3 };
+      const aiPriority = priorityAnalysis.priority;
+      const existingPriority = existing.priority;
+      const priority =
+        (PRIORITY_RANK[aiPriority] ?? -1) >= (PRIORITY_RANK[existingPriority] ?? -1)
+          ? (aiPriority || existingPriority || 'normal')
+          : existingPriority;
+
       // Extract and update referral fields from AI-processed data
       const updates = {
         status: 'ready_for_admission',
@@ -491,16 +513,18 @@ Actions available:
           priority_analysis: priorityAnalysis,
           intake_analysis: intakeAnalysis
         },
-        patient_name: extractedData.demographics?.full_name || null,
-        patient_dob: extractedData.demographics?.date_of_birth || null,
-        referral_source: extractedData.admission_details?.admission_source || 
-                         extractedData.demographics?.referring_physician || 
+        patient_name: extractedData.demographics?.full_name || existing.patient_name || null,
+        patient_dob: extractedData.demographics?.date_of_birth || existing.patient_dob || null,
+        referral_source: extractedData.admission_details?.admission_source ||
+                         extractedData.demographics?.referring_physician ||
+                         existing.referral_source ||
                          null,
-        referral_date: extractedData.admission_details?.referral_date || 
-                       extractedData.admission_details?.admission_date || 
+        referral_date: extractedData.admission_details?.referral_date ||
+                       extractedData.admission_details?.admission_date ||
+                       existing.referral_date ||
                        null,
-        diagnosis: extractedData.diagnoses?.primary_diagnosis || null,
-        priority: priorityAnalysis.priority || 'normal'
+        diagnosis: extractedData.diagnoses?.primary_diagnosis || existing.diagnosis || null,
+        priority
       };
 
       // Deterministic PDGM-sequenced diagnosis coding (codes only ever
@@ -580,6 +604,7 @@ Actions available:
         // Score each patient for match likelihood
         const scoredPatients = allPatients.map(p => {
           let score = 0;
+          let nameMatched = false;
           const reasons = [];
           
           // Name matching (40 points max)
@@ -587,6 +612,7 @@ Actions available:
             const firstNameSim = similarity(normalize(firstName), normalize(p.first_name));
             if (firstNameSim >= 0.8) {
               score += firstNameSim * 20;
+              nameMatched = true;
               reasons.push(`First name: ${(firstNameSim * 100).toFixed(0)}%`);
             }
           }
@@ -595,6 +621,7 @@ Actions available:
             const lastNameSim = similarity(normalize(lastName), normalize(p.last_name));
             if (lastNameSim >= 0.8) {
               score += lastNameSim * 20;
+              nameMatched = true;
               reasons.push(`Last name: ${(lastNameSim * 100).toFixed(0)}%`);
             }
           }
@@ -609,19 +636,17 @@ Actions available:
             }
           }
           
-          // DOB matching (30 points)
+          // DOB matching (30 points) — tolerate MM/DD/YYYY vs YYYY-MM-DD via parseDob
+          // (same helper OASIS patient matching already uses).
           if (dob && p.date_of_birth) {
-            if (dob === p.date_of_birth) {
+            const a = parseDob(dob);
+            const b = parseDob(p.date_of_birth);
+            if (a && b && a.year === b.year && a.month === b.month && a.day === b.day) {
               score += 30;
               reasons.push('Exact DOB match');
-            } else {
-              // Partial DOB match (year and month)
-              const [y1, m1] = dob.split('-');
-              const [y2, m2] = p.date_of_birth.split('-');
-              if (y1 === y2 && m1 === m2) {
-                score += 15;
-                reasons.push('Partial DOB match');
-              }
+            } else if (a && b && a.year === b.year && a.month === b.month) {
+              score += 15;
+              reasons.push('Partial DOB match');
             }
           }
           
@@ -645,14 +670,19 @@ Actions available:
             }
           }
           
-          return { patient: p, score, reasons };
+          return { patient: p, score, nameMatched, reasons };
         });
         
         // Sort by score and get best match
         const bestMatch = scoredPatients.sort((a, b) => b.score - a.score)[0];
         
-        // Match threshold: 60+ points = high confidence match
-        if (bestMatch && bestMatch.score >= 60) {
+        // Match threshold: 60+ points = high confidence match. A NAME signal is
+        // also required: without it, exact DOB (30) + phone (15) + address (10)
+        // + middle initial (5) reaches 60 on their own — which is precisely a
+        // twin/household member sharing DOB, phone, and address. Auto-linking a
+        // referral to the WRONG person's chart is a patient-safety error; the
+        // dedupe engine (patientDuplicateUtils) enforces the same identity guard.
+        if (bestMatch && bestMatch.score >= 60 && bestMatch.nameMatched) {
           existingPatient = bestMatch.patient;
         }
       }
@@ -826,8 +856,15 @@ Actions available:
         console.error('F2F encounter persistence skipped:', f2fError);
       }
 
-      // Create comprehensive AI-generated tasks from multiple sources
+      // Create comprehensive AI-generated tasks from multiple sources.
+      // Link to the Referral via related_entity/related_entity_id (NOT
+      // related_visit_id — that FK is for Visit rows; stuffing a referral id
+      // there broke triage linkage and could mis-associate Visit filters).
       const allSuggestedTasks = [];
+      const taskReferralLink = {
+        related_entity: 'Referral',
+        related_entity_id: referralId,
+      };
       
       // Tasks from intake analysis
       if (intakeAnalysis.suggested_next_steps?.length > 0) {
@@ -842,7 +879,7 @@ Actions available:
             status: 'pending',
             source: 'ai_generated',
             ai_reason: `Referral intake analysis identified this as ${step.priority} priority action`,
-            related_visit_id: referralId
+            ...taskReferralLink,
           }));
         allSuggestedTasks.push(...analysisTasksToCreate);
       }
@@ -874,7 +911,7 @@ Actions available:
           status: "pending",
           source: "ai_generated",
           ai_reason: "Wound care identified in referral document",
-          related_visit_id: referralId
+          ...taskReferralLink,
         });
       }
 
@@ -888,7 +925,7 @@ Actions available:
           status: "pending",
           source: "ai_generated",
           ai_reason: "IV therapy identified in referral document",
-          related_visit_id: referralId
+          ...taskReferralLink,
         });
       }
 
@@ -902,7 +939,7 @@ Actions available:
           status: "pending",
           source: "ai_generated",
           ai_reason: `Therapy requirements identified: ${therapyRequirements.join(', ')}`,
-          related_visit_id: referralId
+          ...taskReferralLink,
         });
       }
 
@@ -916,7 +953,7 @@ Actions available:
           status: "pending",
           source: "ai_generated",
           ai_reason: `DME needs identified: ${dmeNeeds.join(', ')}`,
-          related_visit_id: referralId
+          ...taskReferralLink,
         });
       }
 
@@ -1229,7 +1266,7 @@ Actions available:
                   <SelectItem value="awaiting_info">Awaiting Info</SelectItem>
                   <SelectItem value="ready_for_admission">Ready for Admission</SelectItem>
                   <SelectItem value="soc_completed">SOC Completed</SelectItem>
-                  <SelectItem value="archived">Archived</SelectItem>
+                  <SelectItem value="declined">Declined</SelectItem>
                 </SelectContent>
               </Select>
             </div>

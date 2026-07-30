@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router";
 
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -9,11 +9,12 @@ import { Bell, LogOut, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Toaster } from "sonner";
 import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } from "@/lib/nav.manifest";
+import { PAGE_NAMES } from "@/routes";
 import { getRoleView } from "@/lib/roles";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 
+import PageLoader from "@/components/ui/PageLoader";
 import DesktopSidebar from "@/components/layout/DesktopSidebar";
 import MobileHeader from "@/components/layout/MobileHeader";
 import MobileMenu from "@/components/layout/MobileMenu";
@@ -34,7 +35,14 @@ export default function Layout() {
   // <Layout>, which unmounted the entire sidebar + header on every navigation —
   // causing flicker, lost clicks during the transition, and re-fetched queries.
   const location = useLocation();
-  const currentPageName = location.pathname.split('/')[1] || 'Dashboard';
+  // Case-insensitive normalization against the known route names: the router
+  // matches paths case-insensitively (so /patients renders the Patients page),
+  // but a raw path segment would miss the case-sensitive NAV_MAP lookup and
+  // drop the sidebar highlight + breadcrumbs. Mirrors NavigationTracker.
+  const rawSegment = location.pathname.split('/')[1] || '';
+  const currentPageName = rawSegment
+    ? (PAGE_NAMES.find((key) => key.toLowerCase() === rawSegment.toLowerCase()) || rawSegment)
+    : 'Dashboard';
   // Persist the desktop sidebar collapse choice so daily users don't have to
   // re-collapse it every session (read lazily so the first paint matches).
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -61,7 +69,7 @@ export default function Layout() {
     document.documentElement.classList.remove('dark');
   }, []);
 
-  const { data: currentUser } = useQuery({
+  const { data: currentUser, isPending: isUserPending } = useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
       try {
@@ -167,16 +175,24 @@ export default function Layout() {
     enabled: !!currentUser?.email && currentUser?.role !== 'admin',
   });
 
+  // Key the alerts query on the SET of charted patient ids, not the raw visit
+  // array: the filter below only depends on which patients were charted, and
+  // keying on 500 full visit objects made react-query JSON-stringify the whole
+  // clinical payload on every render of this always-mounted component.
+  const chartedPatientIdKey = useMemo(
+    () => [...new Set(chartedVisits.map((v) => v.patient_id))].sort(),
+    [chartedVisits]
+  );
   const { data: allActiveAlerts = [] } = useQuery({
-    // `chartedVisits` must be part of the key: the queryFn filters alerts against
-    // it, so when the nurse charts a new patient the cache must re-key and refetch
-    // (otherwise the new patient's alert stays hidden for the whole stale window).
-    // Mirrors NotificationCenter's ['active-alerts-nc', email, chartedVisits] key.
-    queryKey: ['active-alerts', currentUser?.email, chartedVisits],
+    // The charted-patient set must be part of the key: the queryFn filters
+    // alerts against it, so when the nurse charts a new patient the cache must
+    // re-key and refetch (otherwise the new patient's alert stays hidden for
+    // the whole stale window).
+    queryKey: ['active-alerts', currentUser?.email, chartedPatientIdKey],
     queryFn: async () => {
       const alerts = await base44.entities.PatientAlert.filter({ status: 'active' }, '-created_date', 50);
       // Filter to only alerts for patients this clinician has charted on
-      const chartedPatientIds = new Set(chartedVisits.map(v => v.patient_id));
+      const chartedPatientIds = new Set(chartedPatientIdKey);
       return alerts.filter(a => chartedPatientIds.has(a.patient_id));
     },
     initialData: [], 
@@ -288,6 +304,20 @@ export default function Layout() {
   // its "you are here" anchor. See isNavItemActive in nav.manifest.js.
   const isActive = useCallback((pageName) => isNavItemActive(currentPageName, pageName), [currentPageName]);
 
+  // Block the first paint until the user record loads. Previously the approval/
+  // deactivation gate below and the role-based nav were both evaluated while
+  // `currentUser` was still undefined — so an unapproved/deactivated user briefly
+  // saw the full app shell, and an admin saw a flash of nurse-tier navigation,
+  // before the query resolved. (The layout mounts once and persists across
+  // navigations, so this loader shows only on initial load.)
+  if (isUserPending) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <PageLoader />
+      </div>
+    );
+  }
+
   if (currentUser && (isDeactivated || !isApproved)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-navy-50 via-white to-navy-100 flex items-center justify-center p-4">
@@ -332,19 +362,6 @@ export default function Layout() {
 
   return (
     <>
-      <Toaster
-        position="top-right"
-        richColors
-        closeButton
-        theme="light"
-        toastOptions={{
-          classNames: {
-            toast: "rounded-xl border shadow-lg",
-            title: "font-semibold",
-            description: "text-slate-600",
-          },
-        }}
-      />
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:bg-white focus:px-4 focus:py-2 focus:rounded-md focus:shadow-lg focus:text-blue-700 focus:font-medium">
         Skip to content
       </a>

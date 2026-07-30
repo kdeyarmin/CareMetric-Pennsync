@@ -31,8 +31,15 @@ async function loadInline(entryPath, names) {
   }
 }
 
-const CONFIGS = [undefined, {}, { auto_retry_enabled: false }, { max_retries: 5, retry_delay_minutes: 10 }, { priority_multiplier: { urgent: 0.5, low: 2 } }];
-const FAILURES = [["7211", "not a fax machine"], [null, "busy"], ["", ""], [null, "Invalid To number"], ["x", "temporary network error"]];
+const CONFIGS = [
+  undefined,
+  {},
+  { auto_retry_enabled: false },
+  { max_retries: 5, retry_delay_minutes: 10 },
+  { max_retries: "5", retry_delay_minutes: "10" },
+  { priority_multiplier: { urgent: 0.5, low: 2 } },
+];
+const FAILURES = [["7211", "not a fax machine"], [null, "busy"], ["", ""], [null, "Invalid To number"], ["x", "temporary network error"], [null, "rejected - line busy"], [null, "rejected - no answer"]];
 
 test("inline classifyFaxFailure matches faxRetry across both functions", async () => {
   for (const f of ["./handleTelnyxStatusWebhook/entry.ts", "./autoRetryFailedFaxes/entry.ts"]) {
@@ -44,7 +51,12 @@ test("inline classifyFaxFailure matches faxRetry across both functions", async (
 });
 
 test("inline faxRetryConfig matches faxRetry across both functions", async () => {
-  for (const f of ["./handleTelnyxStatusWebhook/entry.ts", "./autoRetryFailedFaxes/entry.ts"]) {
+  for (const f of [
+    "./handleTelnyxStatusWebhook/entry.ts",
+    "./autoRetryFailedFaxes/entry.ts",
+    "./pollFaxStatuses/entry.ts",
+    "./syncFaxStatuses/entry.ts",
+  ]) {
     const { mod } = await loadInline(f, ["faxRetryConfig"]);
     for (const cfg of CONFIGS) {
       assert.deepEqual(mod.faxRetryConfig(cfg), faxRetry.faxRetryConfig(cfg), `faxRetryConfig drift in ${f}`);

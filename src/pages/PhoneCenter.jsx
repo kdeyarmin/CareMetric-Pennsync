@@ -36,7 +36,17 @@ export default function PhoneCenter() {
   });
   const callbacks = callbackCount(calls);
 
-  const offNow = isOffDutyNow(user);
+  // Agency settings drive the auto-off cutoff (default 5pm). Without them the
+  // header/duty chips would still read "On duty" after the cutoff while inbound
+  // calls/texts already route to the office — mirror DutyStatusCard so the two
+  // views agree.
+  const { data: settingsArr = [] } = useQuery({
+    queryKey: ["agency-settings"],
+    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+    initialData: [],
+  });
+
+  const offNow = isOffDutyNow(user, new Date(), settingsArr[0]);
   const hasWorkNumber = !!user?.work_phone_number;
 
   // Live status chips shown in the header so a nurse sees at a glance whether

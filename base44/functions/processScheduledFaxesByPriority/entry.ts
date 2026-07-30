@@ -123,7 +123,9 @@ Deno.serve(async (req) => {
           document_name: scheduledFax.document_name,
           patient_id: scheduledFax.patient_id,
           cover_page_details: scheduledFax.cover_page_details,
-          priority: scheduledFax.priority
+          priority: scheduledFax.priority,
+          sent_by: scheduledFax.created_by || me?.email || 'scheduler@system',
+          internal_secret: Deno.env.get('INTERNAL_FN_SECRET') || '',
         });
 
         const data = sendResult?.data || {};

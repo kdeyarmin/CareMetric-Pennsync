@@ -145,6 +145,18 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: 'No signer email' });
     }
 
+    // Idempotency claim (mirrors notifyAdminOfSignedDocument's admin_notified):
+    // the create-trigger can re-fire, and this endpoint is unauthenticated, so a
+    // re-POST of a real package id would otherwise mint ANOTHER 30-day signer
+    // bearer token and re-email the signer on every call. Claim before doing
+    // privileged work; released below if the send fails so a re-fire can retry.
+    if (pkg.signer_notified_at) {
+      return Response.json({ success: true, skipped: 'signer already notified' });
+    }
+    await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
+      signer_notified_at: new Date().toISOString(),
+    }).catch(() => {});
+
     // Generate token for this signer. functions.invoke wraps the body under
     // `.data` (same convention as gradeTrainingAttempt's certResult.data), so
     // reading token.success/token.token directly was always undefined — the
@@ -153,10 +165,17 @@ Deno.serve(async (req) => {
       package_id: pkg.id,
       signer_email: pkg.signer_email,
       signer_name: pkg.signer_name,
+      // Entity triggers have no user session; pass the shared secret so the
+      // callee accepts this nested service-role invoke.
+      internal_secret: Deno.env.get('INTERNAL_FN_SECRET') || '',
     });
 
     const tokenData = tokenResult?.data || tokenResult;
     if (!tokenData?.success || !tokenData?.token) {
+      // Transient failure — release the claim so a trigger re-fire can retry.
+      await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
+        signer_notified_at: null,
+      }).catch(() => {});
       return Response.json({ error: 'Failed to generate signer token' }, { status: 500 });
     }
 
@@ -197,12 +216,21 @@ Deno.serve(async (req) => {
       ],
     });
 
-    await base44.integrations.Core.SendEmail({
-      to: pkg.signer_email,
-      subject,
-      body,
-      from_name: 'PennSync by CareMetric',
-    });
+    try {
+      await base44.integrations.Core.SendEmail({
+        to: pkg.signer_email,
+        subject,
+        body,
+        from_name: 'PennSync by CareMetric',
+      });
+    } catch (sendError) {
+      // The signer must not silently lose their only portal link on a transient
+      // email outage — release the claim so a trigger re-fire retries.
+      await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
+        signer_notified_at: null,
+      }).catch(() => {});
+      throw sendError;
+    }
 
     return Response.json({ success: true, email_sent: true });
   } catch (error) {

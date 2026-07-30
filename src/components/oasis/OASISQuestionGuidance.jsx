@@ -8,7 +8,21 @@ import { OASIS_GUIDANCE } from './oasisGuidanceData';
 export default function OASISQuestionGuidance({ questionId, questionLabel, isOpen, onClose }) {
   const guidance = OASIS_GUIDANCE[questionId];
 
-  if (!guidance) return null;
+  if (!guidance) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="max-w-md">
+          <DialogTitle className="text-lg font-bold text-slate-900 pr-8">
+            {questionLabel || 'Guidance'}
+          </DialogTitle>
+          <p className="text-sm text-slate-600 mt-2">
+            No detailed guidance is available for this OASIS item yet.
+          </p>
+          <Button variant="outline" className="mt-4" onClick={onClose}>Close</Button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
