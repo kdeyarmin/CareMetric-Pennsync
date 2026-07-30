@@ -1,6 +1,7 @@
 # Phased Rollout Final Report
 
 _Audit follow-up date: 2026-07-22. Scope: closeout of repository-side Phase 0 through Phase 11 reports._
+_Operational checklist added: 2026-07-30 — `docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md`._
 
 ## Executive summary
 
@@ -49,6 +50,7 @@ No additional hosted Base44 policy, schema deployment, database migration, authe
 - Pure helper modules and repository-side tests are ready for code review and CI execution.
 - Documentation artifacts are ready to guide product, QA, security, engineering, and release-owner review.
 - Local dry-run readiness reporting is ready to run against synthetic or real evidence JSON.
+- Operational checklist and fillable evidence template for LR-01/LR-02 are ready for owners to execute hosted work.
 
 ## What is not production-ready yet
 
@@ -59,11 +61,12 @@ No additional hosted Base44 policy, schema deployment, database migration, authe
 
 ## Recommended next operational sequence
 
-1. Assign owners for LR-01 and LR-02.
-2. Create real evidence JSON for hosted tenant/RLS verification and seeded authenticated staging E2E.
-3. Run `pnpm run readiness:report -- <evidence.json>` locally.
-4. Store the generated report with the release candidate.
-5. Decide whether the next implementation should publish a non-blocking CI artifact or complete LR-01/LR-02 hosted validation first.
+1. Assign owners for LR-01 and LR-02 (table in `docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md`).
+2. Execute the LR-01 configuration + multi-role verification steps (checklist + `docs/SECURITY-RLS-CHECKLIST.md` §7).
+3. Execute the LR-02 authenticated smoke flows (minimum S1–S4).
+4. Copy `docs/audits/live-readiness-evidence.template.json` to a **local** evidence file; fill summaries, references, and reviewer decisions.
+5. Run `pnpm run readiness:report -- <evidence.json>` and store the report with the release candidate.
+6. Only after both packets are review-complete, decide on LR-08 (provider sandbox) or pilot go-live under the stop/go rules in the checklist.
 
 ## Final stop/go statement
 
