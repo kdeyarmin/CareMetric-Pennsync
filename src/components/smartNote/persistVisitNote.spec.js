@@ -8,6 +8,7 @@ const auditCreate = vi.fn(async () => ({ id: "audit-1" }));
 const auditUpdate = vi.fn(async () => ({}));
 const functionsInvoke = vi.fn(async () => ({ data: { success: true } }));
 const addToSyncQueue = vi.fn(async () => {});
+const upsertCreateVisitInSyncQueue = vi.fn(async () => {});
 
 vi.mock("@/api/base44Client", () => ({
   base44: {
@@ -24,7 +25,10 @@ vi.mock("@/components/utils/activityLogger", () => ({ logActivity: vi.fn(), Acti
 // Isolate from the (separately tested) pure compliance helpers.
 vi.mock("@/components/smartNote/compliance/coverageScore", () => ({ deriveStructuredVisitFields: () => ({}), toNoteConversionFields: (x) => x }));
 vi.mock("@/components/smartNote/compliance/reportingFields", () => ({ buildVisitReportingFields: () => ({}), buildAuditFields: () => ({ status: "ok" }) }));
-vi.mock("@/lib/indexedDB", () => ({ addToSyncQueue: (...a) => addToSyncQueue(...a) }));
+vi.mock("@/lib/indexedDB", () => ({
+  addToSyncQueue: (...a) => addToSyncQueue(...a),
+  upsertCreateVisitInSyncQueue: (...a) => upsertCreateVisitInSyncQueue(...a),
+}));
 
 import { persistVisitNote } from "./persistVisitNote";
 
@@ -102,9 +106,11 @@ describe("persistVisitNote", () => {
     setOnline(false);
     const out = await persistVisitNote({ ...baseArgs, vitals: { pain_level: 3 } });
     expect(out).toMatchObject({ mode: "offline", visitId: null });
-    expect(addToSyncQueue).toHaveBeenCalledTimes(1);
-    const [action, payload] = addToSyncQueue.mock.calls[0];
-    expect(action).toBe("CREATE_VISIT");
+    expect(out.offlineClientRequestId).toBeTruthy();
+    expect(upsertCreateVisitInSyncQueue).toHaveBeenCalledTimes(1);
+    expect(addToSyncQueue).not.toHaveBeenCalled();
+    const payload = upsertCreateVisitInSyncQueue.mock.calls[0][0];
+    expect(payload.client_request_id).toBe(out.offlineClientRequestId);
     expect(payload.vital_signs).toEqual({ pain_level: 3 });
     expect(payload.__audit).toBeTruthy();
     // Offline → grounding was deferred: the queued visit is flagged pending and
@@ -117,11 +123,36 @@ describe("persistVisitNote", () => {
     expect(functionsInvoke).not.toHaveBeenCalled();
   });
 
+  it("reuses offlineClientRequestId on still-offline re-save so the queue collapses", async () => {
+    setOnline(false);
+    const first = await persistVisitNote({ ...baseArgs, vitals: { pain_level: 2 } });
+    expect(first.offlineClientRequestId).toBeTruthy();
+    const key = first.offlineClientRequestId;
+
+    const second = await persistVisitNote({
+      ...baseArgs,
+      vitals: { pain_level: 5 },
+      offlineClientRequestId: key,
+      result: { ...baseResult, finalNote: "Edited final note" },
+    });
+    expect(second.offlineClientRequestId).toBe(key);
+    expect(upsertCreateVisitInSyncQueue).toHaveBeenCalledTimes(2);
+    // Both enqueues carry the same idempotency key — upsertCreateVisitInSyncQueue
+    // replaces the prior payload so the drain creates one visit with the edit.
+    expect(upsertCreateVisitInSyncQueue.mock.calls[0][0].client_request_id).toBe(key);
+    expect(upsertCreateVisitInSyncQueue.mock.calls[1][0].client_request_id).toBe(key);
+    expect(upsertCreateVisitInSyncQueue.mock.calls[1][0].nurse_notes).toBe("Edited final note");
+    expect(upsertCreateVisitInSyncQueue.mock.calls[1][0].vital_signs).toEqual({ pain_level: 5 });
+    // No plain addToSyncQueue CREATE path — that would leave two queue items.
+    expect(addToSyncQueue).not.toHaveBeenCalled();
+  });
+
   it("queues UPDATE_VISIT (not a duplicate CREATE) when offline re-saving an existing visit", async () => {
     setOnline(false);
     const out = await persistVisitNote({ ...baseArgs, savedVisitId: "visit-9", savedAuditId: "audit-9", vitals: { temperature: 99 } });
     expect(out).toMatchObject({ mode: "offline", visitId: "visit-9", auditId: "audit-9" });
     expect(addToSyncQueue).toHaveBeenCalledTimes(1);
+    expect(upsertCreateVisitInSyncQueue).not.toHaveBeenCalled();
     const [action, payload] = addToSyncQueue.mock.calls[0];
     expect(action).toBe("UPDATE_VISIT");
     expect(payload.visit_id).toBe("visit-9");
