@@ -74,7 +74,7 @@ export default function TrainingVideoStudio({ course = null }) {
   // either place refreshes both.
   const { data: fullModules = [] } = useQuery({
     queryKey: ["training-modules", selectedCourseId],
-    queryFn: () => base44.entities.TrainingModule.filter({ course_id: selectedCourseId }, "order_index", 200),
+    queryFn: () => base44.entities.TrainingModule.filter({ course_id: selectedCourseId }, "order_index", 100),
     enabled: !!selectedCourseId,
     initialData: [],
   });
