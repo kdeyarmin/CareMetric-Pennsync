@@ -1,0 +1,90 @@
+{
+  "release": {
+    "id": "rc-YYYY-MM-DD",
+    "name": "PennSync live-readiness candidate",
+    "environment": "staging",
+    "notes": "Fill real evidence for LR-01 and LR-02 only. Do not commit secrets or PHI."
+  },
+  "evidence": {
+    "LR-01": {
+      "owner": {
+        "summary": "Engineering + security owners for hosted RLS",
+        "references": ["https://example.com/ticket-or-doc"]
+      },
+      "product_approval": {
+        "summary": "Product confirmed agency access model matches RLS matrix",
+        "references": []
+      },
+      "security_approval": {
+        "summary": "Security reviewed RLS matrix and multi-role tests",
+        "references": []
+      },
+      "hosted_environment": {
+        "summary": "Base44 staging app id / URL (no secrets)",
+        "references": []
+      },
+      "credentials_or_sandbox": {
+        "summary": "Admin + nurse test users provisioned; nurse assigned to Patient A only",
+        "references": []
+      },
+      "test_evidence": {
+        "summary": "V1–V6 multi-role RLS checks against raw network responses",
+        "references": []
+      },
+      "rollback_plan": {
+        "summary": "Documented RLS revert path and owner SLA",
+        "references": ["docs/RLS-LAUNCH-RUNBOOK.md"]
+      },
+      "monitoring_plan": {
+        "summary": "Unauthorized access visible in SecurityLog / platform logs; alert owner named",
+        "references": []
+      },
+      "reviewers": {
+        "product": "pending",
+        "security": "pending",
+        "qa": "pending",
+        "release": "pending"
+      }
+    },
+    "LR-02": {
+      "owner": {
+        "summary": "QA + engineering owners for staging E2E",
+        "references": []
+      },
+      "product_approval": {
+        "summary": "Product confirmed minimum smoke flows for pilot",
+        "references": []
+      },
+      "security_approval": {
+        "summary": "Security confirmed no production PHI in seeds; staging secrets isolated",
+        "references": []
+      },
+      "hosted_environment": {
+        "summary": "Staging URL and seed dataset description (no PHI)",
+        "references": []
+      },
+      "credentials_or_sandbox": {
+        "summary": "Authenticated test accounts; CI secrets staging-only if used",
+        "references": []
+      },
+      "test_evidence": {
+        "summary": "S1–S9 authenticated smoke results (login, patient, referral, note, offline, OASIS, training, signature, comms sandbox)",
+        "references": []
+      },
+      "rollback_plan": {
+        "summary": "Re-seed or wipe staging tenant without affecting production",
+        "references": []
+      },
+      "monitoring_plan": {
+        "summary": "Failed smoke runs tracked in QA ticket; release owner notified",
+        "references": []
+      },
+      "reviewers": {
+        "product": "pending",
+        "security": "pending",
+        "qa": "pending",
+        "release": "pending"
+      }
+    }
+  }
+}
