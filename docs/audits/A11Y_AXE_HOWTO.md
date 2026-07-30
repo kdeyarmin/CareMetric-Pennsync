@@ -1,46 +1,48 @@
-# Accessibility / axe testing (P2-02) — How to run
+# Accessibility / axe testing (P2-02)
 
-## No local machine required
+## Architecture
 
-If you cannot run Node/pnpm on your computer:
+| Piece | Path |
+|---|---|
+| Shared axe-core rules | `src/lib/axeRules.js` |
+| Playwright + axe helper | `e2e/axePlaywright.js` |
+| Public route specs | `e2e/a11y-public.spec.js` |
+| Component helper | `src/test/axeHelpers.js` |
+| Smoke matrix | `src/lib/accessibilitySmokeMatrix.js` |
 
-1. Open the repo on GitHub → **Actions**
-2. Select **Install a11y deps (no local machine)**
-3. **Run workflow** on branch `wire-p1-pure-helpers`
-4. That job installs `vitest-axe`, `@playwright/test`, and `@axe-core/playwright`, then **commits** the lockfile
-5. After it finishes, PR #107 CI should stay green and a11y assertions will activate
-6. Optionally run **Accessibility (axe)** for Playwright public-route scans
+### Rule policy (`axeRules.js`)
 
-Until that install job runs, component a11y tests **soft-skip** (they do not fail CI). New packages are **not** listed in `package.json` yet so `pnpm install --frozen-lockfile` stays green.
+- **Tags:** `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`
+- **Fail gate:** `critical` + `serious` only (moderate/minor do not fail CI)
+- **jsdom:** disables `color-contrast`, `link-in-text-block`
+- **Browser:** contrast enabled; add exceptions only in `AXE_BROWSER_DISABLED_RULES`
 
-## What is already on the branch
+### Playwright integration (`axePlaywright.js`)
 
-| Layer | Location | Needs package install? |
-|---|---|---|
-| Smoke matrix (public + auth) | `src/lib/accessibilitySmokeMatrix.js` | No |
-| Component axe specs | `*.a11y.test.jsx` + `src/test/axeHelpers.js` | Soft-skip without `vitest-axe` |
-| Browser axe | `e2e/a11y-public.spec.js` | Yes (after install workflow) |
-| Auth routes | Matrix inventory only | Staging / LR-02 |
+```js
+import { expectNoSeriousAxeViolations } from './axePlaywright.js';
 
-## After the install workflow
+await page.goto('/privacy');
+await expectNoSeriousAxeViolations(page, '/privacy');
+```
+
+Uses `@axe-core/playwright` `AxeBuilder` with shared tags + disabled rules.
+
+## No local machine
+
+1. **Actions** → **Install a11y deps** (already ran if packages are in `package.json`)
+2. **Actions** → **Accessibility (axe)** → Run workflow  
+   Runs rule unit tests, Vitest component axe, and Playwright public-route axe.
+
+## Scripts
 
 ```bash
+node --test src/lib/axeRules.test.js
 pnpm run test:a11y
-pnpm run build && pnpm run test:a11y:e2e:install && pnpm run test:a11y:e2e
+pnpm run build && pnpm run test:a11y:e2e
+PLAYWRIGHT_BASE_URL=https://staging.example pnpm run test:a11y:e2e
 ```
 
-Staging:
+## Authenticated routes
 
-```bash
-PLAYWRIGHT_BASE_URL=https://your-staging.example pnpm run test:a11y:e2e
-```
-
-Public routes: `/privacy`, `/join`, `/signer`, `/followup`. Fails on **serious/critical** only.
-
-## Authenticated routes (LR-02)
-
-`AUTHENTICATED_ACCESSIBILITY_SMOKE_ROUTES` lists Dashboard, Patients, ClinicalDocumentation, UserManagement, ReportsAnalytics, OfflineMode. Not CI-runnable without staging credentials.
-
-## ESLint
-
-`eslint-plugin-jsx-a11y` stays **warn**-level for static JSX.
+Listed in `AUTHENTICATED_ACCESSIBILITY_SMOKE_ROUTES` — inventory only until LR-02 staging auth exists.
