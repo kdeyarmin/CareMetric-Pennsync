@@ -1,11 +1,11 @@
 /**
- * Optional axe helpers for *.a11y.test.jsx files.
+ * Component-level axe helpers for *.a11y.test.jsx (Vitest + jsdom).
  *
- * vitest-axe is a new optional dependency. Until pnpm-lock.yaml is refreshed
- * (via the update-lockfile workflow or a local pnpm install), these helpers
- * skip rather than failing the whole component suite.
+ * Rule tags / disabled rules come from `src/lib/axeRules.js` so they stay
+ * aligned with Playwright browser scans (`e2e/axePlaywright.js`).
  */
 import { expect } from 'vitest';
+import { axeRunOptions, filterFailingViolations, formatAxeViolations } from '@/lib/axeRules';
 
 let axeFn = null;
 let loaded = false;
@@ -27,21 +27,25 @@ async function loadAxe() {
 }
 
 /**
- * Run axe on a DOM container. Skips the test when vitest-axe is not installed.
- * color-contrast is disabled under jsdom by default.
+ * Run axe on a DOM container using shared jsdom rule config.
+ * Soft-skips when vitest-axe is not installed.
  */
 export async function expectNoAxeViolations(container, options = {}) {
   const { axeFn: axe, loadError: err } = await loadAxe();
   if (!axe) {
-    // Soft-skip: dependency not on the lockfile yet.
     // eslint-disable-next-line no-console
     console.warn('[a11y] vitest-axe not installed; skipping axe assertion.', err?.message || '');
     return { skipped: true };
   }
-  const results = await axe(container, {
-    rules: { 'color-contrast': { enabled: false }, ...(options.rules || {}) },
-    ...options,
-  });
-  expect(results).toHaveNoViolations();
+
+  const runOpts = axeRunOptions('jsdom', options);
+  const results = await axe(container, runOpts);
+
+  // Prefer impact-gated failures so component and browser gates match.
+  const failing = filterFailingViolations(results.violations);
+  if (failing.length > 0) {
+    expect.fail(`Serious/critical axe violations:\n${formatAxeViolations(failing)}`);
+  }
+
   return { skipped: false, results };
 }
