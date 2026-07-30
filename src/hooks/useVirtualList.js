@@ -1,18 +1,11 @@
 import { useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { VIRTUALIZE_THRESHOLD, shouldVirtualizeList } from '@/lib/virtualListConfig';
 
-/** Default: virtualize only when the list is large enough to matter. */
-export const VIRTUALIZE_THRESHOLD = 40;
+export { VIRTUALIZE_THRESHOLD, shouldVirtualizeList };
 
 /**
  * Thin wrapper around @tanstack/react-virtual for vertical lists.
- *
- * @param {object} opts
- * @param {number} opts.count
- * @param {number} [opts.estimateSize=72]
- * @param {number} [opts.overscan=6]
- * @param {boolean} [opts.enabled] — defaults to count >= VIRTUALIZE_THRESHOLD
- * @param {(index: number) => number|string} [opts.getItemKey]
  */
 export function useVirtualList({
   count = 0,
@@ -22,8 +15,7 @@ export function useVirtualList({
   getItemKey,
 } = {}) {
   const parentRef = useRef(null);
-  const shouldVirtualize =
-    typeof enabled === 'boolean' ? enabled : count >= VIRTUALIZE_THRESHOLD;
+  const shouldVirtualize = shouldVirtualizeList(count, enabled);
 
   const virtualizer = useVirtualizer({
     count: shouldVirtualize ? count : 0,
