@@ -17,7 +17,8 @@ or chase phantom bugs.
 
 **The codebase is healthy.** Of the candidate issues surfaced (from both the finders and the
 prior audit docs), the overwhelming majority were either already fixed, false positives, or
-intentional design. Only two small, verified correctness items warranted a code change.
+intentional design. Only two small, verified correctness items warranted a code change at
+audit time; a third (offline re-save duplication) was closed in a later pure-logic pass.
 
 ## Fixes applied
 
@@ -36,6 +37,17 @@ intentional design. Only two small, verified correctness items warranted a code 
    into the schema's structured `follow_up_notes` array so the handler is contract-correct if
    ever wired. (`page_range`/`detection_confidence` it also writes **are** valid schema fields.)
    - `src/pages/ReferralIntake.jsx:225`.
+
+3. **Offline re-save collapse (2026-07-30).** Brand-new offline visit saves no longer duplicate
+   on edit-and-re-save while still offline. Callers thread a stable `offlineClientRequestId`;
+   `persistVisitNote` reuses it and `upsertCreateVisitInSyncQueue` updates the existing
+   `CREATE_VISIT` queue item (latest note payload) instead of enqueueing a second key.
+   Drain-side dedupe by `client_request_id` remains as a safety net.
+   - `src/lib/indexedDB.js` (`upsertCreateVisitInSyncQueue`),
+     `src/components/smartNote/persistVisitNote.js`,
+     `src/pages/SmartNoteAssistant.jsx`,
+     `src/components/visit/AudioVisitCapture.jsx`,
+     `src/components/smartNote/persistVisitNote.spec.js`.
 
 ## Verified already-fixed (prior-doc claims that no longer hold)
 
@@ -80,13 +92,6 @@ These are real but were left for an explicit decision rather than changed blind:
 - **PDGM dual-engine divergence.** `groupPeriod()` (table-driven, tested) is orphaned; the live
   path reimplements grouping in `entry.ts`. Both flag `isEstimate`, so no live mis-billing, but
   they can drift. Reconcile alongside the official-rates work above.
-- **Offline re-save can duplicate a visit.** `persistVisitNote` returns `visitId: null` for an
-  offline save (`persistVisitNote.js:71`); editing-and-re-saving *while still offline* enqueues
-  a second `CREATE_VISIT` with a new `client_request_id`, so the drain creates two visits.
-  Narrow (requires editing before any reconnect). **Not fixed** because the safe fix touches the
-  IndexedDB queue dedup path, which cannot be exercised in this environment, and a wrong fix
-  could lose the edited note. **Recommendation:** reuse the original `client_request_id` on
-  offline re-save (or update the queued item) so the drain collapses to one visit.
 - **Fax notification races.** `retryFailedFax` can leave a fax in `retrying` if two requests
   both lose the claim race; webhook + poller can both send a `delivered` notification in a
   narrow TOCTOU window. Both are without-transactions races already accepted in prior review;
@@ -101,4 +106,5 @@ These are real but were left for an explicit decision rather than changed blind:
 
 `npm run lint` (0 errors), `npm run test:utils` (618 pass), `npm run test:components`
 (241 pass, 50 files), `npm run build` (exit 0), `npm run check:backend-transpile`
-(204 functions), `npm run check:shared-helpers` (16 consumers in sync) — all green.
+(204 functions), `npm run check:shared-helpers` (16 consumers in sync) — all green at audit time.
+Offline re-save collapse covered by `persistVisitNote.spec.js` (2026-07-30).
