@@ -65,6 +65,8 @@ import LoadingState from "@/components/ui/LoadingState";
 import StatCard from "@/components/ui/stat-card";
 import EmptyState from "@/components/ui/empty-state";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
+import ListPaginationControls from "@/components/ui/ListPaginationControls";
+import { paginateRows, clampPageSize } from "@/lib/pagination";
 import { format } from "date-fns";
 import { formatEastern } from "@/components/utils/timezone";
 import { toast } from "sonner";
@@ -90,6 +92,8 @@ export default function UserManagement() {
   const [showUserSetupDialog, setShowUserSetupDialog] = useState(false);
   const [setupFormData, setSetupFormData] = useState({ email: '', full_name: '', role: 'user', staff_type: '' });
   const [expandedActivityUser, setExpandedActivityUser] = useState(null);
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(25);
 
   const queryClient = useQueryClient();
 
@@ -339,7 +343,7 @@ export default function UserManagement() {
     deleteUserMutation.mutate(selectedUser.id);
   };
 
-  const filteredUsers = allUsers.filter(user => {
+  const filteredUsers = useMemo(() => allUsers.filter(user => {
     if (roleFilter !== 'all' && user.role !== roleFilter) return false;
     if (statusFilter !== 'all') {
       if (statusFilter === 'active' && user.is_active === false) return false;
@@ -353,7 +357,22 @@ export default function UserManagement() {
       );
     }
     return true;
-  });
+  }), [allUsers, roleFilter, statusFilter, searchQuery]);
+
+  // Reset to page 1 when filters change so an empty page never strands the admin.
+  const filterKey = `${roleFilter}|${statusFilter}|${searchQuery}`;
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  if (filterKey !== lastFilterKey) {
+    setLastFilterKey(filterKey);
+    if (userPage !== 1) setUserPage(1);
+  }
+
+  const pageSize = clampPageSize(userPageSize, { max: 100, fallback: 25 });
+  const userPageWindow = useMemo(
+    () => paginateRows(filteredUsers, { page: userPage, pageSize, maxPageSize: 100 }),
+    [filteredUsers, userPage, pageSize],
+  );
+  const pagedUsers = userPageWindow.items;
 
   const activityByEmail = useMemo(() => {
     const m = new Map();
@@ -464,6 +483,22 @@ export default function UserManagement() {
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => {
+                  setUserPageSize(clampPageSize(v, { max: 100, fallback: 25 }));
+                  setUserPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-36 h-11 touch-target">
+                  <SelectValue placeholder="Page size" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="25">25 per page</SelectItem>
+                  <SelectItem value="50">50 per page</SelectItem>
+                  <SelectItem value="100">100 per page</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -623,6 +658,7 @@ export default function UserManagement() {
           ) : filteredUsers.length === 0 ? (
             <EmptyState title="No users found" icon={Users} />
           ) : (
+            <>
             <div className="overflow-x-auto -mx-3 sm:mx-0">
               <Table>
                 <TableHeader>
@@ -637,7 +673,7 @@ export default function UserManagement() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredUsers.map((user) => {
+                  {pagedUsers.map((user) => {
                     const activityCount = getUserActivityCount(user.email);
                     const lastActivity = getUserLastActivity(user.email);
                     const isActive = user.is_active !== false;
@@ -756,6 +792,21 @@ export default function UserManagement() {
                 </TableBody>
               </Table>
             </div>
+            <ListPaginationControls
+              page={userPageWindow.page}
+              totalPages={userPageWindow.totalPages}
+              totalItems={userPageWindow.totalItems}
+              startIndex={userPageWindow.startIndex}
+              endIndex={userPageWindow.endIndex}
+              hasPreviousPage={userPageWindow.hasPreviousPage}
+              hasNextPage={userPageWindow.hasNextPage}
+              onPageChange={(p) => {
+                setExpandedActivityUser(null);
+                setUserPage(p);
+              }}
+              itemLabel="users"
+            />
+            </>
           )}
         </CardContent>
       </Card>
