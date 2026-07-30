@@ -45,6 +45,9 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   const [vitals, setVitals] = useState({});
   const [savedVisitId, setSavedVisitId] = useState(null);
   const [savedAuditId, setSavedAuditId] = useState(null);
+  // Stable idempotency key for a still-offline brand-new visit. Threaded into
+  // persistVisitNote so a re-save upserts the same CREATE_VISIT queue item.
+  const [offlineClientRequestId, setOfflineClientRequestId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -101,6 +104,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   useEffect(() => {
     setSavedVisitId(null);
     setSavedAuditId(null);
+    setOfflineClientRequestId(null);
     setSaved(false);
     setVitals({});
     setSignatureImage(null);
@@ -140,6 +144,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       // re-mount key so its review state resets even for an equal-length note.
       setSavedVisitId(null);
       setSavedAuditId(null);
+      setOfflineClientRequestId(null);
       setSaved(false);
       setNoteSeq(n => n + 1);
       logActivity(ActivityActions.NOTE_AI_GENERATED, { page: 'ClinicalDocumentation', source: 'audio_recording' });
@@ -186,6 +191,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
         result, patientId, visitDate, visitType, roughNote, vitals,
         currentUser, patientDiagnosis: patientDetail?.primary_diagnosis || patient?.primary_diagnosis || "",
         savedVisitId, savedAuditId, existingVisitId,
+        offlineClientRequestId,
         source: "audio",
       });
       if (out) {
@@ -193,7 +199,11 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
           setSavedVisitId(out.visitId);
           // Bound visit is now the same-session target; re-saves update it.
           setExistingVisitId(null);
+          setOfflineClientRequestId(null);
           if (out.auditId) setSavedAuditId(out.auditId);
+        } else if (out.mode === 'offline' && out.offlineClientRequestId) {
+          // Remember the key so a still-offline re-save upserts the same queue item.
+          setOfflineClientRequestId(out.offlineClientRequestId);
         }
         setSaved(true);
       }
@@ -213,6 +223,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     setVitals({});
     setSavedVisitId(null);
     setSavedAuditId(null);
+    setOfflineClientRequestId(null);
     setSaved(false);
     setSignatureImage(null);
     setExistingVisitId(null);
