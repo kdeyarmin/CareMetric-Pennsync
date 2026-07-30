@@ -1,17 +1,21 @@
 name: Install a11y deps (no local machine)
 
-# Run from: Actions → "Install a11y deps" → Run workflow
-# Uses GitHub runners (has network) so you do not need a local Node/pnpm setup.
+# Triggered automatically once on this branch, or manually from Actions.
+# Uses GitHub runners (has network) so no local Node/pnpm is required.
 on:
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to update (default wire-p1-pure-helpers)'
-        required: false
-        default: 'wire-p1-pure-helpers'
+  push:
+    branches:
+      - wire-p1-pure-helpers
+    paths:
+      - '.github/workflows/install-a11y-deps.yml'
 
 permissions:
   contents: write
+
+concurrency:
+  group: install-a11y-deps-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   install-and-commit-lockfile:
@@ -19,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }}
+          ref: wire-p1-pure-helpers
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: pnpm/action-setup@v4
