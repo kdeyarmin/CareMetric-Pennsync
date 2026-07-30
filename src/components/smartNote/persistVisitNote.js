@@ -3,6 +3,7 @@ import { logActivity, ActivityActions } from "@/components/utils/activityLogger"
 import { toNoteConversionFields, deriveStructuredVisitFields } from "@/components/smartNote/compliance/coverageScore";
 import { buildVisitReportingFields, buildAuditFields } from "@/components/smartNote/compliance/reportingFields";
 import { toast } from "sonner";
+import { ALL_ROWS } from "@/lib/queryLimits";
 
 /**
  * persistVisitNote — create-or-update the chart records from a ConstrainedNoteReviewer
@@ -203,7 +204,7 @@ export async function persistVisitNote({
       const vid = matched[0].id;
       let auditId = savedAuditId || null;
       if (!auditId) {
-        const audits = await base44.entities.ComplianceAudit.filter({ visit_id: vid });
+        const audits = await base44.entities.ComplianceAudit.filter({ visit_id: vid }, undefined, ALL_ROWS);
         auditId = audits?.[0]?.id || null;
       }
       await Promise.all([
