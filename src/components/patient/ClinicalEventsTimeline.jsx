@@ -21,6 +21,7 @@ import {
   FileWarning
 } from "lucide-react";
 import { parseLocalDate, formatLocalDate } from "@/lib/dateLocal";
+import PatientTimelineStrip from "@/components/patient/PatientTimelineStrip";
 
 const EVENT_ICONS = {
   medication_change: Pill,
@@ -37,10 +38,38 @@ const EVENT_ICONS = {
   infection: Thermometer
 };
 
-export default function ClinicalEventsTimeline({ patientId, limit = 20 }) {
+export default function ClinicalEventsTimeline({
+  patientId,
+  limit = 20,
+  visits: visitsProp,
+  incidents: incidentsProp,
+  tasks: tasksProp,
+}) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [dateRange, setDateRange] = useState("30");
+
+  // Optional related records for the unified (cross-entity) timeline strip.
+  // Prefer parent-provided lists to avoid duplicate fetches; fall back to scoped queries.
+  const { data: visitsFetched = [] } = useQuery({
+    queryKey: ['patientVisits', patientId],
+    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 100),
+    enabled: !!patientId && visitsProp === undefined,
+  });
+  const { data: incidentsFetched = [] } = useQuery({
+    queryKey: ['patientIncidents', patientId],
+    queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 100),
+    enabled: !!patientId && incidentsProp === undefined,
+  });
+  const { data: tasksFetched = [] } = useQuery({
+    queryKey: ['patientTasks', patientId],
+    queryFn: () => base44.entities.Task.filter({ patient_id: patientId }, '-due_date', 100),
+    enabled: !!patientId && tasksProp === undefined,
+  });
+
+  const visits = visitsProp ?? visitsFetched;
+  const incidents = incidentsProp ?? incidentsFetched;
+  const tasks = tasksProp ?? tasksFetched;
 
   const { data: events = [], isLoading } = useQuery({
     queryKey: ['clinicalEvents', patientId, dateRange],
@@ -77,30 +106,48 @@ export default function ClinicalEventsTimeline({ patientId, limit = 20 }) {
 
   const eventTypes = [...new Set(events.map(e => e.event_type))];
 
+  const unifiedTimeline = (
+    <PatientTimelineStrip
+      patientId={patientId}
+      visits={visits}
+      incidents={incidents}
+      tasks={tasks}
+      limit={12}
+    />
+  );
+
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="p-8 text-center text-slate-500">
-          Loading clinical events...
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {unifiedTimeline}
+        <Card>
+          <CardContent className="p-8 text-center text-slate-500">
+            Loading clinical events...
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   if (events.length === 0) {
     return (
-      <Card>
-        <CardContent className="p-8 text-center">
-          <Activity className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-          <p className="text-slate-600">No clinical events recorded yet</p>
-          <p className="text-sm text-slate-500 mt-2">Events will appear here as they're documented in visit notes</p>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {unifiedTimeline}
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Activity className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+            <p className="text-slate-600">No clinical events recorded yet</p>
+            <p className="text-sm text-slate-500 mt-2">Events will appear here as they're documented in visit notes</p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      {unifiedTimeline}
+
       {/* Filters */}
       <Card>
         <CardContent className="p-3 sm:p-4">
