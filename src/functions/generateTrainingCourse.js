@@ -83,3 +83,52 @@ export async function generateTrainingCourseStepwise(params = {}, onProgress) {
     throw withCourseId(err);
   }
 }
+
+/**
+ * Finish an AI course generation that was interrupted mid-run (e.g. a module
+ * or assessment phase failed after the draft was created). Re-runs only the
+ * missing phases against the params stored in the course's ai_prompt_json —
+ * the backend phases are idempotent, so this cannot duplicate content.
+ *
+ * @param {object} course - the partial TrainingCourse record (needs id, title, ai_prompt_json).
+ * @param {{ missingModuleIndexes?: number[], regenerateAssessment?: boolean }} plan
+ * @param {(progress: {step: number, totalSteps: number, label: string}) => void} [onProgress]
+ * @returns finalize result: { course_id, title, status, video_generation_status, ... }
+ */
+export async function resumeTrainingCourseStepwise(course, plan = {}, onProgress) {
+  const { missingModuleIndexes = [], regenerateAssessment = false } = plan;
+  const params = course?.ai_prompt_json || {};
+  const courseId = course?.id;
+  if (!courseId) throw new Error('This course cannot be resumed.');
+
+  const totalSteps = missingModuleIndexes.length + (regenerateAssessment ? 1 : 0) + 1;
+  let step = 0;
+
+  try {
+    for (const moduleIndex of missingModuleIndexes) {
+      step += 1;
+      onProgress?.({ step, totalSteps, label: `Writing lesson ${moduleIndex + 1}…` });
+      await runPhase({ phase: 'module', course_id: courseId, module_index: moduleIndex });
+    }
+
+    if (regenerateAssessment) {
+      step += 1;
+      onProgress?.({ step, totalSteps, label: 'Building the quiz and knowledge checks…' });
+      await runPhase({ phase: 'assessment', course_id: courseId });
+    }
+
+    step += 1;
+    onProgress?.({ step, totalSteps, label: 'Finishing up…' });
+    return await runPhase({
+      phase: 'finalize',
+      course_id: courseId,
+      generate_videos: !!params.generate_videos,
+      video_avatar_id: params.video_avatar_id || '',
+      video_voice_id: params.video_voice_id || '',
+    });
+  } catch (err) {
+    err.course_id = courseId;
+    err.course_title = course?.title;
+    throw err;
+  }
+}

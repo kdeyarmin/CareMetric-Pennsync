@@ -67,4 +67,25 @@ describe("AICourseGenerator", () => {
     expect(onProgress).toEqual(expect.any(Function));
     await waitFor(() => expect(onGenerated).toHaveBeenCalledWith("course-1"));
   });
+
+  it("offers to open the partial draft when a later phase fails", async () => {
+    generateTrainingCourseStepwise.mockRejectedValue(
+      Object.assign(new Error("The AI could not generate content for module 2."), {
+        course_id: "draft-1",
+        course_title: "Fall Prevention",
+      })
+    );
+    const onGenerated = vi.fn();
+    renderWithProviders(<AICourseGenerator onGenerated={onGenerated} />);
+
+    const topic = await screen.findByLabelText("Course topic *");
+    fireEvent.change(topic, { target: { value: "Fall prevention" } });
+    fireEvent.click(screen.getByRole("button", { name: "Build complete course" }));
+
+    expect(
+      await screen.findByText(/open it to resume the AI generation/)
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open the draft" }));
+    expect(onGenerated).toHaveBeenCalledWith("draft-1");
+  });
 });

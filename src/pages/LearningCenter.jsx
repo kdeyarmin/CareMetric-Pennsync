@@ -52,6 +52,9 @@ import CertificateDownloadButton from '@/components/training/CertificateDownload
 import LearnerPolicyAcknowledgments from '@/components/training/LearnerPolicyAcknowledgments';
 import LearnerMemoryBoosters from '@/components/training/LearnerMemoryBoosters';
 import EducatorReadinessPanel from '@/components/learning/EducatorReadinessPanel';
+import CourseCatalogDetail from '@/components/learning/CourseCatalogDetail';
+import CeCreditSummary from '@/components/learning/CeCreditSummary';
+import { buildCeTranscript } from '@/components/learning/ceTranscript';
 import GamificationDashboard from '@/components/training/GamificationDashboard';
 import { selfEnrollCourse } from '@/functions/selfEnrollCourse';
 import { submitCourseFeedback } from '@/functions/submitCourseFeedback';
@@ -171,7 +174,9 @@ export default function LearningCenter() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [businessLineFilter, setBusinessLineFilter] = useState('all');
   const [requiredOnly, setRequiredOnly] = useState(false);
+  const [ceOnly, setCeOnly] = useState(false);
   const [catalogLimit, setCatalogLimit] = useState(12);
+  const [detailCourse, setDetailCourse] = useState(null);
   const queryClient = useQueryClient();
 
   const { data: user, isLoading: userLoading } = useQuery({
@@ -307,23 +312,13 @@ export default function LearningCenter() {
     )[0] || null;
   }, [assignments]);
 
-  // CEU hours earned from completed courses, with a per-category breakdown
-  const ceu = useMemo(() => {
-    let total = 0;
-    const byCategory = {};
-    completedAssignments.forEach(a => {
-      const course = courseById[a.course_id];
-      const hours = Number(course?.ceu_hours) || 0;
-      if (hours <= 0) return;
-      total += hours;
-      const cat = course?.category || 'general';
-      byCategory[cat] = (byCategory[cat] || 0) + hours;
-    });
-    const breakdown = Object.entries(byCategory)
-      .map(([category, hours]) => ({ category, hours }))
-      .sort((x, y) => y.hours - x.hours);
-    return { total: Math.round(total * 10) / 10, breakdown };
-  }, [completedAssignments, courseById]);
+  // Credit-year education ledger built from issued certificates: CE credit
+  // hours, clock (in-service) hours, and progress against the learner's annual
+  // hour requirement when one applies (aides, per 42 CFR §484.80(d)).
+  const ceTranscript = useMemo(
+    () => buildCeTranscript(certificates, { coursesById: courseById, user }),
+    [certificates, courseById, user]
+  );
 
   // Courses the user already has an assignment for (to gate self-enrollment)
   const assignedCourseIds = useMemo(
@@ -446,8 +441,11 @@ export default function LearningCenter() {
     if (requiredOnly) {
       filtered = filtered.filter(isRequiredCourse);
     }
+    if (ceOnly) {
+      filtered = filtered.filter(c => (Number(c.ceu_hours) || 0) > 0);
+    }
     return filtered;
-  }, [courses, searchQuery, categoryFilter, businessLineFilter, requiredOnly]);
+  }, [courses, searchQuery, categoryFilter, businessLineFilter, requiredOnly, ceOnly]);
 
   const categories = useMemo(() => {
     const cats = new Set(courses.map(c => c.category).filter(Boolean));
@@ -664,37 +662,8 @@ export default function LearningCenter() {
         </Card>
       )}
 
-      {/* Continuing Education (CEU) earned */}
-      {ceu.total > 0 && (
-        <Card className="border-navy-200 bg-navy-50/30">
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-11 h-11 bg-navy-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <GraduationCap className="w-6 h-6 text-navy-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900">Continuing Education Earned</h3>
-                  <p className="text-sm text-slate-600">CEU hours from your completed courses</p>
-                </div>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="text-3xl font-bold text-navy-600">{ceu.total}</p>
-                <p className="text-xs text-slate-500">CEU hours</p>
-              </div>
-            </div>
-            {ceu.breakdown.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {ceu.breakdown.map(b => (
-                  <Badge key={b.category} variant="outline" className="capitalize text-xs">
-                    {b.category.replace(/_/g, ' ')}: {b.hours} hr{b.hours === 1 ? '' : 's'}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Continuing education earned, scoped to the current credit year */}
+      {ceTranscript.years.length > 0 && <CeCreditSummary transcript={ceTranscript} compact />}
 
       {/* Achievements highlight */}
       {leaderboardEntry && (
@@ -1034,6 +1003,19 @@ export default function LearningCenter() {
                 <ShieldCheck className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
                 Required only
               </button>
+              <button
+                type="button"
+                aria-pressed={ceOnly}
+                onClick={() => { setCeOnly(v => !v); setCatalogLimit(12); }}
+                className={`text-sm rounded-lg px-3 py-2 border transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                  ceOnly
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <GraduationCap className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
+                CE credit
+              </button>
             </div>
           </div>
 
@@ -1071,13 +1053,22 @@ export default function LearningCenter() {
                         )}
                       </div>
                     </div>
-                    <h3 className="font-bold text-slate-900 leading-tight group-hover:text-blue-700 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => setDetailCourse(course)}
+                      className="block text-left font-bold text-slate-900 leading-tight group-hover:text-blue-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                    >
                       {course.title}
-                    </h3>
+                    </button>
                     {course.short_description && (
                       <p className="text-sm text-slate-500 line-clamp-2">{course.short_description}</p>
                     )}
-                    <div className="flex items-center gap-3 text-xs text-slate-400 pt-1">
+                    <div className="flex items-center gap-3 text-xs text-slate-400 pt-1 flex-wrap">
+                      {(Number(course.ceu_hours) || 0) > 0 && (
+                        <span className="flex items-center gap-1 text-emerald-700 font-medium">
+                          <GraduationCap className="w-3 h-3" /> {course.ceu_hours} CE hr{course.ceu_hours === 1 ? '' : 's'}
+                        </span>
+                      )}
                       {course.estimated_minutes && (
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" /> {course.estimated_minutes} min
@@ -1098,6 +1089,14 @@ export default function LearningCenter() {
                       <StarsDisplay value={feedbackByCourse[course.id].avg} count={feedbackByCourse[course.id].count} />
                     )}
                     <div className="space-y-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => setDetailCourse(course)}
+                      >
+                        <BookOpen className="w-4 h-4 mr-1.5" /> Course details
+                      </Button>
                       {(() => {
                         const state = enrollFeedback[course.id];
                         if (assignedCourseIds.has(course.id) || state === 'done') {
@@ -1153,6 +1152,18 @@ export default function LearningCenter() {
               </Button>
             </div>
           )}
+
+          <CourseCatalogDetail
+            course={detailCourse}
+            open={!!detailCourse}
+            onOpenChange={(next) => { if (!next) setDetailCourse(null); }}
+            enrolled={!!detailCourse && (assignedCourseIds.has(detailCourse.id) || enrollFeedback[detailCourse.id] === 'done')}
+            required={!!detailCourse && isRequiredCourse(detailCourse)}
+            enrolling={!!detailCourse && enrollFeedback[detailCourse.id] === 'loading'}
+            enrollError={!!detailCourse && enrollFeedback[detailCourse.id] === 'error'}
+            onEnroll={(courseId) => enrollMutation.mutate(courseId)}
+            canPreview={isEducatorOrAdmin}
+          />
         </TabsContent>
 
         {/* Competencies Tab */}
@@ -1378,9 +1389,12 @@ export default function LearningCenter() {
         {/* Transcripts — Annual and Employee certificate history. */}
         <TabsContent value="transcripts">
           <Suspense fallback={tabLoader}>
-            <Tabs defaultValue="annual" className="space-y-4">
+            <Tabs defaultValue="credit" className="space-y-4">
               <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
                 <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
+                  <TabsTrigger value="credit" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
+                    CE Credit
+                  </TabsTrigger>
                   <TabsTrigger value="annual" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
                     Annual
                   </TabsTrigger>
@@ -1389,6 +1403,9 @@ export default function LearningCenter() {
                   </TabsTrigger>
                 </TabsList>
               </div>
+              <TabsContent value="credit">
+                <CeCreditSummary transcript={ceTranscript} />
+              </TabsContent>
               <TabsContent value="annual">
                 <Suspense fallback={tabLoader}>
                   <AnnualEducationTranscript />

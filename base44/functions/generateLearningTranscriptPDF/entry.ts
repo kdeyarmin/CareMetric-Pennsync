@@ -1,6 +1,70 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@4.0.0';
 
+// creditYear / round1 / dedupeCreditRecords are inline copies of the
+// unit-tested source in src/components/learning/ceTranscript.js. The printed
+// transcript must credit exactly what the in-app transcript credits — a PDF
+// whose CE total disagrees with the screen is a compliance problem, not a
+// cosmetic one. base44/functions/ceTranscriptInlineParity.test.js guards
+// against drift.
+
+// Credit year of a completion, read from the leading YYYY of the ISO date so a
+// record always lands in the same year for every reader regardless of timezone.
+function creditYear(certificate) {
+  const value = certificate?.completion_date || certificate?.issued_at;
+  if (!value) return null;
+  const iso = /^(\d{4})-\d{2}/.exec(String(value));
+  if (iso) return Number(iso[1]);
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.getFullYear();
+}
+
+const round1 = (value) => Math.round(value * 10) / 10;
+
+// One credit-earning record per assignment (or per course within a credit year
+// for older rows without an assignment id), so a retake isn't printed as two
+// separate credits while a genuine renewal in a later year still counts.
+function dedupeCreditRecords(certificates = []) {
+  const seen = new Set();
+  const kept = [];
+  for (const certificate of certificates) {
+    if (!certificate || certificate.revoked === true) continue;
+    const year = creditYear(certificate);
+    if (year === null) continue;
+    const key = certificate.assignment_id
+      ? `assignment:${certificate.assignment_id}`
+      : `course:${certificate.course_id || certificate.course_title || certificate.id}:${year}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push({ certificate, year });
+  }
+  return kept;
+}
+
+/** Credit-year blocks (newest first) plus the grand CE total for the header. */
+function groupByCreditYear(certificates = []) {
+  const byYear = new Map();
+  for (const { certificate, year } of dedupeCreditRecords(certificates)) {
+    if (!byYear.has(year)) byYear.set(year, []);
+    byYear.get(year).push(certificate);
+  }
+  const yearGroups = [...byYear.entries()].sort((a, b) => b[0] - a[0]);
+  return {
+    yearGroups,
+    yearTotals: yearGroups.map(([year, rows]) => ({
+      year,
+      hours: round1(rows.reduce((sum, cert) => sum + (Number(cert.hours) || 0), 0)),
+      courseCount: rows.length,
+    })),
+    grandTotalHours: round1(
+      yearGroups.reduce(
+        (sum, [, rows]) => sum + rows.reduce((rowSum, cert) => rowSum + (Number(cert.hours) || 0), 0),
+        0,
+      ),
+    ),
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -42,6 +106,10 @@ Deno.serve(async (req) => {
       5000,
     );
 
+    // Yearly blocks, newest first, each carrying an hours subtotal — the shape a
+    // CE transcript is expected to have.
+    const { yearGroups, yearTotals, grandTotalHours } = groupByCreditYear(certificates);
+
     // Create PDF
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -67,54 +135,84 @@ Deno.serve(async (req) => {
     doc.text(`Employee: ${employee.full_name}`, 20, yPosition);
     yPosition += 5;
     doc.text(`Email: ${employee.email}`, 20, yPosition);
+    yPosition += 5;
+    doc.text(`Total CE Hours: ${grandTotalHours}`, 20, yPosition);
     yPosition += 8;
 
-    // Table header
-    doc.setFontSize(9);
-    doc.setTextColor(255, 255, 255);
-    doc.setFillColor(11, 64, 127);
-    
     const columns = [
       { label: 'Completion Date', width: 25 },
-      { label: 'Course', width: 70 },
-      { label: 'Score', width: 18 },
-      { label: 'Certificate', width: 32 }
+      { label: 'Course', width: 58 },
+      { label: 'Score', width: 15 },
+      { label: 'CE Hours', width: 17 },
+      { label: 'Certificate', width: 32 },
     ];
 
-    let xPos = 20;
-    columns.forEach(col => {
-      doc.rect(xPos, yPosition - 4, col.width, 6, 'F');
-      doc.text(col.label, xPos + 2, yPosition, { maxWidth: col.width - 4, fontSize: 9 });
-      xPos += col.width;
-    });
-    yPosition += 8;
+    const drawTableHeader = () => {
+      doc.setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      doc.setFillColor(11, 64, 127);
+      let xPos = 20;
+      columns.forEach(col => {
+        doc.rect(xPos, yPosition - 4, col.width, 6, 'F');
+        doc.text(col.label, xPos + 2, yPosition, { maxWidth: col.width - 4 });
+        xPos += col.width;
+      });
+      yPosition += 8;
+    };
 
-    // Table rows
-    doc.setFontSize(8);
-    doc.setTextColor(40, 40, 40);
+    // Reserve enough room that a year heading is never orphaned at a page break
+    // ahead of its own header row and first entry.
+    const ensureSpace = (needed) => {
+      if (yPosition <= pageHeight - needed) return false;
+      doc.addPage();
+      yPosition = 20;
+      return true;
+    };
 
-    certificates.forEach((cert, idx) => {
-      if (yPosition > pageHeight - 20) {
-        doc.addPage();
-        yPosition = 20;
-      }
+    yearGroups.forEach(([year, rows], groupIndex) => {
+      const { hours: yearHours, courseCount } = yearTotals[groupIndex];
 
-      const issuedDate = new Date(cert.issued_at).toLocaleDateString();
-      const score = cert.score ? `${cert.score}%` : 'N/A';
+      ensureSpace(34);
+      doc.setFontSize(11);
+      doc.setTextColor(11, 64, 127);
+      doc.text(`${year}`, 20, yPosition);
+      doc.setFontSize(9);
+      doc.setTextColor(80, 80, 80);
+      doc.text(
+        `${courseCount} course${courseCount === 1 ? '' : 's'} - ${yearHours} CE hour${yearHours === 1 ? '' : 's'}`,
+        40,
+        yPosition,
+      );
+      yPosition += 7;
+      drawTableHeader();
 
-      let cellX = 20;
-      doc.text(issuedDate, cellX, yPosition, { maxWidth: 23 });
-      cellX += 25;
+      doc.setFontSize(8);
+      doc.setTextColor(40, 40, 40);
+      rows.forEach((cert) => {
+        if (ensureSpace(20)) drawTableHeader();
+        doc.setFontSize(8);
+        doc.setTextColor(40, 40, 40);
 
-      doc.text(cert.course_title || 'Unknown Course', cellX, yPosition, { maxWidth: 68 });
-      cellX += 70;
+        const completedValue = cert.completion_date || cert.issued_at;
+        const completedDate = completedValue ? new Date(completedValue).toLocaleDateString() : 'N/A';
+        const score = cert.score ? `${cert.score}%` : 'N/A';
+        const hours = Number(cert.hours) > 0 ? String(round1(Number(cert.hours))) : '-';
 
-      doc.text(score, cellX, yPosition, { maxWidth: 16 });
-      cellX += 18;
+        let cellX = 20;
+        doc.text(completedDate, cellX, yPosition, { maxWidth: 23 });
+        cellX += 25;
+        doc.text(cert.course_title || 'Unknown Course', cellX, yPosition, { maxWidth: 56 });
+        cellX += 58;
+        doc.text(score, cellX, yPosition, { maxWidth: 13 });
+        cellX += 15;
+        doc.text(hours, cellX, yPosition, { maxWidth: 15 });
+        cellX += 17;
+        doc.setFontSize(7);
+        doc.text(cert.certificate_id || 'N/A', cellX, yPosition, { maxWidth: 30 });
 
-      doc.text(cert.certificate_id || 'N/A', cellX, yPosition, { maxWidth: 30, fontSize: 7 });
-
-      yPosition += 6;
+        yPosition += 6;
+      });
+      yPosition += 4;
     });
 
     // Footer on every page with real page numbers (the transcript paginates; the

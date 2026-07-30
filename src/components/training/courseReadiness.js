@@ -14,6 +14,26 @@ export function getCourseReadiness(course, modules = [], questions = []) {
     blockers.push("Enable a certificate for this AI-generated course.");
   }
 
+  // An AI draft whose stored outline promises more lessons than exist (or that
+  // has no quiz yet) was interrupted mid-generation — the idempotent backend
+  // phases can finish it without starting over.
+  const outlineModules = Array.isArray(course?.ai_prompt_json?.outline_modules)
+    ? course.ai_prompt_json.outline_modules
+    : [];
+  const presentIndexes = new Set(
+    modules
+      .map((module) => Number(module.order_index))
+      .filter((index) => Number.isFinite(index))
+  );
+  const missingModuleIndexes = outlineModules
+    .map((_, index) => index)
+    .filter((index) => !presentIndexes.has(index));
+  const aiResumable =
+    course?.ai_generated === true &&
+    course?.status === "draft" &&
+    outlineModules.length > 0 &&
+    (missingModuleIndexes.length > 0 || questionCount === 0);
+
   return {
     lessonCount,
     questionCount,
@@ -23,5 +43,8 @@ export function getCourseReadiness(course, modules = [], questions = []) {
     videosReady,
     blockers,
     readyForReview: blockers.length === 0,
+    outlineModuleCount: outlineModules.length,
+    missingModuleIndexes,
+    aiResumable,
   };
 }

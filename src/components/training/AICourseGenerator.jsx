@@ -46,6 +46,7 @@ export default function AICourseGenerator({ onGenerated }) {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState("");
+  const [failedDraftId, setFailedDraftId] = useState(null);
   const [form, setForm] = useState({
     topic: "",
     training_category: "compliance",
@@ -76,6 +77,7 @@ export default function AICourseGenerator({ onGenerated }) {
 
   const reset = () => {
     setError("");
+    setFailedDraftId(null);
     setLoading(false);
     setProgress(null);
   };
@@ -87,6 +89,7 @@ export default function AICourseGenerator({ onGenerated }) {
     }
     setLoading(true);
     setError("");
+    setFailedDraftId(null);
     try {
       const payload = {
         topic: form.topic.trim(),
@@ -127,13 +130,17 @@ export default function AICourseGenerator({ onGenerated }) {
       const friendly = configNotReadyMessage(err);
       if (!friendly) console.error("AI course generation failed:", err);
       const base = friendly || err?.message || "Failed to generate the course. Please try again.";
-      // A later phase failed after the draft was created — tell the admin where
-      // the partial draft is instead of leaving a mystery course in the list.
-      setError(
-        err?.course_id
-          ? `${base} A draft ("${err.course_title || "Untitled"}") was created with partial content — you can finish or delete it in the course builder.`
-          : base
-      );
+      // A later phase failed after the draft was created — point the admin at
+      // the partial draft (the builder offers "Resume AI generation" there)
+      // instead of leaving a mystery course in the list.
+      if (err?.course_id) {
+        setFailedDraftId(err.course_id);
+        setError(
+          `${base} A draft ("${err.course_title || "Untitled"}") was created with partial content — open it to resume the AI generation, or delete it.`
+        );
+      } else {
+        setError(base);
+      }
     } finally {
       setLoading(false);
       setProgress(null);
@@ -368,7 +375,19 @@ export default function AICourseGenerator({ onGenerated }) {
           {error && (
             <Alert className="border-red-200 bg-red-50">
               <AlertTriangle className="w-4 h-4 text-red-600" />
-              <AlertDescription className="text-red-800">{error}</AlertDescription>
+              <AlertDescription className="text-red-800">
+                {error}
+                {failedDraftId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 block"
+                    onClick={() => onGenerated?.(failedDraftId)}
+                  >
+                    Open the draft
+                  </Button>
+                )}
+              </AlertDescription>
             </Alert>
           )}
 
