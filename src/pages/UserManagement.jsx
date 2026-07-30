@@ -70,7 +70,7 @@ import { formatEastern } from "@/components/utils/timezone";
 import { toast } from "sonner";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import UserActivityPanel from "@/components/admin/UserActivityPanel";
-import { buildDisableOrEnableUserPayload } from "@/components/admin/runUserOffboard";
+import { buildOffboardInvokeArgs } from "@/components/admin/runUserOffboard";
 
 export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -258,11 +258,11 @@ export default function UserManagement() {
     setShowDisableDialog(true);
   };
 
-  const confirmToggleActive = () => {
+  const confirmToggleActive = async () => {
     if (!selectedUser) return;
     const enabling = selectedUser.is_active === false;
     try {
-      const data = buildDisableOrEnableUserPayload({
+      const args = buildOffboardInvokeArgs({
         targetUser: selectedUser,
         currentUser,
         enabling,
@@ -277,10 +277,13 @@ export default function UserManagement() {
         entity_id: selectedUser.id,
         offboarding: !enabling,
       });
-      updateUserMutation.mutate({ userId: selectedUser.id, data });
-      if (!enabling) {
-        toast.success('User offboarded with audit fields. Hosted session/PHI enforcement remains a server requirement.');
-      }
+      await base44.functions.invoke('offboardUser', args);
+      queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
+      toast.success(
+        enabling
+          ? 'User reactivated.'
+          : 'User offboarded: account deactivated, patients unassigned, work number released, on-call cleared.'
+      );
       setShowDisableDialog(false);
       setSelectedUser(null);
     } catch (err) {
@@ -837,7 +840,7 @@ export default function UserManagement() {
               {selectedUser?.is_active === false ? (
                 <>Are you sure you want to enable <strong>{selectedUser?.full_name}</strong>? They will be able to access the system again.</>
               ) : (
-                <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This deactivates the account, clears routing fields, and records audit metadata. Server-side session revocation and patient unassignment still require hosted enforcement.</>
+                <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This deactivates the account, unassigns patients, releases the work number, clears on-call shifts, and records audit metadata. Platform-level rejection of inactive sessions still requires hosted RLS verification (LR-01).</>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
