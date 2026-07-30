@@ -20,6 +20,7 @@ import ProactiveClinicalSupport from "@/components/clinical/ProactiveClinicalSup
 import AnnouncementsWidget from "@/components/dashboard/AnnouncementsWidget";
 import UpcomingTelehealthWidget from "@/components/dashboard/UpcomingTelehealthWidget";
 import TodayPriorities from "@/components/dashboard/TodayPriorities";
+import CoreWorkQueuesStrip from "@/components/dashboard/CoreWorkQueuesStrip";
 import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import { calculateNurseStats } from "@/components/utils/statsCalculator";
@@ -159,6 +160,24 @@ export default function Dashboard() {
     ? "Home Health & Hospice"
     : "Home Health";
 
+  // Map app roles onto the pure work-queue summarizer vocabulary.
+  const workQueueRole = useMemo(() => {
+    const role = String(currentUser?.role || 'nurse').toLowerCase();
+    const account = String(currentUser?.account_type || '').toLowerCase();
+    if (role === 'admin' || ['agency_admin', 'super_admin', 'facility_admin', 'manager', 'qa'].includes(account)) {
+      return role === 'admin' ? 'admin' : (account || 'admin');
+    }
+    return 'nurse';
+  }, [currentUser?.role, currentUser?.account_type]);
+
+  // NoteConversion statuses used by buildCoreWorkQueues pending-review filter.
+  const notesForQueues = useMemo(
+    () => noteConversions.map((n) => ({
+      status: n.status || (n.submitted_at ? 'submitted' : 'draft'),
+    })),
+    [noteConversions]
+  );
+
   if (isLoading) {
     return <DashboardSkeleton />;
   }
@@ -225,6 +244,14 @@ export default function Dashboard() {
         noteConversions={noteConversions}
         messages={messages}
         dashboardError={dashboardError}
+      />
+
+      {/* Role-aware work queues (pure helper). Referrals/credentials/tasks stay empty
+          until a scoped multi-entity feed is available; incidents + notes still surface. */}
+      <CoreWorkQueuesStrip
+        role={workQueueRole}
+        incidents={incidents}
+        notes={notesForQueues}
       />
 
       {/* Quick Navigation Hint */}
