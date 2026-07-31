@@ -20,8 +20,25 @@ Deno.serve(async (req) => {
     // functions/updateIncident). created_by must therefore be stamped here --
     // the platform would otherwise attribute it to the service identity, and
     // read RLS keys off created_by to show reporters their own incidents.
+    // The offline drain dedupes retries by filtering Incident on
+    // client_request_id, so the key has to survive into the stored row. Drop it
+    // and an interrupted drain (server committed, queue removal failed) creates
+    // a second copy of the same safety event on the next pass.
+    const clientRequestId = payload.client_request_id;
+    if (clientRequestId) {
+      const existing = await base44.asServiceRole.entities.Incident.filter(
+        { client_request_id: clientRequestId },
+        undefined,
+        1,
+      ).catch(() => []);
+      if (existing?.[0]) {
+        return Response.json({ success: true, incident: existing[0], deduplicated: true });
+      }
+    }
+
     const incident = await base44.asServiceRole.entities.Incident.create({
       created_by: user.email,
+      ...(clientRequestId ? { client_request_id: clientRequestId } : {}),
       patient_id: payload.patient_id,
       patient_name: payload.patient_name,
       incident_type: payload.incident_type,

@@ -275,13 +275,24 @@ export default function UserManagement() {
         entity_id: selectedUser.id,
         offboarding: !enabling,
       });
-      await base44.functions.invoke('offboardUser', args);
+      const res = await base44.functions.invoke('offboardUser', args);
       queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
-      toast.success(
-        enabling
-          ? 'User reactivated.'
-          : 'User offboarded: account deactivated, patients unassigned, work number released, on-call cleared.'
-      );
+      const payload = res?.data || res || {};
+      if (enabling) {
+        toast.success('User reactivated.');
+      } else if (payload.complete === false) {
+        // The account is deactivated, but some access was not revoked. Telling
+        // the admin this succeeded would leave live PHI access unnoticed.
+        toast.warning(
+          payload.message
+            || 'User deactivated, but some access revocation did not complete. Review the offboarding audit entry and re-run.',
+          { duration: 10000 },
+        );
+      } else {
+        toast.success(
+          'User offboarded: account deactivated, patients unassigned, work number released, on-call cleared.'
+        );
+      }
       setShowDisableDialog(false);
       setSelectedUser(null);
     } catch (err) {

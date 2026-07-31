@@ -64,6 +64,34 @@ test('a partial revocation sweep is reported, not hidden', () => {
   );
 });
 
+test('a failed discovery query counts as a failure, not an empty sweep', () => {
+  // `.catch(() => [])` on the discovery queries turned "could not enumerate"
+  // into "nothing to revoke", so a total failure to find the records still
+  // reported complete: true while PHI access was untouched.
+  assert.doesNotMatch(
+    SRC,
+    /\.catch\(\(\) => \[\]\)/,
+    'discovery queries must not swallow errors into an empty array',
+  );
+  const catches = SRC.match(/\.catch\(\(err\) => \{[\s\S]*?\}\)/g) || [];
+  const counting = catches.filter((c) => /results\.failures \+= 1/.test(c));
+  assert.ok(
+    counting.length >= 4,
+    'each of the four revocation discovery queries must count its own failure; '
+      + `found ${counting.length}`,
+  );
+});
+
+test('an incomplete sweep is reported to the caller, not just logged', () => {
+  const client = readFileSync(join(process.cwd(), 'src/pages/UserManagement.jsx'), 'utf8');
+  assert.match(
+    client,
+    /payload\.complete === false/,
+    'UserManagement must inspect the response: showing the clean-success toast '
+      + 'unconditionally tells an admin access was withdrawn when it was not.',
+  );
+});
+
 test('the patient sweep filters server-side instead of scanning every patient', () => {
   assert.match(
     SRC,

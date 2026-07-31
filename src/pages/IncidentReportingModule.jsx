@@ -3,6 +3,10 @@ import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
 import { submitIncidentReport } from "@/functions/submitIncidentReport";
 import { transitionIncident } from "@/functions/updateIncident";
+import {
+  canTransitionIncidentStatus,
+  incidentNeedsCorrectiveAction,
+} from "@/components/incident/incidentLifecycle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -41,6 +45,33 @@ import { toast } from "sonner";
 import { format, parseISO, subMonths } from "date-fns";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+
+const STATUS_OPTIONS = [
+  { value: "reported", label: "Reported" },
+  { value: "under_review", label: "Under Review" },
+  { value: "resolved", label: "Resolved" },
+];
+
+/**
+ * Only offer transitions this dropdown can actually complete. It sends a bare
+ * to_status, so it cannot satisfy the corrective-action requirement -- offering
+ * "Resolved" on a high-severity or state-reportable incident with no plan on
+ * file guarantees a 400. Those go through the CAP-aware review queue instead.
+ * Backward moves are excluded because the lifecycle graph rejects them.
+ */
+function allowedStatusOptions(incident) {
+  const from = incident.status || "reported";
+  return STATUS_OPTIONS.filter((option) => {
+    if (option.value === from) return true;
+    if (!canTransitionIncidentStatus(from, option.value)) return false;
+    if (
+      option.value === "resolved"
+      && incidentNeedsCorrectiveAction(incident)
+      && !String(incident.corrective_action_plan || "").trim()
+    ) return false;
+    return true;
+  });
+}
 
 export default function IncidentReportingModule() {
   const [showReportDialog, setShowReportDialog] = useState(false);
@@ -652,9 +683,9 @@ export default function IncidentReportingModule() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="reported">Reported</SelectItem>
-                            <SelectItem value="under_review">Under Review</SelectItem>
-                            <SelectItem value="resolved">Resolved</SelectItem>
+                            {allowedStatusOptions(incident).map((option) => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       )}
@@ -724,9 +755,9 @@ export default function IncidentReportingModule() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="reported">Reported</SelectItem>
-                        <SelectItem value="under_review">Under Review</SelectItem>
-                        <SelectItem value="resolved">Resolved</SelectItem>
+                        {allowedStatusOptions(incident).map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   )}

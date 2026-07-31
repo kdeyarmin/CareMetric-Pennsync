@@ -132,7 +132,14 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
       { assigned_nurses: targetEmail },
       '-updated_date',
       PATIENT_SWEEP_LIMIT,
-    ).catch(() => []);
+    ).catch((err) => {
+      // An empty result and a failed query are not the same thing: swallowing
+      // this into [] reports "no assignments to revoke" and the sweep comes
+      // back clean while PHI access is untouched.
+      console.error('patient sweep query failed:', err?.message || err);
+      results.failures += 1;
+      return null;
+    });
     if ((patients || []).length >= PATIENT_SWEEP_LIMIT) {
       // Hitting the ceiling means there may be assignments we never saw, and an
       // unseen assignment is still live PHI access. Say so instead of implying
@@ -158,7 +165,11 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
       { assigned_to_email: targetEmail },
       undefined,
       5000,
-    ).catch(() => []);
+    ).catch((err) => {
+      console.error('phone pool query failed:', err?.message || err);
+      results.failures += 1;
+      return null;
+    });
     for (const row of (poolRows || [])) {
       const ok = await revoke('phone release', row.id, () =>
         base44.asServiceRole.entities.PhoneNumber.update(row.id, {
@@ -177,7 +188,11 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
       { assigned_user_email: targetEmail },
       undefined,
       5000,
-    ).catch(() => []);
+    ).catch((err) => {
+      console.error('on-call query failed:', err?.message || err);
+      results.failures += 1;
+      return null;
+    });
     for (const shift of (shifts || [])) {
       const priorNotes = shift.notes ? String(shift.notes) : '';
       const clearedNote = `Cleared on offboard ${at} by ${currentUser.email}`;
@@ -199,7 +214,11 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
       { email: targetEmail, status: 'pending' },
       undefined,
       5000,
-    ).catch(() => []);
+    ).catch((err) => {
+      console.error('invitation query failed:', err?.message || err);
+      results.failures += 1;
+      return null;
+    });
     for (const inv of (invites || [])) {
       const ok = await revoke('invitation cancel', inv.id, () =>
         base44.asServiceRole.entities.UserInvitation.update(inv.id, { status: 'cancelled' }));

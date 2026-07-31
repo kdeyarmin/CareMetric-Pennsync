@@ -44,11 +44,24 @@ const LIFECYCLE_TRANSITIONS = {
   archived: [],
 };
 
-/** Fields 'patch' may write. Status and its audit stamps are absent on purpose. */
-const PATCHABLE_FIELDS = [
-  'ai_tags',
+/**
+ * Fields 'patch' may write. Status and its audit stamps are absent on purpose.
+ *
+ * Split by caller because severity and state_reportable are the inputs to
+ * incidentNeedsCorrectiveAction: if the reporter could write them, they could
+ * downgrade their own high-severity incident and clear the state-reportable
+ * flag, after which the resolve gate reads the softened values and lets it
+ * close with no corrective action -- defeating the control this function
+ * exists to enforce. Narrative fields stay owner-writable so a reporter can
+ * still correct their own account of what happened.
+ */
+const ADMIN_ONLY_PATCHABLE_FIELDS = [
   'severity',
   'state_reportable',
+  'ai_tags',
+];
+
+const OWNER_PATCHABLE_FIELDS = [
   'report',
   'incident_type',
   'witnesses',
@@ -56,6 +69,8 @@ const PATCHABLE_FIELDS = [
   'follow_up_notes',
   'photo_urls',
 ];
+
+const PATCHABLE_FIELDS = [...ADMIN_ONLY_PATCHABLE_FIELDS, ...OWNER_PATCHABLE_FIELDS];
 
 function canTransitionIncidentStatus(fromStatus, toStatus) {
   if (fromStatus === 'corrective_action' && toStatus === 'resolved') return true;
@@ -104,7 +119,12 @@ Deno.serve(async (req) => {
     if (action === 'transition') {
       return await transitionIncident(base44, currentUser, incident, body, isAdmin);
     }
-    return Response.json({ error: "action must be 'transition' or 'patch'" }, { status: 400 });
+    if (action === 'reassign_patient') {
+      return await reassignIncidentPatient(base44, currentUser, incident, body, isAdmin);
+    }
+    return Response.json({
+      error: "action must be 'transition', 'patch', or 'reassign_patient'",
+    }, { status: 400 });
   } catch (error) {
     console.error('updateIncident error:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
@@ -126,6 +146,17 @@ async function patchIncident(base44, currentUser, incident, body, isAdmin) {
       error: `These fields cannot be set via patch: ${rejected.join(', ')}. `
         + "Status changes must use action:'transition'.",
     }, { status: 400 });
+  }
+
+  // severity / state_reportable decide whether a corrective action plan is
+  // required, so a non-admin owner must not be able to soften them.
+  if (!isAdmin) {
+    const privileged = Object.keys(patch).filter((k) => ADMIN_ONLY_PATCHABLE_FIELDS.includes(k));
+    if (privileged.length > 0) {
+      return Response.json({
+        error: `Only an admin can change: ${privileged.join(', ')}.`,
+      }, { status: 403 });
+    }
   }
   if (Object.keys(patch).length === 0) {
     return Response.json({ error: 'patch is empty' }, { status: 400 });
@@ -202,6 +233,7 @@ async function transitionIncident(base44, currentUser, incident, body, isAdmin) 
   // Persist the transition instead of shaping an audit event and dropping it
   // (the client helper's return value was discarded), so the review history is
   // an append-only trail rather than whatever the mutable fields last held.
+  let auditRecorded = true;
   await base44.asServiceRole.entities.UserActivity.create({
     user_email: currentUser.email,
     user_name: currentUser.full_name,
@@ -218,7 +250,51 @@ async function transitionIncident(base44, currentUser, incident, body, isAdmin) 
     page: 'IncidentReview',
     entity_type: 'Incident',
     entity_id: incident.id,
-  }).catch((err) => console.error('incident transition audit failed:', err?.message || err));
+  }).catch((err) => {
+    // The status write already committed, so this cannot be rolled back here.
+    // Report it instead of claiming an audit trail that does not exist: a
+    // transition whose record is missing is exactly what a compliance review
+    // needs to know about.
+    auditRecorded = false;
+    console.error('incident transition audit failed:', err?.message || err);
+  });
 
-  return Response.json({ success: true, status: toStatus });
+  return Response.json({
+    success: true,
+    status: toStatus,
+    audit_recorded: auditRecorded,
+    ...(auditRecorded ? {} : {
+      warning: 'Status changed, but the audit record could not be written. '
+        + 'Record this transition manually.',
+    }),
+  });
+}
+
+/**
+ * Reassign an incident to another patient. Used by the duplicate-patient merge,
+ * which can no longer write Incident directly now that RLS is service-role-only
+ * -- without this the merge silently leaves incidents on the archived chart.
+ */
+async function reassignIncidentPatient(base44, currentUser, incident, body, isAdmin) {
+  if (!isAdmin) {
+    return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
+  }
+  const patientId = body.patient_id;
+  if (!patientId) {
+    return Response.json({ error: 'patient_id is required' }, { status: 400 });
+  }
+
+  await base44.asServiceRole.entities.Incident.update(incident.id, { patient_id: patientId });
+
+  await base44.asServiceRole.entities.UserActivity.create({
+    user_email: currentUser.email,
+    user_name: currentUser.full_name,
+    action: 'incident_patient_reassigned',
+    details: { incident_id: incident.id, from_patient_id: incident.patient_id, to_patient_id: patientId },
+    page: 'PatientMerge',
+    entity_type: 'Incident',
+    entity_id: incident.id,
+  }).catch((err) => console.error('incident reassign audit failed:', err?.message || err));
+
+  return Response.json({ success: true, patient_id: patientId });
 }

@@ -130,9 +130,45 @@ test('a no-op transition is refused before the graph check', () => {
   );
 });
 
+test('the CAP trigger fields are admin-only', () => {
+  // severity and state_reportable are the inputs to
+  // incidentNeedsCorrectiveAction. patchIncident admits the incident's creator,
+  // so if these were owner-writable a reporter could downgrade their own
+  // high-severity incident and clear the state-reportable flag, and the resolve
+  // gate would then read the softened values and let it close with no
+  // corrective action -- defeating the whole control.
+  const adminOnly = SRC.slice(
+    SRC.indexOf('const ADMIN_ONLY_PATCHABLE_FIELDS'),
+    SRC.indexOf('const OWNER_PATCHABLE_FIELDS'),
+  );
+  for (const field of ['severity', 'state_reportable']) {
+    assert.match(adminOnly, new RegExp(`'${field}'`), `${field} must be admin-only`);
+  }
+
+  const ownerFields = SRC.slice(
+    SRC.indexOf('const OWNER_PATCHABLE_FIELDS'),
+    SRC.indexOf('const PATCHABLE_FIELDS'),
+  );
+  for (const field of ['severity', 'state_reportable']) {
+    assert.doesNotMatch(ownerFields, new RegExp(`'${field}'`), `${field} must not be owner-writable`);
+  }
+
+  assert.match(
+    SRC,
+    /if \(!isAdmin\) \{[\s\S]*ADMIN_ONLY_PATCHABLE_FIELDS\.includes/,
+    'patchIncident must actually enforce the admin-only list, not just declare it',
+  );
+});
+
 test('patch cannot write status or the review stamps', () => {
-  const start = SRC.indexOf('const PATCHABLE_FIELDS');
-  const list = SRC.slice(start, SRC.indexOf(']', start));
+  // Slice the two declared lists, not the `PATCHABLE_FIELDS` spread that joins
+  // them -- the spread contains no field names, so checking it would pass no
+  // matter what the lists held.
+  const start = SRC.indexOf('const ADMIN_ONLY_PATCHABLE_FIELDS');
+  const end = SRC.indexOf('const PATCHABLE_FIELDS');
+  const list = SRC.slice(start, end);
+  assert.ok(list.includes("'severity'") && list.includes("'report'"),
+    'sanity: the slice must actually contain the field lists');
   for (const forbidden of ['status', 'reviewed_by', 'reviewed_at', 'closed_by', 'closed_at']) {
     assert.doesNotMatch(
       list,
@@ -141,4 +177,38 @@ test('patch cannot write status or the review stamps', () => {
         + 'sidestepped by relabelling a status write as a field update',
     );
   }
+});
+
+test('submitIncidentReport persists the offline idempotency key', () => {
+  // The offline drain dedupes retries by filtering Incident on
+  // client_request_id. Routing creation through this function without carrying
+  // the key means the filter never matches and an interrupted drain writes a
+  // second copy of the same safety event.
+  const submit = readFileSync(
+    join(process.cwd(), 'base44/functions/submitIncidentReport/entry.ts'),
+    'utf8',
+  );
+  assert.match(submit, /client_request_id: clientRequestId/, 'the key must reach the stored row');
+  assert.match(
+    submit,
+    /filter\(\s*\{ client_request_id: clientRequestId \}/,
+    'and the function should short-circuit on an existing row for that key',
+  );
+});
+
+test('patient-merge reassignment for Incident goes through the function', () => {
+  // Incident writes are service-role-only, so a direct entity update here would
+  // throw, be swallowed by the merge's best-effort catch, and strand incidents
+  // on the archived duplicate chart.
+  const merge = readFileSync(
+    join(process.cwd(), 'src/components/patient/mergePatients.js'),
+    'utf8',
+  );
+  assert.match(merge, /FUNCTION_BACKED_REASSIGN/, 'merge must route service-role entities via functions');
+  assert.match(merge, /Incident: \(recordId, patientId\)/, 'Incident must be in that map');
+  assert.doesNotMatch(
+    merge,
+    /await api\.update\(record\.id, \{ patient_id: primaryId \}\)/,
+    'the raw per-record update must go through reassignRecordToPatient',
+  );
 });

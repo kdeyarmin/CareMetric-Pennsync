@@ -25,3 +25,14 @@ export const patchIncident = ({ incidentId, patch } = {}) =>
     incident_id: incidentId,
     patch,
   });
+
+/**
+ * Move an incident to another patient. Used by the duplicate-patient merge,
+ * which can no longer write Incident directly.
+ */
+export const reassignIncidentPatient = ({ incidentId, patientId } = {}) =>
+  invokeUpdateIncident({
+    action: 'reassign_patient',
+    incident_id: incidentId,
+    patient_id: patientId,
+  });
