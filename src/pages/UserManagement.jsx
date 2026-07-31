@@ -124,17 +124,11 @@ export default function UserManagement() {
     enabled: isAdminView(currentUser) && allUsers.length > 0,
   });
 
-  const updateUserMutation = useMutation({
-    mutationFn: ({ userId, data }) => base44.entities.User.update(userId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
-      setShowEditDialog(false);
-      setSelectedUser(null);
-    },
-    onError: (error) => {
-      toast.error('Failed to update user: ' + (error?.message || 'Unknown error'));
-    },
-  });
+  // No client-side User.update mutation here on purpose. User write RLS admits
+  // any admin, but userManagement.updateUser additionally enforces that only a
+  // super admin may grant the 'admin' role. Editing through the function
+  // (handleSaveUser) keeps that escalation guard on the path; a direct
+  // entities.User.update from the client would skip it.
 
   const resendInvitationMutation = useMutation({
     mutationFn: async (invitationId) => {

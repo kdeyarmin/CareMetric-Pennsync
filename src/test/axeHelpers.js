@@ -33,7 +33,6 @@ async function loadAxe() {
 export async function expectNoAxeViolations(container, options = {}) {
   const { axeFn: axe, loadError: err } = await loadAxe();
   if (!axe) {
-    // eslint-disable-next-line no-console
     console.warn('[a11y] vitest-axe not installed; skipping axe assertion.', err?.message || '');
     return { skipped: true };
   }
