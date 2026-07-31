@@ -15,7 +15,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing required incident fields' }, { status: 400 });
     }
 
-    const incident = await base44.entities.Incident.create({
+    // Service role: Incident write RLS is service-role-only so the CAP
+    // lifecycle cannot be bypassed by a direct client write (see
+    // functions/updateIncident). created_by must therefore be stamped here --
+    // the platform would otherwise attribute it to the service identity, and
+    // read RLS keys off created_by to show reporters their own incidents.
+    const incident = await base44.asServiceRole.entities.Incident.create({
+      created_by: user.email,
       patient_id: payload.patient_id,
       patient_name: payload.patient_name,
       incident_type: payload.incident_type,

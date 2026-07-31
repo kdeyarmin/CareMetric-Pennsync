@@ -230,7 +230,11 @@ Deno.serve(async (req) => {
     // 1) Persist the incident FIRST so the record is retained even if a later
     //    step (PDF, email) fails. If this throws, the outer catch returns 500
     //    and the nurse can retry.
-    const incident = await base44.entities.Incident.create({
+    // Service role + explicit created_by: Incident writes are service-role-only
+    // (see functions/updateIncident), and read RLS keys off created_by, so the
+    // reporter must still be recorded as the author.
+    const incident = await base44.asServiceRole.entities.Incident.create({
+      created_by: user.email,
       patient_id: payload.patient_id,
       patient_name: payload.patient_name || payload.patient_id,
       // Map the state event code onto a real incident_type so these — the most

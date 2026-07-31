@@ -166,6 +166,7 @@
     "incident_type",
     "incident_date"
   ],
+  "//write-note": "Writes are service-role-only. The corrective-action-plan lifecycle is a compliance control, but it was enforced only in IncidentReviewQueue while write RLS admitted the record's creator and any admin -- so the nurse who filed an incident could PATCH status:'resolved' straight through the entity API and skip the CAP requirement. All mutations now go through the updateIncident function (transition/patch), and creation through submitIncidentReport / submitStateReportableIncident. Reads are unchanged.",
   "rls": {
     "read": {
       "$or": [
@@ -183,16 +184,9 @@
       ]
     },
     "write": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
     }
   }
 }

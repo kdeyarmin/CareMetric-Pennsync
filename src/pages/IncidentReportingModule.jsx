@@ -2,6 +2,7 @@ import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
 import { submitIncidentReport } from "@/functions/submitIncidentReport";
+import { transitionIncident } from "@/functions/updateIncident";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -129,12 +130,16 @@ export default function IncidentReportingModule() {
     }
   });
 
+  // This dropdown set `status` directly, which skipped the lifecycle graph and
+  // the corrective-action requirement entirely. Route it through the function
+  // so an invalid or unaccompanied transition is refused server-side.
   const updateIncidentMutation = useMutation({
-    mutationFn: ({ id, updates }) => base44.entities.Incident.update(id, updates),
+    mutationFn: ({ id, updates }) => transitionIncident({ incidentId: id, toStatus: updates?.status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       toast.success("Incident status updated");
     },
+    onError: (e) => toast.error(e?.message || "Couldn't update the incident status"),
   });
 
   const handlePhotoUpload = async (e) => {
