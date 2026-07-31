@@ -12,6 +12,7 @@ import CustomValidationRuleManager from "../components/validation/CustomValidati
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
+import AdminOnboardingChecklistStrip from "@/components/admin/AdminOnboardingChecklistStrip";
 
 export default function AgencySettings() {
   const queryClient = useQueryClient();
@@ -111,6 +112,8 @@ export default function AgencySettings() {
         description="Configure agency-wide settings, validation rules, and cost analysis"
         favoritePage="AgencySettings"
       />
+
+        <AdminOnboardingChecklistStrip />
 
         {successMessage && (
           <Alert className="bg-emerald-50 border-emerald-200">

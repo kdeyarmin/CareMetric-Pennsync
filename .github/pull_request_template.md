@@ -21,3 +21,7 @@
 
 ## Screenshots
 - Add screenshots or note `N/A` for non-visual changes.
+
+## Merge (stacked PRs)
+- Classic REST / `gh pr merge` **cannot** merge stacked PRs (`403 … Use the web interface instead`).
+- Prefer **Merge** in the GitHub UI, or `gh stack merge` — see `CONTRIBUTING.md` → *Stacked PRs and merging*.

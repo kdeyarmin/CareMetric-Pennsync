@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -65,11 +65,14 @@ import LoadingState from "@/components/ui/LoadingState";
 import StatCard from "@/components/ui/stat-card";
 import EmptyState from "@/components/ui/empty-state";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
+import ListPaginationControls from "@/components/ui/ListPaginationControls";
+import { paginateRows, clampPageSize } from "@/lib/pagination";
 import { format } from "date-fns";
 import { formatEastern } from "@/components/utils/timezone";
 import { toast } from "sonner";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import UserActivityPanel from "@/components/admin/UserActivityPanel";
+import { buildOffboardInvokeArgs } from "@/components/admin/runUserOffboard";
 
 export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -89,6 +92,8 @@ export default function UserManagement() {
   const [showUserSetupDialog, setShowUserSetupDialog] = useState(false);
   const [setupFormData, setSetupFormData] = useState({ email: '', full_name: '', role: 'user', staff_type: '' });
   const [expandedActivityUser, setExpandedActivityUser] = useState(null);
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(25);
 
   const queryClient = useQueryClient();
 
@@ -110,27 +115,20 @@ export default function UserManagement() {
   });
 
   const { data: invitations = [] } = useQuery({
-    // Include the user count in the key so the "already signed up" filter below
-    // recomputes when a new user registers — otherwise a static key left a ghost
-    // "pending" invitation showing for someone who had just signed up.
     queryKey: ['userInvitations', allUsers.length],
     queryFn: async () => {
       const allInvitations = await base44.entities.UserInvitation.list('-created_date', 5000);
-      // Filter out invitations where user has already signed up
       const userEmails = new Set(allUsers.map(u => (u.email || '').toLowerCase()).filter(Boolean));
       return allInvitations.filter(inv => !userEmails.has((inv.email || '').toLowerCase()));
     },
     enabled: isAdminView(currentUser) && allUsers.length > 0,
   });
 
-  const updateUserMutation = useMutation({
-    mutationFn: ({ userId, data }) => base44.entities.User.update(userId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
-      setShowEditDialog(false);
-      setSelectedUser(null);
-    },
-  });
+  // No client-side User.update mutation here on purpose. User write RLS admits
+  // any admin, but userManagement.updateUser additionally enforces that only a
+  // super admin may grant the 'admin' role. Editing through the function
+  // (handleSaveUser) keeps that escalation guard on the path; a direct
+  // entities.User.update from the client would skip it.
 
   const resendInvitationMutation = useMutation({
     mutationFn: async (invitationId) => {
@@ -185,8 +183,6 @@ export default function UserManagement() {
           entity_id: invitationId
         });
       }
-      // UserInvitation writes are service-role-only — cancel through the
-      // userManagement function instead of a direct (now RLS-blocked) delete.
       return base44.functions.invoke('userManagement', { action: 'cancel_invitation', invitation_id: invitationId });
     },
     onSuccess: () => {
@@ -229,8 +225,6 @@ export default function UserManagement() {
     if (!selectedUser) return;
     setIsSavingUser(true);
     try {
-      // full_name is admin-managed and not writable via the standard SDK, so all
-      // edits go through the service-role userManagement function.
       await base44.functions.invoke('userManagement', {
         action: 'update_user',
         user_id: selectedUser.id,
@@ -262,21 +256,37 @@ export default function UserManagement() {
     setShowDisableDialog(true);
   };
 
-  const confirmToggleActive = () => {
+  const confirmToggleActive = async () => {
     if (!selectedUser) return;
-    const newStatus = selectedUser.is_active === false ? true : false;
-    logActivity(newStatus ? ActivityActions.USER_ENABLED : ActivityActions.USER_DISABLED, {
-      user_email: selectedUser.email,
-      user_name: selectedUser.full_name,
-      entity_type: 'User',
-      entity_id: selectedUser.id
-    });
-    updateUserMutation.mutate({
-      userId: selectedUser.id,
-      data: { is_active: newStatus }
-    });
-    setShowDisableDialog(false);
-    setSelectedUser(null);
+    const enabling = selectedUser.is_active === false;
+    try {
+      const args = buildOffboardInvokeArgs({
+        targetUser: selectedUser,
+        currentUser,
+        enabling,
+        reason: enabling
+          ? undefined
+          : `Disabled via User Management by ${currentUser?.email || 'admin'}`,
+      });
+      logActivity(enabling ? ActivityActions.USER_ENABLED : ActivityActions.USER_DISABLED, {
+        user_email: selectedUser.email,
+        user_name: selectedUser.full_name,
+        entity_type: 'User',
+        entity_id: selectedUser.id,
+        offboarding: !enabling,
+      });
+      await base44.functions.invoke('offboardUser', args);
+      queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
+      toast.success(
+        enabling
+          ? 'User reactivated.'
+          : 'User offboarded: account deactivated, patients unassigned, work number released, on-call cleared.'
+      );
+      setShowDisableDialog(false);
+      setSelectedUser(null);
+    } catch (err) {
+      toast.error(err?.message || 'Could not update user status');
+    }
   };
 
   const handleResetPassword = (user) => {
@@ -327,8 +337,7 @@ export default function UserManagement() {
     deleteUserMutation.mutate(selectedUser.id);
   };
 
-  // Filter users
-  const filteredUsers = allUsers.filter(user => {
+  const filteredUsers = useMemo(() => allUsers.filter(user => {
     if (roleFilter !== 'all' && user.role !== roleFilter) return false;
     if (statusFilter !== 'all') {
       if (statusFilter === 'active' && user.is_active === false) return false;
@@ -342,12 +351,20 @@ export default function UserManagement() {
       );
     }
     return true;
-  });
+  }), [allUsers, roleFilter, statusFilter, searchQuery]);
 
-  // Index activity by user in one pass instead of scanning all (up to 1000)
-  // activities per table row on every render/keystroke (was O(users × activities)).
-  // userActivities is fetched '-created_date', so the first row seen per email is
-  // the most recent.
+  // Reset to page 1 when filters change so an empty page never strands the admin.
+  useEffect(() => {
+    setUserPage(1);
+  }, [roleFilter, statusFilter, searchQuery]);
+
+  const pageSize = clampPageSize(userPageSize, { max: 100, fallback: 25 });
+  const userPageWindow = useMemo(
+    () => paginateRows(filteredUsers, { page: userPage, pageSize, maxPageSize: 100 }),
+    [filteredUsers, userPage, pageSize],
+  );
+  const pagedUsers = userPageWindow.items;
+
   const activityByEmail = useMemo(() => {
     const m = new Map();
     for (const a of userActivities) {
@@ -364,17 +381,9 @@ export default function UserManagement() {
   const getUserActivityCount = (email) => activityByEmail.get(email)?.count || 0;
   const getUserLastActivity = (email) => activityByEmail.get(email)?.last || null;
 
-  // Stats
   const now = new Date();
-  // A still-'pending' invitation past its expires_at is Expired, not Pending —
-  // exclude it here so it doesn't appear in both the Pending and Expired cards.
   const pendingInvitations = invitations.filter(i => i.status === 'pending' && new Date(i.expires_at) >= now);
   const expiredInvitations = invitations.filter(i => i.status === 'expired' || (i.status === 'pending' && new Date(i.expires_at) < now));
-  const _expiringSoonInvitations = pendingInvitations.filter(i => {
-    const expiresAt = new Date(i.expires_at);
-    const hoursUntilExpiry = (expiresAt - now) / (1000 * 60 * 60);
-    return hoursUntilExpiry > 0 && hoursUntilExpiry <= 24;
-  });
 
   const stats = {
     total: allUsers.length,
@@ -421,7 +430,6 @@ export default function UserManagement() {
         favoritePage="UserManagement"
       />
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <StatCard label="Total Users" value={stats.total} icon={Users} tone="slate" />
         <StatCard label="Admins" value={stats.admins} icon={Shield} tone="navy" />
@@ -430,7 +438,6 @@ export default function UserManagement() {
         <StatCard label="Inactive" value={stats.inactive} icon={UserX} tone="red" />
       </div>
 
-      {/* Filters & Add User Button */}
       <Card className="mb-4 sm:mb-6 modern-card">
         <CardContent className="p-3 sm:p-4">
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-start sm:items-center justify-between">
@@ -469,6 +476,22 @@ export default function UserManagement() {
                   <SelectItem value="inactive">Inactive</SelectItem>
                 </SelectContent>
               </Select>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => {
+                  setUserPageSize(clampPageSize(v, { max: 100, fallback: 25 }));
+                  setUserPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-36 h-11 touch-target">
+                  <SelectValue placeholder="Page size" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="25">25 per page</SelectItem>
+                  <SelectItem value="50">50 per page</SelectItem>
+                  <SelectItem value="100">100 per page</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <Button
               onClick={() => setShowUserSetupDialog(true)}
@@ -481,7 +504,6 @@ export default function UserManagement() {
         </CardContent>
       </Card>
 
-      {/* Pending Invitations */}
       {pendingInvitations.length > 0 && (
         <Card className="mb-4 sm:mb-6 modern-card border-slate-200 bg-white">
           <CardHeader className="p-3 sm:p-4 md:p-6 border-b border-slate-100 bg-slate-50 rounded-t-xl">
@@ -498,7 +520,6 @@ export default function UserManagement() {
                 const expiresAt = new Date(invitation.expires_at);
                 const hoursUntilExpiry = (expiresAt - now) / (1000 * 60 * 60);
                 const isExpiringSoon = hoursUntilExpiry > 0 && hoursUntilExpiry <= 24;
-                
                 return (
                   <div key={invitation.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-white rounded-lg border border-slate-200 shadow-sm hover:border-slate-300 transition-colors">
                     <div className="flex-1">
@@ -556,7 +577,6 @@ export default function UserManagement() {
         </Card>
       )}
 
-      {/* Expired Invitations */}
       {expiredInvitations.length > 0 && (
         <Card className="mb-4 sm:mb-6 modern-card border-red-200 bg-white">
           <CardHeader className="p-3 sm:p-4 md:p-6 border-b border-red-100 bg-red-50/50 rounded-t-xl">
@@ -569,7 +589,6 @@ export default function UserManagement() {
             <div className="space-y-3">
               {expiredInvitations.map((invitation) => {
                 const expiresAt = new Date(invitation.expires_at);
-                
                 return (
                   <div key={invitation.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-white rounded-lg border border-slate-200 shadow-sm hover:border-red-200 transition-colors">
                     <div className="flex-1">
@@ -584,9 +603,6 @@ export default function UserManagement() {
                           <Calendar className="w-3 h-3" />
                           Expired: {format(expiresAt, 'MMM d, yyyy')}
                         </span>
-                        {invitation.resend_count > 0 && (
-                          <span>Previously sent {invitation.resend_count}x</span>
-                        )}
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -621,7 +637,6 @@ export default function UserManagement() {
         </Card>
       )}
 
-      {/* Users Table */}
       <Card className="modern-card">
         <CardHeader className="p-3 sm:p-4 md:p-6">
           <CardTitle className="flex items-center justify-between text-base sm:text-lg">
@@ -634,6 +649,7 @@ export default function UserManagement() {
           ) : filteredUsers.length === 0 ? (
             <EmptyState title="No users found" icon={Users} />
           ) : (
+            <>
             <div className="overflow-x-auto -mx-3 sm:mx-0">
               <Table>
                 <TableHeader>
@@ -648,11 +664,10 @@ export default function UserManagement() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredUsers.map((user) => {
+                  {pagedUsers.map((user) => {
                     const activityCount = getUserActivityCount(user.email);
                     const lastActivity = getUserLastActivity(user.email);
                     const isActive = user.is_active !== false;
-                    
                     return (
                       <React.Fragment key={user.id}>
                       <TableRow className={!isActive ? 'opacity-50' : ''}>
@@ -731,7 +746,7 @@ export default function UserManagement() {
                               onClick={() => handleToggleActive(user)}
                               disabled={currentUser.email === user.email}
                               className={`min-h-[44px] w-10 sm:w-auto p-2 ${isActive ? 'text-red-600 hover:text-red-700' : 'text-emerald-600 hover:text-emerald-700'}`}
-                              title={isActive ? 'Disable user' : 'Enable user'}
+                              title={isActive ? 'Disable / offboard user' : 'Enable user'}
                             >
                               {isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
                             </Button>
@@ -768,11 +783,25 @@ export default function UserManagement() {
                 </TableBody>
               </Table>
             </div>
+            <ListPaginationControls
+              page={userPageWindow.page}
+              totalPages={userPageWindow.totalPages}
+              totalItems={userPageWindow.totalItems}
+              startIndex={userPageWindow.startIndex}
+              endIndex={userPageWindow.endIndex}
+              hasPreviousPage={userPageWindow.hasPreviousPage}
+              hasNextPage={userPageWindow.hasNextPage}
+              onPageChange={(p) => {
+                setExpandedActivityUser(null);
+                setUserPage(p);
+              }}
+              itemLabel="users"
+            />
+            </>
           )}
         </CardContent>
       </Card>
 
-      {/* Edit User Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent>
           <DialogHeader>
@@ -832,48 +861,28 @@ export default function UserManagement() {
                   </SelectContent>
                 </Select>
               </div>
-              <Alert>
-                <Shield className="w-4 h-4" />
-                <AlertDescription className="text-sm">
-                  <strong>Admin:</strong> Full access to all features and settings.<br/>
-                  <strong>Nurse:</strong> Access to patient care and documentation.
-                </AlertDescription>
-              </Alert>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancel</Button>
             <Button onClick={handleSaveUser} disabled={isSavingUser} className="bg-navy-600 hover:bg-navy-700">
-              {isSavingUser ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
-              ) : (
-                'Save Changes'
-              )}
+              {isSavingUser ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>) : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Disable/Enable User Dialog */}
       <AlertDialog open={showDisableDialog} onOpenChange={setShowDisableDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {selectedUser?.is_active === false ? 'Enable User' : 'Disable User'}
+              {selectedUser?.is_active === false ? 'Enable User' : 'Disable / Offboard User'}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {selectedUser?.is_active === false ? (
-                <>
-                  Are you sure you want to enable <strong>{selectedUser?.full_name}</strong>? 
-                  They will be able to access the system again.
-                </>
+                <>Are you sure you want to enable <strong>{selectedUser?.full_name}</strong>? They will be able to access the system again.</>
               ) : (
-                <>
-                  Are you sure you want to disable <strong>{selectedUser?.full_name}</strong>? 
-                  They will no longer be able to access the system.
-                </>
+                <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This deactivates the account, unassigns patients, releases the work number, clears on-call shifts, and records audit metadata. Platform-level rejection of inactive sessions still requires hosted RLS verification (LR-01).</>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -883,13 +892,12 @@ export default function UserManagement() {
               onClick={confirmToggleActive}
               className={selectedUser?.is_active === false ? 'bg-emerald-600' : 'bg-red-600'}
             >
-              {selectedUser?.is_active === false ? 'Enable' : 'Disable'}
+              {selectedUser?.is_active === false ? 'Enable' : 'Offboard'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete User Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -898,62 +906,24 @@ export default function UserManagement() {
               Delete User Permanently
             </AlertDialogTitle>
             <AlertDialogDescription>
-              <div className="space-y-3">
-                <p>
-                  Are you sure you want to permanently delete <strong>{selectedUser?.full_name}</strong>?
-                </p>
-                <Alert className="bg-red-50 border-red-300">
-                  <AlertTriangle className="w-4 h-4 text-red-600" />
-                  <AlertDescription className="text-red-900 text-sm">
-                    <strong>Warning:</strong> This action cannot be undone. The user will be completely removed from the system and can sign up again with the same email if needed.
-                  </AlertDescription>
-                </Alert>
-              </div>
+              Are you sure you want to permanently delete <strong>{selectedUser?.full_name}</strong>?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDeleteUser}
-              disabled={deleteUserMutation.isPending}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {deleteUserMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete User
-                </>
-              )}
+            <AlertDialogAction onClick={confirmDeleteUser} disabled={deleteUserMutation.isPending} className="bg-red-600 hover:bg-red-700">
+              Delete User
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Invitation Dialog */}
       <AlertDialog open={showDeleteInvitationDialog} onOpenChange={setShowDeleteInvitationDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
-              <Trash2 className="w-5 h-5" />
-              Delete Invitation
-            </AlertDialogTitle>
+            <AlertDialogTitle>Delete Invitation</AlertDialogTitle>
             <AlertDialogDescription>
-              <div className="space-y-3">
-                <p>
-                  Are you sure you want to delete the invitation for <strong>{selectedInvitation?.email}</strong>?
-                </p>
-                <Alert className="bg-red-50 border-red-300">
-                  <AlertTriangle className="w-4 h-4 text-red-600" />
-                  <AlertDescription className="text-red-900 text-sm">
-                    This user will need to be invited again to sign up.
-                  </AlertDescription>
-                </Alert>
-              </div>
+              Delete invitation for <strong>{selectedInvitation?.email}</strong>?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -963,23 +933,12 @@ export default function UserManagement() {
               disabled={deleteInvitationMutation.isPending}
               className="bg-red-600 hover:bg-red-700"
             >
-              {deleteInvitationMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Invitation
-                </>
-              )}
+              Delete Invitation
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Reset Password Dialog */}
       <AlertDialog open={showPasswordResetDialog} onOpenChange={setShowPasswordResetDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -989,27 +948,14 @@ export default function UserManagement() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {!resetPasswordResult ? (
-                <>
-                  Are you sure you want to reset the password for <strong>{selectedUser?.full_name}</strong>?
-                  <br/><br/>
-                  A temporary password will be generated and sent to <strong>{selectedUser?.email}</strong>. 
-                  The user will be able to log in with this temporary password and should change it immediately.
-                </>
+                <>Reset password for <strong>{selectedUser?.full_name}</strong>? A temporary password will be emailed to <strong>{selectedUser?.email}</strong>.</>
               ) : resetPasswordResult.success ? (
-                <div className="space-y-3">
-                  <Alert className="bg-emerald-50 border-emerald-300">
-                    <AlertDescription className="text-emerald-900">
-                      Password reset successfully! An email with the temporary password has been sent to
-                      the user. For security, the temporary password is delivered only by email and is not
-                      shown here — if the email doesn't arrive, reset again or check email delivery.
-                    </AlertDescription>
-                  </Alert>
-                </div>
+                <Alert className="bg-emerald-50 border-emerald-300">
+                  <AlertDescription className="text-emerald-900">Password reset successfully. Temporary password delivered by email only.</AlertDescription>
+                </Alert>
               ) : (
                 <Alert className="bg-red-50 border-red-300">
-                  <AlertDescription className="text-red-900">
-                    Failed to reset password: {resetPasswordResult?.error || 'Unknown error'}
-                  </AlertDescription>
+                  <AlertDescription className="text-red-900">Failed: {resetPasswordResult?.error || 'Unknown error'}</AlertDescription>
                 </Alert>
               )}
             </AlertDialogDescription>
@@ -1018,33 +964,12 @@ export default function UserManagement() {
             {!resetPasswordResult ? (
               <>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={confirmResetPassword}
-                  disabled={resetPasswordMutation.isPending}
-                  className="bg-orange-600 hover:bg-orange-700"
-                >
-                  {resetPasswordMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Resetting...
-                    </>
-                  ) : (
-                    <>
-                      <Key className="w-4 h-4 mr-2" />
-                      Reset Password
-                    </>
-                  )}
+                <AlertDialogAction onClick={confirmResetPassword} disabled={resetPasswordMutation.isPending} className="bg-orange-600 hover:bg-orange-700">
+                  Reset Password
                 </AlertDialogAction>
               </>
             ) : (
-              <AlertDialogAction
-                onClick={() => {
-                  setShowPasswordResetDialog(false);
-                  setResetPasswordResult(null);
-                  setSelectedUser(null);
-                }}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
+              <AlertDialogAction onClick={() => { setShowPasswordResetDialog(false); setResetPasswordResult(null); setSelectedUser(null); }}>
                 Done
               </AlertDialogAction>
             )}
@@ -1052,7 +977,6 @@ export default function UserManagement() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Add New User Dialog */}
       <Dialog open={showUserSetupDialog} onOpenChange={setShowUserSetupDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -1061,72 +985,27 @@ export default function UserManagement() {
           <div className="space-y-4">
             <div>
               <Label htmlFor="email">Email Address</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="user@example.com"
-                value={setupFormData.email}
-                onChange={(e) => setSetupFormData({ ...setupFormData, email: e.target.value })}
-                className="mt-1"
-              />
+              <Input id="email" type="email" placeholder="user@example.com" value={setupFormData.email} onChange={(e) => setSetupFormData({ ...setupFormData, email: e.target.value })} className="mt-1" />
             </div>
             <div>
               <Label htmlFor="full_name">Full Name</Label>
-              <Input
-                id="full_name"
-                placeholder="John Doe"
-                value={setupFormData.full_name}
-                onChange={(e) => setSetupFormData({ ...setupFormData, full_name: e.target.value })}
-                className="mt-1"
-              />
+              <Input id="full_name" placeholder="John Doe" value={setupFormData.full_name} onChange={(e) => setSetupFormData({ ...setupFormData, full_name: e.target.value })} className="mt-1" />
             </div>
             <div>
               <Label htmlFor="role">Role</Label>
               <Select value={setupFormData.role} onValueChange={(role) => setSetupFormData({ ...setupFormData, role })}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent style={{ zIndex: 9999 }}>
                   <SelectItem value="user">Nurse</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="staff_type">Staff Type (Optional)</Label>
-              <Select value={setupFormData.staff_type || "none"} onValueChange={(staff_type) => setSetupFormData({ ...setupFormData, staff_type: staff_type === "none" ? "" : staff_type })}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select staff type" />
-                </SelectTrigger>
-                <SelectContent style={{ zIndex: 9999 }}>
-                  <SelectItem value="none">None</SelectItem>
-                  <SelectItem value="RN">RN</SelectItem>
-                  <SelectItem value="LPN">LPN</SelectItem>
-                  <SelectItem value="office_staff">Office Staff</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUserSetupDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateUser}
-              disabled={createUserMutation.isPending}
-              className="bg-indigo-600 hover:bg-indigo-700"
-            >
-              {createUserMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Users className="w-4 h-4 mr-2" />
-                  Create User
-                </>
-              )}
+            <Button variant="outline" onClick={() => setShowUserSetupDialog(false)}>Cancel</Button>
+            <Button onClick={handleCreateUser} disabled={createUserMutation.isPending} className="bg-indigo-600 hover:bg-indigo-700">
+              {createUserMutation.isPending ? 'Creating...' : 'Create User'}
             </Button>
           </DialogFooter>
         </DialogContent>

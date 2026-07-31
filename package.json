@@ -21,6 +21,9 @@
     "test:contracts": "node --test base44/schemaContract.test.js base44/entityReferenceContract.test.js base44/entityWriteDrift.test.js base44/phase0Contract.test.js",
     "test:security": "node --test base44/securityGuardrails.test.js",
     "test:components": "vitest run",
+    "test:a11y": "vitest run src/**/*.a11y.test.jsx",
+    "test:a11y:e2e": "playwright test",
+    "test:a11y:e2e:install": "playwright install --with-deps chromium",
     "test:watch": "vitest",
     "preview": "vite preview",
     "check:updates": "node tools-check-updates.mjs",
@@ -51,6 +54,7 @@
     "@radix-ui/react-tabs": "^1.1.21",
     "@radix-ui/react-tooltip": "^1.2.16",
     "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-virtual": "^3.14.9",
     "@telnyx/video": "^1.0.2",
     "autoprefixer": "^10.5.4",
     "class-variance-authority": "^0.7.1",
@@ -78,7 +82,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
@@ -102,7 +108,8 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "vitest-axe": "0.1.0"
   },
   "packageManager": "pnpm@11.9.0",
   "engines": {

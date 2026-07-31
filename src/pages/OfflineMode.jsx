@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,8 @@ import { WifiOff, Wifi, Users, FileText, Database, Activity, Upload } from "luci
 import OfflinePatientSelector from "../components/mobile/OfflinePatientSelector";
 import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
 import OfflineTaskManager from "../components/mobile/OfflineTaskManager";
+import MobileVisitReadinessStrip from "@/components/mobile/MobileVisitReadinessStrip";
+import VirtualList from "@/components/ui/VirtualList";
 import { useOfflineQueue } from "@/lib/offlineSync";
 import { getPatientsLocally } from "@/lib/indexedDB";
 import { mergeOfflinePatientCaches } from "@/lib/offlinePatients";
@@ -105,6 +107,36 @@ export default function OfflineMode() {
 
   const cachedPatientsSizeKb = (JSON.stringify(cachedPatients).length / 1024).toFixed(0);
 
+  const selectedCache = useMemo(
+    () => cachedPatients.find((c) => c?.patient?.id === selectedPatientId) || null,
+    [cachedPatients, selectedPatientId],
+  );
+
+  const readinessProps = useMemo(() => {
+    const patientCached = Boolean(selectedCache?.patient?.id);
+    const hasPatientContext = Boolean(
+      selectedCache?.patient
+      && (
+        (selectedCache.carePlans && selectedCache.carePlans.length > 0)
+        || selectedCache.patient.primary_diagnosis
+        || selectedCache.patient.allergies
+        || (selectedCache.recentVisits && selectedCache.recentVisits.length > 0)
+      ),
+    );
+    return {
+      patientCached: selectedPatientId ? patientCached : cachedPatients.length > 0,
+      hasPatientContext: selectedPatientId ? hasPatientContext : cachedPatients.length > 0,
+      // Draft note detection is queue-level; treat any pending item as a soft signal.
+      hasDraftNote: pendingCount > 0,
+      pendingSyncCount: pendingCount,
+      isOnline,
+      hasRequiredForms: true,
+      patientName: selectedPatient
+        ? `${selectedPatient.first_name || ''} ${selectedPatient.last_name || ''}`.trim()
+        : undefined,
+    };
+  }, [selectedCache, selectedPatientId, selectedPatient, cachedPatients.length, pendingCount, isOnline]);
+
   return (
     <PageContainer>
       <PageHeader
@@ -121,7 +153,7 @@ export default function OfflineMode() {
           <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
             <TabsTrigger value="status" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
               <Activity className="h-4 w-4 mr-2" />
-              Status &amp; Sync
+              Status & Sync
             </TabsTrigger>
             <TabsTrigger value="visit" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
               <FileText className="h-4 w-4 mr-2" />
@@ -151,6 +183,8 @@ export default function OfflineMode() {
         </AlertDescription>
       </Alert>
 
+      <MobileVisitReadinessStrip {...readinessProps} />
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
         <StatCard label="Cached Patients" value={cachedPatients.length} icon={Users} tone="blue" />
         <StatCard label="Pending Sync" value={pendingCount} icon={FileText} tone="amber" />
@@ -167,7 +201,7 @@ export default function OfflineMode() {
         </div>
 
         <div className="space-y-4 sm:space-y-6">
-          {/* Cached Patients List */}
+          {/* Cached Patients List — virtualized for large offline rosters */}
           <Card>
             <CardHeader className="p-3 sm:p-4 md:p-6">
               <CardTitle className="text-sm sm:text-base">Cached Patients</CardTitle>
@@ -180,19 +214,24 @@ export default function OfflineMode() {
                   <p className="text-xs mt-1">Download patient data to work offline</p>
                 </div>
               ) : (
-                <div className="space-y-2 max-h-64 sm:max-h-96 overflow-y-auto">
-                  {cachedPatients.map((cache, idx) => (
+                <VirtualList
+                  items={cachedPatients}
+                  estimateSize={88}
+                  height={384}
+                  className="pr-1"
+                  itemClassName="pb-2"
+                  getItemKey={(cache, idx) => cache?.patient?.id ?? idx}
+                  renderItem={(cache) => (
                     <div
-                     key={idx}
-                     className={`p-3 sm:p-4 border rounded-lg cursor-pointer transition-colors min-h-[60px] touch-target ${
-                       selectedPatientId === cache.patient.id 
-                         ? 'bg-blue-50 border-blue-300' 
-                         : 'bg-white hover:bg-slate-50'
-                     }`}
-                     onClick={() => {
-                       setSelectedPatientId(cache.patient.id);
-                       setSelectedPatient(cache.patient);
-                     }}
+                      className={`p-3 sm:p-4 border rounded-lg cursor-pointer transition-colors min-h-[60px] touch-target ${
+                        selectedPatientId === cache.patient.id
+                          ? 'bg-blue-50 border-blue-300'
+                          : 'bg-white hover:bg-slate-50'
+                      }`}
+                      onClick={() => {
+                        setSelectedPatientId(cache.patient.id);
+                        setSelectedPatient(cache.patient);
+                      }}
                     >
                       <p className="font-medium text-sm sm:text-base">
                         {cache.patient.first_name} {cache.patient.last_name}
@@ -207,8 +246,8 @@ export default function OfflineMode() {
                         </Badge>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  )}
+                />
               )}
             </CardContent>
           </Card>
@@ -225,6 +264,7 @@ export default function OfflineMode() {
         </TabsContent>
 
         <TabsContent value="visit">
+          <MobileVisitReadinessStrip {...readinessProps} />
           <Suspense fallback={tabLoader}>
             <OfflineVisitDocumentation />
           </Suspense>

@@ -16,6 +16,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import StatCard from "@/components/ui/stat-card";
 import EmptyState from "@/components/ui/empty-state";
+import VirtualList from "@/components/ui/VirtualList";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import PatientCardSkeleton from "../components/loading/PatientCardSkeleton";
 import SwipeablePatientCard from "../components/mobile/SwipeablePatientCard";
@@ -357,14 +358,14 @@ export default function Patients() {
         </div>
       )}
 
-      {/* Mobile Optimized List */}
-      <div className="lg:hidden space-y-3 mb-20">
+      {/* Mobile Optimized List — virtualized when the filtered roster is large */}
+      <div className="lg:hidden mb-20">
         {isLoading ? (
-          <>
+          <div className="space-y-3">
             <PatientCardSkeleton />
             <PatientCardSkeleton />
             <PatientCardSkeleton />
-          </>
+          </div>
         ) : filteredPatients.length === 0 ? (
           <EmptyState
             icon={User}
@@ -378,22 +379,29 @@ export default function Patients() {
             )}
           />
         ) : (
-          filteredPatients.map((patient) => (
-            <SwipeablePatientCard
-              key={patient.id}
-              patient={patient}
-              isSelected={selectedPatients.some(p => p.id === patient.id)}
-              onToggleSelect={togglePatientSelection}
-              onEdit={(p) => {
-                setEditingPatient(p);
-                setShowForm(true);
-              }}
-              onDelete={(p) => {
-                setPatientToDelete(p);
-                setDeleteDialogOpen(true);
-              }}
-            />
-          ))
+          <VirtualList
+            items={filteredPatients}
+            estimateSize={132}
+            height="min(70vh, 640px)"
+            className="space-y-0"
+            itemClassName="pb-3"
+            getItemKey={(patient) => patient.id}
+            renderItem={(patient) => (
+              <SwipeablePatientCard
+                patient={patient}
+                isSelected={selectedPatients.some(p => p.id === patient.id)}
+                onToggleSelect={togglePatientSelection}
+                onEdit={(p) => {
+                  setEditingPatient(p);
+                  setShowForm(true);
+                }}
+                onDelete={(p) => {
+                  setPatientToDelete(p);
+                  setDeleteDialogOpen(true);
+                }}
+              />
+            )}
+          />
         )}
       </div>
 

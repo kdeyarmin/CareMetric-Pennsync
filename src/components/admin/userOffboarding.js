@@ -20,9 +20,7 @@ export function buildUserOffboardingPatch({ targetUser, actorEmail, reason, at =
     duty_status: 'off_duty',
     // Stop the offboarded user's record from ROUTING work: an incoming/masked
     // call must not bridge to their personal cell, and on-call/off-duty logic
-    // keys off duty_status + these fields. (Releasing the shared PhoneNumber
-    // row and OnCallShift assignments are separate entity writes the
-    // offboarding action must also perform — see the note below.)
+    // keys off duty_status + these fields.
     personal_cell_e164: '',
     scheduled_off_duty_start: '',
     scheduled_off_duty_end: '',
@@ -32,18 +30,13 @@ export function buildUserOffboardingPatch({ targetUser, actorEmail, reason, at =
   };
 }
 
-// NOTE for the offboarding ACTION that consumes this patch (not yet wired into
-// the UI): the patch above only deactivates the User record. A complete
-// offboarding must ALSO, server-side:
-//   1. Enforce is_active server-side — a deactivated user's still-valid session
-//      otherwise keeps reading PHI through the entity API / functions. The app
-//      shell (Layout) blocks a deactivated user in the browser, but that is
-//      cosmetic; the backend must reject is_active:false callers.
-//   2. Remove the user from every Patient.assigned_nurses (Patient read RLS
-//      keys off it — otherwise patient PHI stays readable).
-//   3. Release the shared work number: unset PhoneNumber.assigned_to_email and
-//      the User's work_phone_number / twilio_phone_number_sid.
-//   4. Deactivate their OnCallShift rows and revoke pending UserInvitations.
+// Server-side offboardUser function implements these requirements:
+//   1. User.is_active:false + audit fields + clear routing numbers
+//   2. Remove email from every Patient.assigned_nurses
+//   3. Release PhoneNumber.assigned_to_email + clear User work number fields
+//   4. Clear OnCallShift assignments and cancel pending invitations
+// Remaining platform gap: Base44 entity-API rejection of is_active:false sessions
+// (Layout already blocks the browser shell).
 export const OFFBOARDING_SERVER_SIDE_REQUIREMENTS = Object.freeze([
   'enforce_is_active_server_side',
   'unassign_from_patients',

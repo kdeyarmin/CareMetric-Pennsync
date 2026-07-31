@@ -1,0 +1,54 @@
+name: Accessibility (axe)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  axe-rules-unit:
+    name: axeRules unit (node:test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: node --test src/lib/axeRules.test.js src/lib/accessibilitySmokeMatrix.test.js
+
+  component-a11y:
+    name: Component axe (Vitest + axe-core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:a11y
+
+  public-route-a11y:
+    name: Public route axe (Playwright + axe-core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:a11y:e2e:install
+      - run: pnpm run build
+      - run: pnpm run test:a11y:e2e
+        env:
+          CI: true

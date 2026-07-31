@@ -17,6 +17,7 @@ import NursePerformanceReport from "@/components/reports/NursePerformanceReport"
 import OASISComplianceReport from "@/components/reports/OASISComplianceReport";
 import PDGMReimbursementReport from "@/components/reports/PDGMReimbursementReport";
 import KPIDashboard from "@/components/reports/KPIDashboard";
+import MetricDictionaryStrip from "@/components/reports/MetricDictionaryStrip";
 import LoadingState from "@/components/ui/LoadingState";
 
 const AdminReportsCenter = lazy(() => import("@/components/hub-tabs/AdminReportsCenter"));
@@ -78,6 +79,8 @@ export default function ReportsAnalytics() {
         description="KPIs, documentation performance, outcomes, OASIS/PDGM, and agency reports"
         favoritePage="ReportsAnalytics"
       />
+
+      <MetricDictionaryStrip />
 
       <EmbeddedPage>
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
