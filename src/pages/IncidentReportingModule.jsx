@@ -134,7 +134,12 @@ export default function IncidentReportingModule() {
   // the corrective-action requirement entirely. Route it through the function
   // so an invalid or unaccompanied transition is refused server-side.
   const updateIncidentMutation = useMutation({
-    mutationFn: ({ id, updates }) => transitionIncident({ incidentId: id, toStatus: updates?.status }),
+    mutationFn: ({ id, updates }) => {
+      // Fail here rather than sending to_status: undefined and surfacing the
+      // server's generic 400 to a user who picked a status.
+      if (!updates?.status) throw new Error('No status selected for this incident.');
+      return transitionIncident({ incidentId: id, toStatus: updates.status });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       toast.success("Incident status updated");

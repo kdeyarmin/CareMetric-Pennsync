@@ -104,6 +104,32 @@ test('the corrective-action predicate matches the client helper', () => {
   assert.match(SRC, /\['high', 'critical'\]/, 'entry must gate on high/critical severity');
 });
 
+test('a no-op transition is refused before the graph check', () => {
+  // Deliberate divergence from canTransitionIncidentStatus, which treats
+  // from === to as legal. The graph describes which moves are valid; this
+  // handler additionally refuses non-moves, because it re-stamps
+  // closed_by/closed_at from the current caller and appends a UserActivity row
+  // -- so replaying 'resolved' -> 'resolved' would reattribute the closure.
+  // The parity tests above still hold: this guard is policy layered on top of
+  // the graph, not a different graph.
+  const body = SRC.slice(SRC.indexOf('async function transitionIncident'));
+  const noOpGuard = body.indexOf('fromStatus === toStatus');
+  const graphCheck = body.indexOf('!canTransitionIncidentStatus(');
+  assert.notEqual(noOpGuard, -1, 'transitionIncident must refuse from === to');
+  assert.ok(
+    noOpGuard < graphCheck,
+    'the no-op guard must run before the graph check, which would accept from === to',
+  );
+
+  const stampBlock = body.slice(body.indexOf("if (toStatus === 'resolved')"));
+  assert.match(
+    stampBlock,
+    /payload\.closed_by = currentUser\.email/,
+    'the guard exists because this stamp is unconditional -- if that changes, '
+      + 'revisit whether the no-op rejection is still the right rule',
+  );
+});
+
 test('patch cannot write status or the review stamps', () => {
   const start = SRC.indexOf('const PATCHABLE_FIELDS');
   const list = SRC.slice(start, SRC.indexOf(']', start));

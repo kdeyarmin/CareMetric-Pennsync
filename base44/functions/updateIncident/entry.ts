@@ -147,6 +147,17 @@ async function transitionIncident(base44, currentUser, incident, body, isAdmin) 
   if (!toStatus) {
     return Response.json({ error: 'to_status is required' }, { status: 400 });
   }
+  // The lifecycle graph treats from === to as legal (an idempotent no-op), but
+  // this handler is not idempotent: it re-stamps closed_by/closed_at and
+  // reviewed_by/reviewed_at from the *current* caller and writes another
+  // UserActivity row. Replaying 'resolved' -> 'resolved' would therefore
+  // reattribute the closure to whoever replayed it and bury the real one in
+  // duplicate audit entries. A no-op is not a transition; refuse it.
+  if (fromStatus === toStatus) {
+    return Response.json({
+      error: `Incident is already ${String(toStatus).replace(/_/g, ' ')}.`,
+    }, { status: 400 });
+  }
   if (!canTransitionIncidentStatus(fromStatus, toStatus)) {
     return Response.json({
       error: `Invalid incident status transition: ${fromStatus} -> ${toStatus}`,

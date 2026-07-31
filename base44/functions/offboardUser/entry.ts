@@ -258,7 +258,9 @@ async function reactivateUser(base44, currentUser, params, callerIsSuperAdmin) {
   // move an offboarded administrator would make to undo their own offboarding,
   // and offboardUser() already refuses self-targeting for the same reason.
   if (targetIsPrivileged && !callerIsSuperAdmin) {
-    return Response.json({ error: 'Only a super admin can reactivate another administrator.' }, { status: 403 });
+    return Response.json({
+      error: 'Only a super admin can reactivate an administrator account, including your own.',
+    }, { status: 403 });
   }
 
   await base44.asServiceRole.entities.User.update(user_id, {
