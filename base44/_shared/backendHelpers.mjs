@@ -85,6 +85,21 @@ function isSafeFetchUrl(raw) {
   u.account_type === 'super_admin'
 );`,
 
+  // Offboarding sets is_active:false but deliberately leaves role/account_type
+  // intact (history and audit joins key off them), and the Base44 platform does
+  // not reject entity-API calls from a deactivated session. So an offboarded
+  // user holding a live session still satisfies every ordinary auth check. Any
+  // function that acts on PHI or writes data must refuse them explicitly.
+  //
+  // The test is `=== false`, NOT `!== true`: signup and onboarding functions run
+  // for users whose is_active has not been set yet, and `!== true` would lock
+  // them out of their own account creation.
+  requireActiveUser: `const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);`,
+
   // Shared scheduler/internal auth for privileged cron-style functions. Base44
   // function URLs are plain HTTP endpoints, so these jobs must require either an
   // admin session or the configured shared secret header.
