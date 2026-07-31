@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
 // response_json_schema, because the provider rejects deeply-nested object
 // schemas that lack an explicit `required` array at every level.
@@ -21,6 +30,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     if (!user || user.role !== 'admin') {
       return Response.json({ error: 'Unauthorized - Admin only' }, { status: 403 });

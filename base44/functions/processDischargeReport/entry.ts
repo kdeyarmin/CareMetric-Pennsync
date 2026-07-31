@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // This function reads and UPDATES patients across the whole tenant via service
 // role and Patient has no agency discriminator, so it stays role-/super-admin
 // only — an agency_admin must NOT be able to discharge another agency's charts.
@@ -15,6 +24,8 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     
     const user = await base44.auth.me();
+    
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!canRunDischargeImport(user)) {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
