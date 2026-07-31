@@ -14,7 +14,7 @@ export default function AdminOnboardingChecklistStrip() {
   const { data: settings } = useQuery({
     queryKey: ['agencySettings'],
     queryFn: async () => {
-      const rows = await base44.entities.AgencySettings.list();
+      const rows = await base44.entities.AgencySettings.list('-created_date', 1);
       return rows?.[0] || null;
     },
   });

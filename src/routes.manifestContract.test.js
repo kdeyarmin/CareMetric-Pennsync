@@ -6,7 +6,7 @@ import process from 'node:process';
 
 const pagesDir = join(process.cwd(), 'src/pages');
 const pageFiles = readdirSync(pagesDir)
-  .filter((file) => file.endsWith('.jsx') && !file.includes('.spec.'))
+  .filter((file) => file.endsWith('.jsx') && !/\.(test|spec)\./.test(file))
   .map((file) => file.replace(/\.jsx$/, ''))
   .sort();
 
