@@ -31,35 +31,18 @@ export default function AdminOnboardingChecklistStrip() {
     staleTime: 120000,
   });
 
+  // Entities match the checklist's own routes: /TemplateManagement reads
+  // DocumentTemplate, /AdminTraining reads TrainingAssignment. Naming them
+  // directly keeps the counts consistent with the page each item links to.
   const { data: templates = [] } = useQuery({
     queryKey: ['onboardingTemplateCount'],
-    queryFn: async () => {
-      try {
-        return await base44.entities.ClinicalTemplate.list('-created_date', 50);
-      } catch {
-        try {
-          return await base44.entities.Template.list('-created_date', 50);
-        } catch {
-          return [];
-        }
-      }
-    },
+    queryFn: () => base44.entities.DocumentTemplate.list('-created_date', 50).catch(() => []),
     staleTime: 120000,
   });
 
   const { data: trainingAssignments = [] } = useQuery({
     queryKey: ['onboardingTrainingAssignments'],
-    queryFn: async () => {
-      try {
-        return await base44.entities.TrainingAssignment.list('-created_date', 50);
-      } catch {
-        try {
-          return await base44.entities.RequiredTraining.list('-created_date', 50);
-        } catch {
-          return [];
-        }
-      }
-    },
+    queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 50).catch(() => []),
     staleTime: 120000,
   });
 

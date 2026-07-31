@@ -42,7 +42,8 @@
       "enum": [
         "pending",
         "accepted",
-        "expired"
+        "expired",
+        "cancelled"
       ],
       "default": "pending"
     },
