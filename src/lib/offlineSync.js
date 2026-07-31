@@ -207,7 +207,10 @@ async function drainOnce(deps) {
         const key = incidentPayload.client_request_id;
         const existing = key ? await entities.Incident.filter({ client_request_id: key }) : [];
         if (!existing || existing.length === 0) {
-          await entities.Incident.create(incidentPayload);
+          // Incident writes are service-role-only, so creation goes through the
+          // backend (which also runs the admin alert for severe events). The
+          // dedupe above still guards the drain; this only changes the writer.
+          await functions.invoke('submitIncidentReport', incidentPayload);
         }
         await removeItem(item.id);
         synced += 1;

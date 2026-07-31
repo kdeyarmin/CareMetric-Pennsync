@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { patchIncident } from "@/functions/updateIncident";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,8 +33,9 @@ export default function AIAutoTagger() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allVisitsForTagging'] }),
   });
 
+  // Incident writes are service-role-only; go through the function.
   const updateIncidentMutation = useMutation({
-    mutationFn: ({ id, tags }) => base44.entities.Incident.update(id, { ai_tags: tags }),
+    mutationFn: ({ id, tags }) => patchIncident({ incidentId: id, patch: { ai_tags: tags } }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allIncidentsForTagging'] }),
   });
 

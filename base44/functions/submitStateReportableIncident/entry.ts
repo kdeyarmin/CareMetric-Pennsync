@@ -1,6 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -209,6 +218,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -230,7 +240,11 @@ Deno.serve(async (req) => {
     // 1) Persist the incident FIRST so the record is retained even if a later
     //    step (PDF, email) fails. If this throws, the outer catch returns 500
     //    and the nurse can retry.
-    const incident = await base44.entities.Incident.create({
+    // Service role + explicit created_by: Incident writes are service-role-only
+    // (see functions/updateIncident), and read RLS keys off created_by, so the
+    // reporter must still be recorded as the author.
+    const incident = await base44.asServiceRole.entities.Incident.create({
+      created_by: user.email,
       patient_id: payload.patient_id,
       patient_name: payload.patient_name || payload.patient_id,
       // Map the state event code onto a real incident_type so these — the most

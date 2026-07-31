@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, ShieldAlert, Image as ImageIcon, CheckCircle2, Eye, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { transitionIncident } from "@/functions/updateIncident";
 import {
   canTransitionIncidentStatus,
   createIncidentReviewEvent,
@@ -43,8 +44,16 @@ function IncidentReviewCard({ incident, actorEmail }) {
   const [expanded, setExpanded] = useState(false);
   const needsCap = incidentNeedsCorrectiveAction(incident);
 
+  // Incident writes are service-role-only. The function re-checks the
+  // transition graph and the corrective-action requirement, so the guards below
+  // are fast feedback, not the enforcement point.
   const update = useMutation({
-    mutationFn: (data) => base44.entities.Incident.update(incident.id, data),
+    mutationFn: ({ status, ...rest }) => transitionIncident({
+      incidentId: incident.id,
+      toStatus: status,
+      resolutionNotes: rest.resolution_notes,
+      correctiveActionPlan: rest.corrective_action_plan,
+    }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-incidents"] }),
     onError: (e) => toast.error(e?.message || "Couldn't update the incident"),
   });
@@ -68,24 +77,10 @@ function IncidentReviewCard({ incident, actorEmail }) {
       toast.error(err?.message || "Invalid incident transition");
       return;
     }
-    const at = new Date().toISOString();
-    const payload = {
-      status: toStatus,
-      ...extra,
-    };
-    if (toStatus === "under_review" || toStatus === "corrective_action") {
-      payload.reviewed_by = actorEmail || undefined;
-      payload.reviewed_at = at;
-      payload.investigator_email = actorEmail || incident.investigator_email || undefined;
-      payload.office_notified = true;
-    }
-    if (toStatus === "resolved") {
-      payload.closed_by = actorEmail || undefined;
-      payload.closed_at = at;
-      payload.reviewed_by = actorEmail || incident.reviewed_by || undefined;
-      payload.reviewed_at = incident.reviewed_at || at;
-    }
-    update.mutate(payload, {
+    // reviewed_by/at, closed_by/at, investigator_email and office_notified are
+    // stamped by updateIncident from the authenticated caller. Sending them
+    // from here would be advisory at best and forgeable at worst.
+    update.mutate({ status: toStatus, ...extra }, {
       onSuccess: () => {
         const labels = {
           under_review: "Marked under review",

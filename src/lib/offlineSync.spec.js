@@ -171,9 +171,13 @@ describe('drainSyncQueue', () => {
     const h = harness([{ id: 5, action: 'CREATE_INCIDENT', payload: { patient_id: 'p1', incident_type: 'fall', created_offline: true } }]);
     const res = await drainSyncQueue(h);
     expect(res.synced).toBe(1);
-    expect(h.entities.Incident.create).toHaveBeenCalledTimes(1);
-    expect(h.entities.Incident.create.mock.calls[0][0]).not.toHaveProperty('created_offline');
-    expect(h.entities.Incident.create.mock.calls[0][0]).toMatchObject({ patient_id: 'p1', incident_type: 'fall' });
+    // Incident writes are service-role-only, so the drain submits through the
+    // backend function rather than writing the entity directly.
+    const incidentCalls = h.functions.invoke.mock.calls.filter((c) => c[0] === 'submitIncidentReport');
+    expect(incidentCalls).toHaveLength(1);
+    expect(incidentCalls[0][1]).not.toHaveProperty('created_offline');
+    expect(incidentCalls[0][1]).toMatchObject({ patient_id: 'p1', incident_type: 'fall' });
+    expect(h.entities.Incident.create).not.toHaveBeenCalled();
     expect(h.removeItem).toHaveBeenCalledWith(5);
   });
 
@@ -206,6 +210,7 @@ describe('drainSyncQueue', () => {
     expect(res.synced).toBe(1);
     expect(h.entities.Incident.filter).toHaveBeenCalledWith({ client_request_id: 'ic-1' });
     expect(h.entities.Incident.create).not.toHaveBeenCalled();
+    expect(h.functions.invoke.mock.calls.filter((c) => c[0] === 'submitIncidentReport')).toHaveLength(0);
     expect(h.removeItem).toHaveBeenCalledWith(42);
   });
 

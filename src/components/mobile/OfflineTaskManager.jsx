@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { submitIncidentReport } from "@/functions/submitIncidentReport";
 import { toLocalISODate } from "@/lib/dateLocal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -149,7 +150,9 @@ export default function OfflineTaskManager({ patientId, patientName }) {
       };
 
       if (isOnline) {
-        await base44.entities.Incident.create(incidentData);
+        // Incident writes are service-role-only; the backend creates the record
+        // and fires the admin alert for severe events.
+        await submitIncidentReport(incidentData);
       } else {
         // Queue to the canonical offline queue; OfflineManager creates the
         // Incident on reconnect (CREATE_INCIDENT handler). A stable

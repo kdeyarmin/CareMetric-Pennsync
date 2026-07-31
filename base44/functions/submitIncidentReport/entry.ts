@@ -1,9 +1,19 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -15,7 +25,30 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing required incident fields' }, { status: 400 });
     }
 
-    const incident = await base44.entities.Incident.create({
+    // Service role: Incident write RLS is service-role-only so the CAP
+    // lifecycle cannot be bypassed by a direct client write (see
+    // functions/updateIncident). created_by must therefore be stamped here --
+    // the platform would otherwise attribute it to the service identity, and
+    // read RLS keys off created_by to show reporters their own incidents.
+    // The offline drain dedupes retries by filtering Incident on
+    // client_request_id, so the key has to survive into the stored row. Drop it
+    // and an interrupted drain (server committed, queue removal failed) creates
+    // a second copy of the same safety event on the next pass.
+    const clientRequestId = payload.client_request_id;
+    if (clientRequestId) {
+      const existing = await base44.asServiceRole.entities.Incident.filter(
+        { client_request_id: clientRequestId },
+        undefined,
+        1,
+      ).catch(() => []);
+      if (existing?.[0]) {
+        return Response.json({ success: true, incident: existing[0], deduplicated: true });
+      }
+    }
+
+    const incident = await base44.asServiceRole.entities.Incident.create({
+      created_by: user.email,
+      ...(clientRequestId ? { client_request_id: clientRequestId } : {}),
       patient_id: payload.patient_id,
       patient_name: payload.patient_name,
       incident_type: payload.incident_type,

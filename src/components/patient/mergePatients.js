@@ -2,6 +2,7 @@
 // (the Duplicate Patients admin page, the merge dialogs) reassigns clinical
 // history the same way instead of each re-implementing it slightly differently.
 import { base44 } from "@/api/base44Client";
+import { reassignIncidentPatient } from '@/functions/updateIncident';
 
 // Every entity that references a patient via `patient_id` must follow the patient
 // when duplicates are merged — otherwise those records stay attached to the
@@ -14,6 +15,24 @@ import { base44 } from "@/api/base44Client";
 // The list is pinned against the entity schemas by mergePatients.entityList.test.js
 // (it scans base44/entities/*.jsonc for patient_id) — a new patient-linked entity
 // that isn't added here fails the test instead of silently orphaning records.
+/**
+ * Entities whose writes are service-role-only and therefore cannot be
+ * reassigned with a direct entity update. Incident moved behind the
+ * updateIncident function when its write RLS was locked down; without this
+ * indirection every incident update here would throw, get swallowed by the
+ * best-effort catch below, and leave the incidents stranded on the archived
+ * duplicate chart.
+ */
+const FUNCTION_BACKED_REASSIGN = {
+  Incident: (recordId, patientId) => reassignIncidentPatient({ incidentId: recordId, patientId }),
+};
+
+function reassignRecordToPatient(entityName, api, recordId, primaryId) {
+  const viaFunction = FUNCTION_BACKED_REASSIGN[entityName];
+  if (viaFunction) return viaFunction(recordId, primaryId);
+  return api.update(recordId, { patient_id: primaryId });
+}
+
 export const PATIENT_RELATED_ENTITIES = [
   "AdrAuditCase", "AppliedDataLog", "AppointmentForm", "Billing", "CallLog",
   "CareCoordinationAlert", "CarePlan", "CarePlanProposal", "ClinicalEvent",
@@ -98,7 +117,7 @@ export async function mergePatientInto(primaryId, duplicateId, { mergedBy = null
         let movedThisPage = 0;
         for (const record of records) {
           try {
-            await api.update(record.id, { patient_id: primaryId });
+            await reassignRecordToPatient(entityName, api, record.id, primaryId);
             moved += 1;
             movedThisPage += 1;
           } catch (err) {
