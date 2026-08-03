@@ -24,7 +24,7 @@ jobs:
           ref: wire-p1-pure-helpers
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6.0.9
         with:
           version: 11.9.0
 
