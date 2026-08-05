@@ -42,7 +42,7 @@ export default function PersonalizedEducationGenerator({ patient, carePlans = []
       const latestVisit = recentVisits[0];
 
       const result = await ai.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `You are a patient education specialist creating easy-to-understand health information for home health patients.
 
 PATIENT INFORMATION:

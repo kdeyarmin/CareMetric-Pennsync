@@ -43,7 +43,7 @@ Also provide:
 - Specific monitoring recommendations`;
 
       riskAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: riskPrompt,
         response_json_schema: {
           type: "object",

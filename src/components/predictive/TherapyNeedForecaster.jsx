@@ -112,7 +112,7 @@ export default function TherapyNeedForecaster({
 
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Analyze this patient's therapy needs and forecast required therapy services.
 
 PATIENT: ${patient?.first_name} ${patient?.last_name}

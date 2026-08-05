@@ -36,7 +36,7 @@ export default function OASISExecutiveSummary({ analysisResults, pdgmData }) {
       const _topAccuracy = (analysisResults.accuracy_issues || []).slice(0, 2).map(a => a.issue || a);
 
       const result = await ai.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `Create executive summary for OASIS assessment.
 
 Scores: Overall ${analysisResults.overall_score}%, Compliance ${analysisResults.compliance_score}%, Revenue ${analysisResults.revenue_optimization_score}%

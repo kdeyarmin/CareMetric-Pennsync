@@ -34,7 +34,7 @@ export default function AIDocumentationGenerator({ analysisResults, pdgmData, na
 
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert clinical documentation specialist for home health OASIS assessments. Generate concise, clinically appropriate documentation text snippets to address identified issues.
 
 ANALYSIS RESULTS:

@@ -98,7 +98,7 @@ Organize the stated content into:
 Format professionally. Add nothing that was not said.`;
 
     const noteResponse = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: notePrompt,
       add_context_from_internet: false
     });
@@ -128,7 +128,7 @@ Only include clinically appropriate suggestions.`;
     // rejects an array-root response_json_schema (root must be an object), so we
     // avoid the schema entirely here.
     const treatmentResponse = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: `${treatmentPrompt}
 
 Return ONLY a valid JSON object, no prose or code fences, of the form:

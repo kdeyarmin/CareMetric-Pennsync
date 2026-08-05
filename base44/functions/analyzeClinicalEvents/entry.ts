@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     }));
 
     const result = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: `Analyze these clinical events for a patient and identify potential issues:
 
 Patient Context:

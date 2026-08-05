@@ -206,7 +206,7 @@ IMPORTANT RULES:
 Return only the structured clinical note, no preamble.`;
 
     try {
-      const result = await invokeLLM({ prompt, model: "claude_opus_4_8" });
+      const result = await invokeLLM({ prompt, model: "automatic" });
       setStructuredNote(result);
     } catch {
       setError("Failed to structure note. Please try again.");

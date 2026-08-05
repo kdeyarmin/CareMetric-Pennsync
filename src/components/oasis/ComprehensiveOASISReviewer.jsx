@@ -117,7 +117,7 @@ For EACH inconsistency, provide:
 Return detailed JSON with all findings.`;
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt,
         response_json_schema: {
           type: "object",

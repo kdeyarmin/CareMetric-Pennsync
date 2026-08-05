@@ -40,7 +40,7 @@ export default function AIEducationRecommender({ patient, carePlans = [], onAssi
       const assignedTopics = existingEducation.map(e => e.topic.toLowerCase());
 
       const result = await ai.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `You are a patient education specialist. Recommend educational topics for this patient based on their diagnosis and care plan goals.
 
 PATIENT: ${patient.first_name} ${patient.last_name}

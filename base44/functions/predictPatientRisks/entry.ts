@@ -127,7 +127,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 {"overall_risk_level":"low|medium|high|critical","risk_assessments":[{"risk_type":"","risk_score":0,"urgency":"low|medium|high|critical","contributing_factors":[""],"recommendations":[""],"evidence":""}],"immediate_actions_needed":[""],"monitoring_priorities":[""]}`;
 
     const rawRiskPredictions = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: predictionPrompt
     });
     const riskPredictions = parseLLMJson(rawRiskPredictions) || {};

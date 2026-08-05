@@ -73,7 +73,7 @@ export default function AutomaticDocumentReviewer({
       );
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert Medicare home health compliance auditor and clinical documentation specialist for Pennsylvania home health agencies. Perform a comprehensive review of this clinical note.
 
 CLINICAL NOTE TO REVIEW:

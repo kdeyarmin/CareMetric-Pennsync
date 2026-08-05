@@ -22,7 +22,7 @@ export default function AIContactExtractor({ onExtracted }) {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
 
       const result = await invokeLLMWithFile({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `Analyze this document and extract any recipient fax/contact information.
 Return ONLY a JSON object with these keys (use empty string if not found):
 - name: the recipient person's full name

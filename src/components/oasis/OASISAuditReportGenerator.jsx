@@ -105,7 +105,7 @@ export default function OASISAuditReportGenerator({ audit, isOpen, onClose, curr
 
       // Generate PDF report using AI
       const reportContent = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Generate a professional OASIS audit report in markdown format based on this data:
 
 ${JSON.stringify(reportData, null, 2)}

@@ -63,7 +63,7 @@ Generate a clear, professional clinical note that:
 Expanded documentation:`;
 
       const response = await base44.integrations.Core.InvokeLLM({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt,
         add_context_from_internet: false
       });
@@ -134,7 +134,7 @@ Generate a complete, personalized clinical note that:
 Expanded documentation:`;
 
     const expandedText = await base44.integrations.Core.InvokeLLM({
-      model: "claude_sonnet_4_6",
+      model: "automatic",
       prompt,
       add_context_from_internet: false
     });

@@ -318,7 +318,7 @@ PREDICT:
    - Resource optimization opportunities`;
 
       const result = await invokeLLM({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt,
         response_json_schema: {
           type: "object",

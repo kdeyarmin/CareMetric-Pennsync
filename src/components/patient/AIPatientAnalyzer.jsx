@@ -68,7 +68,7 @@ Provide a comprehensive clinical analysis with:
 Format as JSON with clear, actionable clinical insights.`;
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt,
         response_json_schema: {
           type: "object",

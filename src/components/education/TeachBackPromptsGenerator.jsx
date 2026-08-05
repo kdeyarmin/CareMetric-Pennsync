@@ -72,7 +72,7 @@ export default function TeachBackPromptsGenerator({
 
     try {
       const result = await generatingAi.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `You are an expert in patient education and the teach-back method. Generate tailored teach-back prompts for a nurse to use during a patient education session.
 
 CONDITION/TOPIC: ${topic}
@@ -149,7 +149,7 @@ Return JSON:
       const currentPrompt = prompts.prompts[currentPromptIdx];
       
       const result = await generatingFollowUpAi.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `Based on the patient's teach-back response, generate a tailored follow-up prompt.
 
 ORIGINAL QUESTION: "${currentPrompt.primary_question}"

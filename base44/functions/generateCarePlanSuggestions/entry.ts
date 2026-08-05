@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     const existingProblems = existingCarePlans.map(cp => cp.problem);
 
     const result = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: `As a clinical expert, analyze this home health patient's data and generate comprehensive care plan suggestions.
 
 PATIENT PROFILE:

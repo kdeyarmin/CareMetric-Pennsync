@@ -64,7 +64,7 @@ async function analyzePriority(base44, params) {
     const { extractedData, analysisResults } = params;
 
     const priorityAnalysis = await base44.integrations.Core.InvokeLLM({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a clinical triage AI specializing in home health referral prioritization with advanced Natural Language Processing (NLP) capabilities.
 
 Analyze this referral and determine the urgency/priority level based on:
@@ -102,7 +102,7 @@ async function generateTasks(base44, params) {
     const { referralData, priorityAnalysis } = params;
 
     const tasks = await base44.integrations.Core.InvokeLLM({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert home health intake coordinator. Based on the referral data and priority analysis, generate actionable tasks for office and clinical staff.
 
 REFERRAL DATA:
@@ -140,7 +140,7 @@ async function matchPatient(base44, params) {
     const { extractedData, existingPatients } = params;
 
     const matchAnalysis = await base44.integrations.Core.InvokeLLM({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert patient matching system for healthcare records with advanced fuzzy matching capabilities.
 
 Analyze the referral data and compare it against existing patients to find the best match.

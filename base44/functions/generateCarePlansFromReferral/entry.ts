@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
 
     // Generate comprehensive care plans using AI
     const result = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: `Generate comprehensive, Medicare-compliant care plans for this home health patient based on their referral and diagnoses.
 
 PRIMARY DIAGNOSIS: ${primary_diagnosis}

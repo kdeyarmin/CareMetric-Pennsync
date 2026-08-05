@@ -64,7 +64,7 @@ For each issue found, provide:
 - Recommended actions`;
 
       const response = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: analysisPrompt,
         response_json_schema: {
           type: 'object',

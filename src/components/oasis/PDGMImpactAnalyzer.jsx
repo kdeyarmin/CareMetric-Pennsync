@@ -63,7 +63,7 @@ export default function PDGMImpactAnalyzer({
 
       // Get detailed AI analysis of the changes
       const aiAnalysis = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a PDGM reimbursement optimization expert. Analyze the impact of suggested documentation improvements on PDGM payment.
 
 CURRENT PDGM DATA:

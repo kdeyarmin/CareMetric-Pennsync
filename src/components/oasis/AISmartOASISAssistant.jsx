@@ -73,7 +73,7 @@ export default function AISmartOASISAssistant({
       };
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert home health OASIS-E assessment specialist with deep knowledge of CMS documentation and Medicare compliance requirements.
 
 **PRIMARY OBJECTIVE: Produce clinically accurate, fully compliant OASIS-E documentation that reflects the patient's true condition.**

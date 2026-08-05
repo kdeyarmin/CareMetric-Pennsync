@@ -100,7 +100,7 @@ Use proper medical terminology and follow Medicare documentation requirements. B
     // halving the clinician's wait on visit completion.
     const narrativePromise = base44.integrations.Core.InvokeLLM({
       prompt: narrativePrompt,
-      model: 'claude_opus_4_8'
+      model: 'automatic'
     });
 
     // Generate follow-up tasks

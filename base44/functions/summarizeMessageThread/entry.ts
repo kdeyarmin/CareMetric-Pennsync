@@ -42,7 +42,7 @@ Status: ${patient.status}`;
 
     // Generate AI summary
     const result = await base44.integrations.Core.InvokeLLM({
-      model: "claude_sonnet_4_6",
+      model: "automatic",
       prompt: `Summarize this care team message thread. Provide a concise overview of the key discussion points, decisions made, and any action items.
 
 THREAD SUBJECT: ${messages[0].subject || 'Patient Discussion'}${patientContext}

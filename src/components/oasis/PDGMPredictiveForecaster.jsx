@@ -46,7 +46,7 @@ export default function PDGMPredictiveForecaster({ pdgmData, analysisResults, cu
 
     try {
       const result = await invokeLLM({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a PDGM financial forecasting expert. Generate predictive reimbursement scenarios based on potential documentation improvements.
 
 CURRENT OASIS DATA:
@@ -219,7 +219,7 @@ Return JSON:
 
       // Get AI analysis of the grouping changes
       const analysis = await invokeLLM({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Analyze how these functional score changes impact PDGM grouping and payment.
 
 ORIGINAL SCORES:

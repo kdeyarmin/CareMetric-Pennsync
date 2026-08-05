@@ -18,7 +18,7 @@ export default function InlineDocumentationAssistant({
     
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a CMS OASIS documentation expert. Generate specific clinical documentation to address this issue.
 
 ISSUE DETAILS:

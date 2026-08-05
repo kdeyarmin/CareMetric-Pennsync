@@ -100,7 +100,7 @@ Provide a JSON response with the following structure:
 Return ONLY valid JSON matching the structure above, no prose or code fences.`;
 
     const response = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: analysisPrompt
     });
 

@@ -41,7 +41,7 @@ export default function AICarePlanAnalyzer({
       const protocolType = careType === "hospice" ? "Hospice" : "Home Health";
       
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert ${protocolType} care planner specializing in personalized interventions and visit schedules.
 
 PATIENT: ${patientName}

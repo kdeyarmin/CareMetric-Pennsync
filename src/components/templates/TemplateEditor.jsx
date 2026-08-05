@@ -85,7 +85,7 @@ ${content}
 Return the enhanced, complete clinical note ready for documentation. Keep all factual information accurate. Fill in bracketed placeholders appropriately.`;
 
       const result = await ai.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt
       });
 

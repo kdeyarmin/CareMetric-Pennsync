@@ -75,7 +75,7 @@ export default function AIPatientHistorySummary({
         }));
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert clinical summarization AI. Generate a comprehensive yet concise patient history summary that gives nurses immediate context before a visit.
 
 PATIENT DEMOGRAPHICS:

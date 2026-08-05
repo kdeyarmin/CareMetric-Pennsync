@@ -676,7 +676,7 @@ export default function OASISAnalyzer() {
             
             // Use AI to parse the raw text for critical fields
             const parsedData = await invokeLLM({
-              model: "claude_opus_4_8",
+              model: "automatic",
               prompt: `Parse this OASIS document text and extract key data fields. Focus on accuracy.
 
 DOCUMENT TEXT:
@@ -1113,7 +1113,7 @@ Return JSON:
       try {
         analysisResult = await Promise.race([
           invokeLLM({
-            model: "claude_opus_4_8",
+            model: "automatic",
             prompt: `Analyze OASIS document. Extract: diagnosis, functional scores, compliance issues, revenue opportunities.
 
 DATA:

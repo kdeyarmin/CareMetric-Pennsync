@@ -33,7 +33,7 @@ export default function OptimalCommunicationAdvisor({
       const nextVisit = upcomingVisits?.[0];
 
       const result = await ai.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `You are a patient communication expert. Recommend optimal communication strategy for patient outreach.
 
 PATIENT PROFILE:

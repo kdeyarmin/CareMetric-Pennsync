@@ -90,7 +90,7 @@ export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = fal
       };
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert OASIS documentation specialist with deep knowledge of CMS home health regulations and PDGM requirements.
 
 **CRITICAL TASK:** Analyze this patient's data to identify OASIS documentation gaps and generate a preliminary OASIS assessment.

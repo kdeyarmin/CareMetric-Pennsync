@@ -52,7 +52,7 @@ export default function InterventionDetailPanel({ item, onLinkPathway, linkedPat
     setExpanded(prev => ({ ...prev, ai: true }));
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a Medicare home health compliance expert. For the clinical intervention "${item.name}" (${item.description}), provide:
 1. A 2-sentence clinical rationale for why this intervention is Medicare-reimbursable
 2. One key documentation tip to ensure compliance

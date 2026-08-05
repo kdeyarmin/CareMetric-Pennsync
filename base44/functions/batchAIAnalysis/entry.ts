@@ -116,7 +116,7 @@ RECENT VISITS: ${recentVisits.length > 0 ? `Last visit ${recentVisits[0].visit_d
     if (analysisTypes.includes('compliance') && (roughNote || enhancedNote)) {
       promises.push(
         base44.asServiceRole.integrations.Core.InvokeLLM({
-          model: "claude_opus_4_8",
+          model: "automatic",
           prompt: `Analyze this clinical note for Medicare compliance. Return score and specific gaps.
 
 ${sharedContext}
@@ -133,7 +133,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
     if (analysisTypes.includes('oasis') && enhancedNote && oasisData) {
       promises.push(
         base44.asServiceRole.integrations.Core.InvokeLLM({
-          model: "claude_opus_4_8",
+          model: "automatic",
           prompt: `Map this clinical note to OASIS items with confidence scores and justifications.
 
 ${sharedContext}
@@ -150,7 +150,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
     if (analysisTypes.includes('pdgm') && enhancedNote && patientData) {
       promises.push(
         base44.asServiceRole.integrations.Core.InvokeLLM({
-          model: "claude_opus_4_8",
+          model: "automatic",
           prompt: `Analyze for PDGM optimization opportunities.
 
 ${sharedContext}
@@ -168,7 +168,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
     if (analysisTypes.includes('proactive') && (roughNote || enhancedNote)) {
       promises.push(
         base44.asServiceRole.integrations.Core.InvokeLLM({
-          model: "claude_opus_4_8",
+          model: "automatic",
           prompt: `Generate proactive suggestions for tasks, care plan updates, and clinical alerts.
 
 ${sharedContext}

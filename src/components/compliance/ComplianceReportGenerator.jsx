@@ -78,7 +78,7 @@ export default function ComplianceReportGenerator({
 
       // Use AI to generate insights
       const aiInsights = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Generate Medicare compliance insights report for Pennsylvania home health agency.
 
 DATA:

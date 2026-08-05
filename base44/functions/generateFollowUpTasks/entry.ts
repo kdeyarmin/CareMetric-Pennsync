@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
     }
 
     const response = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: `You are a home health/hospice clinical supervisor reviewing a finalized nursing note. Extract specific follow-up tasks the clinician must complete after this visit.
 
 FINALIZED NOTE:

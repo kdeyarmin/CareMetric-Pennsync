@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
         const { referralData, priorityAnalysis } = await req.json();
 
         const tasks = await base44.integrations.Core.InvokeLLM({
-            model: "claude_opus_4_8",
+            model: "automatic",
             prompt: `You are an expert home health intake coordinator. Based on the following referral data and AI priority analysis, generate a comprehensive list of actionable tasks that need to be completed by office staff and clinical staff for this referral.
 
 Prioritize tasks based on the referral's urgency. Ensure tasks are specific, measurable, achievable, relevant, and time-bound (SMART).

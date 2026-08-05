@@ -59,7 +59,7 @@ export default function AIPathwayRecommender({
 
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a home health clinical pathway specialist and PDGM revenue analyst. Analyze this OASIS data and recommend specific clinical pathways and interventions.
 
 OASIS DATA:

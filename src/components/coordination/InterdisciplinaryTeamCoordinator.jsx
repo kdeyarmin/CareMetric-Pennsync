@@ -46,7 +46,7 @@ export default function InterdisciplinaryTeamCoordinator({
       };
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a care coordination expert. Analyze this patient's profile to determine if an interdisciplinary team (IDT) meeting is recommended.
 
 PATIENT PROFILE:

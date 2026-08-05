@@ -162,7 +162,7 @@ Return comprehensive JSON analysis.
 Return ONLY valid JSON, no prose or code fences, with this shape:
 {"overall_risk_score":0,"risk_level":"","clinical_alerts":[{"alert_type":"","severity":"","title":"","clinical_evidence":[""],"recommended_interventions":[{"intervention":"","priority":0,"rationale":"","expected_outcome":""}],"patient_education_topics":[""],"nurse_education_resources":[""],"monitoring_frequency":"","escalation_criteria":""}],"trend_analysis":{"vital_signs_trend":"","functional_status_trend":"","care_plan_progress":"","incident_frequency":""},"care_plan_deviations":[{"care_plan_problem":"","deviation_description":"","corrective_action":""}],"medication_concerns":[{"concern_type":"","medications_involved":[""],"risk_description":"","recommendation":""}],"predictive_insights":{"readmission_risk":"","fall_risk":"","infection_risk":"","deterioration_risk":""}}`;
 
-    const raw = await base44.integrations.Core.InvokeLLM({ model: "claude_opus_4_8", prompt });
+    const raw = await base44.integrations.Core.InvokeLLM({ model: "automatic", prompt });
     const result = parseLLMJson(raw) || {};
 
     return Response.json({

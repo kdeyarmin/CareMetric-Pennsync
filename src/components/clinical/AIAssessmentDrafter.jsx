@@ -17,7 +17,7 @@ export default function AIAssessmentDrafter({ visitNotes, patientData, onDraftCo
     
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Generate a comprehensive OASIS assessment draft based on the following patient visit notes and data:
 
 VISIT NOTES:

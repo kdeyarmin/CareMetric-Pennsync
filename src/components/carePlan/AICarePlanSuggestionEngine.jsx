@@ -62,7 +62,7 @@ export default function AICarePlanSuggestionEngine({
       const _existingGoals = existingCarePlans.map(cp => cp.goal);
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Generate Medicare-compliant care plan suggestions for Pennsylvania home health patient.
 
 PATIENT CONTEXT:

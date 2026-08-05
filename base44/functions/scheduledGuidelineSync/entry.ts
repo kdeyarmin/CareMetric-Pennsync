@@ -161,7 +161,7 @@ Extract and return JSON with:
 }`;
 
         const analysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
-          model: "claude_opus_4_8",
+          model: "automatic",
           prompt: analysisPrompt,
           response_json_schema: {
             type: "object",

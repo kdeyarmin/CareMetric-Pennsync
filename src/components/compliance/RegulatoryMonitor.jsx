@@ -88,7 +88,7 @@ export default function RegulatoryMonitor({ isAdmin = false }) {
 
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a healthcare regulatory monitoring assistant for a home health/hospice agency.
 
 Current date: ${format(new Date(), 'yyyy-MM-dd')}

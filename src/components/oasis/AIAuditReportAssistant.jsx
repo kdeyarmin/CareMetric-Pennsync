@@ -25,7 +25,7 @@ export default function AIAuditReportAssistant({ audit, onUpdateFindings, onAddR
 
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert home health OASIS auditor. Generate comprehensive audit findings and recommendations for this flagged OASIS document.
 
 AUDIT DATA:

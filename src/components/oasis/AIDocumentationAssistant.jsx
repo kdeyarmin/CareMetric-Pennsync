@@ -41,7 +41,7 @@ export default function AIDocumentationAssistant({ analysisResults, pdgmData, on
       ].slice(0, 8);
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert OASIS clinical documentation specialist. Based on these identified issues, generate SPECIFIC documentation text that clinicians can use to improve their OASIS assessments.
 
 IDENTIFIED ISSUES:
@@ -116,7 +116,7 @@ Return JSON:
       ].slice(0, 6);
 
       const result = await ai.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `You are a CMS regulations expert specializing in home health OASIS documentation. Explain the regulatory requirements for these flagged compliance items in plain language that clinicians can understand.
 
 FLAGGED ITEMS:

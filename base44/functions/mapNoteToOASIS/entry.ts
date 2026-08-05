@@ -260,7 +260,7 @@ DISCREPANCY SEVERITY RULES:
 Return JSON with detailed mapping results:`;
 
     const result = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt,
       response_json_schema: {
         type: "object",

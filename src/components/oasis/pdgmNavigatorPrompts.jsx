@@ -3,7 +3,7 @@
 // These are pure string/object builders — no React, no side effects.
 
 export const buildNavigationRequest = ({ pdgmData, analysisResults, revenueData }) => ({
-  model: "claude_opus_4_8",
+  model: "automatic",
   prompt: `You are a CMS PDGM expert navigator. Analyze this OASIS data and determine the correct PDGM grouping with detailed explanation.
 
 OASIS/PDGM DATA:
@@ -181,7 +181,7 @@ Return JSON:
 });
 
 export const buildFinancialPredictionRequest = ({ item, type, revenueData, navigation, agencyCosts }) => ({
-  model: "claude_opus_4_8",
+  model: "automatic",
   prompt: `You are a PDGM financial analyst. Predict the financial impact of this ${type} over a 1-year period.
 
 ${type.toUpperCase()} DETAILS:
@@ -299,7 +299,7 @@ Return JSON:
 });
 
 export const buildResolutionWorkflowRequest = ({ discrepancy, pdgmData }) => ({
-  model: "claude_opus_4_8",
+  model: "automatic",
   prompt: `You are a CMS OASIS compliance expert. Provide a detailed resolution workflow for this PDGM discrepancy.
 
 DISCREPANCY DETAILS:

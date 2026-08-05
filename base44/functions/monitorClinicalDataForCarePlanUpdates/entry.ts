@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
       // undeclared `analysis` — a guaranteed ReferenceError that 500'd the run, so
       // no CarePlanProposal/notification/alert was ever produced. Parse it here.
       const rawAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a clinical AI monitoring patient data to propose care plan updates when clinical thresholds are met.
 
 PATIENT: ${pt.first_name} ${pt.last_name} (${pt.id})

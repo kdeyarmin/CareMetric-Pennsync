@@ -54,7 +54,7 @@ GUIDELINES:
 - Prioritize based on clinical urgency and patient needs`;
 
     const response = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: prompt,
       response_json_schema: {
         type: "object",

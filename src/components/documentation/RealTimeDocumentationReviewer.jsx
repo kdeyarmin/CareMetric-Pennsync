@@ -47,7 +47,7 @@ export default function RealTimeDocumentationReviewer({
 
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert Medicare compliance auditor and clinical documentation specialist with 20+ years of experience reviewing home health nursing documentation.
 
 Analyze the following nursing note for completeness, accuracy, Medicare/OASIS compliance, and PDGM optimization:
