@@ -57,11 +57,12 @@ async function resolveTelnyxCreds(base44) {
     voiceConnectionId = pick(rec.voice_connection_id);
     faxConnectionId = pick(rec.fax_connection_id);
   } catch { /* ignore */ }
-  // Fall back to the platform env secrets when the in-app IntegrationSecret row
-  // is empty/missing. Scheduled runs otherwise hard-fail with "Telnyx
-  // credentials not configured" even though TELNYX_API_KEY is set for the app.
-  if (!apiKey) apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
-  if (!publicKey) publicKey = pick(Deno.env.get('TELNYX_PUBLIC_KEY'));
+  // NOTE: no TELNYX_* env fallback here. The dashboard-env credential path was
+  // retired deliberately — credentials come from the in-app IntegrationSecret row
+  // only — and two guardrails enforce it (src/lib/telnyxConfig.spec.js and the
+  // resolveTelnyxCreds drift guard in base44/functionTests). A fallback in only
+  // some copies also makes them resolve differently from the rest, which is the
+  // divergence that guard exists to catch. Configure Telnyx in Admin > Telnyx.
   return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
 }
 
