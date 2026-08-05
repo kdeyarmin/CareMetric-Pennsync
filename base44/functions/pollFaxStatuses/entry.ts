@@ -57,6 +57,10 @@ async function resolveTelnyxCreds(base44) {
     voiceConnectionId = pick(rec.voice_connection_id);
     faxConnectionId = pick(rec.fax_connection_id);
   } catch { /* ignore */ }
+  // Fall back to the platform env secrets when the in-app IntegrationSecret row
+  // is empty/missing, so scheduled runs don't hard-fail while TELNYX_API_KEY is set.
+  if (!apiKey) apiKey = pick(Deno.env.get('TELNYX_API_KEY'));
+  if (!publicKey) publicKey = pick(Deno.env.get('TELNYX_PUBLIC_KEY'));
   return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
 }
 
