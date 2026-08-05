@@ -35,7 +35,6 @@ const statusFor = (days) => {
 
 export default function CertificateExpirationReport() {
   const [filters, setFilters] = useState({
-    businessLine: 'home_health',
     dateStart: '',
     dateEnd: '',
     employee: '',
@@ -128,12 +127,12 @@ export default function CertificateExpirationReport() {
 
   return (
     <div className="space-y-6">
+      {/* No business-line control: PersonnelCredential has no business_line field,
+          so half the rows here can't be scoped by it. The picker was rendered but
+          never applied, so switching it appeared to do nothing. */}
       <ReportFilters
         onFilterChange={setFilters}
-        businessLineOptions={[
-          { value: 'home_health', label: 'Home Health' },
-          { value: 'hospice', label: 'Hospice' },
-        ]}
+        showBusinessLine={false}
         showCourse={false}
         showPlan={false}
         showStatus={false}

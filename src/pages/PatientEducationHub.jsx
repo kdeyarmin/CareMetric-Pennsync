@@ -337,9 +337,11 @@ export default function PatientEducationHub() {
       console.error('Error type:', error.constructor.name);
       console.error('Error stack:', error.stack);
       
-      // Log to backend for debugging
+      // Log to backend for debugging. Must go through the authenticated caller:
+      // `asServiceRole` has no service token in the browser client, so its getter
+      // threw on every call and this diagnostic row was never written.
       try {
-        await base44.asServiceRole.entities.SystemLog.create({
+        await base44.entities.SystemLog.create({
           job_name: 'PDF Download Error (Frontend)',
           job_type: 'other',
           status: 'error',

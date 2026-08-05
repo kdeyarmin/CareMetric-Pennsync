@@ -30,7 +30,11 @@ import { formatAge } from "@/lib/age";
 import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function AutomaticDocumentReviewer({
-  noteContent,
+  noteContent: noteContentProp,
+  // The only call site passes the text as `documentContent`, so `noteContent`
+  // was undefined: the auto-review guard never passed and the component
+  // returned null, making the whole review silently dead. Accept both names.
+  documentContent,
   visitType,
   diagnosis,
   patientData,
@@ -41,6 +45,7 @@ export default function AutomaticDocumentReviewer({
   onReviewComplete,
   onApplySuggestion
 }) {
+  const noteContent = noteContentProp ?? documentContent;
   const ai = useAICall();
   const [reviewResults, setReviewResults] = useState(null);
   const queryClient = useQueryClient();

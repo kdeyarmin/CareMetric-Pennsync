@@ -3,8 +3,10 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { useMyTrainingCompletions } from "@/hooks/useMyTrainingCompletions";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  ArrowLeft,
   Target,
   Award,
   TrendingUp,
@@ -84,14 +86,19 @@ export default function NurseTraining() {
   };
 
   if (viewingModule && selectedModule) {
+    // TrainingModuleViewer takes only { module } — it ignored nurseEmail/onComplete/
+    // onBack and renders no navigation of its own, so replacing the whole tab with it
+    // left the user with no way back. Supply the exit affordances at this call site.
     return (
-      <div className="p-4 md:p-8 max-w-5xl mx-auto">
-        <TrainingModuleViewer
-          module={selectedModule}
-          nurseEmail={currentUser?.email}
-          onComplete={handleModuleComplete}
-          onBack={() => setViewingModule(false)}
-        />
+      <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-4">
+        <Button variant="ghost" onClick={() => { setViewingModule(false); setSelectedModule(null); }}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to training
+        </Button>
+        <TrainingModuleViewer module={selectedModule} />
+        <div className="flex justify-end">
+          <Button onClick={() => handleModuleComplete(null)}>Mark complete</Button>
+        </div>
       </div>
     );
   }

@@ -30,7 +30,11 @@ export default function MyAnnualEducationDashboard() {
     initialData: []
   });
   const { data: courses = [] } = useQuery({
-    queryKey: ["annual-courses"],
+    // Distinct key from the unfiltered ["annual-courses"] query in
+    // AnnualMandatoryEducationHub — sharing it let the hub mount onto this
+    // annual_mandatory-only subset and silently lose the rest of the library.
+    // Prefix invalidation of ["annual-courses"] still refreshes both entries.
+    queryKey: ["annual-courses", "mandatory-only"],
     queryFn: async () => {
       const all = await base44.entities.TrainingCourse.list('-updated_date', 500);
       return all.filter((course) => course.training_type === 'annual_mandatory');

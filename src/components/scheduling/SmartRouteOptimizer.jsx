@@ -134,14 +134,34 @@ Return JSON:
         return;
       }
 
+      // Only write back ids the model was actually given: a hallucinated or
+      // stale visit_id is schema-valid and would otherwise rewrite an
+      // unrelated patient's visit_time.
+      const allowedIds = new Set((visits || []).map(v => v.id));
+      const updates = result.optimized_order.filter(
+        v => allowedIds.has(v.visit_id) && v.suggested_time
+      );
+      if (updates.length === 0) {
+        toast.error("The optimizer returned an unusable result — please try again.");
+        return;
+      }
+
       // Persist the optimized visit_time for each visit — otherwise nothing
       // is actually saved and callers telling the user their schedule "has
-      // been updated" would be lying.
-      await Promise.all(
-        result.optimized_order.map(v =>
+      // been updated" would be lying. allSettled, not all: a single rejected
+      // update used to abort before the UI updated, leaving the day silently
+      // half-reordered with no indication of which visits had moved.
+      const outcomes = await Promise.allSettled(
+        updates.map(v =>
           base44.entities.Visit.update(v.visit_id, { visit_time: v.suggested_time })
         )
       );
+      const failed = outcomes.filter(o => o.status === 'rejected').length;
+      if (failed > 0) {
+        toast.warning(
+          `${updates.length - failed} of ${updates.length} visits rescheduled — ${failed} could not be saved.`
+        );
+      }
 
       setOptimizedRoute(result);
       setSavings({

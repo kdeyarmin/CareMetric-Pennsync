@@ -366,8 +366,11 @@ For each opportunity, calculate:
               </div>
             )}
 
+            {/* This button stays mounted while the spinner shows, so without the guard a
+                second click fires another expensive model call over the same input. */}
             <Button
               onClick={analyzeRescoringOpportunities}
+              disabled={ai.loading}
               variant="outline"
               className="w-full"
             >

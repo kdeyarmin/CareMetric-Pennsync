@@ -281,7 +281,6 @@ export default function CarePlanManagement() {
   const [planItems, setPlanItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [linkedPathways, setLinkedPathways] = useState({});
-  const [planName, setPlanName] = useState("New Care Plan");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [careType, setCareType] = useState("home_health");
@@ -396,11 +395,10 @@ export default function CarePlanManagement() {
       <div className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-3 flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Target className="w-5 h-5 text-navy-600 flex-shrink-0" />
-            <Input
-              value={planName}
-              onChange={e => setPlanName(e.target.value)}
-              className="h-8 text-sm font-semibold border-0 shadow-none px-0 bg-transparent focus-visible:ring-0 max-w-xs"
-            />
+            {/* Static label, not an Input: CarePlan has no plan-name field, so a
+                typed name was silently dropped on save with nothing in the UI
+                signalling it was lost. */}
+            <h2 className="h-8 flex items-center text-sm font-semibold text-slate-900">Care Plan</h2>
           </div>
 
           <div className="relative">

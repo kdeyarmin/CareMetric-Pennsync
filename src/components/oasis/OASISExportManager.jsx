@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { Download, FileDown, FileSpreadsheet, Loader2, CheckCircle2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
 
 export default function OASISExportManager({ 
   analysisResults, 
@@ -178,6 +179,9 @@ export default function OASISExportManager({
       setTimeout(() => setExportSuccess(false), 3000);
     } catch (error) {
       console.error('CSV export error:', error);
+      // The button just reverts to idle on failure, which looks identical to never
+      // having clicked it, so the failure has to be announced.
+      toast.error('Failed to export the CSV. Please try again.');
     }
 
     setIsExporting(false);
@@ -215,6 +219,8 @@ export default function OASISExportManager({
       setTimeout(() => setExportSuccess(false), 3000);
     } catch (error) {
       console.error('PDF export error:', error);
+      // Same here: without a toast a failed generation is indistinguishable from idle.
+      toast.error('Failed to generate the PDF report. Please try again.');
     }
 
     setIsExporting(false);

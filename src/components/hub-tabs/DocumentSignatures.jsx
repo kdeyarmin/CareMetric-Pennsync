@@ -17,6 +17,7 @@ import {
   Search
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
+import { openExternalUrl } from "@/components/utils/security";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
@@ -270,7 +271,9 @@ export default function DocumentSignatures() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => window.open(sig.signed_pdf_url, '_blank')}
+                        // Bare window.open gets no implicit noopener and no scheme check;
+                        // signed_pdf_url is entity-supplied, so route it through the helper.
+                        onClick={() => openExternalUrl(sig.signed_pdf_url)}
                         className="w-full sm:w-auto"
                       >
                         <Eye className="w-4 h-4 mr-2" />

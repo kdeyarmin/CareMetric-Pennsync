@@ -68,15 +68,17 @@ export default function SmartNoteDataImport({
     const observations = {};
     const lowerNarrative = narrative.toLowerCase();
 
-    // Ambulation patterns
-    if (lowerNarrative.includes('ambulates independently') || lowerNarrative.includes('walks independently')) {
-      observations.ambulation = { score: 0, description: 'Independent' };
-    } else if (lowerNarrative.includes('uses walker') || lowerNarrative.includes('with device')) {
-      observations.ambulation = { score: 1, description: 'With device' };
+    // Ambulation patterns — ordered most-impaired first. The chain short-circuits on the
+    // first match, so a note like "bedbound, requires assistance with all ADLs" scored the
+    // generic assistance level and under-reported the patient's true M1860 impairment.
+    if (lowerNarrative.includes('bedbound') || lowerNarrative.includes('non-ambulatory')) {
+      observations.ambulation = { score: 6, description: 'Bedbound' };
     } else if (lowerNarrative.includes('requires assistance') || lowerNarrative.includes('assist with ambulation')) {
       observations.ambulation = { score: 3, description: 'Requires assistance' };
-    } else if (lowerNarrative.includes('bedbound') || lowerNarrative.includes('non-ambulatory')) {
-      observations.ambulation = { score: 6, description: 'Bedbound' };
+    } else if (lowerNarrative.includes('uses walker') || lowerNarrative.includes('with device')) {
+      observations.ambulation = { score: 1, description: 'With device' };
+    } else if (lowerNarrative.includes('ambulates independently') || lowerNarrative.includes('walks independently')) {
+      observations.ambulation = { score: 0, description: 'Independent' };
     }
 
     // Transfer patterns

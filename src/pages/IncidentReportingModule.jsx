@@ -140,6 +140,9 @@ export default function IncidentReportingModule() {
         report: incidentData.report,
         photo_urls: incidentData.photo_urls,
         physician_notified: incidentData.physician_notified,
+        // Send what the reporter actually checked — omitting it left the stored
+        // compliance flag derived from severity alone, contradicting the form.
+        office_notified: incidentData.office_notified,
         immediate_alert: highSeverity,
       });
       const data = res?.data || res || {};

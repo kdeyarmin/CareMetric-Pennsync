@@ -147,11 +147,6 @@ export default function StaffEducationComplianceReport() {
         '180': 'Last 6 months', '365': 'Last year',
       };
 
-      const statusFor = (staff) =>
-        (staff.avgScore >= 90 && staff.overdue === 0) ? 'Excellent'
-          : (staff.overdue > 0 || staff.avgScore < 70) ? 'At Risk'
-          : 'On Track';
-
       await exportToPDF({
         filename: `Staff_Training_Report_${formatEastern(new Date(), 'yyyy-MM-dd')}.pdf`,
         title: 'Staff Education Compliance Report',
@@ -171,9 +166,12 @@ export default function StaffEducationComplianceReport() {
               staff.name || 'N/A',
               staff.email || '',
               `${staff.completed} / ${staff.total}`,
-              `${staff.avgScore}%`,
+              // Share statusLabel/hasScores with the KPI card and CSV — the PDF
+              // used to re-derive the thresholds without the hasScores guard, so
+              // unscored staff printed a phantom 0% and "At Risk".
+              staff.hasScores ? `${staff.avgScore}%` : '-',
               staff.overdue > 0 ? String(staff.overdue) : '-',
-              statusFor(staff),
+              statusLabel(staff),
             ]),
           },
         ],
@@ -305,8 +303,10 @@ export default function StaffEducationComplianceReport() {
             </TableHeader>
             <TableBody>
               {complianceData.staffMetrics.map((staff, idx) => {
-                const isAtRisk = staff.overdue > 0 || staff.avgScore < 70;
-                const isExcellent = staff.avgScore >= 90 && staff.overdue === 0;
+                // Same helper the KPI card and CSV use. Re-deriving the thresholds
+                // here dropped the hasScores guard, so staff with nothing scored in
+                // the window were badged At Risk off a phantom 0%.
+                const status = statusLabel(staff);
 
                 return (
                   <TableRow key={idx}>
@@ -318,14 +318,18 @@ export default function StaffEducationComplianceReport() {
                       <Badge variant="outline">{staff.completed} / {staff.total}</Badge>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant={
-                        staff.avgScore >= 90 ? 'success' :
-                        staff.avgScore >= 80 ? 'info' :
-                        staff.avgScore >= 70 ? 'warning' :
-                        'destructive'
-                      }>
-                        {staff.avgScore}%
-                      </Badge>
+                      {staff.hasScores ? (
+                        <Badge variant={
+                          staff.avgScore >= 90 ? 'success' :
+                          staff.avgScore >= 80 ? 'info' :
+                          staff.avgScore >= 70 ? 'warning' :
+                          'destructive'
+                        }>
+                          {staff.avgScore}%
+                        </Badge>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-center">
                       {staff.overdue > 0 ? (
@@ -335,12 +339,12 @@ export default function StaffEducationComplianceReport() {
                       )}
                     </TableCell>
                     <TableCell className="text-center">
-                      {isExcellent ? (
+                      {status === 'Excellent' ? (
                         <Badge variant="success">
                           <Award className="w-3 h-3 mr-1" />
                           Excellent
                         </Badge>
-                      ) : isAtRisk ? (
+                      ) : status === 'At Risk' ? (
                         <Badge variant="warning">
                           <AlertTriangle className="w-3 h-3 mr-1" />
                           At Risk

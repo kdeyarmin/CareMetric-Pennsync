@@ -320,12 +320,14 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
 
           <TabsContent value="all" className="space-y-2 mt-3">
             {assessment.oasis_items?.filter(item => {
-              // Filter out administrative items M1000-M1060
+              // Filter out administrative items M1000-M1060, but keep the diagnosis
+              // items M1021/M1023 the generator deliberately retains — hiding them
+              // left the AI primary diagnosis saved yet impossible to review or edit.
               const itemNum = item.item_number?.toUpperCase() || '';
               const numMatch = itemNum.match(/M(\d+)/);
               if (numMatch) {
                 const num = parseInt(numMatch[1]);
-                if (num >= 1000 && num <= 1060) return false;
+                if (num >= 1000 && num <= 1060 && num !== 1021 && num !== 1023) return false;
               }
               return true;
             }).map((item, idx) => {
@@ -449,7 +451,7 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
               const numMatch = itemNum.match(/M(\d+)/);
               if (numMatch) {
                 const num = parseInt(numMatch[1]);
-                if (num >= 1000 && num <= 1060) return false;
+                if (num >= 1000 && num <= 1060 && num !== 1021 && num !== 1023) return false;
               }
               return i.category?.toLowerCase().includes('functional');
             }).map((item, idx) => (
@@ -465,7 +467,7 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
               const numMatch = itemNum.match(/M(\d+)/);
               if (numMatch) {
                 const num = parseInt(numMatch[1]);
-                if (num >= 1000 && num <= 1060) return false;
+                if (num >= 1000 && num <= 1060 && num !== 1021 && num !== 1023) return false;
               }
               return i.category?.toLowerCase().includes('clinical');
             }).map((item, idx) => (
@@ -481,7 +483,7 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
               const numMatch = itemNum.match(/M(\d+)/);
               if (numMatch) {
                 const num = parseInt(numMatch[1]);
-                if (num >= 1000 && num <= 1060) return false;
+                if (num >= 1000 && num <= 1060 && num !== 1021 && num !== 1023) return false;
               }
               return i.category?.toLowerCase().includes('cognitive');
             }).map((item, idx) => (
