@@ -36,7 +36,7 @@ export default function AutomatedTaskGenerator({
       const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a nurse task automation system. Generate specific, actionable tasks for nurses based on active care plans.
 
 PATIENT: ${patient.first_name} ${patient.last_name}

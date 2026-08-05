@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
 
     // Step 2: AI Analysis to match narratives with questions
     const matchAnalysis = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: `You are an expert OASIS auditor. Analyze this OASIS document for consistency between coded responses and narrative documentation.
 
 FULL DOCUMENT CONTENT:

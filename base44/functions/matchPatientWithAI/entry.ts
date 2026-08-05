@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
 
         // Use AI to analyze and match patients with nuanced data points
         const matchAnalysis = await base44.integrations.Core.InvokeLLM({
-            model: "claude_opus_4_8",
+            model: "automatic",
             prompt: `You are an expert patient matching system for healthcare records with advanced fuzzy matching capabilities.
 
 Analyze the referral data and compare it against existing patients to find the best match.

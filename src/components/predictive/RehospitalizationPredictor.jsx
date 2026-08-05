@@ -120,7 +120,7 @@ export default function RehospitalizationPredictor({
 
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Analyze this home health patient's rehospitalization risk and provide predictions with preventive recommendations.
 
 PATIENT: ${patient?.first_name} ${patient?.last_name}

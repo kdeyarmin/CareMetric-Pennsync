@@ -92,7 +92,7 @@ Rules:
   let parsed = {};
   try {
     const raw = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: `${prompt}\n\nReturn ONLY valid JSON with this shape (no prose or code fences):\n{"course":{"title":"","short_description":"","description":"","learning_objectives":[""],"passing_score":80},"module":{"title":"","content":{"intro":"","sections":[{"heading":"","body":"","bullets":[""],"example":""}],"key_takeaways":[""]}},"questions":[{"type":"mcq","prompt":"","options":[{"value":"A","label":""}],"correct_answer":{},"rationale":""}]}`
     });
     parsed = parseLLMJson(raw) || {};

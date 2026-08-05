@@ -58,7 +58,7 @@ Perform a comprehensive review and identify:
 Provide actionable, specific feedback for each issue found.`;
 
       const response = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt,
         response_json_schema: {
           type: "object",

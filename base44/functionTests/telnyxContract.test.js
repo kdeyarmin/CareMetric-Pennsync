@@ -84,7 +84,7 @@ test("sendSms posts the Telnyx Messages contract", async () => {
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/messages"), respond: () => ({ status: 200, json: { data: { id: "msg_1", to: [{ status: "queued" }] } } }) },
   ]);
-  const handler = await loadHandler("./sendSms/entry.ts", {
+  const handler = await loadHandler("../functions/sendSms/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_MESSAGING_PROFILE_ID: "MP1" },
     makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", messaging_profile_id: "MP1" }] } }),
     fetchImpl: impl,
@@ -108,7 +108,7 @@ test("sendFax posts the Telnyx Programmable Fax contract", async () => {
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fax_1", status: "queued" } } }) },
   ]);
-  const handler = await loadHandler("./sendFax/entry.ts", {
+  const handler = await loadHandler("../functions/sendFax/entry.ts", {
     env: {},
     makeClient: () => makeBase44({ data: {
       IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
@@ -135,7 +135,7 @@ test("startMaskedCall posts the Telnyx Call Control create-call contract", async
   const { impl, calls } = makeFetch([
     { match: (u) => u.endsWith("/v2/calls"), respond: () => ({ status: 200, json: { data: { call_control_id: "cc_1" } } }) },
   ]);
-  const handler = await loadHandler("./startMaskedCall/entry.ts", {
+  const handler = await loadHandler("../functions/startMaskedCall/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_VOICE_CONNECTION_ID: "VC1" },
     makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1" }] } }),
     fetchImpl: impl,
@@ -157,7 +157,7 @@ test("searchPurchaseTelnyxNumbers posts the Telnyx number-order contract", async
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_1", phone_numbers: [{ id: "np_1", phone_number: "+12155550177" }] } } }) },
   ]);
-  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+  const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest" },
     makeClient: () => makeBase44({ user: { email: "a@x.com", account_type: "super_admin" }, data: { IntegrationSecret: [{ api_key: "KEYtest" }] } }),
     fetchImpl: impl,
@@ -176,7 +176,7 @@ test("a nurse-line purchase auto-enrolls the number in the saved A2P campaign", 
     { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_3", phone_numbers: [{ id: "np_2", phone_number: "+12155550188" }] } } }) },
     { match: (u) => u.includes("/v2/10dlc/phone_number_campaigns"), respond: () => ({ status: 200, json: { phoneNumber: "+12155550188", campaignId: "CAMP1" } }) },
   ]);
-  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+  const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: {},
     makeClient: () => makeBase44({
       user: { email: "a@x.com", account_type: "super_admin" },
@@ -204,7 +204,7 @@ test("a nurse-line purchase with NO saved campaign warns instead of enrolling", 
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_4", phone_numbers: [{ id: "np_3", phone_number: "+12155550190" }] } } }) },
   ]);
-  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+  const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: {},
     makeClient: () => makeBase44({
       user: { email: "a@x.com", account_type: "super_admin" },
@@ -244,7 +244,7 @@ test("a fax-purpose search filters fax-capable numbers (not sms/voice)", async (
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/available_phone_numbers"), respond: () => ({ status: 200, json: { data: [{ phone_number: "+12155550166" }] } }) },
   ]);
-  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+  const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: {},
     makeClient: () => makeSpyBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }] } }),
     fetchImpl: impl,
@@ -265,7 +265,7 @@ test("a fax-purpose purchase attaches the FAX connection and sets the blind outb
     { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_2", phone_numbers: [{ id: "np_9", phone_number: "+12155550199" }] } } }) },
   ]);
   const writes = [];
-  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+  const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: {},
     makeClient: () => makeSpyBase44({
       writes,
@@ -296,7 +296,7 @@ test("provision_fax re-points an owned number at the fax connection", async () =
     { match: (u, init) => /\/v2\/phone_numbers\/np_7$/.test(u) && init.method === "PATCH", respond: () => ({ status: 200, json: { data: { id: "np_7" } } }) },
   ]);
   const writes = [];
-  const handler = await loadHandler("./searchPurchaseTelnyxNumbers/entry.ts", {
+  const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: {},
     makeClient: () => makeSpyBase44({
       writes,
@@ -322,7 +322,7 @@ test("sendFax transmits from the blind outbound line masked as the office fax", 
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fax_3", status: "queued" } } }) },
   ]);
-  const handler = await loadHandler("./sendFax/entry.ts", {
+  const handler = await loadHandler("../functions/sendFax/entry.ts", {
     env: {},
     makeClient: () => makeBase44({ data: {
       IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
@@ -347,7 +347,7 @@ test("a stray inbound fax on the blind line is passed straight through to the of
     { match: (u) => u.endsWith("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fwd_1" } } }) },
   ]);
   const writes = [];
-  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: {},
     makeClient: () => makeSpyBase44({
       writes,
@@ -381,7 +381,7 @@ test("sendFax normalizes a formatted office fax number to E.164 on `from`", asyn
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fax_2", status: "queued" } } }) },
   ]);
-  const handler = await loadHandler("./sendFax/entry.ts", {
+  const handler = await loadHandler("../functions/sendFax/entry.ts", {
     env: {},
     makeClient: () => makeBase44({ data: {
       IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
@@ -401,7 +401,7 @@ test("sendFax normalizes a formatted office fax number to E.164 on `from`", asyn
 
 test("provisionNurseWorkNumber refuses to hand out the shared office fax number", async () => {
   const { impl } = makeFetch([]);
-  const handler = await loadHandler("./provisionNurseWorkNumber/entry.ts", {
+  const handler = await loadHandler("../functions/provisionNurseWorkNumber/entry.ts", {
     env: {},
     makeClient: () => makeSpyBase44({
       user: { email: "a@x.com", role: "admin", full_name: "Ada" },
@@ -421,7 +421,7 @@ test("provisionNurseWorkNumber refuses to hand out the shared office fax number"
 test("provisionNurseWorkNumber syncs the pool row for a manually-typed assignment", async () => {
   const { impl } = makeFetch([]);
   const writes = [];
-  const handler = await loadHandler("./provisionNurseWorkNumber/entry.ts", {
+  const handler = await loadHandler("../functions/provisionNurseWorkNumber/entry.ts", {
     env: {},
     makeClient: () => makeSpyBase44({
       user: { email: "a@x.com", role: "admin", full_name: "Ada" },
@@ -449,7 +449,7 @@ test("provisionNurseWorkNumber syncs the pool row for a manually-typed assignmen
 test("autoAssignWorkNumbers skips the shared office fax / main office numbers", async () => {
   const { impl } = makeFetch([]);
   const writes = [];
-  const handler = await loadHandler("./autoAssignWorkNumbers/entry.ts", {
+  const handler = await loadHandler("../functions/autoAssignWorkNumbers/entry.ts", {
     env: {},
     makeClient: () => makeSpyBase44({
       user: { email: "a@x.com", role: "admin", full_name: "Ada" },
@@ -484,7 +484,7 @@ test("createTelehealthToken provisions a room and mints a join token", async () 
     { match: (u) => u.endsWith("/v2/rooms"), respond: () => ({ status: 200, json: { data: { id: "room_1" } } }) },
     { match: (u) => u.includes("/actions/generate_join_client_token"), respond: () => ({ status: 200, json: { data: { token: "JOIN", refresh_token: "R" } } }) },
   ]);
-  const handler = await loadHandler("./createTelehealthToken/entry.ts", {
+  const handler = await loadHandler("../functions/createTelehealthToken/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest" },
     makeClient: () => makeBase44({
       user: { email: "host@x.com", role: "admin" },
@@ -518,7 +518,7 @@ test("createTelehealthToken validates guest tokens against join_token_hash", asy
     // A stale plaintext link must be IGNORED once a hash exists.
     invite_link: "https://app/join?room=visit-2&t=stale-different-token",
   };
-  const mkHandler = () => loadHandler("./createTelehealthToken/entry.ts", {
+  const mkHandler = () => loadHandler("../functions/createTelehealthToken/entry.ts", {
     env: {},
     makeClient: () => makeBase44({
       user: null,
@@ -552,7 +552,7 @@ test("createTelehealthToken validates guest tokens against join_token_hash", asy
 });
 
 test("createTelehealthToken still honors legacy plaintext invite_link sessions (no hash)", async () => {
-  const handler = await loadHandler("./createTelehealthToken/entry.ts", {
+  const handler = await loadHandler("../functions/createTelehealthToken/entry.ts", {
     env: {},
     makeClient: () => makeBase44({
       user: null,
@@ -579,7 +579,7 @@ test("createTelehealthToken still honors legacy plaintext invite_link sessions (
 test("rotateTelehealthJoinToken mints a fresh token and stores only its hash", async () => {
   const writes = [];
   const sessionRow = { id: "ts1", room_name: "visit-3", host_email: "host@x.com", status: "scheduled", participant_list: [] };
-  const mkHandler = (user) => loadHandler("./rotateTelehealthJoinToken/entry.ts", {
+  const mkHandler = (user) => loadHandler("../functions/rotateTelehealthJoinToken/entry.ts", {
     env: {},
     makeClient: () => makeSpyBase44({ user, writes, data: { TelehealthSession: [sessionRow] } }),
     fetchImpl: makeFetch([]).impl,
@@ -653,7 +653,7 @@ test("handleTelnyxStatusWebhook verifies Ed25519 and bridges an answered masked 
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 200, json: { data: {} } }) },
   ]);
-  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 },
     makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }], CallLog: [{ id: "CallLog_1", status: "ringing" }] } }),
     fetchImpl: impl,
@@ -689,7 +689,7 @@ test("inbound call answers first, then bridges an on-duty nurse on call.answered
   const { impl: impl1, calls: calls1 } = makeFetch([
     { match: (u) => u.includes("/actions/answer"), respond: () => ({ status: 200, json: { data: {} } }) },
   ]);
-  const h1 = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+  const h1 = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 }, makeClient: base, fetchImpl: impl1,
   });
   await h1(signedWebhook(privateKey, { data: { event_type: "call.initiated", payload: { call_control_id: "cc_in", direction: "incoming", from: "+13125550182", to: "+12155550100" } } }));
@@ -703,7 +703,7 @@ test("inbound call answers first, then bridges an on-duty nurse on call.answered
   const { impl: impl2, calls: calls2 } = makeFetch([
     { match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 200, json: { data: {} } }) },
   ]);
-  const h2 = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+  const h2 = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 }, makeClient: base, fetchImpl: impl2,
   });
   await h2(signedWebhook(privateKey, { data: { event_type: "call.answered", payload: { call_control_id: "cc_in", direction: "incoming", client_state: b64json({ t: "inbound_ivr", action: "ringdown", greeting: "", to: carried.to, callerId: carried.callerId, targets: carried.targets }) } } }));
@@ -721,7 +721,7 @@ test("an after-hours/weekend inbound call greets and transfers to the NORMALIZED
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/actions/answer"), respond: () => ({ status: 200, json: { data: {} } }) },
   ]);
-  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: {},
     makeClient: () => makeBase44({
       data: {
@@ -759,7 +759,7 @@ test("a rejected ringdown transfer advances to the next target instead of strand
     { match: (u) => u.includes("/actions/speak"), respond: () => ({ status: 200, json: { data: {} } }) },
     { match: (u) => u.includes("/actions/hangup"), respond: () => ({ status: 200, json: { data: {} } }) },
   ]);
-  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: {},
     makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }] } }),
     fetchImpl: impl,
@@ -781,7 +781,7 @@ test("find-me-follow-me rolls to the next target when a leg goes unanswered", as
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/actions/transfer"), respond: () => ({ status: 200, json: { data: {} } }) },
   ]);
-  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 },
     makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }] } }),
     fetchImpl: impl,
@@ -817,7 +817,7 @@ test("a failed masked-bridge transfer falls back to speak+hangup and marks the c
     const entities = new Proxy({}, { get: (_t, n) => (n === "CallLog" ? callLog : (n === "IntegrationSecret" ? { ...generic, filter: async () => [{ api_key: "KEYtest", public_key: pubB64 }] } : generic)) });
     return { auth: { me: async () => ({}) }, entities, asServiceRole: { entities } };
   };
-  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 }, makeClient: client, fetchImpl: impl,
   });
   await handler(signedWebhook(privateKey, { data: { event_type: "call.answered", payload: { call_control_id: "cc_f", direction: "outgoing", client_state: b64json({ t: "masked_bridge", bridge_to: "+12155550144", caller_id: "+12155550100", call_log_id: "CallLog_9" }) } } }));
@@ -833,7 +833,7 @@ test("sendSms forwards MMS media_urls and rejects non-https/oversized media", as
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/messages"), respond: () => ({ status: 200, json: { data: { id: "m", to: [{ status: "queued" }] } } }) },
   ]);
-  const handler = await loadHandler("./sendSms/entry.ts", {
+  const handler = await loadHandler("../functions/sendSms/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest" }, makeClient: mk, fetchImpl: impl,
   });
   await handler(new Request("https://app/functions/sendSms", { method: "POST", body: JSON.stringify({ to_number: "2155550133", body: "see attached", media_urls: ["https://files/x.jpg"] }) }));
@@ -844,7 +844,7 @@ test("sendSms forwards MMS media_urls and rejects non-https/oversized media", as
   const { impl: impl2, calls: calls2 } = makeFetch([
     { match: (u) => u.includes("/v2/messages"), respond: () => ({ status: 200, json: { data: { id: "m" } } }) },
   ]);
-  const handler2 = await loadHandler("./sendSms/entry.ts", {
+  const handler2 = await loadHandler("../functions/sendSms/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest" }, makeClient: mk, fetchImpl: impl2,
   });
   const res = await handler2(new Request("https://app/functions/sendSms", { method: "POST", body: JSON.stringify({ to_number: "2155550133", body: "x", media_urls: ["http://insecure/x.jpg"] }) }));
@@ -858,7 +858,7 @@ test("an inbound text to an off-duty nurse gets the off-duty auto-reply", async 
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/messages"), respond: () => ({ status: 200, json: { data: { id: "reply_1" } } }) },
   ]);
-  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 },
     makeClient: () => makeBase44({
       data: {
@@ -887,7 +887,7 @@ test("handleTelnyxStatusWebhook rejects a tampered signature (fail-closed)", asy
   const timestamp = String(Math.floor(Date.now() / 1000));
 
   const { impl } = makeFetch([]);
-  const handler = await loadHandler("./handleTelnyxStatusWebhook/entry.ts", {
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_PUBLIC_KEY: pubB64 },
     makeClient: () => makeBase44({ data: { IntegrationSecret: [{ public_key: pubB64 }] } }),
     fetchImpl: impl,

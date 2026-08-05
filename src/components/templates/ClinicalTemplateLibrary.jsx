@@ -297,7 +297,7 @@ async function generateTemplateContent(template, type) {
     : generateConditionPrompt(template);
 
   const result = await invokeLLM({
-    model: "claude_sonnet_4_6",
+    model: "automatic",
     prompt,
     response_json_schema: {
       type: "object",

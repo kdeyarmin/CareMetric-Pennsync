@@ -149,7 +149,7 @@ Provide actionable handoff information including:
       }
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt,
         response_json_schema: schema
       });

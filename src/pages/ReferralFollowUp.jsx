@@ -204,7 +204,7 @@ export default function ReferralFollowUp() {
     if (!selected || !selectedPlan) return;
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a home health coding specialist (HCS-D certified) and quality assurance nurse with 30 years of experience reviewing referrals for Medicare home health agencies. You know exactly which missing or vague documentation causes claim denials, RTPs, ADR takebacks, and underpaid PDGM case-mix — and how to ask a busy referring provider for it so it comes back right the first time.
 
 A deterministic rule engine has ALREADY flagged the following issues on this referral (do NOT repeat these):

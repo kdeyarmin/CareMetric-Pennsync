@@ -79,7 +79,7 @@ Generate a professional cover sheet with a HIPAA confidentiality disclaimer. Ret
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'automatic',
         max_tokens: 1024,
         messages: [{
           role: 'user',

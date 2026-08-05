@@ -32,7 +32,7 @@ async function loadInline(entryPath, names) {
   }
 }
 
-const ENTRY = "./manageTrainingVideos/entry.ts";
+const ENTRY = "../functions/manageTrainingVideos/entry.ts";
 const NAMES = [
   "buildNarrationScript", "truncateAtSentence", "sanitizeForSpeech", "speakableList",
   "normalizeHeyGenAvatars", "normalizeHeyGenVoices",

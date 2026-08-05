@@ -36,7 +36,7 @@ export default function NextStepsSummaryGenerator({ patient, educationMaterial, 
   const generateSummary = async () => {
     try {
       const result = await ai.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `You are creating a personalized "Next Steps" and "What to Watch For" summary for a patient after an education session. This should be simple, actionable, and easy for patients/caregivers to follow at home.
 
 PATIENT: ${patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown'}

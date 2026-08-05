@@ -90,7 +90,7 @@ export default function VisitSummaryGenerator({ patientId }) {
         ? `Patient: ${patient.first_name} ${patient.last_name}, DOB: ${patient.date_of_birth || "?"}, Dx: ${patient.primary_diagnosis || "?"}`
         : "";
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a clinical documentation specialist. Generate a structured patient visit summary from this nursing note/transcript.
 
 VISIT TRANSCRIPT:

@@ -57,7 +57,7 @@ ${visitData?.nurse_notes ? `\nLatest Visit Notes: ${visitData.nurse_notes.substr
 Return JSON: { "topics": [{ "title": "string", "reason": "brief explanation why this education is needed", "key_points": ["point1", "point2", "point3"] }] }`;
 
     const topicsResult = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: educationPrompt,
       response_json_schema: {
         type: 'object',
@@ -97,7 +97,7 @@ Instructions:
 Do NOT use medical jargon. Make it conversational and supportive.`;
 
       const contentResult = await base44.integrations.Core.InvokeLLM({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: contentPrompt
       });
 

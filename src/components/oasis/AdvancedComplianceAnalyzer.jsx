@@ -76,7 +76,7 @@ export default function AdvancedComplianceAnalyzer({ analysisResults, pdgmData, 
 
       // Advanced AI analysis with regulatory knowledge
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert OASIS compliance auditor with deep knowledge of CMS regulations, Medicare Conditions of Participation (CoPs), and OASIS-E guidance.
 
 CURRENT OASIS ASSESSMENT DATA:

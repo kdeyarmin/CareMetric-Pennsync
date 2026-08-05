@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
       let ocr;
       try {
         ocr = await base44.asServiceRole.integrations.Core.InvokeLLM({
-          model: 'claude_opus_4_8',
+          model: 'automatic',
           prompt: `Transcribe this faxed document completely and accurately (typed and handwritten text). Then extract the fields. If the document is a completed "Additional Information Request" form, transcribe every response carefully.`,
           file_urls: [fax.document_url],
           response_json_schema: {

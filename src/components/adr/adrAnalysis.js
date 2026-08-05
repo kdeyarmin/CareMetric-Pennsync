@@ -96,7 +96,7 @@ export const ADR_LETTER_SCHEMA = {
 export function runAdrLetterAnalysis(invoke, { fileUrl }) {
   return invoke(
     {
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: buildAdrLetterPrompt(),
       file_urls: [fileUrl],
       response_json_schema: ADR_LETTER_SCHEMA,
@@ -210,7 +210,7 @@ export const PACKET_VERIFICATION_SCHEMA = {
 export function runAdrPacketVerification(invoke, { fileUrl, checklist }) {
   return invoke(
     {
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: buildPacketVerificationPrompt(checklist),
       file_urls: [fileUrl],
       response_json_schema: PACKET_VERIFICATION_SCHEMA,

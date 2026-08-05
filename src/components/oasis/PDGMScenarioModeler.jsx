@@ -85,7 +85,7 @@ CALCULATE:
 Provide detailed comparison showing what changed and why.`;
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt,
         response_json_schema: {
           type: "object",

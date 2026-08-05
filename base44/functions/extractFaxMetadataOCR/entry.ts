@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
 
     // Use InvokeLLM with vision to extract patient metadata from the document
     const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: `You are a medical document OCR assistant. Analyze this medical document image/PDF and extract patient identifying information.
 
 Extract the following fields if present:

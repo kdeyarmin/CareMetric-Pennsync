@@ -83,7 +83,7 @@ Return a JSON object with this structure:
 }`;
 
     const aiResponse = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: analysisPrompt,
       file_urls: [document.file_url],
       response_json_schema: {

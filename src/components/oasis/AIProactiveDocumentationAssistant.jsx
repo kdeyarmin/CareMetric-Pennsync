@@ -42,7 +42,7 @@ export default function AIProactiveDocumentationAssistant({
 
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert OASIS clinical documentation specialist. Review this OASIS analysis and generate SPECIFIC, ACTIONABLE documentation improvement suggestions with exact example text.
 
 ANALYSIS RESULTS:

@@ -639,7 +639,7 @@ export const REFERRAL_EXTRACTION_SCHEMA = {
 export function runReferralExtraction(invoke, { fileUrl, fileType = "application/pdf" }) {
   return invoke(
     {
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: buildReferralExtractionPrompt(fileType),
       file_urls: [fileUrl],
       response_json_schema: REFERRAL_EXTRACTION_SCHEMA,
@@ -769,7 +769,7 @@ export const REFERRAL_QUICKSCAN_SCHEMA = {
 export function runReferralQuickScan(invoke, { fileUrl }) {
   return invoke(
     {
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: buildReferralQuickScanPrompt(),
       file_urls: [fileUrl],
       response_json_schema: REFERRAL_QUICKSCAN_SCHEMA,

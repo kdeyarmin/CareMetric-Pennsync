@@ -140,7 +140,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 `;
 
     const aiResponse = parseLLMJson(await base44.asServiceRole.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt
     })) || {};
 

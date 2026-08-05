@@ -80,7 +80,7 @@ Analyze and return insights:
 Return structured insights as JSON.`;
 
       const learningResult = await base44.asServiceRole.integrations.Core.InvokeLLM({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: learningPrompt,
         response_json_schema: {
           type: "object",

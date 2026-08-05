@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
 
     // Generate contextual suggestions
     const result = await base44.integrations.Core.InvokeLLM({
-      model: "claude_sonnet_4_6",
+      model: "automatic",
       prompt: `You are an AI assistant helping a care team communicate about a patient. Based on the patient's record and conversation, suggest relevant information to share.
 
 PATIENT INFORMATION:

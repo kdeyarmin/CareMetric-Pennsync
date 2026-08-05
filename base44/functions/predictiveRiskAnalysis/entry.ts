@@ -119,7 +119,7 @@ BASELINE VITALS:
     // that 500'd every call, so this clinical feature produced no risk scores or
     // alerts at all.)
     const riskAnalysis = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: `You are an expert clinical risk assessment AI for home health/hospice care. Analyze this patient's comprehensive data to predict risk of adverse events and recommend preventative interventions.
 
 ${patientContext}

@@ -95,7 +95,7 @@ export default function OASISDocumentationQualityScorer({ analysisResults, pdgmD
 
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert OASIS-E documentation quality auditor. Analyze this OASIS assessment and score its documentation quality across 4 criteria.
 
 OASIS ANALYSIS DATA:

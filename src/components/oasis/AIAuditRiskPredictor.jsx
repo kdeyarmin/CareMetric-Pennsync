@@ -65,7 +65,7 @@ export default function AIAuditRiskPredictor({ analysisResults, patientId }) {
       }));
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert in home health audit risk prediction. Based on the current OASIS analysis and historical patterns, predict future audit risks and provide actionable recommendations.
 
 CURRENT ANALYSIS:

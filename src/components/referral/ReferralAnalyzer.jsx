@@ -47,7 +47,7 @@ export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
     setAnalysisError(false);
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert home health intake coordinator. Analyze this patient referral and provide:
 
 1. MISSING INFORMATION ANALYSIS:

@@ -40,7 +40,7 @@ export default function ReferralLetterGenerator({ patientId, patient }) {
       const recentVisit = visits[0];
       
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Generate a professional medical referral letter.
 
 FROM:

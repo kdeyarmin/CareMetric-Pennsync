@@ -83,7 +83,7 @@ export default function GranularComplianceGapAnalyzer({
 
       // AI-driven recommendations
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a compliance analytics AI for home health agencies. Analyze these compliance gaps and provide actionable recommendations.
 
 IDENTIFIED GAPS:

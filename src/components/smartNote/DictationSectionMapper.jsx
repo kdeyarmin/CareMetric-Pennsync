@@ -40,7 +40,7 @@ export default function DictationSectionMapper({ transcript, onSectionsMapped })
     
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Analyze this medical dictation and categorize it into distinct clinical sections.
 
 DICTATION: "${transcript}"

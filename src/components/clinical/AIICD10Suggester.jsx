@@ -18,7 +18,7 @@ export default function AIICD10Suggester({ onCodesSelected }) {
     
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert in ICD-10 medical coding. Based on the following clinical description, suggest the most appropriate ICD-10 codes:
 
 CLINICAL DESCRIPTION:

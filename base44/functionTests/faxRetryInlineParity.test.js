@@ -42,7 +42,7 @@ const CONFIGS = [
 const FAILURES = [["7211", "not a fax machine"], [null, "busy"], ["", ""], [null, "Invalid To number"], ["x", "temporary network error"], [null, "rejected - line busy"], [null, "rejected - no answer"]];
 
 test("inline classifyFaxFailure matches faxRetry across both functions", async () => {
-  for (const f of ["./handleTelnyxStatusWebhook/entry.ts", "./autoRetryFailedFaxes/entry.ts"]) {
+  for (const f of ["../functions/handleTelnyxStatusWebhook/entry.ts", "../functions/autoRetryFailedFaxes/entry.ts"]) {
     const { mod } = await loadInline(f, ["classifyFaxFailure"]);
     for (const [code, msg] of FAILURES) {
       assert.equal(mod.classifyFaxFailure(code, msg), faxRetry.classifyFaxFailure(code, msg), `classifyFaxFailure drift in ${f}`);
@@ -52,10 +52,10 @@ test("inline classifyFaxFailure matches faxRetry across both functions", async (
 
 test("inline faxRetryConfig matches faxRetry across both functions", async () => {
   for (const f of [
-    "./handleTelnyxStatusWebhook/entry.ts",
-    "./autoRetryFailedFaxes/entry.ts",
-    "./pollFaxStatuses/entry.ts",
-    "./syncFaxStatuses/entry.ts",
+    "../functions/handleTelnyxStatusWebhook/entry.ts",
+    "../functions/autoRetryFailedFaxes/entry.ts",
+    "../functions/pollFaxStatuses/entry.ts",
+    "../functions/syncFaxStatuses/entry.ts",
   ]) {
     const { mod } = await loadInline(f, ["faxRetryConfig"]);
     for (const cfg of CONFIGS) {
@@ -65,7 +65,7 @@ test("inline faxRetryConfig matches faxRetry across both functions", async () =>
 });
 
 test("inline nextRetryDelayMinutes matches across both functions", async () => {
-  for (const f of ["./handleTelnyxStatusWebhook/entry.ts", "./autoRetryFailedFaxes/entry.ts"]) {
+  for (const f of ["../functions/handleTelnyxStatusWebhook/entry.ts", "../functions/autoRetryFailedFaxes/entry.ts"]) {
     const { mod } = await loadInline(f, ["nextRetryDelayMinutes"]);
     for (const cfg of CONFIGS) {
       for (const attempt of [0, 1, 2, 5]) {
@@ -83,7 +83,7 @@ test("inline nextRetryDelayMinutes matches across both functions", async () => {
 
 test("inline planFaxRetry matches (webhook + telnyx mirror)", async () => {
   const now = Date.parse("2026-06-04T12:00:00Z");
-  for (const f of ["./handleTelnyxStatusWebhook/entry.ts"]) {
+  for (const f of ["../functions/handleTelnyxStatusWebhook/entry.ts"]) {
     const { mod } = await loadInline(f, ["planFaxRetry"]);
     for (const [code, msg] of FAILURES) {
       for (const retryCount of [0, 2, 3]) {
@@ -96,7 +96,7 @@ test("inline planFaxRetry matches (webhook + telnyx mirror)", async () => {
 });
 
 test("inline isFaxRetryDue matches faxRetry (cron)", async () => {
-  const { mod } = await loadInline("./autoRetryFailedFaxes/entry.ts", ["isFaxRetryDue"]);
+  const { mod } = await loadInline("../functions/autoRetryFailedFaxes/entry.ts", ["isFaxRetryDue"]);
   const base = { status: "failed", document_url: "u", retry_count: 1, next_retry_at: "2026-06-04T12:00:00Z" };
   const now = Date.parse("2026-06-04T12:05:00Z");
   const cases = [

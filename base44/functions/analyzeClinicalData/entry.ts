@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
         const { noteText, patientId } = params;
 
         const eventsResponse = await base44.asServiceRole.integrations.Core.InvokeLLM({
-          model: "claude_opus_4_8",
+          model: "automatic",
           prompt: `Analyze this clinical note and extract ALL significant clinical events with high accuracy.
 
 Clinical Note:
@@ -120,7 +120,7 @@ async function extractEvents(base44, params) {
   }
 
   const rawResult = await base44.integrations.Core.InvokeLLM({
-    model: "claude_opus_4_8",
+    model: "automatic",
     prompt: `Extract ALL significant clinical events from this nursing note. Be thorough.
 
 Visit Note:
@@ -224,7 +224,7 @@ async function analyzeEvents(base44, params) {
   }));
 
   const result = await base44.integrations.Core.InvokeLLM({
-    model: "claude_opus_4_8",
+    model: "automatic",
     prompt: `Analyze these clinical events for a patient and identify potential issues:
 
 Patient: ${patient?.first_name} ${patient?.last_name}
@@ -283,7 +283,7 @@ async function analyzeTrends(base44, params) {
   const labEvents = clinicalEvents.filter(e => e.event_type?.includes('lab'));
 
   const result = await base44.integrations.Core.InvokeLLM({
-    model: "claude_opus_4_8",
+    model: "automatic",
     prompt: `Analyze this patient's clinical data over time and identify significant trends, patterns, and risks.
 
 PATIENT: ${patient.first_name} ${patient.last_name}

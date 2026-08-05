@@ -58,7 +58,7 @@ export default function PredictiveInsightsPanel({
 
     try {
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Analyze this home health agency's patient population and provide strategic predictive insights.
 
 POPULATION SUMMARY:

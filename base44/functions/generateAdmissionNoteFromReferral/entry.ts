@@ -49,7 +49,7 @@ Make the note:
 Return ONLY the formatted note text, no JSON structure.`;
 
     const noteText = await base44.integrations.Core.InvokeLLM({
-      model: "claude_opus_4_8",
+      model: "automatic",
       prompt: prompt
     });
 

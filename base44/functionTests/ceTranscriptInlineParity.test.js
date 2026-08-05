@@ -37,7 +37,7 @@ async function loadInline(entryPath, names) {
   }
 }
 
-const ENTRY = "./generateLearningTranscriptPDF/entry.ts";
+const ENTRY = "../functions/generateLearningTranscriptPDF/entry.ts";
 const NAMES = ["creditYear", "round1", "dedupeCreditRecords", "groupByCreditYear"];
 
 const CERTIFICATES = [

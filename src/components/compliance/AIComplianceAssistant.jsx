@@ -53,7 +53,7 @@ export default function AIComplianceAssistant({ compact = false, context = null 
       ).join('\n\n');
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are an expert Medicare compliance advisor for home health agencies, specializing in 42 CFR 484 regulations and Pennsylvania state requirements.
 
 QUESTION: ${questionText}

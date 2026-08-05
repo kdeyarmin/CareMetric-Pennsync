@@ -34,7 +34,7 @@ async function loadInline(entryPath, names) {
 const NAMES = ["mapMessageStatus", "mapFaxStatus", "mapCallStatus", "buildSignedPayload", "isFreshTimestamp", "extractTelnyxEvent"];
 
 test("handleTelnyxStatusWebhook inlines value-mappers identical to telnyxUtils", async () => {
-  const inlined = await loadInline("./handleTelnyxStatusWebhook/entry.ts", NAMES);
+  const inlined = await loadInline("../functions/handleTelnyxStatusWebhook/entry.ts", NAMES);
 
   const msgStatuses = ["queued", "sending", "sent", "delivered", "webhook_delivered", "sending_failed", "delivery_failed", "expired", "failed", "bogus", undefined];
   for (const s of msgStatuses) {

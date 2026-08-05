@@ -34,7 +34,7 @@ async function loadInline(entryPath, names) {
 
 test("buildReportText includes the patient, event, and follow-up sections", async () => {
   const { buildReportText } = await loadInline(
-    "./submitStateReportableIncident/entry.ts",
+    "../functions/submitStateReportableIncident/entry.ts",
     ["buildReportText"],
   );
   const text = buildReportText({
@@ -61,7 +61,7 @@ test("buildReportText includes the patient, event, and follow-up sections", asyn
 
 test("buildReportText falls back gracefully when optional fields are blank", async () => {
   const { buildReportText } = await loadInline(
-    "./submitStateReportableIncident/entry.ts",
+    "../functions/submitStateReportableIncident/entry.ts",
     ["buildReportText"],
   );
   const text = buildReportText({

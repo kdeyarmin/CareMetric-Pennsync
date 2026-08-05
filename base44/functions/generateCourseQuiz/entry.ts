@@ -164,7 +164,7 @@ Return ONLY valid JSON (no prose, no code fences) in EXACTLY this shape:
     let generated;
     try {
       const raw = await base44.asServiceRole.integrations.Core.InvokeLLM({
-        model: 'claude_opus_4_8',
+        model: 'automatic',
         prompt: `You write rigorous, fair healthcare training assessments grounded strictly in the provided material. Return ONLY valid JSON, no prose or code fences.\n\n${prompt}`,
       });
       generated = parseLLMJson(raw);

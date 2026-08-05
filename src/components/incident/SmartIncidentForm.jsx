@@ -78,7 +78,7 @@ export default function SmartIncidentForm({ patients = [], currentUser, onSubmit
   const generateNarrative = async () => {
     try {
       const text = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Write a professional, objective home-health incident report narrative.
 
 INCIDENT TYPE: ${INCIDENT_TYPES.find((t) => t.value === form.incident_type)?.label}

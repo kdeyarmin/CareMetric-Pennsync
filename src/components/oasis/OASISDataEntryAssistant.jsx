@@ -144,7 +144,7 @@ export default function OASISDataEntryAssistant({ onDataConfirmed }) {
     try {
       // AI-powered validation and insights
       const insights = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `Analyze this extracted OASIS data for compliance issues, clinical concerns, and care opportunities.
 
 EXTRACTED OASIS DATA:

@@ -81,7 +81,7 @@ export default function HospitalizationRiskWidget({ autoAnalyze = false }) {
 
         // Analyze with AI
         const analysis = await invokeLLM({
-          model: "claude_opus_4_8",
+          model: "automatic",
           prompt: `You are a clinical risk assessment AI analyzing home health patient data to predict hospitalization risk.
 
 PATIENT: ${patient.first_name} ${patient.last_name}

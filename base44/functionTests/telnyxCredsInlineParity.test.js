@@ -39,22 +39,22 @@ async function loadInline(entryPath, names) {
 // run on Telnyx; createTelehealthToken keeps an apiKey-only copy.
 const ALL = ["apiKey", "publicKey", "messagingProfileId", "voiceConnectionId", "faxConnectionId"];
 const FILES = {
-  "./testTelnyxConnection/entry.ts": ALL,
-  "./sendSms/entry.ts": ALL,
-  "./sendFax/entry.ts": ALL,
-  "./startMaskedCall/entry.ts": ALL,
-  "./handleTelnyxStatusWebhook/entry.ts": ALL,
-  "./searchPurchaseTelnyxNumbers/entry.ts": ALL,
-  "./retryFailedFax/entry.ts": ALL,
-  "./autoRetryFailedFaxes/entry.ts": ALL,
-  "./sendBatchFax/entry.ts": ALL,
-  "./syncFaxStatuses/entry.ts": ALL,
-  "./pollFaxStatuses/entry.ts": ALL,
-  "./sendFaxStatusNotification/entry.ts": ALL,
-  "./sendTestSms/entry.ts": ALL,
-  "./dispatchScheduledSms/entry.ts": ALL,
-  "./redriveFailedSms/entry.ts": ALL,
-  "./createTelehealthToken/entry.ts": ["apiKey"],
+  "../functions/testTelnyxConnection/entry.ts": ALL,
+  "../functions/sendSms/entry.ts": ALL,
+  "../functions/sendFax/entry.ts": ALL,
+  "../functions/startMaskedCall/entry.ts": ALL,
+  "../functions/handleTelnyxStatusWebhook/entry.ts": ALL,
+  "../functions/searchPurchaseTelnyxNumbers/entry.ts": ALL,
+  "../functions/retryFailedFax/entry.ts": ALL,
+  "../functions/autoRetryFailedFaxes/entry.ts": ALL,
+  "../functions/sendBatchFax/entry.ts": ALL,
+  "../functions/syncFaxStatuses/entry.ts": ALL,
+  "../functions/pollFaxStatuses/entry.ts": ALL,
+  "../functions/sendFaxStatusNotification/entry.ts": ALL,
+  "../functions/sendTestSms/entry.ts": ALL,
+  "../functions/dispatchScheduledSms/entry.ts": ALL,
+  "../functions/redriveFailedSms/entry.ts": ALL,
+  "../functions/createTelehealthToken/entry.ts": ["apiKey"],
 };
 
 const SCENARIOS = [

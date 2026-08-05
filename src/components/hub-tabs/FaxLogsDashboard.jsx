@@ -68,7 +68,7 @@ export default function FaxLogsDashboard() {
       }));
 
       const result = await ai.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `Analyze these fax transmission failures and provide:
 1. Common failure patterns and root causes
 2. Specific recommendations for each failure type

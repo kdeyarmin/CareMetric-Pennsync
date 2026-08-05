@@ -77,7 +77,7 @@ export default function EducationMaterialEditor({ material, onClose, onSave }) {
 
     try {
       const response = await ai.run({
-        model: "claude_sonnet_4_6",
+        model: "automatic",
         prompt: `You are a patient education specialist. Enhance the following patient education content to be clear, empathetic, and easy to understand at a ${formData.reading_level} reading level. Keep variable placeholders like {{patient_name}} intact. Make it warm and supportive while maintaining medical accuracy.
 
 Content to enhance:

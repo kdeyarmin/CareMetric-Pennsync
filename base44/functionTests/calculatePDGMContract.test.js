@@ -17,7 +17,7 @@ import { DEFAULT_PDGM_RATES } from "../../src/components/pdgm/pdgmRates.js";
  * src/components/pdgm/pdgmRatesParity.test.js.)
  */
 async function loadHandler({ agencySettings = [], rateRows = [] } = {}) {
-  let src = await readFile(new URL("./calculatePDGM/entry.ts", import.meta.url), "utf8");
+  let src = await readFile(new URL("../functions/calculatePDGM/entry.ts", import.meta.url), "utf8");
   src = src.replace(
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     "const createClientFromRequest = globalThis.__pdgmMakeClient;",

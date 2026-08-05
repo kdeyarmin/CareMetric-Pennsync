@@ -50,7 +50,7 @@ export default function PatientDeteriorationPredictor({ patientId, recentVisits,
         .join('\n---\n');
 
       const result = await ai.run({
-        model: "claude_opus_4_8",
+        model: "automatic",
         prompt: `You are a clinical deterioration risk analyst. Analyze this patient's vital signs trends and visit notes to predict deterioration risk.
 
 VITAL SIGNS TRENDS (most recent last):
