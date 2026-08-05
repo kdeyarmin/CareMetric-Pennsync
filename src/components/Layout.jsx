@@ -84,10 +84,15 @@ export default function Layout() {
     retry: false,
   });
 
+  // Reset scroll to the top on every navigation so each page opens at its top —
+  // keyed on the full pathname (not just the page name) so it also fires between
+  // sub-pages (e.g. two patient records). Instant jump (not smooth) so the new
+  // page never briefly shows the previous page's scroll position.
   useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
-  }, [currentPageName]);
+    window.scrollTo(0, 0);
+    // Also reset the main scroll container, in case it (not the window) is what scrolled.
+    document.getElementById('main-content')?.scrollTo?.(0, 0);
+  }, [location.pathname]);
 
   // Match App.jsx's route guard (role === 'admin' OR the platform super admin by
   // owner-email / super_admin account_type). Without this, an unpromoted super
