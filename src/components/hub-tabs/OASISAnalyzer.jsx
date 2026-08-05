@@ -628,10 +628,18 @@ export default function OASISAnalyzer() {
             m1306_pressure_ulcer: { type: "string", description: "M1306 pressure ulcer present 0-1" },
             m1307_pressure_ulcer_stage: { type: "string", description: "M1307 oldest stage" },
             m1311_pressure_ulcer_count: { type: "string", description: "M1311 number of ulcers" },
-            m1322_stasis_ulcer: { type: "string", description: "M1322 stasis ulcer present" },
-            m1324_stasis_ulcer_status: { type: "string", description: "M1324 status" },
-            m1330_surgical_wound: { type: "string", description: "M1330 surgical wound present" },
-            m1340_surgical_wound_status: { type: "string", description: "M1340 status" },
+            // These were off by one OASIS item, so the model was asked to read
+            // stasis ulcer out of M1322 (Stage 1 pressure INJURY count) and
+            // surgical wound out of M1330 (which is the stasis-ulcer item). The
+            // resulting clinical_items booleans fed the PDGM comorbidity
+            // reconciler as documentation of the wrong wounds entirely.
+            // M1330 = stasis ulcer present, M1334 = its status,
+            // M1340 = surgical wound present (its value encodes infection —
+            // matches oasisQuestions.jsx), M1342 = its status.
+            m1330_stasis_ulcer: { type: "string", description: "M1330 stasis ulcer present" },
+            m1334_stasis_ulcer_status: { type: "string", description: "M1334 status of most problematic stasis ulcer" },
+            m1340_surgical_wound: { type: "string", description: "M1340 surgical wound present (0=no, 1=yes not infected, 2=yes infected)" },
+            m1342_surgical_wound_status: { type: "string", description: "M1342 status of most problematic surgical wound" },
 
             // Cognitive and behavioral
             m1700_cognitive: { type: "string", description: "M1700 cognitive functioning" },
@@ -872,10 +880,10 @@ Return JSON:
       M1306 Pressure Ulcer Present: ${output.m1306_pressure_ulcer || '?'}
       M1307 Pressure Ulcer Stage: ${output.m1307_pressure_ulcer_stage || 'N/A'}
       M1311 Pressure Ulcer Count: ${output.m1311_pressure_ulcer_count || 'N/A'}
-      M1322 Stasis Ulcer: ${output.m1322_stasis_ulcer || '?'}
-      M1324 Stasis Ulcer Status: ${output.m1324_stasis_ulcer_status || 'N/A'}
-      M1330 Surgical Wound: ${output.m1330_surgical_wound || '?'}
-      M1340 Surgical Wound Status: ${output.m1340_surgical_wound_status || 'N/A'}
+      M1330 Stasis Ulcer: ${output.m1330_stasis_ulcer || '?'}
+      M1334 Stasis Ulcer Status: ${output.m1334_stasis_ulcer_status || 'N/A'}
+      M1340 Surgical Wound: ${output.m1340_surgical_wound || '?'}
+      M1342 Surgical Wound Status: ${output.m1342_surgical_wound_status || 'N/A'}
 
       COGNITIVE/BEHAVIORAL:
       M1700 Cognitive Functioning: ${output.m1700_cognitive || '?'}
@@ -1082,9 +1090,12 @@ Return JSON:
           pressure_ulcer_present: output?.m1306_pressure_ulcer === '1' || String(output?.m1306_pressure_ulcer || '').toLowerCase().includes('yes'),
           pressure_ulcer_stage: output?.m1307_pressure_ulcer_stage || null,
           pressure_ulcer_count: parseScore(output?.m1311_pressure_ulcer_count, 9),
-          stasis_ulcer: output?.m1322_stasis_ulcer === '1' || String(output?.m1322_stasis_ulcer || '').toLowerCase().includes('yes'),
-          surgical_wound: output?.m1330_surgical_wound === '1' || String(output?.m1330_surgical_wound || '').toLowerCase().includes('yes'),
-          surgical_wound_status: output?.m1340_surgical_wound_status || null
+          stasis_ulcer: output?.m1330_stasis_ulcer === '1' || String(output?.m1330_stasis_ulcer || '').toLowerCase().includes('yes'),
+          // M1340 is 0=no / 1=yes not infected / 2=yes infected, so any non-zero
+          // response means a surgical wound is present.
+          surgical_wound: ['1', '2'].includes(String(output?.m1340_surgical_wound || '').trim())
+            || String(output?.m1340_surgical_wound || '').toLowerCase().includes('yes'),
+          surgical_wound_status: output?.m1342_surgical_wound_status || null
         },
         cognitive_status: {
           cognitive_functioning: output?.m1700_cognitive || null,

@@ -137,6 +137,25 @@ Deno.serve(async (req) => {
     }
     await base44.asServiceRole.entities.DocumentSignature.update(document_id, updatePayload);
 
+    // 5a-bis) Stamp tamper-evidence over the now-completed record, exactly as
+    //     submitDocumentSignatures does for the in-app path. Without this a
+    //     document e-signed through the public signer portal carried no MAC at
+    //     all and its Certificate of Completion always printed "NOT SEALED".
+    //     Best-effort: never fail the signer's submit over it.
+    if (allSigned) {
+      try {
+        await base44.asServiceRole.functions.invoke('signatureIntegrity', {
+          action: 'stamp',
+          signature_id: document_id,
+          // Public signer portal has no user session; authorize the nested
+          // stamp via the shared internal secret (same as stampSignatureOnPDF).
+          internal_secret: Deno.env.get('INTERNAL_FN_SECRET') || '',
+        });
+      } catch (stampError) {
+        console.error('submitSignerSignature: integrity stamp failed (non-fatal):', stampError?.message);
+      }
+    }
+
     // 5b) Once the document is fully signed, produce a stamped/archived PDF
     //     artifact best-effort. Never fail the submit if embedding fails — log
     //     and leave the row without signed_pdf_url so it can be retried.

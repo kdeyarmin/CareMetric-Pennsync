@@ -85,6 +85,21 @@ async function computeHash(message, forceAlg) {
   return { hash: toHex(digest), alg: 'sha256-unkeyed' };
 }
 
+// Is this record's stored algorithm one we can still cryptographically vouch for?
+//
+// Verification recomputes with the algorithm recorded ON the record it is meant
+// to protect. That is deliberate for legacy records stamped before a secret
+// existed — but it also meant anyone who could write to DocumentSignature could
+// downgrade a hmac-sha256 record to 'sha256-unkeyed', recompute the plain digest
+// of a forged payload (no secret required) and be handed a "valid" verdict.
+// Once a secret is configured, an unkeyed record is no longer trustworthy: it is
+// unverifiable, not valid. (A payload-version downgrade is not separately
+// exploitable — the MAC still covers whatever payload version is claimed.)
+function unkeyedButSecretConfigured(rec) {
+  const secretConfigured = !!(Deno.env.get('SIGNATURE_HMAC_SECRET') || '').trim();
+  return secretConfigured && rec?.signature_hash_alg !== 'hmac-sha256';
+}
+
 // Constant-time string compare to avoid timing oracles on the MAC.
 function timingSafeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
@@ -108,13 +123,27 @@ async function canMutate(base44, user, sig) {
   return false;
 }
 
+// Trusted nested invoke from submitSignerSignature. The public capability-token
+// signer portal has no user session, so a document e-signed there could never be
+// stamped and its Certificate of Completion always read "NOT SEALED". Mirrors
+// stampSignatureOnPDF's isInternalInvoke, and is honoured for the 'stamp' action
+// ONLY — verify/certificate return the signer roster (PHI) and still require a
+// real, authorized user.
+function isInternalInvoke(body) {
+  const expected = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (!expected) return false;
+  return timingSafeEqual(String(body?.internal_secret || '').trim(), expected);
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await base44.auth.me().catch(() => null);
 
-    const { action, signature_id } = await req.json();
+    const body = await req.json();
+    const { action, signature_id } = body;
+    const internal = action === 'stamp' && isInternalInvoke(body);
+    if (!user && !internal) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (!signature_id) return Response.json({ error: 'signature_id is required' }, { status: 400 });
 
     const sig = await base44.asServiceRole.entities.DocumentSignature.get(signature_id).catch(() => null);
@@ -123,7 +152,7 @@ Deno.serve(async (req) => {
     // Authorize EVERY action (the record is fetched via asServiceRole). verify and
     // certificate return integrity status + the signer roster, which is PHI — so an
     // unauthorized caller must not read them for an arbitrary signature_id (IDOR).
-    if (!(await canMutate(base44, user, sig))) {
+    if (!internal && !(await canMutate(base44, user, sig))) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -141,7 +170,7 @@ Deno.serve(async (req) => {
       const auditEntry = {
         action: 'integrity_stamped',
         timestamp: stampedAt,
-        notes: `Tamper-evidence MAC computed (${alg}) by ${user.full_name || user.email}.`,
+        notes: `Tamper-evidence MAC computed (${alg}) by ${user?.full_name || user?.email || 'the signer portal'}.`,
       };
       await base44.asServiceRole.entities.DocumentSignature.update(signature_id, {
         signature_hash: hash,
@@ -159,12 +188,21 @@ Deno.serve(async (req) => {
       const stored = sig.signature_hash || null;
       let verification = { isValid: false, status: 'unsigned', alg: null };
       if (stored) {
-        const { hash, error } = await computeHash(canonicalPayload(sig, storedPayloadVersion(sig)), sig.signature_hash_alg);
-        if (error === 'secret_unconfigured') {
-          verification = { isValid: false, status: 'unverifiable', alg: sig.signature_hash_alg };
+        if (unkeyedButSecretConfigured(sig)) {
+          verification = {
+            isValid: false,
+            status: 'unverifiable',
+            reason: 'unkeyed_hash_with_secret_configured',
+            alg: sig.signature_hash_alg || 'sha256-unkeyed',
+          };
         } else {
-          const ok = timingSafeEqual(hash, stored);
-          verification = { isValid: ok, status: ok ? 'valid' : 'tampered', alg: sig.signature_hash_alg || 'sha256-unkeyed' };
+          const { hash, error } = await computeHash(canonicalPayload(sig, storedPayloadVersion(sig)), sig.signature_hash_alg);
+          if (error === 'secret_unconfigured') {
+            verification = { isValid: false, status: 'unverifiable', alg: sig.signature_hash_alg };
+          } else {
+            const ok = timingSafeEqual(hash, stored);
+            verification = { isValid: ok, status: ok ? 'valid' : 'tampered', alg: sig.signature_hash_alg || 'sha256-unkeyed' };
+          }
         }
       }
       const signers = (Array.isArray(sig.signers) ? sig.signers : []).map((s) => ({
@@ -194,6 +232,15 @@ Deno.serve(async (req) => {
     const stored = sig.signature_hash || null;
     if (!stored) {
       return Response.json({ success: true, isValid: false, status: 'unsigned', reason: 'no_integrity_hash' });
+    }
+    if (unkeyedButSecretConfigured(sig)) {
+      return Response.json({
+        success: true,
+        isValid: false,
+        status: 'unverifiable',
+        reason: 'unkeyed_hash_with_secret_configured',
+        alg: sig.signature_hash_alg || 'sha256-unkeyed',
+      });
     }
     const { hash, error } = await computeHash(canonicalPayload(sig, storedPayloadVersion(sig)), sig.signature_hash_alg);
     if (error === 'secret_unconfigured') {
