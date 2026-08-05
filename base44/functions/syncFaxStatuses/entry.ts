@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
     const { apiKey } = await resolveTelnyxCreds(base44);
     if (!apiKey) {
       console.warn('Telnyx credentials not configured. Skipping fax status sync.');
-      return Response.json({ error: 'Telnyx credentials not configured' }, { status: 500 });
+      return Response.json({ error: 'Telnyx credentials not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).' }, { status: 500 });
     }
 
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

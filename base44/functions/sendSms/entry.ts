@@ -497,7 +497,7 @@ Deno.serve(async (req) => {
     const { apiKey, messagingProfileId } = await resolveTelnyxCreds(base44);
     const { settings, smsEnabled } = await getAgencyConfig(base44);
     if (!apiKey) {
-      return Response.json({ error: 'Telnyx SMS credentials not configured' }, { status: 500 });
+      return Response.json({ error: 'Telnyx SMS credentials not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).' }, { status: 500 });
     }
     if (!smsEnabled) {
       return Response.json({ error: 'SMS messaging is disabled for this agency' }, { status: 403 });

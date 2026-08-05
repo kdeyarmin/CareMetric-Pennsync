@@ -574,7 +574,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      if (!apiKey) { await fail('Telnyx SMS credentials not configured'); continue; }
+      if (!apiKey) { await fail('Telnyx SMS credentials not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).'); continue; }
       if (!smsEnabled) { await fail('SMS messaging disabled for the agency'); continue; }
 
       // Cost control: block premium/blocked/international destinations by default

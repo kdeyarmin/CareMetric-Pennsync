@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
 
     const { apiKey, messagingProfileId, voiceConnectionId, faxConnectionId } = await resolveTelnyxCreds(base44);
     if (!apiKey) {
-      return Response.json({ error: 'Telnyx API credentials not configured.' }, { status: 500 });
+      return Response.json({ error: 'Telnyx API credentials not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).' }, { status: 500 });
     }
 
     const authHeaders = { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' };

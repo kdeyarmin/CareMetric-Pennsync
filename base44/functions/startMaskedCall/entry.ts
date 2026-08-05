@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
 
     const { apiKey, voiceConnectionId } = await resolveTelnyxCreds(base44);
     if (!apiKey || !voiceConnectionId) {
-      return Response.json({ error: 'Telnyx Voice credentials not configured' }, { status: 500 });
+      return Response.json({ error: 'Telnyx Voice credentials not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).' }, { status: 500 });
     }
 
     // Cost control: block premium/blocked/international destinations by default.

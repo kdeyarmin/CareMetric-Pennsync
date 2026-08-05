@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
     const { apiKey } = await resolveTelnyxCreds(base44);
 
     if (!apiKey) {
-      return Response.json({ error: 'Telnyx credentials not configured' }, { status: 400 });
+      return Response.json({ error: 'Telnyx credentials not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).' }, { status: 400 });
     }
 
     // Load the admin retry policy ONCE (shared across the parallel checks below) so

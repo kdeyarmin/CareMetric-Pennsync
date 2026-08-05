@@ -76,5 +76,31 @@
     "skill_area",
     "module_type",
     "status"
-  ]
+  ],
+  // This is a training ATTESTATION record — it evidences that a nurse completed
+  // remediation — but it had no policy at all, so any authenticated user could
+  // write a row under someone else's nurse_email. Scoping writes to the owner
+  // (plus admin) is the rule docs/RLS-REMEDIATION-SPEC-2026-06-19.md §C calls
+  // workable in-repo, and it breaks nothing: every client write site
+  // (AIComplianceQuizGenerator, InteractiveDocumentationScenarios,
+  // NurseTrainingHub, LearnerMemoryBoosters) already sets nurse_email to the
+  // signed-in user.
+  //
+  // Read is deliberately left open, per that same spec note: manager and
+  // staff-overview screens read across nurses, and owner-scoping reads would
+  // need each of those confirmed admin-gated first (checklist §7).
+  "rls": {
+    "write": {
+      "$or": [
+        {
+          "nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

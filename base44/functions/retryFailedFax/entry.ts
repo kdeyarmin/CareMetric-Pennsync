@@ -146,7 +146,8 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
-    // Get Telnyx credentials (env, then in-app IntegrationSecret)
+    // Get Telnyx credentials from the in-app IntegrationSecret row. The
+    // dashboard-env path was retired; see src/lib/telnyxConfig.spec.js.
     const { apiKey, faxConnectionId } = await resolveTelnyxCreds(base44);
     // Resolve the from-number the same way sendFax does: transmit from the
     // blind outbound line (outbound_fax_number_e164), presented as the office
@@ -160,7 +161,7 @@ Deno.serve(async (req) => {
 
     if (!apiKey || !faxConnectionId) {
       return Response.json({
-        error: 'Telnyx credentials not configured',
+        error: 'Telnyx credentials not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).',
         success: false
       }, { status: 500 });
     }

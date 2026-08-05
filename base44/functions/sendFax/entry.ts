@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
     }
 
     if (!apiKey || !faxConnectionId) {
-      return Response.json({ error: 'Telnyx fax credentials not configured' }, { status: 500 });
+      return Response.json({ error: 'Telnyx fax credentials not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).' }, { status: 500 });
     }
     if (outboundFaxRaw && !outboundFax) {
       return Response.json({

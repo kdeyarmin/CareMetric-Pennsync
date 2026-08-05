@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
     }
 
     const { apiKey } = await resolveTelnyxCreds(base44);
-    if (!apiKey) return Response.json({ error: 'Telnyx credentials not configured' }, { status: 500 });
+    if (!apiKey) return Response.json({ error: 'Telnyx credentials not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).' }, { status: 500 });
 
     const roomId = await findOrCreateRoom(apiKey, String(room_name));
 
