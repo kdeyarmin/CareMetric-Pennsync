@@ -51,6 +51,19 @@ export function useMyTrainingCompletions(email) {
     return ids;
   }, [assignments, certificates]);
 
+  // Courses the learner has started but not finished. TrainingAssignment.status
+  // carries "in_progress" in its schema enum, but nothing derived it before, so
+  // every consumer's "In Progress" branch was unreachable and a started module
+  // rendered as "Not Started". Completion always wins over in-progress.
+  const inProgressCourseIds = useMemo(() => {
+    const ids = new Set();
+    assignments.forEach((a) => {
+      if (!a.course_id || completedCourseIds.has(a.course_id)) return;
+      if (a.status === "in_progress") ids.add(a.course_id);
+    });
+    return ids;
+  }, [assignments, completedCourseIds]);
+
   // Latest score per course (from attempts, then assignment fallback).
   const scoreByCourse = useMemo(() => {
     const map = {};
@@ -69,6 +82,7 @@ export function useMyTrainingCompletions(email) {
     certificates,
     microProgress,
     completedCourseIds,
+    inProgressCourseIds,
     scoreByCourse,
     isCompleted,
     isLoading: loadingAssignments,

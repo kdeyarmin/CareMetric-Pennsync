@@ -594,7 +594,11 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
 
         // Check for diagnosis-related accuracy issues
         if (issue.item?.toLowerCase().includes('diagnosis') || issue.recommendation?.toLowerCase().includes('diagnosis')) {
-          const diagMatch = issue.recommendation?.match(/add|include|document[:\s]+([^.]+)/i);
+          // Group the alternation: `/add|include|document[:\s]+(...)/` binds the
+          // capture to the `document` branch alone, so recommendations phrased
+          // "Add ..." / "Include ..." matched but left group 1 undefined and the
+          // diagnosis was silently dropped from the corrected scenario.
+          const diagMatch = issue.recommendation?.match(/(?:add|include|document)[:\s]+([^.]+)/i);
           if (diagMatch && diagMatch[1]) {
             corrected.comorbidities.push(diagMatch[1].trim());
             appliedCorrections.push({ type: 'accuracy_diagnosis', item: diagMatch[1].trim() });

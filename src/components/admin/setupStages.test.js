@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   SETUP_STAGES,
   stageStatus,
@@ -70,6 +71,26 @@ test('a single missing connect credential is enough to hold the stage open', () 
   for (const flag of connect.secretFlags) {
     const status = { ...allConnectFlags(true), [flag]: false };
     assert.equal(stageStatus(connect, apiKeyDone, status), 'attention', `${flag} missing must not read as done`);
+  }
+});
+
+test('every connect secretFlag is a field getTelnyxSecretStatus actually returns', () => {
+  // The tests above build their fixture FROM secretFlags, so they pass for any
+  // spelling — which is how the stage ended up reading `*_set` (saveTelnyxSecret's
+  // save response) while TelnyxSetupProgress feeds it getTelnyxSecretStatus, whose
+  // fields are `*_configured`. Every flag was undefined and the stage could never
+  // reach "done". Pin the names to the endpoint that actually supplies them.
+  const source = readFileSync(
+    new URL('../../../base44/functions/getTelnyxSecretStatus/entry.ts', import.meta.url),
+    'utf8',
+  );
+  const connect = SETUP_STAGES.find((s) => s.id === 'connect');
+  for (const flag of connect.secretFlags) {
+    assert.match(
+      source,
+      new RegExp(`\\b${flag}\\s*:`),
+      `getTelnyxSecretStatus does not return "${flag}" — stageStatus would read undefined`,
+    );
   }
 });
 

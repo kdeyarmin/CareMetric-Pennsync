@@ -102,19 +102,21 @@ export default function PDGMTrendDashboard() {
       );
     }
 
+    // estimated_payment is a TOP-LEVEL OASISUpload field (see the save payload in
+    // OASISAnalyzer.jsx), not a pdgm_data key. Reading it from pdgm_data resolved
+    // to undefined on every row, so Average Payment, Total Revenue and the whole
+    // payment-trend chart were permanently $0. The pdgm_data lookup is kept as a
+    // fallback for rows written by any other producer.
+    const paymentOf = (u) => parseFloat(u.estimated_payment ?? u.pdgm_data?.estimated_payment) || 0;
+    const caseMixOf = (u) => parseFloat(u.pdgm_data?.case_mix_weight) || 0;
+
     // Calculate statistics
     const totalAssessments = filtered.length;
-    const avgPayment = filtered.reduce((sum, u) => 
-      sum + (parseFloat(u.pdgm_data.estimated_payment) || 0), 0
-    ) / (totalAssessments || 1);
-    
-    const avgCaseMix = filtered.reduce((sum, u) => 
-      sum + (parseFloat(u.pdgm_data.case_mix_weight) || 0), 0
-    ) / (totalAssessments || 1);
+    const avgPayment = filtered.reduce((sum, u) => sum + paymentOf(u), 0) / (totalAssessments || 1);
 
-    const totalRevenue = filtered.reduce((sum, u) => 
-      sum + (parseFloat(u.pdgm_data.estimated_payment) || 0), 0
-    );
+    const avgCaseMix = filtered.reduce((sum, u) => sum + caseMixOf(u), 0) / (totalAssessments || 1);
+
+    const totalRevenue = filtered.reduce((sum, u) => sum + paymentOf(u), 0);
 
     // Payment trend over time
     const paymentTrend = {};
@@ -126,9 +128,9 @@ export default function PDGMTrendDashboard() {
       if (!paymentTrend[month]) {
         paymentTrend[month] = { month, total: 0, count: 0, avgPayment: 0, avgCaseMix: 0 };
       }
-      paymentTrend[month].total += parseFloat(u.pdgm_data.estimated_payment) || 0;
+      paymentTrend[month].total += paymentOf(u);
       paymentTrend[month].count += 1;
-      paymentTrend[month].avgCaseMix += parseFloat(u.pdgm_data.case_mix_weight) || 0;
+      paymentTrend[month].avgCaseMix += caseMixOf(u);
     });
 
     const paymentTrendData = Object.values(paymentTrend)

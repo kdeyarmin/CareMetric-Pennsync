@@ -448,8 +448,14 @@ function validateAdmissionSource(data) {
   // 2=acute hospital, 3=LTCH, 4=SNF, 5=IRF, 6=psychiatric hospital/unit — ALL
   // institutional under PDGM.
   const m1000Digit = (m1000Val.replace(/^0+(?=\d)/, '').match(/\b([1-7])\b/) || [])[1];
-  if (['2', '3', '4', '5', '6'].includes(m1000Digit) ||
-      /hospital|snf|skilled nursing|acute|inpatient|rehab|irf|ltch|psych/i.test(m1000Val)) {
+  // An explicit M1000 code decides on its own; the keyword scan is only a
+  // fallback for values that carry no code at all. OR-ing the two mispriced
+  // community admissions, because CMS's own response-1 wording — "Community (no
+  // inpatient facility discharge within the past 14 days)" — contains an
+  // institutional keyword and beat the code.
+  if (m1000Digit) {
+    if (['2', '3', '4', '5', '6'].includes(m1000Digit)) expectedSource = 'institutional';
+  } else if (/hospital|snf|skilled nursing|acute|inpatient|rehab|irf|ltch|psych/i.test(m1000Val)) {
     expectedSource = 'institutional';
   }
 

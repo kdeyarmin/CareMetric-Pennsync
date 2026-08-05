@@ -50,8 +50,10 @@ export default function BreachDetectionSystem() {
       const indicators = [];
 
       // 1. Unauthorized Access Attempts
-      const failedLogins = securityLogs.filter(log => 
-        log.action?.includes('FAILED') && 
+      // Case-insensitive for the same reason as the deletion scan below: logged
+      // action values are not consistently uppercase.
+      const failedLogins = securityLogs.filter(log =>
+        log.action?.toUpperCase().includes('FAILED') &&
         new Date(log.timestamp) > last24h
       );
       
@@ -149,8 +151,12 @@ export default function BreachDetectionSystem() {
       }
 
       // 5. Deleted Records
+      // Case-insensitive: every UserActivity.action this app writes is lowercase
+      // snake_case (ActivityActions.DELETE === 'delete'), so an uppercase
+      // substring test meant the Excessive Deletions breach indicator could
+      // never fire.
       const deletions = userActivities.filter(activity =>
-        activity.action?.includes('DELETE') &&
+        activity.action?.toUpperCase().includes('DELETE') &&
         new Date(activity.created_date) > last24h
       );
       

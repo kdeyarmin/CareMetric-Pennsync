@@ -252,12 +252,17 @@ function extractTags(narrative) {
   const tags = [];
   const text = narrative.toLowerCase();
   
-  // Clinical indicators
-  if (text.includes('stable') || text.includes('improving')) tags.push('stable');
+  // Clinical indicators. 'stable' and 'med' must match on a word boundary:
+  // 'unstable'.includes('stable') is true, so a narrative documenting an
+  // UNSTABLE patient was auto-tagged 'stable', and bare 'med' also fired on
+  // "medical", "immediately" and "medium". The rest stay substring matches on
+  // purpose (e.g. "breath" has to match "breathing"). `text` is already
+  // lowercased.
+  if (/\bstable\b/.test(text) || text.includes('improving')) tags.push('stable');
   if (text.includes('decline') || text.includes('worsening')) tags.push('declining');
   if (text.includes('pain')) tags.push('pain_management');
   if (text.includes('wound')) tags.push('wound_care');
-  if (text.includes('medication') || text.includes('med')) tags.push('medication');
+  if (text.includes('medication') || /\bmeds?\b/.test(text)) tags.push('medication');
   if (text.includes('edema') || text.includes('swelling')) tags.push('edema');
   if (text.includes('breath') || text.includes('respiratory')) tags.push('respiratory');
   if (text.includes('cardiac') || text.includes('heart')) tags.push('cardiac');

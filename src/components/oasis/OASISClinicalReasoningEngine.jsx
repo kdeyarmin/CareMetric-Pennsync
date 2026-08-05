@@ -5,7 +5,10 @@ const REASONING_RULES = [
     id: "bedfast_vs_ambulation",
     severity: "critical",
     title: "Transfer and ambulation conflict",
-    check: (a) => a.m1850 === 4 && a.m1860 !== undefined && a.m1860 <= 4,
+    // M1850 encodes bedfast as BOTH 4 and 5 (see oasisScales.js): 4 = bedfast but
+    // able to turn/position self, 5 = bedfast and unable to. Testing === 4 skipped
+    // the more dependent patients, exactly where the contradiction matters most.
+    check: (a) => a.m1850 >= 4 && a.m1860 !== undefined && a.m1860 <= 4,
     explanation: "The patient is documented as bedfast for transfers, but the ambulation score suggests the patient can still move around on foot or by wheelchair more independently.",
     suggestion: "Recheck whether the patient is truly bedfast. If the patient cannot get out of bed, the ambulation score usually needs to reflect that level of dependence as well."
   },
@@ -13,7 +16,8 @@ const REASONING_RULES = [
     id: "bedfast_vs_toilet_transfer",
     severity: "critical",
     title: "Bedfast status conflicts with toilet transfer ability",
-    check: (a) => a.m1850 === 4 && a.m1840 !== undefined && a.m1840 <= 2,
+    // Same M1850 bedfast range as above: 4 and 5 both mean bedfast.
+    check: (a) => a.m1850 >= 4 && a.m1840 !== undefined && a.m1840 <= 2,
     explanation: "A bedfast patient would not usually be documented as mostly independent with toilet transfer ability.",
     suggestion: "Confirm whether the patient is actually able to transfer to the toilet or bedside commode. If not, the toilet transfer item should likely reflect total dependence."
   },

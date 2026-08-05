@@ -25,14 +25,18 @@ export default function OnboardingTracker({ nurseEmail, onStartModule }) {
 
   // Completion/score come from the live course-assignment system; a module is
   // complete when its course has a passing assignment/certificate.
-  const { completedCourseIds, scoreByCourse } = useMyTrainingCompletions(nurseEmail);
+  const { completedCourseIds, inProgressCourseIds, scoreByCourse } = useMyTrainingCompletions(nurseEmail);
 
   // Sort modules by order (TrainingModule schema field is order_index)
   const sortedModules = [...modules].sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
   const courseIdByModuleId = Object.fromEntries(modules.map(m => [m.id, m.course_id]));
   const isCourseDone = (courseId) => !!courseId && completedCourseIds.has(courseId);
 
-  const getModuleStatus = (module) => (isCourseDone(module.course_id) ? 'completed' : 'not_started');
+  const getModuleStatus = (module) => {
+    if (isCourseDone(module.course_id)) return 'completed';
+    if (module.course_id && inProgressCourseIds.has(module.course_id)) return 'in_progress';
+    return 'not_started';
+  };
 
   const isModuleLocked = (module) => {
     if (!module.prerequisites || module.prerequisites.length === 0) return false;
