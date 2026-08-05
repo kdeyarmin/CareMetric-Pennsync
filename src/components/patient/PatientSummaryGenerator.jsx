@@ -50,6 +50,9 @@ Provide a brief snapshot focusing on current status, key concerns, and immediate
           }
         };
       } else if (format === 'detailed') {
+        // An empty allergies field means the status was never charted, not that
+        // the patient has none — defaulting to "NKDA" would have the model
+        // assert a clinical negative that nobody documented.
         prompt = `Create a COMPREHENSIVE patient summary for thorough understanding:
 
 PATIENT INFORMATION:
@@ -65,7 +68,7 @@ Secondary: ${patient.secondary_diagnoses?.join(', ') || 'None'}
 MEDICATIONS (${patient.current_medications?.length || 0}):
 ${patient.current_medications?.map(m => `- ${m.name} ${m.dosage} ${m.frequency}`).join('\n') || 'None documented'}
 
-ALLERGIES: ${patient.allergies || 'NKDA'}
+ALLERGIES: ${patient.allergies || 'Not documented — allergy status unknown, verify before administering medication'}
 
 MEDICAL HISTORY:
 ${patient.past_medical_history?.join(', ') || 'No past medical history documented'}
@@ -107,6 +110,9 @@ Create a detailed narrative summary that includes:
           }
         };
       } else if (format === 'handoff') {
+        // Undocumented allergies are reported as unknown, never as "NKDA" — a
+        // handoff that states a clinical negative nobody charted is a safety
+        // falsehood.
         prompt = `Create a HANDOFF SUMMARY for nurse-to-nurse communication:
 
 Patient: ${patient.first_name} ${patient.last_name} (${patient.medical_record_number || 'No MRN'})
@@ -117,7 +123,7 @@ Last Visit: ${recentVisits[0]?.visit_date || 'No recent visits'}
 ${recentVisits[0]?.nurse_notes ? `Notes: ${recentVisits[0].nurse_notes.substring(0, 200)}...` : ''}
 
 Recent Concerns: ${recentIncidents.map(i => i.incident_type).join(', ') || 'None'}
-Allergies: ${patient.allergies || 'NKDA'}
+Allergies: ${patient.allergies || 'Not documented — allergy status unknown, verify before administering medication'}
 
 Key Medications: ${patient.current_medications?.slice(0, 5).map(m => `${m.name} ${m.dosage}`).join(', ') || 'None'}
 

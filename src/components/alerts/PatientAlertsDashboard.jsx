@@ -104,12 +104,11 @@ export default function PatientAlertsDashboard({ patientId = null }) {
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000)
   });
 
-  // Fetch clinical events for linking
-  const { data: _clinicalEvents = [] } = useQuery({
-    queryKey: ['clinicalEvents'],
-    queryFn: () => base44.entities.ClinicalEvent.list('-created_date', 200),
-    initialData: []
-  });
+  // (No clinical-event query here: an unused `_clinicalEvents` useQuery used to
+  // bulk-list 200 ClinicalEvent rows — per-patient PHI, across every patient,
+  // and ClinicalEvent carries no RLS policy — then discard the result. The
+  // underscore silenced the unused-variable warning rather than removing the
+  // read. Alerts already arrive patient-scoped from getScopedPatientAlerts.)
 
   const patientMap = patients.reduce((acc, p) => {
     acc[p.id] = p;

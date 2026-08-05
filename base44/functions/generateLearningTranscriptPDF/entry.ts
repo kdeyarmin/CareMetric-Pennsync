@@ -76,6 +76,13 @@ Deno.serve(async (req) => {
 
     const { employeeId, businessLine, dateStart, dateEnd } = await req.json();
 
+    // Require the id up front: an undefined employeeId is dropped by the SDK's
+    // JSON.stringify of the filter, so the User and certificate queries below
+    // would run unscoped (arbitrary employee, every clinician's certificates).
+    if (!employeeId || typeof employeeId !== 'string') {
+      return Response.json({ error: 'employeeId is required' }, { status: 400 });
+    }
+
     // Only admins can generate transcripts for others
     if (employeeId !== user.email && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin') {
       return Response.json({ error: 'Forbidden' }, { status: 403 });

@@ -186,20 +186,28 @@ export default function FaxContactsPage() {
 
       // Strip the leading apostrophe our export adds to neutralize spreadsheet
       // formula injection (e.g. "'+12155550100" round-trips back to "+12155550100").
-      const normalizeFax = (raw) => (raw || "").replace(/^'/, "").trim();
+      // Applied to EVERY column, not just the fax number: the exporter guards any
+      // cell starting with = + - @, so a note like "- calls before 3pm" otherwise
+      // gained another apostrophe on each export→import cycle. The lookahead only
+      // removes an apostrophe our exporter could have added, leaving a name like
+      // "'Round the Clock Care" intact.
+      const stripFormulaGuard = (raw) => (raw || "").replace(/^'(?=[=+\-@\t\r])/, "").trim();
 
       const contactsToAdd = [];
       for (let i = 1; i < rows.length; i++) {
         const values = rows[i].map(v => v.trim());
-        const faxNumber = normalizeFax(values[faxIndex]);
+        const name = stripFormulaGuard(values[nameIndex]);
+        // The fax column keeps the broader strip: a phone number is never
+        // legitimately quoted, so any leading apostrophe there is an artifact.
+        const faxNumber = (values[faxIndex] || "").replace(/^'/, "").trim();
         // Require a name and a fax number that actually contains digits so a
         // mangled/blank column can't persist a garbage contact.
-        if (values[nameIndex] && /\d/.test(faxNumber)) {
+        if (name && /\d/.test(faxNumber)) {
           contactsToAdd.push({
-            name: values[nameIndex],
+            name,
             fax_number: faxNumber,
-            organization: orgIndex !== -1 ? values[orgIndex] || "" : "",
-            notes: notesIndex !== -1 ? values[notesIndex] || "" : ""
+            organization: orgIndex !== -1 ? stripFormulaGuard(values[orgIndex]) : "",
+            notes: notesIndex !== -1 ? stripFormulaGuard(values[notesIndex]) : ""
           });
         }
       }

@@ -969,7 +969,7 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
       const next = (Number(state.idx) || 0) + 1;
       const hasNext = Array.isArray(state.targets) && state.targets[next];
       if (hasNext) {
-        await startRingdown(apiKey, state.a_leg, state.targets, state.callerId, next);
+        await startRingdown(base44, apiKey, state.a_leg, state.targets, state.callerId, next);
       } else {
         // Ringdown exhausted: nobody answered. Mark the inbound call as missed
         // BEFORE hanging up the caller leg. The CallLog status enum has no
@@ -994,7 +994,7 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
     // (find-me-follow-me), or speak the greeting then continue once it finishes.
     if (eventType === 'call.answered' && state?.t === 'inbound_ivr') {
       if (state.action === 'ringdown') {
-        await startRingdown(apiKey, callControlId, state.targets || [], state.callerId, 0);
+        await startRingdown(base44, apiKey, callControlId, state.targets || [], state.callerId, 0);
         return Response.json({ success: true, inbound_ivr: 'ringdown' });
       }
       const greeting = String(state.greeting || '').slice(0, 320);
@@ -1016,8 +1016,13 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
       const config = await getAgencyConfig(base44);
       const workNum = normalizeE164(payload?.to) || payload?.to || '';
       const route = await decideInboundRouting(base44, config, workNum);
+      // Log here as well as on call.initiated: without a CallLog row every later
+      // write for this call (status, voicemail recording, transcript, the new-
+      // voicemail notification) finds no row and is silently dropped. logInboundCall
+      // no-ops when a row already exists, so a delayed call.initiated can't double-write.
+      await logInboundCall(base44, callControlId, normalizeE164(payload?.from) || payload?.from || '', workNum, route);
       if (route.action === 'ringdown') {
-        await startRingdown(apiKey, callControlId, route.targets || [], route.callerId, 0);
+        await startRingdown(base44, apiKey, callControlId, route.targets || [], route.callerId, 0);
         return Response.json({ success: true, inbound_recovered: 'ringdown' });
       }
       const greeting = String(route.greeting || '').slice(0, 320);
@@ -1086,7 +1091,7 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
 // number) with no hangup event to advance on — so on failure, try each
 // remaining target in order, and if every one is rejected apologize and hang up
 // rather than stranding the caller on a silent answered (billed) leg.
-async function startRingdown(apiKey, aLegId, targets, callerId, idx = 0) {
+async function startRingdown(base44, apiKey, aLegId, targets, callerId, idx = 0) {
   const list = Array.isArray(targets) ? targets : [];
   for (let i = Math.max(0, Number(idx) || 0); i < list.length; i++) {
     const target = list[i];
@@ -1099,6 +1104,18 @@ async function startRingdown(apiKey, aLegId, targets, callerId, idx = 0) {
     });
     if (r.ok) return;
   }
+  // Every target was rejected, so no dialed leg exists to carry the ringdown
+  // client_state and the exhaustion branch above can never fire for this call.
+  // Mark the inbound log missed here too, otherwise the trailing call.hangup maps
+  // to 'completed' and the call disappears from the callback queue.
+  const inboundLogs = await base44.asServiceRole.entities.CallLog
+    .filter({ provider_call_id: aLegId }, '-created_date', 1).catch(() => []);
+  if (inboundLogs.length && inboundLogs[0].status !== 'failed') {
+    await base44.asServiceRole.entities.CallLog.update(inboundLogs[0].id, {
+      status: 'failed',
+      failure_reason: 'No answer — all on-call targets were unavailable',
+    }).catch(() => {});
+  }
   await callCommand(apiKey, aLegId, 'speak', { ...SPEAK_DEFAULTS, payload: 'We are unable to connect your call at this time. Please try again later.' });
   await callCommand(apiKey, aLegId, 'hangup', {});
 }
@@ -1106,7 +1123,7 @@ async function startRingdown(apiKey, aLegId, targets, callerId, idx = 0) {
 async function continueAfterGreeting(base44, apiKey, callControlId, action, to, callerId, targets = null) {
   // Find-me-follow-me: ring the targets in order on the caller leg.
   if (action === 'ringdown') {
-    await startRingdown(apiKey, callControlId, targets || (to ? [{ to, kind: 'primary' }] : []), callerId, 0);
+    await startRingdown(base44, apiKey, callControlId, targets || (to ? [{ to, kind: 'primary' }] : []), callerId, 0);
     return;
   }
   // A plain bridge and a greet-then-transfer both end in a transfer; unify them

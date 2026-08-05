@@ -360,13 +360,17 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
     const days = parseInt(dateRange, 10);
     const dailyEnhancements = [];
     for (let i = days - 1; i >= 0; i--) {
-      const date = format(subDays(new Date(), i), 'yyyy-MM-dd');
+      // Label off the local Date, not a re-parse of the yyyy-MM-dd string:
+      // new Date('2026-08-05') is UTC midnight, which renders as the previous
+      // day in Eastern and shifts every point one day earlier.
+      const day = subDays(new Date(), i);
+      const date = format(day, 'yyyy-MM-dd');
       const dayEnhancements = filteredEnhancements.filter(nc => {
         const createdDate = nc.created_date ? nc.created_date.split('T')[0] : null;
         return createdDate === date;
       });
       dailyEnhancements.push({
-        date: format(new Date(date), 'MM/dd'),
+        date: format(day, 'MM/dd'),
         count: dayEnhancements.length
       });
     }
@@ -557,22 +561,25 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
       }
     });
 
-    // Analyze vital signs trends
+    // Analyze vital signs trends. Vitals are recorded field-by-field, so a visit
+    // can carry a heart rate with no BP; dividing by "visits with any vitals"
+    // understates every average. Count each measurement separately.
     const vitalsTrends = {};
-    visits.filter(v => v.vital_signs).forEach(v => {
-      if (v.vital_signs.blood_pressure_systolic) {
-        vitalsTrends.avgBPSystolic = (vitalsTrends.avgBPSystolic || 0) + v.vital_signs.blood_pressure_systolic;
+    let bpSum = 0, bpCount = 0, hrSum = 0, hrCount = 0;
+    visits.forEach(v => {
+      const vs = v.vital_signs;
+      if (!vs) return;
+      if (vs.blood_pressure_systolic) {
+        bpSum += Number(vs.blood_pressure_systolic);
+        bpCount += 1;
       }
-      if (v.vital_signs.heart_rate) {
-        vitalsTrends.avgHeartRate = (vitalsTrends.avgHeartRate || 0) + v.vital_signs.heart_rate;
+      if (vs.heart_rate) {
+        hrSum += Number(vs.heart_rate);
+        hrCount += 1;
       }
     });
-
-    const visitsWithVitals = visits.filter(v => v.vital_signs && Object.keys(v.vital_signs).length > 0).length;
-    if (visitsWithVitals > 0) {
-      vitalsTrends.avgBPSystolic = Math.round(vitalsTrends.avgBPSystolic / visitsWithVitals);
-      vitalsTrends.avgHeartRate = Math.round(vitalsTrends.avgHeartRate / visitsWithVitals);
-    }
+    if (bpCount > 0) vitalsTrends.avgBPSystolic = Math.round(bpSum / bpCount);
+    if (hrCount > 0) vitalsTrends.avgHeartRate = Math.round(hrSum / hrCount);
 
     let content = `PennSync by CareMetric Clinical Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n`;
@@ -801,12 +808,16 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
     const trends = [];
 
     for (let i = days - 1; i >= 0; i--) {
-      const date = format(subDays(new Date(), i), 'yyyy-MM-dd');
+      // Label off the local Date, not a re-parse of the yyyy-MM-dd string:
+      // new Date('2026-08-05') is UTC midnight, which renders as the previous
+      // day in Eastern and shifts every point one day earlier.
+      const day = subDays(new Date(), i);
+      const date = format(day, 'yyyy-MM-dd');
       const dayVisits = visitsData.filter(v => v.visit_date === date);
       const dayIncidents = incidentsData.filter(inc => inc.incident_date === date);
 
       trends.push({
-        date: format(new Date(date), 'MM/dd'),
+        date: format(day, 'MM/dd'),
         visits: dayVisits.length,
         completed: dayVisits.filter(v => v.status === 'completed').length,
         incidents: dayIncidents.length

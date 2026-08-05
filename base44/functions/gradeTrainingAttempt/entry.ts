@@ -106,7 +106,11 @@ ${JSON.stringify(questionsForGrading)}`;
     // still counting them in the denominator, failing a learner because of an
     // AI hiccup. Surface the error so the attempt is NOT recorded and the
     // learner can retry without consuming an attempt.
-    throw new Error('AI grading is temporarily unavailable. Your attempt was not recorded — please try again.');
+    // Tag it so the outer catch relays this text instead of a generic 500 —
+    // the learner needs to know the attempt wasn't consumed.
+    const unavailable = new Error('AI grading is temporarily unavailable. Your attempt was not recorded — please try again.');
+    unavailable.userFacing = true;
+    throw unavailable;
   }
   return parsed?.evaluations || [];
 };
@@ -226,7 +230,9 @@ Deno.serve(async (req) => {
       const gradedIds = new Set(subjectiveEvaluations.map((e) => e.questionId));
       const ungraded = subjectivePayload.filter((q) => !gradedIds.has(q.questionId));
       if (ungraded.length > 0) {
-        throw new Error('AI grading did not return results for all questions. Your attempt was not recorded — please try again.');
+        const partial = new Error('AI grading did not return results for all questions. Your attempt was not recorded — please try again.');
+        partial.userFacing = true;
+        throw partial;
       }
     }
 
@@ -416,6 +422,11 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('gradeTrainingAttempt failed:', error);
+    // Relay the purpose-written "attempt was NOT recorded" messages; a generic
+    // 500 left the learner unsure whether a retry costs them an attempt.
+    if (error?.userFacing) {
+      return Response.json({ error: error.message }, { status: 503 });
+    }
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

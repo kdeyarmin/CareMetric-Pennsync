@@ -200,6 +200,11 @@ Deno.serve(async (req) => {
         // Skip if already sent a reminder recently
         if (pkg.last_reminder_sent_at) {
           const lastSent = new Date(pkg.last_reminder_sent_at);
+          // `today` is midnight-normalized, so comparing it against the raw
+          // timestamp made a reminder sent any time yesterday floor to 0 days and
+          // suppress today's — halving the cadence and skipping due_today entirely.
+          // Normalize both sides so "< 1 day" means literally "already sent today".
+          lastSent.setHours(0, 0, 0, 0);
           const daysSinceReminder = Math.floor(
             (today - lastSent) / (1000 * 60 * 60 * 24)
           );

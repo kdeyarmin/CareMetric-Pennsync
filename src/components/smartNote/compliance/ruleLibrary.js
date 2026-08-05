@@ -85,9 +85,21 @@ function enrich(element, rule, sev) {
   }
 }
 
-function createElement(id, rule, sev) {
+const slugifyRuleName = (name) =>
+  String(name || "rule")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40) || "rule";
+
+function createElement(id, rule, sev, inheritFrom) {
   return {
     id,
+    // A rule that splits off its own element still belongs to the same
+    // eligibility category, so it must inherit the traits that govern DETECTION
+    // — most importantly negationSensitive, without which a negated mention
+    // would count as evidence for the split-off requirement.
+    ...(inheritFrom?.negationSensitive ? { negationSensitive: true } : {}),
     label: rule.rule_name || id,
     severity: sev,
     copReference: rule.cop_reference || "",
@@ -113,6 +125,8 @@ export function buildMergedElements(rules, { serviceLine = "home_health", visitT
   if (!Array.isArray(rules) || rules.length === 0) return { elements, applied };
 
   const byId = new Map(elements.map((e) => [e.id, e]));
+  // Categories whose element has already absorbed a rule this build.
+  const claimedCategories = new Set();
   for (const rule of rules) {
     if (!rule || rule.is_active === false) continue;
     if (!appliesToVisit(rule, visitType)) continue;
@@ -121,9 +135,29 @@ export function buildMergedElements(rules, { serviceLine = "home_health", visitT
     if (!id) continue;
     const sev = mapSeverity(rule.severity);
     const existing = byId.get(id);
-    if (existing) {
+    if (existing && !claimedCategories.has(rule.category)) {
+      // First applicable rule for this category enriches the static element.
+      claimedCategories.add(rule.category);
       enrich(existing, rule, sev);
+    } else if (existing) {
+      // A SECOND rule in the same category is a distinct requirement — its own
+      // rule_name, cop_reference and required_elements. Merging its keywords into
+      // the first rule's element let either rule's keyword satisfy both, so one
+      // documented requirement marked the other one present too: a false PASS
+      // that inflated the coverage score. Give it its own element instead. That
+      // can surface a duplicate-looking question when two rules really do
+      // describe the same thing, which is the safe direction to err in for a
+      // gate whose failure mode is a denied claim.
+      const splitId = `${id}__${slugifyRuleName(rule.rule_name)}`;
+      if (!byId.has(splitId)) {
+        const created = createElement(splitId, rule, sev, existing);
+        byId.set(splitId, created);
+        elements.push(created);
+      } else {
+        enrich(byId.get(splitId), rule, sev);
+      }
     } else {
+      claimedCategories.add(rule.category);
       const created = createElement(id, rule, sev);
       byId.set(id, created);
       elements.push(created);

@@ -1,5 +1,8 @@
 const EVENT_CONFIG = Object.freeze({
-  visit: { label: 'Visit', route: '/PatientDetails', dateFields: ['visit_date', 'date', 'created_date'] },
+  // PatientDetails reads ?id= as a PATIENT id — routing a visit there with the
+  // visit's own id landed on "Patient not found". idField names the record
+  // field holding the id the target page expects (default: the record's id).
+  visit: { label: 'Visit', route: '/PatientDetails', dateFields: ['visit_date', 'date', 'created_date'], idField: 'patient_id' },
   document: { label: 'Document', route: '/DocumentHub', dateFields: ['signed_at', 'uploaded_at', 'created_date'] },
   incident: { label: 'Incident', route: '/IncidentReview', dateFields: ['incident_date', 'created_date'] },
   task: { label: 'Task', route: '/Dashboard', dateFields: ['due_date', 'created_date'] },
@@ -38,6 +41,7 @@ export function buildPatientTimeline({ patientId, visits = [], documents = [], i
       if (patientId && record?.patient_id !== patientId) continue;
       const occurredAt = firstDate(record, config.dateFields);
       if (!occurredAt) continue;
+      const routeId = config.idField ? record[config.idField] : record.id;
       events.push({
         // Include the index so id-less same-day records don't collide on an
         // identical event id (React key collisions).
@@ -48,7 +52,7 @@ export function buildPatientTimeline({ patientId, visits = [], documents = [], i
         occurred_at: occurredAt,
         status: record.status || null,
         source_id: record.id || null,
-        route: record.id ? `${config.route}?id=${encodeURIComponent(record.id)}` : config.route,
+        route: routeId ? `${config.route}?id=${encodeURIComponent(routeId)}` : config.route,
       });
     }
   }

@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import {
   similarity,
+  levenshtein,
   normalizeName,
   digitsOnly,
 } from "@/components/patient/patientDuplicateUtils";
@@ -30,10 +31,18 @@ import { mergePatientInto } from "@/components/patient/mergePatients";
 // Used to pick the survivor of a duplicate group by completeness (not by newest),
 // so a sparse stub created moments ago never wins over an older, fully-documented
 // record.
+// MRN / date_of_birth are weighted separately below. The earlier list scored
+// city/state/zip/insurance_provider/gender, none of which exist on Patient, so
+// they always contributed 0 while the backend's clinical/insurance fields were
+// never counted — the two surfaces could pick different survivors.
 const SURVIVOR_FIELDS = [
-  "first_name", "last_name", "date_of_birth", "medical_record_number",
-  "phone", "email", "address", "city", "state", "zip",
-  "insurance_provider", "primary_diagnosis", "assigned_nurses", "gender",
+  "first_name", "last_name", "middle_name", "address", "phone", "email",
+  "payor", "emergency_contact_name", "emergency_contact_phone",
+  "physician_name", "physician_phone", "caregiver_name", "caregiver_email",
+  "primary_diagnosis", "secondary_diagnoses", "allergies", "current_medications",
+  "insurance_primary", "insurance_secondary", "admission_date", "care_type",
+  "advance_directives", "functional_status", "assigned_nurses",
+  "enhanced_notes_history", "clinical_notes", "goals_of_care",
 ];
 // System / merge-bookkeeping fields never copied when back-filling the survivor.
 const SYSTEM_FIELDS = new Set([
@@ -42,7 +51,24 @@ const SYSTEM_FIELDS = new Set([
 ]);
 
 const nonEmpty = (v) => v != null && v !== "" && !(Array.isArray(v) && v.length === 0);
-const completenessScore = (p) => SURVIVOR_FIELDS.reduce((n, k) => n + (nonEmpty(p?.[k]) ? 1 : 0), 0);
+// Scoring-only predicate mirroring the backend's isPopulated: an untouched
+// object slot ({} insurance_primary) and a whitespace-only string are not
+// completeness. nonEmpty stays as-is for back-filling.
+const isPopulated = (v) => {
+  if (v == null) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "object") return Object.keys(v).length > 0;
+  return String(v).trim() !== "";
+};
+// Strong identifiers are weighted exactly as the backend weights them (MRN 3,
+// DOB 2) — losing those is the worst outcome of picking the wrong survivor.
+const completenessScore = (p) => {
+  if (!p) return 0;
+  let score = 0;
+  if (isPopulated(p.medical_record_number)) score += 3;
+  if (isPopulated(p.date_of_birth)) score += 2;
+  return SURVIVOR_FIELDS.reduce((n, k) => n + (isPopulated(p[k]) ? 1 : 0), score);
+};
 // Prefer an active record, then the most complete one (mirrors the backend
 // deduplicatePatients survivor rule so UI and server merges agree).
 const pickSurvivor = (patients) =>
@@ -91,8 +117,19 @@ const evaluateAdvancedMatch = (a, b, opts) => {
     b.date_of_birth &&
     a.date_of_birth === b.date_of_birth
   ) {
+    // Twins/siblings share last name and DOB and differ ONLY in first name —
+    // 'Jayden'/'Kayden' scored 83% similar and were auto-merged here with no
+    // preview. Mirror the POSSIBLE_TWINS predicate in patientDuplicateUtils
+    // (scorePatientPair) so that pattern is excluded while single-edit typos
+    // keeping the first letter ('Jon'/'John') still match.
+    const twinsSuspect =
+      firstA.length >= 3 && firstB.length >= 3 &&
+      firstA !== firstB &&
+      !firstA.includes(firstB) && !firstB.includes(firstA) &&
+      similarity(firstA, firstB) < 85 &&
+      !(levenshtein(firstA, firstB) <= 1 && firstA[0] === firstB[0]);
     const namesMatch = opts.fuzzyNameMatching
-      ? similarity(firstA, firstB) >= 80 && similarity(lastA, lastB) >= 80
+      ? !twinsSuspect && similarity(firstA, firstB) >= 80 && similarity(lastA, lastB) >= 80
       : !!firstA && firstA === firstB && sameLastName;
     if (namesMatch) {
       score += 90;
@@ -227,7 +264,8 @@ export default function DuplicateScanner() {
         });
 
         const totalToMerge = plans.reduce((n, p) => n + p.dupInfos.length, 0);
-        let mergedCount = 0;
+        let processedCount = 0;
+        let failedCount = 0;
         toast.info(`Merging ${totalToMerge} duplicate record(s) into the most complete chart...`);
 
         for (const { survivor, dupInfos } of plans) {
@@ -255,18 +293,35 @@ export default function DuplicateScanner() {
             }
           }
 
-          for (const { patient } of dupInfos) {
+          // Report only what actually merged. A thrown mergePatientInto (RLS
+          // denial, archived survivor, failed archive write) leaves the duplicate
+          // live on the roster, so counting it as "removed" told the admin a
+          // record was merged when it still needs attention.
+          const mergedInfos = [];
+          const failedInfos = [];
+          for (const info of dupInfos) {
+            let ok = true;
             try {
-              await mergePatientInto(survivor.id, patient.id, { mergedBy: null });
+              await mergePatientInto(survivor.id, info.patient.id, { mergedBy: null });
             } catch (err) {
               // Best-effort per duplicate: log and continue so one failure doesn't
               // abort the whole scan (mergePatientInto is itself best-effort per record).
-              console.error(`Merge failed for duplicate ${patient.id}:`, err?.message);
+              ok = false;
+              console.error(`Merge failed for duplicate ${info.patient.id}:`, err?.message);
             }
-            mergedCount += 1;
-            const progress = totalToMerge ? Math.min(100, Math.round((mergedCount / totalToMerge) * 100)) : 100;
-            toast.info(`Progress: ${progress}% (${mergedCount}/${totalToMerge})`);
+            if (ok) {
+              mergedInfos.push(info);
+            } else {
+              failedInfos.push(info);
+              failedCount += 1;
+            }
+            // Progress counts attempts so the bar still advances past failures.
+            processedCount += 1;
+            const progress = totalToMerge ? Math.min(100, Math.round((processedCount / totalToMerge) * 100)) : 100;
+            toast.info(`Progress: ${progress}% (${processedCount}/${totalToMerge})`);
           }
+
+          if (mergedInfos.length === 0 && failedInfos.length === 0) continue;
 
           duplicateGroups.push({
             kept: {
@@ -274,14 +329,19 @@ export default function DuplicateScanner() {
               mrn: survivor.medical_record_number,
               id: survivor.id
             },
-            removed: dupInfos.map(d => ({
+            removed: mergedInfos.map(d => ({
               name: `${d.patient.first_name} ${d.patient.last_name}`,
               mrn: d.patient.medical_record_number,
               match_score: Math.min(100, d.score),
               match_reasons: d.reasons
             })),
-            average_match_score: dupInfos.length
-              ? Math.round(dupInfos.reduce((sum, d) => sum + Math.min(100, d.score), 0) / dupInfos.length)
+            failed: failedInfos.map(d => ({
+              name: `${d.patient.first_name} ${d.patient.last_name}`,
+              mrn: d.patient.medical_record_number,
+              id: d.patient.id
+            })),
+            average_match_score: mergedInfos.length
+              ? Math.round(mergedInfos.reduce((sum, d) => sum + Math.min(100, d.score), 0) / mergedInfos.length)
               : 0
           });
         }
@@ -289,13 +349,17 @@ export default function DuplicateScanner() {
         setResults({
           duplicate_groups_found: duplicateGroups.length,
           patients_removed: duplicateGroups.reduce((sum, g) => sum + g.removed.length, 0),
+          merge_failures: failedCount,
           details: duplicateGroups,
           scan_mode: 'advanced',
           algorithms_used: Object.entries(advancedOptions)
             .filter(([k, v]) => v && k.startsWith('match'))
             .map(([k]) => k.replace('matchBy', ''))
         });
-        
+
+        if (failedCount > 0) {
+          toast.warning(`${failedCount} duplicate record(s) could not be merged and are still active.`);
+        }
         toast.success('Advanced scan complete!');
       }
       
@@ -545,6 +609,11 @@ export default function DuplicateScanner() {
                       <strong>✅ Deduplication Complete!</strong>
                       <div className="mt-2 text-sm">
                         Found {results.duplicate_groups_found} duplicate group(s) and merged {results.patients_removed} duplicate record(s).
+                        {results.merge_failures > 0 && (
+                          <div className="mt-1 font-semibold text-amber-800">
+                            {results.merge_failures} record(s) could not be merged and are still active — retry or merge them manually.
+                          </div>
+                        )}
                         {results.scan_mode === 'advanced' && (
                           <div className="mt-1 text-xs">
                             <Badge className="bg-navy-600 text-white text-xs mt-1">
@@ -630,6 +699,15 @@ export default function DuplicateScanner() {
                                         ))}
                                       </div>
                                     )}
+                                  </div>
+                                ))}
+                                {detail.failed?.map((failed, fIdx) => (
+                                  <div key={`f-${fIdx}`} className="flex items-center gap-2 text-xs text-amber-800">
+                                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                    <span>Merge failed (still active): {failed.name}</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      MRN: {failed.mrn}
+                                    </Badge>
                                   </div>
                                 ))}
                               </div>

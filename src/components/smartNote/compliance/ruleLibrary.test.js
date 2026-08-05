@@ -110,3 +110,26 @@ test("a service_line-scoped rule applies only to its service line", () => {
   const unscoped = buildMergedElements([{ ...rule, service_line: undefined, category: "patient_education" }], { serviceLine: "hospice", visitType: "routine_visit" });
   assert.equal(unscoped.applied.length, 1);
 });
+
+test("a second rule in the same category gets its own element, not merged keywords", () => {
+  // Regression: both rules' keywords were unioned into the one category element,
+  // so documenting either requirement marked the other present too — a false
+  // PASS that inflated the coverage score. Each rule is a distinct
+  // MedicareComplianceRule row with its own name and cop_reference.
+  const rules = [
+    { rule_name: "Homebound narrative", category: "homebound_status", severity: "high", keywords: ["taxing effort"], is_active: true },
+    { rule_name: "Homebound assistive device", category: "homebound_status", severity: "high", keywords: ["walker"], is_active: true },
+  ];
+  const { elements } = buildMergedElements(rules, {});
+  const hb = elements.find((e) => e.id === "homebound");
+  const split = elements.find((e) => e.id.startsWith("homebound__"));
+
+  assert.ok(hb, "the static homebound element still exists");
+  assert.ok(split, "the second rule produced its own element");
+  assert.ok(hb.keywords.includes("taxing effort"));
+  assert.ok(!hb.keywords.includes("walker"), "the second rule's keywords must not widen the first element");
+  assert.ok(split.keywords.includes("walker"));
+  // Detection traits that govern the category must carry over, or a negated
+  // mention would count as evidence for the split-off requirement.
+  assert.equal(split.negationSensitive, hb.negationSensitive);
+});

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { LIVE_CAPABILITY_MATRIX } from "./src/lib/liveReadinessGate.js";
 import { createLiveReadinessReleaseLedger } from "./src/lib/liveReadinessReleaseLedger.js";
 import { createLiveReadinessCiReport } from "./src/lib/liveReadinessCiReport.js";
@@ -41,6 +42,10 @@ export function runLiveReadinessReportCli({ argv = process.argv, readFile = read
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// A hand-built `file://${process.argv[1]}` never matches import.meta.url when the
+// checkout path needs percent-encoding (a space, non-ASCII), so the CLI silently
+// did nothing and exited 0. The argv[1] check keeps import-only consumers safe —
+// pathToFileURL(undefined) throws.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exitCode = runLiveReadinessReportCli();
 }

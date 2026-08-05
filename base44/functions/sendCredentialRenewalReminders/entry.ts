@@ -196,8 +196,13 @@ Deno.serve(async (req) => {
     for (const cred of credentials) {
       if (!cred.expiration_date || cred.status === 'expired') continue;
 
-      const expirationDate = new Date(cred.expiration_date);
-      const daysUntilExpiry = Math.floor((expirationDate - today) / (1000 * 60 * 60 * 24));
+      // A date-only string parses as UTC midnight, so subtracting the current
+      // wall-clock time yields a negative fraction that Math.floor rounded away
+      // from zero — every credential read one day short and each tier fired a day
+      // early. Anchor explicitly to UTC midnight and round up, matching
+      // sendPersonnelExpirationNotifications so the two crons agree.
+      const expirationDate = new Date(`${cred.expiration_date}T00:00:00Z`);
+      const daysUntilExpiry = Math.ceil((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
       // Anything expiring within 90 days (or already expired) goes into the admin digest.
       if (daysUntilExpiry <= 90) {

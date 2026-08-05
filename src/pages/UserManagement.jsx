@@ -268,16 +268,20 @@ export default function UserManagement() {
           ? undefined
           : `Disabled via User Management by ${currentUser?.email || 'admin'}`,
       });
+      const res = await base44.functions.invoke('offboardUser', args);
+      queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
+      const payload = res?.data || res || {};
+      // Log only after the invoke resolves. Logging first meant a rejected
+      // offboard (e.g. the server's super-admin-only check) still left an audit
+      // row asserting a disable that never happened.
       logActivity(enabling ? ActivityActions.USER_ENABLED : ActivityActions.USER_DISABLED, {
         user_email: selectedUser.email,
         user_name: selectedUser.full_name,
         entity_type: 'User',
         entity_id: selectedUser.id,
         offboarding: !enabling,
+        revocation_complete: payload.complete !== false,
       });
-      const res = await base44.functions.invoke('offboardUser', args);
-      queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
-      const payload = res?.data || res || {};
       if (enabling) {
         toast.success('User reactivated.');
       } else if (payload.complete === false) {

@@ -168,8 +168,14 @@ export default function ReferralFollowUp() {
   // ALWAYS reset on selection change — a stale number from the previous
   // referral must never survive into a new patient's send (wrong-recipient
   // fax = PHI disclosure).
+  // Depend on the derived NAME, not on `selected`: any ['referrals'] refetch
+  // (e.g. persisting follow_up_requests) mints a new object identity and used to
+  // re-run this, wiping or silently reverting a fax the user had just typed.
+  const referringPhysicianName = selected
+    ? normName(selected.extracted_data?.demographics?.referring_physician)
+    : "";
   useEffect(() => {
-    const refName = selected ? normName(selected.extracted_data?.demographics?.referring_physician) : "";
+    const refName = referringPhysicianName;
     if (!refName) {
       setProviderFax("");
       return;
@@ -179,7 +185,7 @@ export default function ReferralFollowUp() {
       return n && (n.includes(refName) || refName.includes(n));
     });
     setProviderFax(match?.fax_number || "");
-  }, [selected, physicians]);
+  }, [selectedId, referringPhysicianName, physicians]);
 
   const allItems = useMemo(
     () => sortFollowUpItems([...(selectedPlan?.items || []), ...aiItems]),

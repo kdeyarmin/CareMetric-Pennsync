@@ -55,8 +55,19 @@ Deno.serve(async (req) => {
       const rows = await base44.asServiceRole.entities.SmsConsent.list('-captured_at', 500);
       const list = Array.isArray(rows) ? rows : [];
 
+      // SmsConsent is an append-only ledger, so tallying every row counted a number
+      // that texted STOP then START as both an opt-out and an opt-in. Collapse to
+      // the newest row per number first (the list is already '-captured_at' ordered,
+      // so the first row seen for a number is its live state) — the same rule the
+      // send gates use.
       const totals = { opted_in: 0, opted_out: 0, unknown: 0 };
+      const latestByPhone = new Map();
       for (const r of list) {
+        const key = r?.phone_e164 || '';
+        if (!key || latestByPhone.has(key)) continue;
+        latestByPhone.set(key, r);
+      }
+      for (const r of latestByPhone.values()) {
         const s = r?.consent_status;
         if (s === 'opted_in') totals.opted_in += 1;
         else if (s === 'opted_out') totals.opted_out += 1;

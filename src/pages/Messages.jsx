@@ -173,8 +173,13 @@ export default function Messages() {
       unreadCount,
       subject: latestMessage.subject || 'No Subject',
       priority: latestMessage.priority || 'normal',
-      isMyMessage: latestMessage.sender_email === currentUser?.email,
-      isRecipient: latestMessage.recipients?.includes(currentUser?.email)
+      // Membership is decided across the WHOLE thread, not just its latest
+      // message: threads are appended to with different recipients over time
+      // (e.g. a referral reassigned to another nurse), and reading only the
+      // latest row dropped the earlier participant's conversation — including
+      // her unread messages — out of her inbox entirely.
+      isMyMessage: sortedMessages.some(m => m.sender_email === currentUser?.email),
+      isRecipient: sortedMessages.some(m => m.recipients?.includes(currentUser?.email))
     };
   });
 

@@ -520,7 +520,9 @@ async function handleRetryExhausted(base44, fax, reason, maxRetries = 3, notify 
       priority: 'high',
       metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
       is_read: false,
-      action_url: `/send-fax?fax_id=${fax.id}`
+      // Route paths come from the page name (SendFax); the hyphenated form matches
+      // no route or redirect and dropped the notification's button on PageNotFound.
+      action_url: `/SendFax?fax_id=${fax.id}`
     });
   } catch (e) {
     console.error('Failed to create in-app notification:', e.message);

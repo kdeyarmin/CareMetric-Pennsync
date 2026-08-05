@@ -11,13 +11,20 @@ import { toast } from 'sonner';
 export default function SessionDocumentation({ _sessionId, onSave, initialData = {} }) {
   const [formData, setFormData] = useState({
     chief_complaint: initialData.chief_complaint || '',
-    vitals_captured: initialData.vitals_captured || {
+    vitals_captured: {
       temperature: '',
       blood_pressure_systolic: '',
       blood_pressure_diastolic: '',
       heart_rate: '',
       oxygen_saturation: '',
-      pain_level: ''
+      pain_level: '',
+      // Merge (rather than replace) any vitals already on the session — vitals
+      // recorded mid-call by RealtimeVitalMonitor are a partial object, so
+      // `initialData.vitals_captured || {defaults}` left the untouched fields
+      // undefined (uncontrolled inputs) and dropped them from the save.
+      ...Object.fromEntries(
+        Object.entries(initialData.vitals_captured || {}).filter(([, v]) => v !== null && v !== undefined)
+      )
     },
     medications_reviewed: initialData.medications_reviewed || [],
     assessment: initialData.assessment || '',
@@ -43,7 +50,17 @@ export default function SessionDocumentation({ _sessionId, onSave, initialData =
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await onSave(formData);
+      // Callers write this payload straight onto the session row, so blank
+      // fields would persist as empty strings over vitals recorded during the
+      // call. Send only what was actually captured, and omit the key entirely
+      // when nothing was, so an untouched form never overwrites those vitals.
+      const captured = Object.fromEntries(
+        Object.entries(formData.vitals_captured || {}).filter(([, v]) => v !== '' && v !== null && v !== undefined)
+      );
+      const payload = { ...formData };
+      if (Object.keys(captured).length > 0) payload.vitals_captured = captured;
+      else delete payload.vitals_captured;
+      await onSave(payload);
       toast.success('Documentation saved');
     } catch (error) {
       toast.error('Failed to save: ' + error.message);

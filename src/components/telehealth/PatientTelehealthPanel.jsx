@@ -135,6 +135,17 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
       docData.notes ? `Additional Notes: ${docData.notes}` : "",
     ].filter(Boolean).join("\n");
 
+    // The Visit schema types every vital_signs.* as a NUMBER, but the
+    // documentation form yields raw input strings. Coerce to numbers and drop
+    // anything unparseable — otherwise the create is rejected, or string vitals
+    // corrupt downstream numeric trend/average logic.
+    const coercedVitals = {};
+    for (const [key, value] of Object.entries(docData.vitals_captured || {})) {
+      if (value === "" || value == null) continue;
+      const numeric = parseFloat(value);
+      if (Number.isFinite(numeric)) coercedVitals[key] = numeric;
+    }
+
     const visit = await createVisitMutation.mutateAsync({
       patient_id: patient.id,
       // Agency-local (Eastern) calendar date so it matches the local visit_time
@@ -147,7 +158,7 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
       start_time: activeSession.started_at,
       end_time: activeSession.ended_at || new Date().toISOString(),
       nurse_notes: compiledNote,
-      vital_signs: docData.vitals_captured,
+      vital_signs: Object.keys(coercedVitals).length > 0 ? coercedVitals : null,
       ai_tags: ["telehealth", activeSession.visit_type],
     });
 
@@ -177,7 +188,13 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
       host_email: currentUser?.email,
       host_name: currentUser?.full_name,
       visit_type: newSession.visit_type,
-      scheduled_at: newSession.scheduled_at || new Date().toISOString(),
+      // datetime-local yields a naive "YYYY-MM-DDTHH:mm" wall-clock string; the
+      // backend's Date.parse reads that as UTC, shifting the patient's guest
+      // join window by the agency's offset. Resolve it in the nurse's zone here
+      // and persist a real instant.
+      scheduled_at: newSession.scheduled_at && !Number.isNaN(new Date(newSession.scheduled_at).getTime())
+        ? new Date(newSession.scheduled_at).toISOString()
+        : new Date().toISOString(),
       status: "scheduled",
       join_token_hash: await hashJoinToken(joinToken),
       participant_list: [currentUser?.full_name || currentUser?.email, `${patient.first_name} ${patient.last_name}`].filter(Boolean),

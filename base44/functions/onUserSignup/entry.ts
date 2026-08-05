@@ -254,6 +254,17 @@ Deno.serve(async (req) => {
     if (invitations && invitations.length > 0) {
       const invitation = invitations[0];
 
+      // status:'pending' only means "actionable until expires_at" — the sweep
+      // that flips pending->expired (checkExpiredInvitations) runs on a
+      // schedule, so between expiry and the next sweep a stale invitation would
+      // still grant its role and auto-approval. Re-check at the point of use and
+      // fail closed on a missing/unparseable expiry, matching that sweep.
+      const expiresAtMs = Date.parse(invitation.expires_at || '');
+      if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+        await base44.asServiceRole.entities.UserInvitation.update(invitation.id, { status: 'expired' }).catch(() => {});
+        return Response.json({ error: 'This invitation has expired. Ask an administrator to send a new one.' }, { status: 403 });
+      }
+
       // Don't trust the body's user.id<->email pairing: confirm the id resolves
       // to the invited email before granting role/approval.
       const actualUsers = await base44.asServiceRole.entities.User.filter({ id: user.id }, undefined, 5000);

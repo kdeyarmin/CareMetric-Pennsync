@@ -68,7 +68,9 @@ export default function ProviderFollowUpForm({
     setBusy(true);
     try {
       await exportToPDF({
-        filename: `referral-follow-up-${(header.patientName || "patient").replace(/\s+/g, "-").toLowerCase()}.pdf`,
+        // Non-identifying filename — embedding the patient's name would leak PHI
+        // into browser download history and stored file metadata.
+        filename: `referral-follow-up-${Date.now()}.pdf`,
         title: form.title,
         subtitle: `${header.patientName || ""}${header.patientDob ? ` — DOB ${header.patientDob}` : ""}`,
         content: followUpFormPdfContent(form),

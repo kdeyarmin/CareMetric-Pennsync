@@ -39,6 +39,10 @@ Deno.serve(async (req) => {
 
     const results = [];
     const zip = new JSZip();
+    // JSZip keys entries by name, so two documents whose sanitized/truncated
+    // names collide would silently replace one another while both still count
+    // as successes. Track the names already written and suffix the collisions.
+    const usedZipNames = new Set();
 
     // Process one document end-to-end (extract -> analyze -> render PDF).
     // Returns a result object and never throws, so one bad file can't fail the
@@ -166,7 +170,12 @@ Return JSON:
       );
       for (const r of batchResults) {
         if (r.status === 'success') {
-          zip.file(`${r.safeName}_Analysis.pdf`, r.pdfBytes);
+          let entryName = `${r.safeName}_Analysis.pdf`;
+          for (let n = 2; usedZipNames.has(entryName); n++) {
+            entryName = `${r.safeName}_Analysis_${n}.pdf`;
+          }
+          usedZipNames.add(entryName);
+          zip.file(entryName, r.pdfBytes);
           results.push({ fileName: r.fileName, status: 'success', analysis: r.analysis });
         } else {
           results.push({ fileName: r.fileName, status: 'error', error: r.error });
