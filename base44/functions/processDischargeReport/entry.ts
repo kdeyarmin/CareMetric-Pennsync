@@ -14,20 +14,27 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // only — an agency_admin must NOT be able to discharge another agency's charts.
 const canRunDischargeImport = (u) => !!u && (u.role === 'admin' || u.account_type === 'super_admin');
 
-// Does an MRN-matched chart carry a different person's name? Surnames may
-// legitimately differ (marriage), so a mismatch only counts as a conflict when
-// the first names disagree too. A row with no name never conflicts, so MRN-only
-// discharge rows keep matching exactly as before.
-// Mirrors processPatientFileUpdate/entry.ts and patientImportUtils.js.
+// Does an MRN-matched chart carry a different person's name?
+//
+// Stricter than the import-side helper this was ported from, deliberately.
+// That one returns "no conflict" as soon as the surnames match, without ever
+// comparing first names — but discharging is destructive, and spouses and
+// siblings on service together share a surname, so one misread MRN digit could
+// close the wrong family member's chart. Whenever BOTH first names are known,
+// they must agree. Surnames may still legitimately differ (marriage), which is
+// why a first-name match alone clears the check.
+// A row with no name at all never conflicts, so MRN-only discharge rows keep
+// matching exactly as before.
 const foldNamePart = (v) => String(v || '').toLowerCase().replace(/[^a-z]/g, '');
 function mrnNameConflict(row, rec) {
   const rowLast = foldNamePart(row.last_name);
   const recLast = foldNamePart(rec?.last_name);
-  if (!rowLast || !recLast) return false;
-  if (rowLast === recLast || rowLast.includes(recLast) || recLast.includes(rowLast)) return false;
   const rowFirst = foldNamePart(row.first_name);
   const recFirst = foldNamePart(rec?.first_name);
-  return !(rowFirst && recFirst && rowFirst === recFirst);
+  if (!rowLast && !rowFirst) return false;
+  if (rowFirst && recFirst) return rowFirst !== recFirst;
+  if (!rowLast || !recLast) return false;
+  return !(rowLast === recLast || rowLast.includes(recLast) || recLast.includes(rowLast));
 }
 
 // Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG

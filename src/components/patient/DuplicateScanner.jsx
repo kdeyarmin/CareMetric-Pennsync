@@ -590,7 +590,12 @@ export default function DuplicateScanner() {
           </>
         ) : (
           <>
-            {(results.patients_removed > 0 || results.patients_to_remove > 0) ? (
+            {/* merge_failures counts too: when every mergePatientInto in an
+                advanced scan fails, patients_removed is 0 and the advanced path
+                never sets patients_to_remove, so this fell through to the
+                "No duplicates found" card — hiding the failed rows and leaving
+                still-active duplicates with no visible way to retry them. */}
+            {(results.patients_removed > 0 || results.patients_to_remove > 0 || results.merge_failures > 0) ? (
               <>
                 {results.dry_run ? (
                   <Alert className="bg-amber-50 border-amber-300">

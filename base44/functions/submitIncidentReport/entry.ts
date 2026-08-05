@@ -60,7 +60,14 @@ Deno.serve(async (req) => {
       report: payload.report,
       photo_urls: payload.photo_urls || [],
       physician_notified: !!payload.physician_notified,
-      office_notified: !!payload.immediate_alert,
+      // Honour what the reporter actually checked. Deriving this from
+      // immediate_alert meant the stored compliance flag contradicted the form:
+      // "Office notified" ticked on a medium incident saved false, and an
+      // unticked high-severity report saved true. Severity is still the fallback
+      // for older callers that do not send the field.
+      office_notified: typeof payload.office_notified === 'boolean'
+        ? payload.office_notified
+        : !!payload.immediate_alert,
       alert_triggered: !!payload.immediate_alert,
       status: 'reported',
     });

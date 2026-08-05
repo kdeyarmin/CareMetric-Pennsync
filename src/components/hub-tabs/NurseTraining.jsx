@@ -80,11 +80,6 @@ export default function NurseTraining() {
     setViewingModule(true);
   };
 
-  const handleModuleComplete = (_score) => {
-    setViewingModule(false);
-    setSelectedModule(null);
-  };
-
   if (viewingModule && selectedModule) {
     // TrainingModuleViewer takes only { module } — it ignored nurseEmail/onComplete/
     // onBack and renders no navigation of its own, so replacing the whole tab with it
@@ -96,9 +91,11 @@ export default function NurseTraining() {
           Back to training
         </Button>
         <TrainingModuleViewer module={selectedModule} />
-        <div className="flex justify-end">
-          <Button onClick={() => handleModuleComplete(null)}>Mark complete</Button>
-        </div>
+        {/* Deliberately no "Mark complete" here. Completion is owned by the
+            graded flow (TrainingAssignment + TrainingAttempt + certificate); a
+            button in this viewer could only close the panel, so it would have
+            told a nurse their required training was done while it stayed
+            incomplete everywhere else — including the compliance reports. */}
       </div>
     );
   }

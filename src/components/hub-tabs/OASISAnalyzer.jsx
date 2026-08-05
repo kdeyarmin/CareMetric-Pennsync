@@ -198,7 +198,13 @@ export default function OASISAnalyzer() {
 
   // Fetch saved OASIS uploads
   const { data: savedOASISUploads = [] } = useQuery({
-    queryKey: ['oasisUploads'],
+    // Source + limit in the key. This payload is NOT interchangeable with the
+    // direct OASISUpload.list() fetches other dashboards make — it is capped at
+    // 50 rows and has the financial fields stripped — but they all shared the
+    // bare ['oasisUploads'] key, so whichever landed first was served to the
+    // rest. The invalidate below stays broad on purpose: react-query matches
+    // keys by prefix, so a new upload still refreshes every one of these views.
+    queryKey: ['oasisUploads', 'listFn', 50],
     // Routed through listOASISUploads so financial fields (estimated_payment,
     // revenue_*) are stripped server-side for non-financial users.
     queryFn: async () => (await base44.functions.invoke('listOASISUploads', { sort: '-created_date', limit: 50 }))?.data?.uploads || [],

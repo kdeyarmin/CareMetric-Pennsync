@@ -56,13 +56,26 @@ Deno.serve(async (req) => {
     // does not scope them — without this, any authenticated user could post a
     // guessed course_id and harvest per-question correctness (binary-searchable
     // into the answer key) plus the rationale text, for a course they were never
-    // assigned. The booster UI itself only ever offers courses drawn from the
-    // learner's own TrainingAssignment rows; enforce that same rule server-side.
+    // assigned.
+    //
+    // Requires a PASSED/completed assignment, not merely an assigned one. A
+    // booster is spaced repetition AFTER a pass, and LearnerMemoryBoosters only
+    // ever offers a course whose assignment has pass_fail_result 'passed' or
+    // status 'completed' with a completion_date. Accepting a merely-assigned
+    // course would let a learner replay guesses against an UPCOMING course's
+    // questions and recover the answer key before the graded attempt — those are
+    // the same TrainingQuestion rows that attempt will use.
     const ownAssignments = await base44.asServiceRole.entities.TrainingAssignment
-      .filter({ assigned_to_user_id: user.email, course_id: courseId }, '-created_date', 1)
+      .filter({ assigned_to_user_id: user.email, course_id: courseId }, '-created_date', 50)
       .catch(() => []);
-    if (!ownAssignments.length) {
-      return Response.json({ error: 'This course is not assigned to you.' }, { status: 403 });
+    const hasPassed = (ownAssignments || []).some(
+      (a) => (a?.pass_fail_result === 'passed' || a?.status === 'completed') && a?.completion_date,
+    );
+    if (!hasPassed) {
+      return Response.json(
+        { error: 'A completed assignment for this course is required.' },
+        { status: 403 },
+      );
     }
 
     const rows = await base44.asServiceRole.entities.TrainingQuestion

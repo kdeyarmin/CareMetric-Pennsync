@@ -53,7 +53,10 @@ export default function OASISAnalyticsDashboard() {
 
   // Fetch all OASIS uploads with analysis data
   const { data: oasisUploads = [], isLoading } = useQuery({
-    queryKey: ['oasisUploads'],
+    // Source + limit in the key: a bare ['oasisUploads'] collided with
+    // OASISAnalyzer's 50-row, financially-stripped listOASISUploads fetch and
+    // with the 500-row direct lists, so whichever resolved first served them all.
+    queryKey: ['oasisUploads', 'list', 200],
     queryFn: () => base44.entities.OASISUpload.list('-created_date', 200),
   });
 

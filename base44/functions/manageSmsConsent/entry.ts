@@ -23,14 +23,17 @@ function normalizeE164(raw) {
   const trimmed = String(raw).trim();
   const digits = trimmed.replace(/[^\d]/g, "");
 
+  // Already E.164-ish international form — decided FIRST. A 10-digit
+  // international number ("+49 89 123456") otherwise fell into the NANP branch
+  // below and was rewritten as an unrelated "+1..." US subscriber.
+  // Mirrors src/components/voice/phoneUtils.js.
+  if (trimmed.startsWith("+")) {
+    return digits.length >= 8 && digits.length <= 15 && digits[0] !== "0" ? `+${digits}` : null;
+  }
+
   // US-centric normalization (matches other phone utilities in the repo).
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-
-  // Already E.164-ish international form.
-  if (trimmed.startsWith("+") && digits.length >= 8 && digits.length <= 15 && digits[0] !== "0") {
-    return `+${digits}`;
-  }
 
   return null;
 }

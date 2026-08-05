@@ -62,7 +62,13 @@ export default function PDGMTrendDashboard() {
 
   // Fetch all OASIS uploads with PDGM data
   const { data: oasisUploads = [], isLoading } = useQuery({
-    queryKey: ['oasisUploads'],
+    // Key encodes source and limit. A bare ['oasisUploads'] is shared with
+    // OASISAnalyzer's listOASISUploads fetch, which returns 50 rows with the
+    // financial fields stripped for non-financial users — and this dashboard
+    // mounts inside it. Whichever query populated the key first won, so the
+    // payment totals below could silently run over 50 stripped rows and report
+    // $0. Matches RealTimeComplianceDashboard, which issues this same query.
+    queryKey: ['oasisUploads', 'list', 500],
     queryFn: () => base44.entities.OASISUpload.list('-created_date', 500),
   });
 

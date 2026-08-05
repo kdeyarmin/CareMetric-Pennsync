@@ -14,9 +14,15 @@ const MAX_SCHEDULE_MS = 365 * 24 * 60 * 60 * 1000;
 function normalizeE164(raw) {
   if (!raw) return null;
   const digits = String(raw).replace(/[^\d]/g, '');
+  // Already-+ international is decided FIRST and never falls through to the NANP
+  // branches. A 10-digit international number ("+49 89 123456") was otherwise
+  // rewritten as an unrelated "+1..." US subscriber, which also slipped past the
+  // +1-only international cost control. Mirrors src/components/voice/phoneUtils.js.
+  if (String(raw).trim().startsWith('+')) {
+    return digits.length >= 8 && digits.length <= 15 && digits[0] !== '0' ? `+${digits}` : null;
+  }
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-  if (String(raw).trim().startsWith('+') && digits.length >= 8 && digits.length <= 15 && digits[0] !== '0') return `+${digits}`;
   return null;
 }
 
