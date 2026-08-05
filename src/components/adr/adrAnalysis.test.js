@@ -42,7 +42,7 @@ test("runAdrLetterAnalysis wires prompt, file and schema through the injected in
   };
   const result = await runAdrLetterAnalysis(invoke, { fileUrl: "https://files.example/letter.pdf" });
   assert.equal(result.audit_type, "tpe");
-  assert.equal(captured.params.model, "claude_opus_4_8");
+  assert.equal(captured.params.model, "automatic");
   assert.deepEqual(captured.params.file_urls, ["https://files.example/letter.pdf"]);
   assert.equal(captured.params.response_json_schema, ADR_LETTER_SCHEMA);
   assert.equal(captured.options.retries, 2);
