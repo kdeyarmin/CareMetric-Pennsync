@@ -14,6 +14,22 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // only — an agency_admin must NOT be able to discharge another agency's charts.
 const canRunDischargeImport = (u) => !!u && (u.role === 'admin' || u.account_type === 'super_admin');
 
+// Does an MRN-matched chart carry a different person's name? Surnames may
+// legitimately differ (marriage), so a mismatch only counts as a conflict when
+// the first names disagree too. A row with no name never conflicts, so MRN-only
+// discharge rows keep matching exactly as before.
+// Mirrors processPatientFileUpdate/entry.ts and patientImportUtils.js.
+const foldNamePart = (v) => String(v || '').toLowerCase().replace(/[^a-z]/g, '');
+function mrnNameConflict(row, rec) {
+  const rowLast = foldNamePart(row.last_name);
+  const recLast = foldNamePart(rec?.last_name);
+  if (!rowLast || !recLast) return false;
+  if (rowLast === recLast || rowLast.includes(recLast) || recLast.includes(rowLast)) return false;
+  const rowFirst = foldNamePart(row.first_name);
+  const recFirst = foldNamePart(rec?.first_name);
+  return !(rowFirst && recFirst && rowFirst === recFirst);
+}
+
 // Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG
 // secret was retired). console.error/warn remain ungated for visibility.
 const debugLog = (..._args) => {};
@@ -107,7 +123,12 @@ Deno.serve(async (req) => {
       // blocks discharging the real patient.
       if (patient.is_archived || patient.status === 'merged' || patient.status === 'discharged') continue;
       if (patient.medical_record_number) {
-        mrnMap.set(patient.medical_record_number.trim().toLowerCase(), patient);
+        // Bucket per MRN for the same reason the name map does. Last-write-wins
+        // meant two charts sharing an MRN silently resolved to whichever was
+        // iterated last.
+        const mrnKey = patient.medical_record_number.trim().toLowerCase();
+        if (!mrnMap.has(mrnKey)) mrnMap.set(mrnKey, []);
+        mrnMap.get(mrnKey).push(patient);
       }
       const nameKey = `${patient.first_name?.toLowerCase()}_${patient.last_name?.toLowerCase()}`;
       if (!nameMap.has(nameKey)) nameMap.set(nameKey, []);
@@ -125,8 +146,40 @@ Deno.serve(async (req) => {
         let matchingPatient = null;
 
         if (dischargeData.medical_record_number) {
+          // An MRN hit used to be trusted outright, with no name cross-check —
+          // but this MRN is AI-extracted from an uploaded document, exactly the
+          // source that produces digit errors, and the name branch below is
+          // skipped once matchingPatient is set. One mangled digit therefore
+          // discharged whichever active chart owned that MRN, dropping a patient
+          // off the census and cancelling their scheduled care. Same guard
+          // processPatientFileUpdate already applies to its MRN matches.
           const mrn = dischargeData.medical_record_number.trim().toLowerCase();
-          matchingPatient = mrnMap.get(mrn);
+          const mrnCandidates = mrnMap.get(mrn) || [];
+          const displayName = `${dischargeData.first_name || ''} ${dischargeData.last_name || ''}`.trim();
+
+          if (mrnCandidates.length > 1) {
+            results.ambiguous++;
+            results.ambiguous_patients.push({
+              name: displayName,
+              mrn: dischargeData.medical_record_number,
+              candidate_count: mrnCandidates.length,
+              reason: 'Multiple active charts share this MRN',
+            });
+            continue;
+          }
+
+          const mrnMatch = mrnCandidates[0] || null;
+          if (mrnMatch && mrnNameConflict(dischargeData, mrnMatch)) {
+            results.ambiguous++;
+            results.ambiguous_patients.push({
+              name: displayName,
+              mrn: dischargeData.medical_record_number,
+              candidate_count: 1,
+              reason: 'MRN belongs to a chart with a different name',
+            });
+            continue;
+          }
+          matchingPatient = mrnMatch;
         }
 
         if (!matchingPatient && dischargeData.first_name && dischargeData.last_name) {

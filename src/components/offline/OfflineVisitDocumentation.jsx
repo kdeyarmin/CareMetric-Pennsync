@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toLocalISODate } from '@/lib/dateLocal';
 import { base44 } from '@/api/base44Client';
 import { addToSyncQueue } from '@/lib/indexedDB';
@@ -51,11 +51,31 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
   const [savedOffline, setSavedOffline] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
-  // Re-sync patient_id whenever the patientId prop changes, so a parent that
-  // swaps patients without remounting this component doesn't keep writing to
-  // the previous patient's record.
+  // Re-point AND clear when the patient changes. Re-pointing patient_id alone
+  // left the previous patient's narrative, vital signs and visit id sitting in
+  // the form, so the next save wrote one patient's clinical observations onto
+  // another patient's visit record. A fresh visit_id is minted too, or the new
+  // patient's visit would reuse the previous one's offline id in the sync queue.
+  // Latched on a ref so the initial mount still lets `existingData` seed an edit.
+  const previousPatientIdRef = useRef(patientId);
   useEffect(() => {
-    setFormData(prev => ({ ...prev, patient_id: patientId }));
+    if (previousPatientIdRef.current === patientId) return;
+    previousPatientIdRef.current = patientId;
+    setFormData(prev => ({
+      ...prev,
+      patient_id: patientId,
+      visit_id: `offline_visit_${Date.now()}`,
+      nurse_notes: '',
+      vital_signs: {
+        temperature: '',
+        blood_pressure_systolic: '',
+        blood_pressure_diastolic: '',
+        heart_rate: '',
+        respiratory_rate: '',
+        oxygen_saturation: '',
+        pain_level: '',
+      },
+    }));
   }, [patientId]);
 
   const handleAutoSave = useCallback(() => {
