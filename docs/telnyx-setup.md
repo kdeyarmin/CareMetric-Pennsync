@@ -234,7 +234,13 @@ logic is the unit-tested `src/components/admin/commsDashboard.js`.
 
 ## 8. Go-live verification (live smoke test)
 
-Before launch, validate a real Telnyx account end-to-end:
+Before launch, validate a real Telnyx account end-to-end.
+
+> These `TELNYX_*` variables configure the **local `tools-telnyx-live-smoke.mjs`
+> Node CLI only** — they are how you hand credentials to a script on your own
+> machine. They are **not** app configuration: no deployed Base44 function reads
+> a `TELNYX_*` environment variable, and setting them in the Base44 dashboard
+> does nothing. The app reads Admin → Telnyx.
 
 ```
 TELNYX_API_KEY=KEY... TELNYX_PUBLIC_KEY=... \

@@ -296,4 +296,100 @@ function formatAge(dob, now = new Date(), fallback = 'Unknown') {
   return age == null ? fallback : age;
 }`,
 
+  // Telnyx credential resolution — inlined into every function that sends fax/SMS/
+  // voice or verifies an inbound webhook. This is the single most-copied helper in
+  // the app and, until now, the only Telnyx-critical one NOT generated from here.
+  //
+  // ────────────────────────────────────────────────────────────────────────────
+  // READ THIS BEFORE ADDING A `Deno.env.get('TELNYX_...')` FALLBACK.
+  // Credentials come from the in-app IntegrationSecret row ONLY. The TELNYX_*
+  // dashboard-env path is retired, and this is the THIRD time it has been added
+  // back (2026-07-22, then 2026-08-05 by the Base44 builder bot in f7448eb/6740ccc).
+  // It keeps coming back because a failed credential READ used to be reported as
+  // "credentials not configured" — so an operator with a perfectly good key was
+  // told to add the key, and the obvious next move was to set an env var.
+  // The `readError` field below is what ends that loop: a read failure now says so.
+  // Env vars would not have fixed those incidents; they would have masked them.
+  // If the env path is ever genuinely wanted, it must change HERE (so all copies
+  // move together) plus getTelnyxSecretStatus, discoverTelnyxResources, and both
+  // guardrails — src/lib/telnyxConfig.spec.js and the parity drift guard in
+  // base44/functionTests. A fallback in only some copies makes the admin UI and
+  // the senders disagree about whether Telnyx is configured, which is worse than
+  // either answer alone.
+  // ────────────────────────────────────────────────────────────────────────────
+  resolveTelnyxCreds: `async function resolveTelnyxCreds(base44) {
+  const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
+  let record = null;
+  let readError = null;
+  try {
+    const rows = await base44.asServiceRole.entities.IntegrationSecret
+      .filter({ provider: 'telnyx' }, '-updated_date', 5000);
+    const list = Array.isArray(rows) ? rows : [];
+    // Deterministic row selection. This read used to be unsorted with no is_active
+    // filter and took rows[0], and saveTelnyxSecret picks from the same unordered
+    // query — so with two telnyx rows the admin could be writing one row while the
+    // senders read the other, and re-entering the key could never fix it.
+    record = list.find((r) => r && r.is_active === true && pick(r.api_key))
+      || list.find((r) => r && pick(r.api_key))
+      || list[0]
+      || null;
+  } catch (err) {
+    // Do NOT collapse this into "not configured". A failed read (this invocation
+    // path carries no service token, entity 404, 401/403, rate limit, platform
+    // blip) is a completely different problem from an unconfigured integration,
+    // and reporting them identically is what sent operators chasing a credential
+    // they had already entered correctly.
+    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    // The catch used to be bare, so an unreadable credential row left no
+    // server-side breadcrumb at all — the only signal was a misleading
+    // "not configured" reply. Log it; unattended runs have nowhere else to say so.
+    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+  }
+  const rec = record || {};
+  return {
+    apiKey: pick(rec.api_key),
+    publicKey: pick(rec.public_key),
+    messagingProfileId: pick(rec.messaging_profile_id),
+    voiceConnectionId: pick(rec.voice_connection_id),
+    faxConnectionId: pick(rec.fax_connection_id),
+    record,
+    readError,
+  };
+}
+
+// Build the caller-facing message for a missing Telnyx credential. Distinguishing
+// "could not read" from "not stored" is the whole point: the first is not fixed by
+// entering a key, and telling an admin to enter one is what caused two reverted
+// env-fallback regressions.
+function telnyxCredsMessage(creds, what) {
+  const label = what || 'credentials';
+  if (creds && creds.readError) {
+    return \`Could not read Telnyx \${label} — the stored-credential lookup failed (\${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.\`;
+  }
+  return \`Telnyx \${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).\`;
+}`,
+
+  // Did a sendBatchFax call reject the whole batch before dispatching anything?
+  // Used by both scheduled-fax processors to decide requeue vs. terminal-fail.
+  // sendBatchFax answers with { successful, failed, ... } once it has actually
+  // attempted recipients, and with { error } (and no accounting) when it bailed
+  // out first — so the absence of a numeric `successful` is the reliable
+  // "nothing was transmitted" signal. Getting this wrong in either direction is
+  // costly: treat a real send as never-dispatched and PHI is re-faxed with no
+  // idempotency key; treat a never-dispatched batch as failed and the queued
+  // document is destroyed, because the crons only read status 'pending'.
+  batchNeverDispatched: `function batchNeverDispatched(payload, status) {
+  const d = payload || {};
+  if (!d.error || typeof d.successful === 'number') return false;
+  // Requeue only what a later run could actually send. A 5xx is infrastructure
+  // — unreadable credentials, a platform blip — and clears on its own. A 4xx is
+  // bad input for THIS row (disallowed file_url, unusable recipient numbers) and
+  // would fail identically on every future tick; there is no UI listing
+  // ScheduledFax rows, so an unsendable row must reach a terminal status rather
+  // than retry forever with nobody watching. An unknown status requeues, because
+  // a stuck 'pending' row is recoverable and a destroyed PHI document is not.
+  const code = Number(status);
+  return !Number.isFinite(code) || code >= 500;
+}`,
+
 };

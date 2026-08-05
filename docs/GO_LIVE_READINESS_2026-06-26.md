@@ -86,10 +86,17 @@ Per `.env.example` and the checklist:
   inactive and certificates are forgeable.
 - **`FILE_URL_ALLOWED_HOSTS`** (+ consider `FILE_URL_STRICT=true`) — closes SSRF /
   DNS-rebinding on server-side file fetches.
-- **Telnyx** (`TELNYX_API_KEY`, `TELNYX_PUBLIC_KEY`, messaging/voice/fax connection
-  ids, `TELNYX_FAX_NUMBER`) — powers SMS, masked voice, telehealth video, fax.
-  `TELNYX_PUBLIC_KEY` is required for inbound webhooks to be accepted (fail-closed).
-  Can also be set in-app at Admin → Super Admin.
+- **Telnyx** — powers SMS, masked voice, telehealth video, fax. Configure it
+  **in-app at Admin → Telnyx**, which stores the values on the `IntegrationSecret`
+  row every Telnyx function reads. The API key, public key and the
+  messaging/voice/fax connection ids all live there.
+  > **Not environment variables.** `TELNYX_API_KEY` and friends are retired and
+  > are **not read by any backend function**. This bullet used to list them as
+  > launch secrets and state the resolution order backwards ("falls back to the
+  > in-app record when the env var is unset"), which is how operators came to set
+  > env vars, watch sends keep failing, and report Telnyx as broken — twice ending
+  > in an env-fallback patch that had to be reverted. The public key is required
+  > for inbound webhooks, which are fail-closed without it.
 - **`OPENAI_API_KEY`** (transcription, SOAP-from-audio, training generation/grading),
   **`ANTHROPIC_API_KEY`** (fax cover pages), **`HEYGEN_API_KEY`** (training video) —
   each feature shows a clear "not configured" notice until set, so these gate

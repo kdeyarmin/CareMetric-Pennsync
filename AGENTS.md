@@ -23,7 +23,7 @@ Instructions for Codex cloud and other AI coding agents working in this reposito
   ```
 
 - Store `VITE_BASE44_APP_ID`, `VITE_BASE44_BACKEND_URL`, optional `VITE_SUPER_ADMIN_EMAIL`, OpenAI, Anthropic, HeyGen, HMAC, and other service credentials in Codex environment variables or secrets. Do not commit `.env` files.
-- Telnyx credentials are configured in-app through `IntegrationSecret`, not through frontend environment variables.
+- Telnyx credentials are configured in-app through `IntegrationSecret` — never through environment variables, frontend *or* backend. Do not add a `Deno.env.get('TELNYX_…')` fallback to a Base44 function: the path is retired, two guardrails enforce it, and it has been re-added and reverted twice. If a send reports "not configured", check the `readError` the credential helper now returns before assuming the key is missing. The helper is generated from `base44/_shared/backendHelpers.mjs`; edit it there, never in a function copy.
 
 ## Project shape
 

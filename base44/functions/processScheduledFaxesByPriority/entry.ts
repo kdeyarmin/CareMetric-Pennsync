@@ -37,6 +37,22 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+// <<<BEGIN SHARED HELPER: batchNeverDispatched — generated, edit base44/_shared/backendHelpers.mjs>>>
+function batchNeverDispatched(payload, status) {
+  const d = payload || {};
+  if (!d.error || typeof d.successful === 'number') return false;
+  // Requeue only what a later run could actually send. A 5xx is infrastructure
+  // — unreadable credentials, a platform blip — and clears on its own. A 4xx is
+  // bad input for THIS row (disallowed file_url, unusable recipient numbers) and
+  // would fail identically on every future tick; there is no UI listing
+  // ScheduledFax rows, so an unsendable row must reach a terminal status rather
+  // than retry forever with nobody watching. An unknown status requeues, because
+  // a stuck 'pending' row is recoverable and a destroyed PHI document is not.
+  const code = Number(status);
+  return !Number.isFinite(code) || code >= 500;
+}
+// <<<END SHARED HELPER: batchNeverDispatched>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -132,6 +148,22 @@ Deno.serve(async (req) => {
         const recipientCount = scheduledFax.to_numbers?.length || 0;
         const successful = data.successful || 0;
         const failed = data.failed ?? (recipientCount - successful);
+
+        // The batch was rejected before any recipient was attempted (bad
+        // credentials, disallowed file_url, agency config). Marking it 'failed'
+        // destroys the queued PHI document — this processor only ever reads
+        // status 'pending', and no UI can requeue a failed row. Release the claim
+        // so a later run sends it. Requeue ONLY when nothing was transmitted:
+        // Telnyx fax has no idempotency key, so requeueing a partially-sent batch
+        // would re-fax PHI. Mirrors the processScheduledFaxes sibling.
+        if (batchNeverDispatched(data, sendResult?.status)) {
+          console.error('A scheduled fax was not dispatched and has been requeued:', data.error);
+          await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+            status: 'pending', claimed_by: '', claimed_at: null,
+          }).catch((err) => console.error('Failed to requeue scheduled fax:', err?.message || err));
+          continue;
+        }
+
         sentCount += successful;
         failedCount += failed;
 
@@ -143,6 +175,14 @@ Deno.serve(async (req) => {
 
       } catch (error) {
         console.error('Failed to process scheduled fax:', error?.message || error);
+        // A non-2xx from sendBatchFax rejects rather than resolving, so the
+        // never-dispatched signal arrives here too — requeue, don't destroy.
+        if (batchNeverDispatched(error?.response?.data, error?.response?.status)) {
+          await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+            status: 'pending', claimed_by: '', claimed_at: null,
+          }).catch((err) => console.error('Failed to requeue scheduled fax:', err?.message || err));
+          continue;
+        }
         await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
           status: 'failed'
         });

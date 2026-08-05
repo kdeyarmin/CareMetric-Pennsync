@@ -63,10 +63,18 @@ Deno.serve(async (req) => {
     // Optional-only update (e.g. adding a connection id without re-entering the
     // API key). Requires an existing row — the API key must be set first.
     if (!apiKey && hasOptionalOnly) {
+      // Same ordering/selection as resolveTelnyxCreds, and no `.catch(() => [])`:
+      // a failed read must not be reported to the admin as "Set your Telnyx API
+      // key first", which is the message that sends someone to re-enter a key
+      // that was never missing.
       const existing = await base44.asServiceRole.entities.IntegrationSecret
-        .filter({ provider: 'telnyx' }, undefined, 5000)
-        .catch(() => []);
-      if (!existing[0]?.id) {
+        .filter({ provider: 'telnyx' }, '-updated_date', 5000);
+      const rows = Array.isArray(existing) ? existing : [];
+      const target = rows.find((r) => r && r.is_active === true && String(r.api_key || '').trim())
+        || rows.find((r) => r && String(r.api_key || '').trim())
+        || rows[0]
+        || null;
+      if (!target?.id) {
         return Response.json({ error: 'Set your Telnyx API key first.' }, { status: 400 });
       }
       const update = { is_active: true, updated_by_email: user.email };
@@ -74,7 +82,7 @@ Deno.serve(async (req) => {
         const v = optionalField(body, k);
         if (v !== undefined) update[k] = v;
       }
-      const saved = await base44.asServiceRole.entities.IntegrationSecret.update(existing[0].id, update);
+      const saved = await base44.asServiceRole.entities.IntegrationSecret.update(target.id, update);
       await base44.asServiceRole.entities.SecurityLog.create({
         timestamp: new Date().toISOString(),
         user_email: user.email,
@@ -115,13 +123,25 @@ Deno.serve(async (req) => {
       if (v !== undefined) update[k] = v;
     }
 
+    // Read the row the SENDERS will read. This used to be an unsorted query whose
+    // `.catch(() => [])` turned a transient read failure into "no row exists" —
+    // so a blip during a save created a SECOND provider:'telnyx' row. From then on
+    // the admin updated existing[0] while resolveTelnyxCreds read its own rows[0]
+    // from a differently-ordered query, and re-entering the key could never fix
+    // it: the panel echoed the right last-four while every send reported "not
+    // configured". Order and select exactly as resolveTelnyxCreds does, and never
+    // create on a failed read.
     const existing = await base44.asServiceRole.entities.IntegrationSecret
-      .filter({ provider: 'telnyx' }, undefined, 5000)
-      .catch(() => []);
+      .filter({ provider: 'telnyx' }, '-updated_date', 5000);
+    const rows = Array.isArray(existing) ? existing : [];
+    const target = rows.find((r) => r && r.is_active === true && String(r.api_key || '').trim())
+      || rows.find((r) => r && String(r.api_key || '').trim())
+      || rows[0]
+      || null;
 
     let saved;
-    if (existing[0]?.id) {
-      saved = await base44.asServiceRole.entities.IntegrationSecret.update(existing[0].id, update);
+    if (target?.id) {
+      saved = await base44.asServiceRole.entities.IntegrationSecret.update(target.id, update);
     } else {
       saved = await base44.asServiceRole.entities.IntegrationSecret.create(update);
     }
