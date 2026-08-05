@@ -378,11 +378,17 @@ function validateAdmissionSourceTiming(data) {
     const m1000Val = String(m1000).trim();
     let expectedSource = 'community';
     
-    // 2=acute, 3=LTCH, 4=SNF, 5=IRF, 6=psych — all institutional under PDGM
-    // (mirrors calculatePDGM; 5/6 previously classified community).
-    if (['2', '3', '4', '5', '6'].includes(m1000Val) || 
-        m1000Val.toLowerCase().includes('hospital') || 
-        m1000Val.toLowerCase().includes('snf')) {
+    // 2=acute, 3=LTCH, 4=SNF, 5=IRF, 6=psych — all institutional under PDGM.
+    // This must mirror calculatePDGM's validateAdmissionSource exactly, or the
+    // panel raises a high-severity mismatch against the very value the pricing
+    // engine agreed with. It previously compared the WHOLE string to a bare digit
+    // (so "02" and "5 - IRF" read as community) and scanned only two keywords.
+    // As there, an explicit code decides and keywords are a fallback only for
+    // values carrying no code — CMS's own response-1 wording contains "inpatient".
+    const m1000Digit = (m1000Val.replace(/^0+(?=\d)/, '').match(/\b([1-7])\b/) || [])[1];
+    if (m1000Digit) {
+      if (['2', '3', '4', '5', '6'].includes(m1000Digit)) expectedSource = 'institutional';
+    } else if (/hospital|snf|skilled nursing|acute|inpatient|rehab|irf|ltch|psych/i.test(m1000Val)) {
       expectedSource = 'institutional';
     }
     
@@ -601,6 +607,10 @@ function validateDates(data) {
   
   const socDate = data.soc_date || data.patient_info?.soc_date || data.m0102_soc_roc_date;
   const assessmentDate = data.assessment_date || data.patient_info?.assessment_date;
+  // Same nesting fallback as the two lines above. Reading only the top level made
+  // the Late SOC check below dead: every pdgmData producer writes the type under
+  // patient_info, so the condition was never true.
+  const assessmentType = data.assessment_type || data.patient_info?.assessment_type;
   
   if (socDate && assessmentDate) {
     try {
@@ -630,7 +640,7 @@ function validateDates(data) {
       
       const daysDiff = Math.floor((assessment - soc) / (1000 * 60 * 60 * 24));
       
-      if (daysDiff > 5 && data.assessment_type?.toLowerCase().includes('soc')) {
+      if (daysDiff > 5 && assessmentType?.toLowerCase().includes('soc')) {
         issues.push({
           severity: 'medium',
           title: 'Late SOC Assessment',

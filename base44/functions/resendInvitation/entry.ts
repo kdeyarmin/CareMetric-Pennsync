@@ -37,6 +37,17 @@ Deno.serve(async (req) => {
         { status: 409 }
       );
     }
+    // 'cancelled' is a deliberate revocation — offboardUser sets it precisely to
+    // pull an outstanding invite when deactivating someone. Resending flipped it
+    // back to 'pending', undoing that revocation and re-arming the
+    // onUserSignup / autoApproveInvitedUser auto-approval path for the role the
+    // invite carries. Only 'pending' and 'expired' may be resent.
+    if (invitation.status === 'cancelled') {
+      return Response.json(
+        { error: 'This invitation was cancelled and cannot be resent. Create a new invitation instead.' },
+        { status: 409 }
+      );
+    }
     const now = new Date();
     const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
