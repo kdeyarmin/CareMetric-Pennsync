@@ -17,8 +17,37 @@ const NOT_DOCUMENTED = /\bnot\s+(?:documented|assessed|addressed|performed|provi
 // boundaries (; , :) reset the window.
 const NEGATED_PREFIX = /\b(?:not|no|never|denies|without|declined?s?|refused?s?|no longer|unable to)\s+(?:\w+\s+){0,4}$/i;
 
+// Post-term negation. Looking only BEHIND the hit missed the two commonest ways
+// a nurse records an element as ABSENT, and both then counted as evidence that
+// it was PRESENT — a false PASS on a gate that hard-blocks:
+//
+//   label form  "Homebound: no."        "Skilled need — none"
+//   verb form   "Wound care declined by patient."   "Teaching refused."
+//
+// The label form requires the negation to BE the whole answer (followed by
+// punctuation or end of segment), so "Wound care: no complications noted" —
+// which documents that care WAS given — is not mistaken for a denial.
+const NEGATED_LABEL_SUFFIX =
+  /^\s*[:\-–—]+\s*(?:no|none|negative|nil|n\/?a|denied|declined|refused)\s*(?:[.;,]|$)/i;
+// The verb form allows a couple of intervening words ("wound care was declined")
+// but is bounded to the current clause by the caller, so an affirmative clause
+// followed by an unrelated negative ("wound care performed, no complications")
+// does not trip it.
+const NEGATED_VERB_SUFFIX =
+  /^\s+(?:\w+\s+){0,2}(?:declines?|declined|refuses?|refused|defers?|deferred|withheld|not\s+(?:done|performed|provided|completed|indicated|applicable))\b/i;
+
+// A whole segment that is nothing but a denied answer — "Homebound: no",
+// "Skilled need — none". Tested independently of WHERE the term matched,
+// because the keyword fallback can match a shorter stem ("skilled") whose tail
+// (" need — none") no longer looks like the answer. Requires the negative to be
+// the last thing in the segment, so "Wound care: no complications noted" — which
+// documents that care WAS delivered — is untouched.
+const STANDALONE_DENIAL =
+  /[:\-–—]+\s*(?:no|none|negative|nil|n\/?a|denied|declined|refused)\s*$/i;
+
 function isNegatedHit(segment, re) {
   if (NOT_DOCUMENTED.test(segment)) return true;
+  if (STANDALONE_DENIAL.test(segment)) return true;
   const m = re.exec(segment);
   if (!m) return false;
   const boundary = Math.max(
@@ -26,7 +55,12 @@ function isNegatedHit(segment, re) {
     segment.lastIndexOf(",", m.index),
     segment.lastIndexOf(":", m.index),
   );
-  return NEGATED_PREFIX.test(segment.slice(boundary + 1, m.index));
+  if (NEGATED_PREFIX.test(segment.slice(boundary + 1, m.index))) return true;
+
+  const tail = segment.slice(m.index + m[0].length);
+  if (NEGATED_LABEL_SUFFIX.test(tail)) return true;
+  const clauseEnd = tail.search(/[;,]/);
+  return NEGATED_VERB_SUFFIX.test(clauseEnd === -1 ? tail : tail.slice(0, clauseEnd));
 }
 
 /**

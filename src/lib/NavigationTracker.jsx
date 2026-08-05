@@ -9,11 +9,20 @@ export default function NavigationTracker() {
     const { isAuthenticated } = useAuth();
     const mainPageKey = MAIN_PAGE ?? PAGE_NAMES[0];
 
-    // Post navigation changes to parent window
+    // Post navigation changes to the embedding window (the Base44 preview host)
+    // so it can follow which page is open.
+    //
+    // The full href is NOT sent: it carries PHI and capability tokens in its
+    // query string (?id=<patient id>, ?token=<signer token>, signed-PDF URLs),
+    // and this goes out with targetOrigin '*' — readable by ANY page that frames
+    // the app, hostile or not. The pathname alone identifies the page, which is
+    // all "app_changed_url" is for. Only posted when actually embedded; when the
+    // app is top-level, window.parent is window and this just messaged itself.
     useEffect(() => {
-        window.parent?.postMessage({
+        if (typeof window === 'undefined' || window.parent === window) return;
+        window.parent.postMessage({
             type: "app_changed_url",
-            url: window.location.href
+            url: `${window.location.origin}${window.location.pathname}`
         }, '*');
     }, [location]);
 

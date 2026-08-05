@@ -136,6 +136,34 @@ test("a negated homebound/skilled-need mention is not evidence", () => {
   assert.equal(denial.find((r) => r.id === "skilled_need").present, false);
 });
 
+test("a POST-term negation is not evidence either", () => {
+  // Regression: the guard only looked BEHIND the matched term, so the two
+  // commonest ways a nurse records an element as absent — the label form
+  // ("Homebound: no.") and the verb form ("Wound care declined by patient.") —
+  // both counted as evidence that the element was PRESENT, silencing a
+  // hard-blocking eligibility gate.
+  const label = detectPresence("Homebound: no. Skilled need — none.", reqs);
+  assert.equal(label.find((r) => r.id === "homebound").present, false);
+  assert.equal(label.find((r) => r.id === "skilled_need").present, false);
+
+  const verb = detectPresence(
+    "Patient is homebound. Wound care declined by patient.",
+    reqs.filter((r) => r.id === "skilled_need"),
+  );
+  assert.equal(verb[0].present, false);
+});
+
+test("an affirmative clause followed by an unrelated negative still detects", () => {
+  // The suffix guard must not swallow real documentation: "no complications"
+  // qualifies the care that WAS delivered, it does not deny it.
+  const res = detectPresence(
+    "Patient is homebound due to severe dyspnea. Wound care: no complications noted.",
+    reqs,
+  );
+  assert.equal(res.find((r) => r.id === "homebound").present, true);
+  assert.equal(res.find((r) => r.id === "skilled_need").present, true);
+});
+
 test("affirmative homebound/skilled-need statements still detect", () => {
   const res = detectPresence(
     "Patient is homebound due to severe dyspnea; requires a walker to leave home. Performed skilled wound care to the sacral ulcer.",
