@@ -35,7 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toCsvRows } from "@/components/admin/csvExport";
-import { endOfDay, parseISO } from "date-fns";
+import { endOfDay, parseISO, startOfDay } from "date-fns";
 
 const COLORS = ['#3557b0', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#0d9488', '#06b6d4', '#84cc16'];
 
@@ -62,7 +62,13 @@ export default function PDGMTrendDashboard() {
 
   // Fetch all OASIS uploads with PDGM data
   const { data: oasisUploads = [], isLoading } = useQuery({
-    queryKey: ['oasisUploads'],
+    // Key encodes source and limit. A bare ['oasisUploads'] is shared with
+    // OASISAnalyzer's listOASISUploads fetch, which returns 50 rows with the
+    // financial fields stripped for non-financial users — and this dashboard
+    // mounts inside it. Whichever query populated the key first won, so the
+    // payment totals below could silently run over 50 stripped rows and report
+    // $0. Matches RealTimeComplianceDashboard, which issues this same query.
+    queryKey: ['oasisUploads', 'list', 500],
     queryFn: () => base44.entities.OASISUpload.list('-created_date', 500),
   });
 
@@ -76,8 +82,12 @@ export default function PDGMTrendDashboard() {
 
     // Apply date range filter
     if (dateRange.start) {
-      filtered = filtered.filter(u => 
-        new Date(u.created_date) >= new Date(dateRange.start)
+      // parseISO, not new Date(): `new Date('yyyy-MM-dd')` parses date-only
+      // strings as UTC midnight, so west of UTC the start bound landed on the
+      // previous local day and pulled in records from before the selected range.
+      // The end bound below already uses local parseISO — both ends must agree.
+      filtered = filtered.filter(u =>
+        new Date(u.created_date) >= startOfDay(parseISO(dateRange.start))
       );
     }
     if (dateRange.end) {
@@ -102,19 +112,21 @@ export default function PDGMTrendDashboard() {
       );
     }
 
+    // estimated_payment is a TOP-LEVEL OASISUpload field (see the save payload in
+    // OASISAnalyzer.jsx), not a pdgm_data key. Reading it from pdgm_data resolved
+    // to undefined on every row, so Average Payment, Total Revenue and the whole
+    // payment-trend chart were permanently $0. The pdgm_data lookup is kept as a
+    // fallback for rows written by any other producer.
+    const paymentOf = (u) => parseFloat(u.estimated_payment ?? u.pdgm_data?.estimated_payment) || 0;
+    const caseMixOf = (u) => parseFloat(u.pdgm_data?.case_mix_weight) || 0;
+
     // Calculate statistics
     const totalAssessments = filtered.length;
-    const avgPayment = filtered.reduce((sum, u) => 
-      sum + (parseFloat(u.pdgm_data.estimated_payment) || 0), 0
-    ) / (totalAssessments || 1);
-    
-    const avgCaseMix = filtered.reduce((sum, u) => 
-      sum + (parseFloat(u.pdgm_data.case_mix_weight) || 0), 0
-    ) / (totalAssessments || 1);
+    const avgPayment = filtered.reduce((sum, u) => sum + paymentOf(u), 0) / (totalAssessments || 1);
 
-    const totalRevenue = filtered.reduce((sum, u) => 
-      sum + (parseFloat(u.pdgm_data.estimated_payment) || 0), 0
-    );
+    const avgCaseMix = filtered.reduce((sum, u) => sum + caseMixOf(u), 0) / (totalAssessments || 1);
+
+    const totalRevenue = filtered.reduce((sum, u) => sum + paymentOf(u), 0);
 
     // Payment trend over time
     const paymentTrend = {};
@@ -126,9 +138,9 @@ export default function PDGMTrendDashboard() {
       if (!paymentTrend[month]) {
         paymentTrend[month] = { month, total: 0, count: 0, avgPayment: 0, avgCaseMix: 0 };
       }
-      paymentTrend[month].total += parseFloat(u.pdgm_data.estimated_payment) || 0;
+      paymentTrend[month].total += paymentOf(u);
       paymentTrend[month].count += 1;
-      paymentTrend[month].avgCaseMix += parseFloat(u.pdgm_data.case_mix_weight) || 0;
+      paymentTrend[month].avgCaseMix += caseMixOf(u);
     });
 
     const paymentTrendData = Object.values(paymentTrend)
@@ -184,10 +196,16 @@ export default function PDGMTrendDashboard() {
         year: 'numeric', 
         month: 'short' 
       });
+      // Only count records that actually carry a compliance score. Adding 0 to
+      // the numerator while still incrementing the denominator dragged the
+      // monthly average down for every assessment that was never scored.
+      // Checked before the bucket is created so a month of entirely unscored
+      // records is omitted rather than charted as NaN.
+      const compScore = u.analysis_results?.compliance_score ?? u.scores?.compliance;
+      if (!Number.isFinite(compScore)) return;
       if (!complianceTrend[month]) {
         complianceTrend[month] = { month, totalScore: 0, count: 0, avgCompliance: 0 };
       }
-      const compScore = u.analysis_results?.compliance_score || u.scores?.compliance || 0;
       complianceTrend[month].totalScore += compScore;
       complianceTrend[month].count += 1;
     });

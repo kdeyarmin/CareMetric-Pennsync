@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { OASIS_ITEM_MAX } from "@/components/oasis/oasisScales";
 import {
   ShieldAlert,
   AlertTriangle,
@@ -61,8 +62,13 @@ export default function AuditRiskPredictor({ analysisResults }) {
     const pdgmData = analysisResults.pdgm_data;
     if (pdgmData?.functional_scores) {
       const scores = pdgmData.functional_scores;
-      const highFunctionalCount = Object.values(scores).filter(s => {
-        const maxForItem = s > 4 ? 6 : 3; // Approximate max values
+      // Look the maximum up by ITEM (oasisScales.js), never from the score value.
+      // `s > 4 ? 6 : 3` called a 3 on the 0-6 bathing item 100% of max and a 4 on
+      // the 0-6 ambulation item >=80%, so ordinary mid-range function counted as
+      // "high dependency" and inflated the audit-risk score.
+      const highFunctionalCount = Object.entries(scores).filter(([key, s]) => {
+        const maxForItem = OASIS_ITEM_MAX[String(key).slice(0, 5).toLowerCase()];
+        if (!Number.isFinite(s) || !maxForItem) return false;
         return s >= maxForItem * 0.8;
       }).length;
       

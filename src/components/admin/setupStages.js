@@ -33,7 +33,17 @@ export const SETUP_STAGES = [
     // closed without the public key. Reporting "Done" on the API key alone would
     // collapse the section and tell the admin telephony was set up while calls
     // and faxes still could not go out.
-    secretFlags: ["public_key_set", "messaging_profile_set", "voice_connection_set", "fax_connection_set"],
+    // These MUST match the field names getTelnyxSecretStatus returns — that is
+    // the query TelnyxSetupProgress feeds into stageStatus(). The `*_set` names
+    // belong to saveTelnyxSecret's save response, a different endpoint, so every
+    // flag resolved to undefined and this stage could never leave "attention"
+    // no matter how completely Telnyx was configured.
+    secretFlags: [
+      "public_key_configured",
+      "messaging_profile_configured",
+      "voice_connection_configured",
+      "fax_connection_configured",
+    ],
     anchors: ["telnyx-secret"],
   },
   {

@@ -234,6 +234,12 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.TrainingModule.create({
           course_id: microCourse.id,
           title: microContent.module?.title || topicLabel,
+          // category and module_type are both in TrainingModule's `required`
+          // list and category has no schema default, so omitting them made
+          // Base44 reject the create and abort the whole corrective-action
+          // build. A CAP module is compliance remediation.
+          category: 'compliance',
+          module_type: 'ongoing',
           type: 'lesson',
           content_json: microContent.module?.content || {},
           order_index: 0,

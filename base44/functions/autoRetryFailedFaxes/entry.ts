@@ -181,28 +181,59 @@ function isSafeFetchUrl(raw) {
 }
 // <<<END SHARED HELPER: isSafeFetchUrl>>>
 
-/**
- * Resolve Telnyx credentials from the in-app IntegrationSecret row with
- * provider 'telnyx'.
- */
+// <<<BEGIN SHARED HELPER: resolveTelnyxCreds — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
-  let apiKey = null;
-  let publicKey = null;
-  let messagingProfileId = null;
-  let voiceConnectionId = null;
-  let faxConnectionId = null;
+  let record = null;
+  let readError = null;
   try {
-    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' }, undefined, 5000);
-    const rec = rows?.[0] || {};
-    apiKey = pick(rec.api_key);
-    publicKey = pick(rec.public_key);
-    messagingProfileId = pick(rec.messaging_profile_id);
-    voiceConnectionId = pick(rec.voice_connection_id);
-    faxConnectionId = pick(rec.fax_connection_id);
-  } catch { /* ignore */ }
-  return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
+    const rows = await base44.asServiceRole.entities.IntegrationSecret
+      .filter({ provider: 'telnyx' }, '-updated_date', 5000);
+    const list = Array.isArray(rows) ? rows : [];
+    // Deterministic row selection. This read used to be unsorted with no is_active
+    // filter and took rows[0], and saveTelnyxSecret picks from the same unordered
+    // query — so with two telnyx rows the admin could be writing one row while the
+    // senders read the other, and re-entering the key could never fix it.
+    record = list.find((r) => r && r.is_active === true && pick(r.api_key))
+      || list.find((r) => r && pick(r.api_key))
+      || list[0]
+      || null;
+  } catch (err) {
+    // Do NOT collapse this into "not configured". A failed read (this invocation
+    // path carries no service token, entity 404, 401/403, rate limit, platform
+    // blip) is a completely different problem from an unconfigured integration,
+    // and reporting them identically is what sent operators chasing a credential
+    // they had already entered correctly.
+    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    // The catch used to be bare, so an unreadable credential row left no
+    // server-side breadcrumb at all — the only signal was a misleading
+    // "not configured" reply. Log it; unattended runs have nowhere else to say so.
+    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+  }
+  const rec = record || {};
+  return {
+    apiKey: pick(rec.api_key),
+    publicKey: pick(rec.public_key),
+    messagingProfileId: pick(rec.messaging_profile_id),
+    voiceConnectionId: pick(rec.voice_connection_id),
+    faxConnectionId: pick(rec.fax_connection_id),
+    record,
+    readError,
+  };
 }
+
+// Build the caller-facing message for a missing Telnyx credential. Distinguishing
+// "could not read" from "not stored" is the whole point: the first is not fixed by
+// entering a key, and telling an admin to enter one is what caused two reverted
+// env-fallback regressions.
+function telnyxCredsMessage(creds, what) {
+  const label = what || 'credentials';
+  if (creds && creds.readError) {
+    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+  }
+  return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
+}
+// <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
 /**
  * Re-dispatches failed faxes whose config-aware backoff window (set by the
@@ -223,9 +254,15 @@ async function resolveTelnyxCreds(base44) {
 function normalizeFromE164(raw) {
   if (!raw) return null;
   const digits = String(raw).replace(/[^\d]/g, '');
+  // Already-+ international is decided FIRST and never falls through to the NANP
+  // branches. A 10-digit international number ("+49 89 123456") was otherwise
+  // rewritten as an unrelated "+1..." US subscriber, which also slipped past the
+  // +1-only international cost control. Mirrors src/components/voice/phoneUtils.js.
+  if (String(raw).trim().startsWith('+')) {
+    return digits.length >= 8 && digits.length <= 15 && digits[0] !== '0' ? `+${digits}` : null;
+  }
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-  if (String(raw).trim().startsWith('+') && digits.length >= 8 && digits.length <= 15 && digits[0] !== '0') return `+${digits}`;
   return null;
 }
 
@@ -337,7 +374,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { apiKey, faxConnectionId } = await resolveTelnyxCreds(base44);
+    const telnyxCreds = await resolveTelnyxCreds(base44);
+
+    const { apiKey, faxConnectionId } = telnyxCreds;
     // Resolve the from-number the same way sendFax does: transmit from the
     // blind outbound line (outbound_fax_number_e164), presented as the office
     // fax machine; legacy fallback to office_fax_number_e164 as the from.
@@ -520,7 +559,9 @@ async function handleRetryExhausted(base44, fax, reason, maxRetries = 3, notify 
       priority: 'high',
       metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
       is_read: false,
-      action_url: `/send-fax?fax_id=${fax.id}`
+      // Route paths come from the page name (SendFax); the hyphenated form matches
+      // no route or redirect and dropped the notification's button on PageNotFound.
+      action_url: `/SendFax?fax_id=${fax.id}`
     });
   } catch (e) {
     console.error('Failed to create in-app notification:', e.message);

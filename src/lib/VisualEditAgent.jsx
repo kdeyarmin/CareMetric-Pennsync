@@ -1,5 +1,42 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { twMerge } from 'tailwind-merge'
+import { appParams } from '@/lib/app-params';
+
+/**
+ * Origins permitted to drive the visual-edit agent.
+ *
+ * The message listener below accepted ANY origin (its `event.origin` check was
+ * commented out) while this component mounts unconditionally in production. So
+ * any page that framed the app could send `toggle-visual-edit-mode`, and the
+ * next click would post the selected element back — including
+ * `content: element.innerText`, which on a patient chart is PHI. Gating inbound
+ * messages breaks that chain at the first step.
+ *
+ * Allowed: the app's own origin, and the configured Base44 platform origin
+ * (the editor that legitimately embeds this app). VITE_VISUAL_EDIT_ORIGINS —
+ * comma-separated — covers an editor hosted somewhere else.
+ */
+function allowedEditorOrigins() {
+	const origins = new Set();
+	if (typeof window !== 'undefined' && window.location?.origin) {
+		origins.add(window.location.origin);
+	}
+	const addOrigin = (value) => {
+		if (!value) return;
+		try {
+			origins.add(new URL(value).origin);
+		} catch {
+			// Malformed configured URL — skip rather than widen the allowlist.
+		}
+	};
+	addOrigin(appParams?.serverUrl);
+	String(import.meta.env.VITE_VISUAL_EDIT_ORIGINS || '')
+		.split(',')
+		.map((o) => o.trim())
+		.filter(Boolean)
+		.forEach(addOrigin);
+	return origins;
+}
 
 export default function VisualEditAgent() {
 	// this functions job is to receive first a message from the parent window, to set or unset visual edits mode. 
@@ -10,6 +47,10 @@ export default function VisualEditAgent() {
 	// State and refs
 	const [isVisualEditMode, setIsVisualEditMode] = useState(false);
 	const isVisualEditModeRef = useRef(false);
+	// Resolved once: the allowlist depends only on build config and the current
+	// origin, and the message handler must not rebuild it on every event.
+	const allowedOriginsRef = useRef(null);
+	if (allowedOriginsRef.current === null) allowedOriginsRef.current = allowedEditorOrigins();
 	const [isPopoverDragging, setIsPopoverDragging] = useState(false);
 	const isPopoverDraggingRef = useRef(false);
 	const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -423,8 +464,10 @@ export default function VisualEditAgent() {
 		};
 
 		const handleMessage = (event) => {
-			// Check origin if desired
-			//if (event.origin !== 'parent-origin') return;
+			// Only the app itself or a configured editor origin may drive the agent
+			// (see allowedEditorOrigins above). Without this any framing page could
+			// enable edit mode and harvest the element payloads posted back.
+			if (!allowedOriginsRef.current.has(event.origin)) return;
 
 			const message = event.data;
 

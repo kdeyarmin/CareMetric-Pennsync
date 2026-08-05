@@ -25,7 +25,10 @@ export default function RealTimeDocumentationReviewer({
   noteContent, 
   noteType = "soap", // soap, admission, discharge, etc.
   patientData,
-  _onApplySuggestion,
+  // Underscore-prefixed, this never matched the `onApplySuggestion` the caller
+  // passes, so the handler silently landed nowhere and the only way to act on a
+  // suggestion was the clipboard.
+  onApplySuggestion,
   autoAnalyze = false
 }) {
   const ai = useAICall();
@@ -436,14 +439,26 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
                       <div className="bg-green-50 p-3 rounded border border-green-200">
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <p className="text-xs font-semibold text-green-900">Suggested Fix:</p>
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={() => copySuggestion(issue.suggestion)}
-                            className="h-6 px-2"
-                          >
-                            <Copy className="w-3 h-3" />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            {onApplySuggestion && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => onApplySuggestion(issue.suggestion)}
+                                className="h-6 px-2"
+                              >
+                                Apply
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => copySuggestion(issue.suggestion)}
+                              className="h-6 px-2"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </div>
                         <p className="text-sm text-slate-900">{issue.suggestion}</p>
                       </div>

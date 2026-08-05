@@ -66,7 +66,22 @@ export default function EnhancedMultiReportComparison({
         });
       }
     });
-    
+
+    // shortLabel is not just a caption — the radar chart uses it as the data KEY
+    // (dataPoint[r.shortLabel] = …). Truncating to 15 characters made any two
+    // files sharing a prefix ("OASIS_Assessment_Jan/Feb.pdf") collide, so one
+    // series silently overwrote the other and rendered as a duplicate. Suffix
+    // only the labels that actually repeat, so unique names stay untouched.
+    const labelCounts = new Map();
+    reports.forEach((r) => labelCounts.set(r.shortLabel, (labelCounts.get(r.shortLabel) || 0) + 1));
+    const seen = new Map();
+    reports.forEach((r) => {
+      if (labelCounts.get(r.shortLabel) < 2) return;
+      const n = (seen.get(r.shortLabel) || 0) + 1;
+      seen.set(r.shortLabel, n);
+      r.shortLabel = `${r.shortLabel} (${n})`;
+    });
+
     return reports;
   }, [savedReports, currentReport, currentPdgmData]);
 

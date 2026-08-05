@@ -182,10 +182,16 @@ function findWriteDrift() {
   for (const file of sources) {
     const src = readFileSync(file, 'utf8');
     const rel = file.slice(REPO.length + 1);
-    const re = /entities\.([A-Za-z0-9_]+)\s*\.\s*(create|update|bulkCreate)\s*\(/g;
+    // `auth.updateMe({...})` writes the User entity just as surely as
+    // `entities.User.update(...)`, but it was outside this scan — which is how
+    // `saved_signature` (absent from User.jsonc) was written and silently
+    // dropped while the UI reported "Signature saved to your profile". Its
+    // payload is the FIRST argument, so it is shaped like `create`.
+    const re = /(?:entities\.([A-Za-z0-9_]+)\s*\.\s*(create|update|bulkCreate)|auth\s*\.\s*updateMe)\s*\(/g;
     let m;
     while ((m = re.exec(src))) {
-      const [, entity, method] = m;
+      const entity = m[1] || 'User';
+      const method = m[2] || 'create';
       const schema = schemas.get(entity);
       if (!schema) continue; // entityReferenceContract.test.js owns unknown entities
 

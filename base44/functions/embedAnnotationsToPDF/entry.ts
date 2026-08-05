@@ -155,21 +155,28 @@ Deno.serve(async (req) => {
       return count + (Array.isArray(pageAnnots) ? pageAnnots.filter(a => a.type === 'signature').length : 0);
     }, 0);
 
-    // Log the signature event
-    await base44.asServiceRole.entities.UserActivity.create({
-      user_email: user.email,
-      user_name: user.full_name,
-      action: 'document_signed',
-      details: {
-        document_type,
-        patient_id,
-        signature_count: signatureCount,
-        total_annotations: Object.values(annotations).reduce((sum, arr) => sum + arr.length, 0),
-        original_pdf: pdf_url,
-        signed_pdf: uploadResult.file_url
-      },
-      page: 'pdf_signature'
-    });
+    // Log the signature event. Best-effort: the signed PDF is already uploaded
+    // by this point, so a throw here (e.g. a non-array page entry, which the
+    // embed loop tolerates) would 500 the caller and strand the file in storage
+    // with no returned URL and no audit row.
+    try {
+      await base44.asServiceRole.entities.UserActivity.create({
+        user_email: user.email,
+        user_name: user.full_name,
+        action: 'document_signed',
+        details: {
+          document_type,
+          patient_id,
+          signature_count: signatureCount,
+          total_annotations: Object.values(annotations).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0),
+          original_pdf: pdf_url,
+          signed_pdf: uploadResult.file_url
+        },
+        page: 'pdf_signature'
+      });
+    } catch (logErr) {
+      console.error('Failed to log document_signed activity:', logErr.message);
+    }
 
     return Response.json({
       success: true,

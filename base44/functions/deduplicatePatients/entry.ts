@@ -1257,9 +1257,15 @@ Deno.serve(async (req) => {
 
     // Calculate confidence levels for results
     const resultsWithConfidence = detailsArray.map((detail) => {
-      const avgScore = detail.removed.length > 0
-        ? detail.removed.reduce((sum, r) => sum + r.match_score, 0) / detail.removed.length
-        : 100;
+      // Average only the records that actually carry a score. A deliberate null
+      // match_score (the removed record was the group's primary) coerced to 0
+      // through the sum, dragging an MRN-verified merge down to "Low" at 0%.
+      const scored = detail.removed.filter((r) => typeof r.match_score === 'number');
+      if (scored.length === 0) {
+        // No per-patient score in this group — report no confidence, not 0%.
+        return { ...detail, confidence: null, average_match_score: null };
+      }
+      const avgScore = scored.reduce((sum, r) => sum + r.match_score, 0) / scored.length;
 
       let confidence = 'High';
       if (avgScore < 70) confidence = 'Medium';

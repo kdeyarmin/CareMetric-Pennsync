@@ -17,7 +17,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // v2
 
-const isSet = (v) => typeof v === 'string' && v.trim() !== '';
+// Must agree with `pick` in the generated resolveTelnyxCreds helper
+// (base44/_shared/backendHelpers.mjs), which coerces with String(v) rather than
+// requiring a string. A numerically-stored connection id used to send fine while
+// this panel reported "Not set" — and the "Connect Telnyx" stage read that flag
+// and sat on "Needs attention" forever.
+const isSet = (v) => v != null && String(v).trim() !== '';
+const trimmed = (v) => (isSet(v) ? String(v).trim() : null);
 
 Deno.serve(async (req) => {
   try {
@@ -36,13 +42,22 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Administrator access required.' }, { status: 403 });
     }
 
+    // Order and select exactly as resolveTelnyxCreds does. An unsorted rows[0]
+    // let this panel and the senders read DIFFERENT rows when a duplicate
+    // provider:'telnyx' row existed — so "Configured ••••1234" and "credentials
+    // not configured" could both be true at the same time, which is unfalsifiable
+    // from the admin UI and is precisely what the builder-bot incidents reported.
     const rows = await base44.asServiceRole.entities.IntegrationSecret
-      .filter({ provider: 'telnyx' }, undefined, 5000)
+      .filter({ provider: 'telnyx' }, '-updated_date', 5000)
       .catch(() => []);
-    const rec = rows[0] || {};
+    const list = Array.isArray(rows) ? rows : [];
+    const rec = list.find((r) => r && r.is_active === true && isSet(r.api_key))
+      || list.find((r) => r && isSet(r.api_key))
+      || list[0]
+      || {};
 
-    const apiKey = isSet(rec.api_key) ? rec.api_key : null;
-    const publicKey = isSet(rec.public_key) ? rec.public_key : null;
+    const apiKey = trimmed(rec.api_key);
+    const publicKey = trimmed(rec.public_key);
     const apiKeySource = isSet(rec.api_key) ? 'config' : 'none';
     const publicKeySource = isSet(rec.public_key) ? 'config' : 'none';
 

@@ -216,7 +216,13 @@ export default function OutcomeMeasuresSection() {
     };
   }, [metrics, kpis]);
 
-  const isLoading = kpisQuery.isLoading || metricsQuery.isLoading;
+  // isPending, not isLoading: react-query v5 defines isLoading as
+  // `isPending && isFetching`, so an offline mount (status 'pending',
+  // fetchStatus 'paused') is neither loading nor error — execution fell through
+  // to the success branch with `derived` still null and threw on
+  // derived.totalEpisodes, taking out the whole page via the route error
+  // boundary. The `|| !derived` below is belt-and-braces for the same class.
+  const isLoading = kpisQuery.isPending || metricsQuery.isPending;
   const isError = kpisQuery.isError || metricsQuery.isError;
 
   const recomputeButton = (
@@ -243,7 +249,7 @@ export default function OutcomeMeasuresSection() {
         {recomputeButton}
       </CardHeader>
       <CardContent className="space-y-6">
-        {isLoading ? (
+        {isLoading || (!isError && !derived) ? (
           <LoadingState label="Loading outcome measures…" />
         ) : isError ? (
           <div className="flex flex-col items-center gap-3 py-8 text-center">

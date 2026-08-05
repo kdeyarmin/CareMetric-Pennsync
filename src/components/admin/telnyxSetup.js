@@ -188,15 +188,37 @@ export function buildIntegrationSteps({ secretStatus, agencySettings, provisioni
   const secretSuffix = secretStatus?.api_key_last_four
     ? ` ••••${secretStatus.api_key_last_four}`
     : "";
+  // An API key alone does not make Telnyx usable: outbound fax needs a fax
+  // connection, masked calling needs a voice connection, SMS needs a messaging
+  // profile, and inbound webhooks are fail-closed without the public key. This
+  // step used to report "done" on the key alone, so the roll-up could show
+  // "Ready to go live" at 100% while every fax and masked call returned "Telnyx
+  // credentials not configured" — and the "Connect Telnyx" stage rendered
+  // directly below it, reading the same status, correctly said "Needs attention".
+  // The page contradicted itself, which is a large part of why the credential
+  // path was assumed broken.
+  const missingChannels = !secretStatus
+    ? []
+    : [
+        ["public key (inbound webhooks)", secretStatus.public_key_configured],
+        ["messaging profile (SMS)", secretStatus.messaging_profile_configured],
+        ["voice connection (masked calling)", secretStatus.voice_connection_configured],
+        ["fax connection (outbound fax)", secretStatus.fax_connection_configured],
+      ]
+        .filter(([, ok]) => ok === false)
+        .map(([label]) => label);
+  const secretComplete = secretConfigured && missingChannels.length === 0;
   steps.push({
     id: "api_secret",
     title: "Add your Telnyx API key",
     kind: "required",
     anchor: "telnyx-secret",
-    status: secretConfigured ? "done" : "todo",
-    detail: secretConfigured
+    status: secretComplete ? "done" : secretConfigured ? "attention" : "todo",
+    detail: secretComplete
       ? `Configured${secretSuffix}.`
-      : "Paste your Telnyx API key so SMS, voice, fax, and webhook verification can run.",
+      : secretConfigured
+        ? `Configured${secretSuffix}, but still missing: ${missingChannels.join(", ")}. Those channels will fail until they are set.`
+        : "Paste your Telnyx API key so SMS, voice, fax, and webhook verification can run.",
   });
 
   // 2. Agency configuration (required) — reuse the detailed checklist so the

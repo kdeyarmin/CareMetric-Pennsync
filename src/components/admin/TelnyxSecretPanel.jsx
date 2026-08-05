@@ -141,7 +141,15 @@ export default function TelnyxSecretPanel() {
       // A payload without an api_key is an advanced-fields-only update.
       toast.success(variables?.api_key ? "Telnyx API key saved" : "Telnyx settings updated");
     },
-    onError: (err) => toast.error(err?.message || "Failed to save the Telnyx API key"),
+    // Surface the backend's own reason. err.message from the SDK's axios client is
+    // "Request failed with status code 4xx", which rendered every actionable
+    // rejection — invalid key format, "Set your Telnyx API key first.", the
+    // super-admin-only 403 — as an opaque status code, so a save that failed for a
+    // fixable reason looked like an unexplained one.
+    onError: (err) =>
+      toast.error(
+        err?.response?.data?.error || err?.data?.error || err?.message || "Failed to save the Telnyx API key",
+      ),
   });
 
   const discover = useMutation({
@@ -294,8 +302,14 @@ export default function TelnyxSecretPanel() {
   // API key must start with "KEY" and be at least 16 chars.
   const keyTrimmed = apiKey.trim();
   const keyValid = keyTrimmed.toUpperCase().startsWith("KEY") && keyTrimmed.length >= 16;
+  // Whether the admin typed any advanced value — deliberately NOT gated on
+  // showAdvanced. That flag is a disclosure toggle, not a data-scoping decision:
+  // typing connection ids and then collapsing the section used to discard them
+  // while the toast still said "Telnyx settings updated", so the API key landed
+  // and fax_connection_id did not — and outbound fax then failed with "Telnyx fax
+  // credentials not configured", which is exactly the symptom that got blamed on
+  // the missing TELNYX_* env path.
   const advancedProvided =
-    showAdvanced &&
     Boolean(publicKey.trim() || messagingProfileId.trim() || voiceConnectionId.trim() || faxConnectionId.trim());
   // Allow saving either a valid key, or an advanced-fields-only update when the
   // key field is left blank (the key is already configured and never shown again).
@@ -307,9 +321,11 @@ export default function TelnyxSecretPanel() {
     // Include the API key only when it's valid; a blank key means "keep the
     // existing one" and the backend does an advanced-fields-only update.
     if (keyValid) payload.api_key = keyTrimmed;
-    if (showAdvanced) {
-      // Only include advanced fields the admin actually typed — an omitted field
-      // is left unchanged on the backend (an explicit "" would clear it).
+    {
+      // Send every advanced field the admin actually typed, whether or not the
+      // section happens to be expanded right now (see advancedProvided above).
+      // An omitted field is left unchanged on the backend (an explicit "" would
+      // clear it).
       if (publicKey.trim()) payload.public_key = publicKey.trim();
       if (messagingProfileId.trim()) payload.messaging_profile_id = messagingProfileId.trim();
       if (voiceConnectionId.trim()) payload.voice_connection_id = voiceConnectionId.trim();

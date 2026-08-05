@@ -24,6 +24,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Resolve once and gate EVERY financial block below. The revenue score and
+    // revenue tips are financial content too — rendering them for a nurse put
+    // dollar-driven revenue data into an exportable PDF despite the gate.
+    const allowFinancials = canViewFinancials(user);
+
     const {
       analysisResults = {},
       pdgmData,
@@ -122,7 +127,9 @@ Deno.serve(async (req) => {
       addKeyValue('Overall Score', analysisResults.overall_score !== undefined ? `${analysisResults.overall_score}%` : 'N/A');
       addKeyValue('Accuracy Score', analysisResults.accuracy_score !== undefined ? `${analysisResults.accuracy_score}%` : 'N/A');
       addKeyValue('Compliance Score', analysisResults.compliance_score !== undefined ? `${analysisResults.compliance_score}%` : 'N/A');
-      addKeyValue('Revenue Optimization', analysisResults.revenue_optimization_score !== undefined ? `${analysisResults.revenue_optimization_score}%` : 'N/A');
+      if (allowFinancials) {
+        addKeyValue('Revenue Optimization', analysisResults.revenue_optimization_score !== undefined ? `${analysisResults.revenue_optimization_score}%` : 'N/A');
+      }
     }
     
     if (qualityScore) {
@@ -141,7 +148,7 @@ Deno.serve(async (req) => {
       addKeyValue('Admission Source', navigationData.admission_timing?.admission_source || 'N/A');
       addKeyValue('Episode Timing', navigationData.admission_timing?.episode_timing || 'N/A');
 
-      if (navigationData.case_mix_calculation && canViewFinancials(user)) {
+      if (navigationData.case_mix_calculation && allowFinancials) {
         y += 3;
         addKeyValue('Base Payment', `$${navigationData.case_mix_calculation.base_payment?.toFixed(2)}`);
         addKeyValue('Clinical Weight', navigationData.case_mix_calculation.clinical_weight?.toFixed(4));
@@ -153,7 +160,7 @@ Deno.serve(async (req) => {
     }
 
     // Revenue Analysis
-    if (revenueData && canViewFinancials(user)) {
+    if (revenueData && allowFinancials) {
       addSection('REVENUE OPTIMIZATION ANALYSIS');
       addKeyValue('Current Payment', `$${revenueData.original?.totalPayment?.toFixed(2) || 0}`);
       addKeyValue('Optimized Payment', `$${revenueData.corrected?.totalPayment?.toFixed(2) || 0}`);
@@ -208,7 +215,7 @@ Deno.serve(async (req) => {
     }
 
     // Revenue Tips
-    if (analysisResults.revenue_tips?.length > 0) {
+    if (allowFinancials && analysisResults.revenue_tips?.length > 0) {
       addSection('REVENUE OPTIMIZATION OPPORTUNITIES');
       analysisResults.revenue_tips.slice(0, 10).forEach((tip, idx) => {
         if (y > 250) {

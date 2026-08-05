@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -102,11 +102,19 @@ export default function SuperAdminConfig() {
   // elevated account automatically (idempotent on the backend).
   const ownerNotYetPromoted =
     isSuperAdminEmail(currentUser?.email) && currentUser?.account_type !== "super_admin";
+  // Latch on a ref and depend on the stable `mutate`, not the mutation object:
+  // react-query returns a new object every render, so depending on `ensure` re-ran
+  // this effect continuously — and after a failure isPending and isSuccess are
+  // both false, so the guard let it fire again, looping mutate → error toast →
+  // re-render → mutate. One attempt per page visit; the manual button retries.
+  const { mutate: ensureSuperAdminAccount } = ensure;
+  const bootstrapAttempted = useRef(false);
   useEffect(() => {
-    if (ownerNotYetPromoted && !ensure.isPending && !ensure.isSuccess) {
-      ensure.mutate();
+    if (ownerNotYetPromoted && !bootstrapAttempted.current) {
+      bootstrapAttempted.current = true;
+      ensureSuperAdminAccount();
     }
-  }, [ownerNotYetPromoted, ensure]);
+  }, [ownerNotYetPromoted, ensureSuperAdminAccount]);
 
   if (isLoading) {
     return (

@@ -84,14 +84,17 @@ export default function KPIDashboard({ dateRange }) {
   // evening for any negative-UTC-offset zone and miscounted boundary records.
   const rangeStart = new Date(dateRange.start + 'T00:00:00');
   const rangeEnd = new Date(dateRange.end + 'T23:59:59.999');
+  // Date-only values ("2026-07-27") parse as UTC midnight while the window
+  // bounds above parse LOCAL — in every US timezone that dropped records
+  // dated on the window's first day and counted day-after-end records.
+  // Anchor date-only values to local midnight; datetimes parse as-is.
+  const parseItemDate = (raw) => {
+    const s = String(raw || '');
+    return new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? s + 'T00:00:00' : s);
+  };
   const filterByDate = (items, dateField) => {
     return items.filter(item => {
-      const raw = String(item[dateField] || '');
-      // Date-only values ("2026-07-27") parse as UTC midnight while the window
-      // bounds above parse LOCAL — in every US timezone that dropped records
-      // dated on the window's first day and counted day-after-end records.
-      // Anchor date-only values to local midnight; datetimes parse as-is.
-      const itemDate = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T00:00:00' : raw);
+      const itemDate = parseItemDate(item[dateField]);
       return itemDate >= rangeStart && itemDate <= rangeEnd;
     });
   };
@@ -146,7 +149,10 @@ export default function KPIDashboard({ dateRange }) {
   const periodMs = rangeEnd - rangeStart;
   const previousStart = new Date(rangeStart.getTime() - periodMs);
   const inPreviousPeriod = (items, dateField) => items.filter(item => {
-    const date = new Date(item[dateField]);
+    // Same local-midnight anchoring as filterByDate — a raw parse counted
+    // boundary-day records in both periods and dropped the previous period's
+    // own first day.
+    const date = parseItemDate(item[dateField]);
     return date >= previousStart && date < rangeStart;
   });
   const pctTrend = (current, previous) => {

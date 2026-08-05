@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { toast } from 'sonner';
 import {
   GraduationCap,
   BookOpen,
@@ -371,6 +372,9 @@ export default function LearningCenter() {
       downloadBlob(`Training_Transcript_${toLocalISODate()}.pdf`, await response.arrayBuffer(), 'application/pdf');
     } catch (error) {
       console.error('Failed to download transcript:', error);
+      // The spinner clears either way, so without a message a failed request
+      // looked identical to a no-op click.
+      toast.error('Failed to generate your transcript PDF. Please try again.');
     } finally {
       setDownloadingTranscript(false);
     }

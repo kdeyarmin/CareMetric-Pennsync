@@ -4,7 +4,6 @@ import { Check, ChevronsUpDown, Clock, Star, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
@@ -245,26 +244,27 @@ export default function SearchablePatientSelect({
             className="border-b-0"
           />
           <CommandList className="max-h-[400px]">
+            {/* Plain divs, not CommandEmpty: with shouldFilter={false} cmdk sets
+                its filtered count to the number of registered items, and the
+                "Add new patient" item below is always registered — so a
+                CommandEmpty here could never render and the user saw a blank
+                list instead of these messages. */}
             {localPatients.length === 0 ? (
-              <CommandEmpty>
-                <div className="py-6 text-center">
-                  <p className="text-sm text-muted-foreground mb-3">No patients available. (Loaded: {localPatients.length})</p>
-                  <Button 
-                    onClick={openCreateDialog}
-                    size="sm"
-                    className="gap-2"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Create New Patient
-                  </Button>
-                </div>
-              </CommandEmpty>
+              <div className="py-6 text-center">
+                <p className="text-sm text-muted-foreground mb-3">No patients available. (Loaded: {localPatients.length})</p>
+                <Button
+                  onClick={openCreateDialog}
+                  size="sm"
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Create New Patient
+                </Button>
+              </div>
             ) : favoritesList.length === 0 && recentList.length === 0 && allPatientsList.length === 0 ? (
-              <CommandEmpty>
-                <div className="py-6 text-center">
-                  <p className="text-sm text-muted-foreground mb-3">No patients match your search.</p>
-                </div>
-              </CommandEmpty>
+              <div className="py-6 text-center">
+                <p className="text-sm text-muted-foreground mb-3">No patients match your search.</p>
+              </div>
             ) : null}
             
             {favoritesList.length > 0 && (

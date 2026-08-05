@@ -222,9 +222,28 @@ export default function SecurityCompliance() {
     }
   ];
 
-  const complianceScore = Math.round(
-    (complianceChecks.filter(c => c.status === 'compliant').length / complianceChecks.length) * 100
-  );
+  // The list above is a documented control INVENTORY, not a set of measurements.
+  // Seven entries assert platform behaviour this frontend cannot probe
+  // (encryption at rest, TLS, automated backups); only the audit trail is
+  // derivable from data the app actually holds. Every entry was hardcoded
+  // `status: "compliant"`, so the HIPAA "% Compliant" figure was mathematically
+  // pinned at 100% no matter the state of the system — and the checklist below
+  // rendered a green "✓ Active" badge without consulting `status` at all.
+  // Separate what is verified from what is merely attested, and report both.
+  const auditEventCount = securityLogs.length + userActivity.length;
+  const assessedChecks = complianceChecks.map((check) => (
+    check.name === 'Audit Trails'
+      ? { ...check, attested: false, status: auditEventCount > 0 ? 'compliant' : 'attention' }
+      : { ...check, attested: true }
+  ));
+  const verifiableChecks = assessedChecks.filter((c) => !c.attested);
+  const verifiedCompliant = verifiableChecks.filter((c) => c.status === 'compliant').length;
+  const attestedCount = assessedChecks.length - verifiableChecks.length;
+  // Reported over the checks that are actually measured, never over the
+  // attestations — an unmeasurable control must not inflate a compliance number.
+  const complianceScore = verifiableChecks.length
+    ? Math.round((verifiedCompliant / verifiableChecks.length) * 100)
+    : 0;
 
   if (!isAdmin) {
     return (
@@ -243,9 +262,9 @@ export default function SecurityCompliance() {
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-end">
-        <Badge className="bg-green-600 text-lg px-4 py-2">
+        <Badge className={`text-lg px-4 py-2 ${complianceScore === 100 ? 'bg-green-600' : 'bg-amber-600'}`}>
           <CheckCircle2 className="w-5 h-5 mr-2" />
-          {complianceScore}% Compliant
+          {verifiedCompliant}/{verifiableChecks.length} verified · {attestedCount} attested
         </Badge>
       </div>
 
@@ -263,7 +282,9 @@ export default function SecurityCompliance() {
         <TabsContent value="overview" className="space-y-6">
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <StatCard label="Compliance Score" value={`${complianceScore}%`} icon={CheckCircle2} tone="emerald" />
+            {/* Labelled for what it measures: the controls this app can actually
+                check, not the platform attestations it cannot. */}
+            <StatCard label="Verified Controls" value={`${verifiedCompliant}/${verifiableChecks.length}`} icon={CheckCircle2} tone={complianceScore === 100 ? 'emerald' : 'amber'} />
             <StatCard label="Total Events" value={securityLogs.length + userActivity.length} icon={Activity} tone="navy" />
             <StatCard label="PHI Access" value={phiAccess} icon={Eye} tone="slate" />
             <StatCard label="Critical Events" value={criticalEvents} icon={AlertTriangle} tone="red" />
@@ -289,19 +310,28 @@ export default function SecurityCompliance() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {complianceChecks.map((check, idx) => {
+                {assessedChecks.map((check, idx) => {
                   const Icon = check.icon;
+                  // Drive the styling from the check itself. A hardcoded green
+                  // "✓ Active" told an admin every control was confirmed active
+                  // even for controls nothing had checked.
+                  const ok = check.status === 'compliant';
+                  const tone = check.attested
+                    ? { box: 'bg-slate-50 border-slate-200', icon: 'text-slate-500', badge: 'bg-slate-500', label: 'Platform attested' }
+                    : ok
+                      ? { box: 'bg-green-50 border-green-200', icon: 'text-green-600', badge: 'bg-green-600', label: '✓ Verified' }
+                      : { box: 'bg-amber-50 border-amber-200', icon: 'text-amber-600', badge: 'bg-amber-600', label: 'Needs attention' };
                   return (
                     <div
                       key={idx}
-                      className="flex items-start gap-3 p-4 rounded-lg border bg-green-50 border-green-200"
+                      className={`flex items-start gap-3 p-4 rounded-lg border ${tone.box}`}
                     >
-                      <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
+                      <CheckCircle2 className={`w-5 h-5 mt-0.5 ${tone.icon}`} />
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <Icon className="w-4 h-4 text-green-600" />
+                          <Icon className={`w-4 h-4 ${tone.icon}`} />
                           <p className="font-semibold text-slate-900 text-sm">{check.name}</p>
-                          <Badge className="bg-green-600 text-xs">✓ Active</Badge>
+                          <Badge className={`${tone.badge} text-xs`}>{tone.label}</Badge>
                         </div>
                         <p className="text-xs text-slate-600 mb-1">{check.description}</p>
                         <p className="text-xs text-slate-500 italic">{check.details}</p>

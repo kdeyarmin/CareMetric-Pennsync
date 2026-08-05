@@ -46,7 +46,12 @@ Deno.serve(async (req) => {
     // Dedup against existing assignments scoped to THESE candidates (via $in)
     // rather than the newest 1000 for the course — a course with >1000 prior
     // assignees would otherwise re-assign + re-notify older ones.
+    // Dedup must also be scoped to the cycle being assigned: an annual course
+    // re-issued for a new year would otherwise match last year's assignment and
+    // skip everyone, creating zero assignments. Post-filter (rather than adding
+    // the year to the query) so the null / non-annual case behaves as before.
     const candidateEmails = candidates.map((candidate) => candidate.email).filter(Boolean);
+    const targetCycleYear = annualCycleYear || course.annual_cycle_year || null;
     let assignedEmails = new Set();
     if (candidateEmails.length > 0) {
       const existingAssignments = await base44.asServiceRole.entities.TrainingAssignment.filter(
@@ -54,7 +59,11 @@ Deno.serve(async (req) => {
         '-created_date',
         Math.max(1000, candidateEmails.length * 3),
       );
-      assignedEmails = new Set(existingAssignments.map((assignment) => assignment.assigned_to_user_id));
+      assignedEmails = new Set(
+        existingAssignments
+          .filter((assignment) => (assignment.annual_cycle_year ?? null) === targetCycleYear)
+          .map((assignment) => assignment.assigned_to_user_id),
+      );
     }
 
     const assignmentsToCreate = candidates
@@ -70,7 +79,7 @@ Deno.serve(async (req) => {
         assigned_by: user.email,
         assigned_date: new Date().toISOString(),
         due_date: dueDate,
-        annual_cycle_year: annualCycleYear || course.annual_cycle_year || null,
+        annual_cycle_year: targetCycleYear,
         priority: settings.priority || 'high',
         status: 'assigned',
         required: settings.required !== false,

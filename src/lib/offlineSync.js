@@ -131,6 +131,14 @@ async function drainOnce(deps) {
         const visit = wasExisting
           ? existing[0]
           : await entities.Visit.create(visitPayload);
+        // NoteConversion only on first create of this visit (reuse path already
+        // had a successful prior drain that wrote it, or online create did). It
+        // sits adjacent to the create because any intervening network call that
+        // throws leaves the item queued with the Visit already present — the
+        // retry then sees wasExisting and would skip this write forever.
+        if (!wasExisting && __noteConversion && entities.NoteConversion?.create) {
+          await entities.NoteConversion.create(__noteConversion);
+        }
         // Guarantee the ComplianceAudit exists for this visit, keyed on visit_id
         // so a retried drain never double-creates it.
         if (__audit) {
@@ -145,11 +153,6 @@ async function drainOnce(deps) {
         }
         // Patient note history — stable entry_id makes append retries idempotent.
         await applyHistorySideEffect(functions, __history, visit.id);
-        // NoteConversion only on first create of this visit (reuse path already
-        // had a successful prior drain that wrote it, or online create did).
-        if (!wasExisting && __noteConversion && entities.NoteConversion?.create) {
-          await entities.NoteConversion.create(__noteConversion);
-        }
         await removeItem(item.id);
         synced += 1;
       } else if (item.action === 'UPDATE_VISIT') {

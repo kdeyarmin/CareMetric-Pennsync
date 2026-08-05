@@ -21,7 +21,10 @@ import { logger } from '@/lib/logger';
 import Dashboard from '@/pages/Dashboard';
 
 // Lazy factory per page file. Keys look like './pages/Patients.jsx'.
-const pageModules = import.meta.glob('./pages/*.jsx');
+// Spec/test files live alongside the pages and are never routed, but an
+// unfiltered glob still emits a chunk for each one — publishing test code and
+// fixtures to the asset host. Exclude them from the glob.
+const pageModules = import.meta.glob(['./pages/*.jsx', '!./pages/*.spec.jsx', '!./pages/*.test.jsx']);
 const factoryFor = (name) => pageModules[`./pages/${name}.jsx`];
 
 // NOTE: stale-chunk auto-recovery (the "Failed to fetch dynamically imported

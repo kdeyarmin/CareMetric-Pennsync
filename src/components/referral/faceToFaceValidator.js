@@ -63,13 +63,17 @@ export function parseCredential(str, { fromName = false } = {}) {
   // Strip periods so "M.D." / "D.O." / "PA-C." tokenize as md/do/pa-c — the
   // single most common physician signature format previously parsed as m + d.
   const undotted = raw.replace(/\.(?=[a-z-]|\s|$)/gi, "");
-  const rawTokens = undotted.split(/[^A-Za-z-]+/).filter(Boolean);
+  // Keep each token's real offset: indexOf(t) finds the FIRST substring
+  // occurrence anywhere, so "Papadopoulos, Pa" located "Pa" at offset 0 and the
+  // post-comma test failed, dropping a genuine credential to unknown.
+  const tokenMatches = [...undotted.matchAll(/[A-Za-z-]+/g)];
+  const rawTokens = tokenMatches.map((m) => m[0]);
   const credentialLike = (i) => {
     if (!fromName) return true;
     const t = rawTokens[i];
     if (t === t.toUpperCase()) return true; // written as an all-caps credential
     // ...or it follows a comma in the original ("Smith, Md")
-    const idx = undotted.indexOf(t);
+    const idx = tokenMatches[i].index;
     return idx > 0 && /,\s*$/.test(undotted.slice(0, idx));
   };
   for (let i = 0; i < rawTokens.length; i++) {

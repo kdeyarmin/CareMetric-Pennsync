@@ -23,14 +23,17 @@ function normalizeE164(raw) {
   const trimmed = String(raw).trim();
   const digits = trimmed.replace(/[^\d]/g, "");
 
+  // Already E.164-ish international form — decided FIRST. A 10-digit
+  // international number ("+49 89 123456") otherwise fell into the NANP branch
+  // below and was rewritten as an unrelated "+1..." US subscriber.
+  // Mirrors src/components/voice/phoneUtils.js.
+  if (trimmed.startsWith("+")) {
+    return digits.length >= 8 && digits.length <= 15 && digits[0] !== "0" ? `+${digits}` : null;
+  }
+
   // US-centric normalization (matches other phone utilities in the repo).
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-
-  // Already E.164-ish international form.
-  if (trimmed.startsWith("+") && digits.length >= 8 && digits.length <= 15 && digits[0] !== "0") {
-    return `+${digits}`;
-  }
 
   return null;
 }
@@ -55,8 +58,19 @@ Deno.serve(async (req) => {
       const rows = await base44.asServiceRole.entities.SmsConsent.list('-captured_at', 500);
       const list = Array.isArray(rows) ? rows : [];
 
+      // SmsConsent is an append-only ledger, so tallying every row counted a number
+      // that texted STOP then START as both an opt-out and an opt-in. Collapse to
+      // the newest row per number first (the list is already '-captured_at' ordered,
+      // so the first row seen for a number is its live state) — the same rule the
+      // send gates use.
       const totals = { opted_in: 0, opted_out: 0, unknown: 0 };
+      const latestByPhone = new Map();
       for (const r of list) {
+        const key = r?.phone_e164 || '';
+        if (!key || latestByPhone.has(key)) continue;
+        latestByPhone.set(key, r);
+      }
+      for (const r of latestByPhone.values()) {
         const s = r?.consent_status;
         if (s === 'opted_in') totals.opted_in += 1;
         else if (s === 'opted_out') totals.opted_out += 1;

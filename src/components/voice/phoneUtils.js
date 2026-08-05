@@ -10,12 +10,18 @@
 export function normalizeE164(raw) {
   if (!raw) return null;
   const digits = String(raw).replace(/[^\d]/g, "");
+  // Already-+ international: decided FIRST and never falling through to the
+  // NANP branches — a 10-digit international number (e.g. "+49 89 123456") was
+  // otherwise rewritten as "+1…", a valid but unrelated US subscriber, which
+  // also slipped past the +1-only international-blocking cost control.
+  // Bound to a valid E.164 length (8–15 digits) and reject a leading 0 (no
+  // country code starts with 0) so malformed values like
+  // "+1234567890123456789" or "+02155550100" aren't emitted as if valid.
+  if (String(raw).trim().startsWith("+")) {
+    return digits.length >= 8 && digits.length <= 15 && digits[0] !== "0" ? `+${digits}` : null;
+  }
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  // Already-+ international: bound to a valid E.164 length (8–15 digits) and
-  // reject a leading 0 (no country code starts with 0) so malformed values like
-  // "+1234567890123456789" or "+02155550100" aren't emitted as if valid.
-  if (String(raw).trim().startsWith("+") && digits.length >= 8 && digits.length <= 15 && digits[0] !== "0") return `+${digits}`;
   return null;
 }
 

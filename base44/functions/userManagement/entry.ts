@@ -577,7 +577,17 @@ async function updateUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   const updates = {};
   if (typeof full_name === 'string' && full_name.trim()) updates.full_name = full_name.trim();
   if (typeof phone === 'string') updates.phone = phone;
-  if (typeof credential_type === 'string') updates.credential_type = credential_type;
+  // User.credential_type is an enum ["RN","LPN"]. An empty string passed the old
+  // `typeof === 'string'` guard and was forwarded verbatim, so Base44 rejected or
+  // dropped it and the caller was told the update succeeded. Reject an
+  // out-of-enum value outright; treat "" as "field not supplied".
+  if (typeof credential_type === 'string' && credential_type.trim()) {
+    const credential = credential_type.trim();
+    if (!['RN', 'LPN'].includes(credential)) {
+      return Response.json({ error: 'credential_type must be RN or LPN.' }, { status: 400 });
+    }
+    updates.credential_type = credential;
+  }
   if (typeof role === 'string' && role) updates.role = role;
 
   if (Object.keys(updates).length === 0) {

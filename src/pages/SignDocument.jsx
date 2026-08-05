@@ -46,7 +46,7 @@ export default function SignDocument() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: signatureRecord } = useQuery({
+  const { data: signatureRecord, isLoading: recordLoading, isFetched: recordFetched } = useQuery({
     queryKey: ['signature-record', signatureId],
     queryFn: () => base44.entities.DocumentSignature.filter({ id: signatureId }),
     select: (data) => data[0],
@@ -55,7 +55,7 @@ export default function SignDocument() {
 
   const effectivePatientId = signatureRecord?.patient_id || urlPatientId || "";
 
-  const { data: patient } = useQuery({
+  const { data: patient, isLoading: patientLoading } = useQuery({
     queryKey: ['patient', effectivePatientId],
     queryFn: () => base44.entities.Patient.filter({ id: effectivePatientId }),
     select: (data) => data[0],
@@ -139,10 +139,31 @@ export default function SignDocument() {
     }
   };
 
+  // With no ?signature_id the record query is disabled and never resolves, and a
+  // deleted/stale id resolves to nothing — both used to fall into the loading
+  // card below and sit on "Loading document..." forever. Say so instead.
+  if (!signatureId || (recordFetched && !signatureRecord)) {
+    return (
+      <div className="p-8 max-w-4xl mx-auto">
+        <Card>
+          <CardContent className="p-12 text-center">
+            <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <p className="text-slate-600 mb-4">
+              {signatureId ? "This signature request no longer exists." : "No document selected."}
+            </p>
+            <Button onClick={() => navigate(createPageUrl("DocumentHub?tab=signatures"))}>
+              Go to Documents
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // Guard on `signers` too: the render and submit handlers call
   // signatureRecord.signers.map/.filter/.every, which throw if the entity has no
   // signers array. Treat a record without signers as not-yet-ready.
-  if (!signatureRecord || (effectivePatientId && !patient) || !Array.isArray(signatureRecord.signers)) {
+  if (recordLoading || (effectivePatientId && patientLoading) || !signatureRecord || !Array.isArray(signatureRecord.signers)) {
     return (
       <div className="p-8 max-w-4xl mx-auto">
         <Card>

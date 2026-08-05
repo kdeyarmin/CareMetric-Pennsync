@@ -60,6 +60,17 @@ jobs:
         run: pnpm run typecheck
         continue-on-error: true
 
+      # jsconfig.json sets checkJs:false, so the step above can only catch syntax
+      # and module-resolution errors — it cannot fail on a type error. This runs a
+      # real checkJs pass and filters to the error codes that indicate a genuine
+      # defect rather than a missing annotation (see tools-typecheck-signal.mjs).
+      # Informational for now: the current hits are largely react-query and jsPDF
+      # inference noise that has not been triaged one by one. Once that backlog is
+      # cleared, drop continue-on-error to make it a real gate.
+      - name: High-signal typecheck (informational)
+        run: pnpm run typecheck:signal
+        continue-on-error: true
+
       - name: Build
         run: pnpm run build
         env:

@@ -1952,8 +1952,22 @@ PREDICT:
             />
 
             {/* Re-analyze Button */}
+            {/* Clear everything derived from the previous run, not just the
+                navigation itself. financialPredictions and resolutionWorkflows
+                are keyed by DISCREPANCY INDEX, so after a re-analysis returned a
+                different discrepancy list the old dollar predictions rendered
+                under whatever discrepancy now occupied that index. The forecast
+                ref must reset too, or forecasts never regenerate. */}
             <Button
-              onClick={() => { setNavigation(null); setAutoAnalyzed(false); }}
+              onClick={() => {
+                setNavigation(null);
+                setAutoAnalyzed(false);
+                setFinancialPredictions({});
+                setResolutionWorkflows({});
+                setPatientForecasts(null);
+                setForecastError(null);
+                forecastAttemptedRef.current = false;
+              }}
               variant="outline"
               size="sm"
               className="w-full"

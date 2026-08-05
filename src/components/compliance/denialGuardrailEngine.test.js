@@ -247,3 +247,47 @@ test("a compliant hospice comfort-care note passes skilled need", () => {
   assert.equal(sn.status, GUARD_STATUS.PASS);
   assert.equal(res.blocking, false);
 });
+
+// ── post-term negation + medical-necessity scoping ──
+
+test("a skilled service negated AFTER the term is not a delivered service", () => {
+  // Regression: the negation guard only looked BEHIND the matched term, so
+  // "Wound care declined by patient" and "Skilled service — none" both counted
+  // as skilled care actually delivered and passed the guardrail.
+  for (const noteText of [
+    "Patient is homebound due to severe exertional dyspnea; requires a walker and one-person assist. Wound care declined by patient.",
+    "Patient is homebound due to severe exertional dyspnea; requires a walker and one-person assist. Skilled service — none.",
+  ]) {
+    const res = runDenialGuardrail({ noteText, visitType: "routine_visit", context: { primaryDiagnosis: "CHF" } });
+    assert.equal(find(res, CLUSTER.SKILLED_NEED).status, GUARD_STATUS.FAIL, noteText);
+  }
+});
+
+test("an affirmative service followed by an unrelated negative still counts", () => {
+  // The suffix guard must not swallow real documentation: "no complications"
+  // qualifies the care that WAS delivered, it does not deny it.
+  const res = runDenialGuardrail({
+    noteText:
+      "Patient is homebound due to severe exertional dyspnea; requires a rolling walker and one-person assist to ambulate. " +
+      "Skilled observation and assessment performed for management of CHF: no complications noted.",
+    visitType: "routine_visit",
+    context: { primaryDiagnosis: "CHF" },
+  });
+  assert.equal(find(res, CLUSTER.SKILLED_NEED).status, GUARD_STATUS.PASS);
+});
+
+test("medical necessity cannot PASS when no skilled service is documented", () => {
+  // Regression: with no skilled sentence the linkage check fell back to the
+  // WHOLE note, so the homebound sentence's own "due to CHF" supplied both the
+  // diagnosis and the linkage phrase and the cluster reported PASS — denial_risk
+  // 0, evidence null — for a note documenting no skilled service at all.
+  const res = runDenialGuardrail({
+    noteText:
+      "Patient is homebound due to CHF exacerbation; requires a rolling walker and one-person assist to ambulate and tolerates only a few steps before resting.",
+    visitType: "routine_visit",
+    context: { primaryDiagnosis: "CHF" },
+  });
+  const mn = find(res, CLUSTER.MEDICAL_NECESSITY);
+  assert.equal(mn.status, GUARD_STATUS.FAIL);
+  assert.match(mn.message, /no skilled service is documented/i);
+});

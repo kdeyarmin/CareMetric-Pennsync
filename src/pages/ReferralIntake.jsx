@@ -562,6 +562,9 @@ Actions available:
       const address = extractedData.demographics?.address;
       
       let existingPatient = null;
+      // The auto-create path also assigns existingPatient, so the summary below
+      // can't tell "created" from "matched" by inspecting it — track it here.
+      let createdNewPatient = false;
       const allPatients = await base44.entities.Patient.list('-created_date', 500);
       
       if (fullName || dob || phone) {
@@ -791,6 +794,7 @@ Actions available:
 
         updates.patient_id = newPatient.id;
         existingPatient = newPatient;
+        createdNewPatient = true;
       } else if (existingPatient) {
         // Pull MRN from existing patient and update with referral data
         const updateData = {
@@ -875,7 +879,10 @@ Actions available:
             title: step.action,
             description: `AI-suggested action based on referral analysis. Timeframe: ${step.timeframe}`,
             type: 'followup',
-            priority: step.priority === 'immediate' || step.priority === 'urgent' ? 'high' : 'medium',
+            // The filter above admits only immediate/urgent/high, so every step
+            // reaching here is high-priority work; the old ternary silently
+            // downgraded a 'high' step to 'medium'.
+            priority: 'high',
             status: 'pending',
             source: 'ai_generated',
             ai_reason: `Referral intake analysis identified this as ${step.priority} priority action`,
@@ -971,10 +978,13 @@ Actions available:
       
       // Show automation summary
       const automationSummary = [];
-      if (existingPatient && !updates.requires_manual_review) {
-        automationSummary.push(`✓ Patient matched: ${existingPatient.first_name} ${existingPatient.last_name}${updates.match_confidence ? ` (${Math.round(updates.match_confidence)}% confidence)` : ''}`);
-      } else if (!existingPatient && updates.patient_id) {
+      // Test creation FIRST: a freshly created chart also satisfies the match
+      // condition, so checking "matched" first told intake staff a chart was
+      // matched (sometimes with a confidence %) when one had just been created.
+      if (createdNewPatient) {
         automationSummary.push(`✓ New patient created`);
+      } else if (existingPatient && !updates.requires_manual_review) {
+        automationSummary.push(`✓ Patient matched: ${existingPatient.first_name} ${existingPatient.last_name}${updates.match_confidence ? ` (${Math.round(updates.match_confidence)}% confidence)` : ''}`);
       }
       if (createdTasksCount > 0) {
         automationSummary.push(`✓ ${createdTasksCount} automated task${createdTasksCount > 1 ? 's' : ''} created`);

@@ -316,7 +316,11 @@ export default function NotificationCenter({ currentUser, onClose }) {
                     </Button>
                   </Link>
                 )}
-                {!selectedNotification.is_read && (
+                {/* Synthetic rows are PatientAlerts, not Notifications — their
+                    id would be sent to Notification.update() and fail silently,
+                    and is_read is always false for them so this button would
+                    otherwise always render. */}
+                {!selectedNotification.is_read && !selectedNotification._synthetic && (
                   <Button
                     variant="outline"
                     onClick={() => {

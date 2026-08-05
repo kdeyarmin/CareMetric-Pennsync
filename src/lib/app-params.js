@@ -95,6 +95,18 @@ const trustedTokenReferrer = () => {
 	}
 };
 
+// `app_id` (and the `functions_version` that pins its backend code) are taken
+// verbatim from the URL and persisted forever, with no in-app reset. A single
+// crafted or stale `?app_id=bogus` link therefore bricks the device permanently
+// — every SDK call targets the wrong app and only clearing site data recovers.
+// When the build ships its own app id, only accept a URL value that agrees with
+// it; otherwise (no build-time id) keep the previous open behaviour.
+const envAppId = import.meta.env.VITE_BASE44_APP_ID;
+const acceptAppId = () => {
+	if (isNode || !envAppId) return true;
+	return new URLSearchParams(window.location.search).get('app_id')?.trim() === envAppId;
+};
+
 const getAppParamValue = (paramName, { defaultValue = undefined, removeFromUrl = false, sanitize = sanitizeValue, acceptUrlValue = undefined } = {}) => {
 	if (isNode) {
 		return sanitize(defaultValue);
@@ -143,9 +155,17 @@ const getAppParams = () => {
 			storage.removeItem('base44_access_token');
 			storage.removeItem('token');
 		}
+		// Self-heal a device an earlier bad `?app_id=` link already pinned to the
+		// wrong app: drop the stored id (and the functions version pinned with it)
+		// so the build-time default is used again on this load.
+		const storedAppId = storage.getItem('base44_app_id');
+		if (envAppId && storedAppId && storedAppId !== envAppId) {
+			storage.removeItem('base44_app_id');
+			storage.removeItem('base44_functions_version');
+		}
 	}
 
-	const appId = getAppParamValue('app_id', { defaultValue: import.meta.env.VITE_BASE44_APP_ID });
+	const appId = getAppParamValue('app_id', { defaultValue: envAppId, acceptUrlValue: acceptAppId });
 	const serverUrl = getAppParamValue('server_url', {
 		defaultValue: import.meta.env.VITE_BASE44_BACKEND_URL,
 		sanitize: sanitizeServerUrl
@@ -159,7 +179,7 @@ const getAppParams = () => {
 		appId,
 		serverUrl,
 		token: getAppParamValue('access_token', { removeFromUrl: true, acceptUrlValue: trustedTokenReferrer }),
-		functionsVersion: getAppParamValue('functions_version')
+		functionsVersion: getAppParamValue('functions_version', { acceptUrlValue: acceptAppId })
 	};
 };
 

@@ -31,7 +31,7 @@ export default function TrainingLibrary({ nurseEmail, moduleType, onStartModule 
 
   // Completion is course-based in the live system: a module is "completed" when
   // its course has a passing assignment/certificate for this nurse.
-  const { completedCourseIds, scoreByCourse } = useMyTrainingCompletions(nurseEmail);
+  const { completedCourseIds, inProgressCourseIds, scoreByCourse } = useMyTrainingCompletions(nurseEmail);
 
   const filteredModules = modules.filter(module => {
     const search = searchTerm.toLowerCase();
@@ -53,9 +53,12 @@ export default function TrainingLibrary({ nurseEmail, moduleType, onStartModule 
 
   const categories = [...new Set(modules.map(m => m.category))];
 
-  const getModuleStatus = (module) => (
-    module?.course_id && completedCourseIds.has(module.course_id) ? 'completed' : 'not_started'
-  );
+  const getModuleStatus = (module) => {
+    if (!module?.course_id) return 'not_started';
+    if (completedCourseIds.has(module.course_id)) return 'completed';
+    if (inProgressCourseIds.has(module.course_id)) return 'in_progress';
+    return 'not_started';
+  };
 
   const getContentTypeIcon = (contentType) => {
     switch (contentType) {

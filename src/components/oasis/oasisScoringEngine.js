@@ -9,7 +9,11 @@ const RULES = [
     domain: "Fall Prevention",
     triggers: [
       { questionId: "m1910", values: [1, 2], severity: "high" },
-      { questionId: "m1860", values: [2, 3, 4, 5], severity: "high" },  // ambulation impairment
+      // M1860 runs 0–6 (see oasisScales.js); 6 = "Bedfast, unable to ambulate or
+      // be up in a chair". Stopping at 5 meant the most impaired patients — the
+      // ones already at highest fall risk during transfers — produced no
+      // fall-prevention suggestion at all, while chairfast (5) did.
+      { questionId: "m1860", values: [2, 3, 4, 5, 6], severity: "high" },  // ambulation impairment
       // M1900 Prior Functioning: 1–3 are real impairment levels; 4 = "Unknown"
       // and must not trigger a fall-risk suggestion.
       { questionId: "m1900", values: [1, 2, 3], severity: "medium" },

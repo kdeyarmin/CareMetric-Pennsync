@@ -381,10 +381,11 @@ export default function PhoneProvisioningPanel() {
           <Alert className="bg-slate-50 border-slate-200">
             <Info className="w-4 h-4 text-slate-600" />
             <AlertDescription className="text-slate-700 text-xs">
-              <strong>Webhooks failing signature checks?</strong> Set the function secret{" "}
-              <code className="bg-white border border-slate-200 rounded px-1">TELNYX_WEBHOOK_DEBUG=1</code>{" "}
-              in the Base44 dashboard to log which signature header names Telnyx sends and whether each verifies
-              (header <em>names</em> only — never secret values). Check the function logs, then turn it off.
+              <strong>Webhooks failing signature checks?</strong> Confirm the <strong>public key</strong> in{" "}
+              Admin › Telnyx matches the one on your Telnyx portal's webhook settings — inbound events are
+              rejected fail-closed when it is missing or stale, which silently drops delivery receipts,
+              patient replies and STOP opt-outs. Telnyx credentials are read from that panel only; setting
+              them as Base44 dashboard environment variables has no effect.
             </AlertDescription>
           </Alert>
         </CardContent>

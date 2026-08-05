@@ -56,7 +56,11 @@ export default function RealTimeComplianceDashboard() {
   });
 
   const { data: oasisUploads = [] } = useQuery({
-    queryKey: ['oasisUploads'],
+    // Key encodes source and limit: a bare ['oasisUploads'] is shared with fetches that
+    // use a different limit and a field-stripping backend function, so whichever mounted
+    // first inside staleTime served its payload here (and vice versa). The 'oasisUploads'
+    // prefix is kept so existing invalidateQueries calls still match.
+    queryKey: ['oasisUploads', 'list', 500],
     queryFn: () => base44.entities.OASISUpload.list('-created_date', 500),
   });
 

@@ -198,7 +198,13 @@ export default function OASISAnalyzer() {
 
   // Fetch saved OASIS uploads
   const { data: savedOASISUploads = [] } = useQuery({
-    queryKey: ['oasisUploads'],
+    // Source + limit in the key. This payload is NOT interchangeable with the
+    // direct OASISUpload.list() fetches other dashboards make — it is capped at
+    // 50 rows and has the financial fields stripped — but they all shared the
+    // bare ['oasisUploads'] key, so whichever landed first was served to the
+    // rest. The invalidate below stays broad on purpose: react-query matches
+    // keys by prefix, so a new upload still refreshes every one of these views.
+    queryKey: ['oasisUploads', 'listFn', 50],
     // Routed through listOASISUploads so financial fields (estimated_payment,
     // revenue_*) are stripped server-side for non-financial users.
     queryFn: async () => (await base44.functions.invoke('listOASISUploads', { sort: '-created_date', limit: 50 }))?.data?.uploads || [],
@@ -413,6 +419,17 @@ export default function OASISAnalyzer() {
       const cleanPdgmData = sanitizeData(pdgmData);
       const cleanAnalysisResults = sanitizeData(analysisResults);
 
+      // Persist the priced case-mix weight and clinical group alongside the
+      // extraction. calculatePDGM derives both, but nothing ever stored them, so
+      // PDGMTrendDashboard's "Avg Case Mix" read undefined (always 0.0000) and its
+      // clinical-group filter matched no rows at all.
+      if (Number.isFinite(revenueData?.original?.caseMixWeight)) {
+        cleanPdgmData.case_mix_weight = revenueData.original.caseMixWeight;
+      }
+      if (revenueData?.original?.clinicalGroup) {
+        cleanPdgmData.clinical_group = revenueData.original.clinicalGroup;
+      }
+
       const savedOASIS = await saveOASISMutation.mutateAsync({
         patient_id: patientIdToUse || null,
         patient_name: patientFullName,
@@ -617,10 +634,18 @@ export default function OASISAnalyzer() {
             m1306_pressure_ulcer: { type: "string", description: "M1306 pressure ulcer present 0-1" },
             m1307_pressure_ulcer_stage: { type: "string", description: "M1307 oldest stage" },
             m1311_pressure_ulcer_count: { type: "string", description: "M1311 number of ulcers" },
-            m1322_stasis_ulcer: { type: "string", description: "M1322 stasis ulcer present" },
-            m1324_stasis_ulcer_status: { type: "string", description: "M1324 status" },
-            m1330_surgical_wound: { type: "string", description: "M1330 surgical wound present" },
-            m1340_surgical_wound_status: { type: "string", description: "M1340 status" },
+            // These were off by one OASIS item, so the model was asked to read
+            // stasis ulcer out of M1322 (Stage 1 pressure INJURY count) and
+            // surgical wound out of M1330 (which is the stasis-ulcer item). The
+            // resulting clinical_items booleans fed the PDGM comorbidity
+            // reconciler as documentation of the wrong wounds entirely.
+            // M1330 = stasis ulcer present, M1334 = its status,
+            // M1340 = surgical wound present (its value encodes infection —
+            // matches oasisQuestions.jsx), M1342 = its status.
+            m1330_stasis_ulcer: { type: "string", description: "M1330 stasis ulcer present" },
+            m1334_stasis_ulcer_status: { type: "string", description: "M1334 status of most problematic stasis ulcer" },
+            m1340_surgical_wound: { type: "string", description: "M1340 surgical wound present (0=no, 1=yes not infected, 2=yes infected)" },
+            m1342_surgical_wound_status: { type: "string", description: "M1342 status of most problematic surgical wound" },
 
             // Cognitive and behavioral
             m1700_cognitive: { type: "string", description: "M1700 cognitive functioning" },
@@ -861,10 +886,10 @@ Return JSON:
       M1306 Pressure Ulcer Present: ${output.m1306_pressure_ulcer || '?'}
       M1307 Pressure Ulcer Stage: ${output.m1307_pressure_ulcer_stage || 'N/A'}
       M1311 Pressure Ulcer Count: ${output.m1311_pressure_ulcer_count || 'N/A'}
-      M1322 Stasis Ulcer: ${output.m1322_stasis_ulcer || '?'}
-      M1324 Stasis Ulcer Status: ${output.m1324_stasis_ulcer_status || 'N/A'}
-      M1330 Surgical Wound: ${output.m1330_surgical_wound || '?'}
-      M1340 Surgical Wound Status: ${output.m1340_surgical_wound_status || 'N/A'}
+      M1330 Stasis Ulcer: ${output.m1330_stasis_ulcer || '?'}
+      M1334 Stasis Ulcer Status: ${output.m1334_stasis_ulcer_status || 'N/A'}
+      M1340 Surgical Wound: ${output.m1340_surgical_wound || '?'}
+      M1342 Surgical Wound Status: ${output.m1342_surgical_wound_status || 'N/A'}
 
       COGNITIVE/BEHAVIORAL:
       M1700 Cognitive Functioning: ${output.m1700_cognitive || '?'}
@@ -908,10 +933,15 @@ Return JSON:
           const n = parseInt(s, 10);
           return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
         }
-        const matches = [...s.matchAll(/\b([0-6])\b/g)];
+        // Match any isolated run of digits, then range-check against `max`.
+        // A hardcoded [0-6] class silently dropped every legitimate value above
+        // 6 — an M1311 ulcer count of 7-9, and any medication count over 6 (the
+        // polypharmacy cases that matter most), both came back null.
+        // \b still prevents "M1830" from being read as 1830.
+        const matches = [...s.matchAll(/\b(\d{1,3})\b/g)];
         if (matches.length === 0) return null;
         const n = parseInt(matches[matches.length - 1][1], 10);
-        return Number.isFinite(n) && n <= max ? n : null;
+        return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
       };
 
       // M1000 → community vs institutional (mirrors calculatePDGM validation).
@@ -920,16 +950,18 @@ Return JSON:
       // Strip a leading zero first so a zero-padded code ("02") still matches
       // the single-digit pattern. Mirrors calculatePDGM's validateAdmissionSource.
       const m1000Code = (m1000Raw.replace(/^0+(?=\d)/, '').match(/\b([1-7])\b/) || [])[1] || '';
+      // An explicit M1000 code decides on its own; the keyword scans are only a
+      // fallback for values that carry no code. OR-ing the code with the
+      // institutional keywords made the community branch unreachable for CMS's
+      // own response-1 wording ("Community (no inpatient facility discharge
+      // within the past 14 days)"), storing a community admission as
+      // institutional. Mirrors calculatePDGM's validateAdmissionSource.
       let admissionSource = 'community';
-      if (
-        ['2', '3', '4', '5', '6'].includes(m1000Code) ||
-        /hospital|snf|skilled nursing|inpatient|acute|rehab|ltch|irf|psych/.test(m1000Lower)
-      ) {
+      if (m1000Code) {
+        admissionSource = ['2', '3', '4', '5', '6'].includes(m1000Code) ? 'institutional' : 'community';
+      } else if (/hospital|snf|skilled nursing|inpatient|acute|rehab|ltch|irf|psych/.test(m1000Lower)) {
         admissionSource = 'institutional';
-      } else if (
-        m1000Code === '1' ||
-        /community|home|physician|clinic|outpatient/.test(m1000Lower)
-      ) {
+      } else if (/community|home|physician|clinic|outpatient/.test(m1000Lower)) {
         admissionSource = 'community';
       }
 
@@ -1064,9 +1096,12 @@ Return JSON:
           pressure_ulcer_present: output?.m1306_pressure_ulcer === '1' || String(output?.m1306_pressure_ulcer || '').toLowerCase().includes('yes'),
           pressure_ulcer_stage: output?.m1307_pressure_ulcer_stage || null,
           pressure_ulcer_count: parseScore(output?.m1311_pressure_ulcer_count, 9),
-          stasis_ulcer: output?.m1322_stasis_ulcer === '1' || String(output?.m1322_stasis_ulcer || '').toLowerCase().includes('yes'),
-          surgical_wound: output?.m1330_surgical_wound === '1' || String(output?.m1330_surgical_wound || '').toLowerCase().includes('yes'),
-          surgical_wound_status: output?.m1340_surgical_wound_status || null
+          stasis_ulcer: output?.m1330_stasis_ulcer === '1' || String(output?.m1330_stasis_ulcer || '').toLowerCase().includes('yes'),
+          // M1340 is 0=no / 1=yes not infected / 2=yes infected, so any non-zero
+          // response means a surgical wound is present.
+          surgical_wound: ['1', '2'].includes(String(output?.m1340_surgical_wound || '').trim())
+            || String(output?.m1340_surgical_wound || '').toLowerCase().includes('yes'),
+          surgical_wound_status: output?.m1342_surgical_wound_status || null
         },
         cognitive_status: {
           cognitive_functioning: output?.m1700_cognitive || null,
@@ -1083,7 +1118,9 @@ Return JSON:
           fall_risk: output?.fall_risk_assessment || null,
           hospitalization_risk: output?.hospitalization_risk || null,
           high_risk_medications: output?.high_risk_medications || null,
-          medication_count: parseScore(output?.medication_count)
+          // Not an OASIS 0-6 item: a medication count routinely exceeds 6, and
+          // the default max clamped every polypharmacy patient back to null.
+          medication_count: parseScore(output?.medication_count, 99)
         },
         homebound_reason: output?.homebound_reason || null,
         patient_info: { 
@@ -1746,8 +1783,13 @@ Return scores (0-100) and top 3-5 issues in each category.`,
                     </p>
                   </div>
                 </div>
+                {/* Must be wrapped: passing the handler directly binds React's click
+                    event to the `autoPatientId` parameter, and since the event object
+                    is truthy it won through `autoPatientId || selectedPatientId` and
+                    was written straight into the record's patient_id — orphaning every
+                    saved assessment from the chart the UI said it would link to. */}
                 <Button
-                  onClick={handleSaveToPatient}
+                  onClick={() => handleSaveToPatient()}
                   disabled={isSaving || savedToPatient || !uploadedFileUrl}
                 >
                   {isSaving ? (

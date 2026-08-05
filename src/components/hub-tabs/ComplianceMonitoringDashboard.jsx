@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -157,7 +157,10 @@ export default function ComplianceMonitoringDashboard() {
     const recentVisits = visits.filter(v => {
       if (!v.visit_date) return false;
       const visitDate = parseISO(v.visit_date);
-      return differenceInDays(today, visitDate) <= 7;
+      // Without the lower bound, future-dated scheduled visits (which have no notes
+      // yet) counted as "recent" and were flagged as incomplete documentation.
+      const daysAgo = differenceInDays(today, visitDate);
+      return daysAgo >= 0 && daysAgo <= 7;
     });
 
     const userVisitCounts = {};
@@ -208,6 +211,15 @@ export default function ComplianceMonitoringDashboard() {
   const { filteredIssues, groupedByUser, criticalCount, highCount, affectedUsers, overdueTraining, expiringCreds } =
     deriveComplianceIssueStats(complianceIssues, { searchTerm, categoryFilter, severityFilter });
   const incompleteDoc = complianceIssues.filter(i => i.type === 'incomplete_documentation').length;
+
+  // Prune selections that fall out of view when filters change, so a stale
+  // selected email can't reach handleNotifySelected with no matching issue data.
+  useEffect(() => {
+    setSelectedUsers(prev => {
+      const next = new Set(Array.from(prev).filter(email => groupedByUser[email]));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [groupedByUser]);
 
   const handleToggleUser = (userId) => {
     const newSelected = new Set(selectedUsers);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -108,6 +108,16 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
     return false;
   }, []);
 
+  // Keep the latest onPathwaysTriggered in a ref so checkPathwayTriggers does not
+  // depend on its identity. Call sites pass an inline arrow that stores the
+  // freshly-built `triggered` array in parent state (see OASISAnalyzer.jsx), so
+  // depending on the prop directly rebuilt the callback on every render, re-ran
+  // the effect below, and handed the parent a new array identity each time —
+  // React never bails out on a new reference, so it looped until "Maximum update
+  // depth exceeded".
+  const onPathwaysTriggeredRef = useRef(onPathwaysTriggered);
+  useEffect(() => { onPathwaysTriggeredRef.current = onPathwaysTriggered; }, [onPathwaysTriggered]);
+
   const checkPathwayTriggers = useCallback(() => {
     const triggered = [];
 
@@ -128,10 +138,8 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
     setTriggeredPathways(triggered);
 
     // Notify parent component
-    if (onPathwaysTriggered) {
-      onPathwaysTriggered(triggered);
-    }
-  }, [pathways, pdgmData, onPathwaysTriggered, evaluateCondition]);
+    onPathwaysTriggeredRef.current?.(triggered);
+  }, [pathways, pdgmData, evaluateCondition]);
 
   // Check for pathway triggers when data changes
   useEffect(() => {

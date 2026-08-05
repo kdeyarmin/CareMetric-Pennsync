@@ -3,6 +3,7 @@ import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   TrendingUp,
@@ -205,6 +206,16 @@ Return detailed JSON with exact dollar amounts:`,
               <Loader2 className="w-6 h-6 animate-spin text-indigo-600 mx-auto mb-2" />
               <p className="text-xs text-slate-600">Analyzing case-mix components...</p>
             </div>
+          ) : ai.error ? (
+            // The effect only re-fires when pdgmData/navigationData change, so after a failed
+            // call nothing retries on its own - showing "Loading" forever. Surface the failure
+            // and give the clinician a way to start a fresh call.
+            <>
+              <p className="text-sm text-red-600 text-center mb-2">Case-mix analysis failed to load.</p>
+              <Button variant="outline" size="sm" className="mx-auto block" onClick={performCaseMixAnalysis}>
+                Retry
+              </Button>
+            </>
           ) : (
             <p className="text-sm text-slate-600 text-center">Loading case-mix analysis...</p>
           )}
@@ -341,7 +352,9 @@ Return detailed JSON with exact dollar amounts:`,
               <span className="font-semibold text-green-900">Component Optimization Opportunities</span>
             </div>
             <div className="space-y-3">
-              {caseMixAnalysis.optimization_opportunities
+              {/* Copy before sorting - .sort() mutates in place, and this array lives in state,
+                  so sorting the original would reorder state during render. */}
+              {[...caseMixAnalysis.optimization_opportunities]
                 .sort((a, b) => b.dollar_increase - a.dollar_increase)
                 .map((opp, idx) => (
                   <div key={idx} className="bg-white p-3 rounded border-2 border-green-200">

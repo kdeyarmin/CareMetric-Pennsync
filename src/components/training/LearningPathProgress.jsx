@@ -36,7 +36,10 @@ export default function LearningPathProgress({ planId, userId }) {
     });
 
     const { data: certificates = [] } = useQuery({
-        queryKey: ['plan-certificates', userId],
+        // plan.year is a filter input, so it must be part of the key — without it
+        // two plan cards for the same user with different years shared one cache
+        // entry and showed the same certificate count.
+        queryKey: ['plan-certificates', userId, plan?.year],
         queryFn: () => base44.entities.TrainingCertificate.filter({
             user_id: userId,
             annual_cycle_year: plan?.year

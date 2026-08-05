@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useLocation, Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,10 @@ import PDGMImpactAnalyzer from "@/components/oasis/PDGMImpactAnalyzer";
 export default function OASISRevenueAnalysis() {
   const location = useLocation();
   const { analysisResults, pdgmData, _uploadId } = location.state || {};
+  // EnhancedPDGMCaseMixAnalyzer bails out without navigationData, which only the
+  // navigator produces. Without this the case-mix card sat on
+  // "Loading case-mix analysis..." forever. Mirrors OASISAnalyzer.jsx.
+  const [navigationData, setNavigationData] = useState(null);
 
   if (!analysisResults || !pdgmData) {
     return (
@@ -43,13 +48,16 @@ export default function OASISRevenueAnalysis() {
       <AutomatedPDGMNavigator
         analysisResults={analysisResults}
         pdgmData={pdgmData}
+        onNavigationComplete={setNavigationData}
       />
 
       {/* Case Mix Analyzer */}
-      <EnhancedPDGMCaseMixAnalyzer
-        analysisResults={analysisResults}
-        pdgmData={pdgmData}
-      />
+      {navigationData && (
+        <EnhancedPDGMCaseMixAnalyzer
+          pdgmData={pdgmData}
+          navigationData={navigationData}
+        />
+      )}
 
       {/* Impact Analyzer */}
       <PDGMImpactAnalyzer

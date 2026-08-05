@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { safePercent } from "@/lib/safePercent";
+import { getCoursePlayerQuestions } from "@/functions/getCoursePlayerQuestions";
+import { gradeMemoryBooster } from "@/functions/gradeMemoryBooster";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,29 +32,32 @@ const sample = (arr, n) => {
   return copy.slice(0, n);
 };
 
-function MicroQuiz({ questions, onComplete, submitting }) {
+function MicroQuiz({ questions, courseId, onComplete, submitting }) {
   const [answers, setAnswers] = useState({});
   const [graded, setGraded] = useState(null);
+  const [grading, setGrading] = useState(false);
 
-  const isCorrect = (q, val) => {
-    // An unanswered question is never correct. Without this guard an unanswerable
-    // question type (scenario/short-answer, with correct_answer_json {}) would
-    // grade String(undefined) === String(undefined) → true and inflate the score.
-    if (val == null || (Array.isArray(val) && val.length === 0)) return false;
-    const correct = q.correct_answer_json?.answer;
-    if (Array.isArray(correct)) {
-      const set = new Set((val || []).map(String));
-      return correct.length === set.size && correct.every((c) => set.has(String(c)));
+  // Grading is server-side: these questions arrive without correct_answer_json or
+  // rationale, so the per-question verdict and explanation come back with the score.
+  const submit = async () => {
+    setGrading(true);
+    try {
+      const res = await gradeMemoryBooster({
+        course_id: courseId,
+        responses: questions.map((q) => ({ question_id: q.id, answer: answers[q.id] })),
+      });
+      const data = res?.data;
+      if (!data?.success) throw new Error(data?.error || 'Grading failed');
+      const byId = {};
+      for (const r of data.results || []) byId[r.question_id] = r;
+      setGraded({ score: data.score, correctCount: data.correctCount, total: data.total, byId });
+      onComplete(data.score);
+    } catch (err) {
+      toast.error('Could not grade this review. Please try again.');
+      console.error(err);
+    } finally {
+      setGrading(false);
     }
-    return String(val) === String(correct);
-  };
-
-  const submit = () => {
-    let correctCount = 0;
-    questions.forEach((q) => { if (isCorrect(q, answers[q.id])) correctCount++; });
-    const score = safePercent(correctCount, questions.length);
-    setGraded({ score, correctCount });
-    onComplete(score);
   };
 
   const toggleMulti = (qid, value) => {
@@ -71,7 +75,8 @@ function MicroQuiz({ questions, onComplete, submitting }) {
         const options = q.type === "true_false"
           ? [{ value: true, label: "True" }, { value: false, label: "False" }]
           : (q.options_json || []);
-        const correct = graded && isCorrect(q, answers[q.id]);
+        const result = graded?.byId?.[q.id];
+        const correct = !!result?.correct;
         return (
           <div key={q.id} className="rounded-xl border p-4">
             <div className="flex items-start justify-between gap-2">
@@ -96,18 +101,18 @@ function MicroQuiz({ questions, onComplete, submitting }) {
                 );
               })}
             </div>
-            {graded && q.rationale && <p className="mt-2 text-xs text-slate-500">{q.rationale}</p>}
+            {graded && result?.rationale && <p className="mt-2 text-xs text-slate-500">{result.rationale}</p>}
           </div>
         );
       })}
       {graded ? (
         <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
           <Sparkles className="w-4 h-4 text-indigo-600" />
-          You scored {graded.score}% ({graded.correctCount}/{questions.length}). Nice refresher!
+          You scored {graded.score}% ({graded.correctCount}/{graded.total}). Nice refresher!
         </div>
       ) : (
-        <Button onClick={submit} disabled={submitting}>
-          {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+        <Button onClick={submit} disabled={submitting || grading}>
+          {(submitting || grading) ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
           Submit review
         </Button>
       )}
@@ -168,7 +173,11 @@ export default function LearnerMemoryBoosters() {
     setBoosterQuestions([]);
     setLoadingQuestions(true);
     try {
-      const qs = await base44.entities.TrainingQuestion.filter({ course_id: courseId, active: true }, "order_index", 50);
+      // Read through the server so the answer key never reaches the browser — a
+      // direct TrainingQuestion fetch shipped correct_answer_json and rationale to
+      // the learner, and these are the same rows used for graded attempts.
+      const res = await getCoursePlayerQuestions({ course_id: courseId });
+      const qs = res?.data?.questions || [];
       // MicroQuiz can only render/grade these types. Scenario/short-answer/matching
       // questions have no answerable inputs here, so exclude them before sampling.
       const renderable = qs.filter((q) => ["mcq", "multi_select", "true_false"].includes(q.type));
@@ -241,6 +250,7 @@ export default function LearnerMemoryBoosters() {
                 ) : (
                   <MicroQuiz
                     questions={boosterQuestions}
+                    courseId={item.assignment.course_id}
                     submitting={submitting}
                     onComplete={(score) => completeBooster(item, score)}
                   />

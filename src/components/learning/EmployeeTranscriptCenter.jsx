@@ -19,7 +19,9 @@ export default function EmployeeTranscriptCenter() {
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const { data: certificates = [], isLoading } = useQuery({
     queryKey: ["employee-transcript-certificates", currentUser?.email],
-    queryFn: () => base44.entities.TrainingCertificate.filter({ user_id: currentUser?.email }, '-issued_at', 300),
+    // Exclude revoked certificates — RLS still returns the learner's own revoked
+    // rows, so without this the transcript listed them and offered Print/Download.
+    queryFn: () => base44.entities.TrainingCertificate.filter({ user_id: currentUser?.email, revoked: false }, '-issued_at', 300),
     enabled: !!currentUser?.email,
     initialData: []
   });

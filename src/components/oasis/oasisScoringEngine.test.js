@@ -15,6 +15,18 @@ test("no matching answers → no suggestions", () => {
   assert.deepEqual(evaluateOASIS({ m1910: 0, m1860: 0 }), []);
 });
 
+test("bedfast ambulation (m1860=6) still triggers fall prevention", () => {
+  // M1860 runs 0–6; 6 = "Bedfast, unable to ambulate or be up in a chair". The
+  // trigger list stopped at 5 (chairfast), so the most impaired patients — the
+  // highest transfer-fall risk — silently produced no suggestion.
+  for (const amb of [2, 3, 4, 5, 6]) {
+    const results = evaluateOASIS({ m1860: amb });
+    const fall = results.find((r) => r.domain === "Fall Prevention");
+    assert.ok(fall, `m1860=${amb} should trigger Fall Prevention`);
+    assert.equal(fall.severity, "high");
+  }
+});
+
 test("m1020 primary diagnosis routes to the correct domain (1=Diabetes, 2=CHF)", () => {
   // 1 = Diabetes Mellitus → Diabetes Management
   const dm = evaluateOASIS({ m1020: 1 });

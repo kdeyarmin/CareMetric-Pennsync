@@ -60,12 +60,29 @@ const SN_SPECIFIC_COMFORT = new RegExp(`${SN_SPECIFIC.source}|${SN_COMFORT.sourc
 // boundaries (; , :) reset the window.
 const SN_NEGATED_PREFIX = /\b(?:no|not|without|denies|declined?s?|refused?s?|unable to|deferred|held)\s+(?:\w+\s+){0,4}$/i;
 
+// Post-term negation, mirroring presenceDetection.js. Looking only BEHIND the
+// hit missed the two commonest ways a service is recorded as NOT delivered:
+//   standalone  "Wound care: none", "Skilled service — declined"
+//   verb form   "Wound care declined by patient", "Teaching deferred"
+// Both used to count as a delivered skilled service and PASS the guardrail.
+// The standalone form requires the negative to end the sentence, so
+// "Wound care: no complications noted" — which documents care that WAS given —
+// is untouched.
+const SN_STANDALONE_DENIAL =
+  /[:\-–—]+\s*(?:no|none|negative|nil|n\/?a|denied|declined|refused|deferred|held)\s*$/i;
+const SN_NEGATED_VERB_SUFFIX =
+  /^\s+(?:\w+\s+){0,2}(?:declines?|declined|refuses?|refused|defers?|deferred|withheld|held|not\s+(?:done|performed|provided|completed|indicated|applicable))\b/i;
+
 function unnegatedSentences(text, re) {
   return sentencesWith(text, re).filter((s) => {
     const m = re.exec(s);
     if (!m) return false;
+    if (SN_STANDALONE_DENIAL.test(s)) return false;
     const boundary = Math.max(s.lastIndexOf(";", m.index), s.lastIndexOf(",", m.index), s.lastIndexOf(":", m.index));
-    return !SN_NEGATED_PREFIX.test(s.slice(boundary + 1, m.index));
+    if (SN_NEGATED_PREFIX.test(s.slice(boundary + 1, m.index))) return false;
+    const tail = s.slice(m.index + m[0].length);
+    const clauseEnd = tail.search(/[;,]/);
+    return !SN_NEGATED_VERB_SUFFIX.test(clauseEnd === -1 ? tail : tail.slice(0, clauseEnd));
   });
 }
 
@@ -206,7 +223,22 @@ function evaluateMedicalNecessity(text, cop, primaryDiagnosis, specificRe = SN_S
   // link must tie to the skilled service, not to an unrelated clause (e.g. the
   // homebound "due to weakness" reason).
   const skilledSentences = unnegatedSentences(text, specificRe);
-  const scope = skilledSentences.length ? skilledSentences.join(" ") : text;
+  // No skilled service documented ⇒ there is nothing to link. Falling back to
+  // the WHOLE note let the homebound sentence's own "due to <diagnosis>" supply
+  // both signals, so the cluster reported PASS with denial_risk 0 and a null
+  // evidence line for a note documenting no skilled service at all — the exact
+  // scoping error the comment above warns about, reintroduced by the fallback.
+  if (!skilledSentences.length) {
+    return finding(CLUSTER.MEDICAL_NECESSITY, GUARD_STATUS.FAIL, {
+      severity: "high",
+      denial_risk: 20,
+      cop_reference: cop,
+      message: "Medical-necessity linkage cannot be established — no skilled service is documented to tie to a diagnosis.",
+      remediation: "Document the skilled service delivered, then tie it to the diagnosis (e.g. 'skilled assessment for management of CHF exacerbation').",
+      evidence: null,
+    });
+  }
+  const scope = skilledSentences.join(" ");
   // Word-boundary match on a meaningful diagnosis token — a raw substring let
   // "CA of prostate" match inside "CAtheter" and pass medical necessity for a
   // note that never references the diagnosis. Tokens under 3 chars and glue

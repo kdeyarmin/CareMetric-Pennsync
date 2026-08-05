@@ -108,11 +108,15 @@ export default function StructuredNoteDrafter({ onDraftReady }) {
     // regex extractVitals uses) so a documented kg reading is normalized to lbs —
     // and so a stray "kg" elsewhere in the draft can't rescale a pounds value.
     // Falls back to the grid weight (already in lbs) when the text has no weight.
-    const wtMatch = draft.match(/(?:wt|weight)\s*:?\s*(\d{2,3}(?:\.\d)?)\s*(lbs?|kg)?/i);
+    // Leading \b so "underweight 15%" can't read as weight 15, trailing (?!\d) so
+    // "weight 1800" is dropped rather than truncated to 180, and the kg spelling
+    // variants nurses actually write are accepted — without them "80 kilograms"
+    // captured no unit and was emitted as 80 lbs.
+    const wtMatch = draft.match(/\b(?:wt|weight)\s*:?\s*(\d{2,3}(?:\.\d)?)(?!\d)\s*(lbs?|pounds?|kgs?|kilograms?)?\b/i);
     let weight = gridWeight;
     if (wtMatch) {
       weight = parseFloat(wtMatch[1]);
-      if (/^kg$/i.test(wtMatch[2] || "")) weight = Math.round(weight * 2.20462 * 10) / 10;
+      if (/^k/i.test(wtMatch[2] || "")) weight = Math.round(weight * 2.20462 * 10) / 10;
     }
     if (weight) handoff = `${handoff}\nWeight: ${weight} lbs.`.trim();
     onDraftReady(handoff, visitType, structuredVitals);

@@ -594,7 +594,16 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
 
         // Check for diagnosis-related accuracy issues
         if (issue.item?.toLowerCase().includes('diagnosis') || issue.recommendation?.toLowerCase().includes('diagnosis')) {
-          const diagMatch = issue.recommendation?.match(/add|include|document[:\s]+([^.]+)/i);
+          // Group the alternation: `/add|include|document[:\s]+(...)/` binds the
+          // capture to the `document` branch alone, so recommendations phrased
+          // "Add ..." / "Include ..." matched but left group 1 undefined and the
+          // diagnosis was silently dropped from the corrected scenario.
+          // `\.(?=\d)` keeps ICD-10 decimals: a bare [^.]+ stopped at the first
+          // period, so "Add E11.22 diabetic CKD" pushed only "E11" into the
+          // corrected scenario — dropping the specific high-value comorbidity
+          // that the correction existed to capture. A period followed by a digit
+          // is part of the code; any other period still ends the capture.
+          const diagMatch = issue.recommendation?.match(/(?:add|include|document)[:\s]+((?:[^.;\n]|\.(?=\d))+)/i);
           if (diagMatch && diagMatch[1]) {
             corrected.comorbidities.push(diagMatch[1].trim());
             appliedCorrections.push({ type: 'accuracy_diagnosis', item: diagMatch[1].trim() });

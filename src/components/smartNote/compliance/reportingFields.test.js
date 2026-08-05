@@ -136,7 +136,7 @@ test("buildAuditFields derives score/status/issues and escalates on critical", (
   assert.equal(out.compliance_score, 95);
   assert.equal(out.status, "critical"); // 95 would be "passed" but a critical conflict escalates
   assert.equal(out.issues.length, 3);
-  assert.ok(!("acknowledgment" in out));
+  assert.equal(out.acknowledgment, null);
 });
 
 test("buildAuditFields appends denial issues and escalates on a critical denial finding", () => {
@@ -167,9 +167,12 @@ test("buildAuditFields always emits rule_versions so a re-save clears a stale st
   assert.deepEqual(buildAuditFields({ coverageScore: 90, appliedRules: applied }).rule_versions, applied);
 });
 
-test("buildAuditFields includes the acknowledgment trail only when provided", () => {
+test("buildAuditFields always emits the acknowledgment trail so a re-save clears a stale one", () => {
   const ack = { acknowledged_by: "n@x.io", acknowledged_at: "2026-06-20T00:00:00Z", justification: "new order", finding_ids: ["allergy_aspirin"] };
   assert.deepEqual(buildAuditFields({ coverageScore: 90, chartFindings: findings, acknowledgment: ack }).acknowledgment, ack);
+  // Absent acknowledgment → null (not omitted), so a partial ComplianceAudit
+  // update overwrites a prior override trail instead of leaving it in place.
+  assert.equal(buildAuditFields({ coverageScore: 90 }).acknowledgment, null);
 });
 
 test("isSystemTag / hasSemanticTags distinguish namespaced tags from clinical tags", () => {

@@ -10,6 +10,7 @@ import { FileText, Search, Download, CheckCircle, XCircle, Clock, Send, AlertCir
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { retryFailedFax } from "@/functions/retryFailedFax";
+import { faxRetryConfig } from "@/components/fax/faxRetry";
 
 export default function EnhancedFaxHistory({ patientId }) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -23,6 +24,16 @@ export default function EnhancedFaxHistory({ patientId }) {
     initialData: [],
     refetchInterval: 15000
   });
+
+  // Gate the manual Retry button on the admin-configured budget the backend
+  // actually enforces. A hardcoded 3 hid the button while attempts remained
+  // (max_retries > 3) or offered it into a guaranteed HTTP 400 (max_retries < 3).
+  const { data: retryConfigRows = [] } = useQuery({
+    queryKey: ['fax-retry-config'],
+    queryFn: () => base44.entities.FaxRetryConfig.list('-created_date', 1),
+    initialData: []
+  });
+  const maxRetries = faxRetryConfig(retryConfigRows[0]).maxRetries;
 
   const retryMutation = useMutation({
     mutationFn: (faxLogId) => retryFailedFax({ fax_log_id: faxLogId }),
@@ -178,7 +189,7 @@ export default function EnhancedFaxHistory({ patientId }) {
                           <Download className="w-4 h-4" />
                         </Button>
                       )}
-                      {log.status === 'failed' && (log.retry_count || 0) < 3 && (
+                      {log.status === 'failed' && (Number(log.retry_count) || 0) < maxRetries && (
                         <Button
                           variant="outline"
                           size="sm"

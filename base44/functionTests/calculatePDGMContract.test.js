@@ -138,8 +138,16 @@ test("M1000 free-text/annotated values validate as institutional", async () => {
     });
     assert.equal(json.dataValidation.validatedAdmissionSource, "institutional", `M1000=${JSON.stringify(value)}`);
   }
-  // And genuinely-community values must stay community.
-  for (const value of ["1", "1 - Community", "Community (non-institutional)"]) {
+  // And genuinely-community values must stay community. CMS's own response-1
+  // wording carries the word "inpatient", so OR-ing the keyword scan with the
+  // M1000 code priced these community admissions as institutional.
+  for (const value of [
+    "1",
+    "1 - Community",
+    "Community (non-institutional)",
+    "1 - Community (no inpatient facility discharge within the past 14 days)",
+    "01 - Community, not admitted to an inpatient facility in the past 14 days",
+  ]) {
     const { json } = await call(handler, {
       pdgmData: { ...BASE_PDGM, m1000_from_where_admitted: value },
     });

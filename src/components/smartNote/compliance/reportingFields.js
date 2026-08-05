@@ -156,7 +156,11 @@ export function buildAuditFields({ coverageScore = 0, chartFindings = [], acknow
     compliance_score: coverageScore,
     status: escalateAuditStatus(base, chartFindings, denialFindings),
     issues: [...toAuditIssues(chartFindings), ...toDenialAuditIssues(denialFindings)],
-    ...(acknowledgment ? { acknowledgment } : {}),
+    // ALWAYS included, for the same reason as rule_versions below: omitting the
+    // key on a re-save that resolved the critical findings left the prior
+    // override stamp on the audit, so the record still claimed the nurse
+    // acknowledged findings the note no longer has.
+    acknowledgment: acknowledgment || null,
     // Version stamp: which agency-configured rules judged this note ([] when only
     // the static defaults applied). ALWAYS included — partial ComplianceAudit
     // updates only write the fields present, so omitting it on a re-save would

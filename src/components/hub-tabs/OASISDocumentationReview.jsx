@@ -23,9 +23,11 @@ export default function OASISDocumentationReview() {
       />
 
       {/* AI Document Reviewer */}
+      {/* Takes `oasisData` (see OASISAnalyzer.jsx); passing analysisResults/pdgmData
+          left oasisData undefined, so the component hit its `return null` guard and
+          the AI review never appeared on this tab. */}
       <AIDocumentReviewer
-        analysisResults={analysisResults}
-        pdgmData={pdgmData}
+        oasisData={pdgmData}
       />
 
       {/* AI Documentation Generator */}

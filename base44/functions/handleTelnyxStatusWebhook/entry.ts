@@ -20,24 +20,59 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  */
 
 // ---- credential resolution (inlined; parity-guarded) ----
+// <<<BEGIN SHARED HELPER: resolveTelnyxCreds — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
-  let apiKey = null;
-  let publicKey = null;
-  let messagingProfileId = null;
-  let voiceConnectionId = null;
-  let faxConnectionId = null;
+  let record = null;
+  let readError = null;
   try {
-    const rows = await base44.asServiceRole.entities.IntegrationSecret.filter({ provider: 'telnyx' }, undefined, 5000);
-    const rec = rows?.[0] || {};
-    apiKey = pick(rec.api_key);
-    publicKey = pick(rec.public_key);
-    messagingProfileId = pick(rec.messaging_profile_id);
-    voiceConnectionId = pick(rec.voice_connection_id);
-    faxConnectionId = pick(rec.fax_connection_id);
-  } catch { /* ignore */ }
-  return { apiKey, publicKey, messagingProfileId, voiceConnectionId, faxConnectionId };
+    const rows = await base44.asServiceRole.entities.IntegrationSecret
+      .filter({ provider: 'telnyx' }, '-updated_date', 5000);
+    const list = Array.isArray(rows) ? rows : [];
+    // Deterministic row selection. This read used to be unsorted with no is_active
+    // filter and took rows[0], and saveTelnyxSecret picks from the same unordered
+    // query — so with two telnyx rows the admin could be writing one row while the
+    // senders read the other, and re-entering the key could never fix it.
+    record = list.find((r) => r && r.is_active === true && pick(r.api_key))
+      || list.find((r) => r && pick(r.api_key))
+      || list[0]
+      || null;
+  } catch (err) {
+    // Do NOT collapse this into "not configured". A failed read (this invocation
+    // path carries no service token, entity 404, 401/403, rate limit, platform
+    // blip) is a completely different problem from an unconfigured integration,
+    // and reporting them identically is what sent operators chasing a credential
+    // they had already entered correctly.
+    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    // The catch used to be bare, so an unreadable credential row left no
+    // server-side breadcrumb at all — the only signal was a misleading
+    // "not configured" reply. Log it; unattended runs have nowhere else to say so.
+    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+  }
+  const rec = record || {};
+  return {
+    apiKey: pick(rec.api_key),
+    publicKey: pick(rec.public_key),
+    messagingProfileId: pick(rec.messaging_profile_id),
+    voiceConnectionId: pick(rec.voice_connection_id),
+    faxConnectionId: pick(rec.fax_connection_id),
+    record,
+    readError,
+  };
 }
+
+// Build the caller-facing message for a missing Telnyx credential. Distinguishing
+// "could not read" from "not stored" is the whole point: the first is not fixed by
+// entering a key, and telling an admin to enter one is what caused two reverted
+// env-fallback regressions.
+function telnyxCredsMessage(creds, what) {
+  const label = what || 'credentials';
+  if (creds && creds.readError) {
+    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+  }
+  return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
+}
+// <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
 // ---- value mapping (mirrors telnyxUtils.js) ----
 function mapMessageStatus(status) {
@@ -159,9 +194,15 @@ function planFaxRetry(opts) {
 function normalizeE164(raw) {
   if (!raw) return null;
   const digits = String(raw).replace(/[^\d]/g, '');
+  // Already-+ international is decided FIRST and never falls through to the NANP
+  // branches. A 10-digit international number ("+49 89 123456") was otherwise
+  // rewritten as an unrelated "+1..." US subscriber, which also slipped past the
+  // +1-only international cost control. Mirrors src/components/voice/phoneUtils.js.
+  if (String(raw).trim().startsWith('+')) {
+    return digits.length >= 8 && digits.length <= 15 && digits[0] !== '0' ? `+${digits}` : null;
+  }
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-  if (String(raw).trim().startsWith('+') && digits.length >= 8 && digits.length <= 15 && digits[0] !== '0') return `+${digits}`;
   return null;
 }
 function getThreadId(a, b) {
@@ -969,7 +1010,7 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
       const next = (Number(state.idx) || 0) + 1;
       const hasNext = Array.isArray(state.targets) && state.targets[next];
       if (hasNext) {
-        await startRingdown(apiKey, state.a_leg, state.targets, state.callerId, next);
+        await startRingdown(base44, apiKey, state.a_leg, state.targets, state.callerId, next);
       } else {
         // Ringdown exhausted: nobody answered. Mark the inbound call as missed
         // BEFORE hanging up the caller leg. The CallLog status enum has no
@@ -994,7 +1035,7 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
     // (find-me-follow-me), or speak the greeting then continue once it finishes.
     if (eventType === 'call.answered' && state?.t === 'inbound_ivr') {
       if (state.action === 'ringdown') {
-        await startRingdown(apiKey, callControlId, state.targets || [], state.callerId, 0);
+        await startRingdown(base44, apiKey, callControlId, state.targets || [], state.callerId, 0);
         return Response.json({ success: true, inbound_ivr: 'ringdown' });
       }
       const greeting = String(state.greeting || '').slice(0, 320);
@@ -1016,8 +1057,13 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
       const config = await getAgencyConfig(base44);
       const workNum = normalizeE164(payload?.to) || payload?.to || '';
       const route = await decideInboundRouting(base44, config, workNum);
+      // Log here as well as on call.initiated: without a CallLog row every later
+      // write for this call (status, voicemail recording, transcript, the new-
+      // voicemail notification) finds no row and is silently dropped. logInboundCall
+      // no-ops when a row already exists, so a delayed call.initiated can't double-write.
+      await logInboundCall(base44, callControlId, normalizeE164(payload?.from) || payload?.from || '', workNum, route);
       if (route.action === 'ringdown') {
-        await startRingdown(apiKey, callControlId, route.targets || [], route.callerId, 0);
+        await startRingdown(base44, apiKey, callControlId, route.targets || [], route.callerId, 0);
         return Response.json({ success: true, inbound_recovered: 'ringdown' });
       }
       const greeting = String(route.greeting || '').slice(0, 320);
@@ -1086,7 +1132,7 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
 // number) with no hangup event to advance on — so on failure, try each
 // remaining target in order, and if every one is rejected apologize and hang up
 // rather than stranding the caller on a silent answered (billed) leg.
-async function startRingdown(apiKey, aLegId, targets, callerId, idx = 0) {
+async function startRingdown(base44, apiKey, aLegId, targets, callerId, idx = 0) {
   const list = Array.isArray(targets) ? targets : [];
   for (let i = Math.max(0, Number(idx) || 0); i < list.length; i++) {
     const target = list[i];
@@ -1099,6 +1145,18 @@ async function startRingdown(apiKey, aLegId, targets, callerId, idx = 0) {
     });
     if (r.ok) return;
   }
+  // Every target was rejected, so no dialed leg exists to carry the ringdown
+  // client_state and the exhaustion branch above can never fire for this call.
+  // Mark the inbound log missed here too, otherwise the trailing call.hangup maps
+  // to 'completed' and the call disappears from the callback queue.
+  const inboundLogs = await base44.asServiceRole.entities.CallLog
+    .filter({ provider_call_id: aLegId }, '-created_date', 1).catch(() => []);
+  if (inboundLogs.length && inboundLogs[0].status !== 'failed') {
+    await base44.asServiceRole.entities.CallLog.update(inboundLogs[0].id, {
+      status: 'failed',
+      failure_reason: 'No answer — all on-call targets were unavailable',
+    }).catch(() => {});
+  }
   await callCommand(apiKey, aLegId, 'speak', { ...SPEAK_DEFAULTS, payload: 'We are unable to connect your call at this time. Please try again later.' });
   await callCommand(apiKey, aLegId, 'hangup', {});
 }
@@ -1106,7 +1164,7 @@ async function startRingdown(apiKey, aLegId, targets, callerId, idx = 0) {
 async function continueAfterGreeting(base44, apiKey, callControlId, action, to, callerId, targets = null) {
   // Find-me-follow-me: ring the targets in order on the caller leg.
   if (action === 'ringdown') {
-    await startRingdown(apiKey, callControlId, targets || (to ? [{ to, kind: 'primary' }] : []), callerId, 0);
+    await startRingdown(base44, apiKey, callControlId, targets || (to ? [{ to, kind: 'primary' }] : []), callerId, 0);
     return;
   }
   // A plain bridge and a greet-then-transfer both end in a transfer; unify them
@@ -1179,7 +1237,8 @@ async function saveVoicemail(base44, payload) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { apiKey, publicKey, messagingProfileId } = await resolveTelnyxCreds(base44);
+    const telnyxCreds = await resolveTelnyxCreds(base44);
+    const { apiKey, publicKey, messagingProfileId } = telnyxCreds;
 
     // Read the raw body ONCE — signature is over the exact bytes.
     const rawBody = await req.text();

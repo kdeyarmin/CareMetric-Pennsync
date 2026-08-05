@@ -60,7 +60,14 @@ Deno.serve(async (req) => {
       report: payload.report,
       photo_urls: payload.photo_urls || [],
       physician_notified: !!payload.physician_notified,
-      office_notified: !!payload.immediate_alert,
+      // Honour what the reporter actually checked. Deriving this from
+      // immediate_alert meant the stored compliance flag contradicted the form:
+      // "Office notified" ticked on a medium incident saved false, and an
+      // unticked high-severity report saved true. Severity is still the fallback
+      // for older callers that do not send the field.
+      office_notified: typeof payload.office_notified === 'boolean'
+        ? payload.office_notified
+        : !!payload.immediate_alert,
       alert_triggered: !!payload.immediate_alert,
       status: 'reported',
     });
@@ -78,7 +85,13 @@ Deno.serve(async (req) => {
       // Notify every admin-tier recipient — an extra role==='admin' re-filter
       // here re-dropped the account_type-based admins the list above includes.
       if (users.length > 0) {
-        await Promise.all(
+        // allSettled, not all: the incident row is ALREADY committed at this
+        // point, so one un-creatable Notification (e.g. a bad admin email) used
+        // to reject the whole batch, escape to the outer catch and return 500 —
+        // telling the nurse their urgent safety report had failed when it had
+        // not, and skipping every remaining admin. Same per-notification fault
+        // isolation sendRenewalReminders uses.
+        const notifyResults = await Promise.allSettled(
           users.map((adminUser) =>
             base44.asServiceRole.entities.Notification.create({
               user_email: adminUser.email,
@@ -97,6 +110,12 @@ Deno.serve(async (req) => {
             })
           )
         );
+        const failedNotifications = notifyResults.filter((r) => r.status === 'rejected').length;
+        if (failedNotifications > 0) {
+          console.error(
+            `submitIncidentReport: ${failedNotifications}/${notifyResults.length} admin notifications failed to create`,
+          );
+        }
       }
     }
 

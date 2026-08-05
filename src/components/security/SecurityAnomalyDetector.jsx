@@ -57,7 +57,11 @@ export default function SecurityAnomalyDetector() {
       // 1. Check for repeated failed actions by user
       const failedByUser = {};
       recentLogs.forEach(log => {
-        if (log.action?.includes('FAILED') || log.action?.includes('DENIED')) {
+        // Case-insensitive: logged action values are not consistently uppercase
+        // (most are lowercase snake_case), so uppercase substring tests silently
+        // matched nothing.
+        const action = log.action?.toUpperCase() || '';
+        if (action.includes('FAILED') || action.includes('DENIED')) {
           failedByUser[log.user_email] = (failedByUser[log.user_email] || 0) + 1;
         }
       });
@@ -95,8 +99,8 @@ export default function SecurityAnomalyDetector() {
       });
 
       // 3. Check for bulk operations
-      const bulkOps = recentLogs.filter(log => 
-        log.action?.includes('BULK') && log.details?.record_count > 20
+      const bulkOps = recentLogs.filter(log =>
+        log.action?.toUpperCase().includes('BULK') && log.details?.record_count > 20
       );
       bulkOps.forEach(op => {
         detectedAnomalies.push({

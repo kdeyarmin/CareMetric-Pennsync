@@ -154,7 +154,11 @@ Deno.serve(async (req) => {
         assignmentId: a.id,
         apply: () => svc.TrainingAssignment.update(a.id, {
           reminder_offsets_sent: Array.from(new Set([...alreadySent, ...crossed])),
-          last_reminder_date: today.toISOString(),
+          // TrainingAssignment.last_reminder_date is declared `format: "date"`,
+          // and every other writer stores YYYY-MM-DD. Writing a full ISO
+          // date-time made this the one outlier the reminder reports had to
+          // render. todayIso is the same value, already sliced.
+          last_reminder_date: todayIso,
           reminder_sent: true,
         }),
       });

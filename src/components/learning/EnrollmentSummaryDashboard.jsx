@@ -36,27 +36,21 @@ export default function EnrollmentSummaryDashboard() {
     });
   }, [allAssignments, filters]);
 
-  const { data: attempts = [] } = useQuery({
-    queryKey: ['attempts-summary', filters],
-    queryFn: () => base44.entities.TrainingAttempt.list('-submitted_at', 1000),
-    initialData: []
-  });
-
+  // No TrainingAttempt query here: its result fed an avgScore that was never
+  // rendered, and it was keyed on the whole `filters` object while the fetch
+  // ignored filters — so every keystroke in the filter inputs minted a new cache
+  // key and refetched 1000 rows for nothing.
   const stats = useMemo(() => {
     const completed = assignments.filter(a => a.status === 'completed').length;
     const overdue = assignments.filter(a => a.status === 'overdue').length;
-    const avgScore = attempts.length > 0
-      ? Math.round(attempts.reduce((sum, a) => sum + (a.score || 0), 0) / attempts.length)
-      : 0;
 
     return {
       totalEnrolled: assignments.length,
       completed,
       completionRate: assignments.length > 0 ? Math.round((completed / assignments.length) * 100) : 0,
-      overdue,
-      avgScore
+      overdue
     };
-  }, [assignments, attempts]);
+  }, [assignments]);
 
   const courseCompletionData = useMemo(() => {
     const grouped = {};
@@ -95,6 +89,9 @@ export default function EnrollmentSummaryDashboard() {
           <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
         </div>
       )}
+      {/* showDateRange is off because the assignments memo has no date predicate:
+          rendering From/To pickers made the report look date-scoped while the KPIs
+          and charts never changed. */}
       <ReportFilters
         onFilterChange={setFilters}
         businessLineOptions={[
@@ -103,6 +100,7 @@ export default function EnrollmentSummaryDashboard() {
           { value: 'all', label: 'All' }
         ]}
         showPlan={false}
+        showDateRange={false}
         onExport={(_format) => {
           // Export functionality
         }}
