@@ -113,14 +113,16 @@ Deno.serve(async (req) => {
 
         await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
           status: failed > 0 ? 'failed' : 'sent'
-        });
+        }).catch((err) => console.error('Failed to mark scheduled fax result:', err?.message || err));
 
         console.log(`Processed scheduled fax batch: ${successful} sent, ${failed} failed`);
       } catch (error) {
         console.error('Failed to process scheduled fax:', error?.message || error);
+        // Guard the failure write too — an unhandled throw here would abort the
+        // whole batch mid-run and surface as a function-level 500 to the scheduler.
         await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
           status: 'failed'
-        });
+        }).catch((err) => console.error('Failed to mark scheduled fax failed:', err?.message || err));
       }
     }
 
