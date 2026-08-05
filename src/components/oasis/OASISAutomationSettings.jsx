@@ -35,6 +35,20 @@ import {
 } from "lucide-react";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
+/**
+ * Read a number input, falling back to the field's default when it is cleared.
+ *
+ * `parseInt('')` is NaN, and NaN serializes to null — so clearing one of these
+ * boxes persisted a rule with no threshold (every comparison against null is
+ * false, so the automation silently stopped firing) while the `|| default`
+ * display fallback re-rendered the old number and hid it. 0 is preserved as a
+ * legitimate value, which a plain `|| default` would have discarded.
+ */
+const numOrDefault = (raw, fallback) => {
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : fallback;
+};
+
 export default function OASISAutomationSettings() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
@@ -265,7 +279,7 @@ export default function OASISAutomationSettings() {
                           ...formData,
                           trigger_conditions: { 
                             ...formData.trigger_conditions, 
-                            score_value: parseInt(e.target.value) 
+                            score_value: numOrDefault(e.target.value, 70)
                           }
                         })}
                       />
@@ -304,7 +318,7 @@ export default function OASISAutomationSettings() {
                           ...formData,
                           action_config: { 
                             ...formData.action_config, 
-                            due_in_days: parseInt(e.target.value) 
+                            due_in_days: numOrDefault(e.target.value, 7)
                           }
                         })}
                       />

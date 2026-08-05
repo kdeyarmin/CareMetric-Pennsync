@@ -35,7 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toCsvRows } from "@/components/admin/csvExport";
-import { endOfDay, parseISO } from "date-fns";
+import { endOfDay, parseISO, startOfDay } from "date-fns";
 
 const COLORS = ['#3557b0', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#0d9488', '#06b6d4', '#84cc16'];
 
@@ -76,8 +76,12 @@ export default function PDGMTrendDashboard() {
 
     // Apply date range filter
     if (dateRange.start) {
-      filtered = filtered.filter(u => 
-        new Date(u.created_date) >= new Date(dateRange.start)
+      // parseISO, not new Date(): `new Date('yyyy-MM-dd')` parses date-only
+      // strings as UTC midnight, so west of UTC the start bound landed on the
+      // previous local day and pulled in records from before the selected range.
+      // The end bound below already uses local parseISO — both ends must agree.
+      filtered = filtered.filter(u =>
+        new Date(u.created_date) >= startOfDay(parseISO(dateRange.start))
       );
     }
     if (dateRange.end) {
@@ -186,10 +190,16 @@ export default function PDGMTrendDashboard() {
         year: 'numeric', 
         month: 'short' 
       });
+      // Only count records that actually carry a compliance score. Adding 0 to
+      // the numerator while still incrementing the denominator dragged the
+      // monthly average down for every assessment that was never scored.
+      // Checked before the bucket is created so a month of entirely unscored
+      // records is omitted rather than charted as NaN.
+      const compScore = u.analysis_results?.compliance_score ?? u.scores?.compliance;
+      if (!Number.isFinite(compScore)) return;
       if (!complianceTrend[month]) {
         complianceTrend[month] = { month, totalScore: 0, count: 0, avgCompliance: 0 };
       }
-      const compScore = u.analysis_results?.compliance_score || u.scores?.compliance || 0;
       complianceTrend[month].totalScore += compScore;
       complianceTrend[month].count += 1;
     });

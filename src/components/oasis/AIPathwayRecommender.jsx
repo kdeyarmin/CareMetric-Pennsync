@@ -43,7 +43,7 @@ export default function AIPathwayRecommender({
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: availablePathways = [] } = useQuery({
+  const { data: availablePathways = [], isPending: pathwaysPending } = useQuery({
     queryKey: ['clinicalPathways'],
     queryFn: () => base44.entities.ClinicalPathway.filter({ is_active: true }, undefined, ALL_ROWS),
   });
@@ -222,11 +222,16 @@ Return JSON:
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [analysisResults, availablePathways, navigationData, patientId, pdgmData]);
 
+  // Wait for the ClinicalPathway query before auto-analyzing. It fired on the
+  // first commit, while availablePathways was still the `[]` default, so the
+  // prompt listed no system pathways — and because `recommendations` was then
+  // set, the effect never re-ran once the real list arrived. Existing-pathway
+  // matching could never happen.
   useEffect(() => {
-    if (pdgmData && analysisResults && !recommendations && !ai.loading) {
+    if (pdgmData && analysisResults && !pathwaysPending && !recommendations && !ai.loading) {
       analyzePathways();
     }
-  }, [pdgmData, analysisResults, analyzePathways, ai.loading, recommendations]);
+  }, [pdgmData, analysisResults, analyzePathways, ai.loading, recommendations, pathwaysPending]);
 
   const handleActivatePathways = async () => {
     if (!recommendations || selectedPathways.length === 0) return;
@@ -254,8 +259,17 @@ Return JSON:
     });
 
     if (tasksToCreate.length > 0) {
-      await createTasksMutation.mutateAsync(tasksToCreate);
-      
+      // A rejected bulkCreate used to escape as an unhandled rejection: the
+      // clinician saw nothing, no tasks existed, and the activation was reported
+      // as done by the callback below.
+      try {
+        await createTasksMutation.mutateAsync(tasksToCreate);
+      } catch (error) {
+        console.error('Failed to create pathway tasks:', error);
+        toast.error('Could not create the pathway tasks. Please try again.');
+        return;
+      }
+
       logActivity(ActivityActions.TASK_CREATE, {
         task_count: tasksToCreate.length,
         source: 'ai_pathway_recommendations',
@@ -624,12 +638,15 @@ Return JSON:
                       )} tasks
                     </p>
                   </div>
+                  {/* Disabled while in flight: without it a double-click ran the
+                      handler twice and bulk-created every task a second time. */}
                   <Button
                     onClick={handleActivatePathways}
+                    disabled={createTasksMutation.isPending}
                     className="bg-navy-600 hover:bg-navy-700"
                   >
                     <CheckCircle2 className="w-4 h-4 mr-2" />
-                    Activate Pathways
+                    {createTasksMutation.isPending ? 'Activating…' : 'Activate Pathways'}
                   </Button>
                 </div>
               </div>

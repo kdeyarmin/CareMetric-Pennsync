@@ -304,6 +304,19 @@ export default function SmartOASISAssessment() {
   }, DRAFT_AUTOSAVE_DEBOUNCE_MS), []);
   useEffect(() => () => writeDraft.cancel(), [writeDraft]);
 
+  // Never carry one patient's responses onto another chart. Nothing cleared
+  // `answers` when the picker changed patient (or after a successful save), so a
+  // finished assessment stayed on screen with Save still enabled — selecting the
+  // next patient and saving committed the PREVIOUS patient's OASIS responses to
+  // their chart. Clearing here also re-arms the recovery banner below, which
+  // then offers the newly selected patient's own autosaved draft.
+  const previousPatientIdRef = useRef(selectedPatientId);
+  useEffect(() => {
+    if (previousPatientIdRef.current === selectedPatientId) return;
+    previousPatientIdRef.current = selectedPatientId;
+    setAnswers({});
+  }, [selectedPatientId]);
+
   // Autosave (debounced) so in-progress work survives a refresh. Guarded on the
   // answers object actually changing: switching patient/visit type alone must
   // not re-file the on-screen answers under the new selection's key.
@@ -395,6 +408,9 @@ export default function SmartOASISAssessment() {
         // never blocking or failing the OASIS save.
         completeReferralSocForPatient(selectedPatientId, assessmentDate);
       }
+      // Clear the form: the assessment is committed, and leaving the responses
+      // on screen is what let them be re-saved onto the next patient selected.
+      setAnswers({});
       toast.success("OASIS assessment saved successfully.");
     } catch (err) {
       // Don't leave the Save button stuck on the spinner with the completed

@@ -244,6 +244,14 @@
     "offboarding_reason": {
       "type": "string",
       "description": "Reason recorded by the admin when deactivating this user"
+    },
+    // Written by FaxSignaturePanel via auth.updateMe and read back as
+    // currentUser.saved_signature. It was missing here, so Base44 dropped the
+    // write and "Signature saved to your profile" was never true — the pad came
+    // up blank on every fax.
+    "saved_signature": {
+      "type": "string",
+      "description": "Data URL of the user's reusable signature image for fax cover sheets and document signing"
     }
   },
   "required": [

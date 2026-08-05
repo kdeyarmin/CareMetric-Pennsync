@@ -121,6 +121,12 @@ export default function OASISScenarioManager({
         setScenarioPayment(response.data?.corrected?.totalPayment || 0);
       } catch (err) {
         console.error("Calculation error:", err);
+        // Reset instead of leaving the PREVIOUS scenario's figure in state: every
+        // consumer reads `scenarioPayment || originalPayment`, so a stale value
+        // was displayed — and saved — as this scenario's payment. null falls back
+        // to the original, which is the honest "not priced" value.
+        setScenarioPayment(null);
+        toast.error("Could not price this scenario. Change a value to try again.");
       }
       setIsCalculating(false);
     }, 500),
