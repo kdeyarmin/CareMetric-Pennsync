@@ -26,6 +26,7 @@ import { format, parseISO } from "date-fns";
 import { isAdminLike } from "@/lib/superAdmin";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 // Guarded date formatter: format(parseISO(undefined)) throws a RangeError, which
 // would white-screen the whole approvals card if any credential has a null date.
@@ -163,7 +164,7 @@ export default function AdminCredentialApproval() {
                 </div>
 
                 <div className="mb-3">
-                  {cred.uploaded_file_url && (
+                  {cred.uploaded_file_url && isSafeExternalUrl(cred.uploaded_file_url) && (
                     <a
                       href={cred.uploaded_file_url}
                       target="_blank"

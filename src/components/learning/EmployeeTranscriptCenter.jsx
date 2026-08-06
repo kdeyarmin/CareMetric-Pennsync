@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import LoadingState from "@/components/ui/LoadingState";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
+import { formatLocalDate, isPastLocalDueDate } from '@/lib/dateLocal';
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function EmployeeTranscriptCenter() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -87,7 +88,7 @@ export default function EmployeeTranscriptCenter() {
             </div>
           ) : (
             filtered.map((certificate) => {
-              const isExpired = certificate.expiration_date && new Date(certificate.expiration_date) < new Date();
+              const isExpired = certificate.expiration_date && isPastLocalDueDate(certificate.expiration_date);
               return (
                 <div key={certificate.id} className={`rounded-2xl border p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white transition-all hover:shadow-sm ${
                   isExpired ? 'border-red-200 bg-red-50/30' : ''

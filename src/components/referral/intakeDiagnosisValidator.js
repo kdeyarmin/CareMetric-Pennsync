@@ -27,9 +27,10 @@ export const UNACCEPTABLE_PRIMARY_CODES = new Set([
   "M810",   // age-related osteoporosis w/o current fracture
 ]);
 
-// The few Z-code families acceptable as a principal under PDGM. Empty by default
-// (most aftercare/status Z-codes RTP); an agency can extend after review.
-export const ACCEPTABLE_Z_PREFIXES = [];
+// Z-code families that ARE acceptable as a PDGM principal and map to
+// MMTA - Surgical Aftercare (see pdgmRates.js ICD→group table). Other Z codes
+// (status/factor, long-term drug use, etc.) still RTP as principal.
+export const ACCEPTABLE_Z_PREFIXES = ["Z47", "Z48", "Z96"];
 
 /**
  * Validate a single principal diagnosis code.
@@ -74,7 +75,7 @@ const GROUP_BY_PREFIX = [
   { test: (c) => c.startsWith("T81"), group: "Wound" },
   { test: (c) => c[0] === "S", group: "Musculoskeletal Rehabilitation" },
   { test: (c) => c[0] === "A" || c[0] === "B" || c[0] === "C" || c[0] === "D", group: "MMTA - Infectious Disease, Neoplasms, and Blood-Forming Diseases" },
-  { test: (c) => c.startsWith("Z47") || c.startsWith("Z48"), group: "MMTA - Surgical Aftercare" },
+  { test: (c) => c.startsWith("Z47") || c.startsWith("Z48") || c.startsWith("Z96"), group: "MMTA - Surgical Aftercare" },
 ];
 
 /**

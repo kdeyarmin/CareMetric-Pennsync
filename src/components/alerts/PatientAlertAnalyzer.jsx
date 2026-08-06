@@ -40,14 +40,14 @@ export default function PatientAlertAnalyzer({
 
   // Fetch recent visits
   const { data: recentVisits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId],
+    queryKey: ['patientVisits', patientId, 10],
     queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 10),
     enabled: !!patientId
   });
 
   // Fetch incidents
   const { data: incidents = [] } = useQuery({
-    queryKey: ['patientIncidents', patientId],
+    queryKey: ['patientIncidents', patientId, 5],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 5),
     enabled: !!patientId
   });

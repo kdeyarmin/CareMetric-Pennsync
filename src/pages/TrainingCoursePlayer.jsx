@@ -27,6 +27,7 @@ import TrainingModuleViewer from "@/components/training/TrainingModuleViewer";
 import TrainingQuestionRenderer from "@/components/training/TrainingQuestionRenderer";
 import CertificateDownloadButton from "@/components/training/CertificateDownloadButton";
 import CourseStepIndicator from "@/components/training/CourseStepIndicator";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 // Fisher-Yates shuffle for unbiased randomization
 const shuffle = (items) => {
@@ -473,10 +474,12 @@ export default function TrainingCoursePlayer() {
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {course.attachment_urls.map((url, i) => (
-                    <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                      className="text-sm text-blue-600 underline hover:text-blue-700">
-                      {course.attachment_names?.[i] || `Resource ${i + 1}`}
-                    </a>
+                    url && isSafeExternalUrl(url) ? (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                        className="text-sm text-blue-600 underline hover:text-blue-700">
+                        {course.attachment_names?.[i] || `Resource ${i + 1}`}
+                      </a>
+                    ) : null
                   ))}
                 </div>
               </div>
@@ -572,10 +575,12 @@ export default function TrainingCoursePlayer() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {modules[activeModuleIndex].attachment_urls.map((url, i) => (
-                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                        className="text-sm text-blue-600 underline hover:text-blue-700">
-                        {modules[activeModuleIndex].attachment_names?.[i] || `File ${i + 1}`}
-                      </a>
+                      url && isSafeExternalUrl(url) ? (
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                          className="text-sm text-blue-600 underline hover:text-blue-700">
+                          {modules[activeModuleIndex].attachment_names?.[i] || `File ${i + 1}`}
+                        </a>
+                      ) : null
                     ))}
                   </div>
                 </div>

@@ -14,9 +14,9 @@ import { useIsEmbedded } from "@/components/ui/embeddedPage";
 import { Input } from "@/components/ui/input";
 import LoadingState from "@/components/ui/LoadingState";
 import RequiredTrainingSummary from "./RequiredTrainingSummary";
-import { isPastLocalDueDate } from '@/lib/dateLocal';
+import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function MyTrainingDashboard({ filterByType }) {
   const embedded = useIsEmbedded();
@@ -309,9 +309,9 @@ export default function MyTrainingDashboard({ filterByType }) {
                     )}
                     {certificate.expiration_date && (
                       <p className={`text-sm ${
-                        new Date(certificate.expiration_date) < new Date() ? 'text-red-600 font-semibold' : 'text-slate-500'
+                        isPastLocalDueDate(certificate.expiration_date) ? 'text-red-600 font-semibold' : 'text-slate-500'
                       }`}>
-                        {new Date(certificate.expiration_date) < new Date() ? 'Expired' : 'Valid until'}: {formatDate(certificate.expiration_date)}
+                        {isPastLocalDueDate(certificate.expiration_date) ? 'Expired' : 'Valid until'}: {formatDate(certificate.expiration_date)}
                       </p>
                     )}
                   </div>

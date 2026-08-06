@@ -167,6 +167,8 @@ export default function UserManagement() {
     mutationFn: (userId) => base44.entities.User.delete(userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
+      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
       setShowDeleteDialog(false);
       setSelectedUser(null);
     },
@@ -241,6 +243,8 @@ export default function UserManagement() {
         entity_id: selectedUser.id
       });
       queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
+      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('User updated successfully');
       setShowEditDialog(false);
       setSelectedUser(null);
@@ -270,6 +274,8 @@ export default function UserManagement() {
       });
       const res = await base44.functions.invoke('offboardUser', args);
       queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
+      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
       const payload = res?.data || res || {};
       // Log only after the invoke resolves. Logging first meant a rejected
       // offboard (e.g. the server's super-admin-only check) still left an audit

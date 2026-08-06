@@ -52,12 +52,12 @@ export default function ClinicalEventsTimeline({
   // Optional related records for the unified (cross-entity) timeline strip.
   // Prefer parent-provided lists to avoid duplicate fetches; fall back to scoped queries.
   const { data: visitsFetched = [] } = useQuery({
-    queryKey: ['patientVisits', patientId],
+    queryKey: ['patientVisits', patientId, 100],
     queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 100),
     enabled: !!patientId && visitsProp === undefined,
   });
   const { data: incidentsFetched = [] } = useQuery({
-    queryKey: ['patientIncidents', patientId],
+    queryKey: ['patientIncidents', patientId, 100],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 100),
     enabled: !!patientId && incidentsProp === undefined,
   });

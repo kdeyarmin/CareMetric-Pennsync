@@ -87,6 +87,12 @@ Deno.serve(async (req) => {
     const assigned = [];
     let poolIdx = 0;
     for (const target of candidates) {
+      // Re-read the user before assigning — a concurrent run (or a parallel
+      // managePhoneNumberPool assign) may have filled work_phone_number already.
+      const freshUser = await base44.asServiceRole.entities.User
+        .filter({ id: target.id }, undefined, 1).catch(() => []);
+      if (!isBlank(freshUser[0]?.work_phone_number)) continue;
+
       // Find the next pool number that isn't already in use on a User.
       let chosen = null;
       while (poolIdx < pool.length) {
@@ -96,6 +102,23 @@ Deno.serve(async (req) => {
       }
       if (!chosen) break; // pool exhausted
 
+      // Claim the pool row BEFORE writing the user so two concurrent bulk
+      // assigns cannot hand the same E.164 to two nurses. Re-read to confirm
+      // we still own the claim (loser sees the winner's assigned_to_email).
+      try {
+        await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {
+          status: 'assigned', assigned_to_email: target.email,
+        });
+      } catch (err) {
+        console.error('pool claim failed:', err?.message);
+        continue;
+      }
+      const claimCheck = await base44.asServiceRole.entities.PhoneNumber
+        .filter({ id: chosen.row.id }, undefined, 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].assigned_to_email !== target.email) {
+        continue;
+      }
+
       const update = {
         work_phone_number: chosen.e164,
         twilio_phone_number_sid: chosen.row.twilio_phone_number_sid || '',
@@ -103,11 +126,14 @@ Deno.serve(async (req) => {
       if (target.duty_status === undefined || target.duty_status === null) update.duty_status = 'off_duty';
       const ok = await base44.asServiceRole.entities.User.update(target.id, update)
         .then(() => true).catch((err) => { console.error('work number assignment failed:', err?.message); return false; });
-      if (!ok) continue;
+      if (!ok) {
+        // Release the pool claim so another run can reuse the number.
+        await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {
+          status: 'available', assigned_to_email: '',
+        }).catch(() => {});
+        continue;
+      }
 
-      await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {
-        status: 'assigned', assigned_to_email: target.email,
-      }).catch(() => {});
       inUse.add(chosen.e164);
       assigned.push({ email: target.email, e164: chosen.e164 });
     }

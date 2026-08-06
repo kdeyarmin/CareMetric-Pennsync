@@ -172,6 +172,7 @@ Deno.serve(async (req) => {
     if (authError) return authError;
 
     const today = new Date();
+    const runId = crypto.randomUUID();
     // Constrain to the relevant expiration window BEFORE the row cap, then sort
     // ascending. A plain ascending list would let a historical backlog of
     // already-expired credentials (which accumulates without bound over time)
@@ -195,8 +196,18 @@ Deno.serve(async (req) => {
 
     for (const item of items) {
       if (!item.expiration_date || !item.user_id) continue;
-      const expiration = new Date(`${item.expiration_date}T00:00:00Z`);
-      const daysUntilExpiration = Math.ceil((expiration.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      // Date-only expiration: compare on local calendar days, not UTC midnight.
+      const expRaw = String(item.expiration_date).trim();
+      let expiration;
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(expRaw)) {
+        const [y, m, d] = expRaw.split('-').map(Number);
+        expiration = new Date(y, m - 1, d);
+      } else {
+        expiration = new Date(item.expiration_date);
+      }
+      if (Number.isNaN(expiration.getTime())) continue;
+      const todayLocal = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const daysUntilExpiration = Math.round((expiration.getTime() - todayLocal.getTime()) / (1000 * 60 * 60 * 24));
       const sentOffsets = Array.isArray(item.reminder_offsets_sent) ? item.reminder_offsets_sent : [];
 
       if (daysUntilExpiration < 0 && item.status !== 'expired') {
@@ -212,6 +223,29 @@ Deno.serve(async (req) => {
         : [];
       if (dueOffsets.length === 0) continue;
 
+      // Claim offsets BEFORE send so overlapping runs don't double-email, then
+      // re-read to confirm we still own the claim. Prior code stamped offsets in
+      // a bulk `updates` array before emails ran — if send failed, the tier was
+      // still marked sent and the reminder was permanently lost; concurrent runs
+      // could also both send before either stamp landed.
+      const claimedOffsets = [...sentOffsets, ...dueOffsets];
+      const claimToken = runId;
+      try {
+        await base44.asServiceRole.entities.PersonnelCredential.update(item.id, {
+          reminder_offsets_sent: claimedOffsets,
+          reminder_claimed_by: claimToken,
+          reminder_claimed_at: new Date().toISOString(),
+          last_reminder_sent_at: new Date().toISOString(),
+        });
+      } catch {
+        continue;
+      }
+      const claimCheck = await base44.asServiceRole.entities.PersonnelCredential
+        .filter({ id: item.id }, '-created_date', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].reminder_claimed_by !== claimToken) {
+        continue;
+      }
+
       const employee = users.find((user) => user.email === item.user_id);
       // Only fan out to managers when the employee resolves to a known agency.
       // The prior `!employee?.agency_name` fallback matched EVERY agency_admin
@@ -223,10 +257,12 @@ Deno.serve(async (req) => {
         ? users.filter((user) => user.account_type === 'agency_admin' && user.agency_name === employee.agency_name)
         : [];
 
+      const expLabel = expiration.toLocaleDateString();
+
       notificationsToCreate.push({
         user_email: item.user_id,
         title: `${item.title} expires in ${daysUntilExpiration} days`,
-        message: `Your ${item.item_type} "${item.title}" expires on ${new Date(item.expiration_date).toLocaleDateString()}. Please upload a renewed copy to your personnel file.`,
+        message: `Your ${item.item_type} "${item.title}" expires on ${expLabel}. Please upload a renewed copy to your personnel file.`,
         type: 'compliance_alert',
         priority: daysUntilExpiration <= 30 ? 'high' : 'medium',
         action_url: '/PersonnelFile',
@@ -249,7 +285,7 @@ Deno.serve(async (req) => {
                 rows: [
                   ['Item', item.title],
                   ['Type', item.item_type],
-                  ['Expiration date', new Date(item.expiration_date).toLocaleDateString()],
+                  ['Expiration date', expLabel],
                   ['Days remaining', String(daysUntilExpiration)],
                 ],
               },
@@ -265,7 +301,7 @@ Deno.serve(async (req) => {
         notificationsToCreate.push({
           user_email: manager.email,
           title: `Employee personnel file item expires in ${daysUntilExpiration} days`,
-          message: `${item.user_name || item.user_id} has a ${item.item_type} item (${item.title}) expiring on ${new Date(item.expiration_date).toLocaleDateString()}.`,
+          message: `${item.user_name || item.user_id} has a ${item.item_type} item (${item.title}) expiring on ${expLabel}.`,
           type: 'compliance_alert',
           priority: daysUntilExpiration <= 30 ? 'high' : 'medium',
           action_url: '/PersonnelFile',
@@ -289,7 +325,7 @@ Deno.serve(async (req) => {
                     ['Employee', item.user_name || item.user_id],
                     ['Item', item.title],
                     ['Type', item.item_type],
-                    ['Expiration date', new Date(item.expiration_date).toLocaleDateString()],
+                    ['Expiration date', expLabel],
                   ],
                 },
               ],
@@ -298,20 +334,14 @@ Deno.serve(async (req) => {
         );
       }
 
-      updates.push(
-        base44.asServiceRole.entities.PersonnelCredential.update(item.id, {
-          reminder_offsets_sent: [...sentOffsets, ...dueOffsets],
-          last_reminder_sent_at: new Date().toISOString()
-        })
-      );
       notificationsSent++;
     }
 
     if (notificationsToCreate.length > 0) {
       await base44.asServiceRole.entities.Notification.bulkCreate(notificationsToCreate);
     }
-    
-    // Process updates concurrently
+
+    // Process status->expired updates concurrently
     await Promise.all(updates);
 
     // Process emails in chunks to respect rate limits and save time

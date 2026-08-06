@@ -533,27 +533,13 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
     // 1. Apply revenue tips corrections
     if (analysis?.revenue_tips?.length > 0) {
       analysis.revenue_tips.forEach(tip => {
-        const impact = tip.potential_impact || 'low';
-        const impactMultiplier = impact === 'high' ? 2 : impact === 'medium' ? 1 : 1;
-
         if (tip.category === 'Functional Status') {
-          // Parse specific M-item from tip text
-          const mItemMatch = (tip.specific_action + ' ' + tip.opportunity).match(/M18(\d{2})/i);
-          if (mItemMatch) {
-            const key = itemMap[`18${mItemMatch[1]}`];
-            if (key) {
-              const newVal = Math.min(maxValues[key], (corrected.functional_scores[key] || 0) + impactMultiplier);
-              corrected.functional_scores[key] = newVal;
-              appliedCorrections.push({ type: 'functional', item: key, change: `+${impactMultiplier}` });
-            }
-          } else {
-            // General functional improvement - apply to most impactful items
-            ['m1830_bathing', 'm1860_ambulation', 'm1850_transferring'].forEach(key => {
-              const newVal = Math.min(maxValues[key], (corrected.functional_scores[key] || 0) + impactMultiplier);
-              corrected.functional_scores[key] = newVal;
-            });
-            appliedCorrections.push({ type: 'functional', item: 'multiple', change: `+${impactMultiplier}` });
-          }
+          // Documentation opportunity only — do not fabricate higher functional scores
+          appliedCorrections.push({
+            type: 'documentation',
+            item: tip.opportunity || tip.specific_action || 'functional status',
+            note: 'Review only — functional score not auto-adjusted',
+          });
         }
 
         if (tip.category === 'Diagnosis' || tip.category === 'Clinical Condition') {
@@ -565,15 +551,19 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
         }
 
         if (tip.category === 'Therapy') {
-          corrected.functional_scores.m1860_ambulation = Math.min(6, (corrected.functional_scores.m1860_ambulation || 0) + impactMultiplier);
-          corrected.functional_scores.m1850_transferring = Math.min(5, (corrected.functional_scores.m1850_transferring || 0) + 1);
-          appliedCorrections.push({ type: 'therapy', change: 'ambulation/transfer adjusted' });
+          appliedCorrections.push({
+            type: 'documentation',
+            item: tip.opportunity || tip.specific_action || 'therapy needs',
+            note: 'Review only — functional score not auto-adjusted',
+          });
         }
 
-        if (tip.category === 'Other' && impact === 'high') {
-          // High-impact other category - likely affects multiple areas
-          corrected.functional_scores.m1840_toilet_transfer = Math.min(4, (corrected.functional_scores.m1840_toilet_transfer || 0) + 1);
-          appliedCorrections.push({ type: 'other', change: 'toilet transfer adjusted' });
+        if (tip.category === 'Other' && (tip.potential_impact || 'low') === 'high') {
+          appliedCorrections.push({
+            type: 'documentation',
+            item: tip.opportunity || tip.specific_action || 'other opportunity',
+            note: 'Review only — functional score not auto-adjusted',
+          });
         }
       });
     }
@@ -585,10 +575,13 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
         if (mItemMatch) {
           const key = itemMap[`18${mItemMatch[1]}`];
           if (key) {
-            const severityAdd = issue.severity === 'high' ? 2 : issue.severity === 'medium' ? 1 : 1;
-            const newVal = Math.min(maxValues[key], (corrected.functional_scores[key] || 0) + severityAdd);
-            corrected.functional_scores[key] = newVal;
-            appliedCorrections.push({ type: 'accuracy', item: key, severity: issue.severity });
+            // Accuracy flags are documentation review items — do not invent higher scores
+            appliedCorrections.push({
+              type: 'documentation',
+              item: key,
+              note: 'Review only — functional score not auto-adjusted',
+              severity: issue.severity,
+            });
           }
         }
 
@@ -989,8 +982,8 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
                               'Adjusted ambulation/transfer scores for therapy needs'}
                             {correction.type === 'admission' && 
                               `Changed admission source to ${correction.change}`}
-                            {correction.type === 'documentation' && 
-                              `Updated ${correction.item} per documentation improvement`}
+                            {correction.type === 'documentation' &&
+                              (correction.note || `Updated ${correction.item} per documentation improvement`)}
                             {correction.type === 'documentation_casemix' && 
                               'Added case-mix relevant condition from documentation'}
                             {correction.type === 'validation' && 

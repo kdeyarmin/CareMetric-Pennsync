@@ -50,19 +50,19 @@ export default function AIComplianceAuditor({
   });
 
   const { data: visits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId],
+    queryKey: ['patientVisits', patientId, 10],
     queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 10),
     enabled: !!patientId,
   });
 
   const { data: oasisData = [] } = useQuery({
-    queryKey: ['patientOASIS', patientId],
+    queryKey: ['patientOASIS', patientId, 1],
     queryFn: () => base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 1),
     enabled: !!patientId,
   });
 
   const { data: incidents = [] } = useQuery({
-    queryKey: ['patientIncidents', patientId],
+    queryKey: ['patientIncidents', patientId, PATIENT_HISTORY_ROWS],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!patientId,
   });

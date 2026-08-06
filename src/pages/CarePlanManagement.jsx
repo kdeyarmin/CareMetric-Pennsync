@@ -126,7 +126,7 @@ export default function CarePlanManagement() {
 
   // Fetch visits for selected patient
   const { data: patientVisits = [] } = useQuery({
-    queryKey: ['patientVisits', selectedPatient?.id],
+    queryKey: ['patientVisits', selectedPatient?.id, 10],
     queryFn: () => base44.entities.Visit.filter({ patient_id: selectedPatient?.id }, '-visit_date', 10),
     enabled: !!selectedPatient?.id,
     initialData: [],

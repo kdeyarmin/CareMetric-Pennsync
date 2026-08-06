@@ -20,9 +20,9 @@ import TemplateLibraryPanel from "@/components/training/TemplateLibraryPanel";
 import AssignmentWizard from "@/components/training/AssignmentWizard";
 import RetakeSettingsPanel from "@/components/training/RetakeSettingsPanel";
 import TrainingAttachmentManager from "@/components/training/TrainingAttachmentManager";
-import { isPastLocalDueDate } from '@/lib/dateLocal';
+import { isPastLocalDueDate, parseLocalDate, formatLocalDate, startOfLocalDay } from '@/lib/dateLocal';
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function AIComplianceInServicesHub() {
   const queryClient = useQueryClient();
@@ -78,8 +78,11 @@ export default function AIComplianceInServicesHub() {
   const now = new Date();
   const dueSoonCount = assignments.filter((assignment) => {
     if (!assignment.due_date || ['completed', 'failed', 'locked'].includes(assignment.status)) return false;
-    const diff = Math.ceil((new Date(assignment.due_date) - now) / (1000 * 60 * 60 * 24));
-    return diff >= 0 && diff <= 7;
+    const dueDay = startOfLocalDay(parseLocalDate(assignment.due_date));
+    const today = startOfLocalDay(now);
+    if (!dueDay || !today) return false;
+    const daysUntil = Math.round((dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return daysUntil >= 0 && daysUntil <= 7;
   }).length;
   const averageScore = Math.round((assignments.filter((assignment) => typeof assignment.score_percentage === 'number').reduce((sum, assignment) => sum + assignment.score_percentage, 0) / Math.max(assignments.filter((assignment) => typeof assignment.score_percentage === 'number').length, 1)) || 0);
   const reportStats = {

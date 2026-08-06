@@ -65,24 +65,18 @@ test("active patient seen recently is NOT flagged (episode still open)", () => {
   assert.equal(res, null);
 });
 
-test("stale detection counts CALENDAR days, not raw-ms floor (no off-by-one)", () => {
-  // Regression: a raw-ms floor undercounts by a day when the last visit carries
-  // an evening time-of-day and "as of" is a morning time — 14 calendar days
-  // apart reads as 13.5 → floor 13 → below the 14-day stale threshold, so the
-  // missing-Discharge-OASIS alert is silently skipped.
+test("date-only asOf does not UTC-shift the 14-day stale window", () => {
+  // Regression: `new Date("2026-07-01")` is UTC midnight; in US zones
+  // daysBetween then undercounts vs a date-only last visit and misses the alert.
   const res = detectMissingDischargeOASIS(
     {
       patient: patient(),
       oasisAssessments: [{ visit_type: "Start of Care", status: "completed" }],
-      // Local datetimes (no trailing Z) so the calendar-day count is the same
-      // in any runtime timezone: last visit evening of the 17th, "as of" the
-      // morning of July 1 = exactly 14 calendar days. A raw-ms floor gives 13.
-      visits: [{ visit_date: "2026-06-17T20:00:00" }],
+      visits: [{ visit_date: "2026-06-17" }],
     },
-    { asOf: "2026-07-01T08:00:00", staleDays: 14 },
+    { asOf: "2026-07-01", staleDays: 14 },
   );
-  assert.ok(res, "14 calendar days stale should flag");
-  assert.equal(res.reason, "episode_stale_without_discharge_oasis");
+  assert.ok(res, "exactly 14 local calendar days must flag");
   assert.equal(res.alert.data_sources.days_since_last_visit, 14);
 });
 

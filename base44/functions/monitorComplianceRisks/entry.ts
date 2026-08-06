@@ -86,7 +86,7 @@ function daysBetween(a, b) {
 function detectMissingDischargeOASIS(ctx, opts = {}) {
   const { patient, oasisAssessments = [], visits = [] } = ctx || {};
   if (!patient || !patient.id) return null;
-  const asOf = opts.asOf ? new Date(opts.asOf) : new Date();
+  const asOf = opts.asOf || new Date();
   const staleDays = opts.staleDays ?? 14;
 
   const dischargeAssessments = oasisAssessments.filter((a) => dcLower(a?.visit_type) === 'discharge');

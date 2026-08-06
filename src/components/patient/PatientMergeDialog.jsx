@@ -41,13 +41,13 @@ export default function PatientMergeDialog({
 
   // Fetch related data for both patients
   const { data: patient1Visits = [] } = useQuery({
-    queryKey: ['patientVisits', patient1?.id],
+    queryKey: ['patientVisits', patient1?.id, 5000],
     queryFn: () => base44.entities.Visit.filter({ patient_id: patient1.id }, '-visit_date', 5000),
     enabled: !!patient1?.id,
   });
 
   const { data: patient2Visits = [] } = useQuery({
-    queryKey: ['patientVisits', patient2?.id],
+    queryKey: ['patientVisits', patient2?.id, 5000],
     queryFn: () => base44.entities.Visit.filter({ patient_id: patient2.id }, '-visit_date', 5000),
     enabled: !!patient2?.id,
   });

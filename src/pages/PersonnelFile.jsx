@@ -13,6 +13,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import EmptyState from "@/components/ui/empty-state";
 import { FolderOpen, Users } from "lucide-react";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 const isAgencyAdmin = (user) => user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
 
@@ -76,7 +77,7 @@ export default function PersonnelFile() {
                       </div>
                       <p className="text-sm text-slate-500">{item.item_type} • expires {new Date(item.expiration_date).toLocaleDateString()}</p>
                       {item.issuing_organization && <p className="text-sm text-slate-500">{item.issuing_organization}</p>}
-                      {item.uploaded_file_url && <a href={item.uploaded_file_url} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 underline hover:text-indigo-700">Open uploaded document</a>}
+                      {item.uploaded_file_url && isSafeExternalUrl(item.uploaded_file_url) && <a href={item.uploaded_file_url} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 underline hover:text-indigo-700">Open uploaded document</a>}
                       {item.rejection_reason && <p className="text-sm text-red-600 mt-2">Rejection reason: {item.rejection_reason}</p>}
                     </div>
                     <div className="flex gap-2">

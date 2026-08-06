@@ -56,7 +56,26 @@
     "last_reminder_sent_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When the last reminder was sent"
+      "description": "Legacy: when any reminder was last sent (prefer audience-specific fields)"
+    },
+    "last_signer_reminder_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the last signer-audience package reminder was sent"
+    },
+    "last_caregiver_reminder_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the last caregiver-audience package reminder was sent"
+    },
+    "reminder_claimed_by": {
+      "type": "string",
+      "description": "Per-run claim token so overlapping reminder crons do not double-send"
+    },
+    "reminder_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When reminder_claimed_by was written"
     },
     "signer_notified_at": {
       "type": "string",

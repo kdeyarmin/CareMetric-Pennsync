@@ -66,7 +66,10 @@ export function detectMissingDischargeOASIS(ctx, opts = {}) {
   const { patient, oasisAssessments = [], visits = [] } = ctx || {};
   if (!patient || !patient.id) return null;
 
-  const asOf = opts.asOf ? new Date(opts.asOf) : new Date();
+  // Pass asOf through as a string/Date value — do NOT pre-parse date-only
+  // strings with `new Date("YYYY-MM-DD")` (UTC midnight), or daysBetween's
+  // local-calendar path never runs and US zones undercount the stale window.
+  const asOf = opts.asOf || new Date();
   const staleDays = opts.staleDays ?? 14;
 
   const dischargeAssessments = oasisAssessments.filter((a) => lower(a?.visit_type) === "discharge");

@@ -25,14 +25,14 @@ export default function ProgressReportGenerator({ patientId, patient }) {
   const [additionalContext, setAdditionalContext] = useState("");
 
   const { data: visits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId],
+    queryKey: ['patientVisits', patientId, PATIENT_HISTORY_ROWS],
     queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', PATIENT_HISTORY_ROWS),
     enabled: !!patientId,
     initialData: [],
   });
 
   const { data: incidents = [] } = useQuery({
-    queryKey: ['patientIncidents', patientId],
+    queryKey: ['patientIncidents', patientId, PATIENT_HISTORY_ROWS],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!patientId,
     initialData: [],

@@ -21,6 +21,7 @@ import { base44 } from "@/api/base44Client";
 import { invokeLLMWithFile } from "@/lib/invokeLLM";
 import { runAdrPacketVerification } from "./adrAnalysis";
 import { summarizePacketVerification, toPersistedVerification } from "./adrPacketReview";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 const MAX_PACKET_BYTES = 80 * 1024 * 1024; // scanned response packets run large
 
@@ -417,7 +418,7 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
                 )}
                 {adrCase.final_packet_url && finalPacketIsCurrent ? "Regenerate final packet" : "Generate final packet"}
               </Button>
-              {adrCase.final_packet_url && finalPacketIsCurrent && (
+              {adrCase.final_packet_url && finalPacketIsCurrent && isSafeExternalUrl(adrCase.final_packet_url) && (
                 <Button asChild variant="outline" className="min-h-[44px] w-full sm:w-auto">
                   <a href={adrCase.final_packet_url} target="_blank" rel="noopener noreferrer">
                     <Download className="w-4 h-4 mr-2" />

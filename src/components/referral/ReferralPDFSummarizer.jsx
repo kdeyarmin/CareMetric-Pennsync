@@ -16,6 +16,7 @@ import {
   formatBytes,
   REFERRAL_ACCEPT_ATTR,
 } from "./referralUploadUtils";
+import { isSafeExternalUrl } from "@/components/utils/security";
 import {
   FileText,
   UploadCloud,
@@ -497,14 +498,16 @@ export default function ReferralPDFSummarizer({
                       Source Document
                     </CardTitle>
                     <div className="flex items-center gap-2">
-                      <a
-                        href={fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
-                      >
-                        <ExternalLink className="w-3 h-3" /> Open
-                      </a>
+                      {fileUrl && (isSafeExternalUrl(fileUrl) || fileUrl.startsWith('blob:')) && (
+                        <a
+                          href={fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Open
+                        </a>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"

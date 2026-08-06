@@ -47,6 +47,7 @@ import AdrPacketVerifier from "../components/adr/AdrPacketVerifier";
 import AdrSubmissionPanel from "../components/adr/AdrSubmissionPanel";
 import { AUDIT_TYPES } from "../components/adr/adrRequirements";
 import { resolveResponseDueDate } from "../components/adr/adrDeadlines";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 const AUDIT_TYPE_LABELS = Object.fromEntries(AUDIT_TYPES.map((t) => [t.id, t.label]));
 
@@ -340,7 +341,7 @@ export default function ADRCenter() {
               All cases
             </Button>
             <div className="flex flex-col sm:flex-row gap-2">
-              {selectedCase.letter_file_url && (
+              {selectedCase.letter_file_url && isSafeExternalUrl(selectedCase.letter_file_url) && (
                 <Button asChild variant="outline" className="min-h-[44px]">
                   <a href={selectedCase.letter_file_url} target="_blank" rel="noopener noreferrer">
                     <FileText className="w-4 h-4 mr-2" />

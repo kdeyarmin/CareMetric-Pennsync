@@ -342,27 +342,35 @@ function mapDiagnosisToClinicalGroup(primaryDiagnosis, icd10Code, icdMap = ICD10
 // Calculate functional impairment level with source/timing consideration
 function calculateFunctionalLevel(functionalData, sourceTimingKey, thresholdsTable = FUNCTIONAL_THRESHOLDS) {
   let totalPoints = 0;
+  // Sum only ratable OASIS response codes. M1830 code 6 = "Unable to rate —
+  // artificial opening" is unassessable (see outcomeMeasureEngine excludeEither)
+  // and must NOT count as max bathing points.
+  const addRatable = (raw, { unratable = [] } = {}) => {
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || unratable.includes(n)) return;
+    totalPoints += n;
+  };
 
   // M1800 - Grooming (0-3)
-  totalPoints += parseInt(functionalData.m1800_grooming) || 0;
+  addRatable(functionalData.m1800_grooming);
 
   // M1810 - Dress Upper (0-3)
-  totalPoints += parseInt(functionalData.m1810_dress_upper) || 0;
+  addRatable(functionalData.m1810_dress_upper);
 
   // M1820 - Dress Lower (0-3)
-  totalPoints += parseInt(functionalData.m1820_dress_lower) || 0;
+  addRatable(functionalData.m1820_dress_lower);
 
-  // M1830 - Bathing (0-6)
-  totalPoints += parseInt(functionalData.m1830_bathing) || 0;
+  // M1830 - Bathing (0-5 ratable; 6 = unratable artificial opening)
+  addRatable(functionalData.m1830_bathing, { unratable: [6] });
 
   // M1840 - Toilet Transfer (0-4)
-  totalPoints += parseInt(functionalData.m1840_toilet_transfer) || 0;
+  addRatable(functionalData.m1840_toilet_transfer);
 
   // M1850 - Transferring (0-5)
-  totalPoints += parseInt(functionalData.m1850_transferring) || 0;
+  addRatable(functionalData.m1850_transferring);
 
   // M1860 - Ambulation (0-6)
-  totalPoints += parseInt(functionalData.m1860_ambulation) || 0;
+  addRatable(functionalData.m1860_ambulation);
 
   // Get thresholds based on admission source and timing
   const thresholds = thresholdsTable[sourceTimingKey] || thresholdsTable.community_early || FUNCTIONAL_THRESHOLDS.community_early;
@@ -886,9 +894,11 @@ function calculatePDGMRevenue(data, wageIndex = 1.0, rates = DEFAULT_RATES, isOf
   // Try multiple fields for ICD-10 code
   let icd10Code = data.primary_diagnosis_code || '';
 
-  // If no code found, try to extract from primary_diagnosis text (e.g., "I50.9 - Heart Failure")
+  // If no code found, try to extract from primary_diagnosis text (e.g., "I50.9 - Heart Failure").
+  // Must match validatePrimaryDiagnosis / oasisReadinessChecklist — the old digits-only
+  // pattern truncated S72.001A to "S72." and missed M1A/C4A/Z3A codes entirely.
   if (!icd10Code && primaryDiagnosis) {
-    const codeMatch = primaryDiagnosis.match(/\b([A-Z]\d{2}\.?\d{0,2})\b/i);
+    const codeMatch = primaryDiagnosis.match(/\b([A-Z][0-9][0-9A-Z]\.?[A-Z0-9]{0,4})\b/i);
     if (codeMatch) {
       icd10Code = codeMatch[1].toUpperCase();
     }
