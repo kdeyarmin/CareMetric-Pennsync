@@ -44,7 +44,7 @@ function lastSevenDayKeys(now) {
 }
 
 /**
- * @param {{messages?: object[], calls?: object[], faxes?: object[]}} input
+ * @param {{messages?: Record<string, any>[], calls?: Record<string, any>[], faxes?: Record<string, any>[]}} input
  * @param {Date} now
  */
 export function summarizeComms({ messages = [], calls = [], faxes = [] } = {}, now = new Date()) {
