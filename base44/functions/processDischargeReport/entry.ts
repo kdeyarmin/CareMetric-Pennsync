@@ -9,10 +9,13 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 
-// This function reads and UPDATES patients across the whole tenant via service
-// role and Patient has no agency discriminator, so it stays role-/super-admin
-// only — an agency_admin must NOT be able to discharge another agency's charts.
-const canRunDischargeImport = (u) => !!u && (u.role === 'admin' || u.account_type === 'super_admin');
+// Platform-wide: role:admin without agency, or super_admin. Facility admins
+// with an agency_name may run the import but only against their agency's charts.
+const canRunDischargeImport = (u) => !!u && (
+  u.account_type === 'super_admin'
+  || u.role === 'admin'
+  || u.account_type === 'agency_admin'
+);
 
 // Does an MRN-matched chart carry a different person's name?
 //
@@ -99,7 +102,25 @@ Deno.serve(async (req) => {
     // Fetch patients to match the discharge records against (bounded to the
     // SDK's 5000/request max; omitting a limit silently caps at the SDK default
     // of 50).
-    const allPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
+    let allPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScoped) {
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      allPatients = (allPatients || []).filter((p) =>
+        (p.created_by && agencyEmails.has(p.created_by))
+        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e))),
+      );
+    } else if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required' }, { status: 403 });
+    }
     
     const results = {
       total_processed: dischargedPatientsData.length,

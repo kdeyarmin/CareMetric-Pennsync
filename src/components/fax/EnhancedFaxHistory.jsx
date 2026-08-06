@@ -36,7 +36,13 @@ export default function EnhancedFaxHistory({ patientId }) {
   const maxRetries = faxRetryConfig(retryConfigRows[0]).maxRetries;
 
   const retryMutation = useMutation({
-    mutationFn: (faxLogId) => retryFailedFax({ fax_log_id: faxLogId }),
+    mutationFn: async (faxLogId) => {
+      const res = await retryFailedFax({ fax_log_id: faxLogId });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      if (data?.success === false) throw new Error(data?.message || 'Fax retry was not started');
+      return data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fax-logs'] });
       toast.success("Fax retry initiated");

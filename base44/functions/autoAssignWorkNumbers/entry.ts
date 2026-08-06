@@ -111,8 +111,9 @@ Deno.serve(async (req) => {
     const isAgencyScoped = user.account_type !== 'super_admin'
       && user.agency_name
       && (user.account_type === 'agency_admin' || user.role === 'admin');
-    if ((user.account_type === 'agency_admin' || (user.role === 'admin' && user.account_type !== 'super_admin'))
-        && !user.agency_name) {
+    // Only agency_admin accounts require agency_name. A bare role:admin with no
+    // agency is the platform-wide facility admin and may assign across tenants.
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
       return Response.json({ error: 'Forbidden: agency_name is required to auto-assign work numbers.' }, { status: 403 });
     }
 

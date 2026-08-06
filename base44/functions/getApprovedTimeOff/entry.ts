@@ -32,7 +32,8 @@ Deno.serve(async (req) => {
       1000
     );
 
-    const isPlatformAdmin = user.role === 'admin' || user.account_type === 'super_admin';
+    const isPlatformAdmin = user.account_type === 'super_admin'
+      || (user.role === 'admin' && !user.agency_name);
     if (!isPlatformAdmin) {
       // Fail closed without agency membership — otherwise every authenticated
       // user receives every agency's approved leave via the service role.

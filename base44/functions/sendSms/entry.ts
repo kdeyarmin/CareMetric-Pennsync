@@ -58,8 +58,9 @@ async function getAgencyConfig(base44, user) {
   }
   if (!settings?.length) {
     const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
-    if (user?.agency_name && (newest || []).length > 1) {
-      // Multi-tenant miss: do not apply another agency's SMS policy.
+    // Multi-tenant miss (with or without an agency hint): do not apply another
+    // agency's SMS policy / quiet hours. Single-tenant (≤1 row) may use it.
+    if ((newest || []).length > 1) {
       return { settings: {}, smsEnabled: false, missingAgencySettings: true };
     }
     settings = (newest || []).slice(0, 1);

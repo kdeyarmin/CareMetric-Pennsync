@@ -41,9 +41,25 @@ export default function Timesheets() {
 
   // Timesheets this user can review/oversee (RLS scopes: admins all, managers
   // their reports' + their own). Used for approvals, payroll, and reports.
+  // Facility admins with an agency additionally filter client-side — Timesheet
+  // RLS is bare role:admin and would otherwise show other tenants' rows.
   const { data: teamTimesheets = [] } = useQuery({
-    queryKey: ["timesheets", "team", currentUser?.email],
-    queryFn: () => base44.entities.Timesheet.list("-pay_period_start", 2000),
+    queryKey: ["timesheets", "team", currentUser?.email, currentUser?.agency_name || null],
+    queryFn: async () => {
+      const rows = await base44.entities.Timesheet.list("-pay_period_start", 2000);
+      const agency = String(currentUser?.agency_name || "").trim();
+      const isAgencyScoped = currentUser?.account_type !== "super_admin"
+        && agency
+        && (currentUser?.account_type === "agency_admin" || currentUser?.role === "admin");
+      if (!isAgencyScoped) return rows || [];
+      const users = await base44.entities.User.list("full_name", 2000).catch(() => []);
+      const emails = new Set(
+        (users || [])
+          .filter((u) => u.agency_name === agency && u.email)
+          .map((u) => u.email),
+      );
+      return (rows || []).filter((t) => emails.has(t.employee_email));
+    },
     initialData: [],
     enabled: !!currentUser?.email && isApprover,
   });
@@ -124,12 +140,17 @@ export default function Timesheets() {
   // Clinical staff roster (admin) — expected submitters for coverage + the
   // phone-reimbursement setup list.
   const { data: employees = [] } = useQuery({
-    queryKey: ["timesheets", "employees"],
+    queryKey: ["timesheets", "employees", currentUser?.agency_name || null],
     queryFn: async () => {
       try {
         const users = await base44.entities.User.list("full_name", 500);
+        const agency = String(currentUser?.agency_name || "").trim();
+        const isAgencyScoped = currentUser?.account_type !== "super_admin"
+          && agency
+          && (currentUser?.account_type === "agency_admin" || currentUser?.role === "admin");
         return users
           .filter((u) => u.email && u.role === "user" && u.is_active !== false)
+          .filter((u) => !isAgencyScoped || u.agency_name === agency)
           .map((u) => ({
             email: u.email,
             name: u.full_name || u.email,
@@ -146,8 +167,22 @@ export default function Timesheets() {
 
   // All standing payroll profiles (admin) — for the setup panel.
   const { data: payrollProfiles = [] } = useQuery({
-    queryKey: ["payroll-profiles"],
-    queryFn: () => base44.entities.EmployeePayrollProfile.list("-updated_date", 1000),
+    queryKey: ["payroll-profiles", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const rows = await base44.entities.EmployeePayrollProfile.list("-updated_date", 1000);
+      const agency = String(currentUser?.agency_name || "").trim();
+      const isAgencyScoped = currentUser?.account_type !== "super_admin"
+        && agency
+        && (currentUser?.account_type === "agency_admin" || currentUser?.role === "admin");
+      if (!isAgencyScoped) return rows || [];
+      const users = await base44.entities.User.list("full_name", 2000).catch(() => []);
+      const emails = new Set(
+        (users || [])
+          .filter((u) => u.agency_name === agency && u.email)
+          .map((u) => u.email),
+      );
+      return (rows || []).filter((p) => emails.has(p.employee_email));
+    },
     initialData: [],
     enabled: !!currentUser?.email && isAdmin,
   });

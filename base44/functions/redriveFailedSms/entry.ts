@@ -107,7 +107,7 @@ async function getAgencyConfig(base44, agencyHint) {
   }
   if (!settings?.length) {
     const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
-    if (agencyHint && (newest || []).length > 1) {
+    if ((newest || []).length > 1) {
       return { settings: {}, smsEnabled: false, missingAgencySettings: true };
     }
     settings = (newest || []).slice(0, 1);

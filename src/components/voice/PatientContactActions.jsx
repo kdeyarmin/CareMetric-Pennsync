@@ -48,8 +48,11 @@ export default function PatientContactActions({ patient, currentUser }) {
   const canText = consentStatus === "opted_in";
 
   const { data: agencySettingsRow = null } = useQuery({
-    queryKey: ["agencySettings"],
-    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
+    queryKey: ["agencySettings", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(currentUser?.agency_name);
+    },
     staleTime: 5 * 60 * 1000,
   });
   // Warn (don't block) when the agency is outside its global calling/texting

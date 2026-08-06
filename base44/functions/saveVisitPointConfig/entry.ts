@@ -53,8 +53,9 @@ Deno.serve(async (req) => {
     const isAgencyScoped = user.account_type !== 'super_admin'
       && agencyName
       && (user.account_type === 'agency_admin' || user.role === 'admin');
-    if ((user.account_type === 'agency_admin' || (user.role === 'admin' && user.account_type !== 'super_admin'))
-        && !agencyName) {
+    // Only agency_admin accounts require agency_name. Bare role:admin with no
+    // agency is platform-wide and may manage the unscoped legacy config row.
+    if (user.account_type === 'agency_admin' && !agencyName) {
       return Response.json({ error: 'Forbidden: agency_name is required' }, { status: 403 });
     }
 

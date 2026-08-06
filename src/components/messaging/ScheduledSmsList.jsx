@@ -56,7 +56,12 @@ export default function ScheduledSmsList() {
   }, [patients]);
 
   const cancel = useMutation({
-    mutationFn: (id) => base44.functions.invoke("cancelScheduledSms", { scheduled_id: id }),
+    mutationFn: async (id) => {
+      const res = await base44.functions.invoke("cancelScheduledSms", { scheduled_id: id });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scheduled-sms", user?.email] });
       toast.success("Scheduled message canceled");

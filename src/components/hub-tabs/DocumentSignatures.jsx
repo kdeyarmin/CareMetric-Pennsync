@@ -65,9 +65,11 @@ export default function DocumentSignatures() {
 
   const handleSendReminder = async (sig) => {
     try {
-      await base44.functions.invoke('sendSignatureReminder', {
+      const res = await base44.functions.invoke('sendSignatureReminder', {
         signature_id: sig.id
       });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
       toast.success("Reminder sent successfully!");
     } catch (error) {
       toast.error(`Failed to send reminder: ${error.message}`);

@@ -132,11 +132,13 @@ export default function BatchFaxSender({ prefilledData }) {
         if (!finalUrl) throw new Error("Merge failed");
       }
 
-      await base44.functions.invoke("sendFax", {
+      const faxRes = await base44.functions.invoke("sendFax", {
         to_number: toNumber,
         file_url: finalUrl,
         document_name: `Batch Fax (${files.length} file${files.length > 1 ? "s" : ""})`
       });
+      const faxData = faxRes?.data ?? faxRes;
+      if (faxData?.error) throw new Error(faxData.error);
 
       toast.success(`Batch fax sent — ${files.length} file${files.length > 1 ? "s" : ""} merged into one transmission!`);
       setFiles([]);

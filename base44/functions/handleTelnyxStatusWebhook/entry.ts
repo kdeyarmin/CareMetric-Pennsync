@@ -432,9 +432,9 @@ async function getAgencyConfig(base44, agencyHint) {
   }
   if (!rows?.length) {
     const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
-    if (key && (newest || []).length > 1) {
-      // Multi-tenant miss: empty config (safe defaults below) rather than
-      // another agency's greetings/transfer targets.
+    if ((newest || []).length > 1) {
+      // Multi-tenant miss (with or without a hint): empty config (safe defaults
+      // below) rather than another agency's greetings/transfer targets.
       rows = [];
     } else {
       rows = (newest || []).slice(0, 1);
@@ -482,6 +482,11 @@ async function resolveAgencySettingsByNumber(base44, e164) {
     ];
     if (candidates.some((c) => normalizeE164(c) === target)) return row;
   }
+  // Single-tenant: legacy configs often store only the office machine number
+  // while the blind Telnyx transmit line is what receives stray fax-backs.
+  // With exactly one settings row that fallback is safe; multi-tenant misses
+  // must fail closed so PHI is not routed to the wrong office.
+  if ((rows || []).length === 1) return rows[0];
   return null;
 }
 

@@ -100,11 +100,13 @@ export default function PhotoUploadFaxSender({ prefilledData }) {
         });
         pdfUrl = merged.data?.merged_pdf_url || pdfUrl;
       }
-      await base44.functions.invoke('sendFax', {
+      const faxRes = await base44.functions.invoke('sendFax', {
         to_number: toNumber,
         file_url: pdfUrl,
         document_name: 'Photo Fax'
       });
+      const faxData = faxRes?.data ?? faxRes;
+      if (faxData?.error) throw new Error(faxData.error);
       toast.success("Fax sent successfully!");
       setUploadedImages([]);
       setToNumber("");

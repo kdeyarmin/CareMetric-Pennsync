@@ -212,7 +212,7 @@ Deno.serve(async (req) => {
         // Multi-tenant miss: default SoR off (safe companion-EMR mode). Only
         // fall back to newest-row when a single settings row exists.
         const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
-        if (agencyName && (newest || []).length > 1) {
+        if ((newest || []).length > 1) {
           sorCache.set(key, false);
           return false;
         }
