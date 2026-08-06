@@ -17,7 +17,7 @@ const NO_ALLERGY = /^\s*(nkda|nka|none|no known(?:\s+(?:drug|food|environmental)
 
 /**
  * @param {string} noteText the note being written (rough draft or final)
- * @param {object} patient the full patient chart record
+ * @param {Record<string, any>} patient the full patient chart record
  * @returns {{ id: string, severity: "critical"|"warning"|"info", category: string, message: string, recommendation: string }[]}
  */
 export function crossCheckChart(noteText, patient) {

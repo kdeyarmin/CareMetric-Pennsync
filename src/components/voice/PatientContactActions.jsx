@@ -76,11 +76,14 @@ export default function PatientContactActions({ patient, currentUser }) {
   });
 
   const recordConsent = useMutation({
-    mutationFn: (consent_status) =>
+    /**
+     * @param {"opted_in" | "opted_out"} consent_status
+     */
+    mutationFn: (/** @type {"opted_in" | "opted_out"} */ consent_status) =>
       base44.functions.invoke("recordSmsConsent", {
         phone_e164: patient.phone, consent_status, patient_id: patient.id, notes: consentNote,
       }),
-    onSuccess: (_res, consent_status) => {
+    onSuccess: (_res, /** @type {"opted_in" | "opted_out"} */ consent_status) => {
       queryClient.invalidateQueries({ queryKey: ["patient-consent", e164] });
       toast.success(consent_status === "opted_in" ? "Texting consent recorded" : "Marked opted out");
       setConsentOpen(false);

@@ -138,7 +138,7 @@ const PrivacyPolicy = () => {
             reach CareMetric at the support contact provided by your agency.
           </p>
 
-          <p className="mt-8 border-t border-slate-100 pt-4 text-xs text-slate-400">
+          <p className="mt-8 border-t border-slate-100 pt-4 text-xs text-slate-600">
             This policy applies to the PennSync application on the web and on mobile devices,
             including the iOS app.
           </p>

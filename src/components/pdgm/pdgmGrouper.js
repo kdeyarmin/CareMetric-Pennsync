@@ -175,14 +175,14 @@ export function lookupCaseMix(variables, caseMixTable) {
  * tables are supplied AND every lookup resolves; otherwise `complete:false` with
  * a `missing` list. Never fabricates a group, level, HIPPS, or weight.
  *
- * @param {object} input { periodNumber, hadInstitutionalStay, principalDiagnosis,
+ * @param {Record<string, any>} [input] { periodNumber, hadInstitutionalStay, principalDiagnosis,
  *                         secondaryDiagnoses, answers }
- * @param {object} cmsTables { itemPoints, functionalThresholds, dxToGroup,
+ * @param {Record<string, any>} [cmsTables] { itemPoints, functionalThresholds, dxToGroup,
  *                             comorbidity, caseMixTable } (from official CMS files).
  *                 `functionalThresholds` may be flat ({ low, medium }) or keyed
  *                 by clinical group ({ [group]: { low, medium } }).
  */
-export function groupPeriod(input, cmsTables = {}) {
+export function groupPeriod(input = {}, cmsTables = {}) {
   const { periodNumber, hadInstitutionalStay, principalDiagnosis, secondaryDiagnoses, answers } = input || {};
   const { itemPoints, functionalThresholds, dxToGroup, comorbidity, caseMixTable } = cmsTables;
 

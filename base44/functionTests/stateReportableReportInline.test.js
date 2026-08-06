@@ -4,7 +4,7 @@ import { readFile, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { transpileTs } from "../../tools-transpile-ts.mjs";
 
 /**
  * Guard for buildReportText, the pure report-body builder inlined in
@@ -19,9 +19,7 @@ async function loadInline(entryPath, names) {
   // Strip the npm imports (createClientFromRequest, jsPDF) so the module loads
   // under node:test; they are stubbed below and unused by buildReportText.
   src = src.replace(/import[^;]*from\s+'npm:[^']*';?/g, "");
-  const js = ts.transpileModule(src, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-  }).outputText;
+  const js = transpileTs(src).outputText;
   const stubs = "const createClientFromRequest = () => ({}); class jsPDF {}\n";
   const tmp = join(tmpdir(), `srpt_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(tmp, `${stubs}${js}\nexport { ${names.join(", ")} };\n`);
