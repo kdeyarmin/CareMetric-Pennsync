@@ -60,6 +60,9 @@ Deno.serve(async (req) => {
     // Agency-scoped admins (agency_admin OR facility admin with agency_name)
     // may only mint follow-up links for referrals created by / assigned within
     // their agency.
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
     const isAgencyScopedAdmin = user.account_type !== 'super_admin'
       && user.agency_name
       && (user.account_type === 'agency_admin' || user.role === 'admin');

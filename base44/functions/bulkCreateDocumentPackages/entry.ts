@@ -53,6 +53,9 @@ Deno.serve(async (req) => {
     ]);
 
     // Agency-scoped admins must not package arbitrary cross-agency patients via service role.
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
     let agencyEmails = null;
     const isAgencyScopedAdmin = user.account_type !== 'super_admin'
       && user.agency_name

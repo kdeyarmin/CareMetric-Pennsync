@@ -469,8 +469,11 @@ async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuper
   }
 
   // Agency admins may only reset staff in their own agency.
+  if (currentUser.account_type === 'agency_admin' && !currentUser.agency_name) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
   if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
-    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+    if (targetUser.agency_name !== currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
     }
   }
@@ -660,6 +663,17 @@ async function updateUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     || targetUser.role === 'admin';
   if (targetIsPrivileged && !callerIsSuperAdmin && targetUser.email !== currentUser.email) {
     return Response.json({ error: 'Only a super admin can modify another administrator\'s account.' }, { status: 403 });
+  }
+
+  // Agency-scoped admins may only update staff in their own agency.
+  if (currentUser.account_type === 'agency_admin' && !currentUser.agency_name) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  const isAgencyScoped = currentUser.account_type !== 'super_admin'
+    && currentUser.agency_name
+    && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
+  if (isAgencyScoped && targetUser.agency_name !== currentUser.agency_name) {
+    return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
   }
 
   // Only include fields that were actually provided so we never wipe values.

@@ -47,6 +47,9 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.PatientAlert.list('-created_date', 5000)
     ]);
 
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
     if (user.account_type !== 'super_admin' && user.agency_name) {
       users = (Array.isArray(users) ? users : []).filter((u) =>
         u.account_type === 'super_admin' || u.agency_name === user.agency_name

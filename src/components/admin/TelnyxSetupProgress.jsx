@@ -95,9 +95,17 @@ export default function TelnyxSetupProgress({ onStepsChange, onNavigate } = {}) 
     refetchOnWindowFocus: false,
   });
 
+  const { data: currentUser } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me(),
+  });
   const { data: settings = null, isFetched: settingsFetched } = useQuery({
-    queryKey: ["agencySettings"],
-    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
+    queryKey: ["agencySettings", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(currentUser?.agency_name);
+    },
+    enabled: !!currentUser,
     refetchOnWindowFocus: false,
   });
 
