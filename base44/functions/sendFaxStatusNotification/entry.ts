@@ -184,26 +184,77 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (user.is_active === false) {
+      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
 
-    const { event, data } = await req.json();
+    const { data } = await req.json();
+    if (!data?.id) {
+      return Response.json({ error: 'FaxLog id is required' }, { status: 400 });
+    }
 
-    // Only process delivered or failed status changes
-    const status = data?.status?.toLowerCase();
+    // Never trust the posted body for status/recipient/document — re-fetch the
+    // canonical FaxLog and notify from its fields only.
+    const fax = await base44.asServiceRole.entities.FaxLog.get(data.id).catch(() => null);
+    if (!fax) {
+      return Response.json({ error: 'Fax not found' }, { status: 404 });
+    }
+
+    const isAdminLike = (u) => !!u && (
+      u.role === 'admin' || u.account_type === 'agency_admin' || u.account_type === 'super_admin'
+    );
+    if (fax.sent_by !== user.email && !isAdminLike(user)) {
+      return Response.json({ error: 'Forbidden: not the fax sender' }, { status: 403 });
+    }
+
+    const status = String(fax.status || '').toLowerCase();
     if (!['delivered', 'failed'].includes(status)) {
       return Response.json({ skipped: true, reason: 'Status not delivered or failed' });
     }
 
-    // Check if this is an update event with a previous status
-    const oldStatus = event?.old_data?.status?.toLowerCase();
-    if (oldStatus === status) {
-      return Response.json({ skipped: true, reason: 'Status unchanged' });
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `fax-status-${Date.now()}`;
+    if (status === 'delivered') {
+      if (fax.delivery_confirmation_sent) {
+        return Response.json({ skipped: true, reason: 'delivery already notified' });
+      }
+      try {
+        await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+          delivery_confirmation_sent: true,
+          delivery_notify_claimed_by: claimToken,
+        });
+      } catch {
+        return Response.json({ skipped: true, reason: 'could not claim delivery notify' });
+      }
+      const claimCheck = await base44.asServiceRole.entities.FaxLog
+        .filter({ id: fax.id }, '-created_date', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].delivery_notify_claimed_by !== claimToken) {
+        return Response.json({ skipped: true, reason: 'delivery notify claimed by concurrent run' });
+      }
+    } else {
+      if (fax.final_failure_notified) {
+        return Response.json({ skipped: true, reason: 'failure already notified' });
+      }
+      try {
+        await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+          final_failure_notified: true,
+          failure_notify_claimed_by: claimToken,
+        });
+      } catch {
+        return Response.json({ skipped: true, reason: 'could not claim failure notify' });
+      }
+      const claimCheck = await base44.asServiceRole.entities.FaxLog
+        .filter({ id: fax.id }, '-created_date', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].failure_notify_claimed_by !== claimToken) {
+        return Response.json({ skipped: true, reason: 'failure notify claimed by concurrent run' });
+      }
     }
 
-    const recipientFax = data?.recipient_fax_number || 'Unknown';
-    const documentName = data?.document_name || 'Untitled Document';
+    const recipientFax = fax.to_number || fax.recipient_fax_number || 'Unknown';
+    const documentName = fax.document_name || fax.to_name || 'Untitled Document';
     const timestamp = new Date().toLocaleString();
 
-    // Prepare notification content
     const delivered = status === 'delivered';
     const subject = `Fax ${delivered ? 'delivered' : 'failed'}: ${documentName}`;
     const emailBody = renderBrandedEmail({
@@ -223,8 +274,10 @@ Deno.serve(async (req) => {
             ['Recipient', recipientFax],
             ['Time', timestamp],
             ['Status', status.charAt(0).toUpperCase() + status.slice(1)],
-            ...(data?.error_message ? [['Error', data.error_message]] : []),
-            ...(data?.twilio_sid ? [['Tracking ID', data.twilio_sid]] : []),
+            ...(fax.error_message || fax.failure_reason
+              ? [['Error', fax.error_message || fax.failure_reason]]
+              : []),
+            ...(fax.telnyx_fax_id ? [['Tracking ID', fax.telnyx_fax_id]] : []),
           ],
         },
         {
@@ -233,16 +286,13 @@ Deno.serve(async (req) => {
       ],
     });
 
-    const smsMessage = `Fax ${status === 'delivered' ? 'delivered' : 'failed'}: ${documentName} to ${recipientFax}`;
-
-    // Fetch user preferences (if stored)
-    const userPrefs = await base44.auth.me();
-    const notifyEmail = userPrefs?.email;
-    const notifyPhone = userPrefs?.phone; // Assuming phone is stored on user
+    const smsMessage = `Fax ${delivered ? 'delivered' : 'failed'}: ${documentName} to ${recipientFax}`;
+    const notifyEmail = user.email;
+    const notifyPhone = user.phone || user.personal_cell_e164;
 
     const notifications = [];
+    let anySent = false;
 
-    // Send Email notification
     if (notifyEmail) {
       try {
         await base44.integrations.Core.SendEmail({
@@ -252,40 +302,48 @@ Deno.serve(async (req) => {
           from_name: 'PennSync by CareMetric',
         });
         notifications.push({ type: 'email', status: 'sent' });
+        anySent = true;
       } catch (emailError) {
         console.error('Email notification failed:', emailError);
         notifications.push({ type: 'email', status: 'failed', error: emailError.message });
       }
     }
 
-    // Send SMS notification via Telnyx
+    // SMS only with explicit SmsConsent opted_in (TCPA parity with sendSms).
     if (notifyPhone) {
       try {
-        const telnyxCreds = await resolveTelnyxCreds(base44);
-        const { apiKey, messagingProfileId } = telnyxCreds;
-        // Send from the agency's main office number (configured in-app on
-        // AgencySettings); skip the SMS quietly when it isn't set.
-        const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-        const fromNumber = (settingsRows[0]?.main_office_number_e164 || '').toString().trim() || null;
+        const phone = String(notifyPhone).trim();
+        const consents = await base44.asServiceRole.entities.SmsConsent
+          .filter({ phone_e164: phone }, '-captured_at', 1)
+          .catch(() => []);
+        if (consents[0]?.consent_status === 'opted_in') {
+          const telnyxCreds = await resolveTelnyxCreds(base44);
+          const { apiKey, messagingProfileId } = telnyxCreds;
+          const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+          const fromNumber = (settingsRows[0]?.main_office_number_e164 || '').toString().trim() || null;
 
-        if (apiKey && fromNumber) {
-          const payload = { from: fromNumber, to: notifyPhone, text: smsMessage };
-          if (messagingProfileId) payload.messaging_profile_id = messagingProfileId;
-          const response = await fetch('https://api.telnyx.com/v2/messages', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-          });
+          if (apiKey && fromNumber) {
+            const payload = { from: fromNumber, to: phone, text: smsMessage };
+            if (messagingProfileId) payload.messaging_profile_id = messagingProfileId;
+            const response = await fetch('https://api.telnyx.com/v2/messages', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(payload),
+            });
 
-          if (response.ok) {
-            notifications.push({ type: 'sms', status: 'sent' });
-          } else {
-            const error = await response.text();
-            notifications.push({ type: 'sms', status: 'failed', error });
+            if (response.ok) {
+              notifications.push({ type: 'sms', status: 'sent' });
+              anySent = true;
+            } else {
+              const error = await response.text();
+              notifications.push({ type: 'sms', status: 'failed', error });
+            }
           }
+        } else {
+          notifications.push({ type: 'sms', status: 'skipped', reason: 'consent not opted_in' });
         }
       } catch (smsError) {
         console.error('SMS notification failed:', smsError);
@@ -293,27 +351,38 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Log notification attempt
     try {
-      // Notification requires user_email (RLS reads on it); user_id is not a
-      // field, so the previous create silently failed and the recipient never
-      // saw it. Shape mirrors the working pollFaxStatuses notification.
       await base44.asServiceRole.entities.Notification.create({
-        user_email: user.email,
+        user_email: fax.sent_by || user.email,
         type: status === 'failed' ? 'fax_failed' : 'fax_delivered',
         title: subject,
         message: `Fax to ${recipientFax} has been ${status}`,
-        metadata: { related_entity: 'FaxLog', related_entity_id: data?.id },
+        metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
         is_read: false,
       });
+      anySent = true;
     } catch (logError) {
       console.error('Failed to log notification:', logError);
+    }
+
+    if (!anySent) {
+      if (status === 'delivered') {
+        await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+          delivery_confirmation_sent: false,
+          delivery_notify_claimed_by: '',
+        }).catch(() => {});
+      } else {
+        await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+          final_failure_notified: false,
+          failure_notify_claimed_by: '',
+        }).catch(() => {});
+      }
     }
 
     return Response.json({
       success: true,
       notifications: notifications,
-      faxId: data?.id,
+      faxId: fax.id,
       recipientFax: recipientFax,
       faxStatus: status,
     });

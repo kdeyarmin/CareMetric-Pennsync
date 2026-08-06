@@ -319,7 +319,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
 
   // Fetch note enhancements for productivity reports (backend entity: NoteConversion)
   const { data: allNoteEnhancements = [] } = useQuery({
-    queryKey: ['allNoteConversions'],
+    queryKey: ['allNoteConversions', 1000],
     queryFn: () => base44.entities.NoteConversion.list('-created_date', 1000),
     initialData: [],
   });

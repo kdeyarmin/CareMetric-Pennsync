@@ -11,6 +11,7 @@ import { buildCallbackQueue } from "@/components/voice/callbackQueue";
 import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
 import { PhoneEmptyState } from "@/components/phone/PhoneFrame";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 const REASON_STYLES = {
   "Callback requested": "bg-navy-100 text-navy-800",
@@ -111,7 +112,7 @@ export default function CallbackQueue() {
                       </span>
                     </div>
                     {call.note && <p className="mt-1 text-xs text-slate-600">{call.note}</p>}
-                    {call.has_voicemail && call.voicemail_url && (
+                    {call.has_voicemail && call.voicemail_url && isSafeExternalUrl(call.voicemail_url) && (
                       <audio controls preload="none" src={call.voicemail_url} className="mt-2 h-8 w-full" />
                     )}
                     <div className="mt-2 flex items-center gap-2">

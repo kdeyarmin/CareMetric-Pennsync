@@ -189,9 +189,25 @@ Deno.serve(async (req) => {
 
     let destination = normalizeE164(to_number);
     let resolvedPatientId = patient_id || null;
+    let resolvedPatient = null;
+    const isAdminLike = (u) => !!u && (
+      u.role === 'admin' || u.account_type === 'agency_admin' || u.account_type === 'super_admin'
+    );
+    const canAccessPatient = (p) => {
+      if (!p) return false;
+      if (isAdminLike(user)) return true;
+      if (p.created_by === user.email) return true;
+      return Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email);
+    };
+
     if (!destination && patient_id) {
       const p = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000).catch(() => []);
-      destination = normalizeE164(p[0]?.phone);
+      resolvedPatient = p[0] || null;
+      if (!canAccessPatient(resolvedPatient)) {
+        return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
+      }
+      destination = normalizeE164(resolvedPatient?.phone);
+      resolvedPatientId = resolvedPatient?.id || null;
     }
     if (!destination) {
       return Response.json({ error: 'Could not determine a valid patient phone number' }, { status: 400 });
@@ -199,7 +215,20 @@ Deno.serve(async (req) => {
     if (!resolvedPatientId) {
       for (const v of phoneVariants(destination)) {
         const m = await base44.asServiceRole.entities.Patient.filter({ phone: v }, undefined, 5000).catch(() => []);
-        if (m.length > 0) { resolvedPatientId = m[0].id; break; }
+        if (m.length > 0) {
+          if (!canAccessPatient(m[0])) {
+            return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
+          }
+          resolvedPatientId = m[0].id;
+          resolvedPatient = m[0];
+          break;
+        }
+      }
+    } else if (!resolvedPatient) {
+      // Client passed patient_id + to_number — still verify access to the named patient.
+      const p = await base44.asServiceRole.entities.Patient.filter({ id: resolvedPatientId }, undefined, 1).catch(() => []);
+      if (!canAccessPatient(p[0])) {
+        return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
       }
     }
 

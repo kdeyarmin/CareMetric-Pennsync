@@ -209,8 +209,9 @@ Deno.serve(async (req) => {
       ]);
       
       const lastVisit = visits[0];
-      const daysSinceLastVisit = lastVisit ? 
-        Math.floor((currentDate - new Date(lastVisit.visit_date)) / (1000 * 60 * 60 * 24)) : 999;
+      const daysSinceLastVisit = lastVisit
+        ? daysBetween(lastVisit.visit_date, currentDate)
+        : 999;
       
       // RISK 1: High-risk diagnosis without recent documentation.
       // Absence-based (assumes every visit is documented in PennSync) — gated

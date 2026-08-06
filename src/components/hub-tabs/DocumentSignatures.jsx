@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { openExternalUrl } from "@/components/utils/security";
+import { formatLocalDate } from "@/lib/dateLocal";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
@@ -205,7 +206,7 @@ export default function DocumentSignatures() {
                           )}
                           {sig.due_date && (
                             <span className="text-xs text-slate-500">
-                              Due: {new Date(sig.due_date).toLocaleDateString()}
+                              Due: {formatLocalDate(sig.due_date)}
                             </span>
                           )}
                         </div>

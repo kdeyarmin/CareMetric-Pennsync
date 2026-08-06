@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import { logSecurityEvent, isSafeExternalUrl } from "@/components/utils/security";
+import { formatLocalDate } from "@/lib/dateLocal";
 import PageContainer from "@/components/ui/PageContainer";
 import PersonnelCredentialForm from "@/components/personnel/PersonnelCredentialForm";
 import PersonnelStatusBadge from "@/components/personnel/PersonnelStatusBadge";
@@ -474,7 +475,7 @@ export default function UserSettings() {
                             <PersonnelStatusBadge status={item.status} />
                           </div>
                           <p className="text-sm text-slate-600">
-                            {item.item_type} • Expires {new Date(item.expiration_date).toLocaleDateString()}
+                            {item.item_type} • Expires {formatLocalDate(item.expiration_date)}
                           </p>
                           {item.issuing_organization && (
                             <p className="text-sm text-slate-500">{item.issuing_organization}</p>

@@ -237,9 +237,13 @@ Deno.serve(async (req) => {
           // can't both notify the sender for the same terminal transition.
           const update = { status: newStatus, telnyx_fax_id: faxData?.data?.id };
           let notifyType = null;
+          let notifyClaimField = null;
+          const notifyClaimToken = `poll:${fax.id}:${newStatus}:${Date.now()}`;
           if (newStatus === 'delivered' && fax.sent_by && !fax.delivery_confirmation_sent) {
             update.delivery_confirmation_sent = true;
+            update.delivery_notify_claimed_by = notifyClaimToken;
             notifyType = 'fax_delivered';
+            notifyClaimField = 'delivery_notify_claimed_by';
           } else if (newStatus === 'failed') {
             // Honor the admin FaxRetryConfig instead of declaring EVERY failure
             // permanent. If the poller observes a failure before the DLR webhook,
@@ -266,6 +270,8 @@ Deno.serve(async (req) => {
             } else {
               if (retryCfg.notifyOnFinalFailure && fax.sent_by && !fax.final_failure_notified) {
                 notifyType = 'fax_failed';
+                update.failure_notify_claimed_by = notifyClaimToken;
+                notifyClaimField = 'failure_notify_claimed_by';
               }
               update.final_failure_notified = true;
             }
@@ -276,15 +282,36 @@ Deno.serve(async (req) => {
 
           await base44.asServiceRole.entities.FaxLog.update(fax.id, update);
 
-          if (notifyType) {
-            await base44.asServiceRole.entities.Notification.create({
-              user_email: fax.sent_by,
-              type: notifyType,
-              title: notifyType === 'fax_failed' ? 'Fax Failed' : 'Fax Status Update',
-              message: getNotificationMessage(newStatus, { ...fax, ...update }),
-              metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
-              is_read: false
-            }).catch(err => console.error('Failed to create fax notification:', err.message));
+          if (notifyType && notifyClaimField) {
+            const claimCheck = await base44.asServiceRole.entities.FaxLog
+              .filter({ id: fax.id }, '-created_date', 1).catch(() => []);
+            if (!claimCheck[0] || claimCheck[0][notifyClaimField] !== notifyClaimToken) {
+              return;
+            }
+            try {
+              await base44.asServiceRole.entities.Notification.create({
+                user_email: fax.sent_by,
+                type: notifyType,
+                title: notifyType === 'fax_failed' ? 'Fax Failed' : 'Fax Status Update',
+                message: getNotificationMessage(newStatus, { ...fax, ...update }),
+                metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
+                is_read: false
+              });
+            } catch (err) {
+              console.error('Failed to create fax notification:', err.message);
+              // Release stamp so a later poller/webhook run can retry the notify.
+              if (notifyType === 'fax_delivered') {
+                await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+                  delivery_confirmation_sent: false,
+                  delivery_notify_claimed_by: '',
+                }).catch(() => {});
+              } else {
+                await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+                  final_failure_notified: false,
+                  failure_notify_claimed_by: '',
+                }).catch(() => {});
+              }
+            }
           }
 
           updated++;

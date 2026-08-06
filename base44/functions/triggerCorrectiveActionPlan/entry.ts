@@ -144,13 +144,34 @@ Deno.serve(async (req) => {
     }
 
     // Idempotency: this is a TrainingAttempt entity-trigger and re-fires on
-    // retries / later row updates. If a corrective action plan already exists for
-    // this attempt, don't create a duplicate plan or re-spam the employee +
-    // every admin (the supplemental-assignment reuse guard below only dedups
-    // assignments, not the plan/notifications).
+    // retries / later row updates. Claim with a unique token + re-read before
+    // creating a plan/assignments/notifications (existence check alone races).
     const existingPlans = await base44.asServiceRole.entities.CorrectiveActionPlan
       .filter({ training_attempt_id: attempt.id }, '-created_date', 1).catch(() => []);
     if (existingPlans.length > 0) {
+      return Response.json({ success: true, skipped: true, reason: 'Corrective action plan already exists for this attempt' });
+    }
+    if (attempt.corrective_plan_claimed_by) {
+      return Response.json({ success: true, skipped: true, reason: 'Corrective action plan already claimed for this attempt' });
+    }
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `cap-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.asServiceRole.entities.TrainingAttempt.update(attempt.id, {
+        corrective_plan_claimed_by: claimToken,
+      });
+    } catch {
+      return Response.json({ success: true, skipped: true, reason: 'Could not claim corrective plan' });
+    }
+    const claimCheck = await base44.asServiceRole.entities.TrainingAttempt
+      .filter({ id: attempt.id }, '-created_date', 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].corrective_plan_claimed_by !== claimToken) {
+      return Response.json({ success: true, skipped: true, reason: 'Corrective plan claimed by concurrent run' });
+    }
+    const existingPlansAfterClaim = await base44.asServiceRole.entities.CorrectiveActionPlan
+      .filter({ training_attempt_id: attempt.id }, '-created_date', 1).catch(() => []);
+    if (existingPlansAfterClaim.length > 0) {
       return Response.json({ success: true, skipped: true, reason: 'Corrective action plan already exists for this attempt' });
     }
 

@@ -132,12 +132,40 @@ Deno.serve(async (req) => {
       300,
     );
     const plans = planAdrDeadlineReminders({ cases: cases || [], todayIso });
+    const runId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `adr-${Date.now()}`;
 
     let notified = 0;
     for (const plan of plans) {
-      // Mark the day's reminder delivered ONLY after the notification actually
-      // persists — recording a failed create as delivered lost that day's
-      // reminder (possibly the due-day one) with no way to re-fire.
+      // Claim today's reminder before create so overlapping cron runs don't
+      // double-notify; release on create failure so a later run can retry.
+      const priorReminders = (() => {
+        const c = (cases || []).find((row) => row.id === plan.case_id);
+        return c?.deadline_reminders && typeof c.deadline_reminders === 'object'
+          ? c.deadline_reminders
+          : {};
+      })();
+      const claimPayload = {
+        ...priorReminders,
+        last_notified_date: todayIso,
+        last_days_left: plan.days_left,
+        claimed_by: runId,
+      };
+      try {
+        await base44.asServiceRole.entities.AdrAuditCase.update(plan.case_id, {
+          deadline_reminders: claimPayload,
+        });
+      } catch {
+        continue;
+      }
+      const claimCheck = await base44.asServiceRole.entities.AdrAuditCase
+        .filter({ id: plan.case_id }, '-created_date', 1).catch(() => []);
+      const claimed = claimCheck[0]?.deadline_reminders;
+      if (!claimed || claimed.claimed_by !== runId) {
+        continue;
+      }
+
       try {
         await base44.asServiceRole.entities.Notification.create({
           user_email: plan.user_email,
@@ -152,12 +180,15 @@ Deno.serve(async (req) => {
         });
       } catch (err) {
         console.error('checkAdrDeadlines: notification create failed for case', plan.case_id, err);
+        await base44.asServiceRole.entities.AdrAuditCase.update(plan.case_id, {
+          deadline_reminders: {
+            ...priorReminders,
+            claimed_by: '',
+          },
+        }).catch(() => {});
         continue;
       }
 
-      await base44.asServiceRole.entities.AdrAuditCase.update(plan.case_id, {
-        deadline_reminders: { last_notified_date: todayIso, last_days_left: plan.days_left },
-      }).catch(() => {});
       notified += 1;
     }
 

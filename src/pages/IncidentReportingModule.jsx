@@ -151,6 +151,7 @@ export default function IncidentReportingModule() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-incidents'] });
       setShowReportDialog(false);
       resetForm();
       // Only claim managers were notified when the alert actually went out.
@@ -177,6 +178,7 @@ export default function IncidentReportingModule() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-incidents'] });
       toast.success("Incident status updated");
     },
     onError: (e) => toast.error(e?.message || "Couldn't update the incident status"),

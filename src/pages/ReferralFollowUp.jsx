@@ -99,7 +99,7 @@ export default function ReferralFollowUp() {
   });
 
   const { data: physicians } = useQuery({
-    queryKey: ["physicians"],
+    queryKey: ["physicians", "all", "-created_date", 300],
     queryFn: () => base44.entities.Physician.list("-created_date", 300).catch(() => []),
   });
 

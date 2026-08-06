@@ -31,7 +31,7 @@ export default function BreachDetectionSystem() {
   });
 
   const { data: securityLogs = [] } = useQuery({
-    queryKey: ['securityLogs'],
+    queryKey: ['securityLogs', '-timestamp', 1000],
     queryFn: () => base44.entities.SecurityLog.list('-timestamp', 1000),
     enabled: currentUser?.role === 'admin'
   });

@@ -8,7 +8,7 @@ import { ArrowLeft, Download } from 'lucide-react';
 import SignaturePadCanvas from '@/components/signature/SignaturePadCanvas';
 import { submitSignerSignature } from '@/functions/submitSignerSignature';
 import { toast } from 'sonner';
-import { openExternalUrl } from '@/components/utils/security';
+import { isSafeExternalUrl, openExternalUrl } from '@/components/utils/security';
 
 export default function SignerDocumentSigner({
   documentId,
@@ -28,7 +28,7 @@ export default function SignerDocumentSigner({
   // which is scoped to this signer's token — never from a direct, unauthenticated
   // entity read by arbitrary documentId on the public portal.
   const handleFetchDocument = () => {
-    if (document?.pdf_url) {
+    if (document?.pdf_url && isSafeExternalUrl(document.pdf_url)) {
       setDocumentUrl(document.pdf_url);
     } else {
       toast.error('Document is not available to view');

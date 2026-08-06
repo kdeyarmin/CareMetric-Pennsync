@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { FileCheck2, ExternalLink, CheckCircle2, Loader2 } from "lucide-react";
 import { policyAcknowledgment } from "@/functions/policyAcknowledgment";
 import { toast } from "sonner";
-import { isPastLocalDueDate } from '@/lib/dateLocal';
+import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 import { isSafeExternalUrl } from "@/components/utils/security";
 
 // Learner-facing policy sign-off. Lists the user's PolicyAcknowledgment rows;
@@ -80,7 +80,7 @@ export default function LearnerPolicyAcknowledgments() {
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">v{ack.policy_version}</Badge>
-                  {ack.due_date && <Badge className={overdue ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"}>Due {new Date(ack.due_date).toLocaleDateString()}</Badge>}
+                  {ack.due_date && <Badge className={overdue ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"}>Due {formatLocalDate(ack.due_date)}</Badge>}
                 </div>
               </div>
             </CardHeader>

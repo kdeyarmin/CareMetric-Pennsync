@@ -55,7 +55,10 @@ function IncidentReviewCard({ incident, actorEmail }) {
       resolutionNotes: rest.resolution_notes,
       correctiveActionPlan: rest.corrective_action_plan,
     }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-incidents"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-incidents"] });
+      queryClient.invalidateQueries({ queryKey: ["incidents"] });
+    },
     onError: (e) => toast.error(e?.message || "Couldn't update the incident"),
   });
 
