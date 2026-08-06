@@ -62,6 +62,50 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Claim BEFORE the LLM work. Without this, two concurrent extracts both see
+    // zero ClinicalEvent rows, both run InvokeLLM, then both create duplicate
+    // events/tasks/alerts. Claim + re-read mirrors processCompletedVisit /
+    // analyzeVisitForSupplyUsage (best-effort; not true CAS — docs/PLATFORM-CAS.md).
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `events-extract-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.asServiceRole.entities.Visit.update(visit_id, {
+        events_extract_claimed_by: claimToken,
+      });
+    } catch {
+      return Response.json({ error: 'Could not claim visit for event extraction' }, { status: 409 });
+    }
+    const claimCheck = await base44.asServiceRole.entities.Visit
+      .filter({ id: visit_id }, '', 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].events_extract_claimed_by !== claimToken) {
+      return Response.json({
+        success: true,
+        already_processed: true,
+        events_extracted: 0,
+        events: [],
+        tasks_created: 0,
+        alerts_created: 0,
+        skipped: 'claimed by concurrent run',
+      });
+    }
+    // Idempotency: if a prior winner already persisted events for this visit,
+    // do not re-extract (claim alone does not prevent a later retry after success).
+    const existingEvents = await base44.asServiceRole.entities.ClinicalEvent
+      .filter({ visit_id }, undefined, 1)
+      .catch(() => []);
+    if (existingEvents && existingEvents.length > 0) {
+      return Response.json({
+        success: true,
+        already_processed: true,
+        events_extracted: 0,
+        events: [],
+        tasks_created: 0,
+        alerts_created: 0,
+        skipped: 'events already extracted for visit',
+      });
+    }
+
     // Use AI to extract clinical events from the note
     const result = await base44.integrations.Core.InvokeLLM({
       model: "automatic",
@@ -260,6 +304,16 @@ IMPORTANT: For source_text, provide the EXACT verbatim text from the note, not a
           flagged_urgent: event.severity === 'critical'
         });
       }
+    }
+
+    // Stamp completion after writes. Re-check claim so a concurrent overwrite of
+    // events_extract_claimed_by mid-LLM cannot leave us marking a visit we lost.
+    const preStamp = await base44.asServiceRole.entities.Visit
+      .filter({ id: visit_id }, '', 1).catch(() => []);
+    if (preStamp[0]?.events_extract_claimed_by === claimToken) {
+      await base44.asServiceRole.entities.Visit.update(visit_id, {
+        events_extracted_at: new Date().toISOString(),
+      }).catch(() => {});
     }
 
     return Response.json({

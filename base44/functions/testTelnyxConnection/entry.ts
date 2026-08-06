@@ -105,6 +105,15 @@ async function resolveAgencySettings(base44, agencyName) {
 }
 // <<<END SHARED HELPER: resolveAgencySettings>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 /**
  * Read-only probe of the Telnyx `/v2/whoami` endpoint, bounded by an
  * AbortController timeout so a slow/blackholed host can't hang the diagnostic.
@@ -151,6 +160,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     // Same admin surface as the panels that invoke this (isAdminLike) — an
     // agency_admin can reach the "Test live connection" button, so accept them.

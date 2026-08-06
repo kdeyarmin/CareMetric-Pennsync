@@ -266,6 +266,15 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 /**
  * Re-dispatches failed faxes whose config-aware backoff window (set by the
  * status webhook) has elapsed. Called every few minutes by a scheduled
@@ -371,6 +380,7 @@ Deno.serve(async (req) => {
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
     const runId = crypto.randomUUID();
 

@@ -193,6 +193,15 @@
     "supply_usage_claimed_by": {
       "type": "string",
       "description": "Claim token for analyzeVisitForSupplyUsage idempotency. Set before LLM extraction and inventory writes so concurrent runs cannot double-decrement SupplyItem stock or create duplicate SupplyUsageLog rows."
+    },
+    "events_extract_claimed_by": {
+      "type": "string",
+      "description": "Claim token for extractClinicalEvents idempotency. Set before LLM extraction and ClinicalEvent/Task/PatientAlert writes so concurrent runs cannot create duplicate clinical events from the same visit note."
+    },
+    "events_extracted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When extractClinicalEvents finished creating ClinicalEvent rows for this visit"
     }
   },
   "required": [

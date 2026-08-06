@@ -122,6 +122,36 @@ dashboard relation rules (or server-scoped functions) from
 
 ---
 
+## 5b. Residual: bare `role:admin` is platform-wide in-repo
+
+The entity DSL in `base44/entities/*.jsonc` can match `user_condition.role`,
+`user_condition.account_type`, and row fields to `{{user.*}}` templates. It
+**cannot** express “facility admin for this agency only”
+(`role:admin` ∧ `agency_name === {{user.agency_name}}`) or patient access via
+care-team membership (cross-entity join).
+
+Consequences that remain until the **hosted** Base44 dashboard gains richer
+rules (or each app is single-tenant):
+
+| Pattern in `.jsonc` | Effective scope today |
+|---|---|
+| `user_condition: { role: "admin" }` | **Every** user with `role:admin`, including agency-scoped facility admins — platform-wide read/write for that entity |
+| `owner_agency_code: "{{user.agency_code}}"` (etc.) | Tenant-scoped **only if** the caller has that template field populated; does not replace the bare `role:admin` arm when both are `$or`’d |
+| `account_type: "super_admin"` / `"agency_admin"` arms | Additive clarity; still does not constrain bare `role:admin` |
+
+**Do not** “fix” this by scoping admin-only entities with a lone
+`agency_name: "{{user.agency_name}}"` arm — that would let any nurse in the
+agency through RLS. Keep service-role + function gates
+(`assertPatientAccess`, agency email sets) as the real multi-tenant boundary
+until hosted relation/`$and` rules exist. `User.agency_name` is declared in
+schema for honesty with runtime fields; it is not a substitute for hosted RLS.
+
+Probe T1–T3 specifically with a **facility admin who has `role:admin` and a
+non-empty `agency_name`** — if they can list another agency’s PHI via the
+entity API, LR-01 fails regardless of function-layer gates.
+
+---
+
 ## 6. Sign-off
 
 1. Fill `tmp/live-readiness-evidence.json` from the template (LR-01 keys).

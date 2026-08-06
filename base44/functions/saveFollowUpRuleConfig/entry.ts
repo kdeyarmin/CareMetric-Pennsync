@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // saveFollowUpRuleConfig — the ONLY write path for the agency's follow-up
 // review configuration (mirrors savePDGMRateConfig). The FollowUpRuleConfig
 // entity is service-role-write only, so browsers can't write it directly;
@@ -11,6 +20,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     const isAdmin = user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
     if (!user || !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });

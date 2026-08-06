@@ -114,6 +114,15 @@ async function resolveAgencySettings(base44, agencyName) {
 }
 // <<<END SHARED HELPER: resolveAgencySettings>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // ---- transient-failure retry policy ----
 // Telnyx has no client idempotency key. Therefore
 // we only retry on explicit retryable HTTP statuses (408/425/429/500/502/503/504).
@@ -164,6 +173,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     // Canonical admin tier (matches isAdminLike): facility admin, agency_admin,
     // super_admin. agency_admin was previously (inconsistently) excluded.
