@@ -24,6 +24,9 @@ const mocks = vi.hoisted(() => ({
   setToken: vi.fn(),
   resetPasswordRequest: vi.fn(async () => ({})),
   post: vi.fn(),
+  peekPendingAccessToken: vi.fn(() => null),
+  confirmPendingAccessToken: vi.fn(() => false),
+  declinePendingAccessToken: vi.fn(),
 }));
 
 vi.mock('@/lib/AuthContext', () => ({
@@ -41,14 +44,23 @@ vi.mock('@/api/base44Client', () => ({
 
 vi.mock('@/lib/app-params', () => ({
   appParams: { appId: 'app-1', serverUrl: 'https://server.test' },
+  peekPendingAccessToken: () => mocks.peekPendingAccessToken(),
+  confirmPendingAccessToken: () => mocks.confirmPendingAccessToken(),
+  declinePendingAccessToken: () => mocks.declinePendingAccessToken(),
 }));
 
 vi.mock('@base44/sdk/dist/utils/axios-client', () => ({
   createAxiosClient: () => ({ post: mocks.post }),
 }));
 
+vi.mock('@/lib/base44AxiosClient', () => ({
+  createAxiosClient: () => ({ post: mocks.post }),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.peekPendingAccessToken.mockReturnValue(null);
+  mocks.confirmPendingAccessToken.mockReturnValue(false);
 });
 
 const fillCredentials = async (user, email = 'nurse@agency.com', password = 'hunter22') => {
@@ -131,5 +143,30 @@ describe('SignInScreen', () => {
     await user.click(screen.getByRole('button', { name: /sign up/i }));
     await user.click(screen.getByRole('button', { name: /standard sign-in page/i }));
     expect(mocks.navigateToLogin).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires confirm before accepting a pending magic-link token', async () => {
+    mocks.peekPendingAccessToken.mockReturnValue('pending-tok');
+    mocks.confirmPendingAccessToken.mockReturnValue(true);
+    const onAuthenticated = vi.fn();
+    const user = userEvent.setup();
+    render(<SignInScreen onAuthenticated={onAuthenticated} />);
+
+    expect(screen.getByRole('heading', { name: /continue with this sign-in link/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^continue$/i }));
+    expect(mocks.confirmPendingAccessToken).toHaveBeenCalled();
+    expect(onAuthenticated).toHaveBeenCalled();
+  });
+
+  it('decline clears a pending magic-link token and shows the password form', async () => {
+    mocks.peekPendingAccessToken.mockReturnValue('pending-tok');
+    const user = userEvent.setup();
+    render(<SignInScreen onAuthenticated={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /^decline$/i }));
+    expect(mocks.declinePendingAccessToken).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
   });
 });
