@@ -64,13 +64,23 @@ export default function PatientContactActions({ patient, currentUser }) {
   const applyTemplate = (body) => setDraft(renderTemplate(body, templateContext));
 
   const sendText = useMutation({
-    mutationFn: (body) => base44.functions.invoke("sendSms", { to_number: patient.phone, body, patient_id: patient.id }),
+    mutationFn: async (body) => {
+      const res = await base44.functions.invoke("sendSms", { to_number: patient.phone, body, patient_id: patient.id });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
     onSuccess: () => { setDraft(""); setTextOpen(false); toast.success("Text sent"); },
     onError: (err) => toast.error(err?.message || "Failed to send text"),
   });
 
   const startCall = useMutation({
-    mutationFn: () => base44.functions.invoke("startMaskedCall", { patient_id: patient.id }),
+    mutationFn: async () => {
+      const res = await base44.functions.invoke("startMaskedCall", { patient_id: patient.id });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
     onSuccess: () => toast.success("Connecting… your phone will ring shortly, then we'll dial the patient."),
     onError: (err) => toast.error(err?.message || "Failed to start call"),
   });
@@ -79,10 +89,14 @@ export default function PatientContactActions({ patient, currentUser }) {
     /**
      * @param {"opted_in" | "opted_out"} consent_status
      */
-    mutationFn: (/** @type {"opted_in" | "opted_out"} */ consent_status) =>
-      base44.functions.invoke("recordSmsConsent", {
+    mutationFn: async (/** @type {"opted_in" | "opted_out"} */ consent_status) => {
+      const res = await base44.functions.invoke("recordSmsConsent", {
         phone_e164: patient.phone, consent_status, patient_id: patient.id, notes: consentNote,
-      }),
+      });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
     onSuccess: (_res, /** @type {"opted_in" | "opted_out"} */ consent_status) => {
       queryClient.invalidateQueries({ queryKey: ["patient-consent", e164] });
       toast.success(consent_status === "opted_in" ? "Texting consent recorded" : "Marked opted out");

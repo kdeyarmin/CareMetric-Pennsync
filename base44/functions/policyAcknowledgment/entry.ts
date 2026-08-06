@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
       const filter = body.policy_id ? { policy_id: body.policy_id } : {};
       let acks = await svc.PolicyAcknowledgment.filter(filter, '-created_date', 5000);
       // Agency admins are scoped to their own agency's staff.
-      if (user.account_type === 'agency_admin') {
+      if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
         if (!user.agency_name) {
           return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
         }

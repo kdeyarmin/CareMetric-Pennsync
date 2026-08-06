@@ -52,8 +52,14 @@ export default function SmsThreadView({
   const bottomRef = useRef(null);
 
   const sendMutation = useMutation({
-    mutationFn: (body) =>
-      base44.functions.invoke("sendSms", { to_number: otherPartyNumber, body, patient_id: patientId || undefined }),
+    mutationFn: async (body) => {
+      const res = await base44.functions.invoke("sendSms", {
+        to_number: otherPartyNumber, body, patient_id: patientId || undefined,
+      });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
     onSuccess: () => {
       setDraft("");
       toast.success("Message sent");
@@ -68,8 +74,14 @@ export default function SmsThreadView({
   // backend creates a fresh SmsMessage row, so the original failure stays in
   // the thread as a record).
   const resendMutation = useMutation({
-    mutationFn: (body) =>
-      base44.functions.invoke("sendSms", { to_number: otherPartyNumber, body, patient_id: patientId || undefined }),
+    mutationFn: async (body) => {
+      const res = await base44.functions.invoke("sendSms", {
+        to_number: otherPartyNumber, body, patient_id: patientId || undefined,
+      });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
     onSuccess: () => {
       toast.success("Message resent");
       onSent?.();

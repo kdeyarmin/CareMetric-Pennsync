@@ -355,7 +355,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   }
 
   // Agency admins may only resend invites for their own agency.
-  if (currentUser.account_type === 'agency_admin') {
+  if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
     if (!currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
     }
@@ -469,7 +469,7 @@ async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuper
   }
 
   // Agency admins may only reset staff in their own agency.
-  if (currentUser.account_type === 'agency_admin') {
+  if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
     if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
     }
@@ -721,7 +721,7 @@ async function cancelInvitation(base44, currentUser, params, isAdmin) {
   }
 
   // Agency admins may only cancel invites for their own agency.
-  if (currentUser.account_type === 'agency_admin') {
+  if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
     if (!currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
     }

@@ -431,7 +431,14 @@ async function getAgencyConfig(base44, agencyHint) {
     }
   }
   if (!rows?.length) {
-    rows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+    const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
+    if (key && (newest || []).length > 1) {
+      // Multi-tenant miss: empty config (safe defaults below) rather than
+      // another agency's greetings/transfer targets.
+      rows = [];
+    } else {
+      rows = (newest || []).slice(0, 1);
+    }
   }
   const s = rows[0] || {};
   // The office / after-hours numbers become Call Control `transfer` targets, and
@@ -711,12 +718,13 @@ async function handleInboundFax(base44, payload) {
     return Response.json({ success: true, deduped: true });
   }
 
-  // Match the dialed fax line to the owning agency's settings (not newest-row).
+  // Match the dialed fax line to the owning agency's settings. Fail closed when
+  // the dialed number doesn't match any agency — newest-row would mis-route PHI.
   const dialedFax = normalizeE164(payload?.to) || payload?.to || '';
-  let settings = await resolveAgencySettingsByNumber(base44, dialedFax);
+  const settings = await resolveAgencySettingsByNumber(base44, dialedFax);
   if (!settings) {
-    const fallback = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    settings = fallback[0] || null;
+    console.error('inbound fax: no AgencySettings match for dialed line');
+    return Response.json({ success: true, skipped: 'unresolved fax line' });
   }
 
   if (settings?.fax_receiving_enabled) {

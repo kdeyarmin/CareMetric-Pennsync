@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     }
 
     // Agency admins may only write payroll profiles for staff in their agency.
-    if (user.account_type === 'agency_admin') {
+    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
       if (!user.agency_name || !targetUser || targetUser.agency_name !== user.agency_name) {
         return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
       }

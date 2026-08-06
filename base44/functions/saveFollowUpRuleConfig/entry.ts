@@ -54,14 +54,31 @@ Deno.serve(async (req) => {
           }))
       : [];
 
+    const agencyName = String(user.agency_name || '').trim();
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && agencyName
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScoped && !agencyName) {
+      return Response.json({ error: 'Forbidden: agency_name is required' }, { status: 403 });
+    }
+
     const payload = {
       disabled_rules,
       severity_overrides,
       custom_items,
       updated_by_email: user.email,
+      ...(agencyName ? { agency_name: agencyName } : {}),
     };
 
-    const existing = await base44.asServiceRole.entities.FollowUpRuleConfig.list('-created_date', 1).catch(() => []);
+    // Prefer the caller's agency row; never overwrite another tenant's newest row.
+    let existing = [];
+    if (agencyName) {
+      existing = await base44.asServiceRole.entities.FollowUpRuleConfig
+        .filter({ agency_name: agencyName }, '-created_date', 1).catch(() => []);
+    }
+    if (!existing?.length && !isAgencyScoped) {
+      existing = await base44.asServiceRole.entities.FollowUpRuleConfig.list('-created_date', 1).catch(() => []);
+    }
     const current = existing && existing[0];
     const saved = current
       ? await base44.asServiceRole.entities.FollowUpRuleConfig.update(current.id, payload)

@@ -34,6 +34,10 @@
     "updated_by_email": {
       "type": "string",
       "description": "Email of the admin who last saved these rates."
+    },
+    "agency_name": {
+      "type": "string",
+      "description": "Tenant agency this rate set belongs to. savePDGMRateConfig filters/updates by this so multi-tenant admins cannot clobber another agency's rates."
     }
   },
   "rls": {

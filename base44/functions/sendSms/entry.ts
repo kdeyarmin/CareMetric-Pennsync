@@ -44,7 +44,7 @@ function phoneVariants(value) {
 
 async function getAgencyConfig(base44, user) {
   // Prefer the caller's agency settings row when multi-tenant rows exist.
-  // Falling back to newest-row-wins preserves single-tenant deployments.
+  // Newest-row fallback is only safe for single-tenant (≤1 settings row).
   let settings = [];
   if (user?.agency_name) {
     settings = await base44.asServiceRole.entities.AgencySettings
@@ -57,7 +57,12 @@ async function getAgencyConfig(base44, user) {
     }
   }
   if (!settings?.length) {
-    settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+    const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
+    if (user?.agency_name && (newest || []).length > 1) {
+      // Multi-tenant miss: do not apply another agency's SMS policy.
+      return { settings: {}, smsEnabled: false, missingAgencySettings: true };
+    }
+    settings = (newest || []).slice(0, 1);
   }
   const s = settings[0] || {};
   return { settings: s, smsEnabled: s.sms_messaging_enabled ?? true };
@@ -644,13 +649,33 @@ Deno.serve(async (req) => {
         if (!claimed) {
           return Response.json({ error: 'Patient not found' }, { status: 404 });
         }
-        const isAdmin = user.role === 'admin'
-          || user.account_type === 'agency_admin'
-          || user.account_type === 'super_admin';
+        const isSuperAdmin = user.account_type === 'super_admin';
+        const isAgencyScopedAdmin =
+          user.account_type === 'agency_admin'
+          || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+        const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
         const isAssigned = Array.isArray(claimed.assigned_nurses)
           && claimed.assigned_nurses.includes(user.email);
-        if (!isAdmin && claimed.created_by !== user.email && !isAssigned) {
+        if (!isPlatformAdmin && !isAgencyScopedAdmin && claimed.created_by !== user.email && !isAssigned) {
           return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        if (isAgencyScopedAdmin) {
+          if (!user.agency_name) {
+            return Response.json({ error: 'Forbidden' }, { status: 403 });
+          }
+          const agencyUsers = await base44.asServiceRole.entities.User
+            .list('-created_date', 5000).catch(() => []);
+          const agencyEmails = new Set(
+            (agencyUsers || [])
+              .filter((u) => u.agency_name === user.agency_name && u.email)
+              .map((u) => u.email),
+          );
+          const inAgency = (claimed.created_by && agencyEmails.has(claimed.created_by))
+            || (Array.isArray(claimed.assigned_nurses)
+              && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
+          if (!inAgency) {
+            return Response.json({ error: 'Forbidden' }, { status: 403 });
+          }
         }
         // Phone didn't resolve but caller has access — keep the explicit link.
         resolvedPatientId = patient_id;

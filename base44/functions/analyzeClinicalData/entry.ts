@@ -126,12 +126,33 @@ async function extractEvents(base44, params) {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const [evPatient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, '', 1);
   if (!evPatient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-  const isAdmin = user.role === 'admin'
-    || user.account_type === 'agency_admin'
-    || user.account_type === 'super_admin';
-  if (!isAdmin && evPatient.created_by !== user.email
-    && !(Array.isArray(evPatient.assigned_nurses) && evPatient.assigned_nurses.includes(user.email))) {
+  const isSuperAdmin = user.account_type === 'super_admin';
+  const isAgencyScopedAdmin =
+    user.account_type === 'agency_admin'
+    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+  const isAssigned = Array.isArray(evPatient.assigned_nurses)
+    && evPatient.assigned_nurses.includes(user.email);
+  if (!isPlatformAdmin && !isAgencyScopedAdmin && evPatient.created_by !== user.email && !isAssigned) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (isAgencyScopedAdmin) {
+    if (!user.agency_name) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const agencyUsers = await base44.asServiceRole.entities.User
+      .list('-created_date', 5000).catch(() => []);
+    const agencyEmails = new Set(
+      (agencyUsers || [])
+        .filter((u) => u.agency_name === user.agency_name && u.email)
+        .map((u) => u.email),
+    );
+    const inAgency = (evPatient.created_by && agencyEmails.has(evPatient.created_by))
+      || (Array.isArray(evPatient.assigned_nurses)
+        && evPatient.assigned_nurses.some((e) => agencyEmails.has(e)));
+    if (!inAgency) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
   }
 
   const rawResult = await base44.integrations.Core.InvokeLLM({

@@ -80,9 +80,23 @@ export default function Timesheets() {
   // Facility visit-type point values — readable by everyone so the nurse form can
   // preview total points; only admins can edit them (server-enforced).
   const { data: visitPointConfig = null } = useQuery({
-    queryKey: ["visit-point-config"],
+    queryKey: ["visit-point-config", currentUser?.agency_name || null],
     queryFn: async () => {
-      const rows = await base44.entities.VisitPointConfig.list("-updated_date", 10);
+      const agency = String(currentUser?.agency_name || "").trim();
+      let rows = [];
+      if (agency) {
+        rows = await base44.entities.VisitPointConfig
+          .filter({ agency_name: agency }, "-updated_date", 10)
+          .catch(() => []);
+      }
+      if (!rows?.length) {
+        // Legacy rows may lack agency_name; only use unscoped list when the
+        // caller has no agency (platform) or as a single-tenant fallback.
+        const all = await base44.entities.VisitPointConfig.list("-updated_date", 10);
+        rows = agency
+          ? (all || []).filter((c) => !c.agency_name || c.agency_name === agency)
+          : (all || []);
+      }
       return (rows || []).find((c) => c.active !== false) || (rows || [])[0] || null;
     },
     initialData: null,

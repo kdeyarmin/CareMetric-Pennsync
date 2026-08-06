@@ -25,7 +25,11 @@ Deno.serve(async (req) => {
     // Fail closed: do NOT short-circuit when attemptData.user_id is falsy — a
     // legacy/imported attempt with a missing user_id must not award to whoever
     // forwards its id; treat an unknown owner as not-this-user.
-    if (user.role !== 'admin' && attemptData.user_id !== user.email) {
+    // Platform-wide admin only; facility admins with an agency must not award
+    // badges for attempts outside their care (attempt ownership still applies).
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    if (!isPlatformAdmin && attemptData.user_id !== user.email) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 

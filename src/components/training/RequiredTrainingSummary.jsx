@@ -5,7 +5,7 @@ import { createPageUrl } from "@/utils";
 import { safePercent } from "@/lib/safePercent";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
+import { isPastLocalDueDate, formatLocalDate, parseLocalDate } from '@/lib/dateLocal';
 
 const formatDate = (value) => formatLocalDate(value) || "—";
 
@@ -48,7 +48,11 @@ export default function RequiredTrainingSummary({ assignments = [], courseMap = 
     // The single most urgent next action: soonest due date among outstanding,
     // dated items first, then any remaining outstanding item.
     const next = [...outstanding].sort((a, b) => {
-      if (a.due_date && b.due_date) return new Date(a.due_date) - new Date(b.due_date);
+      if (a.due_date && b.due_date) {
+        const aTs = parseLocalDate(a.due_date)?.getTime() ?? Number.POSITIVE_INFINITY;
+        const bTs = parseLocalDate(b.due_date)?.getTime() ?? Number.POSITIVE_INFINITY;
+        return aTs - bTs;
+      }
       if (a.due_date) return -1;
       if (b.due_date) return 1;
       return 0;

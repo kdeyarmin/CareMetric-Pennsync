@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     // agency_admin lacks agency_name — otherwise the unscoped list is returned
     // and becomes a cross-tenant training readiness dump.
     let scopedAssignments = assignments;
-    if (user.account_type === 'agency_admin') {
+    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
       if (!user.agency_name) {
         return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
       }

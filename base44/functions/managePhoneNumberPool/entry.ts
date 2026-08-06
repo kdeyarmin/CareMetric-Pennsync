@@ -25,9 +25,15 @@ async function resolveAgencySettings(base44, agencyName) {
     }
   }
   if (!settings?.length) {
-    settings = await base44.asServiceRole.entities.AgencySettings
-      .list('-created_date', 1)
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
       .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
   }
   return settings?.[0] || null;
 }
@@ -164,7 +170,7 @@ Deno.serve(async (req) => {
       if (!target) return Response.json({ error: 'Target nurse not found.' }, { status: 404 });
 
       // Agency admins may only assign numbers to staff in their own agency.
-      if (user.account_type === 'agency_admin') {
+      if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
         if (!user.agency_name || target.agency_name !== user.agency_name) {
           return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
         }
@@ -214,7 +220,7 @@ Deno.serve(async (req) => {
         const targets = await base44.asServiceRole.entities.User.filter({ email: row.assigned_to_email }, undefined, 5000).catch(() => []);
         const target = targets[0];
         // Agency admins may only release numbers held by their own agency's staff.
-        if (user.account_type === 'agency_admin') {
+        if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
           if (!user.agency_name || !target || target.agency_name !== user.agency_name) {
             return Response.json({ error: 'Forbidden: number holder is outside your agency.' }, { status: 403 });
           }
@@ -222,7 +228,7 @@ Deno.serve(async (req) => {
         if (target && normalizeE164(target.work_phone_number) === e164) {
           await base44.asServiceRole.entities.User.update(target.id, { work_phone_number: '' }).catch(() => {});
         }
-      } else if (user.account_type === 'agency_admin') {
+      } else if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
         // Unassigned pool rows are agency-shared infrastructure — still allow
         // release/reset, but refuse if we somehow lack agency_name.
         if (!user.agency_name) {

@@ -106,7 +106,11 @@ async function getAgencyConfig(base44, agencyHint) {
     }
   }
   if (!settings?.length) {
-    settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+    const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
+    if (agencyHint && (newest || []).length > 1) {
+      return { settings: {}, smsEnabled: false, missingAgencySettings: true };
+    }
+    settings = (newest || []).slice(0, 1);
   }
   const s = settings[0] || {};
   return {

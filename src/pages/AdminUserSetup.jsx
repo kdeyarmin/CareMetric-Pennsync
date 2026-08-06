@@ -41,7 +41,10 @@ export default function AdminUserSetup() {
 
   const inviteUserMutation = useMutation({
     mutationFn: async ({ email, full_name, role }) => {
-      return await base44.functions.invoke('createUserWithTempPassword', { email, full_name, role });
+      const res = await base44.functions.invoke('createUserWithTempPassword', { email, full_name, role });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
     },
     onSuccess: (_data, variables) => {
       const manualLabel = variables?.role === 'admin' ? 'Facility Administrator Manual' : 'User Manual';

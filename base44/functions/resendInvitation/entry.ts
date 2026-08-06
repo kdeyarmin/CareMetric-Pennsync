@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     }
 
     // Agency admins may only resend invites for their own agency.
-    if (user.account_type === 'agency_admin') {
+    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
       if (!user.agency_name) {
         return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
       }

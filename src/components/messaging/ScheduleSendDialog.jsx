@@ -27,7 +27,12 @@ export default function ScheduleSendDialog({ toNumber, patientId, body, template
   const [when, setWhen] = useState("");
 
   const schedule = useMutation({
-    mutationFn: (payload) => base44.functions.invoke("scheduleSms", payload),
+    mutationFn: async (payload) => {
+      const res = await base44.functions.invoke("scheduleSms", payload);
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
     onSuccess: () => {
       setOpen(false);
       setWhen("");

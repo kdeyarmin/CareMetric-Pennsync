@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
     // Agency admins are scoped to their OWN agency (mirrors generateAndCacheCertificatePacket):
     // without this an agency_admin could pass another agency's employeeId and pull
     // that tenant's certificate packet. Fail closed when caller lacks agency_name.
-    if (user.account_type === 'agency_admin') {
+    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
       if (!user.agency_name || employee.agency_name !== user.agency_name) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }

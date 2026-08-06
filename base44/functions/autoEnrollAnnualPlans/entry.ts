@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
     const allUsers = await svc.User.list('-created_date', 5000);
     let candidates = allUsers.filter((u) => u.email && u.role !== 'admin' && u.is_approved !== false);
     // Agency admins only enroll their own agency's staff.
-    if (me?.account_type === 'agency_admin') {
+    if (me && me.account_type !== 'super_admin' && me.agency_name && (me.account_type === 'agency_admin' || me.role === 'admin')) {
       if (!me.agency_name) {
         return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
       }

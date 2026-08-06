@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
     let candidates = allUsers.filter((candidate) => candidate.email);
 
-    if (user.account_type === 'agency_admin') {
+    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
       if (!user.agency_name) {
         return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
       }

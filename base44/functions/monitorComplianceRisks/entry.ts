@@ -209,7 +209,14 @@ Deno.serve(async (req) => {
         }
       }
       if (!rows?.length) {
-        rows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+        // Multi-tenant miss: default SoR off (safe companion-EMR mode). Only
+        // fall back to newest-row when a single settings row exists.
+        const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
+        if (agencyName && (newest || []).length > 1) {
+          sorCache.set(key, false);
+          return false;
+        }
+        rows = (newest || []).slice(0, 1);
       }
       const flag = rows?.[0]?.pennsync_is_system_of_record === true;
       sorCache.set(key, flag);

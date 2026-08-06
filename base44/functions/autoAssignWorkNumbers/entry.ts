@@ -15,9 +15,15 @@ async function resolveAgencySettings(base44, agencyName) {
     }
   }
   if (!settings?.length) {
-    settings = await base44.asServiceRole.entities.AgencySettings
-      .list('-created_date', 1)
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
       .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
   }
   return settings?.[0] || null;
 }
@@ -100,15 +106,20 @@ Deno.serve(async (req) => {
       if (norm) inUse.add(norm);
     }
 
-    // Agency admins may only auto-assign within their own agency.
-    if (user.account_type === 'agency_admin' && !user.agency_name) {
+    // Agency-scoped admins (agency_admin or role:admin with agency) may only
+    // auto-assign within their own agency.
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if ((user.account_type === 'agency_admin' || (user.role === 'admin' && user.account_type !== 'super_admin'))
+        && !user.agency_name) {
       return Response.json({ error: 'Forbidden: agency_name is required to auto-assign work numbers.' }, { status: 403 });
     }
 
     // Candidate users: those missing a work number (optionally limited to `emails`).
     const candidates = allUsers.filter((u) => {
       if (!isBlank(u.work_phone_number)) return false;
-      if (user.account_type === 'agency_admin' && u.agency_name !== user.agency_name) return false;
+      if (isAgencyScoped && u.agency_name !== user.agency_name) return false;
       if (onlyEmails && !onlyEmails.includes(String(u.email || '').trim().toLowerCase())) return false;
       return true;
     });

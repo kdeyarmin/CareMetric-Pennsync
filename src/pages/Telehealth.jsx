@@ -84,7 +84,12 @@ export default function Telehealth() {
   });
 
   const textLink = useMutation({
-    mutationFn: ({ to_number, body, patient_id }) => base44.functions.invoke("sendSms", { to_number, body, patient_id }),
+    mutationFn: async ({ to_number, body, patient_id }) => {
+      const res = await base44.functions.invoke("sendSms", { to_number, body, patient_id });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
     onSuccess: () => toast.success("Join link texted to the patient"),
     onError: (e) => toast.error(e?.message || "Couldn't send the text")
   });

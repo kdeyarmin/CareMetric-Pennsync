@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
     // Fail closed when agency_admin lacks agency_name — otherwise agencyEmails
     // stays null and inAgency() admits every tenant's rows.
     let agencyEmails = null;
-    if (user.account_type === 'agency_admin') {
+    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
       if (!user.agency_name) {
         return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
       }

@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
     }
     const employee = employees[0];
 
-    if (user.account_type === 'agency_admin') {
+    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
       if (!user.agency_name || employee.agency_name !== user.agency_name) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }

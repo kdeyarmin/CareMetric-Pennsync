@@ -192,9 +192,15 @@ async function resolveAgencySettings(base44, agencyName) {
     }
   }
   if (!settings?.length) {
-    settings = await base44.asServiceRole.entities.AgencySettings
-      .list('-created_date', 1)
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
       .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
   }
   return settings?.[0] || null;
 }

@@ -298,7 +298,11 @@ export default function LearningCenter() {
   const requiredOutstanding = useMemo(
     () => requiredAssignments
       .filter(a => !(a.status === 'completed' || a.pass_fail_result === 'passed'))
-      .sort((a, b) => new Date(a.due_date || '9999') - new Date(b.due_date || '9999')),
+      .sort((a, b) => {
+        const aDue = a.due_date ? (parseLocalDate(a.due_date)?.getTime() ?? Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY;
+        const bDue = b.due_date ? (parseLocalDate(b.due_date)?.getTime() ?? Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY;
+        return aDue - bDue;
+      }),
     [requiredAssignments]
   );
   const requiredReadiness = requiredAssignments.length > 0
@@ -340,13 +344,22 @@ export default function LearningCenter() {
         items.push({ id: `asg-${a.id}`, title: a.course_title, kind: 'Training renewal', date: a.renewal_due_date });
       }
     });
-    return items.sort((x, y) => new Date(x.date) - new Date(y.date));
+    return items.sort((x, y) => {
+      const xTs = x.date ? (parseLocalDate(x.date)?.getTime() ?? Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY;
+      const yTs = y.date ? (parseLocalDate(y.date)?.getTime() ?? Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY;
+      return xTs - yTs;
+    });
   }, [certificates, assignments]);
 
   // Self-enrollment for elective (non-required) catalog courses
   const [enrollFeedback, setEnrollFeedback] = useState({});
   const enrollMutation = useMutation({
-    mutationFn: (courseId) => selfEnrollCourse({ courseId }),
+    mutationFn: async (courseId) => {
+      const res = await selfEnrollCourse({ courseId });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
     onMutate: (courseId) => setEnrollFeedback(prev => ({ ...prev, [courseId]: 'loading' })),
     onSuccess: (_data, courseId) => {
       setEnrollFeedback(prev => ({ ...prev, [courseId]: 'done' }));
@@ -416,7 +429,9 @@ export default function LearningCenter() {
     return [...activeAssignments].sort((a, b) => {
       const orderDiff = (order[a.status] ?? 3) - (order[b.status] ?? 3);
       if (orderDiff !== 0) return orderDiff;
-      return new Date(a.due_date || '9999') - new Date(b.due_date || '9999');
+      const aDue = a.due_date ? (parseLocalDate(a.due_date)?.getTime() ?? Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY;
+      const bDue = b.due_date ? (parseLocalDate(b.due_date)?.getTime() ?? Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY;
+      return aDue - bDue;
     });
   }, [activeAssignments]);
 

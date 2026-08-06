@@ -4,6 +4,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // stubs, so searchPDFs can finally match real document content.
 import { extractText, getDocumentProxy } from 'npm:unpdf@1.6.2';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // <<<BEGIN SHARED HELPER: isSafeFetchUrl — generated, edit base44/_shared/backendHelpers.mjs>>>
 // SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
 // internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
@@ -57,6 +66,7 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { 
       pdf_url, 
@@ -77,12 +87,31 @@ Deno.serve(async (req) => {
     // surfacing it in their scope — and the pdf_url-keyed update branch below
     // could clobber an index belonging to a scope they can't access. Mirror
     // searchPDFs' patient-scope check for both the target and the existing row.
-    const isAdmin = user.role === 'admin';
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
     const assertPatientAccess = async (pid) => {
-      if (!pid || isAdmin) return true;
+      if (!pid) return true;
       const [p] = await base44.asServiceRole.entities.Patient.filter({ id: pid }, undefined, 5000).catch(() => []);
-      return Boolean(p) && (p.created_by === user.email
-        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email)));
+      if (!p) return false;
+      if (isPlatformAdmin) return true;
+      if (p.created_by === user.email
+        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email))) {
+        return true;
+      }
+      if (isAgencyScopedAdmin && user.agency_name) {
+        const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+        const agencyEmails = new Set(
+          (agencyUsers || [])
+            .filter((u) => u.agency_name === user.agency_name && u.email)
+            .map((u) => u.email),
+        );
+        return !!(p.created_by && agencyEmails.has(p.created_by))
+          || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)));
+      }
+      return false;
     };
     if (!(await assertPatientAccess(patient_id))) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });

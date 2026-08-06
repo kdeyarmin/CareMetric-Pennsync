@@ -56,16 +56,19 @@ export default function AdminCredentialApproval() {
   // are stamped server-side.
   const approveMutation = useMutation({
     mutationFn: async (credential) => {
-      await base44.functions.invoke('reviewPersonnelCredential', {
+      const res = await base44.functions.invoke('reviewPersonnelCredential', {
         credential_id: credential.id,
         action: 'approve',
       });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
     },
     onSuccess: () => {
       toast.success("Credential approved and employee notified");
     },
-    onError: () => {
-      toast.error("Failed to approve credential");
+    onError: (err) => {
+      toast.error(err?.message || "Failed to approve credential");
     },
     // Refresh regardless of outcome so a partial/mail failure never masks an
     // already-written approval by leaving the item looking still-pending.
@@ -79,11 +82,14 @@ export default function AdminCredentialApproval() {
 
   const rejectMutation = useMutation({
     mutationFn: async ({ credential, reason }) => {
-      await base44.functions.invoke('reviewPersonnelCredential', {
+      const res = await base44.functions.invoke('reviewPersonnelCredential', {
         credential_id: credential.id,
         action: 'reject',
         rejection_reason: reason,
       });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pendingCredentials'] });
@@ -95,8 +101,8 @@ export default function AdminCredentialApproval() {
       setSelectedCredential(null);
       toast.success("Credential rejected and employee notified");
     },
-    onError: () => {
-      toast.error("Failed to reject credential");
+    onError: (err) => {
+      toast.error(err?.message || "Failed to reject credential");
     }
   });
 

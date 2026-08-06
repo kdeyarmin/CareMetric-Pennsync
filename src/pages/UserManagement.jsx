@@ -141,7 +141,10 @@ export default function UserManagement() {
           entity_id: invitationId
         });
       }
-      return base44.functions.invoke('resendInvitation', { invitation_id: invitationId });
+      const res = await base44.functions.invoke('resendInvitation', { invitation_id: invitationId });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
@@ -185,7 +188,10 @@ export default function UserManagement() {
           entity_id: invitationId
         });
       }
-      return base44.functions.invoke('userManagement', { action: 'cancel_invitation', invitation_id: invitationId });
+      const res = await base44.functions.invoke('userManagement', { action: 'cancel_invitation', invitation_id: invitationId });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
@@ -199,7 +205,12 @@ export default function UserManagement() {
   });
 
   const createUserMutation = useMutation({
-    mutationFn: (data) => base44.functions.invoke('createUserWithTempPassword', data),
+    mutationFn: async (data) => {
+      const res = await base44.functions.invoke('createUserWithTempPassword', data);
+      const body = res?.data ?? res;
+      if (body?.error) throw new Error(body.error);
+      return body;
+    },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
       setShowUserSetupDialog(false);

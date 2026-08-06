@@ -25,9 +25,15 @@ async function resolveAgencySettings(base44, agencyName) {
     }
   }
   if (!settings?.length) {
-    settings = await base44.asServiceRole.entities.AgencySettings
-      .list('-created_date', 1)
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
       .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
   }
   return settings?.[0] || null;
 }
@@ -103,7 +109,7 @@ Deno.serve(async (req) => {
     }
 
     // Agency admins may only provision numbers for staff in their own agency.
-    if (user.account_type === 'agency_admin') {
+    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
       if (!user.agency_name || target.agency_name !== user.agency_name) {
         return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
       }

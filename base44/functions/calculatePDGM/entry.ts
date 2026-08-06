@@ -23,9 +23,15 @@ async function resolveAgencySettings(base44, agencyName) {
     }
   }
   if (!settings?.length) {
-    settings = await base44.asServiceRole.entities.AgencySettings
-      .list('-created_date', 1)
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
       .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
   }
   return settings?.[0] || null;
 }
@@ -740,7 +746,16 @@ Deno.serve(async (req) => {
     let isOfficial = false;
     let icdMap = ICD10_CLINICAL_GROUPS;
     try {
-      const rateRows = await base44.asServiceRole.entities.PDGMRateConfig.list('-created_date', 1);
+      let rateRows = [];
+      if (user?.agency_name) {
+        rateRows = await base44.asServiceRole.entities.PDGMRateConfig
+          .filter({ agency_name: user.agency_name }, '-created_date', 1).catch(() => []);
+      }
+      if (!rateRows?.length) {
+        const newest = await base44.asServiceRole.entities.PDGMRateConfig.list('-created_date', 5).catch(() => []);
+        // Multi-tenant: don't apply another agency's official rates.
+        rateRows = (user?.agency_name && (newest || []).length > 1) ? [] : (newest || []).slice(0, 1);
+      }
       const rateConfig = rateRows && rateRows.length > 0 ? rateRows[0] : null;
       if (rateConfig) {
         rates = deepMergeNumbers(DEFAULT_RATES, rateConfig.rates);

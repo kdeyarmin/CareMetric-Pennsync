@@ -244,13 +244,33 @@ Deno.serve(async (req) => {
     if (!incidentPatient) {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }
-    const isAdmin = user.role === 'admin'
-      || user.account_type === 'agency_admin'
-      || user.account_type === 'super_admin';
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
     const isAssigned = Array.isArray(incidentPatient.assigned_nurses)
       && incidentPatient.assigned_nurses.includes(user.email);
-    if (!isAdmin && incidentPatient.created_by !== user.email && !isAssigned) {
+    if (!isPlatformAdmin && !isAgencyScopedAdmin && incidentPatient.created_by !== user.email && !isAssigned) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (isAgencyScopedAdmin) {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const inAgency = (incidentPatient.created_by && agencyEmails.has(incidentPatient.created_by))
+        || (Array.isArray(incidentPatient.assigned_nurses)
+          && incidentPatient.assigned_nurses.some((e) => agencyEmails.has(e)));
+      if (!inAgency) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     const reportText = payload.report_text || buildReportText(payload);

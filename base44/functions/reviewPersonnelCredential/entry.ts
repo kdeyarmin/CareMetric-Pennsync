@@ -189,7 +189,7 @@ Deno.serve(async (req) => {
 
     // Agency admins may only review credentials for staff in their own agency.
     // credential.user_id stores the employee's email in this schema.
-    if (user.account_type === 'agency_admin') {
+    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
       const owners = await base44.asServiceRole.entities.User
         .filter({ email: credential.user_id }, undefined, 5)
         .catch(() => []);

@@ -47,10 +47,24 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Request body is required' }, { status: 400 });
     }
 
-    // Single-row config: update the most recent row if one exists, else create.
-    // The id is derived server-side (not trusted from the body), matching how the
-    // page loads `list('-created_date', 1)`.
-    const existing = await base44.asServiceRole.entities.PDGMRateConfig.list('-created_date', 1).catch(() => []);
+    const agencyName = String(user.agency_name || '').trim();
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && agencyName
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if ((user.account_type === 'agency_admin' || (user.role === 'admin' && user.account_type !== 'super_admin'))
+        && !agencyName) {
+      return Response.json({ error: 'Forbidden: agency_name is required' }, { status: 403 });
+    }
+
+    // Prefer the caller's agency row; never overwrite another tenant's newest row.
+    let existing = [];
+    if (agencyName) {
+      existing = await base44.asServiceRole.entities.PDGMRateConfig
+        .filter({ agency_name: agencyName }, '-created_date', 1).catch(() => []);
+    }
+    if (!existing?.length && !isAgencyScoped) {
+      existing = await base44.asServiceRole.entities.PDGMRateConfig.list('-created_date', 1).catch(() => []);
+    }
     const current = existing?.[0];
 
     // Persist only the known fields. The editor identity is taken from the
@@ -75,6 +89,7 @@ Deno.serve(async (req) => {
         ? (isPlainObject(current?.case_mix_weight_table) ? current.case_mix_weight_table : null)
         : (isPlainObject(case_mix_weight_table) ? case_mix_weight_table : null),
       updated_by_email: user.email || null,
+      ...(agencyName ? { agency_name: agencyName } : {}),
     };
     const saved = current?.id
       ? await base44.asServiceRole.entities.PDGMRateConfig.update(current.id, payload)

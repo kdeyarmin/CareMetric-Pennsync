@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
     }
 
     // Agency admins may only reset staff in their own agency.
-    if (currentUser.account_type === 'agency_admin') {
+    if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
       if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
         return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
       }

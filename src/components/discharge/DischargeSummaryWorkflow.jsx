@@ -84,7 +84,10 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
         patient_id: patientId,
         discharge_date: dischargeDate
       });
-      return response.data;
+      const data = response?.data ?? response;
+      if (data?.error) throw new Error(data.error);
+      if (!data?.discharge_summary) throw new Error('Discharge summary was not returned');
+      return data;
     },
     onSuccess: (data) => {
       toast.success('Discharge summary generated successfully');
