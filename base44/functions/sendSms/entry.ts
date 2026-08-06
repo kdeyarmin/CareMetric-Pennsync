@@ -42,8 +42,23 @@ function phoneVariants(value) {
   return variants.filter((v, i) => variants.indexOf(v) === i);
 }
 
-async function getAgencyConfig(base44) {
-  const settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+async function getAgencyConfig(base44, user) {
+  // Prefer the caller's agency settings row when multi-tenant rows exist.
+  // Falling back to newest-row-wins preserves single-tenant deployments.
+  let settings = [];
+  if (user?.agency_name) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: user.agency_name }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: user.agency_name }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+  }
   const s = settings[0] || {};
   return { settings: s, smsEnabled: s.sms_messaging_enabled ?? true };
 }
@@ -527,7 +542,7 @@ Deno.serve(async (req) => {
     const telnyxCreds = await resolveTelnyxCreds(base44);
 
     const { apiKey, messagingProfileId } = telnyxCreds;
-    const { settings, smsEnabled } = await getAgencyConfig(base44);
+    const { settings, smsEnabled } = await getAgencyConfig(base44, user);
     if (!apiKey) {
       return Response.json({ error: telnyxCredsMessage(telnyxCreds, "SMS credentials") }, { status: 500 });
     }
@@ -588,7 +603,37 @@ Deno.serve(async (req) => {
       }
     }
 
-    const resolvedPatientId = patient_id || await resolvePatientId(base44, destination);
+    // Prefer phone→patient resolution. If the client supplied a patient_id,
+    // verify it matches the destination phone (or that the caller can access
+    // that chart) so SMS history cannot be linked to the wrong patient.
+    let resolvedPatientId = await resolvePatientId(base44, destination);
+    if (patient_id) {
+      if (resolvedPatientId && resolvedPatientId !== patient_id) {
+        return Response.json({
+          error: 'patient_id does not match the destination phone number',
+          reason: 'patient_phone_mismatch',
+        }, { status: 400 });
+      }
+      if (!resolvedPatientId) {
+        const [claimed] = await base44.asServiceRole.entities.Patient
+          .filter({ id: patient_id }, '', 1).catch(() => []);
+        if (!claimed) {
+          return Response.json({ error: 'Patient not found' }, { status: 404 });
+        }
+        const isAdmin = user.role === 'admin'
+          || user.account_type === 'agency_admin'
+          || user.account_type === 'super_admin';
+        const isAssigned = Array.isArray(claimed.assigned_nurses)
+          && claimed.assigned_nurses.includes(user.email);
+        if (!isAdmin && claimed.created_by !== user.email && !isAssigned) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        // Phone didn't resolve but caller has access — keep the explicit link.
+        resolvedPatientId = patient_id;
+      } else {
+        resolvedPatientId = patient_id;
+      }
+    }
     const clientMessageId = crypto.randomUUID();
 
     // Log the message before sending so we always have a record.

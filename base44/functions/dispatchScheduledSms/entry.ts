@@ -55,8 +55,22 @@ const BATCH_LIMIT = 100;
 // reminder is worse than none. Mirrors redriveFailedSms' 24h ceiling.
 const MAX_SCHEDULE_AGE_MS = 24 * 60 * 60 * 1000;
 
-async function getAgencyConfig(base44) {
-  const settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+async function getAgencyConfig(base44, agencyHint) {
+  // Prefer a settings row matching the nurse/agency when multi-tenant rows exist.
+  let settings = [];
+  if (agencyHint) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: agencyHint }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: agencyHint }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+  }
   const s = settings[0] || {};
   return {
     settings: s,

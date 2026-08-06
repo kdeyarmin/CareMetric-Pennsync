@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, { is_active: false, status: 'expired' }).catch(() => {});
       return Response.json({ error: 'This link has expired.' }, { status: 401 });
     }
-    if (record.submitted_at) {
+    if (record.submitted_at || record.submit_claimed_by) {
       return Response.json({ error: 'This request was already submitted.' }, { status: 409 });
     }
 
@@ -79,6 +79,27 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'No responses matched the requested items.' }, { status: 400 });
     }
 
+    // Claim BEFORE the Referral merge. Without this, two concurrent submits both
+    // pass the submitted_at check and last-write-wins on follow_up_requests.
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `followup-submit-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, {
+        submit_claimed_by: claimToken,
+        is_active: false,
+        status: 'delivered',
+        submitted_at: now,
+      });
+    } catch {
+      return Response.json({ error: 'This request was already submitted.' }, { status: 409 });
+    }
+    const claimCheck = await base44.asServiceRole.entities.ProviderFollowUpToken
+      .filter({ id: record.id }, undefined, 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].submit_claimed_by !== claimToken) {
+      return Response.json({ error: 'This request was already submitted.' }, { status: 409 });
+    }
+
     await base44.asServiceRole.entities.Referral.update(referral.id, {
       follow_up_requests: {
         ...followUp,
@@ -87,13 +108,6 @@ Deno.serve(async (req) => {
         received_at: now,
       },
     });
-
-    // Single-use link: no edits after submission.
-    await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, {
-      is_active: false,
-      status: 'delivered',
-      submitted_at: now,
-    }).catch(() => {});
 
     // Tell the requesting staff member the provider responded.
     if (referral.created_by) {

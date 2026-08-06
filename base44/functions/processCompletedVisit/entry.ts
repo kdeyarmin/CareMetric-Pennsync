@@ -35,8 +35,20 @@ Deno.serve(async (req) => {
     // double-click / retry would otherwise (a) overwrite nurse_notes with a fresh
     // narrative generated FROM the previous narrative — progressively corrupting
     // the documentation — and (b) create duplicate follow-up tasks + notifications
-    // every time. If AI follow-up tasks already exist for this visit it has been
-    // processed; return the prior result instead of re-running.
+    // every time. Prefer the durable ai_processed_at stamp; fall back to existing
+    // AI tasks for visits processed before that field existed.
+    if (visit.ai_processed_at) {
+      const existingAiTasks = await base44.entities.Task
+        .filter({ related_visit_id: visit_id, source: 'ai_generated' }, undefined, 5000)
+        .catch(() => []);
+      return Response.json({
+        success: true,
+        already_processed: true,
+        visit,
+        tasks_created: 0,
+        tasks: existingAiTasks || [],
+      });
+    }
     const existingAiTasks = await base44.entities.Task
       .filter({ related_visit_id: visit_id, source: 'ai_generated' }, undefined, 5000)
       .catch(() => []);
@@ -47,6 +59,30 @@ Deno.serve(async (req) => {
         visit,
         tasks_created: 0,
         tasks: existingAiTasks,
+      });
+    }
+
+    // Claim BEFORE the LLM work. The task-existence check above is TOCTOU: two
+    // concurrent submits both see zero tasks, both run InvokeLLM, then both
+    // overwrite nurse_notes and create duplicate tasks. Claim + re-read mirrors
+    // onDocumentSigned / sendRenewalReminders.
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `ai-process-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.entities.Visit.update(visit_id, { ai_process_claimed_by: claimToken });
+    } catch {
+      return Response.json({ error: 'Could not claim visit for processing' }, { status: 409 });
+    }
+    const claimCheck = await base44.entities.Visit.filter({ id: visit_id }, '-created_date', 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].ai_process_claimed_by !== claimToken) {
+      return Response.json({
+        success: true,
+        already_processed: true,
+        visit: claimCheck[0] || visit,
+        tasks_created: 0,
+        tasks: [],
+        skipped: 'claimed by concurrent run',
       });
     }
 
@@ -177,7 +213,8 @@ Only suggest tasks that are clinically necessary. If no follow-up is needed, ret
     const visitUpdate = {
       nurse_notes: narrativeText,
       ai_tags: extractTags(narrativeText),
-      status: 'completed'
+      status: 'completed',
+      ai_processed_at: new Date().toISOString(),
     };
     if (!visit.raw_transcription || !visit.raw_transcription.trim()) {
       visitUpdate.raw_transcription = rawNotes;

@@ -70,21 +70,26 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [searchParams] = useSearchParams();
   const queryPatientId = searchParams.get("patientId") || searchParams.get("patient_id") || "";
   const queryVisitType = searchParams.get("visitType") || searchParams.get("visit_type") || "";
-  const referralDraftNote = useMemo(() => {
-    if (searchParams.get("referral_mode") !== "true") return "";
+  const referralHandoff = useMemo(() => {
+    if (searchParams.get("referral_mode") !== "true") return { draftNote: "", patientId: "", visitType: "" };
     const referralId = searchParams.get("referral_id");
-    if (!referralId) return "";
+    if (!referralId) return { draftNote: "", patientId: "", visitType: "" };
     try {
       const raw = sessionStorage.getItem(`referral_prepopulate:${referralId}`);
-      if (!raw) return "";
+      if (!raw) return { draftNote: "", patientId: "", visitType: "" };
       const parsed = JSON.parse(raw);
-      return String(parsed.roughNote || "").trim();
+      return {
+        draftNote: String(parsed.roughNote || "").trim(),
+        patientId: String(parsed.patientId || "").trim(),
+        visitType: String(parsed.visitType || "").trim(),
+      };
     } catch {
-      return "";
+      return { draftNote: "", patientId: "", visitType: "" };
     }
   }, [searchParams]);
-  const [patientId, setPatientId] = useState(queryPatientId);
-  const [visitType, setVisitType] = useState(queryVisitType || "routine_visit");
+  const referralDraftNote = referralHandoff.draftNote;
+  const [patientId, setPatientId] = useState(queryPatientId || referralHandoff.patientId);
+  const [visitType, setVisitType] = useState(queryVisitType || referralHandoff.visitType || "routine_visit");
   const visitDate = todayEastern();
   const [note, setNote] = useState(referralDraftNote);
   const [vitals, setVitals] = useState({});

@@ -53,6 +53,10 @@
     "submitted_at": {
       "type": "string",
       "description": "ISO datetime the provider submitted responses (set once)"
+    },
+    "submit_claimed_by": {
+      "type": "string",
+      "description": "Claim token for concurrent submitFollowUpResponse; set before merging answers onto the Referral so two parallel submits cannot both write"
     }
   },
   "required": ["referral_id", "token", "expires_at"],

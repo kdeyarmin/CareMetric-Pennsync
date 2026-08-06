@@ -1,11 +1,27 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
-    if (user?.role !== 'admin') {
+    if (!isAdminLike(user)) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
@@ -21,10 +37,28 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    // Fetch patient
+    // Fetch patient and enforce agency access. Service-role get bypasses RLS, so
+    // without this check any admin could mint signature packages for another
+    // tenant's charts.
     const patient = await base44.asServiceRole.entities.Patient.get(patient_id);
     if (!patient) {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
+    }
+    if (user.account_type !== 'super_admin' && user.agency_name) {
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+        .catch(() => []);
+      const agencyEmails = new Set(
+        (Array.isArray(agencyUsers) ? agencyUsers : [])
+          .map((u) => u?.email)
+          .filter(Boolean)
+      );
+      const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
+        || (Array.isArray(patient.assigned_nurses)
+          && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
+      if (!inAgency) {
+        return Response.json({ error: 'Forbidden: patient is outside your agency' }, { status: 403 });
+      }
     }
 
     // Build substitution map

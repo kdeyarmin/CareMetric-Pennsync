@@ -8,6 +8,13 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
 
 // Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
 // response_json_schema, because the provider rejects deeply-nested object
@@ -32,28 +39,48 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
-    if (!user || user.role !== 'admin') {
+    if (!isAdminLike(user)) {
       return Response.json({ error: 'Unauthorized - Admin only' }, { status: 403 });
     }
 
     const { patient_id, visit_id, timeframe_days = 7 } = await req.json();
 
     // Fetch patient data
-    const patient = patient_id ? 
-      await base44.asServiceRole.entities.Patient.get(patient_id) :
+    const patient = patient_id ?
+      await base44.asServiceRole.entities.Patient.get(patient_id).catch(() => null) :
       null;
 
     // Determine which patients to analyze
     let patientsToAnalyze = [];
     if (patient_id) {
+      if (!patient) {
+        return Response.json({ error: 'Patient not found' }, { status: 404 });
+      }
       patientsToAnalyze = [patient];
     } else {
-      // Analyze all active patients
-      patientsToAnalyze = await base44.asServiceRole.entities.Patient.filter(
-        { status: 'active' }, 
-        '-updated_date', 
+      // Analyze active patients. Scope to the caller's agency when known so an
+      // agency_admin cannot pull every tenant's charts into LLM prompts.
+      const allActive = await base44.asServiceRole.entities.Patient.filter(
+        { status: 'active' },
+        '-updated_date',
         100
       );
+      if (user.account_type === 'super_admin' || !user.agency_name) {
+        patientsToAnalyze = allActive;
+      } else {
+        const agencyUsers = await base44.asServiceRole.entities.User
+          .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+          .catch(() => []);
+        const agencyEmails = new Set(
+          (Array.isArray(agencyUsers) ? agencyUsers : [])
+            .map((u) => u?.email)
+            .filter(Boolean)
+        );
+        patientsToAnalyze = (Array.isArray(allActive) ? allActive : []).filter((p) =>
+          (p.created_by && agencyEmails.has(p.created_by))
+          || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
+        );
+      }
     }
 
     const proposals = [];
@@ -61,6 +88,7 @@ Deno.serve(async (req) => {
     cutoffDate.setDate(cutoffDate.getDate() - timeframe_days);
 
     for (const pt of patientsToAnalyze) {
+      if (!pt?.id) continue;
       // Gather clinical data
       const [visits, carePlans, medications, incidents] = await Promise.all([
         base44.asServiceRole.entities.Visit.filter(

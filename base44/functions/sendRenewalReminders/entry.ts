@@ -143,7 +143,8 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const dueRaw = String(a.due_date).trim();
+      // Reuse dueRaw from the daysUntilDue parse above — a second `const dueRaw`
+      // here broke backend transpile (duplicate symbol) and blocked CI.
       let dueLabel;
       if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dueRaw)) {
         const [y, m, d] = dueRaw.split('-').map(Number);

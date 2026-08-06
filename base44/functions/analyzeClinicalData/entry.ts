@@ -119,6 +119,21 @@ async function extractEvents(base44, params) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
+  // Same access gate as extractClinicalEvents — this helper is currently unused by
+  // the action switch, but if rewired it must not allow service-role ClinicalEvent
+  // writes against an arbitrary patient_id.
+  const user = await base44.auth.me().catch(() => null);
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  const [evPatient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, '', 1);
+  if (!evPatient) return Response.json({ error: 'Patient not found' }, { status: 404 });
+  const isAdmin = user.role === 'admin'
+    || user.account_type === 'agency_admin'
+    || user.account_type === 'super_admin';
+  if (!isAdmin && evPatient.created_by !== user.email
+    && !(Array.isArray(evPatient.assigned_nurses) && evPatient.assigned_nurses.includes(user.email))) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const rawResult = await base44.integrations.Core.InvokeLLM({
     model: "automatic",
     prompt: `Extract ALL significant clinical events from this nursing note. Be thorough.

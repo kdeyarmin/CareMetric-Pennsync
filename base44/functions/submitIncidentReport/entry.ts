@@ -25,6 +25,24 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing required incident fields' }, { status: 400 });
     }
 
+    // Authorize: service-role Incident.create bypasses RLS, so a crafted
+    // patient_id would otherwise attribute a safety event (+ admin alerts with
+    // patient name) to an arbitrary chart. Mirror extractClinicalEvents /
+    // startMaskedCall — assigned nurse, creator, or admin only.
+    const [incidentPatient] = await base44.asServiceRole.entities.Patient
+      .filter({ id: payload.patient_id }, '', 1).catch(() => []);
+    if (!incidentPatient) {
+      return Response.json({ error: 'Patient not found' }, { status: 404 });
+    }
+    const isAdmin = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    const isAssigned = Array.isArray(incidentPatient.assigned_nurses)
+      && incidentPatient.assigned_nurses.includes(user.email);
+    if (!isAdmin && incidentPatient.created_by !== user.email && !isAssigned) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Service role: Incident write RLS is service-role-only so the CAP
     // lifecycle cannot be bypassed by a direct client write (see
     // functions/updateIncident). created_by must therefore be stamped here --

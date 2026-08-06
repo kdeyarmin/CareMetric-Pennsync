@@ -48,6 +48,10 @@ test('ReferralAdmissionNote does not serialize referral PHI into the URL', () =>
     !/referral_data=\$\{encodeURIComponent\(JSON\.stringify/.test(src),
     'ReferralAdmissionNote must pass the prepopulation payload via sessionStorage keyed by referral id — not a URL query param.',
   );
+  assert.ok(
+    !/patient_id=\$\{referral\.patient_id\}/.test(src),
+    'ReferralAdmissionNote must not put patient_id in the iframe URL — pass it via sessionStorage with the prepopulate payload.',
+  );
 });
 
 // 3. CSV exports must neutralize spreadsheet formula injection on attacker-

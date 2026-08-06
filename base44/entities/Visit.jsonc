@@ -180,6 +180,15 @@
       "type": "boolean",
       "default": false,
       "description": "True when the note was saved offline and the AI grounding (fact-check) pass was deferred until reconnect. The deterministic value-guard still ran, but live grounding had not — so the record carries this audit-trail signal until a later online re-save clears it. Surfaced as a pending-verification state in compliance reporting."
+    },
+    "ai_process_claimed_by": {
+      "type": "string",
+      "description": "Claim token for processCompletedVisit idempotency. Set before LLM work and re-read before writing the narrative so concurrent double-submits cannot both overwrite nurse_notes."
+    },
+    "ai_processed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When processCompletedVisit finished AI narrative/task generation for this visit"
     }
   },
   "required": [
