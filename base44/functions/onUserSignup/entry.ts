@@ -379,7 +379,17 @@ Deno.serve(async (req) => {
     }
 
     debugLog('Fetching admin users...');
-    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
+    // Platform-wide security alert for blocked uninvited signups (no patient PHI).
+    // Use isAdminLike tiers so agency_admin/super_admin accounts are included —
+    // role==='admin' alone missed those account types at some agencies.
+    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+    const admins = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+      u && u.email && (
+        u.role === 'admin' ||
+        u.account_type === 'agency_admin' ||
+        u.account_type === 'super_admin'
+      )
+    );
     debugLog('Found admins:', admins.length);
 
     const attemptDate = new Date().toLocaleString();
