@@ -4,7 +4,7 @@ import { readFile, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { transpileTs } from "../../tools-transpile-ts.mjs";
 
 /**
  * Guards the requeue-vs-destroy decision in the two scheduled-fax processors.
@@ -27,9 +27,7 @@ globalThis.Deno = globalThis.Deno || { serve() {}, env: { get: () => undefined }
 async function loadInline(entryPath, names) {
   let src = await readFile(new URL(entryPath, import.meta.url), "utf8");
   src = src.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/, "const createClientFromRequest = () => ({});");
-  const js = ts.transpileModule(src, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-  }).outputText;
+  const js = transpileTs(src).outputText;
   const tmp = join(tmpdir(), `schedfax_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(tmp, `${js}\nexport { ${names.join(", ")} };\n`);
   try {

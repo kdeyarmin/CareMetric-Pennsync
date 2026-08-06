@@ -4,7 +4,7 @@ import { readFile, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { transpileTs } from "../../tools-transpile-ts.mjs";
 
 import * as faxRetry from "../../src/components/fax/faxRetry.js";
 
@@ -19,9 +19,7 @@ async function loadInline(entryPath, names) {
   let src = await readFile(new URL(entryPath, import.meta.url), "utf8");
   src = src.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/, "const createClientFromRequest = () => ({});");
   const present = names.filter((n) => new RegExp(`(function|const)\\s+${n}\\b`).test(src));
-  const js = ts.transpileModule(src, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-  }).outputText;
+  const js = transpileTs(src).outputText;
   const tmp = join(tmpdir(), `faxinline_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(tmp, `${js}\nexport { ${present.join(", ")} };\n`);
   try {

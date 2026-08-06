@@ -4,7 +4,7 @@ import { readFile, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { transpileTs } from "../../../tools-transpile-ts.mjs";
 
 /**
  * Unit tests for the branded welcome-email builder that lives inline in
@@ -22,9 +22,7 @@ async function loadBuilders() {
   let src = await readFile(new URL("./entry.ts", import.meta.url), "utf8");
   // Drop the `npm:@base44/sdk` import — unresolvable (and unneeded) under node.
   src = src.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/, "");
-  const js = ts.transpileModule(src, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-  }).outputText;
+  const js = transpileTs(src).outputText;
   const tmp = join(tmpdir(), `welcomeEmail_${process.pid}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(tmp, js);
   try {

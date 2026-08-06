@@ -41,7 +41,7 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 - `pnpm run typecheck` is an informational baseline in CI (`continue-on-error`); it may report pre-existing errors and is not a gate.
 - `pnpm run typecheck:signal` **is** a CI gate (CI + Workflow Quality). It filters the checkJs pass to high-signal defect codes; keep it at 0 findings.
 - Accessibility axe runs on PRs/`main` via `.github/workflows/a11y.yml` (`test:a11y` + Playwright public routes). Local: `pnpm run build && pnpm run test:a11y:e2e`.
-- Stay on TypeScript 6.x for now. TypeScript 7 redesigns the default package export and removes the classic `transpileModule` / `ScriptTarget` API that `tools-check-backend-transpile.mjs` and the Base44 inline-parity tests rely on.
+- Backend/Deno function syntax checks and Base44 inline-parity tests transpile via `tools-transpile-ts.mjs` (esbuild), not the classic `typescript.transpileModule` API — so TypeScript 7+ is supported for `tsc`/typecheck.
 - CI uses Node 24.18.0 with pnpm 11.9.0. Use `.nvmrc` / `.node-version` plus Corepack in cloud environments.
 
 | Task | Command |
