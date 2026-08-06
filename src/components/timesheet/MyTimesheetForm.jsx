@@ -223,7 +223,10 @@ export default function MyTimesheetForm({
   const pastDue = selectedPeriod ? isPastDue(selectedPeriod) : false;
 
   const save = useMutation({
-    mutationFn: async (status) => {
+    /**
+     * @param {"draft" | "submitted"} status
+     */
+    mutationFn: async (/** @type {"draft" | "submitted"} */ status) => {
       const payload = {
         // service_type is resolved server-side from the employee's payroll
         // profile; sent here only for reference.
@@ -258,7 +261,7 @@ export default function MyTimesheetForm({
       if (result?.error) throw new Error(result.error);
       return result;
     },
-    onSuccess: (_data, status) => {
+    onSuccess: (_data, /** @type {"draft" | "submitted"} */ status) => {
       toast.success(status === "submitted" ? "Timesheet submitted for approval." : "Draft saved.");
       setForm({ ...blankForm(serviceType), manager_email: form.manager_email });
       setError("");

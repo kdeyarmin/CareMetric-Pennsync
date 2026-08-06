@@ -34,7 +34,7 @@ export function useCourseContentBuilder({
   toItem,
   toPayload,
   shouldPersist = () => true,
-  validate = () => null,
+  validate = (_items) => null,
   notReadyMessage = "Still loading. Please try again in a moment.",
   saveErrorMessage = "Failed to save. Please try again.",
 }) {
