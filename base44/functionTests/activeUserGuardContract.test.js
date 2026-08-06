@@ -193,7 +193,6 @@ const UNGUARDED_LEGACY_FUNCTIONS = new Set([
   'sendDocumentReminderEmails',
   'sendExpirationNotifications',
   'sendFax',
-  'sendFaxStatusNotification',
   'sendPersonnelExpirationNotifications',
   'sendRenewalReminders',
   'sendSignatureReminder',
