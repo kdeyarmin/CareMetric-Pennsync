@@ -108,7 +108,7 @@ export default function ComplianceCenter() {
   });
 
   const { data: allUsers = [], refetch: _refetchUsers } = useQuery({
-    queryKey: ['allUsers'],
+    queryKey: ['allUsers', 5000],
     queryFn: () => base44.entities.User.list('-created_date', 5000),
     initialData: [],
     refetchInterval: 30000,

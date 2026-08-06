@@ -79,7 +79,7 @@ export default function ReferralFollowUp() {
   const adminView = isAdminView(currentUser);
 
   const { data: referrals, isLoading } = useQuery({
-    queryKey: ["referrals"],
+    queryKey: ["referrals", 200],
     queryFn: () => base44.entities.Referral.list("-created_date", 200),
   });
 

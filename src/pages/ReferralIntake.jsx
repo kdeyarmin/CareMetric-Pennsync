@@ -167,13 +167,13 @@ export default function ReferralIntake() {
   });
 
   const { data: referrals = [], isLoading } = useQuery({
-    queryKey: ['referrals'],
+    queryKey: ['referrals', 200],
     queryFn: () => base44.entities.Referral.list('-created_date', 200),
     initialData: [],
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['allUsers'],
+    queryKey: ['allUsers', ALL_ROWS],
     queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
     initialData: [],
   });

@@ -60,7 +60,7 @@ export default function AnalyticsDashboard() {
 
   // Fetch all users for admin
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers'],
+    queryKey: ['allUsers', 10000],
     queryFn: () => base44.entities.User.list('-created_date', 10000),
     enabled: isAdmin,
   });

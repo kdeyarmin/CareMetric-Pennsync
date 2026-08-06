@@ -168,6 +168,13 @@
       },
       "description": "Renewal reminder offsets already sent by sendRenewalReminders"
     },
+    "training_due_offsets_sent": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Offsets sent by sendTrainingNotifications; separate from reminder_offsets_sent used by sendRenewalReminders"
+    },
     "expiration_note_offsets_sent": {
       "type": "array",
       "items": {

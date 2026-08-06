@@ -37,6 +37,22 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+// Local calendar day count for date-only YYYY-MM-DD fields (mirrors
+// sendPersonnelExpirationNotifications / remindPlanOverdueStaff).
+function localDaysUntil(dateOnly, now = new Date()) {
+  const raw = String(dateOnly || '').trim();
+  let target;
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number);
+    target = new Date(y, m - 1, d);
+  } else {
+    target = new Date(dateOnly);
+  }
+  if (Number.isNaN(target.getTime())) return null;
+  const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((target.getTime() - todayLocal.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -47,13 +63,7 @@ Deno.serve(async (req) => {
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
 
-    // Get today's date and 30 days from now
     const today = new Date();
-    const thirtyDaysFromNow = new Date(today);
-    thirtyDaysFromNow.setDate(today.getDate() + 30);
-    
-    const todayStr = today.toISOString().split('T')[0];
-    const thirtyDaysStr = thirtyDaysFromNow.toISOString().split('T')[0];
 
     // Fetch assignments/credentials, sorted ASCENDING by date so the SOONEST-
     // expiring (the ones this job exists to notify) are within the 500-row cap.
@@ -86,8 +96,8 @@ Deno.serve(async (req) => {
     for (const assignment of assignments) {
       if (!assignment.renewal_due_date) continue;
 
-      const renewalDate = new Date(assignment.renewal_due_date);
-      const daysUntilExpiration = Math.ceil((renewalDate - today) / (1000 * 60 * 60 * 24));
+      const daysUntilExpiration = localDaysUntil(assignment.renewal_due_date, today);
+      if (daysUntilExpiration === null) continue;
 
       // Dedicated marker for THIS job's in-app expiration note — sendRenewalReminders
       // uses TrainingAssignment.reminder_offsets_sent with a different tier set, and
@@ -98,7 +108,6 @@ Deno.serve(async (req) => {
       );
 
       if (dueOffsets.length > 0) {
-        // Create notification for employee
         notifications.push({
           user_email: assignment.assigned_to_user_id,
           type: 'expiration_warning',
@@ -110,7 +119,6 @@ Deno.serve(async (req) => {
           expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
         });
 
-        // Create admin notification
         adminNotifications.push({
           type: 'training_expiration',
           user_id: assignment.assigned_to_user_id,
@@ -119,8 +127,6 @@ Deno.serve(async (req) => {
           renewal_due_date: assignment.renewal_due_date
         });
 
-        // Record every newly-crossed tier so it is never re-sent — deferred until
-        // after the notifications are actually created (see markerUpdates above).
         markerUpdates.push(() => base44.asServiceRole.entities.TrainingAssignment.update(assignment.id, {
           expiration_note_offsets_sent: [...remindersSent, ...dueOffsets]
         }));
@@ -131,8 +137,8 @@ Deno.serve(async (req) => {
     for (const credential of credentials) {
       if (!credential.expiration_date) continue;
 
-      const expirationDate = new Date(credential.expiration_date);
-      const daysUntilExpiration = Math.ceil((expirationDate - today) / (1000 * 60 * 60 * 24));
+      const daysUntilExpiration = localDaysUntil(credential.expiration_date, today);
+      if (daysUntilExpiration === null) continue;
 
       // Dedicated marker for THIS job — sendCredentialRenewalReminders and
       // sendPersonnelExpirationNotifications key off other fields on the same
@@ -143,7 +149,6 @@ Deno.serve(async (req) => {
       );
 
       if (dueOffsets.length > 0) {
-        // Create notification for employee
         notifications.push({
           user_email: credential.user_id,
           type: 'credential_expiration',
@@ -155,7 +160,6 @@ Deno.serve(async (req) => {
           expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
         });
 
-        // Create admin notification
         adminNotifications.push({
           type: 'credential_expiration',
           user_id: credential.user_id,
@@ -165,29 +169,23 @@ Deno.serve(async (req) => {
           expiration_date: credential.expiration_date
         });
 
-        // Record every newly-crossed tier so it is never re-sent — deferred until
-        // after the notifications are actually created (see markerUpdates above).
         markerUpdates.push(() => base44.asServiceRole.entities.PersonnelCredential.update(credential.id, {
           expiration_note_offsets_sent: [...remindersSent, ...dueOffsets]
         }));
       }
     }
 
-    // Bulk create employee notifications
     if (notifications.length > 0) {
       await base44.asServiceRole.entities.Notification.bulkCreate(notifications);
     }
 
-    // Only now that the employee notifications are persisted, record the crossed
-    // reminder tiers so a bulkCreate failure can't permanently drop a reminder.
     for (const applyMarker of markerUpdates) {
       await applyMarker();
     }
 
-    // Create consolidated admin notification
     if (adminNotifications.length > 0) {
       const adminUsers = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, '', 100);
-      
+
       for (const admin of adminUsers) {
         await base44.asServiceRole.entities.Notification.create({
           user_email: admin.email,

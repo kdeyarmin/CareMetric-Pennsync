@@ -89,9 +89,11 @@ Deno.serve(async (req) => {
     for (const target of candidates) {
       // Re-read the user before assigning — a concurrent run (or a parallel
       // managePhoneNumberPool assign) may have filled work_phone_number already.
+      // Only skip when the re-read succeeds AND shows a number; an empty filter
+      // result must not starve every candidate (some stores ignore id filters).
       const freshUser = await base44.asServiceRole.entities.User
         .filter({ id: target.id }, undefined, 1).catch(() => []);
-      if (!isBlank(freshUser[0]?.work_phone_number)) continue;
+      if (freshUser[0] && !isBlank(freshUser[0].work_phone_number)) continue;
 
       // Find the next pool number that isn't already in use on a User.
       let chosen = null;
@@ -113,9 +115,10 @@ Deno.serve(async (req) => {
         console.error('pool claim failed:', err?.message);
         continue;
       }
-      const claimCheck = await base44.asServiceRole.entities.PhoneNumber
+      const claimRows = await base44.asServiceRole.entities.PhoneNumber
         .filter({ id: chosen.row.id }, undefined, 1).catch(() => []);
-      if (!claimCheck[0] || claimCheck[0].assigned_to_email !== target.email) {
+      const claimed = claimRows.find((r) => r.id === chosen.row.id) || claimRows[0];
+      if (!claimed || claimed.assigned_to_email !== target.email) {
         continue;
       }
 

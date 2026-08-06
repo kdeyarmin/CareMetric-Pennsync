@@ -59,16 +59,18 @@ Deno.serve(async (req) => {
       allowedEmails = new Set(allUsers.filter((u) => u.agency_name === user.agency_name).map((u) => u.email));
     }
 
+    const today = now.toISOString().slice(0, 10);
+
     // Group overdue assignments per learner so each person gets one reminder.
+    // Skip assignments already reminded today so re-clicks don't re-notify.
     const byUser = new Map();
     for (const a of assignments) {
       if (!isOverdue(a) || !a.assigned_to_user_id) continue;
       if (allowedEmails && !allowedEmails.has(a.assigned_to_user_id)) continue;
+      if (a.reminder_sent && a.last_reminder_date === today) continue;
       if (!byUser.has(a.assigned_to_user_id)) byUser.set(a.assigned_to_user_id, []);
       byUser.get(a.assigned_to_user_id).push(a);
     }
-
-    const today = now.toISOString().slice(0, 10);
 
     // One reminder per user; flag every overdue assignment. Both run in bounded
     // parallel chunks so a large plan (many staff × many courses) doesn't

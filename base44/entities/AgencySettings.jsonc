@@ -255,6 +255,20 @@
     "a2p_campaign_id": {
       "type": "string",
       "description": "A2P 10DLC campaign ID"
+    },
+    "last_credential_digest_sent_on": {
+      "type": "string",
+      "format": "date",
+      "description": "YYYY-MM-DD local/UTC day the personnel credential admin digest was last sent"
+    },
+    "credential_digest_claimed_by": {
+      "type": "string",
+      "description": "Per-run claim token so overlapping sendCredentialRenewalReminders digests do not double-send"
+    },
+    "credential_digest_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When credential_digest_claimed_by was written"
     }
   },
   "rls": {

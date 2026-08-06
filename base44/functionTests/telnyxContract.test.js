@@ -233,9 +233,26 @@ function makeSpyBase44({ user = { email: "a@x.com", account_type: "super_admin",
   const entity = (name) => {
     if (!cache[name]) {
       cache[name] = {
-        create: async (row) => { writes.push({ entity: name, op: "create", row }); return { id: `${name}_1`, ...row }; },
-        update: async (id, patch) => { writes.push({ entity: name, op: "update", id, patch }); return { id, ...patch }; },
-        filter: async () => data[name] || [],
+        create: async (row) => {
+          const created = { id: `${name}_1`, ...row };
+          writes.push({ entity: name, op: "create", row });
+          if (!data[name]) data[name] = [];
+          data[name].push(created);
+          return created;
+        },
+        update: async (id, patch) => {
+          writes.push({ entity: name, op: "update", id, patch });
+          const rows = data[name] || [];
+          const idx = rows.findIndex((r) => r.id === id);
+          if (idx >= 0) rows[idx] = { ...rows[idx], ...patch };
+          return { id, ...patch };
+        },
+        // Support id-equality filters used by claim-before-assign / claim-before-send.
+        filter: async (query = {}) => {
+          const rows = data[name] || [];
+          if (query && query.id != null) return rows.filter((r) => r.id === query.id);
+          return rows;
+        },
         list: async () => data[name] || [],
       };
     }

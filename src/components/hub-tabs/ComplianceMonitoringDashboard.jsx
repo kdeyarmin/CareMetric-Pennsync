@@ -44,7 +44,7 @@ export default function ComplianceMonitoringDashboard() {
   });
 
   const { data: allUsers = [], refetch: refetchUsers } = useQuery({
-    queryKey: ['allUsers'],
+    queryKey: ['allUsers', ALL_ROWS],
     queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
     initialData: [],
     refetchInterval: 30000, // Refresh every 30 seconds

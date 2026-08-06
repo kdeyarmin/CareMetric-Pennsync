@@ -24,6 +24,7 @@ import AnnualLearningPlanPanel from "@/components/training/AnnualLearningPlanPan
 import TrainingAttachmentManager from "@/components/training/TrainingAttachmentManager";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
+import { parseLocalDate, startOfLocalDay } from "@/lib/dateLocal";
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
 
@@ -85,7 +86,10 @@ export default function AnnualMandatoryEducationHub() {
   const _annualCertificates = useMemo(() => certificates.filter((certificate) => certificate.annual_cycle_year === year), [certificates, year]);
   const dueSoon = annualAssignments.filter((assignment) => {
     if (!assignment.due_date || assignment.status === 'completed' || assignment.status === 'overdue') return false;
-    const daysUntilDue = (new Date(assignment.due_date) - new Date()) / (1000 * 60 * 60 * 24);
+    const dueDay = startOfLocalDay(parseLocalDate(assignment.due_date));
+    const today = startOfLocalDay(new Date());
+    if (!dueDay || !today) return false;
+    const daysUntilDue = Math.round((dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     return daysUntilDue >= 0 && daysUntilDue <= 7;
   }).length;
   const averageScore = Math.round((annualAssignments.filter((assignment) => typeof assignment.score_percentage === 'number').reduce((sum, assignment) => sum + assignment.score_percentage, 0) / Math.max(annualAssignments.filter((assignment) => typeof assignment.score_percentage === 'number').length, 1)) || 0);

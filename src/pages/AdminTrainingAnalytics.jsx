@@ -45,7 +45,7 @@ export default function AdminTrainingAnalytics() {
   });
 
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers'],
+    queryKey: ['allUsers', 5000],
     queryFn: () => base44.entities.User.list('-created_date', 5000),
     enabled: isAdminView(currentUser)
   });

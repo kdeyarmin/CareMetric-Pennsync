@@ -37,6 +37,32 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+// Local calendar day count for date-only YYYY-MM-DD fields (mirrors
+// remindPlanOverdueStaff / sendPersonnelExpirationNotifications).
+function localDaysUntil(dateOnly, now = new Date()) {
+  const raw = String(dateOnly || '').trim();
+  let target;
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number);
+    target = new Date(y, m - 1, d);
+  } else {
+    target = new Date(dateOnly);
+  }
+  if (Number.isNaN(target.getTime())) return null;
+  const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((target.getTime() - todayLocal.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function formatLocalDateLabel(dateOnly) {
+  const raw = String(dateOnly || '').trim();
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString();
+  }
+  const parsed = new Date(dateOnly);
+  return Number.isNaN(parsed.getTime()) ? String(dateOnly) : parsed.toLocaleDateString();
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -56,14 +82,15 @@ Deno.serve(async (req) => {
 
     for (const assignment of assignments.filter((item) => ['assigned', 'in_progress'].includes(item.status))) {
       if (!assignment.due_date || !assignment.assigned_to_user_id) continue;
-      const dueDate = new Date(assignment.due_date);
-      const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+      const daysUntilDue = localDaysUntil(assignment.due_date, today);
+      if (daysUntilDue === null) continue;
 
       // Fire AT or BELOW an unsent tier (not an exact-day match) so a missed cron
-      // run doesn't skip a tier permanently; reminder_offsets_sent dedups both
-      // same-day re-runs and already-fired tiers.
+      // run doesn't skip a tier permanently. Use training_due_offsets_sent — not
+      // reminder_offsets_sent — so this job does not suppress/collide with
+      // sendRenewalReminders which owns reminder_offsets_sent.
       const REMINDER_TIERS = [14, 7, 3, 1];
-      const sentOffsets = Array.isArray(assignment.reminder_offsets_sent) ? assignment.reminder_offsets_sent : [];
+      const sentOffsets = Array.isArray(assignment.training_due_offsets_sent) ? assignment.training_due_offsets_sent : [];
       const dueOffsets = daysUntilDue >= 0
         ? REMINDER_TIERS.filter((o) => daysUntilDue <= o && !sentOffsets.includes(o))
         : [];
@@ -71,7 +98,7 @@ Deno.serve(async (req) => {
         const notification = await base44.asServiceRole.entities.Notification.create({
           user_email: assignment.assigned_to_user_id,
           title: `Training due in ${daysUntilDue} day${daysUntilDue > 1 ? 's' : ''}`,
-          message: `Your assigned in-service "${assignment.course_title}" is due on ${dueDate.toLocaleDateString()}.`,
+          message: `Your assigned in-service "${assignment.course_title}" is due on ${formatLocalDateLabel(assignment.due_date)}.`,
           type: 'training_due',
           priority: daysUntilDue <= 3 ? 'high' : 'medium',
           action_url: '/MyTraining',
@@ -80,7 +107,7 @@ Deno.serve(async (req) => {
         });
         notificationsSent.push(notification.id);
         await base44.asServiceRole.entities.TrainingAssignment.update(assignment.id, {
-          reminder_offsets_sent: [...sentOffsets, ...dueOffsets],
+          training_due_offsets_sent: [...sentOffsets, ...dueOffsets],
           last_reminder_date: today.toISOString().slice(0, 10),
           reminder_sent: true
         });
@@ -105,8 +132,8 @@ Deno.serve(async (req) => {
     const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false }, '-issued_at', 1000);
     for (const certificate of certificates) {
       if (!certificate.expiration_date) continue;
-      const expiration = new Date(certificate.expiration_date);
-      const daysUntilExpiration = Math.ceil((expiration - today) / (1000 * 60 * 60 * 24));
+      const daysUntilExpiration = localDaysUntil(certificate.expiration_date, today);
+      if (daysUntilExpiration === null) continue;
       // Fire AT or BELOW an unsent tier (not an exact-day match) so a missed cron
       // run doesn't skip a tier permanently; renewal_reminder_offsets_sent dedups
       // already-fired tiers.
@@ -122,7 +149,7 @@ Deno.serve(async (req) => {
         const notification = await base44.asServiceRole.entities.Notification.create({
           user_email: certificate.user_id,
           title: `Certificate renewal due in ${daysUntilExpiration} day${daysUntilExpiration > 1 ? 's' : ''}`,
-          message: `Your certificate for "${certificate.course_title}" expires on ${expiration.toLocaleDateString()}.`,
+          message: `Your certificate for "${certificate.course_title}" expires on ${formatLocalDateLabel(certificate.expiration_date)}.`,
           type: 'compliance_alert',
           priority: daysUntilExpiration <= 3 ? 'high' : 'medium',
           action_url: '/MyTraining',

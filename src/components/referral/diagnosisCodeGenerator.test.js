@@ -207,8 +207,10 @@ test("RTP-unacceptable codes never take the primary slot", () => {
 });
 
 test("all-unacceptable code sets produce no primary and a warning", () => {
+  // Z48.x is an acceptable surgical-aftercare principal under PDGM; use a
+  // status/factor Z (Z79.4) so the fixture stays all-unacceptable.
   const result = generateDiagnosisCodes({
-    diagnoses: { primary_icd10: "R26.9", secondary_diagnoses: ["Z48.00"] },
+    diagnoses: { primary_icd10: "R26.9", secondary_diagnoses: ["Z79.4"] },
   });
   assert.equal(result.primary, null);
   assert.ok(result.warnings.some((w) => /principal diagnosis/i.test(w)));

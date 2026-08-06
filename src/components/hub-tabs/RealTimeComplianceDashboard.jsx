@@ -70,7 +70,7 @@ export default function RealTimeComplianceDashboard() {
   });
 
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers'],
+    queryKey: ['allUsers', ALL_ROWS],
     queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
   });
 

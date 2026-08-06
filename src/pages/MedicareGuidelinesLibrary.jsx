@@ -38,6 +38,7 @@ import {
   CheckCircle2,
   Trash2
 } from "lucide-react";
+import { isSafeExternalUrl } from "@/components/utils/security";
 import ReactMarkdown from "react-markdown";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
@@ -500,15 +501,17 @@ export default function MedicareGuidelinesLibrary() {
 
                 {/* Source Link */}
                 <div className="border-t pt-4">
-                  <a
-                    href={selectedGuideline.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-700 hover:underline text-sm flex items-center gap-1"
-                  >
-                    View Original on CMS.gov
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
+                  {selectedGuideline.url && isSafeExternalUrl(selectedGuideline.url) ? (
+                    <a
+                      href={selectedGuideline.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-700 hover:underline text-sm flex items-center gap-1"
+                    >
+                      View Original on CMS.gov
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  ) : null}
                   <p className="text-xs text-slate-500 mt-1">
                     Last fetched: {new Date(selectedGuideline.last_fetched_date).toLocaleString()}
                   </p>

@@ -21,7 +21,7 @@ export default function PatientEducationPortal() {
   const [expandedMaterialId, setExpandedMaterialId] = useState(null);
 
   const { data: patients = [] } = useQuery({
-    queryKey: ["patients"],
+    queryKey: ["patients", "active", "first_name", 100],
     queryFn: () => base44.entities.Patient.filter({ status: "active" }, "first_name", 100),
   });
 
