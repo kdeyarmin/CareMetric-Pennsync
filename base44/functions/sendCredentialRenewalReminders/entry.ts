@@ -37,6 +37,31 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -341,42 +366,62 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Send a consolidated 90-day expiration digest to all admins — at most once
-    // per calendar day. Claim the day stamp on AgencySettings BEFORE sending so
-    // overlapping cron runs don't double-email admins.
+    // Send a consolidated 90-day expiration digest to admins — at most once per
+    // calendar day PER AGENCY. Claim the day stamp on that agency's
+    // AgencySettings row (by id) before sending so overlapping crons and
+    // multi-tenant newest-row-wins cannot suppress or double-email the wrong tenant.
     let adminDigestSent = 0;
     if (adminDigestItems.length > 0) {
-      const settingsRows = await base44.asServiceRole.entities.AgencySettings
-        .list('-created_date', 1).catch(() => []);
-      const settings = settingsRows[0] || null;
-
-      let shouldSendDigest = true;
-      if (settings?.last_credential_digest_sent_on === todayIso) {
-        shouldSendDigest = false;
-      } else if (settings) {
-        const digestClaimToken = runId;
+      const tryClaimDigest = async (settings, claimToken) => {
+        if (!settings?.id) return false;
+        if (settings.last_credential_digest_sent_on === todayIso) return false;
         try {
           await base44.asServiceRole.entities.AgencySettings.update(settings.id, {
             last_credential_digest_sent_on: todayIso,
-            credential_digest_claimed_by: digestClaimToken,
+            credential_digest_claimed_by: claimToken,
             credential_digest_claimed_at: new Date().toISOString(),
           });
           const claimCheck = await base44.asServiceRole.entities.AgencySettings
-            .list('-created_date', 1).catch(() => []);
-          if (!claimCheck[0] || claimCheck[0].credential_digest_claimed_by !== digestClaimToken) {
-            shouldSendDigest = false;
-          }
+            .filter({ id: settings.id }, '-created_date', 1).catch(() => []);
+          return !!(claimCheck[0] && claimCheck[0].credential_digest_claimed_by === claimToken);
         } catch {
-          shouldSendDigest = false;
+          return false;
+        }
+      };
+
+      const agencyKeys = [...new Set(
+        adminDigestItems.map((i) => i.agency_name).filter(Boolean),
+      )];
+      const hasUnscoped = adminDigestItems.some((i) => !i.agency_name);
+      const claimedAgencyKeys = new Set();
+      let claimedUnscoped = false;
+
+      for (const agencyName of agencyKeys) {
+        const settings = await resolveAgencySettings(base44, agencyName);
+        if (await tryClaimDigest(settings, `${runId}:${agencyName}`)) {
+          claimedAgencyKeys.add(agencyName);
         }
       }
-      // No AgencySettings row: send once this run, then try to create a stub with
-      // the day stamp so subsequent runs skip. If create is not allowed/fails,
-      // we still sent (safe direction: one extra digest possible until a row exists).
+      if (hasUnscoped) {
+        const fallback = await resolveAgencySettings(base44, null);
+        if (fallback?.id && await tryClaimDigest(fallback, `${runId}:__unscoped__`)) {
+          claimedUnscoped = true;
+        } else if (!fallback?.id) {
+          // No AgencySettings row yet — send unscoped once, then stub a stamp.
+          claimedUnscoped = true;
+          try {
+            await base44.asServiceRole.entities.AgencySettings.create({
+              last_credential_digest_sent_on: todayIso,
+              credential_digest_claimed_by: `${runId}:__unscoped__`,
+              credential_digest_claimed_at: new Date().toISOString(),
+            });
+          } catch (createErr) {
+            console.error('Failed to create AgencySettings digest stamp:', createErr?.message || createErr);
+          }
+        }
+      }
 
-      if (shouldSendDigest) {
-        // Scope digests per admin agency so staff names/credential titles don't
-        // cross tenants. Super_admins still receive the full digest.
+      if (claimedAgencyKeys.size > 0 || claimedUnscoped) {
         const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
         const admins = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
           u && u.email && (
@@ -388,11 +433,19 @@ Deno.serve(async (req) => {
         adminDigestItems.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
 
         for (const admin of admins) {
-          const scoped = admin.account_type === 'super_admin'
-            ? adminDigestItems
-            : adminDigestItems.filter((i) =>
+          let scoped;
+          if (admin.account_type === 'super_admin') {
+            scoped = adminDigestItems.filter((i) =>
+              (i.agency_name && claimedAgencyKeys.has(i.agency_name))
+              || (!i.agency_name && claimedUnscoped)
+            );
+          } else if (admin.agency_name && claimedAgencyKeys.has(admin.agency_name)) {
+            scoped = adminDigestItems.filter((i) =>
               !i.agency_name || i.agency_name === admin.agency_name
             );
+          } else {
+            continue;
+          }
           if (scoped.length === 0) continue;
           const digestBullets = scoped.map((i) => {
             const when = i.daysUntilExpiry < 0
@@ -423,20 +476,6 @@ Deno.serve(async (req) => {
             adminDigestSent++;
           } catch (digestErr) {
             console.error('Failed to send admin digest:', digestErr?.message || digestErr);
-          }
-        }
-
-        if (!settings) {
-          try {
-            await base44.asServiceRole.entities.AgencySettings.create({
-              last_credential_digest_sent_on: todayIso,
-              credential_digest_claimed_by: runId,
-              credential_digest_claimed_at: new Date().toISOString(),
-            });
-          } catch (createErr) {
-            // Prefer update of first row; if none existed and create fails, we
-            // already sent once above — document and move on.
-            console.error('Failed to create AgencySettings digest stamp:', createErr?.message || createErr);
           }
         }
       }

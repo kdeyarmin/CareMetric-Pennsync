@@ -1,5 +1,28 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 // CMS PDGM base payment rate
 const BASE_PAYMENT_RATE_2026 = 2038.22; // CY2026 national standardized 30-day period payment, quality submitters (CMS-1828-F, eff. 2026-01-01)
 
@@ -690,9 +713,9 @@ Deno.serve(async (req) => {
     let appliedWageIndex = Number.isFinite(Number(wageIndex)) && Number(wageIndex) > 0 ? Number(wageIndex) : 0;
     if (!appliedWageIndex) {
       try {
-        const agencySettings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1);
-        if (agencySettings && agencySettings.length > 0 && agencySettings[0].wage_index) {
-          appliedWageIndex = agencySettings[0].wage_index;
+        const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+        if (agencySettings?.wage_index) {
+          appliedWageIndex = agencySettings.wage_index;
         }
       } catch (e) {
         console.log('No agency settings found, using default wage index');

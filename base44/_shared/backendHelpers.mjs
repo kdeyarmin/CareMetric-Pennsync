@@ -369,6 +369,32 @@ function telnyxCredsMessage(creds, what) {
   return \`Telnyx \${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).\`;
 }`,
 
+  // Resolve AgencySettings for a caller's (or patient's) agency. Multi-tenant
+  // deployments have one row per agency; newest-row-wins silently applies another
+  // tenant's fax line / dial allowlist / wage index / quiet-hour timezone.
+  // Prefer agency_code, then office_name; fall back to newest only for
+  // single-tenant / missing agency (matches sendSms getAgencyConfig).
+  resolveAgencySettings: `async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}`,
+
   // Did a sendBatchFax call reject the whole batch before dispatching anything?
   // Used by both scheduled-fax processors to decide requeue vs. terminal-fail.
   // sendBatchFax answers with { successful, failed, ... } once it has actually

@@ -1,5 +1,28 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -316,8 +339,11 @@ Deno.serve(async (req) => {
       // agency's configured business timezone (Agency Settings), not an arbitrary
       // per-user IANA zone — Deno has no browser timezone for the recipient.
       // Evaluate the current HH:MM in that agency timezone (default America/New_York).
-      const agencyRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-      const tz = agencyRows[0]?.business_hours_timezone || agencyRows[0]?.duty_timezone || 'America/New_York';
+      const agencySettingsRow = await resolveAgencySettings(
+        base44,
+        recipient?.agency_name || currentUser?.agency_name,
+      );
+      const tz = agencySettingsRow?.business_hours_timezone || agencySettingsRow?.duty_timezone || 'America/New_York';
       let currentTime;
       try {
         currentTime = new Intl.DateTimeFormat('en-GB', {

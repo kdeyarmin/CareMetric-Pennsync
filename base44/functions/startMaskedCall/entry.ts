@@ -66,6 +66,30 @@ function isAllowedDestination(e164, settings = {}) {
   return { allowed: false, reason: "international_blocked" };
 }
 // <<<END SHARED HELPER: isAllowedDestination>>>
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 function blockedReasonMessage(reason) {
   switch (reason) {
     case 'premium_number_blocked': return 'Premium-rate numbers (900/976) are blocked.';
@@ -268,8 +292,8 @@ Deno.serve(async (req) => {
     }
 
     // Cost control: block premium/blocked/international destinations by default.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const destAllowed = isAllowedDestination(destination, settingsRows[0] || {});
+    const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+    const destAllowed = isAllowedDestination(destination, agencySettings || {});
     if (!destAllowed.allowed) {
       return Response.json({ error: blockedReasonMessage(destAllowed.reason), reason: destAllowed.reason }, { status: 403 });
     }

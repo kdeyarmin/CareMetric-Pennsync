@@ -133,6 +133,12 @@ Deno.serve(async (req) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + days);
 
+    // Snapshot package membership at mint so later add/swap of documents cannot
+    // expand the PHI this signing link can read or sign.
+    const mintedDocumentIds = (Array.isArray(pkg.document_signatures) ? pkg.document_signatures : [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean);
+
     const tokenRecord = await base44.asServiceRole.entities.DocumentPackageToken.create({
       package_id,
       token: tokenHash,
@@ -140,6 +146,7 @@ Deno.serve(async (req) => {
       // refuse the legacy-plaintext fallback for hashed rows — otherwise a leaked
       // stored hash could itself be replayed as a bearer token.
       token_hashed: true,
+      document_ids: mintedDocumentIds,
       signer_email,
       signer_name: signer_name || signer_email,
       token_created_at: new Date().toISOString(),

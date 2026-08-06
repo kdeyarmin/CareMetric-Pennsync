@@ -102,6 +102,30 @@ function isAllowedDestination(e164, settings = {}) {
   return { allowed: false, reason: "international_blocked" };
 }
 // <<<END SHARED HELPER: isAllowedDestination>>>
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 function blockedReasonMessage(reason) {
   switch (reason) {
     case 'premium_number_blocked': return 'Premium-rate numbers (900/976) are blocked.';
@@ -252,8 +276,7 @@ Deno.serve(async (req) => {
     const { apiKey, faxConnectionId } = telnyxCreds;
     // Resolve the shared office fax number server-side (AgencySettings, else env),
     // identical to sendFax — never trust a caller-supplied from_number.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const agencySettings = settingsRows[0] || {};
+    const agencySettings = (await resolveAgencySettings(base44, user?.agency_name)) || {};
     // Transmit from the single blind outbound line; present the office fax
     // machine's number (display name + cover sheet) so replies go straight to
     // the office. Legacy fallback: office number as the technical from.

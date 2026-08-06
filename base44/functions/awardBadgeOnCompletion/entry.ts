@@ -171,10 +171,27 @@ Deno.serve(async (req) => {
 
     // Check for Early Completion (completed before due date) — only for a passing
     // attempt; finishing a FAILED in-service early must not earn the badge/points.
+    // Compare on local calendar days: date-only due_date parsed as UTC midnight
+    // would deny early_completion for US-evening finishes that are still early locally.
     if (passed && assignment && assignment.length > 0) {
-      const dueDate = new Date(assignment[0].due_date);
-      const completedDate = new Date(attemptData.submitted_at);
-      const daysEarly = Math.ceil((dueDate - completedDate) / (1000 * 60 * 60 * 24));
+      const dueRaw = String(assignment[0].due_date || '').trim();
+      let dueLocal = null;
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dueRaw)) {
+        const [y, m, d] = dueRaw.split('-').map(Number);
+        dueLocal = new Date(y, m - 1, d);
+      } else if (dueRaw) {
+        const parsed = new Date(dueRaw);
+        if (!Number.isNaN(parsed.getTime())) {
+          dueLocal = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+        }
+      }
+      const completedParsed = new Date(attemptData.submitted_at);
+      const completedLocal = Number.isNaN(completedParsed.getTime())
+        ? null
+        : new Date(completedParsed.getFullYear(), completedParsed.getMonth(), completedParsed.getDate());
+      const daysEarly = (dueLocal && completedLocal)
+        ? Math.round((dueLocal.getTime() - completedLocal.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
 
       if (daysEarly > 0) {
         const earlyBadge = allBadges.find(b => b.badge_type === 'early_completion');

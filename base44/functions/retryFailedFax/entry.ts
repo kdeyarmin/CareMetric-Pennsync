@@ -1,5 +1,28 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 // Strict E.164 normalization for the OFFICE FAX `from` number (null when it
 // can't normalize). The admin-entered office fax may carry formatting
 // ("(724) 465-0441"); Telnyx requires E.164 on `from`, so an unnormalizable
@@ -200,9 +223,9 @@ Deno.serve(async (req) => {
     // Resolve the from-number the same way sendFax does: transmit from the
     // blind outbound line (outbound_fax_number_e164), presented as the office
     // fax machine; legacy fallback to office_fax_number_e164 as the from.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
+    const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+    const officeFaxRaw = (agencySettings?.office_fax_number_e164 || '').toString().trim();
+    const outboundFaxRaw = (agencySettings?.outbound_fax_number_e164 || '').toString().trim();
     const officeFax = normalizeFromE164(officeFaxRaw);
     const outboundFax = normalizeFromE164(outboundFaxRaw);
     const fromNumber = outboundFax || officeFax;

@@ -37,6 +37,31 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -377,16 +402,6 @@ Deno.serve(async (req) => {
     const telnyxCreds = await resolveTelnyxCreds(base44);
 
     const { apiKey, faxConnectionId } = telnyxCreds;
-    // Resolve the from-number the same way sendFax does: transmit from the
-    // blind outbound line (outbound_fax_number_e164), presented as the office
-    // fax machine; legacy fallback to office_fax_number_e164 as the from.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
-    const officeFax = normalizeFromE164(officeFaxRaw);
-    const outboundFax = normalizeFromE164(outboundFaxRaw);
-    const fromNumber = outboundFax || officeFax;
-    const faxFromDisplayName = officeFaxDisplayName(officeFax);
     // Include the same DLR webhook sendFax uses so the retried fax reports status.
     // Derive the functions base from this request's own URL — every backend
     // function (including handleTelnyxStatusWebhook) is served from the same
@@ -403,18 +418,34 @@ Deno.serve(async (req) => {
     if (!apiKey || !faxConnectionId) {
       return Response.json({ error: 'Telnyx API key or fax connection ID not configured. Store them in the Telnyx secret panel.' }, { status: 500 });
     }
-    if (outboundFaxRaw && !outboundFax) {
-      return Response.json({
-        error: `Outbound fax number "${outboundFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`,
-      }, { status: 500 });
-    }
-    if (!fromNumber) {
-      return Response.json({
-        error: officeFaxRaw
-          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650444).`
-          : 'No outbound fax number configured. Set the outbound fax line (and office fax number) in Agency Settings.',
-      }, { status: 500 });
-    }
+
+    // Per-sender agency fax lines (cached). Newest-row-wins would transmit
+    // Agency A's PHI on Agency B's outbound line in multi-tenant deployments.
+    const agencyFaxCache = new Map();
+    const resolveFaxFromForSender = async (sentBy) => {
+      let agencyName = '';
+      if (sentBy) {
+        const [sender] = await base44.asServiceRole.entities.User
+          .filter({ email: sentBy }, undefined, 1).catch(() => []);
+        agencyName = sender?.agency_name || '';
+      }
+      const cacheKey = agencyName || '__default__';
+      if (agencyFaxCache.has(cacheKey)) return agencyFaxCache.get(cacheKey);
+      const settings = await resolveAgencySettings(base44, agencyName);
+      const officeFaxRaw = (settings?.office_fax_number_e164 || '').toString().trim();
+      const outboundFaxRaw = (settings?.outbound_fax_number_e164 || '').toString().trim();
+      const officeFax = normalizeFromE164(officeFaxRaw);
+      const outboundFax = normalizeFromE164(outboundFaxRaw);
+      const resolved = {
+        fromNumber: outboundFax || officeFax,
+        faxFromDisplayName: officeFaxDisplayName(officeFax),
+        officeFaxRaw,
+        outboundFaxRaw,
+        outboundFax,
+      };
+      agencyFaxCache.set(cacheKey, resolved);
+      return resolved;
+    };
 
     for (const fax of dueFaxes) {
       // SSRF guard: re-validate the STORED document URL before handing it back
@@ -449,15 +480,36 @@ Deno.serve(async (req) => {
 
       // Attempt the retry via Telnyx
       try {
+        const faxLine = await resolveFaxFromForSender(fax.sent_by);
+        if (faxLine.outboundFaxRaw && !faxLine.outboundFax) {
+          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+            status: 'failed',
+            next_retry_at: null,
+            failure_reason: `Outbound fax number "${faxLine.outboundFaxRaw}" is not a valid phone number`,
+            retry_claimed_by: null,
+          }).catch(() => {});
+          skippedCount++;
+          continue;
+        }
+        if (!faxLine.fromNumber) {
+          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+            status: 'failed',
+            next_retry_at: null,
+            failure_reason: 'No outbound fax number configured for sender agency',
+            retry_claimed_by: null,
+          }).catch(() => {});
+          skippedCount++;
+          continue;
+        }
         const retryPayload = {
           connection_id: faxConnectionId,
-          from: fromNumber,
+          from: faxLine.fromNumber,
           to: fax.to_number,
           media_url: fax.document_url,
           quality: 'high'
         };
         // Mask the blind line: present the office fax number as the caller-id name.
-        if (faxFromDisplayName) retryPayload.from_display_name = faxFromDisplayName;
+        if (faxLine.faxFromDisplayName) retryPayload.from_display_name = faxLine.faxFromDisplayName;
         if (webhookUrl) retryPayload.webhook_url = webhookUrl;
         const telnyxResp = await fetch('https://api.telnyx.com/v2/faxes', {
           method: 'POST',

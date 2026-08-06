@@ -53,6 +53,30 @@ Deno.serve(async (req) => {
       if (!visit || visit.patient_id !== patientId) {
         return Response.json({ error: 'Visit not found for this patient' }, { status: 404 });
       }
+      // Claim before the slow LLM + inventory writes so concurrent runs cannot
+      // both see empty SupplyUsageLog and double-decrement stock.
+      const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `supply-usage-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      try {
+        await base44.asServiceRole.entities.Visit.update(visitId, {
+          supply_usage_claimed_by: claimToken,
+        });
+      } catch {
+        return Response.json({ error: 'Could not claim visit for supply analysis' }, { status: 409 });
+      }
+      const claimCheck = await base44.asServiceRole.entities.Visit
+        .filter({ id: visitId }, '', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].supply_usage_claimed_by !== claimToken) {
+        return Response.json({
+          success: true,
+          already_processed: true,
+          usageLogs: 0,
+          alertsCreated: 0,
+          alerts: [],
+          skipped: 'claimed by concurrent run',
+        });
+      }
     }
 
     // Use LLM to extract supply/medication usage from visit notes

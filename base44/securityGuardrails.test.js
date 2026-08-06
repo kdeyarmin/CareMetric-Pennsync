@@ -324,6 +324,36 @@ test('validateSignerToken caps its ip/user-agent access tracking', () => {
   );
 });
 
+// 13b. Signer tokens must snapshot package document membership at mint so a
+//      later add/swap of DocumentSignature ids cannot expand the PHI the
+//      public signing link can read or sign.
+test('signer tokens snapshot document_ids at mint and intersect on validate/submit', () => {
+  const mint = read('base44/functions/generateSignerToken/entry.ts');
+  const validate = read('base44/functions/validateSignerToken/entry.ts');
+  const submit = read('base44/functions/submitSignerSignature/entry.ts');
+  const entity = read('base44/entities/DocumentPackageToken.jsonc');
+  assert.ok(
+    /document_ids:\s*mintedDocumentIds/.test(mint) || /document_ids:\s*mintedDocumentIds/.test(mint.replace(/\s+/g, ' ')),
+    'generateSignerToken must persist document_ids from the package at mint time.',
+  );
+  assert.ok(
+    /document_ids/.test(mint) && /document_signatures/.test(mint),
+    'generateSignerToken must snapshot package document_signatures into document_ids.',
+  );
+  assert.ok(
+    /tokenRecord\.document_ids/.test(validate) && /snapshot/.test(validate),
+    'validateSignerToken must intersect live membership with the mint-time document_ids snapshot.',
+  );
+  assert.ok(
+    /tokenRecord\.document_ids/.test(submit) && /allowedIds/.test(submit),
+    'submitSignerSignature must require document_id ∈ snapshot ∩ live package membership.',
+  );
+  assert.ok(
+    /"document_ids"/.test(entity),
+    'DocumentPackageToken must define the document_ids snapshot field.',
+  );
+});
+
 // 14. submitDocumentSignatures must authorize with the platform's real role
 //     model (role 'admin' + account_type agency/super admin). 'clinician' and
 //     'nurse_manager' are not role values in this platform — branches keyed on
