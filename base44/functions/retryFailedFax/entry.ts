@@ -134,9 +134,22 @@ Deno.serve(async (req) => {
     const originalFax = faxLogs[0];
 
     // Ownership: only the original sender (or an admin-tier user) may resend a PHI fax.
-    const isAdmin = user.role === 'admin' || user.account_type === 'agency_admin' || user.account_type === 'super_admin';
-    if (originalFax.sent_by && originalFax.sent_by !== user.email && !isAdmin) {
+    const isPlatformAdmin = user.role === 'admin' || user.account_type === 'super_admin';
+    const isAgencyAdmin = user.account_type === 'agency_admin';
+    if (originalFax.sent_by && originalFax.sent_by !== user.email && !isPlatformAdmin && !isAgencyAdmin) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // Agency admins may only retry faxes sent by staff in their agency.
+    if (isAgencyAdmin && originalFax.sent_by !== user.email) {
+      if (!user.agency_name || !originalFax.sent_by) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      const senders = await base44.asServiceRole.entities.User
+        .filter({ email: originalFax.sent_by }, undefined, 5)
+        .catch(() => []);
+      if (!senders?.[0] || senders[0].agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // Only a FAILED fax may be retried. Without this, a stale UI (or a direct

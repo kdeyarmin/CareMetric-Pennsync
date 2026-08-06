@@ -139,6 +139,13 @@ Deno.serve(async (req) => {
       const target = targets[0];
       if (!target) return Response.json({ error: 'Target nurse not found.' }, { status: 404 });
 
+      // Agency admins may only assign numbers to staff in their own agency.
+      if (user.account_type === 'agency_admin') {
+        if (!user.agency_name || target.agency_name !== user.agency_name) {
+          return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+        }
+      }
+
       // Work numbers must be unique across nurses.
       const holders = await base44.asServiceRole.entities.User.filter({ work_phone_number: e164 }, undefined, 5000).catch(() => []);
       const conflict = holders.find((u) => u.email !== targetEmail);
@@ -182,8 +189,20 @@ Deno.serve(async (req) => {
       if (row.assigned_to_email) {
         const targets = await base44.asServiceRole.entities.User.filter({ email: row.assigned_to_email }, undefined, 5000).catch(() => []);
         const target = targets[0];
+        // Agency admins may only release numbers held by their own agency's staff.
+        if (user.account_type === 'agency_admin') {
+          if (!user.agency_name || !target || target.agency_name !== user.agency_name) {
+            return Response.json({ error: 'Forbidden: number holder is outside your agency.' }, { status: 403 });
+          }
+        }
         if (target && normalizeE164(target.work_phone_number) === e164) {
           await base44.asServiceRole.entities.User.update(target.id, { work_phone_number: '' }).catch(() => {});
+        }
+      } else if (user.account_type === 'agency_admin') {
+        // Unassigned pool rows are agency-shared infrastructure — still allow
+        // release/reset, but refuse if we somehow lack agency_name.
+        if (!user.agency_name) {
+          return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
         }
       }
       await base44.asServiceRole.entities.PhoneNumber.update(id, { status: 'available', assigned_to_email: '' });

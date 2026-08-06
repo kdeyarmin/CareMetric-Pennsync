@@ -195,6 +195,8 @@ export default function AnnualMandatoryEducationHub() {
       const result = await autoEnrollAnnualPlans({ scope: 'all' });
       setEnrollAllResult(result?.data || result);
       queryClient.invalidateQueries({ queryKey: ["annual-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["my-annual-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["lc-assignments"] });
     } catch (error) {
       setEnrollAllResult({ error: configNotReadyMessage(error) || error?.message || "Failed to enroll staff." });
     } finally {
@@ -206,12 +208,16 @@ export default function AnnualMandatoryEducationHub() {
     await assignInService({ courseId: selectedCourseId, dueDate, settings: retakeSettings, userEmails: pendingAssignmentPayload?.userEmails || [], filters: pendingAssignmentPayload?.filters || {}, annualCycleYear: year });
     setPendingAssignmentPayload(null);
     queryClient.invalidateQueries({ queryKey: ["annual-assignments"] });
+    queryClient.invalidateQueries({ queryKey: ["my-annual-assignments"] });
+    queryClient.invalidateQueries({ queryKey: ["lc-assignments"] });
   };
 
   const confirmPlanAssignment = async () => {
     await assignAnnualLearningPlan({ planId: selectedPlanId, dueDate, settings: retakeSettings, userEmails: pendingPlanAssignmentPayload?.userEmails || [], filters: pendingPlanAssignmentPayload?.filters || {} });
     setPendingPlanAssignmentPayload(null);
     queryClient.invalidateQueries({ queryKey: ["annual-assignments"] });
+    queryClient.invalidateQueries({ queryKey: ["my-annual-assignments"] });
+    queryClient.invalidateQueries({ queryKey: ["lc-assignments"] });
   };
 
   const updateCourseStatus = async (course, status) => {

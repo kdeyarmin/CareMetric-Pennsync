@@ -55,6 +55,18 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, already_enrolled: true, assignment_id: active.id });
     }
 
+    // Fresh re-check immediately before create — concurrent double-clicks can
+    // still race the filter→create gap (no unique index / CAS).
+    const recheck = await base44.asServiceRole.entities.TrainingAssignment.filter(
+      { course_id: courseId, assigned_to_user_id: user.email },
+      '-created_date',
+      20,
+    ).catch(() => []);
+    const recheckActive = (recheck || []).find((a) => !a.archived_status);
+    if (recheckActive) {
+      return Response.json({ success: true, already_enrolled: true, assignment_id: recheckActive.id });
+    }
+
     const created = await base44.asServiceRole.entities.TrainingAssignment.create({
       course_id: course.id,
       course_title: course.title,
@@ -78,6 +90,26 @@ Deno.serve(async (req) => {
       notes: JSON.stringify({ self_enrolled: true }),
       archived_status: false,
     });
+
+    const afterCreate = await base44.asServiceRole.entities.TrainingAssignment.filter(
+      { course_id: courseId, assigned_to_user_id: user.email },
+      '-created_date',
+      20,
+    ).catch(() => []);
+    const activeAfter = (afterCreate || []).filter((a) => !a.archived_status);
+    if (activeAfter.length > 1) {
+      const keepId = activeAfter
+        .slice()
+        .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')))[0]?.id;
+      if (keepId && created?.id && created.id !== keepId) {
+        try {
+          await base44.asServiceRole.entities.TrainingAssignment.delete(created.id);
+        } catch {
+          /* best-effort */
+        }
+        return Response.json({ success: true, already_enrolled: true, assignment_id: keepId });
+      }
+    }
 
     await base44.asServiceRole.entities.TrainingAuditLog.create({
       actor_id: user.email,

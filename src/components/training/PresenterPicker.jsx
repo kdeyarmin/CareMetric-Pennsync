@@ -1,3 +1,4 @@
+import { isSafeExternalUrl } from "@/components/utils/security";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Info, Loader2, Volume2, Square } from "lucide-react";
@@ -108,7 +109,7 @@ export default function PresenterPicker({
           <>
             <Label htmlFor={`${idPrefix}-avatar`} className="text-xs font-semibold">Presenter</Label>
             <div className="flex items-center gap-2 mt-1">
-              {selectedAvatar?.preview_image_url && (
+              {selectedAvatar?.preview_image_url && isSafeExternalUrl(selectedAvatar.preview_image_url) && (
                 <img
                   src={selectedAvatar.preview_image_url}
                   alt=""

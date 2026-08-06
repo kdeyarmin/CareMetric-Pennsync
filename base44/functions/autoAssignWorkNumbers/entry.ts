@@ -77,9 +77,15 @@ Deno.serve(async (req) => {
       if (norm) inUse.add(norm);
     }
 
+    // Agency admins may only auto-assign within their own agency.
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required to auto-assign work numbers.' }, { status: 403 });
+    }
+
     // Candidate users: those missing a work number (optionally limited to `emails`).
     const candidates = allUsers.filter((u) => {
       if (!isBlank(u.work_phone_number)) return false;
+      if (user.account_type === 'agency_admin' && u.agency_name !== user.agency_name) return false;
       if (onlyEmails && !onlyEmails.includes(String(u.email || '').trim().toLowerCase())) return false;
       return true;
     });

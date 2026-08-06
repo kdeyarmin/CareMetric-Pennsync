@@ -29,6 +29,11 @@ export default function PDFPageManager({ pdfUrl, onSave }) {
 
   const loadPDFPages = useCallback(async () => {
     setIsLoading(true);
+    if (!isSafePdfUrl(pdfUrl)) {
+      toast.error("Blocked unsafe PDF URL");
+      setIsLoading(false);
+      return;
+    }
     try {
       const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
       const numPages = pdf.numPages;
