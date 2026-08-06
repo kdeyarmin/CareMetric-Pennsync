@@ -10,9 +10,9 @@ import { useQuery } from '@tanstack/react-query';
 import ReportFilters from './ReportFilters';
 import { toCsv, exportTimestamp } from '../admin/csvExport';
 import { toast } from 'sonner';
-import { isPastLocalDueDate } from '@/lib/dateLocal';
+import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : '—');
+const formatDate = (value) => formatLocalDate(value) || '—';
 
 const statusColors = {
   active: 'bg-blue-100 text-blue-800',

@@ -72,40 +72,45 @@ Deno.serve(async (req) => {
       byUser.get(a.assigned_to_user_id).push(a);
     }
 
-    // One reminder per user; flag every overdue assignment. Both run in bounded
-    // parallel chunks so a large plan (many staff × many courses) doesn't
-    // serialize into a long, timeout-prone sequence of awaits.
-    const notifications = [];
-    const flagOps = [];
+    // Stamp assignments FIRST (claim via last_reminder_date), then notify.
+    // Notify-before-stamp let a failed stamp / concurrent click duplicate
+    // overdue reminders for the same day.
+    let remindedUsers = 0;
+    let flagged = 0;
     for (const [email, items] of byUser.entries()) {
-      notifications.push(() => base44.asServiceRole.entities.Notification.create({
-        user_email: email,
-        title: 'Overdue required training',
-        message: `You have ${items.length} overdue in-service${items.length === 1 ? '' : 's'} in "${plan.name}". Please complete ${items.length === 1 ? 'it' : 'them'} to stay compliant.`,
-        type: 'training_due',
-        priority: 'high',
-        action_url: '/LearningCenter?tab=courses',
-        action_label: 'Open My Learning',
-        metadata: { plan_id: planId, plan_name: plan.name, overdue_count: items.length },
-      }));
+      const claimed = [];
       for (const a of items) {
-        flagOps.push(() => base44.asServiceRole.entities.TrainingAssignment.update(a.id, {
+        // Skip if another concurrent run already stamped today.
+        if (a.reminder_sent && a.last_reminder_date === today) continue;
+        await base44.asServiceRole.entities.TrainingAssignment.update(a.id, {
           reminder_sent: true,
           last_reminder_date: today,
-        }));
+        });
+        const recheck = await base44.asServiceRole.entities.TrainingAssignment
+          .filter({ id: a.id }, undefined, 1)
+          .catch(() => []);
+        if (recheck[0]?.last_reminder_date === today) {
+          claimed.push(a);
+          flagged += 1;
+        }
+      }
+      if (claimed.length === 0) continue;
+      try {
+        await base44.asServiceRole.entities.Notification.create({
+          user_email: email,
+          title: 'Overdue required training',
+          message: `You have ${claimed.length} overdue in-service${claimed.length === 1 ? '' : 's'} in "${plan.name}". Please complete ${claimed.length === 1 ? 'it' : 'them'} to stay compliant.`,
+          type: 'training_due',
+          priority: 'high',
+          action_url: '/LearningCenter?tab=courses',
+          action_label: 'Open My Learning',
+          metadata: { plan_id: planId, plan_name: plan.name, overdue_count: claimed.length },
+        });
+        remindedUsers += 1;
+      } catch (err) {
+        console.error('remindPlanOverdueStaff notify failed', email, err?.message || err);
       }
     }
-
-    const remindedUsers = notifications.length;
-    const flagged = flagOps.length;
-
-    const runChunked = async (ops, size = 25) => {
-      for (let i = 0; i < ops.length; i += size) {
-        await Promise.all(ops.slice(i, i + size).map((op) => op()));
-      }
-    };
-    await runChunked(notifications);
-    await runChunked(flagOps);
 
     await base44.asServiceRole.entities.TrainingAuditLog.create({
       actor_id: user.email,

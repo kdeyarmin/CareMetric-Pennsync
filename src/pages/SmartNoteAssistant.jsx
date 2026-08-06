@@ -240,6 +240,11 @@ export default function SmartNoteAssistant({ visitId = null }) {
     prevPatientRef.current = patientId;
     setVitals({});
     setOfflineClientRequestId(null);
+    // Clear saved visit/audit ids so a re-save cannot update the prior
+    // patient's Visit while history appends to the new patient (parity with
+    // AudioVisitCapture).
+    setSavedVisitId(null);
+    setSavedAuditId(null);
     if (patientId !== boundPatientRef.current) setExistingVisitId(null);
     let incoming = null;
     const saved = sessionStorage.getItem(draftKeyFor(patientId));

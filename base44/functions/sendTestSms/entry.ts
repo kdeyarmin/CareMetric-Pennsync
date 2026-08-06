@@ -170,11 +170,17 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'No work number is provisioned yet. Assign one to a nurse (or yourself) first.' }, { status: 400 });
     }
 
-    // TCPA: never text a number that has opted out, even for a test.
+    // TCPA: parity with sendSms / dispatchScheduledSms — require explicit
+    // opted_in. Missing/unknown consent is not enough for a live Telnyx send.
     const consents = await base44.asServiceRole.entities.SmsConsent
       .filter({ phone_e164: destination }, '-captured_at', 1).catch(() => []);
     if (consents[0]?.consent_status === 'opted_out') {
       return Response.json({ error: 'That number has opted out of text messages (replied STOP).' }, { status: 403 });
+    }
+    if (consents[0]?.consent_status !== 'opted_in') {
+      return Response.json({
+        error: 'That number has not opted in to text messages. Capture SMS consent before sending a test.',
+      }, { status: 403 });
     }
 
     // Send via Telnyx Messages API. Do NOT retry thrown network errors — Telnyx

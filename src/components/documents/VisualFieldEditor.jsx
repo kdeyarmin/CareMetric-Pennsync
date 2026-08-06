@@ -4,12 +4,17 @@ import { Card } from "@/components/ui/card";
 import { Plus, Trash2, Settings } from "lucide-react";
 import { toast } from "sonner";
 import FieldConfigPanel from "./FieldConfigPanel";
+import { isSafeExternalUrl } from "@/components/utils/security";
+
+const isSafePreviewUrl = (url) =>
+  typeof url === "string" && (url.startsWith("blob:") || isSafeExternalUrl(url));
 
 export default function VisualFieldEditor({ pdfUrl, onFieldsChange, initialFields = [] }) {
   const [fields, setFields] = useState(initialFields);
   const [selectedFieldId, setSelectedFieldId] = useState(null);
   const [showAddPanel, setShowAddPanel] = useState(false);
   const containerRef = useRef(null);
+  const safePdfUrl = isSafePreviewUrl(pdfUrl) ? pdfUrl : null;
 
   useEffect(() => {
     setFields(initialFields);
@@ -113,10 +118,10 @@ export default function VisualFieldEditor({ pdfUrl, onFieldsChange, initialField
             onDragOver={handleDragOver}
             onDrop={handleDrop}
           >
-            {pdfUrl ? (
+            {safePdfUrl ? (
               <>
                 <iframe
-                  src={pdfUrl}
+                  src={safePdfUrl}
                   title="PDF template preview"
                   className="absolute inset-0 h-full w-full pointer-events-none bg-white"
                 />

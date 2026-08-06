@@ -138,6 +138,10 @@ async function patchIncident(base44, currentUser, incident, body, isAdmin) {
   if (!isAdmin && !isOwner) {
     return Response.json({ error: 'Unauthorized - not your incident' }, { status: 403 });
   }
+  if (isAdmin) {
+    const agencyDenied = await assertAgencyIncidentAccess(base44, currentUser, incident);
+    if (agencyDenied) return agencyDenied;
+  }
 
   const patch = body.patch && typeof body.patch === 'object' ? body.patch : {};
   const rejected = Object.keys(patch).filter((k) => !PATCHABLE_FIELDS.includes(k));
@@ -166,12 +170,50 @@ async function patchIncident(base44, currentUser, incident, body, isAdmin) {
   return Response.json({ success: true, updated_fields: Object.keys(patch) });
 }
 
+async function assertAgencyIncidentAccess(base44, currentUser, incident) {
+  if (currentUser.account_type !== 'agency_admin') return null;
+  if (!currentUser.agency_name) {
+    return Response.json({ error: 'Forbidden: incident is outside your agency.' }, { status: 403 });
+  }
+  if (!incident.patient_id) {
+    // No patient link — fall back to reporter agency membership.
+    const reporters = await base44.asServiceRole.entities.User
+      .filter({ email: incident.created_by }, undefined, 5)
+      .catch(() => []);
+    if (!reporters?.[0] || reporters[0].agency_name !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: incident is outside your agency.' }, { status: 403 });
+    }
+    return null;
+  }
+  const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+  const agencyEmails = new Set(
+    (agencyUsers || [])
+      .filter((u) => u.agency_name === currentUser.agency_name && u.email)
+      .map((u) => u.email),
+  );
+  const patients = await base44.asServiceRole.entities.Patient
+    .filter({ id: incident.patient_id }, undefined, 5)
+    .catch(() => []);
+  const patient = patients?.[0];
+  const inAgency = patient && (
+    (patient.created_by && agencyEmails.has(patient.created_by))
+    || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.some((e) => agencyEmails.has(e)))
+  );
+  if (!inAgency) {
+    return Response.json({ error: 'Forbidden: incident is outside your agency.' }, { status: 403 });
+  }
+  return null;
+}
+
 async function transitionIncident(base44, currentUser, incident, body, isAdmin) {
   // Reviewing an incident is an admin action; the reporter files it, the office
   // reviews it. Enforced here rather than by hiding the queue in the UI.
   if (!isAdmin) {
     return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
   }
+
+  const agencyDenied = await assertAgencyIncidentAccess(base44, currentUser, incident);
+  if (agencyDenied) return agencyDenied;
 
   const fromStatus = incident.status || 'reported';
   const toStatus = body.to_status;
@@ -279,9 +321,19 @@ async function reassignIncidentPatient(base44, currentUser, incident, body, isAd
   if (!isAdmin) {
     return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
   }
+  const agencyDenied = await assertAgencyIncidentAccess(base44, currentUser, incident);
+  if (agencyDenied) return agencyDenied;
+
   const patientId = body.patient_id;
   if (!patientId) {
     return Response.json({ error: 'patient_id is required' }, { status: 400 });
+  }
+
+  // Destination patient must also be in-agency for agency admins.
+  if (currentUser.account_type === 'agency_admin') {
+    const probe = { patient_id: patientId, created_by: incident.created_by };
+    const destDenied = await assertAgencyIncidentAccess(base44, currentUser, probe);
+    if (destDenied) return destDenied;
   }
 
   await base44.asServiceRole.entities.Incident.update(incident.id, { patient_id: patientId });

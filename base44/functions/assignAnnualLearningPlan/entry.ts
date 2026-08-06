@@ -48,10 +48,16 @@ Deno.serve(async (req) => {
       severity: 'info'
     });
 
+    // Serial create + post-create re-check shrinks duplicate enrollments /
+    // assignments when concurrent admin clicks race the filter→create gap.
     for (const candidate of candidates) {
-      const [existingEnrollment] = await base44.asServiceRole.entities.PlanEnrollment.filter({ plan_id: planId, user_id: candidate.email }, undefined, 5000);
-      if (!existingEnrollment) {
-        await base44.asServiceRole.entities.PlanEnrollment.create({
+      const existingEnrollments = await base44.asServiceRole.entities.PlanEnrollment.filter(
+        { plan_id: planId, user_id: candidate.email },
+        undefined,
+        10,
+      );
+      if (existingEnrollments.length === 0) {
+        const createdEnrollment = await base44.asServiceRole.entities.PlanEnrollment.create({
           plan_id: plan.id,
           plan_name: plan.name,
           user_id: candidate.email,
@@ -64,10 +70,31 @@ Deno.serve(async (req) => {
           courses_total: planItems.length,
           due_date: dueDate
         });
+        const afterEnroll = await base44.asServiceRole.entities.PlanEnrollment.filter(
+          { plan_id: planId, user_id: candidate.email },
+          '-created_date',
+          10,
+        );
+        if (afterEnroll.length > 1) {
+          const keepId = afterEnroll
+            .slice()
+            .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')))[0]?.id;
+          if (keepId && createdEnrollment?.id && createdEnrollment.id !== keepId) {
+            try {
+              await base44.asServiceRole.entities.PlanEnrollment.delete(createdEnrollment.id);
+            } catch {
+              /* best-effort */
+            }
+          }
+        }
       }
 
       for (const item of planItems) {
-        const existingAssignment = await base44.asServiceRole.entities.TrainingAssignment.filter({ plan_id: planId, course_id: item.course_id, assigned_to_user_id: candidate.email }, '-created_date', 5);
+        const existingAssignment = await base44.asServiceRole.entities.TrainingAssignment.filter(
+          { plan_id: planId, course_id: item.course_id, assigned_to_user_id: candidate.email },
+          '-created_date',
+          5,
+        );
         if (existingAssignment.length > 0) continue;
 
         // Honor the per-course configuration set in the plan builder: a course's
@@ -75,7 +102,7 @@ Deno.serve(async (req) => {
         // date, and its required flag drives whether the assignment is required.
         const courseDueDate = item.specific_due_date || dueDate;
 
-        await base44.asServiceRole.entities.TrainingAssignment.create({
+        const createdAssignment = await base44.asServiceRole.entities.TrainingAssignment.create({
           course_id: item.course_id,
           course_title: item.course_title,
           plan_id: planId,
@@ -102,6 +129,23 @@ Deno.serve(async (req) => {
           notes: JSON.stringify({ show_correct_answers: !!settings.showCorrectAnswers }),
           archived_status: false
         });
+        const afterAssign = await base44.asServiceRole.entities.TrainingAssignment.filter(
+          { plan_id: planId, course_id: item.course_id, assigned_to_user_id: candidate.email },
+          '-created_date',
+          10,
+        );
+        if (afterAssign.length > 1) {
+          const keepId = afterAssign
+            .slice()
+            .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')))[0]?.id;
+          if (keepId && createdAssignment?.id && createdAssignment.id !== keepId) {
+            try {
+              await base44.asServiceRole.entities.TrainingAssignment.delete(createdAssignment.id);
+            } catch {
+              /* best-effort */
+            }
+          }
+        }
       }
     }
 

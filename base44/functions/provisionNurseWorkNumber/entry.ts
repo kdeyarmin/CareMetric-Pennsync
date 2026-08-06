@@ -78,6 +78,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Target user not found' }, { status: 404 });
     }
 
+    // Agency admins may only provision numbers for staff in their own agency.
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name || target.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
+    }
+
     // Work numbers must be unique across nurses.
     if (workNum) {
       const existing = await base44.asServiceRole.entities.User.filter({ work_phone_number: workNum }, undefined, 5000);

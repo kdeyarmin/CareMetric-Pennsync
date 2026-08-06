@@ -180,6 +180,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
     }
 
+    // Agency admins may only reset staff in their own agency (parity with
+    // getUserActivityLog / analyzeNursePerformance).
+    if (currentUser.account_type === 'agency_admin') {
+      if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
+    }
+
     // Update user password using service role
     await base44.asServiceRole.auth.updateUserPassword(userEmail, tempPassword);
 

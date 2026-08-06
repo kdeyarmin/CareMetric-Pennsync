@@ -446,6 +446,13 @@ async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuper
     return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
   }
 
+  // Agency admins may only reset staff in their own agency.
+  if (currentUser.account_type === 'agency_admin') {
+    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+    }
+  }
+
   // Generate a temporary password from a CSPRNG with a guaranteed length and
   // character mix. `Math.random().toString(36).slice(-8)` is non-cryptographic
   // and can yield far fewer than 8 chars (e.g. when the fraction is short),

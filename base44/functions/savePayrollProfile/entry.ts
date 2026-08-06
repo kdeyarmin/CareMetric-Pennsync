@@ -47,11 +47,22 @@ Deno.serve(async (req) => {
 
     // Resolve the employee's display name from their user record (best-effort).
     let employee_name = email;
+    let targetUser = null;
     try {
       const users = await base44.asServiceRole.entities.User.filter({ email }, undefined, 5000);
-      if (users && users[0]) employee_name = users[0].full_name || email;
+      if (users && users[0]) {
+        targetUser = users[0];
+        employee_name = users[0].full_name || email;
+      }
     } catch (_e) {
       employee_name = email;
+    }
+
+    // Agency admins may only write payroll profiles for staff in their agency.
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name || !targetUser || targetUser.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
     }
 
     const fields = {

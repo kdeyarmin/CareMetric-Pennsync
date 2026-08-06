@@ -165,6 +165,17 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'You cannot review your own timesheet.' }, { status: 403 });
     }
 
+    // Agency admins may only review timesheets for staff in their own agency.
+    if (user.account_type === 'agency_admin') {
+      const employees = await base44.asServiceRole.entities.User
+        .filter({ email: timesheet.employee_email }, undefined, 5)
+        .catch(() => []);
+      const employee = employees?.[0];
+      if (!user.agency_name || !employee || employee.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: timesheet employee is outside your agency.' }, { status: 403 });
+      }
+    }
+
     if (timesheet.status !== 'submitted') {
       return Response.json({ error: `This timesheet is ${timesheet.status} and is not awaiting review.` }, { status: 409 });
     }

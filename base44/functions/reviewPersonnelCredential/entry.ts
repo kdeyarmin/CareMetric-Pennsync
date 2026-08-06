@@ -187,6 +187,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: `Only pending_approval credentials can be reviewed (current status: ${credential.status})` }, { status: 409 });
     }
 
+    // Agency admins may only review credentials for staff in their own agency.
+    // credential.user_id stores the employee's email in this schema.
+    if (user.account_type === 'agency_admin') {
+      const owners = await base44.asServiceRole.entities.User
+        .filter({ email: credential.user_id }, undefined, 5)
+        .catch(() => []);
+      const owner = owners?.[0];
+      if (!user.agency_name || !owner || owner.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: credential owner is outside your agency.' }, { status: 403 });
+      }
+    }
+
     const nowIso = new Date().toISOString();
     let superseded = 0;
 

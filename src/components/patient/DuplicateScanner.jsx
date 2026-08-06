@@ -364,6 +364,9 @@ export default function DuplicateScanner() {
       }
       
       queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
     } catch (error) {
       // Keep backend/internal detail in logs only — this is an admin tool calling
       // privileged functions; show a generic message in the UI.
@@ -384,6 +387,9 @@ export default function DuplicateScanner() {
       const data = response.data || response;
       setResults(data);
       queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
       toast.success(`Merged ${data.patients_removed || 0} duplicate record(s).`);
     } catch (error) {
       console.error('Merge error:', error);

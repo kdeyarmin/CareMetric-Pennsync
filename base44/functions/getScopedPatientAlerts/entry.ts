@@ -36,10 +36,28 @@ Deno.serve(async (req) => {
     // Include account_type admins — a super_admin/agency_admin who isn't yet
     // role:'admin' would otherwise be denied the all-patients view (or 403'd on
     // a single patient). Mirrors getDashboardData's admin predicate.
-    const isAdmin =
+    const isPlatformAdmin =
       user.role === 'admin' ||
-      user.account_type === 'agency_admin' ||
       user.account_type === 'super_admin';
+    const isAgencyAdmin = user.account_type === 'agency_admin';
+    const isAdmin = isPlatformAdmin || isAgencyAdmin;
+
+    // Agency admins: patients tied to staff sharing their agency_name.
+    let agencyEmails = null;
+    if (isAgencyAdmin) {
+      if (!user.agency_name) return Response.json({ alerts: [] });
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+    }
+    const patientInAgency = (patient) => {
+      if (!agencyEmails) return true;
+      if (patient?.created_by && agencyEmails.has(patient.created_by)) return true;
+      return Array.isArray(patient?.assigned_nurses) && patient.assigned_nurses.some((e) => agencyEmails.has(e));
+    };
 
     // Single-patient view: authorize against assignment (or admin).
     if (patient_id) {
@@ -49,16 +67,36 @@ Deno.serve(async (req) => {
         const allowed = patient?.created_by === user.email
           || (Array.isArray(patient?.assigned_nurses) && patient.assigned_nurses.includes(user.email));
         if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      } else if (isAgencyAdmin) {
+        const [patient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000);
+        if (!patientInAgency(patient)) return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
       const alerts = await base44.asServiceRole.entities.PatientAlert.filter({ patient_id, ...extraFilter }, '-created_date', cap);
       return Response.json({ alerts });
     }
 
-    // All-alerts view.
-    if (isAdmin) {
+    // All-alerts view — platform admins see everything; agency admins are
+    // filtered to their agency's patient set (same as getDashboardData).
+    if (isPlatformAdmin) {
       const alerts = hasExtraFilter
         ? await base44.asServiceRole.entities.PatientAlert.filter(extraFilter, '-created_date', cap)
         : await base44.asServiceRole.entities.PatientAlert.list('-created_date', cap);
+      return Response.json({ alerts });
+    }
+    if (isAgencyAdmin) {
+      const agencyPatients = await base44.asServiceRole.entities.Patient
+        .list('-created_date', 2000)
+        .catch(() => []);
+      const allowedIds = [...new Set(
+        (agencyPatients || [])
+          .filter(patientInAgency)
+          .map((p) => p.id)
+          .filter(Boolean),
+      )];
+      if (allowedIds.length === 0) return Response.json({ alerts: [] });
+      const alerts = await base44.asServiceRole.entities.PatientAlert
+        .filter({ patient_id: { $in: allowedIds }, ...extraFilter }, '-created_date', cap)
+        .catch(() => []);
       return Response.json({ alerts });
     }
 

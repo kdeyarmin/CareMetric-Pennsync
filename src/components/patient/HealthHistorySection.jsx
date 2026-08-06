@@ -83,6 +83,9 @@ export default function HealthHistorySection({ patient }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
       queryClient.invalidateQueries({ queryKey: ['patient', patient.id] });
       toast.success('Health history updated successfully');
       setEditDialog(null);

@@ -52,6 +52,25 @@ Deno.serve(async (req) => {
     if (!referrals || referrals.length === 0) {
       return Response.json({ error: 'Referral not found' }, { status: 404 });
     }
+    const referral = referrals[0];
+
+    // Agency admins may only mint follow-up links for referrals created by /
+    // assigned within their agency.
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden: referral is outside your agency.' }, { status: 403 });
+      }
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const ownerEmail = referral.created_by || referral.assigned_to || referral.intake_nurse_email;
+      if (!ownerEmail || !agencyEmails.has(ownerEmail)) {
+        return Response.json({ error: 'Forbidden: referral is outside your agency.' }, { status: 403 });
+      }
+    }
 
     // One active token per referral: deactivate any predecessor so a re-sent
     // form always invalidates the previously mailed link.

@@ -12,8 +12,9 @@ import ReportFilters from './ReportFilters';
 import { toCsvRows } from "@/components/admin/csvExport";
 import { toast } from 'sonner';
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { formatLocalDate } from '@/lib/dateLocal';
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '—';
+const formatDate = (value) => formatLocalDate(value) || '—';
 
 const statusColors = {
   assigned: 'bg-blue-100 text-blue-800',

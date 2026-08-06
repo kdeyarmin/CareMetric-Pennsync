@@ -58,6 +58,30 @@ Deno.serve(async (req) => {
         String(pkg.signer_email).trim().toLowerCase() !== String(signer_email).trim().toLowerCase()) {
       return Response.json({ error: 'signer_email does not match package' }, { status: 403 });
     }
+    // Interactive agency admins may only mint signing links for packages whose
+    // patient is tied to their agency (parity with bulkCreateDocumentPackages).
+    if (!internalOk && user?.account_type === 'agency_admin') {
+      if (!user.agency_name || !pkg.patient_id) {
+        return Response.json({ error: 'Forbidden: package is outside your agency.' }, { status: 403 });
+      }
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const patients = await base44.asServiceRole.entities.Patient
+        .filter({ id: pkg.patient_id }, undefined, 5)
+        .catch(() => []);
+      const patient = patients?.[0];
+      const inAgency = patient && (
+        (patient.created_by && agencyEmails.has(patient.created_by))
+        || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.some((e) => agencyEmails.has(e)))
+      );
+      if (!inAgency) {
+        return Response.json({ error: 'Forbidden: package is outside your agency.' }, { status: 403 });
+      }
+    }
 
     // Generate secure token. Persist ONLY its SHA-256 hash (in the token field):
     // the plaintext lives solely in the emailed signing link, so read access to

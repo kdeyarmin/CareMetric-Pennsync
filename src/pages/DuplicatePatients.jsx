@@ -117,6 +117,9 @@ export default function DuplicatePatients() {
       setDuplicateGroups((prev) => prev.filter((_, i) => `group-${i}` !== groupKey));
       queryClient.invalidateQueries({ queryKey: ['all-patients-duplicate-scan'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
     } catch (error) {
       console.error('Merge error:', error);
       toast.error('Failed to merge the duplicates. Please try again.');
@@ -174,6 +177,9 @@ export default function DuplicatePatients() {
     setDuplicateGroups((prev) => prev.filter((_, i) => failedKeys.has(`group-${i}`)));
     queryClient.invalidateQueries({ queryKey: ['all-patients-duplicate-scan'] });
     queryClient.invalidateQueries({ queryKey: ['patients'] });
+    queryClient.invalidateQueries({ queryKey: ['patients-list'] });
+    queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
+    queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
 
     if (failedKeys.size === 0) {
       toast.success(`Merged ${mergedRecords} duplicate record(s) across ${mergedGroups} group(s).`);

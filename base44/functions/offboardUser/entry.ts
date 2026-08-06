@@ -84,6 +84,13 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
     return Response.json({ error: 'Only a super admin can offboard another administrator.' }, { status: 403 });
   }
 
+  // Agency admins may only offboard staff in their own agency.
+  if (currentUser.account_type === 'agency_admin') {
+    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+    }
+  }
+
   const at = new Date().toISOString();
   const targetEmail = targetUser.email;
 
@@ -355,6 +362,13 @@ async function reactivateUser(base44, currentUser, params, callerIsSuperAdmin) {
     return Response.json({
       error: 'Only a super admin can reactivate an administrator account, including your own.',
     }, { status: 403 });
+  }
+
+  // Agency admins may only reactivate staff in their own agency.
+  if (currentUser.account_type === 'agency_admin') {
+    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+    }
   }
 
   await base44.asServiceRole.entities.User.update(user_id, {

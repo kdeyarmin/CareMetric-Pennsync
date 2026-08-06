@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { format, differenceInDays, parseISO, isAfter } from "date-fns";
+import { differenceInDays, isAfter } from "date-fns";
 import {
   Target,
   CheckCircle2,
@@ -8,6 +8,7 @@ import {
   AlertCircle,
   TrendingUp
 } from "lucide-react";
+import { parseLocalDate, formatLocalDate, toLocalISODate } from "@/lib/dateLocal";
 
 export default function CarePlanTimeline({ carePlans = [], _patient }) {
   if (!carePlans || carePlans.length === 0) {
@@ -21,26 +22,28 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
     );
   }
 
-  // Sort care plans by target date
+  // Sort care plans by target date (local calendar, not UTC midnight)
   const sortedPlans = [...carePlans].sort((a, b) => {
-    if (!a.target_date) return 1;
-    if (!b.target_date) return -1;
-    return new Date(a.target_date) - new Date(b.target_date);
+    const da = parseLocalDate(a.target_date);
+    const db = parseLocalDate(b.target_date);
+    if (!da) return 1;
+    if (!db) return -1;
+    return da - db;
   });
 
   // Calculate timeline bounds
   const today = new Date();
   const dates = sortedPlans
-    .filter(p => p.target_date)
-    .map(p => parseISO(p.target_date));
+    .map(p => parseLocalDate(p.target_date))
+    .filter(Boolean);
   
   const earliestDate = dates.length > 0 ? new Date(Math.min(...dates)) : today;
   const latestDate = dates.length > 0 ? new Date(Math.max(...dates)) : today;
   const totalDays = differenceInDays(latestDate, earliestDate) || 30;
 
   const getPositionPercentage = (targetDate) => {
-    if (!targetDate) return 0;
-    const date = parseISO(targetDate);
+    const date = targetDate instanceof Date ? targetDate : parseLocalDate(targetDate);
+    if (!date) return 0;
     const daysFromStart = differenceInDays(date, earliestDate);
     return (daysFromStart / totalDays) * 100;
   };
@@ -59,8 +62,8 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
     if (status === 'met') return <CheckCircle2 className="w-4 h-4" />;
     if (status === 'not_met') return <AlertCircle className="w-4 h-4" />;
     
-    if (targetDate) {
-      const date = parseISO(targetDate);
+    const date = parseLocalDate(targetDate);
+    if (date) {
       if (isAfter(today, date)) return <AlertCircle className="w-4 h-4" />;
       if (differenceInDays(date, today) <= 7) return <Clock className="w-4 h-4" />;
     }
@@ -69,8 +72,9 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
   };
 
   const getDaysRemaining = (targetDate) => {
-    if (!targetDate) return null;
-    const days = differenceInDays(parseISO(targetDate), today);
+    const date = parseLocalDate(targetDate);
+    if (!date) return null;
+    const days = differenceInDays(date, today);
     if (days < 0) return { text: `${Math.abs(days)}d overdue`, color: 'text-red-600' };
     if (days === 0) return { text: 'Due today', color: 'text-orange-600' };
     if (days <= 7) return { text: `${days}d left`, color: 'text-yellow-600' };
@@ -90,7 +94,7 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
         <div className="mb-6 pb-4 border-b">
           <div className="flex justify-between items-center text-sm">
             <div className="text-slate-600">
-              <strong>Timeline:</strong> {format(earliestDate, 'MMM d, yyyy')} - {format(latestDate, 'MMM d, yyyy')}
+              <strong>Timeline:</strong> {formatLocalDate(earliestDate, { month: 'short', day: 'numeric', year: 'numeric' })} - {formatLocalDate(latestDate, { month: 'short', day: 'numeric', year: 'numeric' })}
             </div>
             <div className="text-slate-600">
               <strong>Duration:</strong> {totalDays} days
@@ -106,7 +110,7 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
             <div 
               className="absolute top-0 bottom-0 w-0.5 bg-blue-600 z-10"
               style={{ 
-                left: `${getPositionPercentage(format(today, 'yyyy-MM-dd'))}%`
+                left: `${getPositionPercentage(toLocalISODate(today))}%`
               }}
             >
               <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-blue-600 whitespace-nowrap">
@@ -125,7 +129,7 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
                   key={idx}
                   className={`absolute top-0 w-3 h-3 rounded-full ${getStatusColor(status)} border-2 border-white shadow-md cursor-pointer hover:scale-125 transition-transform`}
                   style={{ left: `${position}%`, transform: 'translateX(-50%)' }}
-                  title={`${plan.problem} - ${format(parseISO(plan.target_date), 'MMM d')}`}
+                  title={`${plan.problem} - ${formatLocalDate(plan.target_date, { month: 'short', day: 'numeric' })}`}
                 />
               );
             })}
@@ -135,7 +139,8 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
           <div className="space-y-3">
             {sortedPlans.map((plan, _idx) => {
               const daysInfo = getDaysRemaining(plan.target_date);
-              const isOverdue = plan.target_date && isAfter(today, parseISO(plan.target_date)) && plan.status === 'active';
+              const targetDate = parseLocalDate(plan.target_date);
+              const isOverdue = targetDate && isAfter(today, targetDate) && plan.status === 'active';
               
               return (
                 <Card 
@@ -169,7 +174,7 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
                             )}
                             {plan.target_date && (
                               <span className="text-xs text-slate-500">
-                                Target: {format(parseISO(plan.target_date), 'MMM d, yyyy')}
+                                Target: {formatLocalDate(plan.target_date, { month: 'short', day: 'numeric', year: 'numeric' })}
                               </span>
                             )}
                           </div>
@@ -201,8 +206,9 @@ export default function CarePlanTimeline({ carePlans = [], _patient }) {
                           <p className="text-xs text-slate-500 mb-1 text-center">Progress</p>
                           <div className="relative">
                             {(() => {
-                              const created = parseISO(plan.created_date);
-                              const target = parseISO(plan.target_date);
+                              const created = parseLocalDate(plan.created_date);
+                              const target = parseLocalDate(plan.target_date);
+                              if (!created || !target) return null;
                               const totalPlanDays = differenceInDays(target, created);
                               const daysElapsed = differenceInDays(today, created);
                               // Guard a zero/invalid span (same-day target, or an
