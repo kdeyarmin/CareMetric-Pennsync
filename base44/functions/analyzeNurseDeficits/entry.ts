@@ -28,7 +28,10 @@ Deno.serve(async (req) => {
       if (!isAdminLike) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
-      if (user.account_type !== 'super_admin' && user.agency_name) {
+      if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
+    if (user.account_type !== 'super_admin' && user.agency_name) {
         const [target] = await base44.asServiceRole.entities.User
           .filter({ email: nurseEmail }, '-created_date', 1).catch(() => []);
         if (!target?.agency_name || target.agency_name !== user.agency_name) {

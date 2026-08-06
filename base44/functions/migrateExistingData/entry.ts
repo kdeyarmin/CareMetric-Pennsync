@@ -36,6 +36,9 @@ Deno.serve(async (req) => {
     // caller's agency so an agency_admin cannot rewrite every tenant.
     let patients = await base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000);
     let agencyEmails = null;
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
     if (user.account_type !== 'super_admin' && user.agency_name) {
       const agencyUsers = await base44.asServiceRole.entities.User
         .filter({ agency_name: user.agency_name }, '-created_date', 5000)

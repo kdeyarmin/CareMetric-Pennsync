@@ -1,5 +1,47 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+async function assertPatientAccess(base44, user, patient) {
+  if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
+  const isSuperAdmin = user.account_type === 'super_admin';
+  const isAgencyScopedAdmin =
+    user.account_type === 'agency_admin'
+    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+  const isAssigned = Array.isArray(patient.assigned_nurses)
+    && patient.assigned_nurses.includes(user.email);
+  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (isAgencyScopedAdmin) {
+    if (!user.agency_name) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const agencyUsers = await base44.asServiceRole.entities.User
+      .list('-created_date', 5000).catch(() => []);
+    const agencyEmails = new Set(
+      (agencyUsers || [])
+        .filter((u) => u.agency_name === user.agency_name && u.email)
+        .map((u) => u.email),
+    );
+    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
+      || (Array.isArray(patient.assigned_nurses)
+        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
+    if (!inAgency) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+  return null;
+}
+
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -8,6 +50,7 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { phrase, patientId, contextData } = await req.json();
 
@@ -35,15 +78,34 @@ Deno.serve(async (req) => {
       ? templates.find(t => t.patient_id && String(t.patient_id) === pid)
       : undefined;
     if (patientBound) {
-      const accessiblePatient = await base44.entities.Patient.filter({ id: patientBound.patient_id }, undefined, 5000);
-      if (!accessiblePatient || accessiblePatient.length === 0) {
-        patientBound = undefined; // caller has no access to this patient — do not leak bound text
-      }
+      const [accessiblePatient] = await base44.asServiceRole.entities.Patient
+        .filter({ id: patientBound.patient_id }, '', 1).catch(() => []);
+      const denied = await assertPatientAccess(base44, user, accessiblePatient);
+      if (denied) patientBound = undefined;
     }
+
+    // Agency-wide templates must be authored by someone in the caller's agency
+    // (or the caller themselves). Without this, any is_agency_wide row from
+    // another tenant matches first.
+    let agencyEmailSet = null;
+    if (user.agency_name && user.account_type !== 'super_admin') {
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .list('-created_date', 5000).catch(() => []);
+      agencyEmailSet = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+    }
+    const agencyWideOk = (t) => {
+      if (!t.is_agency_wide) return false;
+      if (!agencyEmailSet) return true; // platform admin / no agency
+      return t.created_by && agencyEmailSet.has(t.created_by);
+    };
 
     let template =
       patientBound ||
-      templates.find(t => !t.patient_id && (t.is_agency_wide || t.created_by === user.email));
+      templates.find(t => !t.patient_id && (agencyWideOk(t) || t.created_by === user.email));
 
     if (!template) {
       // No exact match, use AI to generate expansion
@@ -96,13 +158,11 @@ Expanded documentation:`;
       }, { status: 400 });
     }
 
-    // Get patient data
-    const patient = await base44.entities.Patient.filter({ id: patientId }, undefined, 5000);
-    if (!patient || patient.length === 0) {
-      return Response.json({ error: 'Patient not found' }, { status: 404 });
-    }
-
-    const patientData = patient[0];
+    // Get patient data (explicit agency gate — Patient RLS is bare role:admin).
+    const [patientData] = await base44.asServiceRole.entities.Patient
+      .filter({ id: patientId }, '', 1).catch(() => []);
+    const deniedPatient = await assertPatientAccess(base44, user, patientData);
+    if (deniedPatient) return deniedPatient;
 
     // Build context for AI
     let patientContext = '';

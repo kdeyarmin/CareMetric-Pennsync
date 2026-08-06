@@ -58,7 +58,6 @@ const UNGUARDED_LEGACY_FUNCTIONS = new Set([
   'duplicateInService',
   'embedAnnotationsToPDF',
   'ensureSuperAdmin',
-  'expandClinicalPhrase',
   'extractClinicalDocument',
   'extractFaxMetadataOCR',
   'extractPatientDataFromDocument',

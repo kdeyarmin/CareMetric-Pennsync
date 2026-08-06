@@ -121,11 +121,12 @@ test('expandClinicalPhrase re-authorizes patient-bound templates against patient
     /asServiceRole\.entities\.ClinicalLibraryTemplate\.filter/.test(src),
     'expandClinicalPhrase reads templates via service role — if that changes, revisit this guard.',
   );
-  // A user-context Patient read must gate the patient-bound branch (drops the
-  // match to undefined when the caller cannot read the patient).
+  // Explicit patient access must gate the patient-bound branch (drops the
+  // match when the caller cannot read the patient). Uses assertPatientAccess
+  // so facility admins are agency-scoped — Patient RLS alone is bare role:admin.
   assert.ok(
-    /base44\.entities\.Patient\.filter/.test(src) && /patientBound\s*=\s*undefined/.test(src),
-    'expandClinicalPhrase must drop a patient-bound template when the caller cannot read the patient (user-context Patient.filter). Without it, the service-role read + early generic-branch return leaks bound order text for arbitrary patient ids.',
+    /assertPatientAccess/.test(src) && /patientBound\s*=\s*undefined/.test(src),
+    'expandClinicalPhrase must drop a patient-bound template when the caller cannot read the patient (assertPatientAccess). Without it, the service-role read + early generic-branch return leaks bound order text for arbitrary patient ids.',
   );
 });
 
