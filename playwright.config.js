@@ -39,11 +39,10 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        // Use `pnpm exec vite` (not `pnpm run preview -- --host…`). pnpm forwards
-        // the extra `--` into the vite argv, which makes preview ignore --host and
-        // bind ::1 only — Playwright's 127.0.0.1 health check then times out.
-        // --strictPort fails fast if 4173 is taken instead of silently shifting ports.
-        command: 'pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort',
+        // package.json "preview" already binds 127.0.0.1:4173 with --strictPort.
+        // Avoid `pnpm run preview -- --host…` — pnpm forwards a literal `--` into
+        // vite argv and preview binds ::1 only, which breaks IPv4 health checks.
+        command: 'pnpm run preview',
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
