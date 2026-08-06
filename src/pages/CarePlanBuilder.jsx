@@ -40,7 +40,8 @@ export default function CarePlanBuilder() {
   const [assessmentData, _setAssessmentData] = useState(null);
 
   const { data: patients = [] } = useQuery({
-    queryKey: ["patients-list"],
+    // Distinct from created_date / larger-limit patients-list consumers.
+    queryKey: ["patients-list", "-updated_date", 100],
     queryFn: () => base44.entities.Patient.list("-updated_date", 100),
     initialData: [],
   });

@@ -42,12 +42,33 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.Patient.filter({ id: { $in: patient_ids } }, undefined, 5000),
       base44.asServiceRole.entities.DocumentTemplate.filter({ id: { $in: template_ids } }, undefined, 5000),
     ]);
-    const patientMap = new Map(patients.map((p) => [p.id, p]));
+
+    // Agency admins must not package arbitrary cross-agency patients via service role.
+    let agencyEmails = null;
+    if (user.account_type === 'agency_admin' && user.agency_name) {
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+    }
+    const patientInAgency = (p) => {
+      if (!agencyEmails) return true;
+      if (p.created_by && agencyEmails.has(p.created_by)) return true;
+      return Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e));
+    };
+
+    const patientMap = new Map(patients.filter(patientInAgency).map((p) => [p.id, p]));
     const templateMap = new Map(templates.map((t) => [t.id, t]));
 
     const createdPackages = [];
     const failures = [];
-
+    for (const patientId of patient_ids) {
+      if (!patientMap.has(patientId) && patients.some((p) => p.id === patientId)) {
+        failures.push({ patient_id: patientId, error: 'Patient outside your agency' });
+      }
+    }
     // Create a package for each patient-template combination
     for (const patientId of patient_ids) {
       const patient = patientMap.get(patientId);

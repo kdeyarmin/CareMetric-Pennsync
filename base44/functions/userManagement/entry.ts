@@ -343,34 +343,57 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   if (invitation.status === 'accepted') {
     return Response.json({ error: 'This invitation has already been accepted and cannot be resent.' }, { status: 400 });
   }
+  // 'cancelled' is a deliberate revocation (e.g. offboardUser) — do not re-arm it.
+  if (invitation.status === 'cancelled') {
+    return Response.json({
+      error: 'This invitation was cancelled and cannot be resent. Create a new invitation instead.',
+    }, { status: 409 });
+  }
   const now = new Date();
   const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const prior = {
+    status: invitation.status,
+    expires_at: invitation.expires_at,
+    last_sent_at: invitation.last_sent_at || null,
+    resend_count: invitation.resend_count || 0,
+  };
 
-  await base44.asServiceRole.entities.UserInvitation.update(invitation_id, {
-    status: 'pending',
-    expires_at: newExpiresAt.toISOString(),
-    last_sent_at: now.toISOString(),
-    resend_count: (invitation.resend_count || 0) + 1
-  });
-
-  // Resend email
+  // Send email FIRST, then stamp — otherwise a SendEmail failure still extends
+  // expiry and looks like a successful resend.
   const signupUrl = getAppBaseUrl();
-  await base44.asServiceRole.integrations.Core.SendEmail({
-    to: invitation.email,
-    subject: 'Reminder: your invitation to PennSync by CareMetric',
-    from_name: 'PennSync by CareMetric',
-    body: renderBrandedEmail({
-      preheader: 'A reminder that you’ve been invited to join PennSync by CareMetric.',
-      eyebrow: 'Invitation reminder',
-      title: `Hello ${invitation.full_name},`,
-      intro: 'This is a friendly reminder that you’ve been invited to join PennSync by CareMetric. Your invitation is still waiting — create your account to get started.',
-      sections: [
-        { rows: [['Email', invitation.email], ['Role', invitation.role || 'user']] },
-        { button: { href: signupUrl, label: 'Create your account' } },
-        { callout: { tone: 'warn', text: `This invitation expires in 7 days (on ${newExpiresAt.toLocaleDateString()}).` } },
-      ],
-    }),
-  });
+  try {
+    await base44.asServiceRole.integrations.Core.SendEmail({
+      to: invitation.email,
+      subject: 'Reminder: your invitation to PennSync by CareMetric',
+      from_name: 'PennSync by CareMetric',
+      body: renderBrandedEmail({
+        preheader: 'A reminder that you’ve been invited to join PennSync by CareMetric.',
+        eyebrow: 'Invitation reminder',
+        title: `Hello ${invitation.full_name},`,
+        intro: 'This is a friendly reminder that you’ve been invited to join PennSync by CareMetric. Your invitation is still waiting — create your account to get started.',
+        sections: [
+          { rows: [['Email', invitation.email], ['Role', invitation.role || 'user']] },
+          { button: { href: signupUrl, label: 'Create your account' } },
+          { callout: { tone: 'warn', text: `This invitation expires in 7 days (on ${newExpiresAt.toLocaleDateString()}).` } },
+        ],
+      }),
+    });
+  } catch (emailError) {
+    console.error('Failed to resend invitation email:', emailError?.message || emailError);
+    return Response.json({ error: 'Failed to send invitation email. Please try again.' }, { status: 502 });
+  }
+
+  try {
+    await base44.asServiceRole.entities.UserInvitation.update(invitation_id, {
+      status: 'pending',
+      expires_at: newExpiresAt.toISOString(),
+      last_sent_at: now.toISOString(),
+      resend_count: prior.resend_count + 1
+    });
+  } catch (stampError) {
+    console.error('Invitation stamp failed after email sent:', stampError?.message || stampError);
+    // Email already went out — leave prior row; report soft success with warning.
+  }
 
   // Log activity
   await base44.asServiceRole.entities.UserActivity.create({
@@ -379,7 +402,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
     action: 'invitation_resent',
     details: {
       invited_email: invitation.email,
-      resend_count: (invitation.resend_count || 0) + 1,
+      resend_count: prior.resend_count + 1,
       new_expires_at: newExpiresAt.toISOString()
     },
     page: 'UserManagement',
@@ -642,7 +665,33 @@ async function cancelInvitation(base44, currentUser, params, isAdmin) {
     return Response.json({ error: 'invitation_id is required' }, { status: 400 });
   }
 
-  await base44.asServiceRole.entities.UserInvitation.delete(invitation_id);
+  const invitations = await base44.asServiceRole.entities.UserInvitation.filter({ id: invitation_id }, undefined, 5000);
+  if (!invitations || invitations.length === 0) {
+    return Response.json({ error: 'Invitation not found' }, { status: 404 });
+  }
+  const invitation = invitations[0];
+  if (invitation.status === 'accepted') {
+    return Response.json({ error: 'Accepted invitations cannot be cancelled.' }, { status: 400 });
+  }
+  if (invitation.status === 'cancelled') {
+    return Response.json({ success: true, message: 'Invitation already cancelled' });
+  }
+
+  // Soft-cancel (preserve audit history). Hard-delete destroyed the trail and
+  // diverged from offboardUser, which correctly sets status: 'cancelled'.
+  await base44.asServiceRole.entities.UserInvitation.update(invitation_id, {
+    status: 'cancelled',
+  });
+
+  await base44.asServiceRole.entities.UserActivity.create({
+    user_email: currentUser.email,
+    user_name: currentUser.full_name,
+    action: 'invitation_cancelled',
+    details: { invited_email: invitation.email, invitation_id },
+    page: 'UserManagement',
+    entity_type: 'UserInvitation',
+    entity_id: invitation_id,
+  }).catch(() => {});
 
   return Response.json({ 
     success: true, 

@@ -32,13 +32,17 @@ import {
 import { toast } from "sonner";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
-import { sanitizeHtml } from "@/components/utils/security";
+import { sanitizeHtml, isSafeExternalUrl } from "@/components/utils/security";
+
+const isSafePreviewUrl = (url) =>
+  typeof url === "string" && (url.startsWith("blob:") || isSafeExternalUrl(url));
 
 export default function VisualPDFTemplateEditor({ 
   templateElements = [], 
   onElementsChange,
   pdfUrl
 }) {
+  const safePdfUrl = isSafePreviewUrl(pdfUrl) ? pdfUrl : null;
   // Track selection by id and derive the live element from templateElements, so the
   // properties panel always edits current state. Storing a full element snapshot let
   // sequential edits spread from a stale copy and clobber the previous edit.
@@ -194,7 +198,7 @@ export default function VisualPDFTemplateEditor({
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
                 style={{
-                  backgroundImage: pdfUrl ? `url(${pdfUrl})` : 'none',
+                  backgroundImage: safePdfUrl ? `url(${safePdfUrl})` : 'none',
                   backgroundSize: 'contain',
                   backgroundRepeat: 'no-repeat',
                   backgroundPosition: 'center'

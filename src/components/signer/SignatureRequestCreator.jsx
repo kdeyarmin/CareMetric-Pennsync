@@ -10,6 +10,10 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { hostedAbsoluteUrl } from '@/lib/assetPath';
 import { ROUTER_PATHS } from '@/routes';
+import { isSafeExternalUrl } from '@/components/utils/security';
+
+const isSafePreviewUrl = (url) =>
+  typeof url === 'string' && (url.startsWith('blob:') || isSafeExternalUrl(url));
 
 export default function SignatureRequestCreator({ onCancel }) {
   const [step, setStep] = useState(1);
@@ -31,13 +35,14 @@ export default function SignatureRequestCreator({ onCancel }) {
   const [isSending, setIsSending] = useState(false);
 
   const { data: libraryDocs = [] } = useQuery({
-    queryKey: ['libraryDocuments'],
+    // Distinct limit from TemplateLibrary (100) — avoid stale/truncated collisions.
+    queryKey: ['libraryDocuments', '-created_date', 50],
     queryFn: () => base44.entities.LibraryDocument.list('-created_date', 50),
     initialData: []
   });
 
   const { data: pdfTemplates = [] } = useQuery({
-    queryKey: ['pdfTemplates'],
+    queryKey: ['pdfTemplates', '-created_date', 50],
     queryFn: () => base44.entities.PDFTemplate.list('-created_date', 50),
     initialData: []
   });
@@ -306,7 +311,7 @@ export default function SignatureRequestCreator({ onCancel }) {
                       className="cursor-pointer hover:shadow-md transition-shadow border-slate-200"
                       onClick={() => {
                         setSelectedLibraryDoc(item);
-                        setPreviewUrl(item.file_url);
+                        setPreviewUrl(isSafePreviewUrl(item.file_url) ? item.file_url : null);
                         setStep(2);
                       }}
                     >
@@ -525,16 +530,16 @@ export default function SignatureRequestCreator({ onCancel }) {
                 style={{
                   width: '800px', 
                   height: '1131px', // ~ letter aspect ratio
-                  backgroundImage: previewUrl ? `url(${previewUrl})` : 'none'
+                  backgroundImage: isSafePreviewUrl(previewUrl) ? `url(${previewUrl})` : 'none'
                 }}
                 ref={containerRef}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}
               >
                 {/* Fallback visual if previewUrl is just a generic blob that can't be rendered as bg */}
-                {!previewUrl?.match(/\.(jpeg|jpg|gif|png)$/i) && (
+                {isSafePreviewUrl(previewUrl) && !previewUrl?.match(/\.(jpeg|jpg|gif|png)$/i) && (
                   <div className="absolute inset-0 opacity-20 pointer-events-none">
-                    <iframe src={previewUrl} className="w-full h-full" scrolling="no" />
+                    <iframe src={previewUrl} className="w-full h-full" scrolling="no" title="Document preview" />
                     <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px]"></div>
                   </div>
                 )}

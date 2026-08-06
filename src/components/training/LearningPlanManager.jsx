@@ -22,9 +22,9 @@ import AssignmentWizard from "./AssignmentWizard";
 import { seedYearlyRequiredInServices } from "@/functions/seedYearlyRequiredInServices";
 import { assignAnnualLearningPlan } from "@/functions/assignAnnualLearningPlan";
 import { remindPlanOverdueStaff } from "@/functions/remindPlanOverdueStaff";
-import { isPastLocalDueDate } from '@/lib/dateLocal';
+import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : "—");
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function LearningPlanManager() {
   const queryClient = useQueryClient();
@@ -44,7 +44,7 @@ export default function LearningPlanManager() {
   const [reminding, setReminding] = useState(false);
 
   const { data: plans = [] } = useQuery({
-    queryKey: ["learning-plans"],
+    queryKey: ["learning-plans", "-created_date", 50],
     queryFn: () => base44.entities.LearningPlan.list("-created_date", 50),
     initialData: [],
   });
@@ -146,7 +146,11 @@ export default function LearningPlanManager() {
   }, [planAssignments]);
 
   // ─── Mutations ──────────────────────────────────────────────────────────────
-  const refetchPlans = () => queryClient.invalidateQueries({ queryKey: ["learning-plans"] });
+  // Cross-invalidate annual-plans (AnnualMandatoryEducationHub) — both list LearningPlan.
+  const refetchPlans = () => {
+    queryClient.invalidateQueries({ queryKey: ["learning-plans"] });
+    queryClient.invalidateQueries({ queryKey: ["annual-plans"] });
+  };
   const refetchCourses = () => queryClient.invalidateQueries({ queryKey: ["plan-courses"] });
 
   const deletePlanMutation = useMutation({

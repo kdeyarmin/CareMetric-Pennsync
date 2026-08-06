@@ -24,9 +24,9 @@ import AnnualLearningPlanPanel from "@/components/training/AnnualLearningPlanPan
 import TrainingAttachmentManager from "@/components/training/TrainingAttachmentManager";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
-import { parseLocalDate, startOfLocalDay } from "@/lib/dateLocal";
+import { parseLocalDate, startOfLocalDay, formatLocalDate } from "@/lib/dateLocal";
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function AnnualMandatoryEducationHub() {
   const queryClient = useQueryClient();
@@ -79,7 +79,11 @@ export default function AnnualMandatoryEducationHub() {
   const { data: courses = [] } = useQuery({ queryKey: ["annual-courses"], queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500), initialData: [] });
   const { data: assignments = [] } = useQuery({ queryKey: ["annual-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), initialData: [] });
   const { data: certificates = [] } = useQuery({ queryKey: ["annual-certificates"], queryFn: () => base44.entities.TrainingCertificate.list('-issued_at', 500), initialData: [] });
-  const { data: plans = [] } = useQuery({ queryKey: ["annual-plans"], queryFn: () => base44.entities.LearningPlan.list('-created_date', 200), initialData: [] });
+  const { data: plans = [] } = useQuery({
+    queryKey: ["annual-plans", "-created_date", 200],
+    queryFn: () => base44.entities.LearningPlan.list('-created_date', 200),
+    initialData: [],
+  });
 
   const annualCourses = useMemo(() => courses.filter((course) => course.training_type === 'annual_mandatory' || course.annual_cycle_year === year), [courses, year]);
   const annualAssignments = useMemo(() => assignments.filter((assignment) => assignment.annual_cycle_year === year), [assignments, year]);
@@ -176,6 +180,7 @@ export default function AnnualMandatoryEducationHub() {
       setSeedResult(result?.data || result);
       queryClient.invalidateQueries({ queryKey: ["annual-courses"] });
       queryClient.invalidateQueries({ queryKey: ["annual-plans"] });
+      queryClient.invalidateQueries({ queryKey: ["learning-plans"] });
     } catch (error) {
       setSeedResult({ error: configNotReadyMessage(error) || error?.message || "Failed to create yearly required in-services." });
     } finally {
@@ -402,7 +407,10 @@ export default function AnnualMandatoryEducationHub() {
               </Button>
             </CardContent>
           </Card>
-          <AnnualLearningPlanPanel plans={plans} courses={annualCourses} year={year} onRefresh={() => queryClient.invalidateQueries({ queryKey: ['annual-plans'] })} />
+          <AnnualLearningPlanPanel plans={plans} courses={annualCourses} year={year} onRefresh={() => {
+            queryClient.invalidateQueries({ queryKey: ['annual-plans'] });
+            queryClient.invalidateQueries({ queryKey: ['learning-plans'] });
+          }} />
           <div className="grid grid-cols-1 xl:grid-cols-[360px_minmax(0,1fr)] gap-6">
             <Card>
               <CardHeader><CardTitle>Assign annual plan</CardTitle></CardHeader>

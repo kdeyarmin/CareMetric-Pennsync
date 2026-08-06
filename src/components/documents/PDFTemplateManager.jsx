@@ -62,7 +62,8 @@ export default function PDFTemplateManager() {
   });
 
   const { data: templates = [] } = useQuery({
-    queryKey: ['pdf-templates'],
+    // Distinct from pdfTemplates (limit 50/100) used by TemplateLibrary / signer.
+    queryKey: ['pdf-templates', '-created_date', PATIENT_HISTORY_ROWS],
     queryFn: () => base44.entities.PDFTemplate.list('-created_date', PATIENT_HISTORY_ROWS),
     initialData: []
   });
@@ -71,10 +72,16 @@ export default function PDFTemplateManager() {
   // list whenever `templates` (or any filter) changes. A second writer here would
   // race it and momentarily replace an active filter with the unfiltered list.
 
+  const invalidatePdfTemplateCaches = () => {
+    queryClient.invalidateQueries({ queryKey: ['pdf-templates'] });
+    queryClient.invalidateQueries({ queryKey: ['pdfTemplates'] });
+    queryClient.invalidateQueries({ queryKey: ['pdf-templates-active'] });
+  };
+
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.PDFTemplate.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pdf-templates'] });
+      invalidatePdfTemplateCaches();
       setDialogOpen(false);
       resetForm();
       toast.success("Template created successfully!");
@@ -84,7 +91,7 @@ export default function PDFTemplateManager() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.PDFTemplate.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pdf-templates'] });
+      invalidatePdfTemplateCaches();
       setDialogOpen(false);
       resetForm();
       toast.success("Template updated successfully!");
@@ -94,7 +101,7 @@ export default function PDFTemplateManager() {
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.PDFTemplate.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pdf-templates'] });
+      invalidatePdfTemplateCaches();
       toast.success("Template deleted successfully!");
     }
   });

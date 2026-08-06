@@ -5,9 +5,9 @@ import { createPageUrl } from "@/utils";
 import { safePercent } from "@/lib/safePercent";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { isPastLocalDueDate } from '@/lib/dateLocal';
+import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : "—");
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 /**
  * "Stay compliant at a glance" banner for staff. Summarizes the learner's

@@ -48,7 +48,8 @@ export default function DocumentSignatures() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients-list'],
+    // Larger limit than Telehealth/OASIS — keep a distinct cache key.
+    queryKey: ['patients-list', '-created_date', 500],
     queryFn: () => base44.entities.Patient.list('-created_date', 500),
     initialData: []
   });
