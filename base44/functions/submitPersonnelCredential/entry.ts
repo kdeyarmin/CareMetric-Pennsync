@@ -224,9 +224,26 @@ Deno.serve(async (req) => {
       }
 
       // Renewals need a human decision — let the admins know one is waiting.
+      // Scope to the employee's agency (plus super_admins); unscoped fan-out
+      // emailed staff names/credential titles to every tenant's admins.
       try {
-        const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
-        await Promise.all((admins || []).filter((a) => a?.email).map((admin) =>
+        const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+        const agency = payload.agency_name || user.agency_name;
+        let admins = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+          u && u.email && (
+            u.role === 'admin' ||
+            u.account_type === 'agency_admin' ||
+            u.account_type === 'super_admin'
+          )
+        );
+        if (agency) {
+          admins = admins.filter((u) =>
+            u.account_type === 'super_admin' || u.agency_name === agency
+          );
+        } else {
+          admins = admins.filter((u) => u.account_type === 'super_admin');
+        }
+        await Promise.all(admins.map((admin) =>
           base44.asServiceRole.integrations.Core.SendEmail({
             to: admin.email,
             from_name: 'PennSync by CareMetric',

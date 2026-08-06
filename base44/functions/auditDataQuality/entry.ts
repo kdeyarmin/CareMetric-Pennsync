@@ -37,7 +37,8 @@ Deno.serve(async (req) => {
       const patientIds = new Set(patients.map((p) => p.id));
       visits = (Array.isArray(visits) ? visits : []).filter((v) => patientIds.has(v.patient_id));
       credentials = (Array.isArray(credentials) ? credentials : []).filter((c) =>
-        c.employee_email && agencyEmails.has(c.employee_email)
+        (c.agency_name && c.agency_name === user.agency_name)
+        || (c.employee_email && agencyEmails.has(c.employee_email))
       );
     }
 

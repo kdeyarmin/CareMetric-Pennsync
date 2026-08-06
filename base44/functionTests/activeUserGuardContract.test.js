@@ -94,7 +94,6 @@ const UNGUARDED_LEGACY_FUNCTIONS = new Set([
   'generateComprehensiveReport',
   'generateCourseQuiz',
   'generateDischargeSummary',
-  'generateDocumentPackageFromTemplate',
   'generateDynamicCoverSheet',
   'generateFaxCoverPage',
   'generateFollowUpPortalToken',

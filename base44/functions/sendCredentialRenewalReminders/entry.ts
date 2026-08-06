@@ -227,6 +227,7 @@ Deno.serve(async (req) => {
           item_type: cred.item_type,
           expiration_date: cred.expiration_date,
           daysUntilExpiry,
+          agency_name: cred.agency_name || null,
         });
       }
 
@@ -374,28 +375,42 @@ Deno.serve(async (req) => {
       // we still sent (safe direction: one extra digest possible until a row exists).
 
       if (shouldSendDigest) {
-        const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
+        // Scope digests per admin agency so staff names/credential titles don't
+        // cross tenants. Super_admins still receive the full digest.
+        const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+        const admins = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+          u && u.email && (
+            u.role === 'admin' ||
+            u.account_type === 'agency_admin' ||
+            u.account_type === 'super_admin'
+          )
+        );
         adminDigestItems.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
 
-        const digestBullets = adminDigestItems.map((i) => {
-          const when = i.daysUntilExpiry < 0
-            ? `expired ${Math.abs(i.daysUntilExpiry)} day(s) ago`
-            : `${i.daysUntilExpiry} day(s) remaining`;
-          const [y, m, d] = String(i.expiration_date).split('-').map(Number);
-          const expLabel = Number.isFinite(y)
-            ? new Date(y, m - 1, d).toLocaleDateString()
-            : String(i.expiration_date);
-          return `${i.user_name} — ${i.title} (${i.item_type}) — expires ${expLabel} (${when})`;
-        });
-
         for (const admin of admins) {
+          const scoped = admin.account_type === 'super_admin'
+            ? adminDigestItems
+            : adminDigestItems.filter((i) =>
+              !i.agency_name || i.agency_name === admin.agency_name
+            );
+          if (scoped.length === 0) continue;
+          const digestBullets = scoped.map((i) => {
+            const when = i.daysUntilExpiry < 0
+              ? `expired ${Math.abs(i.daysUntilExpiry)} day(s) ago`
+              : `${i.daysUntilExpiry} day(s) remaining`;
+            const [y, m, d] = String(i.expiration_date).split('-').map(Number);
+            const expLabel = Number.isFinite(y)
+              ? new Date(y, m - 1, d).toLocaleDateString()
+              : String(i.expiration_date);
+            return `${i.user_name} — ${i.title} (${i.item_type}) — expires ${expLabel} (${when})`;
+          });
           try {
             await base44.asServiceRole.integrations.Core.SendEmail({
               to: admin.email,
               from_name: 'PennSync by CareMetric',
-              subject: `Personnel expiration digest — ${adminDigestItems.length} item(s) within 90 days`,
+              subject: `Personnel expiration digest — ${scoped.length} item(s) within 90 days`,
               body: renderBrandedEmail({
-                preheader: `${adminDigestItems.length} personnel file item(s) are expired or expiring within 90 days.`,
+                preheader: `${scoped.length} personnel file item(s) are expired or expiring within 90 days.`,
                 eyebrow: 'Compliance digest',
                 title: 'Personnel expiration digest',
                 intro: 'The following personnel file items are expired or expiring within the next 90 days.',
