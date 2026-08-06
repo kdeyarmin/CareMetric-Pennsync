@@ -33,10 +33,24 @@ Deno.serve(async (req) => {
 
     const assignments = await base44.asServiceRole.entities.TrainingAssignment.filter({ plan_id: planId }, '-due_date', 5000);
     const now = new Date();
+    // Date-only due_date values must compare on the local calendar — UTC midnight
+    // parsing flagged assignments overdue the evening before the due day.
+    const isPastDue = (dueDate) => {
+      if (!dueDate) return false;
+      const raw = String(dueDate).trim();
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+        const [y, m, d] = raw.split('-').map(Number);
+        const due = new Date(y, m - 1, d);
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        return due < today;
+      }
+      const due = new Date(dueDate);
+      return !Number.isNaN(due.getTime()) && due < now;
+    };
     const isOverdue = (a) =>
       a.status !== 'completed' &&
       a.pass_fail_result !== 'passed' &&
-      (a.status === 'overdue' || (a.due_date && new Date(a.due_date) < now));
+      (a.status === 'overdue' || isPastDue(a.due_date));
 
     // Agency admins can only nudge staff inside their own agency.
     let allowedEmails = null;
