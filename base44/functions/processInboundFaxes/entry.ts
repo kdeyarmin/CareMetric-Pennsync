@@ -157,8 +157,27 @@ Deno.serve(async (req) => {
 
     let processed = 0;
     let matched = 0;
+    // Per-run claim token — mirrors dispatchScheduledSms / processScheduledFaxes.
+    // Without claim+re-read, two overlapping crons both flip pending→processing
+    // and both OCR + attach the same fax (duplicate PHI match notifications).
+    const runId = `inbound-fax-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     for (const fax of pending) {
-      await base44.asServiceRole.entities.IncomingFax.update(fax.id, { processing_status: 'processing' }).catch(() => {});
+      try {
+        await base44.asServiceRole.entities.IncomingFax.update(fax.id, {
+          processing_status: 'processing',
+          claimed_by: runId,
+          claimed_at: new Date().toISOString(),
+        });
+      } catch (claimErr) {
+        console.error('Could not claim inbound fax; skipping', claimErr?.message || claimErr);
+        continue;
+      }
+      const claimCheck = await base44.asServiceRole.entities.IncomingFax
+        .filter({ id: fax.id }, undefined, 1)
+        .catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].claimed_by !== runId) {
+        continue;
+      }
       let ocr;
       try {
         ocr = await base44.asServiceRole.integrations.Core.InvokeLLM({
@@ -178,13 +197,19 @@ Deno.serve(async (req) => {
         });
       } catch (error) {
         console.error('Inbound fax OCR failed:', error?.message);
-        await base44.asServiceRole.entities.IncomingFax.update(fax.id, { processing_status: 'failed' }).catch(() => {});
+        await base44.asServiceRole.entities.IncomingFax.update(fax.id, {
+          processing_status: 'failed',
+          claimed_by: null,
+          claimed_at: null,
+        }).catch(() => {});
         continue;
       }
 
       const ocrText = ocr?.full_text || '';
       const updates: Record<string, unknown> = {
         processing_status: 'completed',
+        claimed_by: null,
+        claimed_at: null,
         ocr_text: ocrText.slice(0, 50000),
         ai_summary: ocr?.summary || null,
         extracted_info: {

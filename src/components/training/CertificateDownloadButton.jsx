@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Download, FileText, Loader2 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
+import { openExternalUrl } from '@/components/utils/security';
 
 export default function CertificateDownloadButton({ certificate, assignmentId, size = "default", variant = "outline" }) {
     const [generating, setGenerating] = useState(false);
@@ -13,7 +14,10 @@ export default function CertificateDownloadButton({ certificate, assignmentId, s
 
             // If certificate already has PDF URL, download directly
             if (certificate?.certificate_pdf_url) {
-                window.open(certificate.certificate_pdf_url, '_blank');
+                if (!openExternalUrl(certificate.certificate_pdf_url)) {
+                    toast.error('Certificate link is not a safe URL');
+                    return;
+                }
                 toast.success('Certificate opened in new tab');
                 return;
             }
@@ -25,7 +29,10 @@ export default function CertificateDownloadButton({ certificate, assignmentId, s
                 });
 
                 if (result.data?.pdf_url) {
-                    window.open(result.data.pdf_url, '_blank');
+                    if (!openExternalUrl(result.data.pdf_url)) {
+                        toast.error('Generated certificate link is not a safe URL');
+                        return;
+                    }
                     toast.success('Certificate generated successfully');
                 } else {
                     throw new Error('Failed to generate PDF');

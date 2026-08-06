@@ -44,6 +44,7 @@ const IDEMPOTENCY_FIELDS = {
   SmsMessage: 'client_message_id',
   ScheduledSms: 'claimed_by',
   ScheduledSignatureReminder: 'claimed_by',
+  IncomingFax: 'claimed_by',
   FaxLog: 'telnyx_fax_id',
 };
 

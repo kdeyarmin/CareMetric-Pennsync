@@ -75,9 +75,11 @@ describe('isSafeExternalUrl', () => {
     expect(isSafeExternalUrl('http://example.com/x')).toBe(true);
   });
 
-  it('accepts site- and protocol-relative URLs', () => {
+  it('accepts site-relative paths but rejects protocol-relative URLs', () => {
     expect(isSafeExternalUrl('/Patients')).toBe(true);
-    expect(isSafeExternalUrl('//cdn.example.com/a.png')).toBe(true);
+    // //host inherits the page scheme and navigates off-origin — open redirect.
+    expect(isSafeExternalUrl('//cdn.example.com/a.png')).toBe(false);
+    expect(isSafeExternalUrl('//evil.example/phish')).toBe(false);
   });
 
   it('rejects dangerous schemes (XSS via href)', () => {

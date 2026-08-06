@@ -108,9 +108,16 @@ export default function SignDocument() {
     if (!signatureRecord) return;
 
     // Client-side completeness check for fast feedback; the server re-validates.
-    const allRequiredSigned = signatureRecord.signers
-      .filter(s => s.required)
-      .every((s, i) => signatures[signerKey(s, i)]?.dataUrl || s.signature);
+    // Walk the ORIGINAL signers array so idx_<n> keys stay aligned with
+    // handleSaveSignature / submitDocumentSignatures. Filtering first then
+    // using the filtered index remapped id-less optional-before-required
+    // documents onto the wrong key (e.g. required signer at index 1 looked up
+    // as idx_0). Treat missing `required` as required — matches the server's
+    // `required !== false` rule.
+    const allRequiredSigned = signatureRecord.signers.every((s, i) => {
+      if (s.required === false) return true;
+      return !!(signatures[signerKey(s, i)]?.dataUrl || s.signature);
+    });
 
     if (!allRequiredSigned) {
       toast.error("Please complete all required signatures");
@@ -242,7 +249,7 @@ export default function SignDocument() {
                     <div>
                       <p className="font-medium">{signer.name}</p>
                       <p className="text-sm text-slate-600">
-                        {signer.role} {signer.required && <span className="text-red-600">*</span>}
+                        {signer.role} {signer.required !== false && <span className="text-red-600">*</span>}
                       </p>
                     </div>
                   </div>

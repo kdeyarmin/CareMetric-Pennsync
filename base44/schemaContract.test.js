@@ -222,6 +222,7 @@ const ENUM_USAGE = {
 const FIELD_USAGE = {
   Notification: ['metadata'],
   FaxLog: ['retry_claimed_by', 'retry_claimed_at'],
+  IncomingFax: ['claimed_by', 'claimed_at'],
   DocumentSignature: [
     'document_title', 'document_name', 'signers', 'last_reminder_sent_at',
     // Added after the 2026-06-29 write-drift sweep: the e-signature pipeline
