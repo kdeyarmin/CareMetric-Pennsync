@@ -33,18 +33,19 @@ Deno.serve(async (req) => {
     if (status) extraFilter.status = status;
     if (Array.isArray(severity) && severity.length > 0) extraFilter.severity = { $in: severity };
     const hasExtraFilter = Object.keys(extraFilter).length > 0;
-    // Include account_type admins — a super_admin/agency_admin who isn't yet
-    // role:'admin' would otherwise be denied the all-patients view (or 403'd on
-    // a single patient). Mirrors getDashboardData's admin predicate.
-    const isPlatformAdmin =
-      user.role === 'admin' ||
-      user.account_type === 'super_admin';
-    const isAgencyAdmin = user.account_type === 'agency_admin';
-    const isAdmin = isPlatformAdmin || isAgencyAdmin;
+    // Platform-wide only for super_admin (or legacy facility admin with no
+    // agency). role:'admin' + agency_name must be agency-scoped — otherwise a
+    // facility admin sees every tenant's PatientAlert PHI.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isAdmin = isPlatformAdmin || isAgencyScopedAdmin;
 
-    // Agency admins: patients tied to staff sharing their agency_name.
+    // Agency-scoped admins: patients tied to staff sharing their agency_name.
     let agencyEmails = null;
-    if (isAgencyAdmin) {
+    if (isAgencyScopedAdmin) {
       if (!user.agency_name) return Response.json({ alerts: [] });
       const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
       agencyEmails = new Set(
@@ -67,7 +68,7 @@ Deno.serve(async (req) => {
         const allowed = patient?.created_by === user.email
           || (Array.isArray(patient?.assigned_nurses) && patient.assigned_nurses.includes(user.email));
         if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
-      } else if (isAgencyAdmin) {
+      } else if (isAgencyScopedAdmin) {
         const [patient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000);
         if (!patientInAgency(patient)) return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
@@ -75,7 +76,7 @@ Deno.serve(async (req) => {
       return Response.json({ alerts });
     }
 
-    // All-alerts view — platform admins see everything; agency admins are
+    // All-alerts view — platform admins see everything; agency-scoped admins are
     // filtered to their agency's patient set (same as getDashboardData).
     if (isPlatformAdmin) {
       const alerts = hasExtraFilter
@@ -83,7 +84,7 @@ Deno.serve(async (req) => {
         : await base44.asServiceRole.entities.PatientAlert.list('-created_date', cap);
       return Response.json({ alerts });
     }
-    if (isAgencyAdmin) {
+    if (isAgencyScopedAdmin) {
       const agencyPatients = await base44.asServiceRole.entities.Patient
         .list('-created_date', 2000)
         .catch(() => []);

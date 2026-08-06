@@ -41,6 +41,22 @@ Deno.serve(async (req) => {
     if (entity_type === 'Patient') {
       entity = await base44.asServiceRole.entities.Patient.get(entity_id);
       if (!entity) return Response.json({ error: 'Patient not found' }, { status: 404 });
+      // Agency-scope: an agency_admin must not rewrite quality fields on another
+      // tenant's chart via a guessed entity_id.
+      if (user.account_type !== 'super_admin' && user.agency_name) {
+        const agencyUsers = await base44.asServiceRole.entities.User
+          .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+          .catch(() => []);
+        const agencyEmails = new Set(
+          (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
+        );
+        const inAgency = (entity.created_by && agencyEmails.has(entity.created_by))
+          || (Array.isArray(entity.assigned_nurses)
+            && entity.assigned_nurses.some((e) => agencyEmails.has(e)));
+        if (!inAgency) {
+          return Response.json({ error: 'Forbidden: patient is outside your agency' }, { status: 403 });
+        }
+      }
       criticalFields = [
         'first_name', 'last_name', 'date_of_birth', 'phone', 'address',
         'emergency_contact_name', 'emergency_contact_phone', 
@@ -59,6 +75,11 @@ Deno.serve(async (req) => {
     } else if (entity_type === 'User') {
       entity = await base44.asServiceRole.entities.User.get(entity_id);
       if (!entity) return Response.json({ error: 'User not found' }, { status: 404 });
+      if (user.account_type !== 'super_admin' && user.agency_name
+        && entity.agency_name && entity.agency_name !== user.agency_name
+        && entity.account_type !== 'super_admin') {
+        return Response.json({ error: 'Forbidden: user is outside your agency' }, { status: 403 });
+      }
       criticalFields = [
         'credential_type', 'phone', 'care_scope', 'license_number'
       ];
@@ -74,6 +95,23 @@ Deno.serve(async (req) => {
     } else if (entity_type === 'Visit') {
       entity = await base44.asServiceRole.entities.Visit.get(entity_id);
       if (!entity) return Response.json({ error: 'Visit not found' }, { status: 404 });
+      if (user.account_type !== 'super_admin' && user.agency_name && entity.patient_id) {
+        const [visitPatient] = await base44.asServiceRole.entities.Patient
+          .filter({ id: entity.patient_id }, '', 1).catch(() => []);
+        const agencyUsers = await base44.asServiceRole.entities.User
+          .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+          .catch(() => []);
+        const agencyEmails = new Set(
+          (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
+        );
+        const inAgency = visitPatient
+          && ((visitPatient.created_by && agencyEmails.has(visitPatient.created_by))
+            || (Array.isArray(visitPatient.assigned_nurses)
+              && visitPatient.assigned_nurses.some((e) => agencyEmails.has(e))));
+        if (!inAgency) {
+          return Response.json({ error: 'Forbidden: visit is outside your agency' }, { status: 403 });
+        }
+      }
       criticalFields = [
         'nurse_notes', 'homebound_justification', 'vital_signs', 'skilled_intervention_documented'
       ];

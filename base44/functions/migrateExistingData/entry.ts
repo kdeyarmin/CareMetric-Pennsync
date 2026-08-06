@@ -32,8 +32,22 @@ Deno.serve(async (req) => {
       errors: []
     };
 
-    // Migrate patients - add quality scores and defaults
-    const patients = await base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000);
+    // Migrate patients - add quality scores and defaults. Scope to the
+    // caller's agency so an agency_admin cannot rewrite every tenant.
+    let patients = await base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000);
+    let agencyEmails = null;
+    if (user.account_type !== 'super_admin' && user.agency_name) {
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+        .catch(() => []);
+      agencyEmails = new Set(
+        (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
+      );
+      patients = (Array.isArray(patients) ? patients : []).filter((p) =>
+        (p.created_by && agencyEmails.has(p.created_by))
+        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
+      );
+    }
     
     for (const patient of patients) {
       const criticalFields = ['emergency_contact_name', 'emergency_contact_phone', 'physician_name', 'phone', 'date_of_birth', 'address'];
@@ -66,7 +80,11 @@ Deno.serve(async (req) => {
     }
 
     // Migrate visits - extract homebound justifications from notes
-    const visits = await base44.asServiceRole.entities.Visit.filter({ status: 'completed' }, '-created_date', 5000);
+    let visits = await base44.asServiceRole.entities.Visit.filter({ status: 'completed' }, '-created_date', 5000);
+    if (agencyEmails) {
+      const patientIds = new Set(patients.map((p) => p.id));
+      visits = (Array.isArray(visits) ? visits : []).filter((v) => patientIds.has(v.patient_id));
+    }
     
     for (const visit of visits) {
       const updates = {

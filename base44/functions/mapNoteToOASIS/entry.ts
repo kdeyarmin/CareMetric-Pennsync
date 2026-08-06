@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       // prompt/response (assigned nurse or admin). RLS-independent code check.
       const [oasisPatient] = await base44.asServiceRole.entities.Patient.filter({ id: patientId }, '', 1);
       if (!oasisPatient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-      if (user.role !== 'admin' && oasisPatient.created_by !== user.email && !(Array.isArray(oasisPatient.assigned_nurses) && oasisPatient.assigned_nurses.includes(user.email))) {
+      if (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin' && oasisPatient.created_by !== user.email && !(Array.isArray(oasisPatient.assigned_nurses) && oasisPatient.assigned_nurses.includes(user.email))) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
       const oasisRecords = await base44.asServiceRole.entities.OASISUpload.filter(

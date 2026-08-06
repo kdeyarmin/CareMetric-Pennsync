@@ -235,6 +235,24 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing required state-reportable event fields' }, { status: 400 });
     }
 
+    // Authorize: service-role Incident.create bypasses RLS, so a crafted
+    // patient_id would otherwise attribute a high-severity state event (+ admin
+    // emails with full report text) to an arbitrary chart. Mirror
+    // submitIncidentReport — assigned nurse, creator, or admin only.
+    const [incidentPatient] = await base44.asServiceRole.entities.Patient
+      .filter({ id: payload.patient_id }, '', 1).catch(() => []);
+    if (!incidentPatient) {
+      return Response.json({ error: 'Patient not found' }, { status: 404 });
+    }
+    const isAdmin = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    const isAssigned = Array.isArray(incidentPatient.assigned_nurses)
+      && incidentPatient.assigned_nurses.includes(user.email);
+    if (!isAdmin && incidentPatient.created_by !== user.email && !isAssigned) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const reportText = payload.report_text || buildReportText(payload);
 
     // 1) Persist the incident FIRST so the record is retained even if a later

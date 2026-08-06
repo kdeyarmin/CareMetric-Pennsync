@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
     // SupplyItem inventory. RLS-independent code check (mirrors getScopedPatientAlerts).
     const [supplyPatient] = await base44.asServiceRole.entities.Patient.filter({ id: patientId }, '', 1);
     if (!supplyPatient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-    if (user.role !== 'admin' && supplyPatient.created_by !== user.email && !(Array.isArray(supplyPatient.assigned_nurses) && supplyPatient.assigned_nurses.includes(user.email))) {
+    if (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin' && supplyPatient.created_by !== user.email && !(Array.isArray(supplyPatient.assigned_nurses) && supplyPatient.assigned_nurses.includes(user.email))) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 

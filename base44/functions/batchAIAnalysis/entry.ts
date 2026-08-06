@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
       patientData = patient[0] || null;
       // Authorize against the patient before its PHI drives the analyses
       // (assigned nurse or admin). RLS-independent code check.
-      if (patientData && user.role !== 'admin' && patientData.created_by !== user.email && !(Array.isArray(patientData.assigned_nurses) && patientData.assigned_nurses.includes(user.email))) {
+      if (patientData && user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin' && patientData.created_by !== user.email && !(Array.isArray(patientData.assigned_nurses) && patientData.assigned_nurses.includes(user.email))) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
       recentVisits = visits || [];

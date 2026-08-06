@@ -183,6 +183,25 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing required fields: file_url, to_number' }, { status: 400 });
     }
 
+    // If the client linked a patient_id, verify access so FaxLog rows cannot be
+    // attributed to an arbitrary chart.
+    let linkedPatientId = patient_id || null;
+    if (linkedPatientId) {
+      const [claimed] = await base44.asServiceRole.entities.Patient
+        .filter({ id: linkedPatientId }, '', 1).catch(() => []);
+      if (!claimed) {
+        return Response.json({ error: 'Patient not found' }, { status: 404 });
+      }
+      const isAdmin = user.role === 'admin'
+        || user.account_type === 'agency_admin'
+        || user.account_type === 'super_admin';
+      const isAssigned = Array.isArray(claimed.assigned_nurses)
+        && claimed.assigned_nurses.includes(user.email);
+      if (!isAdmin && claimed.created_by !== user.email && !isAssigned) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+
     // SSRF guard: file_url becomes Telnyx's media_url, so an arbitrary
     // client-supplied URL would make the fax provider fetch (and transmit) any
     // reachable document. Only app-storage https URLs are allowed.
@@ -252,7 +271,7 @@ Deno.serve(async (req) => {
       document_url: file_url,
       document_name: document_name || 'Fax',
       status: 'queued',
-      patient_id: patient_id || null,
+      patient_id: linkedPatientId,
       sent_by: user.email,
     });
 

@@ -26,12 +26,26 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
-    // Recalculate quality scores for all entities
-    const [patients, users, visits] = await Promise.all([
+    // Recalculate quality scores. Scope to the caller's agency so an
+    // agency_admin cannot rewrite completeness fields on every tenant.
+    let [patients, users, visits] = await Promise.all([
       base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000),
       base44.asServiceRole.entities.User.list('-created_date', 500),
       base44.asServiceRole.entities.Visit.filter({ status: 'completed' }, '-visit_date', 200),
     ]);
+
+    if (user.account_type !== 'super_admin' && user.agency_name) {
+      users = (Array.isArray(users) ? users : []).filter((u) =>
+        u.account_type === 'super_admin' || u.agency_name === user.agency_name
+      );
+      const agencyEmails = new Set(users.map((u) => u?.email).filter(Boolean));
+      patients = (Array.isArray(patients) ? patients : []).filter((p) =>
+        (p.created_by && agencyEmails.has(p.created_by))
+        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
+      );
+      const patientIds = new Set(patients.map((p) => p.id));
+      visits = (Array.isArray(visits) ? visits : []).filter((v) => patientIds.has(v.patient_id));
+    }
 
     let updated = 0;
 

@@ -147,8 +147,18 @@ Deno.serve(async (req) => {
     }
 
     const isOwner = request.employee_email === user.email || request.created_by === user.email;
-    if (!isOwner && user.role !== 'admin') {
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    if (!isOwner && !isAdminLike) {
       return Response.json({ error: 'You can only cancel your own time-off requests.' }, { status: 403 });
+    }
+    if (!isOwner && user.account_type !== 'super_admin' && user.agency_name) {
+      const [employee] = await base44.asServiceRole.entities.User
+        .filter({ email: request.employee_email }, '-created_date', 1).catch(() => []);
+      if (employee?.agency_name && employee.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: request is outside your agency' }, { status: 403 });
+      }
     }
 
     if (!['pending', 'approved'].includes(request.status)) {

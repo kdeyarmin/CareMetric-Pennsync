@@ -82,11 +82,54 @@ Deno.serve(async (req) => {
       }, { status: 403 });
     }
 
+    // Prefer phone→patient resolution. If the client supplied a patient_id,
+    // verify it matches the destination (or that the caller can access that
+    // chart) so scheduled SMS history cannot be linked to the wrong patient.
+    let resolvedPatientId = null;
+    if (destination) {
+      const d = destination.replace(/[^\d]/g, '').slice(-10);
+      if (d.length === 10) {
+        const a = d.slice(0, 3), b = d.slice(3, 6), c = d.slice(6);
+        const variants = [destination, `+1${d}`, `1${d}`, d, `(${a}) ${b}-${c}`, `${a}-${b}-${c}`];
+        for (const variant of variants) {
+          const matches = await base44.asServiceRole.entities.Patient
+            .filter({ phone: variant }, undefined, 1).catch(() => []);
+          if (matches?.[0]?.id) { resolvedPatientId = matches[0].id; break; }
+        }
+      }
+    }
+    if (patient_id) {
+      if (resolvedPatientId && resolvedPatientId !== patient_id) {
+        return Response.json({
+          error: 'patient_id does not match the destination phone number',
+          reason: 'patient_phone_mismatch',
+        }, { status: 400 });
+      }
+      if (!resolvedPatientId) {
+        const [claimed] = await base44.asServiceRole.entities.Patient
+          .filter({ id: patient_id }, '', 1).catch(() => []);
+        if (!claimed) {
+          return Response.json({ error: 'Patient not found' }, { status: 404 });
+        }
+        const isAdmin = user.role === 'admin'
+          || user.account_type === 'agency_admin'
+          || user.account_type === 'super_admin';
+        const isAssigned = Array.isArray(claimed.assigned_nurses)
+          && claimed.assigned_nurses.includes(user.email);
+        if (!isAdmin && claimed.created_by !== user.email && !isAssigned) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        resolvedPatientId = patient_id;
+      } else {
+        resolvedPatientId = patient_id;
+      }
+    }
+
     const row = await base44.entities.ScheduledSms.create({
       to_number: destination,
       from_number: fromNumber,
       body,
-      patient_id: patient_id || null,
+      patient_id: resolvedPatientId || null,
       nurse_email: user.email,
       thread_id: getThreadId(fromNumber, destination),
       send_at: sendAtIso,

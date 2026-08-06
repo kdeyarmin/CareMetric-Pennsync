@@ -185,6 +185,8 @@ Deno.serve(async (req) => {
       // host_email; supervisors by the admin role.
       const participants = Array.isArray(session.participant_list) ? session.participant_list : [];
       const authorized = user.role === 'admin'
+        || user.account_type === 'agency_admin'
+        || user.account_type === 'super_admin'
         || session.host_email === user.email
         || participants.includes(user.email);
       if (!authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });

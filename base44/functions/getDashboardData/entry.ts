@@ -29,17 +29,16 @@ Deno.serve(async (req) => {
     const sr = base44.asServiceRole.entities;
     const today = todayEastern();
 
-    // Agency-wide view for any administrator tier: the agency `admin` role, or an
-    // agency_admin/super_admin account_type. (Mirrors lib/roles.js getRoleView —
-    // kept inline since Deno functions can't import frontend modules.) Without
-    // the account_type checks a super admin who isn't yet role:'admin' would
-    // incorrectly get the nurse view.
-    const isPlatformAdmin =
-      user.role === 'admin' ||
-      user.account_type === 'super_admin';
-    const isAgencyAdmin = user.account_type === 'agency_admin';
+    // Platform-wide view only for super_admin (or legacy facility admin with no
+    // agency_name). A role:'admin' who belongs to an agency must NOT see every
+    // tenant's PHI — treat them like agency_admin.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
 
-    // Platform/facility admins: unchanged agency-wide lists.
+    // Platform/facility admins with no agency: unchanged tenant-wide lists.
     if (isPlatformAdmin) {
       const [patients, visits, incidents] = await Promise.all([
         sr.Patient.filter({ status: 'active' }, '-updated_date', 100),
@@ -49,9 +48,9 @@ Deno.serve(async (req) => {
       return Response.json({ patients, visits, incidents });
     }
 
-    // Agency admins: only patients tied to staff in their agency_name
+    // Agency-scoped admins: only patients tied to staff in their agency_name
     // (parity with bulkCreateDocumentPackages) — not every tenant's PHI.
-    if (isAgencyAdmin) {
+    if (isAgencyScopedAdmin) {
       if (!user.agency_name) {
         return Response.json({ patients: [], visits: [], incidents: [] });
       }

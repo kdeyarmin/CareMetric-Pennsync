@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
     // Authorize against the patient (assigned nurse or admin) before reading
     // their supply usage and writing a SupplyPrediction. The 404 above only
     // covers global non-existence, not access. RLS-independent code check.
-    if (user.role !== 'admin' && patientData.created_by !== user.email && !(Array.isArray(patientData.assigned_nurses) && patientData.assigned_nurses.includes(user.email))) {
+    if (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin' && patientData.created_by !== user.email && !(Array.isArray(patientData.assigned_nurses) && patientData.assigned_nurses.includes(user.email))) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 

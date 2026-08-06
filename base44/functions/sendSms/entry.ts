@@ -556,18 +556,33 @@ Deno.serve(async (req) => {
       return Response.json({ error: blockedReasonMessage(destAllowed.reason), reason: destAllowed.reason }, { status: 403 });
     }
 
-    // Cost control: enforce an optional monthly outbound-SMS cap. We pull the
-    // newest `cap` outbound rows (equality filter only — Base44 has no range
-    // query) and count how many fall in the current month; if that already meets
-    // the cap, we're at the limit.
+    // Cost control: enforce an optional monthly outbound-SMS cap for THIS
+    // agency. Counting every tenant's outbound rows made one busy agency trip
+    // every other agency's cap. Scope by nurse_email ∈ caller's agency when known.
     const monthlyCap = Number(settings?.monthly_sms_cap);
     if (Number.isFinite(monthlyCap) && monthlyCap > 0) {
       const since = monthStartISO();
+      let agencyNurseEmails = null;
+      if (user.agency_name) {
+        const agencyUsers = await base44.asServiceRole.entities.User
+          .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+          .catch(() => []);
+        agencyNurseEmails = new Set(
+          (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
+        );
+        agencyNurseEmails.add(user.email);
+      }
+      const fetchLimit = agencyNurseEmails
+        ? Math.min(Math.max(monthlyCap * 20, monthlyCap), 5000)
+        : monthlyCap;
       const recentOutbound = await base44.asServiceRole.entities.SmsMessage
-        .filter({ direction: 'outbound' }, '-created_date', monthlyCap)
+        .filter({ direction: 'outbound' }, '-created_date', fetchLimit)
         .catch(() => []);
       const sentThisMonth = (Array.isArray(recentOutbound) ? recentOutbound : [])
-        .filter((m) => m.created_date && m.created_date >= since).length;
+        .filter((m) => m.created_date && m.created_date >= since)
+        .filter((m) => !agencyNurseEmails || (m.nurse_email && agencyNurseEmails.has(m.nurse_email))
+          || m.sent_by === user.email)
+        .length;
       if (sentThisMonth >= monthlyCap) {
         return Response.json({ error: 'This agency has reached its monthly text-message limit. Ask an admin to raise the cap.', reason: 'monthly_cap_reached' }, { status: 429 });
       }

@@ -64,11 +64,19 @@ Deno.serve(async (req) => {
     // Resolve who is being updated.
     let target = user;
     if (target_user_email && target_user_email !== user.email) {
-      if (user.role !== 'admin') {
+      const isAdminLike = user.role === 'admin'
+        || user.account_type === 'agency_admin'
+        || user.account_type === 'super_admin';
+      if (!isAdminLike) {
         return Response.json({ error: 'Only administrators can change another user\'s duty status' }, { status: 403 });
       }
       const found = await base44.asServiceRole.entities.User.filter({ email: target_user_email }, undefined, 5000);
       if (!found[0]) return Response.json({ error: 'Target user not found' }, { status: 404 });
+      // Agency-scope: an agency_admin must not retarget staff in another tenant.
+      if (user.account_type !== 'super_admin' && user.agency_name
+        && found[0].agency_name && found[0].agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: user is outside your agency' }, { status: 403 });
+      }
       target = found[0];
     }
 

@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
 
     const isAdmin =
       user.role === 'admin' ||
+      user.account_type === 'agency_admin' ||
       user.account_type === 'super_admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can manage SMS consent' }, { status: 403 });
@@ -55,8 +56,31 @@ Deno.serve(async (req) => {
     const action = String(body.action || 'list');
 
     if (action === 'list') {
-      const rows = await base44.asServiceRole.entities.SmsConsent.list('-captured_at', 500);
-      const list = Array.isArray(rows) ? rows : [];
+      let rows = await base44.asServiceRole.entities.SmsConsent.list('-captured_at', 500);
+      let list = Array.isArray(rows) ? rows : [];
+      // Agency-scope consent rows by linked patient care team when the caller
+      // belongs to an agency (super_admin sees all).
+      if (user.account_type !== 'super_admin' && user.agency_name) {
+        const agencyUsers = await base44.asServiceRole.entities.User
+          .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+          .catch(() => []);
+        const agencyEmails = new Set(
+          (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
+        );
+        const patientIds = new Set();
+        const patients = await base44.asServiceRole.entities.Patient
+          .list('-created_date', 2000).catch(() => []);
+        for (const p of (Array.isArray(patients) ? patients : [])) {
+          if ((p.created_by && agencyEmails.has(p.created_by))
+            || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))) {
+            patientIds.add(p.id);
+          }
+        }
+        list = list.filter((r) =>
+          (r.patient_id && patientIds.has(r.patient_id))
+          || (r.captured_by && agencyEmails.has(r.captured_by))
+        );
+      }
 
       // SmsConsent is an append-only ledger, so tallying every row counted a number
       // that texted STOP then START as both an opt-out and an opt-in. Collapse to

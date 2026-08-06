@@ -9,11 +9,19 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (user.role !== 'admin') {
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    if (!isAdminLike) {
       return Response.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
     }
 
-    const users = await base44.asServiceRole.entities.User.list('-created_date', 5000);
+    let users = await base44.asServiceRole.entities.User.list('-created_date', 5000);
+    if (user.account_type !== 'super_admin' && user.agency_name) {
+      users = (Array.isArray(users) ? users : []).filter((u) =>
+        u.account_type === 'super_admin' || u.agency_name === user.agency_name
+      );
+    }
 
     const doc = new jsPDF('landscape');
     let y = 20;

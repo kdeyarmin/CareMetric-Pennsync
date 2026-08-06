@@ -33,8 +33,9 @@ Deno.serve(async (req) => {
     const startDateStr = startDate.toISOString().split('T')[0];
     const endDateStr = today.toISOString().split('T')[0];
 
-    // Fetch comprehensive data
-    const [visits, patients, incidents, users, complianceAudits, trainingCompletions, noteConversions, oasisUploads, alerts] = await Promise.all([
+    // Fetch comprehensive data, then agency-scope for non-super_admin callers
+    // so an agency_admin cannot pull every tenant's PHI into a PDF.
+    let [visits, patients, incidents, users, complianceAudits, trainingCompletions, noteConversions, oasisUploads, alerts] = await Promise.all([
       base44.asServiceRole.entities.Visit.list('-visit_date', 1000),
       base44.asServiceRole.entities.Patient.list('-created_date', 5000),
       base44.asServiceRole.entities.Incident.list('-incident_date', 500),
@@ -45,6 +46,35 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.OASISUpload.list('-created_date', 200),
       base44.asServiceRole.entities.PatientAlert.list('-created_date', 5000)
     ]);
+
+    if (user.account_type !== 'super_admin' && user.agency_name) {
+      users = (Array.isArray(users) ? users : []).filter((u) =>
+        u.account_type === 'super_admin' || u.agency_name === user.agency_name
+      );
+      const agencyEmails = new Set(users.map((u) => u?.email).filter(Boolean));
+      patients = (Array.isArray(patients) ? patients : []).filter((p) =>
+        (p.created_by && agencyEmails.has(p.created_by))
+        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
+      );
+      const patientIds = new Set(patients.map((p) => p.id));
+      visits = (Array.isArray(visits) ? visits : []).filter((v) => patientIds.has(v.patient_id));
+      incidents = (Array.isArray(incidents) ? incidents : []).filter((i) => patientIds.has(i.patient_id));
+      complianceAudits = (Array.isArray(complianceAudits) ? complianceAudits : []).filter((a) =>
+        !a.patient_id || patientIds.has(a.patient_id)
+      );
+      trainingCompletions = (Array.isArray(trainingCompletions) ? trainingCompletions : []).filter((t) =>
+        !t.assigned_to_user_id || agencyEmails.has(t.assigned_to_user_id)
+      );
+      noteConversions = (Array.isArray(noteConversions) ? noteConversions : []).filter((n) =>
+        !n.patient_id || patientIds.has(n.patient_id)
+      );
+      oasisUploads = (Array.isArray(oasisUploads) ? oasisUploads : []).filter((o) =>
+        !o.patient_id || patientIds.has(o.patient_id)
+      );
+      alerts = (Array.isArray(alerts) ? alerts : []).filter((a) =>
+        !a.patient_id || patientIds.has(a.patient_id)
+      );
+    }
 
     // Filter by date range
     const filteredVisits = visits.filter(v => v.visit_date >= startDateStr && v.visit_date <= endDateStr);

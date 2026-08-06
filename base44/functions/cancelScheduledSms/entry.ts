@@ -19,8 +19,19 @@ Deno.serve(async (req) => {
     const row = rows[0];
     if (!row) return Response.json({ error: 'Scheduled message not found' }, { status: 404 });
 
-    if (row.nurse_email !== user.email && user.role !== 'admin') {
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    if (row.nurse_email !== user.email && !isAdminLike) {
       return Response.json({ error: 'You can only cancel your own scheduled messages' }, { status: 403 });
+    }
+    // Agency-scope: an agency_admin must not cancel another tenant's scheduled SMS.
+    if (row.nurse_email !== user.email && user.account_type !== 'super_admin' && user.agency_name) {
+      const [owner] = await base44.asServiceRole.entities.User
+        .filter({ email: row.nurse_email }, '-created_date', 1).catch(() => []);
+      if (owner?.agency_name && owner.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: message is outside your agency' }, { status: 403 });
+      }
     }
     if (row.status !== 'pending') {
       return Response.json({ error: `This message can no longer be canceled (status: ${row.status}).` }, { status: 409 });

@@ -235,7 +235,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Certificate not found' }, { status: 404 });
     }
     // Ownership: only the certificate's owner or an admin may (re)send it.
-    if (certificate.user_id !== user.email && user.role !== 'admin') {
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    if (certificate.user_id !== user.email && !isAdminLike) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     if (!certificate.user_id || !certificate.course_title || !certificate.issued_at) {
