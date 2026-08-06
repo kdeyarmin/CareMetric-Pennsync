@@ -99,6 +99,9 @@ jobs:
       - name: Run component tests
         run: pnpm run test:components
 
+      - name: High-signal typecheck
+        run: pnpm run typecheck:signal
+
       - name: Typecheck (informational baseline)
         run: pnpm run typecheck
         continue-on-error: true

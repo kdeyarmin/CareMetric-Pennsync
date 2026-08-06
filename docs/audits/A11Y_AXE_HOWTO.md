@@ -28,11 +28,13 @@ await expectNoSeriousAxeViolations(page, '/privacy');
 
 Uses `@axe-core/playwright` `AxeBuilder` with shared tags + disabled rules.
 
-## No local machine
+## CI
 
-1. **Actions** → **Install a11y deps** (already ran if packages are in `package.json`)
-2. **Actions** → **Accessibility (axe)** → Run workflow  
-   Runs rule unit tests, Vitest component axe, and Playwright public-route axe.
+The **Accessibility (axe)** workflow runs on pull requests and `main` pushes that
+touch `src/`, `e2e/`, Playwright config, or dependency lockfiles (plus
+`workflow_dispatch`). Packages (`vitest-axe`, `@playwright/test`,
+`@axe-core/playwright`) live in `package.json` — the one-shot install workflow
+has been retired.
 
 ## Scripts
 
