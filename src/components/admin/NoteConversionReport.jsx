@@ -45,7 +45,7 @@ export default function NoteEnhancementReport() {
   const [timeRange, setTimeRange] = useState("7");
 
   const { data: enhancements = [], isLoading } = useQuery({
-    queryKey: ['allNoteConversions'],
+    queryKey: ['allNoteConversions', 10000],
     queryFn: () => base44.entities.NoteConversion.list('-created_date', 10000),
   });
 

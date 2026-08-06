@@ -11,6 +11,7 @@ import {
   Users, BookOpen, Sparkles, ExternalLink,
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 // Course syllabus shown before a learner commits, the way a healthcare course
 // catalog presents it: credit and duration up front, then audience, objectives,
@@ -232,7 +233,7 @@ export default function CourseCatalogDetail({
               <ul className="space-y-1">
                 {references.map((reference, index) => (
                   <li key={index} className="text-xs text-slate-500">
-                    {reference.url ? (
+                    {reference.url && isSafeExternalUrl(reference.url) ? (
                       <a
                         href={reference.url}
                         target="_blank"
@@ -242,7 +243,7 @@ export default function CourseCatalogDetail({
                         {reference.title || reference.url}
                       </a>
                     ) : (
-                      <span>{reference.title}</span>
+                      <span>{reference.title || reference.url}</span>
                     )}
                     {reference.note ? ` — ${reference.note}` : ""}
                   </li>

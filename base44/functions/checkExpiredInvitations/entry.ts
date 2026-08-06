@@ -185,8 +185,11 @@ Deno.serve(async (req) => {
     console.log('Found pending invitations:', pendingInvitations.length);
 
     const expired = [];
-    const expiringSoon = [];
 
+    // Expiring within 24 hours — claim (stamp) FIRST so concurrent cron runs
+    // cannot both email the same invite, then send. If every admin email fails,
+    // clear stamps so the next run can retry.
+    const claimedExpiring = [];
     for (const invitation of pendingInvitations) {
       const expiresAt = new Date(invitation.expires_at);
 
@@ -209,10 +212,21 @@ Deno.serve(async (req) => {
           status: 'expired'
         });
       } else if (tomorrow > expiresAt) {
-        // Expiring within 24 hours
-        expiringSoon.push(invitation);
+        if (invitation.expiring_soon_notified_at) continue;
+        // Re-read + stamp before enqueueing to shrink the double-email window.
+        const freshRows = await base44.asServiceRole.entities.UserInvitation
+          .filter({ id: invitation.id }, undefined, 1)
+          .catch(() => []);
+        const fresh = freshRows?.[0];
+        if (!fresh || fresh.status !== 'pending' || fresh.expiring_soon_notified_at) continue;
+        const stampedAt = new Date().toISOString();
+        await base44.asServiceRole.entities.UserInvitation.update(invitation.id, {
+          expiring_soon_notified_at: stampedAt,
+        });
+        claimedExpiring.push(invitation);
       }
     }
+    const expiringSoon = claimedExpiring;
 
     console.log('Expired invitations:', expired.length);
     console.log('Expiring soon:', expiringSoon.length);
@@ -222,6 +236,7 @@ Deno.serve(async (req) => {
 
     // Send notifications if there are expired or expiring invitations
     if (expired.length > 0 || expiringSoon.length > 0) {
+      let emailsSent = 0;
       for (const admin of admins) {
         const sections = [];
         if (expired.length > 0) {
@@ -251,9 +266,20 @@ Deno.serve(async (req) => {
               sections,
             }),
           });
+          emailsSent += 1;
         } catch (emailError) {
           console.error('Failed to send email to admin:', emailError?.message || emailError);
         }
+      }
+      // Total outage: clear claim stamps so the next cron can retry.
+      if (emailsSent === 0 && expiringSoon.length > 0) {
+        await Promise.allSettled(
+          expiringSoon.map((inv) =>
+            base44.asServiceRole.entities.UserInvitation.update(inv.id, {
+              expiring_soon_notified_at: null,
+            })
+          )
+        );
       }
     }
 
@@ -261,7 +287,7 @@ Deno.serve(async (req) => {
       success: true,
       expired: expired.length,
       expiring_soon: expiringSoon.length,
-      notifications_sent: admins.length
+      notifications_sent: (expired.length > 0 || expiringSoon.length > 0) ? admins.length : 0
     });
 
   } catch (error) {

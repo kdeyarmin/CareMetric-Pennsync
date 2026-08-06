@@ -42,9 +42,11 @@ import {
   Calendar as CalendarIcon
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, parseISO, subMonths } from "date-fns";
+import { format, subMonths } from "date-fns";
+import { parseLocalDate, formatLocalDate } from "@/lib/dateLocal";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import { isSafeExternalUrl, openExternalUrl } from "@/components/utils/security";
 
 const STATUS_OPTIONS = [
   { value: "reported", label: "Reported" },
@@ -116,7 +118,7 @@ export default function IncidentReportingModule() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['allPatients'],
+    queryKey: ['allPatients', '-updated_date', 2000],
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
     initialData: [],
   });
@@ -150,6 +152,10 @@ export default function IncidentReportingModule() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['my-incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['incidentsForKPI'] });
+      queryClient.invalidateQueries({ queryKey: ['all-incidents'] });
       setShowReportDialog(false);
       resetForm();
       // Only claim managers were notified when the alert actually went out.
@@ -176,6 +182,10 @@ export default function IncidentReportingModule() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['my-incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['incidentsForKPI'] });
+      queryClient.invalidateQueries({ queryKey: ['all-incidents'] });
       toast.success("Incident status updated");
     },
     onError: (e) => toast.error(e?.message || "Couldn't update the incident status"),
@@ -279,9 +289,9 @@ export default function IncidentReportingModule() {
   // Calculate statistics
   const oneMonthAgo = subMonths(new Date(), 1);
   const last30Days = incidents.filter(i => {
-    if (!i.incident_date) return false; // nullable field — don't parseISO(undefined)
-    const incidentDate = parseISO(i.incident_date);
-    return !isNaN(incidentDate) && incidentDate >= oneMonthAgo;
+    if (!i.incident_date) return false;
+    const incidentDate = parseLocalDate(i.incident_date);
+    return incidentDate && incidentDate >= oneMonthAgo;
   });
 
   const byType = incidents.reduce((acc, inc) => {
@@ -521,7 +531,7 @@ export default function IncidentReportingModule() {
                     </div>
                     {uploadedPhotos.length > 0 && (
                       <div className="mt-3 grid grid-cols-3 gap-2">
-                        {uploadedPhotos.map((url, idx) => (
+                        {uploadedPhotos.filter((url) => isSafeExternalUrl(url) || (typeof url === 'string' && url.startsWith('blob:'))).map((url, idx) => (
                           <div key={idx} className="relative group">
                             <img src={url} alt={`Upload ${idx + 1}`} className="w-full h-24 object-cover rounded-lg" />
                             <button
@@ -658,7 +668,7 @@ export default function IncidentReportingModule() {
                         <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 flex-wrap">
                           <span className="flex items-center gap-1">
                             <CalendarIcon className="w-3 h-3" />
-                            {incident.incident_date ? format(parseISO(incident.incident_date), 'MMM d, yyyy') : '—'}
+                            {incident.incident_date ? (formatLocalDate(incident.incident_date, { month: 'short', day: 'numeric', year: 'numeric' }) || '—') : '—'}
                             {incident.incident_time ? ` at ${incident.incident_time}` : ''}
                           </span>
                           <span>Reported by: {incident.created_by}</span>
@@ -666,7 +676,7 @@ export default function IncidentReportingModule() {
                             <span className="text-emerald-700">Admins alerted</span>
                           )}
                         </div>
-                        {incident.state_reportable_pdf_url && (
+                        {incident.state_reportable_pdf_url && isSafeExternalUrl(incident.state_reportable_pdf_url) && (
                           <a
                             href={incident.state_reportable_pdf_url}
                             target="_blank"
@@ -728,19 +738,19 @@ export default function IncidentReportingModule() {
                     <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
                       <span className="flex items-center gap-1">
                         <CalendarIcon className="w-3 h-3" />
-                        {incident.incident_date ? format(parseISO(incident.incident_date), 'MMM d, yyyy') : '—'} at {incident.incident_time || '—'}
+                        {incident.incident_date ? (formatLocalDate(incident.incident_date, { month: 'short', day: 'numeric', year: 'numeric' }) || '—') : '—'} at {incident.incident_time || '—'}
                       </span>
                       <span>Reported by: {incident.created_by}</span>
                     </div>
                     {incident.photo_urls?.length > 0 && (
                       <div className="mt-3 flex gap-2">
-                        {incident.photo_urls.map((url, idx) => (
+                        {incident.photo_urls.filter((url) => isSafeExternalUrl(url)).map((url, idx) => (
                           <img
                             key={idx}
                             src={url}
                             alt={`Incident photo ${idx + 1}`}
                             className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-80"
-                            onClick={() => window.open(url, '_blank')}
+                            onClick={() => openExternalUrl(url)}
                           />
                         ))}
                       </div>

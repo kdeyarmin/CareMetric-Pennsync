@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import LoadingState from "@/components/ui/LoadingState";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
+import { formatLocalDate } from "@/lib/dateLocal";
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function AnnualTranscriptCenter() {
   const currentYear = new Date().getFullYear();

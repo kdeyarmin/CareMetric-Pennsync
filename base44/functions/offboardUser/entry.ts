@@ -84,6 +84,13 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
     return Response.json({ error: 'Only a super admin can offboard another administrator.' }, { status: 403 });
   }
 
+  // Agency admins may only offboard staff in their own agency.
+  if (currentUser.account_type === 'agency_admin') {
+    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+    }
+  }
+
   const at = new Date().toISOString();
   const targetEmail = targetUser.email;
 
@@ -106,6 +113,9 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
     work_numbers_released: 0,
     on_call_shifts_cleared: 0,
     invitations_cancelled: 0,
+    scheduled_sms_canceled: 0,
+    scheduled_faxes_canceled: 0,
+    signature_reminders_canceled: 0,
     // A revocation sweep that partly failed must not read as a clean one: these
     // counts land in the UserActivity audit record below, where an auditor
     // treats them as proof that PHI access was actually withdrawn.
@@ -229,6 +239,84 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
     results.failures += 1;
   }
 
+  // Cancel outbound schedules that would still fire after phone/work number clear.
+  // dispatchScheduledSms uses the row's stored from_number — clearing User.work_phone
+  // alone does not stop pending PHI texts.
+  try {
+    const pendingSms = await base44.asServiceRole.entities.ScheduledSms.filter(
+      { nurse_email: targetEmail, status: 'pending' },
+      undefined,
+      5000,
+    ).catch((err) => {
+      console.error('scheduled SMS query failed:', err?.message || err);
+      results.failures += 1;
+      return null;
+    });
+    const canceledAt = at;
+    for (const row of (pendingSms || [])) {
+      const ok = await revoke('scheduled SMS cancel', row.id, () =>
+        base44.asServiceRole.entities.ScheduledSms.update(row.id, {
+          status: 'canceled',
+          canceled_at: canceledAt,
+          canceled_by: currentUser.email,
+        }));
+      if (ok) results.scheduled_sms_canceled += 1;
+    }
+  } catch (err) {
+    console.error('scheduled SMS cancel failed:', err?.message || err);
+    results.failures += 1;
+  }
+
+  try {
+    const pendingFaxes = await base44.asServiceRole.entities.ScheduledFax.filter(
+      { created_by: targetEmail, status: 'pending' },
+      undefined,
+      5000,
+    ).catch((err) => {
+      console.error('scheduled fax query failed:', err?.message || err);
+      results.failures += 1;
+      return null;
+    });
+    for (const row of (pendingFaxes || [])) {
+      const ok = await revoke('scheduled fax cancel', row.id, () =>
+        base44.asServiceRole.entities.ScheduledFax.update(row.id, {
+          status: 'cancelled',
+          // Durable cancel stamp — claim may overwrite status to 'processing'
+          // but must not clear canceled_at (parity with ScheduledSms).
+          canceled_at: at,
+          canceled_by: currentUser.email,
+        }));
+      if (ok) results.scheduled_faxes_canceled += 1;
+    }
+  } catch (err) {
+    console.error('scheduled fax cancel failed:', err?.message || err);
+    results.failures += 1;
+  }
+
+  try {
+    const pendingSigReminders = await base44.asServiceRole.entities.ScheduledSignatureReminder.filter(
+      { requested_by: targetEmail, status: 'pending' },
+      undefined,
+      5000,
+    ).catch((err) => {
+      console.error('signature reminder query failed:', err?.message || err);
+      results.failures += 1;
+      return null;
+    });
+    for (const row of (pendingSigReminders || [])) {
+      const ok = await revoke('signature reminder cancel', row.id, () =>
+        base44.asServiceRole.entities.ScheduledSignatureReminder.update(row.id, {
+          status: 'canceled',
+          canceled_at: at,
+          canceled_by: currentUser.email,
+        }));
+      if (ok) results.signature_reminders_canceled += 1;
+    }
+  } catch (err) {
+    console.error('signature reminder cancel failed:', err?.message || err);
+    results.failures += 1;
+  }
+
   await base44.asServiceRole.entities.UserActivity.create({
     user_email: currentUser.email,
     user_name: currentUser.full_name,
@@ -280,6 +368,13 @@ async function reactivateUser(base44, currentUser, params, callerIsSuperAdmin) {
     return Response.json({
       error: 'Only a super admin can reactivate an administrator account, including your own.',
     }, { status: 403 });
+  }
+
+  // Agency admins may only reactivate staff in their own agency.
+  if (currentUser.account_type === 'agency_admin') {
+    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+    }
   }
 
   await base44.asServiceRole.entities.User.update(user_id, {

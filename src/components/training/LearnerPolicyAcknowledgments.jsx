@@ -9,6 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { FileCheck2, ExternalLink, CheckCircle2, Loader2 } from "lucide-react";
 import { policyAcknowledgment } from "@/functions/policyAcknowledgment";
 import { toast } from "sonner";
+import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 // Learner-facing policy sign-off. Lists the user's PolicyAcknowledgment rows;
 // pending ones require reading the document, typing their name, and confirming.
@@ -47,6 +49,7 @@ export default function LearnerPolicyAcknowledgments() {
       await policyAcknowledgment({ action: "acknowledge", acknowledgment_id: ack.id, signed_name: signedName });
       toast.success("Policy acknowledged");
       queryClient.invalidateQueries({ queryKey: ["my-policy-acks", email] });
+      queryClient.invalidateQueries({ queryKey: ["policy-acks"] });
     } catch (err) {
       toast.error("Failed to record acknowledgment");
       console.error(err);
@@ -67,7 +70,7 @@ export default function LearnerPolicyAcknowledgments() {
     <div className="space-y-4">
       {pending.map((ack) => {
         const draft = drafts[ack.id] || {};
-        const overdue = ack.due_date && new Date(ack.due_date) < new Date();
+        const overdue = isPastLocalDueDate(ack.due_date);
         return (
           <Card key={ack.id} className={overdue ? "border-red-200" : "border-blue-200"}>
             <CardHeader>
@@ -78,12 +81,12 @@ export default function LearnerPolicyAcknowledgments() {
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">v{ack.policy_version}</Badge>
-                  {ack.due_date && <Badge className={overdue ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"}>Due {new Date(ack.due_date).toLocaleDateString()}</Badge>}
+                  {ack.due_date && <Badge className={overdue ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"}>Due {formatLocalDate(ack.due_date)}</Badge>}
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {ack.doc_url ? (
+              {ack.doc_url && isSafeExternalUrl(ack.doc_url) ? (
                 <a href={ack.doc_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-blue-600 underline hover:text-blue-700 text-sm">
                   <ExternalLink className="w-4 h-4" />Open policy document
                 </a>

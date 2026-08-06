@@ -68,7 +68,7 @@ export default function AuditTrailViewer({ filterType = "all" }) {
   });
 
   const { data: securityLogs = [] } = useQuery({
-    queryKey: ['securityLogs'],
+    queryKey: ['securityLogs', '-timestamp', 500],
     queryFn: () => base44.entities.SecurityLog.list('-timestamp', 500),
     enabled: isAdmin,
   });

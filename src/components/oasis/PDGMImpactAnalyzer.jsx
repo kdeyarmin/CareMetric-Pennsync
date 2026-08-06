@@ -13,7 +13,8 @@ import {
   AlertCircle,
   CheckCircle2,
   BarChart3,
-  Zap
+  Zap,
+  AlertTriangle,
 } from "lucide-react";
 import { calculatePDGM } from "@/functions/calculatePDGM";
 
@@ -245,13 +246,15 @@ Return detailed JSON analysis:`,
 
       setImpactAnalysis({
         pdgmComparison: pdgmComparison.data,
-        aiAnalysis: aiAnalysis
+        aiAnalysis: aiAnalysis,
+        rateBasis: pdgmComparison.data?.rateBasis || null,
       });
 
       if (onAnalysisComplete) {
         onAnalysisComplete({
           pdgmComparison: pdgmComparison.data,
-          aiAnalysis: aiAnalysis
+          aiAnalysis: aiAnalysis,
+          rateBasis: pdgmComparison.data?.rateBasis || null,
         });
       }
     } catch (error) {
@@ -310,6 +313,15 @@ Return detailed JSON analysis:`,
           </div>
         ) : (
           <div className="space-y-4">
+            {impactAnalysis.rateBasis?.isEstimate && (
+              <Alert className="bg-amber-50 border-amber-300">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <AlertDescription className="text-amber-800 text-xs">
+                  Estimate only — based on approximate case-mix weights, not confirmed official CMS PDGM rates.
+                  These dollar figures are not billable amounts. Set official rates in Admin → PDGM Rate Settings.
+                </AlertDescription>
+              </Alert>
+            )}
             {/* Payment Summary */}
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border-2 border-green-300">
               <div className="grid grid-cols-3 gap-3 mb-3">

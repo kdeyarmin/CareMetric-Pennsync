@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { createPageUrl } from "@/utils";
 import { useNavigate, useSearchParams } from "react-router";
 import SignatureCanvas from "../components/documents/SignatureCanvas";
-import { sanitizeHtml } from "@/components/utils/security";
+import { sanitizeHtml, isSafeExternalUrl } from "@/components/utils/security";
 
 export default function SignDocument() {
   const navigate = useNavigate();
@@ -57,8 +57,14 @@ export default function SignDocument() {
 
   const { data: patient, isLoading: patientLoading } = useQuery({
     queryKey: ['patient', effectivePatientId],
-    queryFn: () => base44.entities.Patient.filter({ id: effectivePatientId }),
-    select: (data) => data[0],
+    queryFn: async () => {
+      const rows = await base44.entities.Patient.filter({ id: effectivePatientId });
+      return rows[0] || null;
+    },
+    // Cache may already hold an object seeded by PatientDetails — accept both
+    // shapes during the transition so select([row]) never turns an object into
+    // undefined demographics beside the document.
+    select: (data) => (Array.isArray(data) ? data[0] : data) || null,
     enabled: !!effectivePatientId
   });
 
@@ -108,9 +114,16 @@ export default function SignDocument() {
     if (!signatureRecord) return;
 
     // Client-side completeness check for fast feedback; the server re-validates.
-    const allRequiredSigned = signatureRecord.signers
-      .filter(s => s.required)
-      .every((s, i) => signatures[signerKey(s, i)]?.dataUrl || s.signature);
+    // Walk the ORIGINAL signers array so idx_<n> keys stay aligned with
+    // handleSaveSignature / submitDocumentSignatures. Filtering first then
+    // using the filtered index remapped id-less optional-before-required
+    // documents onto the wrong key (e.g. required signer at index 1 looked up
+    // as idx_0). Treat missing `required` as required — matches the server's
+    // `required !== false` rule.
+    const allRequiredSigned = signatureRecord.signers.every((s, i) => {
+      if (s.required === false) return true;
+      return !!(signatures[signerKey(s, i)]?.dataUrl || s.signature);
+    });
 
     if (!allRequiredSigned) {
       toast.error("Please complete all required signatures");
@@ -202,7 +215,7 @@ export default function SignDocument() {
           <CardTitle className="text-lg">Document Preview</CardTitle>
         </CardHeader>
         <CardContent>
-          {signatureRecord.document_url ? (
+          {signatureRecord.document_url && isSafeExternalUrl(signatureRecord.document_url) ? (
             <div className="border rounded-lg overflow-hidden">
               <iframe
                 src={signatureRecord.document_url}
@@ -242,7 +255,7 @@ export default function SignDocument() {
                     <div>
                       <p className="font-medium">{signer.name}</p>
                       <p className="text-sm text-slate-600">
-                        {signer.role} {signer.required && <span className="text-red-600">*</span>}
+                        {signer.role} {signer.required !== false && <span className="text-red-600">*</span>}
                       </p>
                     </div>
                   </div>

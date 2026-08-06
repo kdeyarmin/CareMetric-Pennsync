@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router';
 import { Calendar, CheckCircle2, Clock, AlertCircle, Award, BookOpen, Loader2 } from 'lucide-react';
+import { formatLocalDate, isPastLocalDueDate, parseLocalDate, startOfLocalDay } from '@/lib/dateLocal';
 
 export default function LearningPathProgress({ planId, userId }) {
     const { data: plan } = useQuery({
@@ -69,31 +70,34 @@ export default function LearningPathProgress({ planId, userId }) {
     const now = new Date();
     const _upcomingDue = assignments
         .filter(a => a.due_date && a.status !== 'completed')
-        .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+        .sort((a, b) => {
+          const da = parseLocalDate(a.due_date);
+          const db = parseLocalDate(b.due_date);
+          return (da?.getTime() || 0) - (db?.getTime() || 0);
+        });
 
-    const overdue = assignments.filter(a => 
-        a.due_date && 
-        new Date(a.due_date) < now && 
-        a.status !== 'completed'
+    const overdue = assignments.filter(a =>
+        a.status !== 'completed' && isPastLocalDueDate(a.due_date, now)
     );
 
     const formatDate = (dateString) => {
         if (!dateString) return 'No due date';
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return formatLocalDate(dateString, { month: 'short', day: 'numeric', year: 'numeric' }) || 'No due date';
     };
 
     const getDaysUntil = (dateString) => {
         if (!dateString) return null;
-        const days = Math.ceil((new Date(dateString) - now) / (1000 * 60 * 60 * 24));
-        return days;
+        const due = parseLocalDate(dateString);
+        const today = startOfLocalDay(now);
+        if (!due || !today) return null;
+        return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     };
 
     const getStatusBadge = (assignment) => {
         if (assignment.status === 'completed') {
             return <Badge className="bg-green-100 text-green-700 border-green-300">Completed</Badge>;
         }
-        if (assignment.status === 'overdue' || (assignment.due_date && new Date(assignment.due_date) < now)) {
+        if (assignment.status === 'overdue' || isPastLocalDueDate(assignment.due_date, now)) {
             return <Badge className="bg-red-100 text-red-700 border-red-300">Overdue</Badge>;
         }
         if (assignment.status === 'in_progress') {

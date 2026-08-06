@@ -61,11 +61,12 @@ export default function RealtimeVitalMonitor({ sessionId, patientId }) {
   const [manualInput, setManualInput] = useState({});
   const [lastUpdate, setLastUpdate] = useState(null);
 
-  // Fetch agency settings for custom thresholds
-  const { data: _agencySettings = {} } = useQuery({
-    queryKey: ['agency-settings'],
-    queryFn: () => base44.entities.AgencySettings.list('-created_date', 1),
-    initialData: [],
+  // Fetch agency settings for custom thresholds. Must be object|null — never
+  // seed `[]` under the shared `agencySettings` key (other consumers treat the
+  // cache as a settings row; an array poisons business-hours / SMS templates).
+  const { data: _agencySettings = null } = useQuery({
+    queryKey: ['agencySettings'],
+    queryFn: async () => (await base44.entities.AgencySettings.list('-created_date', 1))[0] || null,
   });
 
   // Read the vitals captured on this telehealth session. The prior code read a

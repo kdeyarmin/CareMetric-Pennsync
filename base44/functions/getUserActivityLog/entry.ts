@@ -57,6 +57,13 @@ Deno.serve(async (req) => {
     const target = targets[0];
     if (!target) return Response.json({ error: 'User not found.' }, { status: 404 });
 
+    // Agency admins may only inspect staff in their own agency (parity with
+    // analyzeNursePerformance / assignInService).
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name || target.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
+    }
     const [callRows, smsRows, activityRows] = await Promise.all([
       base44.asServiceRole.entities.CallLog.filter({ nurse_email: targetEmail }, '-created_date', limit).catch(() => []),
       base44.asServiceRole.entities.SmsMessage.filter({ nurse_email: targetEmail }, '-created_date', limit).catch(() => []),

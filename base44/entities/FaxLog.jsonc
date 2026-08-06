@@ -94,6 +94,14 @@
       "default": false,
       "description": "Whether delivery notification was sent"
     },
+    "delivery_notify_claimed_by": {
+      "type": "string",
+      "description": "Best-effort claim token for delivery confirmation notify (poller/webhook)"
+    },
+    "failure_notify_claimed_by": {
+      "type": "string",
+      "description": "Best-effort claim token for final-failure notify (poller/webhook)"
+    },
     "ocr_text": {
       "type": "string",
       "description": "Extracted text content from OCR"

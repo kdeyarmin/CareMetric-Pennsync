@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Play, Pause, SkipForward, SkipBack, RotateCcw, Volume2, VolumeX, Video, Captions } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 /**
  * Video-first lesson player.
@@ -64,6 +65,7 @@ const readingMs = (text) => Math.max(4000, (text || "").split(/\s+/).filter(Bool
 
 export default function ModuleVideoPlayer({ module, onEnded }) {
   const realVideoUrl = module?.video_url;
+  const hasSafeVideo = !!(realVideoUrl && isSafeExternalUrl(realVideoUrl));
   const slides = useMemo(() => buildSlides(module), [module]);
   const supported = useMemo(speechSupported, []);
 
@@ -86,7 +88,7 @@ export default function ModuleVideoPlayer({ module, onEnded }) {
 
   // Drive narration / auto-advance for the active slide while playing.
   useEffect(() => {
-    if (realVideoUrl || !playing) return;
+    if (hasSafeVideo || !playing) return;
     const slide = slides[index];
     if (!slide) return;
 
@@ -118,7 +120,7 @@ export default function ModuleVideoPlayer({ module, onEnded }) {
       if (timer) clearTimeout(timer);
       if (supported) window.speechSynthesis.cancel();
     };
-  }, [index, playing, muted, slides, supported, realVideoUrl]);
+  }, [index, playing, muted, slides, supported, hasSafeVideo]);
 
   // Stop any narration on unmount.
   useEffect(() => () => { if (speechSupported()) window.speechSynthesis.cancel(); }, []);
@@ -129,13 +131,17 @@ export default function ModuleVideoPlayer({ module, onEnded }) {
   const replay = useCallback(() => { setIndex(0); setPlaying(true); }, []);
 
   // ─── Real produced video ────────────────────────────────────────────────
-  if (realVideoUrl) {
+  if (hasSafeVideo) {
     return (
       <div className="rounded-xl overflow-hidden border border-navy-200 bg-black">
         <video
           controls
           preload="metadata"
-          poster={module.video_thumbnail_url || undefined}
+          poster={
+            module.video_thumbnail_url && isSafeExternalUrl(module.video_thumbnail_url)
+              ? module.video_thumbnail_url
+              : undefined
+          }
           className="w-full aspect-video"
           onEnded={() => onEndedRef.current?.()}
         >

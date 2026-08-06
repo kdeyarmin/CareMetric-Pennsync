@@ -86,7 +86,7 @@ function daysBetween(a, b) {
 function detectMissingDischargeOASIS(ctx, opts = {}) {
   const { patient, oasisAssessments = [], visits = [] } = ctx || {};
   if (!patient || !patient.id) return null;
-  const asOf = opts.asOf ? new Date(opts.asOf) : new Date();
+  const asOf = opts.asOf || new Date();
   const staleDays = opts.staleDays ?? 14;
 
   const dischargeAssessments = oasisAssessments.filter((a) => dcLower(a?.visit_type) === 'discharge');
@@ -209,8 +209,9 @@ Deno.serve(async (req) => {
       ]);
       
       const lastVisit = visits[0];
-      const daysSinceLastVisit = lastVisit ? 
-        Math.floor((currentDate - new Date(lastVisit.visit_date)) / (1000 * 60 * 60 * 24)) : 999;
+      const daysSinceLastVisit = lastVisit
+        ? daysBetween(lastVisit.visit_date, currentDate)
+        : 999;
       
       // RISK 1: High-risk diagnosis without recent documentation.
       // Absence-based (assumes every visit is documented in PennSync) — gated

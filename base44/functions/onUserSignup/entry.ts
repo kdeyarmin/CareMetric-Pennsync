@@ -291,7 +291,13 @@ Deno.serve(async (req) => {
         const verification = await verifyInvitedUser(base44, user.email);
 
         if (verification.success) {
-          await base44.asServiceRole.entities.UserInvitation.delete(invitation.id);
+          // Soft-close like autoApproveInvitedUser — hard-delete races with
+          // resend/offboard flows that still need to see the invite row, and
+          // loses audit of who accepted what.
+          await base44.asServiceRole.entities.UserInvitation.update(invitation.id, {
+            status: 'accepted',
+            accepted_at: new Date().toISOString(),
+          });
         }
 
         try {

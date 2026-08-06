@@ -80,16 +80,14 @@ export default function PhoneProvisioningPanel() {
     initialData: [],
   });
 
-  const { data: settingsArr = [] } = useQuery({
-    queryKey: ["agency-settings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+  const { data: settings = null } = useQuery({
+    queryKey: ["agencySettings"],
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
     enabled: isAdmin,
     // Don't refetch on window focus: it would re-run the form-init effect below
     // and overwrite the admin's unsaved edits.
     refetchOnWindowFocus: false,
-    initialData: [],
   });
-  const settings = settingsArr[0];
 
   const [agency, setAgency] = useState({
     main_office_number_e164: "",
@@ -149,7 +147,7 @@ export default function PhoneProvisioningPanel() {
         : base44.entities.AgencySettings.create(payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agency-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["agencySettings"] });
       toast.success("Agency phone settings saved");
     },
     onError: (err) => toast.error(err?.message || "Failed to save settings"),
@@ -162,7 +160,7 @@ export default function PhoneProvisioningPanel() {
     mutationFn: (e164) =>
       base44.functions.invoke("searchPurchaseTelnyxNumbers", { action: "provision_fax", e164 }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agency-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["agencySettings"] });
       toast.success("Fax capacity provisioned — the number is wired to your Telnyx fax connection.");
     },
     onError: (err) => toast.error(err?.message || "Failed to provision fax capacity"),

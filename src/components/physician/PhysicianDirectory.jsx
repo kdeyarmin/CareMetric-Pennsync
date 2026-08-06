@@ -27,7 +27,7 @@ export default function PhysicianDirectory({ onSelectPhysician, mode = 'director
   const confirm = useConfirm();
 
   const { data: physicians = [], isLoading } = useQuery({
-    queryKey: ['physicians'],
+    queryKey: ['physicians', 'active', '-referral_count', 500],
     queryFn: () => base44.entities.Physician.filter({ is_active: true }, '-referral_count', 500),
     initialData: [],
   });

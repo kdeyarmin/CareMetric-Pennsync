@@ -22,8 +22,9 @@ import AssignmentWizard from "./AssignmentWizard";
 import { seedYearlyRequiredInServices } from "@/functions/seedYearlyRequiredInServices";
 import { assignAnnualLearningPlan } from "@/functions/assignAnnualLearningPlan";
 import { remindPlanOverdueStaff } from "@/functions/remindPlanOverdueStaff";
+import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : "—");
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function LearningPlanManager() {
   const queryClient = useQueryClient();
@@ -43,7 +44,7 @@ export default function LearningPlanManager() {
   const [reminding, setReminding] = useState(false);
 
   const { data: plans = [] } = useQuery({
-    queryKey: ["learning-plans"],
+    queryKey: ["learning-plans", "-created_date", 50],
     queryFn: () => base44.entities.LearningPlan.list("-created_date", 50),
     initialData: [],
   });
@@ -138,14 +139,18 @@ export default function LearningPlanManager() {
       const overdue =
         a.status !== "completed" &&
         a.pass_fail_result !== "passed" &&
-        (a.status === "overdue" || (a.due_date && new Date(a.due_date) < now));
+        (a.status === "overdue" || isPastLocalDueDate(a.due_date, now));
       if (overdue && a.assigned_to_user_id) users.add(a.assigned_to_user_id);
     }
     return users.size;
   }, [planAssignments]);
 
   // ─── Mutations ──────────────────────────────────────────────────────────────
-  const refetchPlans = () => queryClient.invalidateQueries({ queryKey: ["learning-plans"] });
+  // Cross-invalidate annual-plans (AnnualMandatoryEducationHub) — both list LearningPlan.
+  const refetchPlans = () => {
+    queryClient.invalidateQueries({ queryKey: ["learning-plans"] });
+    queryClient.invalidateQueries({ queryKey: ["annual-plans"] });
+  };
   const refetchCourses = () => queryClient.invalidateQueries({ queryKey: ["plan-courses"] });
 
   const deletePlanMutation = useMutation({
@@ -633,7 +638,7 @@ export default function LearningPlanManager() {
                         {planEnrollments.map((e) => {
                           const overdue =
                             e.status === "overdue" ||
-                            (e.status !== "completed" && e.due_date && new Date(e.due_date) < new Date());
+                            (e.status !== "completed" && isPastLocalDueDate(e.due_date));
                           return (
                             <div key={e.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-white">
                               <div className="min-w-0 flex-1">

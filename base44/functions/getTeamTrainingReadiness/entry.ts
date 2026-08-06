@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // Returns org-wide required-training readiness for educators and admins. Runs
 // with the service role and computes the rollups server-side so that non-admin
 // educators (whose TrainingAssignment RLS would otherwise limit reads to their
@@ -28,6 +36,7 @@ Deno.serve(async (req) => {
     if (!user?.email) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!isAuthorized(user)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -41,9 +50,14 @@ Deno.serve(async (req) => {
 
     const courseById = Object.fromEntries(courses.map((c) => [c.id, c]));
 
-    // Agency admins only see their own agency's staff
+    // Agency admins only see their own agency's staff. Fail closed when an
+    // agency_admin lacks agency_name — otherwise the unscoped list is returned
+    // and becomes a cross-tenant training readiness dump.
     let scopedAssignments = assignments;
-    if (user.account_type === 'agency_admin' && user.agency_name) {
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
+      }
       const agencyEmails = new Set(
         users.filter((u) => u.agency_name === user.agency_name).map((u) => u.email)
       );

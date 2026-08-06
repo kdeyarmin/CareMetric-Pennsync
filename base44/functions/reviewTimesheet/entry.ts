@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -137,6 +146,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { timesheet_id, decision, note = '' } = (await req.json()) || {};
 
@@ -163,6 +173,17 @@ Deno.serve(async (req) => {
     // A reviewer can never approve or reject their own timesheet, even as an admin.
     if (timesheet.employee_email === user.email || timesheet.created_by === user.email) {
       return Response.json({ error: 'You cannot review your own timesheet.' }, { status: 403 });
+    }
+
+    // Agency admins may only review timesheets for staff in their own agency.
+    if (user.account_type === 'agency_admin') {
+      const employees = await base44.asServiceRole.entities.User
+        .filter({ email: timesheet.employee_email }, undefined, 5)
+        .catch(() => []);
+      const employee = employees?.[0];
+      if (!user.agency_name || !employee || employee.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: timesheet employee is outside your agency.' }, { status: 403 });
+      }
     }
 
     if (timesheet.status !== 'submitted') {

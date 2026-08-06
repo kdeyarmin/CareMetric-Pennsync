@@ -525,21 +525,21 @@ Deno.serve(async (req) => {
 
     for (const row of failedRows) {
       if (!shouldRedriveSms(row, now)) continue;
-      // Opt-out can have changed since the failure — re-check, fail closed.
-      let optedOut = true;
+      // Consent can have changed since the failure — re-check, require opted_in.
+      let allowed = false;
       try {
         const consents = await base44.asServiceRole.entities.SmsConsent
           .filter({ phone_e164: row.to_number }, '-captured_at', 1);
-        optedOut = consents[0]?.consent_status === 'opted_out';
+        allowed = consents[0]?.consent_status === 'opted_in';
       } catch {
-        optedOut = true;
+        allowed = false;
       }
-      if (optedOut) continue;
+      if (!allowed) continue;
 
       // TCPA quiet hours (recipient timezone): a text that failed during the day
       // must not be redriven into the recipient's quiet hours. Skip for now; a
       // later run during allowed hours will pick it up.
-      if (settings?.tcpa_quiet_hours_enabled === true) {
+      if (settings?.tcpa_quiet_hours_enabled !== false) {
         const q = quietHoursCheck(row.to_number, new Date(), settings);
         if (!q.allowed) { result.skipped++; continue; }
       }

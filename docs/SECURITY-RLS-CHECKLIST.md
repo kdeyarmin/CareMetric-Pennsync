@@ -144,3 +144,39 @@ Apply that shared gate to the whole cron family, including:
   (`src/components/medication/drugInteractions.js`) — expand over time; it does
   not replace a full interaction database.
 - Medication reconciliation: consider a richer per-decision reconciled-med model.
+
+## 9. Residual risks that cannot be closed in this repo alone
+
+### Hosted RLS / tenant isolation
+Entity `rls` blocks in `base44/entities/*.jsonc` are **declarations** for the
+Base44 dashboard. Client role checks and query filters are UX only. Prove
+enforcement with the executable worksheet `docs/HOSTED-RLS-PROOF.md` (and
+checklist §7 / `docs/RLS-LAUNCH-RUNBOOK.md` §5) against the **hosted** app —
+raw network responses, including cross-tenant probes when multi-agency, and
+relation-based "by patient access" rules the repo DSL cannot express
+(`docs/RLS-REMEDIATION-SPEC-2026-06-19.md`). LR-01 evidence packets remain the
+release gate; CI cannot mark isolation proven.
+
+### True compare-and-swap (CAS)
+Reminder/fax/SMS/badge claim tokens (`claimed_by` / `*_claim_token` + re-read)
+are best-effort. The entity store has no atomic conditional update / version
+column, so overlapping writes can still lose. Platform ask and acceptance
+criteria: `docs/PLATFORM-CAS.md`. In-repo merge-retry
+(`submitSignerSignature`, `appendPatientNoteHistory`) remains required for
+array fields.
+
+### Login CSRF nonce (platform remainder)
+In-app hardening (`src/lib/accessTokenTrust.js`, `src/lib/app-params.js`,
+`SignInScreen`): planted `auth_state` on hosted-login return; never overwrite
+an existing session from an empty/untrusted referrer; **logged-out**
+empty/untrusted `?access_token=` handoffs are stashed as
+`base44_pending_access_token` until the user explicitly Continues or Declines
+(closes silent logged-out login CSRF). **Still open for zero-click email
+handoffs:** Base44 must issue a state/nonce on every return URL so legitimate
+magic links can auto-accept without a confirm click.
+
+### SMS consent
+Outbound patient texts (`sendSms` / `scheduleSms` / dispatcher / redrive) now
+**require `consent_status === 'opted_in'`**. `unknown` is no longer sufficient.
+Admin `sendTestSms` still only blocks `opted_out` so provisioned-line smoke
+tests work.

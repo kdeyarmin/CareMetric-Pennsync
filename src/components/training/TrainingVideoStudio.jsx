@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 const fmtDuration = (s) =>
   s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}` : null;
@@ -246,7 +247,7 @@ export default function TrainingVideoStudio({ course = null }) {
                       {i + 1}
                     </span>
 
-                    {m.video_thumbnail_url ? (
+                    {m.video_thumbnail_url && isSafeExternalUrl(m.video_thumbnail_url) ? (
                       <img src={m.video_thumbnail_url} alt="" className="w-20 h-12 rounded object-cover border flex-shrink-0" />
                     ) : (
                       <div className="w-20 h-12 rounded bg-slate-100 border flex items-center justify-center flex-shrink-0">
@@ -271,7 +272,7 @@ export default function TrainingVideoStudio({ course = null }) {
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {m.video_url && (
+                      {m.video_url && isSafeExternalUrl(m.video_url) && (
                         <a href={m.video_url} target="_blank" rel="noopener noreferrer">
                           <Button size="sm" variant="outline"><Play className="w-3.5 h-3.5 mr-1.5" />Preview</Button>
                         </a>

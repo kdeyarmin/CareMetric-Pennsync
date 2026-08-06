@@ -23,11 +23,22 @@ Deno.serve(async (req) => {
     // Fail CLOSED on a missing sender: a legacy/system fax with no sent_by must
     // not be readable by any authenticated user who guesses its id — treat an
     // unknown owner as not-this-caller and require admin.
-    const isAdmin = user.role === 'admin'
-      || user.account_type === 'agency_admin'
-      || user.account_type === 'super_admin';
-    if (!isAdmin && fax.sent_by !== user.email) {
+    const isPlatformAdmin = user.role === 'admin' || user.account_type === 'super_admin';
+    const isAgencyAdmin = user.account_type === 'agency_admin';
+    if (!isPlatformAdmin && !isAgencyAdmin && fax.sent_by !== user.email) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // Agency admins may only analyze faxes sent by staff in their agency.
+    if (isAgencyAdmin) {
+      if (!user.agency_name || !fax.sent_by) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      const senders = await base44.asServiceRole.entities.User
+        .filter({ email: fax.sent_by }, undefined, 5)
+        .catch(() => []);
+      if (!senders?.[0] || senders[0].agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
     const ocrText = fax.ocr_text || '';
 

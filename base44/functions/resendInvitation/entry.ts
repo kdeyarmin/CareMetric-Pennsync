@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && (
   u.role === 'admin' || u.account_type === 'agency_admin' ||
@@ -16,6 +25,7 @@ Deno.serve(async (req) => {
     if (!isAdminLike(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { invitation_id } = await req.json();
     if (!invitation_id) {
@@ -48,6 +58,24 @@ Deno.serve(async (req) => {
         { status: 409 }
       );
     }
+
+    // Agency admins may only resend invites for their own agency.
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+      }
+      let inviteAgency = invitation.agency_name || null;
+      if (!inviteAgency && invitation.invited_by) {
+        const inviters = await base44.asServiceRole.entities.User
+          .filter({ email: invitation.invited_by }, undefined, 5)
+          .catch(() => []);
+        inviteAgency = inviters?.[0]?.agency_name || null;
+      }
+      if (inviteAgency !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+      }
+    }
+
     const now = new Date();
     const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 

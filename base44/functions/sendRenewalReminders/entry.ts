@@ -67,6 +67,7 @@ Deno.serve(async (req) => {
     const svc = base44.asServiceRole.entities;
     const today = new Date();
     const todayIso = today.toISOString().slice(0, 10);
+    const runId = crypto.randomUUID();
 
     const openStatuses = ['assigned', 'in_progress', 'overdue', 'failed'];
     // Order by due_date ascending so the overdue + soonest-due assignments are
@@ -98,8 +99,21 @@ Deno.serve(async (req) => {
       if (!openStatuses.includes(a.status)) continue;
       if (!a.assigned_to_user_id) continue;
 
-      const due = new Date(`${a.due_date}T00:00:00Z`);
-      const daysUntilDue = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      // Date-only due_date values compare on the local calendar — UTC midnight
+      // parsing flagged assignments overdue / escalated tiers the evening before
+      // the due day (mirrors sendTrainingNotifications / remindPlanOverdueStaff).
+      const dueRaw = String(a.due_date).trim();
+      let daysUntilDue;
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dueRaw)) {
+        const [y, m, d] = dueRaw.split('-').map(Number);
+        const dueLocal = new Date(y, m - 1, d);
+        const todayLocal = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        daysUntilDue = Math.round((dueLocal.getTime() - todayLocal.getTime()) / (1000 * 60 * 60 * 24));
+      } else {
+        const due = new Date(a.due_date);
+        if (Number.isNaN(due.getTime())) continue;
+        daysUntilDue = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      }
 
       // Overdue only AFTER the due date has passed (daysUntilDue < 0). Due-today
       // (=== 0) is an upcoming reminder, not an overdue escalation.
@@ -114,7 +128,29 @@ Deno.serve(async (req) => {
       const alreadySent = Array.isArray(a.reminder_offsets_sent) ? a.reminder_offsets_sent : [];
       const tier = Math.min(...crossed); // smallest = most urgent (OVERDUE_OFFSET if overdue)
       if (alreadySent.includes(tier)) continue; // already nudged at this level
-      const dueLabel = new Date(a.due_date).toLocaleDateString();
+
+      // Claim before queueing so overlapping cron runs don't double-notify.
+      try {
+        await svc.TrainingAssignment.update(a.id, {
+          reminder_claimed_by: runId,
+          reminder_claimed_at: new Date().toISOString(),
+        });
+      } catch {
+        continue;
+      }
+      const claimCheck = await svc.TrainingAssignment.filter({ id: a.id }, '-created_date', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].reminder_claimed_by !== runId) {
+        continue;
+      }
+
+      const dueRaw = String(a.due_date).trim();
+      let dueLabel;
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dueRaw)) {
+        const [y, m, d] = dueRaw.split('-').map(Number);
+        dueLabel = new Date(y, m - 1, d).toLocaleDateString();
+      } else {
+        dueLabel = new Date(a.due_date).toLocaleDateString();
+      }
       const learnerMsg = overdue
         ? `Your required training "${a.course_title}" is overdue (was due ${dueLabel}). Please complete it as soon as possible.`
         : `Reminder: your required training "${a.course_title}" is due ${dueLabel} (${daysUntilDue} day${daysUntilDue === 1 ? '' : 's'} left).`;

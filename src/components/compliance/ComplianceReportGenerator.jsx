@@ -25,7 +25,7 @@ export default function ComplianceReportGenerator({
   const [reportData, setReportData] = useState(null);
 
   const { data: audits = [] } = useQuery({
-    queryKey: ['complianceAudits', dateRange],
+    queryKey: ['complianceAudits', 'report', dateRange, nurseEmail || null],
     queryFn: async () => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - dateRange);

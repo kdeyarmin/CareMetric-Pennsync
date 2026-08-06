@@ -170,6 +170,9 @@ Deno.serve(async (req) => {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    // Per-run claim token so overlapping cron invocations do not double-email
+    // the same signer (mirrors dispatchScheduledSignatureReminders).
+    const runId = crypto.randomUUID();
 
     // Fetch all pending document packages. Use asServiceRole (the cron path has
     // no user context) and an explicit sort/limit — an unbounded filter returns
@@ -189,17 +192,29 @@ Deno.serve(async (req) => {
         // Skip if no due date
         if (!pkg.due_date) continue;
 
-        const dueDate = new Date(pkg.due_date);
-        dueDate.setHours(0, 0, 0, 0);
+        // Date-only due dates must use local calendar components — UTC midnight
+        // parsing shifts the day west of UTC and mis-classifies due_today/overdue.
+        const dueRaw = String(pkg.due_date).trim();
+        let dueDate;
+        if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dueRaw)) {
+          const [y, m, d] = dueRaw.split('-').map(Number);
+          dueDate = new Date(y, m - 1, d);
+        } else {
+          dueDate = new Date(pkg.due_date);
+          dueDate.setHours(0, 0, 0, 0);
+        }
+        if (Number.isNaN(dueDate.getTime())) continue;
 
         // Calculate days until due
         const daysUntilDue = Math.floor(
           (dueDate - today) / (1000 * 60 * 60 * 24)
         );
 
-        // Skip if already sent a reminder recently
-        if (pkg.last_reminder_sent_at) {
-          const lastSent = new Date(pkg.last_reminder_sent_at);
+        // Audience-specific cadence only — never fall back to last_reminder_sent_at
+        // (that stamp is shared and would suppress the other audience's reminders).
+        const lastSignerAt = pkg.last_signer_reminder_sent_at;
+        if (lastSignerAt) {
+          const lastSent = new Date(lastSignerAt);
           // `today` is midnight-normalized, so comparing it against the raw
           // timestamp made a reminder sent any time yesterday floor to 0 days and
           // suppress today's — halving the cadence and skipping due_today entirely.
@@ -230,6 +245,23 @@ Deno.serve(async (req) => {
 
         // Skip if no signer email
         if (!pkg.signer_email) continue;
+
+        // Claim before send; re-read to confirm we still own the row so two
+        // overlapping runs cannot both email the same signer.
+        const claimToken = `signer:${runId}`;
+        try {
+          await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
+            reminder_claimed_by: claimToken,
+            reminder_claimed_at: new Date().toISOString(),
+          });
+        } catch {
+          continue;
+        }
+        const claimCheck = await base44.asServiceRole.entities.DocumentPackage
+          .filter({ id: pkg.id }, '-created_date', 1).catch(() => []);
+        if (!claimCheck[0] || claimCheck[0].reminder_claimed_by !== claimToken) {
+          continue;
+        }
 
         // Get signature details (guard against a package with no
         // document_signatures array so a single bad row doesn't 500 the reminder)
@@ -282,9 +314,12 @@ Deno.serve(async (req) => {
           documents_pending: pendingCount,
         });
 
-        // Update last reminder sent timestamp
+        // Stamp audience-specific + legacy fields. Do NOT swallow failures after
+        // a successful send — a silent stamp miss lets the next run re-email.
+        const sentAt = new Date().toISOString();
         await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
-          last_reminder_sent_at: new Date().toISOString(),
+          last_signer_reminder_sent_at: sentAt,
+          last_reminder_sent_at: sentAt,
         });
 
         sentCount++;

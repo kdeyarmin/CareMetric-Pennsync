@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && (
   u.role === 'admin' || u.account_type === 'agency_admin' ||
@@ -19,6 +28,7 @@ Deno.serve(async (req) => {
     if (!isAdminLike(currentUser)) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
+    if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
 
     const { userId, updates } = await req.json();
     if (!userId || !updates || typeof updates !== 'object') {
@@ -55,6 +65,13 @@ Deno.serve(async (req) => {
     );
     if (targetIsPrivileged && !isSuperAdmin && targetUser.id !== currentUser.id) {
       return Response.json({ error: 'Only a super admin can modify another administrator account.' }, { status: 403 });
+    }
+
+    // Agency admins may only mutate staff in their own agency.
+    if (currentUser.account_type === 'agency_admin') {
+      if (!currentUser.agency_name || !targetUser || targetUser.agency_name !== currentUser.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
     }
 
     const result = await base44.asServiceRole.entities.User.update(userId, safeUpdates);

@@ -23,6 +23,8 @@ const INELIGIBLE_CREDENTIALS = ["rn", "lpn", "lvn", "pt", "pta", "ot", "cota", "
 export const F2F_WINDOW_BEFORE_DAYS = 90;
 export const F2F_WINDOW_AFTER_DAYS = 30;
 
+import { parseLocalDate } from "../../lib/dateLocal.js";
+
 const STOPWORDS = new Set([
   "the", "and", "with", "without", "for", "due", "chronic", "acute", "unspecified",
   "disease", "disorder", "history", "of", "type", "left", "right", "other", "care",
@@ -30,9 +32,9 @@ const STOPWORDS = new Set([
 ]);
 
 function toDate(v) {
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
+  // Date-only F2F encounter / certification dates must stay on the local
+  // calendar — UTC midnight shifted the 30-day CMS window by a day in US zones.
+  return parseLocalDate(v);
 }
 
 // Spelled-out practitioner types → canonical credential (checked before

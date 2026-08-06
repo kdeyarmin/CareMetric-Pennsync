@@ -14,8 +14,9 @@ import { useIsEmbedded } from "@/components/ui/embeddedPage";
 import { Input } from "@/components/ui/input";
 import LoadingState from "@/components/ui/LoadingState";
 import RequiredTrainingSummary from "./RequiredTrainingSummary";
+import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function MyTrainingDashboard({ filterByType }) {
   const embedded = useIsEmbedded();
@@ -256,7 +257,7 @@ export default function MyTrainingDashboard({ filterByType }) {
             </Card>
           ) : (
             enrollments.map((enrollment) => {
-              const overdue = enrollment.status === 'overdue' || (enrollment.due_date && new Date(enrollment.due_date) < new Date() && enrollment.status !== 'completed');
+              const overdue = enrollment.status === 'overdue' || (isPastLocalDueDate(enrollment.due_date) && enrollment.status !== 'completed');
               return (
                 <Card key={enrollment.id} className={`border transition-all hover:shadow-md ${overdue ? 'border-red-200 bg-red-50/20' : ''}`}>
                   <CardHeader className="pb-2">
@@ -308,9 +309,9 @@ export default function MyTrainingDashboard({ filterByType }) {
                     )}
                     {certificate.expiration_date && (
                       <p className={`text-sm ${
-                        new Date(certificate.expiration_date) < new Date() ? 'text-red-600 font-semibold' : 'text-slate-500'
+                        isPastLocalDueDate(certificate.expiration_date) ? 'text-red-600 font-semibold' : 'text-slate-500'
                       }`}>
-                        {new Date(certificate.expiration_date) < new Date() ? 'Expired' : 'Valid until'}: {formatDate(certificate.expiration_date)}
+                        {isPastLocalDueDate(certificate.expiration_date) ? 'Expired' : 'Valid until'}: {formatDate(certificate.expiration_date)}
                       </p>
                     )}
                   </div>

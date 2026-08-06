@@ -100,28 +100,50 @@ Deno.serve(async (req) => {
       });
     }
 
-    for (const email of recipients) {
-      await base44.asServiceRole.entities.Notification.create({
-        user_email: email,
-        title: 'Signature Pending — Document Due Soon',
-        message: `You have a document pending signature. Please review and sign by ${new Date(deadline_date).toLocaleDateString()}.`,
-        type: 'task_due_soon',
-        priority: 'high',
-        is_read: false,
+    // Stamp FIRST (claim), then notify — notify-before-stamp duplicated
+    // reminders when the stamp failed or concurrent clicks raced.
+    const claimAt = new Date().toISOString();
+    const priorCount = Number(sig.reminder_sent_count) || 0;
+    await base44.asServiceRole.entities.DocumentSignature.update(document_id, {
+      reminder_sent: true,
+      last_reminder_sent_at: claimAt,
+      reminder_sent_count: priorCount + 1,
+    });
+    const claimCheck = await base44.asServiceRole.entities.DocumentSignature
+      .filter({ id: document_id }, undefined, 1)
+      .catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].last_reminder_sent_at !== claimAt) {
+      return Response.json({
+        success: true,
+        message: 'Reminder already claimed by a concurrent request',
+        scheduled: false,
+        reminder_count: 0,
+        reminder_date: reminderIso,
       });
     }
 
-    await base44.asServiceRole.entities.DocumentSignature.update(document_id, {
-      reminder_sent: true,
-      last_reminder_sent_at: new Date().toISOString(),
-      reminder_sent_count: (Number(sig.reminder_sent_count) || 0) + 1,
-    });
+    let created = 0;
+    for (const email of recipients) {
+      try {
+        await base44.asServiceRole.entities.Notification.create({
+          user_email: email,
+          title: 'Signature Pending — Document Due Soon',
+          message: `You have a document pending signature. Please review and sign by ${new Date(deadline_date).toLocaleDateString()}.`,
+          type: 'task_due_soon',
+          priority: 'high',
+          is_read: false,
+        });
+        created += 1;
+      } catch (err) {
+        console.error('Immediate signature reminder notify failed:', err?.message || err);
+      }
+    }
 
     return Response.json({
       success: true,
       message: 'Reminder date had passed; reminders created immediately',
       scheduled: false,
-      reminder_count: recipients.length,
+      reminder_count: created,
       reminder_date: reminderIso
     });
   } catch (error) {

@@ -168,12 +168,32 @@
       },
       "description": "Renewal reminder offsets already sent by sendRenewalReminders"
     },
+    "training_due_offsets_sent": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Offsets sent by sendTrainingNotifications; separate from reminder_offsets_sent used by sendRenewalReminders"
+    },
+    "reminder_claimed_by": {
+      "type": "string",
+      "description": "Per-run claim token so overlapping training-reminder crons do not double-notify"
+    },
+    "reminder_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When reminder_claimed_by was written"
+    },
     "expiration_note_offsets_sent": {
       "type": "array",
       "items": {
         "type": "number"
       },
       "description": "Expiration-note offsets already sent by sendExpirationNotifications (own marker so it doesn't collide with sendRenewalReminders)"
+    },
+    "expiration_note_claimed_by": {
+      "type": "string",
+      "description": "Per-run claim token for sendExpirationNotifications before creating in-app notes"
     },
     "completion_date": {
       "type": "string",

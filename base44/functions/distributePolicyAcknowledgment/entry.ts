@@ -34,7 +34,11 @@ Deno.serve(async (req) => {
 
     const allUsers = await svc.User.list('-created_date', 5000);
     let candidates = allUsers.filter((u) => u.email && u.role !== 'admin' && u.is_approved !== false);
-    if (me.account_type === 'agency_admin' && me.agency_name) {
+    // Agency admins without agency_name must not distribute to every tenant.
+    if (me.account_type === 'agency_admin') {
+      if (!me.agency_name) {
+        return Response.json({ error: 'Forbidden: agency_name is required to distribute policies.' }, { status: 403 });
+      }
       candidates = candidates.filter((u) => u.agency_name === me.agency_name);
     }
     if (userEmails.length > 0) {
@@ -70,9 +74,11 @@ Deno.serve(async (req) => {
     // log below records the actual created/failed counts even on partial runs.
     for (const user of candidates) {
       if (alreadyAssigned.has(user.email)) continue;
+      alreadyAssigned.add(user.email);
 
+      let createdAck = null;
       try {
-        await svc.PolicyAcknowledgment.create({
+        createdAck = await svc.PolicyAcknowledgment.create({
           policy_id: policyId,
           policy_title: policy.title,
           policy_number: policy.policy_number || '',
@@ -91,6 +97,27 @@ Deno.serve(async (req) => {
         failures.push({ user: user.email, error: err?.message });
         console.error('PolicyAcknowledgment create failed:', err?.message);
         continue;
+      }
+
+      // Concurrent distributes can still race the prefetch→create gap — keep
+      // the oldest ack and drop our duplicate before notifying.
+      const afterCreate = await svc.PolicyAcknowledgment.filter(
+        { policy_id: policyId, policy_version: version, user_id: user.email },
+        '-created_date',
+        10,
+      ).catch(() => []);
+      if (afterCreate.length > 1) {
+        const keepId = afterCreate
+          .slice()
+          .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')))[0]?.id;
+        if (keepId && createdAck?.id && createdAck.id !== keepId) {
+          try {
+            await svc.PolicyAcknowledgment.delete(createdAck.id);
+          } catch {
+            /* best-effort */
+          }
+          continue;
+        }
       }
       created++;
 

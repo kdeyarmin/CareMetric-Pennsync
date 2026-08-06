@@ -22,17 +22,15 @@ import {
   Award
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, parseISO } from "date-fns";
+import { formatLocalDate } from "@/lib/dateLocal";
 import { isAdminLike } from "@/lib/superAdmin";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { isSafeExternalUrl } from "@/components/utils/security";
 
-// Guarded date formatter: format(parseISO(undefined)) throws a RangeError, which
-// would white-screen the whole approvals card if any credential has a null date.
-const fmtDate = (value) => {
-  if (!value) return "—";
-  try { return format(parseISO(value), "MMM d, yyyy"); } catch { return "—"; }
-};
+// Guarded date formatter: date-only ISO strings must use local calendar parsing
+// (parseISO treats YYYY-MM-DD as UTC midnight and can shift the displayed day).
+const fmtDate = (value) => formatLocalDate(value, { month: 'short', day: 'numeric', year: 'numeric' }) || "—";
 
 export default function AdminCredentialApproval() {
   const [selectedCredential, setSelectedCredential] = useState(null);
@@ -74,6 +72,8 @@ export default function AdminCredentialApproval() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['pendingCredentials'] });
       queryClient.invalidateQueries({ queryKey: ['userCredentials'] });
+      queryClient.invalidateQueries({ queryKey: ['personnel-credentials'] });
+      queryClient.invalidateQueries({ queryKey: ['allPersonnelCredentials'] });
     }
   });
 
@@ -87,6 +87,9 @@ export default function AdminCredentialApproval() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pendingCredentials'] });
+      queryClient.invalidateQueries({ queryKey: ['userCredentials'] });
+      queryClient.invalidateQueries({ queryKey: ['personnel-credentials'] });
+      queryClient.invalidateQueries({ queryKey: ['allPersonnelCredentials'] });
       setShowRejectDialog(false);
       setRejectionReason("");
       setSelectedCredential(null);
@@ -163,7 +166,7 @@ export default function AdminCredentialApproval() {
                 </div>
 
                 <div className="mb-3">
-                  {cred.uploaded_file_url && (
+                  {cred.uploaded_file_url && isSafeExternalUrl(cred.uploaded_file_url) && (
                     <a
                       href={cred.uploaded_file_url}
                       target="_blank"

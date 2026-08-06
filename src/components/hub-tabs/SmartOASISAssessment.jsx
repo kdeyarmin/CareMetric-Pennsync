@@ -283,7 +283,8 @@ export default function SmartOASISAssessment() {
   const [currentGuidance, setCurrentGuidance] = useState({ questionId: null, questionLabel: "" });
 
   const { data: patients = [], isLoading: patientsLoading } = useQuery({
-    queryKey: ["patients-list"],
+    // Distinct from created_date / larger-limit patients-list consumers.
+    queryKey: ["patients-list", "-updated_date", 100],
     queryFn: () => base44.entities.Patient.list("-updated_date", 100),
     initialData: [],
   });

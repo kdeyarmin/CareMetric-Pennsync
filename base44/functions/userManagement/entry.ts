@@ -176,6 +176,14 @@ function randomInt(max) {
   return x % max;
 }
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -236,6 +244,9 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   if (!isAdmin) {
     return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
   }
+  if (currentUser.account_type === 'agency_admin' && !currentUser.agency_name) {
+    return Response.json({ error: 'Forbidden: agency_name is required to invite staff.' }, { status: 403 });
+  }
 
   const { email, full_name, role, care_scope, phone, credentials } = params;
 
@@ -266,6 +277,7 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     phone: phone || null,
     credentials: credentials || null,
     invited_by: currentUser.email,
+    agency_name: currentUser.agency_name || null,
     status: 'pending',
     expires_at: expiresAt.toISOString(),
     last_sent_at: now.toISOString(),
@@ -274,7 +286,7 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
 
   // Send invitation email
   try {
-    const signupUrl = 'https://caremetricai.base44.app';
+    const signupUrl = getAppBaseUrl();
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: email,
       subject: 'You’re invited to join PennSync by CareMetric',
@@ -335,34 +347,75 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   if (invitation.status === 'accepted') {
     return Response.json({ error: 'This invitation has already been accepted and cannot be resent.' }, { status: 400 });
   }
+  // 'cancelled' is a deliberate revocation (e.g. offboardUser) — do not re-arm it.
+  if (invitation.status === 'cancelled') {
+    return Response.json({
+      error: 'This invitation was cancelled and cannot be resent. Create a new invitation instead.',
+    }, { status: 409 });
+  }
+
+  // Agency admins may only resend invites for their own agency.
+  if (currentUser.account_type === 'agency_admin') {
+    if (!currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+    }
+    let inviteAgency = invitation.agency_name || null;
+    if (!inviteAgency && invitation.invited_by) {
+      const inviters = await base44.asServiceRole.entities.User
+        .filter({ email: invitation.invited_by }, undefined, 5)
+        .catch(() => []);
+      inviteAgency = inviters?.[0]?.agency_name || null;
+    }
+    if (inviteAgency !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+    }
+  }
+
   const now = new Date();
   const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const prior = {
+    status: invitation.status,
+    expires_at: invitation.expires_at,
+    last_sent_at: invitation.last_sent_at || null,
+    resend_count: invitation.resend_count || 0,
+  };
 
-  await base44.asServiceRole.entities.UserInvitation.update(invitation_id, {
-    status: 'pending',
-    expires_at: newExpiresAt.toISOString(),
-    last_sent_at: now.toISOString(),
-    resend_count: (invitation.resend_count || 0) + 1
-  });
+  // Send email FIRST, then stamp — otherwise a SendEmail failure still extends
+  // expiry and looks like a successful resend.
+  const signupUrl = getAppBaseUrl();
+  try {
+    await base44.asServiceRole.integrations.Core.SendEmail({
+      to: invitation.email,
+      subject: 'Reminder: your invitation to PennSync by CareMetric',
+      from_name: 'PennSync by CareMetric',
+      body: renderBrandedEmail({
+        preheader: 'A reminder that you’ve been invited to join PennSync by CareMetric.',
+        eyebrow: 'Invitation reminder',
+        title: `Hello ${invitation.full_name},`,
+        intro: 'This is a friendly reminder that you’ve been invited to join PennSync by CareMetric. Your invitation is still waiting — create your account to get started.',
+        sections: [
+          { rows: [['Email', invitation.email], ['Role', invitation.role || 'user']] },
+          { button: { href: signupUrl, label: 'Create your account' } },
+          { callout: { tone: 'warn', text: `This invitation expires in 7 days (on ${newExpiresAt.toLocaleDateString()}).` } },
+        ],
+      }),
+    });
+  } catch (emailError) {
+    console.error('Failed to resend invitation email:', emailError?.message || emailError);
+    return Response.json({ error: 'Failed to send invitation email. Please try again.' }, { status: 502 });
+  }
 
-  // Resend email
-  const signupUrl = 'https://caremetricai.base44.app';
-  await base44.asServiceRole.integrations.Core.SendEmail({
-    to: invitation.email,
-    subject: 'Reminder: your invitation to PennSync by CareMetric',
-    from_name: 'PennSync by CareMetric',
-    body: renderBrandedEmail({
-      preheader: 'A reminder that you’ve been invited to join PennSync by CareMetric.',
-      eyebrow: 'Invitation reminder',
-      title: `Hello ${invitation.full_name},`,
-      intro: 'This is a friendly reminder that you’ve been invited to join PennSync by CareMetric. Your invitation is still waiting — create your account to get started.',
-      sections: [
-        { rows: [['Email', invitation.email], ['Role', invitation.role || 'user']] },
-        { button: { href: signupUrl, label: 'Create your account' } },
-        { callout: { tone: 'warn', text: `This invitation expires in 7 days (on ${newExpiresAt.toLocaleDateString()}).` } },
-      ],
-    }),
-  });
+  try {
+    await base44.asServiceRole.entities.UserInvitation.update(invitation_id, {
+      status: 'pending',
+      expires_at: newExpiresAt.toISOString(),
+      last_sent_at: now.toISOString(),
+      resend_count: prior.resend_count + 1
+    });
+  } catch (stampError) {
+    console.error('Invitation stamp failed after email sent:', stampError?.message || stampError);
+    // Email already went out — leave prior row; report soft success with warning.
+  }
 
   // Log activity
   await base44.asServiceRole.entities.UserActivity.create({
@@ -371,7 +424,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
     action: 'invitation_resent',
     details: {
       invited_email: invitation.email,
-      resend_count: (invitation.resend_count || 0) + 1,
+      resend_count: prior.resend_count + 1,
       new_expires_at: newExpiresAt.toISOString()
     },
     page: 'UserManagement',
@@ -413,6 +466,13 @@ async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuper
     || targetUser.role === 'admin';
   if (targetIsPrivileged && !callerIsSuperAdmin) {
     return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
+  }
+
+  // Agency admins may only reset staff in their own agency.
+  if (currentUser.account_type === 'agency_admin') {
+    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+    }
   }
 
   // Generate a temporary password from a CSPRNG with a guaranteed length and
@@ -481,13 +541,17 @@ async function checkExpiredInvitations(base44) {
         status: 'expired'
       });
     } else if (tomorrow > expiresAt) {
-      expiringSoon.push(invitation);
+      // One-shot admin digest per invitation (mirrors checkExpiredInvitations).
+      if (!invitation.expiring_soon_notified_at) {
+        expiringSoon.push(invitation);
+      }
     }
   }
 
   // Notify admins if needed
   if (expired.length > 0 || expiringSoon.length > 0) {
     const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
+    let emailsSent = 0;
 
     for (const admin of admins) {
       const sections = [];
@@ -518,9 +582,20 @@ async function checkExpiredInvitations(base44) {
             sections,
           }),
         });
+        emailsSent += 1;
       } catch (emailError) {
         console.error('Failed to send email to admin:', emailError?.message || emailError);
       }
+    }
+    if (emailsSent > 0 && expiringSoon.length > 0) {
+      const stampedAt = new Date().toISOString();
+      await Promise.allSettled(
+        expiringSoon.map((inv) =>
+          base44.asServiceRole.entities.UserInvitation.update(inv.id, {
+            expiring_soon_notified_at: stampedAt,
+          })
+        )
+      );
     }
   }
 
@@ -619,7 +694,50 @@ async function cancelInvitation(base44, currentUser, params, isAdmin) {
     return Response.json({ error: 'invitation_id is required' }, { status: 400 });
   }
 
-  await base44.asServiceRole.entities.UserInvitation.delete(invitation_id);
+  const invitations = await base44.asServiceRole.entities.UserInvitation.filter({ id: invitation_id }, undefined, 5000);
+  if (!invitations || invitations.length === 0) {
+    return Response.json({ error: 'Invitation not found' }, { status: 404 });
+  }
+  const invitation = invitations[0];
+  if (invitation.status === 'accepted') {
+    return Response.json({ error: 'Accepted invitations cannot be cancelled.' }, { status: 400 });
+  }
+  if (invitation.status === 'cancelled') {
+    return Response.json({ success: true, message: 'Invitation already cancelled' });
+  }
+
+  // Agency admins may only cancel invites for their own agency.
+  if (currentUser.account_type === 'agency_admin') {
+    if (!currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+    }
+    let inviteAgency = invitation.agency_name || null;
+    if (!inviteAgency && invitation.invited_by) {
+      const inviters = await base44.asServiceRole.entities.User
+        .filter({ email: invitation.invited_by }, undefined, 5)
+        .catch(() => []);
+      inviteAgency = inviters?.[0]?.agency_name || null;
+    }
+    if (inviteAgency !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+    }
+  }
+
+  // Soft-cancel (preserve audit history). Hard-delete destroyed the trail and
+  // diverged from offboardUser, which correctly sets status: 'cancelled'.
+  await base44.asServiceRole.entities.UserInvitation.update(invitation_id, {
+    status: 'cancelled',
+  });
+
+  await base44.asServiceRole.entities.UserActivity.create({
+    user_email: currentUser.email,
+    user_name: currentUser.full_name,
+    action: 'invitation_cancelled',
+    details: { invited_email: invitation.email, invitation_id },
+    page: 'UserManagement',
+    entity_type: 'UserInvitation',
+    entity_id: invitation_id,
+  }).catch(() => {});
 
   return Response.json({ 
     success: true, 

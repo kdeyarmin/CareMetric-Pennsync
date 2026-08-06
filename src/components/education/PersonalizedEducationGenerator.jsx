@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,12 @@ export default function PersonalizedEducationGenerator({ patient, carePlans = []
   const [format, setFormat] = useState("comprehensive");
   const [copied, setCopied] = useState(false);
   const [isSending, setIsSending] = useState(false);
+
+  // Clear sticky AI output when the parent chart switches patients.
+  useEffect(() => {
+    setEducationMaterial(null);
+    setCopied(false);
+  }, [patient?.id]);
 
   const generateMaterial = async () => {
     if (!patient) return;

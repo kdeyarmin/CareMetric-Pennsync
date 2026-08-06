@@ -4,6 +4,7 @@ import { validateSignerToken } from '@/functions/validateSignerToken';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, Lock, CheckCircle2, Loader2 } from 'lucide-react';
 import SignerPackageViewer from '@/components/signer/SignerPackageViewer';
+import { formatLocalDate } from '@/lib/dateLocal';
 
 export default function SignerPortal() {
   const [searchParams] = useSearchParams();
@@ -152,7 +153,7 @@ export default function SignerPortal() {
             <p className="text-sm text-slate-700 mt-2">
               You have been invited to review and sign documents. Please complete all required signatures by{' '}
               <span className="font-medium">
-                {new Date(packageData.dueDate).toLocaleDateString()}
+                {formatLocalDate(packageData.dueDate) || packageData.dueDate}
               </span>
               .
             </p>

@@ -1,6 +1,6 @@
 import { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
-import { appParams } from '@/lib/app-params';
+import { appParams, plantLoginReturnState } from '@/lib/app-params';
 import { createAxiosClient } from '@/lib/base44AxiosClient';
 import { queryClientInstance } from '@/lib/query-client';
 import { clearCachedPHI } from '@/lib/phiStorage';
@@ -174,8 +174,12 @@ export const AuthProvider = ({ children }) => {
   const navigateToLogin = () => {
     // Don't redirect if we're already on the login page to prevent loops
     if (window.location.pathname === '/login') return;
-    // Use the SDK's redirectToLogin method
-    base44.auth.redirectToLogin(window.location.href);
+    // Plant a one-time auth_state on the return URL so an empty-referrer
+    // handoff from hosted login can be distinguished from a phishing link
+    // that only carries ?access_token= (see evaluateAccessTokenTrust /
+    // pending confirm on SignInScreen).
+    const returnUrl = plantLoginReturnState(window.location.href);
+    base44.auth.redirectToLogin(returnUrl);
   };
 
   return (

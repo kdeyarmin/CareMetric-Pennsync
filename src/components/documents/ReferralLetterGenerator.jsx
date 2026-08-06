@@ -24,7 +24,7 @@ export default function ReferralLetterGenerator({ patientId, patient }) {
   const [additionalContext, setAdditionalContext] = useState("");
 
   const { data: visits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId],
+    queryKey: ['patientVisits', patientId, 5],
     queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 5),
     enabled: !!patientId,
     initialData: [],

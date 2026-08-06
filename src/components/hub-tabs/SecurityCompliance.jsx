@@ -71,7 +71,7 @@ export default function SecurityCompliance() {
   const isAdmin = isAdminView(currentUser);
 
   const { data: securityLogs = [] } = useQuery({
-    queryKey: ['securityLogs'],
+    queryKey: ['securityLogs', '-created_date', 100],
     queryFn: () => base44.entities.SecurityLog.list('-created_date', 100),
     initialData: [],
     enabled: isAdmin,

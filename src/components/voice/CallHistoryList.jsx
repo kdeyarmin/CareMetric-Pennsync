@@ -16,6 +16,7 @@ import { formatPhoneDisplay, last10 } from "@/components/voice/phoneUtils";
 import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
 import { PhoneEmptyState } from "@/components/phone/PhoneFrame";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 const MODE_LABEL = {
   masked_bridge: "Incoming",
@@ -183,7 +184,7 @@ export default function CallHistoryList() {
                       </Button>
                     </div>
                   </div>
-                  {call.has_voicemail && call.voicemail_url && (
+                  {call.has_voicemail && call.voicemail_url && isSafeExternalUrl(call.voicemail_url) && (
                     <audio controls preload="none" src={call.voicemail_url} className="mb-2 h-8 w-[calc(100%-1.5rem)] px-3" />
                   )}
                   {call.voicemail_transcription && (

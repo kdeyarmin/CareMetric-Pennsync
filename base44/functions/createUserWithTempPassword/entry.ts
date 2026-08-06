@@ -262,6 +262,14 @@ export function buildWelcomeEmail(opts = {}) {
   return { subject, body };
 }
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -269,6 +277,13 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user || (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin')) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
+    }
+    if (user.is_active === false) {
+      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
+    // Agency admins must have an agency_name so invites can be tenant-scoped.
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required to invite staff.' }, { status: 403 });
     }
 
     const payload = await req.json();
@@ -319,6 +334,7 @@ Deno.serve(async (req) => {
       phone: phone || null,
       credentials: credentials || null,
       invited_by: user.email,
+      agency_name: user.agency_name || null,
       status: 'pending',
       expires_at: expiresAt.toISOString(),
       last_sent_at: now.toISOString(),
@@ -333,7 +349,7 @@ Deno.serve(async (req) => {
     // (public/manuals/*, served at the app origin root); the builder derives the
     // manual link from the app origin.
     try {
-      const appUrl = 'https://caremetricai.base44.app';
+      const appUrl = getAppBaseUrl();
       const { subject, body } = buildWelcomeEmail({
         fullName: full_name,
         email,

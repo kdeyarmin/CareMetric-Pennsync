@@ -34,7 +34,7 @@ export default function SmartNoteDataImport({
 
   // Fetch patient's recent visits with notes
   const { data: recentVisits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId],
+    queryKey: ['patientVisits', patientId, 'completed', 10],
     queryFn: async () => {
       if (!patientId) return [];
       const visits = await base44.entities.Visit.filter(

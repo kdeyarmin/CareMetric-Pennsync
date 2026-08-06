@@ -118,7 +118,7 @@ export default function NumberPoolPanel() {
       }),
     onSuccess: (res, e164) => {
       invalidate();
-      queryClient.invalidateQueries({ queryKey: ["agency-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["agencySettings"] });
       setFound((prev) => prev.filter((n) => n.e164 !== e164));
       toast.success(
         buyPurpose === "fax"

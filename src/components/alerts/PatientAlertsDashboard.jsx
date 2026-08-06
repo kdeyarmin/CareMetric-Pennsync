@@ -125,6 +125,12 @@ export default function PatientAlertsDashboard({ patientId = null }) {
       base44.functions.invoke('updateScopedPatientAlert', { alert_id: alertId, action, resolution_notes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patientAlerts'] });
+      queryClient.invalidateQueries({ queryKey: ['patientRiskAlerts'] });
+      queryClient.invalidateQueries({ queryKey: ['allPatientRiskAlerts'] });
+      queryClient.invalidateQueries({ queryKey: ['patientActiveAlerts'] });
+      if (patientId) {
+        queryClient.invalidateQueries({ queryKey: ['patientContext', patientId] });
+      }
       setDetailsDialogOpen(false);
       setSelectedAlert(null);
       setResolutionNotes("");

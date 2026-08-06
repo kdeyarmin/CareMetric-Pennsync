@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { isSafeExternalUrl } from "@/components/utils/security";
@@ -22,6 +22,11 @@ import { formatAge } from "@/lib/age";
 export default function PersonalizedEducationGenerator({ patient, complianceData, visits }) {
   const ai = useAICall();
   const [educationMaterials, setEducationMaterials] = useState(null);
+
+  // Clear sticky AI output when the parent chart switches patients.
+  useEffect(() => {
+    setEducationMaterials(null);
+  }, [patient?.id]);
 
   const generateMaterials = async () => {
     try {

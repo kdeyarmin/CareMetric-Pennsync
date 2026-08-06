@@ -27,6 +27,8 @@ import TrainingModuleViewer from "@/components/training/TrainingModuleViewer";
 import TrainingQuestionRenderer from "@/components/training/TrainingQuestionRenderer";
 import CertificateDownloadButton from "@/components/training/CertificateDownloadButton";
 import CourseStepIndicator from "@/components/training/CourseStepIndicator";
+import { isSafeExternalUrl } from "@/components/utils/security";
+import { formatLocalDate } from "@/lib/dateLocal";
 
 // Fisher-Yates shuffle for unbiased randomization
 const shuffle = (items) => {
@@ -345,7 +347,7 @@ export default function TrainingCoursePlayer() {
               )}
               <span className="flex items-center gap-1"><Target className="w-3.5 h-3.5" /> Pass at {passingScore}%</span>
               {!previewMode && assignment?.due_date && (
-                <span>Due {new Date(assignment.due_date).toLocaleDateString()}</span>
+                <span>Due {formatLocalDate(assignment.due_date) || assignment.due_date}</span>
               )}
               {!previewMode && (
                 <span>Attempt #{(assignment?.latest_attempt_number || 0) + 1}</span>
@@ -473,10 +475,12 @@ export default function TrainingCoursePlayer() {
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {course.attachment_urls.map((url, i) => (
-                    <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                      className="text-sm text-blue-600 underline hover:text-blue-700">
-                      {course.attachment_names?.[i] || `Resource ${i + 1}`}
-                    </a>
+                    url && isSafeExternalUrl(url) ? (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                        className="text-sm text-blue-600 underline hover:text-blue-700">
+                        {course.attachment_names?.[i] || `Resource ${i + 1}`}
+                      </a>
+                    ) : null
                   ))}
                 </div>
               </div>
@@ -572,10 +576,12 @@ export default function TrainingCoursePlayer() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {modules[activeModuleIndex].attachment_urls.map((url, i) => (
-                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                        className="text-sm text-blue-600 underline hover:text-blue-700">
-                        {modules[activeModuleIndex].attachment_names?.[i] || `File ${i + 1}`}
-                      </a>
+                      url && isSafeExternalUrl(url) ? (
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                          className="text-sm text-blue-600 underline hover:text-blue-700">
+                          {modules[activeModuleIndex].attachment_names?.[i] || `File ${i + 1}`}
+                        </a>
+                      ) : null
                     ))}
                   </div>
                 </div>
@@ -775,7 +781,7 @@ export default function TrainingCoursePlayer() {
                     <p className="font-bold text-emerald-900">Certificate Issued</p>
                     <p className="text-sm text-emerald-700">
                       ID: {result.certificate.certificate_id}
-                      {result.certificate.expiration_date && ` · Expires ${new Date(result.certificate.expiration_date).toLocaleDateString()}`}
+                      {result.certificate.expiration_date && ` · Expires ${formatLocalDate(result.certificate.expiration_date) || result.certificate.expiration_date}`}
                     </p>
                     {result.certificate.hours && (
                       <p className="text-sm text-emerald-700">{result.certificate.hours} CEU hours awarded</p>

@@ -27,9 +27,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { format, parseISO, differenceInDays } from "date-fns";
 import { isAdminView } from "@/lib/roles";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { parseLocalDate, formatLocalDate } from "@/lib/dateLocal";
+
+/** Calendar-day delta from local midnight today to a date-only value (negative = past). */
+function localDaysUntil(dateStr) {
+  const due = parseLocalDate(dateStr);
+  const todayLocal = new Date();
+  todayLocal.setHours(0, 0, 0, 0);
+  return due ? Math.round((due - todayLocal) / 86400000) : null;
+}
 
 export default function ComplianceMonitoringDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -44,14 +52,14 @@ export default function ComplianceMonitoringDashboard() {
   });
 
   const { data: allUsers = [], refetch: refetchUsers } = useQuery({
-    queryKey: ['allUsers'],
+    queryKey: ['allUsers', ALL_ROWS],
     queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
     initialData: [],
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   const { data: trainingAssignments = [], refetch: refetchAssignments } = useQuery({
-    queryKey: ['allTrainingAssignments'],
+    queryKey: ['allTrainingAssignments', '-updated_date', 500],
     queryFn: () => base44.entities.TrainingAssignment.list('-updated_date', 500),
     initialData: [],
     refetchInterval: 30000,
@@ -96,14 +104,13 @@ export default function ComplianceMonitoringDashboard() {
   // Calculate compliance issues
   const complianceIssues = React.useMemo(() => {
     const issues = [];
-    const today = new Date();
 
     // Check overdue training
     trainingAssignments.forEach(assignment => {
       if (assignment.status !== 'completed' && assignment.due_date) {
-        const dueDate = parseISO(assignment.due_date);
-        const daysOverdue = differenceInDays(today, dueDate);
-        
+        const daysUntil = localDaysUntil(assignment.due_date);
+        const daysOverdue = daysUntil != null && daysUntil < 0 ? Math.abs(daysUntil) : 0;
+
         if (daysOverdue > 0) {
           const user = allUsers.find(u => u.email === assignment.assigned_to_user_id);
           if (user) {
@@ -127,9 +134,9 @@ export default function ComplianceMonitoringDashboard() {
     // Check expiring/expired credentials
     personnelCredentials.forEach(cred => {
       if (cred.expiration_date) {
-        const expDate = parseISO(cred.expiration_date);
-        const daysUntilExpiry = differenceInDays(expDate, today);
-        
+        const daysUntilExpiry = localDaysUntil(cred.expiration_date);
+        if (daysUntilExpiry == null) return;
+
         if (daysUntilExpiry <= 30 || cred.status === 'expired') {
           const user = allUsers.find(u => u.email === cred.user_id);
           if (user) {
@@ -156,10 +163,11 @@ export default function ComplianceMonitoringDashboard() {
     // Check missing documentation (visits without proper notes in last 7 days)
     const recentVisits = visits.filter(v => {
       if (!v.visit_date) return false;
-      const visitDate = parseISO(v.visit_date);
       // Without the lower bound, future-dated scheduled visits (which have no notes
       // yet) counted as "recent" and were flagged as incomplete documentation.
-      const daysAgo = differenceInDays(today, visitDate);
+      const daysUntil = localDaysUntil(v.visit_date);
+      if (daysUntil == null) return false;
+      const daysAgo = -daysUntil;
       return daysAgo >= 0 && daysAgo <= 7;
     });
 
@@ -472,12 +480,12 @@ Compliance Management System`;
                           <p className="text-sm text-slate-700">{issue.details}</p>
                           {issue.dueDate && (
                             <p className="text-xs text-slate-500 mt-1">
-                              Due: {format(parseISO(issue.dueDate), 'MMM d, yyyy')}
+                              Due: {formatLocalDate(issue.dueDate, { month: 'short', day: 'numeric', year: 'numeric' })}
                             </p>
                           )}
                           {issue.expirationDate && (
                             <p className="text-xs text-slate-500 mt-1">
-                              Expires: {format(parseISO(issue.expirationDate), 'MMM d, yyyy')}
+                              Expires: {formatLocalDate(issue.expirationDate, { month: 'short', day: 'numeric', year: 'numeric' })}
                             </p>
                           )}
                         </div>

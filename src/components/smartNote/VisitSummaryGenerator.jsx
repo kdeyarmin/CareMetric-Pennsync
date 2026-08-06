@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from "@tanstack/react-query";
@@ -61,6 +61,14 @@ export default function VisitSummaryGenerator({ patientId }) {
   const [copiedAll, setCopiedAll] = useState(false);
   const [selectedSections, setSelectedSections] = useState(new Set(SECTIONS.map(s => s.key)));
   const [showSectionPicker, setShowSectionPicker] = useState(false);
+
+  // Clear sticky summary / visit selection when the parent chart switches patients.
+  useEffect(() => {
+    setSelectedVisitId("");
+    setSummary(null);
+    setCopiedKey(null);
+    setCopiedAll(false);
+  }, [patientId]);
 
   // Scope the visit picker to the selected patient. Without a patient, DON'T fall
   // back to every patient's recent visits — the picker labels show only date +

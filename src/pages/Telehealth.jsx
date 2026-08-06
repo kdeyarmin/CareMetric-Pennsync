@@ -55,7 +55,9 @@ export default function Telehealth() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ["patients-list"],
+    // Include sort+limit so this cache does not collide with other patients-list
+    // consumers (DocumentSignatures / OASIS / CarePlan) that use different params.
+    queryKey: ["patients-list", "-created_date", 100],
     queryFn: () => base44.entities.Patient.list("-created_date", 100)
   });
 

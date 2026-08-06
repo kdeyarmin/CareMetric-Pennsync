@@ -1,3 +1,5 @@
+import { evaluateAccessTokenTrust } from '@/lib/accessTokenTrust';
+
 const isNode = typeof window === 'undefined';
 const memoryStorage = new Map();
 
@@ -19,6 +21,8 @@ const storage = (() => {
 })();
 
 const setStoredItem = (key, value) => storage.setItem(key, value);
+
+const PENDING_ACCESS_TOKEN_KEY = 'base44_pending_access_token';
 
 const toSnakeCase = (str) => {
 	return str.replace(/([A-Z])/g, '_$1').toLowerCase();
@@ -71,27 +75,94 @@ const sanitizeServerUrl = (value) => {
 	}
 };
 
-// Referrer gate for accepting a session token from the URL. A `?access_token=`
-// handoff is how the platform's hosted-login flows (OTP / sign-up / captcha /
-// password-reset completion) return an authenticated session, so we can't drop
-// it — but an unsolicited phishing link carrying `?access_token=<attacker's
-// session>` is otherwise persisted verbatim and silently switches the victim
-// into the attacker's account (login CSRF / session fixation). Reject the URL
-// value ONLY when we can positively tell it arrived from a foreign origin; fail
-// OPEN on a same-origin / trusted-Base44 / absent referrer so the legitimate
-// handoff (whose hosted page may set Referrer-Policy: no-referrer) never breaks.
-// NOTE: an attacker who redirects with no referrer still bypasses this — fully
-// closing login CSRF needs a backend-issued state/nonce echoed on return.
-const trustedTokenReferrer = () => {
-	if (isNode) return true;
-	const ref = document.referrer;
-	if (!ref) return true;
+// Referrer / session gate for accepting a session token from the URL. A
+// `?access_token=` handoff is how the platform's hosted-login flows (OTP /
+// sign-up / captcha / password-reset completion) return an authenticated
+// session, so we can't drop it — but an unsolicited phishing link carrying
+// `?access_token=<attacker's session>` is otherwise persisted verbatim and
+// silently switches the victim into the attacker's account (login CSRF /
+// session fixation).
+//
+// Decision matrix (see evaluateAccessTokenTrust):
+//   accept  — same-origin / trusted Base44 referrer, or matching planted
+//             `auth_state` from plantLoginReturnState
+//   reject  — would overwrite an existing session from empty/untrusted referrer,
+//             or planted state mismatch
+//   pending — logged-out empty/untrusted referrer with no matching planted
+//             state (email-style magic links). Token is stashed under
+//             `base44_pending_access_token` until the user confirms on
+//             SignInScreen — closes silent logged-out login CSRF in-repo.
+//
+// Fully eliminating the confirm click still needs Base44 to issue a state/nonce
+// on every return URL (including email magic links).
+const LOGIN_STATE_KEY = 'base44_login_state';
+
+/** Snapshot of `auth_state` from the landing URL, captured before we strip it. */
+let landingAuthState = null;
+
+/** Last trust decision for the landing `access_token` (for pending stash). */
+let landingTokenTrust = 'accept';
+
+const evaluateLandingTokenTrust = () => {
+	if (isNode) return 'accept';
+	const planted = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(LOGIN_STATE_KEY) : null;
+	if (planted) {
+		try { sessionStorage.removeItem(LOGIN_STATE_KEY); } catch { /* ignore */ }
+	}
+	return evaluateAccessTokenTrust({
+		urlState: landingAuthState,
+		plantedState: planted,
+		referrer: typeof document !== 'undefined' ? document.referrer : '',
+		hasExistingToken: !!storage.getItem('base44_access_token'),
+		isTrustedBackendHost,
+		pageHost: typeof window !== 'undefined' ? window.location.host : null,
+	});
+};
+
+const acceptUrlAccessToken = () => {
+	landingTokenTrust = evaluateLandingTokenTrust();
+	return landingTokenTrust === 'accept';
+};
+
+/** Peek at a token stashed for explicit confirm (login CSRF pending). */
+export const peekPendingAccessToken = () => {
+	if (isNode) return null;
+	return storage.getItem(PENDING_ACCESS_TOKEN_KEY);
+};
+
+/** Promote the pending token into a real session. Caller should reload. */
+export const confirmPendingAccessToken = () => {
+	if (isNode) return false;
+	const pending = storage.getItem(PENDING_ACCESS_TOKEN_KEY);
+	if (!pending) return false;
+	storage.removeItem(PENDING_ACCESS_TOKEN_KEY);
+	setStoredItem('base44_access_token', pending);
+	appParams.token = pending;
+	return true;
+};
+
+/** Discard a pending handoff token without signing in. */
+export const declinePendingAccessToken = () => {
+	if (isNode) return;
+	storage.removeItem(PENDING_ACCESS_TOKEN_KEY);
+};
+
+/** Plant a one-time state before redirecting to hosted login; append it to the
+ * return URL so a matching `auth_state` proves the handoff was solicited. */
+export const plantLoginReturnState = (returnUrl) => {
+	if (isNode || typeof crypto === 'undefined' || !crypto.randomUUID) return returnUrl;
+	const state = crypto.randomUUID();
 	try {
-		const refHost = new URL(ref).host.toLowerCase();
-		if (refHost === window.location.host.toLowerCase()) return true;
-		return isTrustedBackendHost(refHost);
+		sessionStorage.setItem(LOGIN_STATE_KEY, state);
 	} catch {
-		return true;
+		return returnUrl;
+	}
+	try {
+		const u = new URL(returnUrl, window.location.origin);
+		u.searchParams.set('auth_state', state);
+		return u.toString();
+	} catch {
+		return returnUrl;
 	}
 };
 
@@ -123,9 +194,19 @@ const getAppParamValue = (paramName, { defaultValue = undefined, removeFromUrl =
 		// A URL value may be gated (e.g. a session token must not come from a
 		// foreign referrer). When rejected, don't persist it — fall through to any
 		// already-stored value / default so the caller keeps their own session.
+		// For access_token, a `pending` trust decision stashes the token for
+		// explicit confirm on SignInScreen instead of silent login.
 		if (acceptUrlValue && !acceptUrlValue()) {
-			console.warn(`[app-params] Ignoring ${paramName} supplied from an untrusted referrer.`);
+			if (paramName === 'access_token' && landingTokenTrust === 'pending') {
+				setStoredItem(PENDING_ACCESS_TOKEN_KEY, searchParam);
+				console.warn('[app-params] Stashing access_token for explicit confirm (login CSRF pending).');
+			} else {
+				console.warn(`[app-params] Ignoring ${paramName} supplied from an untrusted referrer.`);
+			}
 		} else {
+			if (paramName === 'access_token') {
+				storage.removeItem(PENDING_ACCESS_TOKEN_KEY);
+			}
 			setStoredItem(storageKey, searchParam);
 			return searchParam;
 		}
@@ -154,6 +235,16 @@ const getAppParams = () => {
 		if (new URLSearchParams(window.location.search).get('clear_access_token') === 'true') {
 			storage.removeItem('base44_access_token');
 			storage.removeItem('token');
+			storage.removeItem(PENDING_ACCESS_TOKEN_KEY);
+		}
+		// Capture auth_state BEFORE stripping it so trustedTokenReferrer can
+		// match against the planted sessionStorage value.
+		const cleanParams = new URLSearchParams(window.location.search);
+		landingAuthState = cleanParams.get('auth_state');
+		if (cleanParams.has('auth_state')) {
+			cleanParams.delete('auth_state');
+			const newUrl = `${window.location.pathname}${cleanParams.toString() ? `?${cleanParams.toString()}` : ''}${window.location.hash}`;
+			window.history.replaceState({}, document.title, newUrl);
 		}
 		// Self-heal a device an earlier bad `?app_id=` link already pinned to the
 		// wrong app: drop the stored id (and the functions version pinned with it)
@@ -178,7 +269,7 @@ const getAppParams = () => {
 	return {
 		appId,
 		serverUrl,
-		token: getAppParamValue('access_token', { removeFromUrl: true, acceptUrlValue: trustedTokenReferrer }),
+		token: getAppParamValue('access_token', { removeFromUrl: true, acceptUrlValue: acceptUrlAccessToken }),
 		functionsVersion: getAppParamValue('functions_version', { acceptUrlValue: acceptAppId })
 	};
 };

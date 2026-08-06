@@ -40,6 +40,19 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [expandedSuggestions, setExpandedSuggestions] = useState(false);
 
+  // PatientDetails keeps this mounted across ?id= changes — clear composer /
+  // selection so a drafted thread can't send under the wrong patient_id.
+  useEffect(() => {
+    setSelectedThreadId(null);
+    setNewMessage("");
+    setNewSubject("");
+    setPriority("normal");
+    setShowNewThread(false);
+    setThreadSummary(null);
+    setSuggestions(null);
+    setExpandedSuggestions(false);
+  }, [patientId]);
+
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
@@ -107,6 +120,9 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
         );
       }
       queryClient.invalidateQueries({ queryKey: ['messages', patientId] });
+      // Also refresh the inbox (`['messages']`) — prefix invalidation does not
+      // refresh the shorter key from a longer one.
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
       setNewMessage("");
       if (showNewThread) {
         setNewSubject("");
@@ -152,6 +168,7 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['messages', patientId] });
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
     }
   });
 

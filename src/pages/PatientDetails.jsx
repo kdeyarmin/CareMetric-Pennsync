@@ -12,12 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useNavigate, useSearchParams } from "react-router";
 import { createPageUrl } from "@/utils";
 import { ArrowLeft, Calendar, Plus, User, FileText, AlertTriangle, Phone, MapPin, Heart, Stethoscope, Activity, ClipboardList, ExternalLink, Users, Sparkles, Send } from "lucide-react";
-import { format, isValid, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import { formatLocalDate } from "@/lib/dateLocal";
 
 import { logSecurityEvent, sanitizeInput } from "@/components/utils/security";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
@@ -80,6 +81,20 @@ export default function PatientDetails() {
     status: 'scheduled'
   });
 
+  // Same-route patient switch (?id=A → ?id=B): clear sticky OASIS prompt/visit
+  // and visit form so Patient B never inherits Patient A's trigger state.
+  React.useEffect(() => {
+    setShowOASISPrompt(false);
+    setOasisTriggerVisit(null);
+    setShowVisitForm(false);
+    setNewVisit({
+      visit_date: format(new Date(), 'yyyy-MM-dd'),
+      visit_time: '',
+      visit_type: 'routine_visit',
+      status: 'scheduled'
+    });
+  }, [patientId]);
+
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
@@ -108,7 +123,7 @@ export default function PatientDetails() {
     queryKey: ['patientContext', patientId],
     queryFn: async () => {
       const data = (await base44.functions.invoke('getPatientContext', { patientId }))?.data || {};
-      queryClient.setQueryData(['patient', patientId], data.patient ? [data.patient] : []);
+      queryClient.setQueryData(['patient', patientId], data.patient || null);
       queryClient.setQueryData(['patientVisits', patientId], data.visits || []);
       queryClient.setQueryData(['patientIncidents', patientId], data.incidents || []);
       queryClient.setQueryData(['patientTasks', patientId], data.tasks || []);
@@ -201,7 +216,7 @@ export default function PatientDetails() {
         icon={Users}
         eyebrow="Patient Care"
         title={`${sanitizeInput(patient.first_name)} ${sanitizeInput(patient.last_name)}`}
-        description={`MRN: ${sanitizeInput(patient.medical_record_number) || 'N/A'} · DOB: ${patient.date_of_birth && isValid(parseISO(patient.date_of_birth)) ? format(parseISO(patient.date_of_birth), 'MM/dd/yyyy') : 'N/A'}`}
+        description={`MRN: ${sanitizeInput(patient.medical_record_number) || 'N/A'} · DOB: ${formatLocalDate(patient.date_of_birth, { month: '2-digit', day: '2-digit', year: 'numeric' }) || 'N/A'}`}
         favoritePage="PatientDetails"
         actions={
           <div className="flex flex-wrap gap-2">
@@ -285,6 +300,7 @@ export default function PatientDetails() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <AIPatientDashboardSummary
+                key={patientId}
                 patient={patient}
                 visits={visits}
                 tasks={tasks}
@@ -491,7 +507,7 @@ export default function PatientDetails() {
                               <div className="flex justify-between items-start mb-2">
                                 <div>
                                   <p className="font-semibold text-slate-900">
-                                    {visit.visit_date && isValid(parseISO(visit.visit_date)) ? format(parseISO(visit.visit_date), 'MMM d, yyyy') : 'Invalid date'}
+                                    {formatLocalDate(visit.visit_date, { month: 'short', day: 'numeric', year: 'numeric' }) || 'Invalid date'}
                                   </p>
                                   <Badge variant="outline" className="text-xs mt-1">
                                     {(visit.visit_type || '').replace(/_/g, ' ')}
@@ -526,7 +542,7 @@ export default function PatientDetails() {
         </TabsContent>
 
         {/* AI Tools Tab */}
-        <TabsContent value="ai-tools" className="space-y-6">
+        <TabsContent value="ai-tools" className="space-y-6" key={`ai-tools-${patientId}`}>
           <Tabs value={aiToolsTab} onValueChange={setAiToolsTab} className="w-full">
             <div className="overflow-x-auto scrollbar-hide">
               <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
@@ -632,7 +648,7 @@ export default function PatientDetails() {
         </TabsContent>
 
         <TabsContent value="telehealth" className="space-y-6">
-          <PatientTelehealthPanel patient={patient} currentUser={currentUser} />
+          <PatientTelehealthPanel key={patientId} patient={patient} currentUser={currentUser} />
         </TabsContent>
 
         {/* Documents Tab */}

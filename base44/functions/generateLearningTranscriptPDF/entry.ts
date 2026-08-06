@@ -95,8 +95,10 @@ Deno.serve(async (req) => {
     }
     const employee = employees[0];
 
-    if (user.account_type === 'agency_admin' && employee.agency_name !== user.agency_name) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name || employee.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // Get certificates for this employee

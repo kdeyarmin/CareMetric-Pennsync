@@ -159,6 +159,22 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// Local calendar day count for date-only YYYY-MM-DD fields (mirrors
+// sendPersonnelExpirationNotifications / remindPlanOverdueStaff).
+function localDaysUntil(dateOnly, now = new Date()) {
+  const raw = String(dateOnly || '').trim();
+  let target;
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number);
+    target = new Date(y, m - 1, d);
+  } else {
+    target = new Date(dateOnly);
+  }
+  if (Number.isNaN(target.getTime())) return null;
+  const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((target.getTime() - todayLocal.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -172,6 +188,8 @@ Deno.serve(async (req) => {
     if (authError) return authError;
 
     const today = new Date();
+    const todayIso = today.toISOString().slice(0, 10);
+    const runId = crypto.randomUUID();
     // Constrain to the relevant expiration window BEFORE the row cap, then sort
     // ascending. A plain ascending list would let a historical backlog of
     // already-expired credentials (which accumulates without bound over time)
@@ -196,13 +214,10 @@ Deno.serve(async (req) => {
     for (const cred of credentials) {
       if (!cred.expiration_date || cred.status === 'expired') continue;
 
-      // A date-only string parses as UTC midnight, so subtracting the current
-      // wall-clock time yields a negative fraction that Math.floor rounded away
-      // from zero — every credential read one day short and each tier fired a day
-      // early. Anchor explicitly to UTC midnight and round up, matching
-      // sendPersonnelExpirationNotifications so the two crons agree.
-      const expirationDate = new Date(`${cred.expiration_date}T00:00:00Z`);
-      const daysUntilExpiry = Math.ceil((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      // Date-only expiration: compare on local calendar days, not UTC midnight,
+      // matching sendPersonnelExpirationNotifications so the two crons agree.
+      const daysUntilExpiry = localDaysUntil(cred.expiration_date, today);
+      if (daysUntilExpiry === null) continue;
 
       // Anything expiring within 90 days (or already expired) goes into the admin digest.
       if (daysUntilExpiry <= 90) {
@@ -226,9 +241,12 @@ Deno.serve(async (req) => {
       // so whichever fired a shared tier first consumed it for the others (e.g.
       // sendExpirationNotifications marking tier 30 suppressed this renewal email).
       const remindersSent = cred.renewal_email_offsets_sent || [];
-      const dueOffsets = reminderOffsets.filter(
-        (offset) => daysUntilExpiry <= offset && !remindersSent.includes(offset)
-      );
+      // Only remind before expiration (digest still covers already-expired items).
+      const dueOffsets = daysUntilExpiry >= 0
+        ? reminderOffsets.filter(
+          (offset) => daysUntilExpiry <= offset && !remindersSent.includes(offset)
+        )
+        : [];
 
       if (dueOffsets.length > 0) {
         const userRecord = await base44.asServiceRole.entities.User.filter({ email: cred.user_id }, undefined, 5000);
@@ -236,98 +254,175 @@ Deno.serve(async (req) => {
         if (userRecord && userRecord.length > 0) {
           const userName = userRecord[0].full_name || cred.user_id;
 
+          // Claim offsets BEFORE send so overlapping runs don't double-email,
+          // then re-read to confirm we still own the claim (mirrors
+          // sendPersonnelExpirationNotifications). Prior code stamped offsets
+          // only after SendEmail — concurrent runs could both send first.
+          const claimedOffsets = [...remindersSent, ...dueOffsets];
+          const claimToken = runId;
+          try {
+            await base44.asServiceRole.entities.PersonnelCredential.update(cred.id, {
+              renewal_email_offsets_sent: claimedOffsets,
+              renewal_email_claimed_by: claimToken,
+              renewal_email_claimed_at: new Date().toISOString(),
+              last_reminder_sent_at: new Date().toISOString(),
+            });
+          } catch {
+            continue;
+          }
+          const claimCheck = await base44.asServiceRole.entities.PersonnelCredential
+            .filter({ id: cred.id }, '-created_date', 1).catch(() => []);
+          if (!claimCheck[0] || claimCheck[0].renewal_email_claimed_by !== claimToken) {
+            continue;
+          }
+
           // One consolidated email per run; the body already shows the real
           // days remaining. Per-credential try/catch so one failed send (bad
           // address, provider error) doesn't strand every later reminder.
           try {
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            to: cred.user_id,
-            from_name: 'PennSync by CareMetric',
-            subject: `Credential renewal required: ${cred.title}`,
-            body: renderBrandedEmail({
-              preheader: `Your ${cred.title} is expiring soon and requires renewal.`,
-              eyebrow: 'Credential renewal',
-              title: `Hello ${userName},`,
-              intro: `Your ${cred.title} is expiring soon and requires renewal.`,
-              sections: [
-                {
-                  rows: [
-                    ['Credential', cred.title],
-                    ['Issued by', cred.issuing_organization || 'N/A'],
-                    ['Expiration date', new Date(cred.expiration_date).toLocaleDateString()],
-                    ['Days remaining', String(daysUntilExpiry)],
-                  ],
-                },
-                {
-                  heading: 'What to do next',
-                  bullets: [
-                    'Open your Personnel File in the app.',
-                    'Upload your renewed credential document.',
-                    'Submit it for admin approval.',
-                  ],
-                },
-                {
-                  callout: { tone: 'warn', text: 'Failure to renew before expiration may affect your assignment eligibility.' },
-                },
-                {
-                  note: 'If you need assistance, please contact your supervisor.',
-                },
-              ],
-            }),
-          });
+            const [y, m, d] = String(cred.expiration_date).split('-').map(Number);
+            const expLabel = Number.isFinite(y)
+              ? new Date(y, m - 1, d).toLocaleDateString()
+              : String(cred.expiration_date);
+            await base44.asServiceRole.integrations.Core.SendEmail({
+              to: cred.user_id,
+              from_name: 'PennSync by CareMetric',
+              subject: `Credential renewal required: ${cred.title}`,
+              body: renderBrandedEmail({
+                preheader: `Your ${cred.title} is expiring soon and requires renewal.`,
+                eyebrow: 'Credential renewal',
+                title: `Hello ${userName},`,
+                intro: `Your ${cred.title} is expiring soon and requires renewal.`,
+                sections: [
+                  {
+                    rows: [
+                      ['Credential', cred.title],
+                      ['Issued by', cred.issuing_organization || 'N/A'],
+                      ['Expiration date', expLabel],
+                      ['Days remaining', String(daysUntilExpiry)],
+                    ],
+                  },
+                  {
+                    heading: 'What to do next',
+                    bullets: [
+                      'Open your Personnel File in the app.',
+                      'Upload your renewed credential document.',
+                      'Submit it for admin approval.',
+                    ],
+                  },
+                  {
+                    callout: { tone: 'warn', text: 'Failure to renew before expiration may affect your assignment eligibility.' },
+                  },
+                  {
+                    note: 'If you need assistance, please contact your supervisor.',
+                  },
+                ],
+              }),
+            });
 
-          // Record every newly-crossed tier so they are never re-sent.
-          await base44.asServiceRole.entities.PersonnelCredential.update(cred.id, {
-            renewal_email_offsets_sent: [...remindersSent, ...dueOffsets],
-            last_reminder_sent_at: new Date().toISOString()
-          });
-
-          notificationsSent.push({
-            user_id: cred.user_id,
-            credential: cred.title,
-            days_until_expiry: daysUntilExpiry,
-            offsets: dueOffsets
-          });
+            notificationsSent.push({
+              user_id: cred.user_id,
+              credential: cred.title,
+              days_until_expiry: daysUntilExpiry,
+              offsets: dueOffsets
+            });
           } catch (sendErr) {
             console.error('Failed to send renewal reminder for credential:', sendErr?.message || sendErr);
+            // Roll back the claimed offsets so a later run can retry — otherwise
+            // a transient SendEmail failure permanently suppresses this tier.
+            await base44.asServiceRole.entities.PersonnelCredential.update(cred.id, {
+              renewal_email_offsets_sent: remindersSent,
+              renewal_email_claimed_by: '',
+              last_reminder_sent_at: cred.last_reminder_sent_at || null,
+            }).catch(() => {});
           }
         }
       }
     }
 
-    // Send a consolidated 90-day expiration digest to all admins.
+    // Send a consolidated 90-day expiration digest to all admins — at most once
+    // per calendar day. Claim the day stamp on AgencySettings BEFORE sending so
+    // overlapping cron runs don't double-email admins.
     let adminDigestSent = 0;
     if (adminDigestItems.length > 0) {
-      const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
-      adminDigestItems.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
+      const settingsRows = await base44.asServiceRole.entities.AgencySettings
+        .list('-created_date', 1).catch(() => []);
+      const settings = settingsRows[0] || null;
 
-      const digestBullets = adminDigestItems.map((i) => {
-        const when = i.daysUntilExpiry < 0
-          ? `expired ${Math.abs(i.daysUntilExpiry)} day(s) ago`
-          : `${i.daysUntilExpiry} day(s) remaining`;
-        return `${i.user_name} — ${i.title} (${i.item_type}) — expires ${new Date(i.expiration_date).toLocaleDateString()} (${when})`;
-      });
-
-      for (const admin of admins) {
+      let shouldSendDigest = true;
+      if (settings?.last_credential_digest_sent_on === todayIso) {
+        shouldSendDigest = false;
+      } else if (settings) {
+        const digestClaimToken = runId;
         try {
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            to: admin.email,
-            from_name: 'PennSync by CareMetric',
-            subject: `Personnel expiration digest — ${adminDigestItems.length} item(s) within 90 days`,
-            body: renderBrandedEmail({
-              preheader: `${adminDigestItems.length} personnel file item(s) are expired or expiring within 90 days.`,
-              eyebrow: 'Compliance digest',
-              title: 'Personnel expiration digest',
-              intro: 'The following personnel file items are expired or expiring within the next 90 days.',
-              sections: [
-                { bullets: digestBullets },
-                { note: 'Review these in the Personnel File → Credential Compliance report.' },
-              ],
-            }),
+          await base44.asServiceRole.entities.AgencySettings.update(settings.id, {
+            last_credential_digest_sent_on: todayIso,
+            credential_digest_claimed_by: digestClaimToken,
+            credential_digest_claimed_at: new Date().toISOString(),
           });
-          adminDigestSent++;
-        } catch (digestErr) {
-          console.error('Failed to send admin digest:', digestErr?.message || digestErr);
+          const claimCheck = await base44.asServiceRole.entities.AgencySettings
+            .list('-created_date', 1).catch(() => []);
+          if (!claimCheck[0] || claimCheck[0].credential_digest_claimed_by !== digestClaimToken) {
+            shouldSendDigest = false;
+          }
+        } catch {
+          shouldSendDigest = false;
+        }
+      }
+      // No AgencySettings row: send once this run, then try to create a stub with
+      // the day stamp so subsequent runs skip. If create is not allowed/fails,
+      // we still sent (safe direction: one extra digest possible until a row exists).
+
+      if (shouldSendDigest) {
+        const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
+        adminDigestItems.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
+
+        const digestBullets = adminDigestItems.map((i) => {
+          const when = i.daysUntilExpiry < 0
+            ? `expired ${Math.abs(i.daysUntilExpiry)} day(s) ago`
+            : `${i.daysUntilExpiry} day(s) remaining`;
+          const [y, m, d] = String(i.expiration_date).split('-').map(Number);
+          const expLabel = Number.isFinite(y)
+            ? new Date(y, m - 1, d).toLocaleDateString()
+            : String(i.expiration_date);
+          return `${i.user_name} — ${i.title} (${i.item_type}) — expires ${expLabel} (${when})`;
+        });
+
+        for (const admin of admins) {
+          try {
+            await base44.asServiceRole.integrations.Core.SendEmail({
+              to: admin.email,
+              from_name: 'PennSync by CareMetric',
+              subject: `Personnel expiration digest — ${adminDigestItems.length} item(s) within 90 days`,
+              body: renderBrandedEmail({
+                preheader: `${adminDigestItems.length} personnel file item(s) are expired or expiring within 90 days.`,
+                eyebrow: 'Compliance digest',
+                title: 'Personnel expiration digest',
+                intro: 'The following personnel file items are expired or expiring within the next 90 days.',
+                sections: [
+                  { bullets: digestBullets },
+                  { note: 'Review these in the Personnel File → Credential Compliance report.' },
+                ],
+              }),
+            });
+            adminDigestSent++;
+          } catch (digestErr) {
+            console.error('Failed to send admin digest:', digestErr?.message || digestErr);
+          }
+        }
+
+        if (!settings) {
+          try {
+            await base44.asServiceRole.entities.AgencySettings.create({
+              last_credential_digest_sent_on: todayIso,
+              credential_digest_claimed_by: runId,
+              credential_digest_claimed_at: new Date().toISOString(),
+            });
+          } catch (createErr) {
+            // Prefer update of first row; if none existed and create fails, we
+            // already sent once above — document and move on.
+            console.error('Failed to create AgencySettings digest stamp:', createErr?.message || createErr);
+          }
         }
       }
     }

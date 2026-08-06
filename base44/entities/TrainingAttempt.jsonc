@@ -97,6 +97,14 @@
       "type": "string",
       "format": "date-time",
       "description": "Set by awardBadgeOnCompletion once this attempt has been processed; gates idempotent badge/point/streak awards so a replayed attempt cannot double-award (covers attempts that earn no badge too)."
+    },
+    "badges_claim_token": {
+      "type": "string",
+      "description": "Best-effort claim token written with badges_processed_at; awardBadgeOnCompletion re-reads and proceeds only if this token still matches. Not true CAS — Base44 has no conditional update / If-Match."
+    },
+    "corrective_plan_claimed_by": {
+      "type": "string",
+      "description": "Best-effort claim token for triggerCorrectiveActionPlan so concurrent trigger fires do not create duplicate plans"
     }
   },
   "required": [

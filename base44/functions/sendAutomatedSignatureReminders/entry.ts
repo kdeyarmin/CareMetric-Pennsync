@@ -172,6 +172,7 @@ Deno.serve(async (req) => {
     if (authError) return authError;
 
     console.log('Starting automated signature reminders...');
+    const runId = crypto.randomUUID();
 
     // Get all pending signatures, OLDEST first with an explicit cap. Without a
     // sort/limit the SDK returns only its default first page, so in an agency with
@@ -207,6 +208,22 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // Claim before send; re-read to confirm ownership (overlapping crons).
+        const claimToken = runId;
+        try {
+          await base44.asServiceRole.entities.DocumentSignature.update(sig.id, {
+            reminder_claimed_by: claimToken,
+            reminder_claimed_at: new Date().toISOString(),
+          });
+        } catch {
+          continue;
+        }
+        const claimCheck = await base44.asServiceRole.entities.DocumentSignature
+          .filter({ id: sig.id }, '-created_date', 1).catch(() => []);
+        if (!claimCheck[0] || claimCheck[0].reminder_claimed_by !== claimToken) {
+          continue;
+        }
+
         // Get patient details
         const patients = await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id }, undefined, 5000);
         const patient = patients[0];
@@ -223,7 +240,7 @@ Deno.serve(async (req) => {
           ? `This document is due by ${new Date(dueDate).toLocaleDateString()}.`
           : '';
 
-        const isOverdue = dueDate && new Date(dueDate) < new Date();
+        const isOverdue = isPastDueDate(dueDate);
 
         await base44.asServiceRole.integrations.Core.SendEmail({
           to: patient.email,
@@ -277,10 +294,11 @@ Deno.serve(async (req) => {
           }
         });
 
-        // Record that a reminder went out so the next run skips it within the window.
+        // Stamp after successful send. Do NOT swallow failures — a silent miss
+        // lets the next run re-email within the same window.
         await base44.asServiceRole.entities.DocumentSignature.update(sig.id, {
           last_reminder_sent_at: new Date().toISOString()
-        }).catch(() => {});
+        });
 
         remindersSent++;
         results.push({
@@ -318,6 +336,37 @@ Deno.serve(async (req) => {
   }
 });
 
+// Date-only due values compare on the local calendar — UTC midnight parsing
+// flagged signatures overdue the evening before the due day.
+function isPastDueDate(dueDate, now = new Date()) {
+  if (!dueDate) return false;
+  const raw = String(dueDate).trim();
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number);
+    const due = new Date(y, m - 1, d);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return due < today;
+  }
+  const due = new Date(dueDate);
+  return !Number.isNaN(due.getTime()) && due < now;
+}
+
+function hoursUntilDueDate(dueDate, now = new Date()) {
+  if (!dueDate) return null;
+  const raw = String(dueDate).trim();
+  let deadline;
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number);
+    // End of local due day — "due within 24h" for a date-only field means the
+    // due calendar day is today (or already past, handled by isPastDueDate).
+    deadline = new Date(y, m - 1, d, 23, 59, 59, 999);
+  } else {
+    deadline = new Date(dueDate);
+  }
+  if (Number.isNaN(deadline.getTime())) return null;
+  return (deadline - now) / (1000 * 60 * 60);
+}
+
 // Helper function to determine if reminder should be sent
 function shouldSendReminderLogic(signature) {
   const now = new Date();
@@ -328,7 +377,7 @@ function shouldSendReminderLogic(signature) {
   // 1. Document is overdue
   const dueDate = signature.due_date || signature.expires_at;
 
-  if (dueDate && new Date(dueDate) < now) {
+  if (isPastDueDate(dueDate, now)) {
     return true;
   }
 
@@ -339,9 +388,8 @@ function shouldSendReminderLogic(signature) {
 
   // 3. Document due within 24 hours
   if (dueDate) {
-    const deadline = new Date(dueDate);
-    const hoursUntilDue = (deadline - now) / (1000 * 60 * 60);
-    if (hoursUntilDue <= 24 && hoursUntilDue > 0) {
+    const hoursUntilDue = hoursUntilDueDate(dueDate, now);
+    if (hoursUntilDue != null && hoursUntilDue <= 24 && hoursUntilDue > 0) {
       return true;
     }
   }

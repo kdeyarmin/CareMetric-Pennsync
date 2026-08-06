@@ -12,6 +12,12 @@ Deno.serve(async (req) => {
 
     const { employeeId, certificateIds } = await req.json();
 
+    // Require the id up front: an undefined employeeId is dropped by the SDK's
+    // filter, so the User/certificate queries below would run unscoped.
+    if (!employeeId || typeof employeeId !== 'string') {
+      return Response.json({ error: 'employeeId is required' }, { status: 400 });
+    }
+
     // Only admins can generate packets for others
     if (employeeId !== user.email && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin') {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
@@ -24,11 +30,13 @@ Deno.serve(async (req) => {
     }
     const employee = employees[0];
 
-    // Agency admins are scoped to their OWN agency (mirrors exportLearningReportCSV):
+    // Agency admins are scoped to their OWN agency (mirrors generateAndCacheCertificatePacket):
     // without this an agency_admin could pass another agency's employeeId and pull
-    // that tenant's certificate packet.
-    if (user.account_type === 'agency_admin' && employee.agency_name !== user.agency_name) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    // that tenant's certificate packet. Fail closed when caller lacks agency_name.
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name || employee.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // Get certificates

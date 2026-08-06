@@ -35,11 +35,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }
 
-    // Get recent visit if visitId provided (RLS-scoped)
+    // Get recent visit if visitId provided (RLS-scoped). Bind visit to patient
+    // so notes from another chart cannot be mixed into this patient's education.
     let visitData = null;
     if (visitId) {
       const visits = await base44.entities.Visit.filter({ id: visitId }, undefined, 5000);
       visitData = visits[0];
+      if (visitData && String(visitData.patient_id || '') !== String(patientId)) {
+        return Response.json({ error: 'visitId does not belong to this patient' }, { status: 400 });
+      }
     }
 
     // Use LLM to generate personalized education topics

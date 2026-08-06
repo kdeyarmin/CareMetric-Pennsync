@@ -7,6 +7,7 @@ import { createPageUrl } from "@/utils";
 import ReferralPDFSummarizer from "@/components/referral/ReferralPDFSummarizer";
 import ReferralAnalyzer from "@/components/referral/ReferralAnalyzer";
 import { generateDiagnosisCodes, codeLabel } from "@/components/referral/diagnosisCodeGenerator";
+import { referralPatientReadiness } from "@/components/referral/referralPatientReadiness";
 import AIAdmissionDocumentationAssistant from "@/components/clinical/AIAdmissionDocumentationAssistant";
 import AIGeneratedOASISAssessment from "@/components/oasis/AIGeneratedOASISAssessment";
 import { Card, CardContent } from "@/components/ui/card";
@@ -75,18 +76,26 @@ export default function ReferralProcessor() {
         coding = generateDiagnosisCodes(extractedData);
       }
 
-      // Parse patient name intelligently from extracted data
-      const fullName = extractedData.demographics?.full_name || '';
-      const nameParts = fullName.trim().split(/\s+/);
-      const firstName = nameParts[0] || 'Unknown';
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Unknown';
+      // Same readiness gate as triage/intake — never mint "Doe," / "Unknown" charts.
+      const readiness = referralPatientReadiness({
+        patient_name: extractedData.demographics?.full_name,
+        full_name: extractedData.demographics?.full_name,
+        date_of_birth: extractedData.demographics?.date_of_birth,
+        medical_record_number: extractedData.demographics?.medical_record_number || extractedData.demographics?.mrn,
+        phone: extractedData.demographics?.phone,
+        address: extractedData.demographics?.address,
+      });
+      if (!readiness.ready) {
+        toast.error(`Cannot create patient chart. Missing: ${readiness.missing.join(', ')}.`);
+        return;
+      }
 
       const patientData = {
-        first_name: firstName,
-        last_name: lastName,
-        date_of_birth: extractedData.demographics?.date_of_birth || null,
-        address: extractedData.demographics?.address || null,
-        phone: extractedData.demographics?.phone || null,
+        first_name: readiness.first_name,
+        last_name: readiness.last_name,
+        date_of_birth: readiness.identifiers.date_of_birth || null,
+        address: readiness.identifiers.address || null,
+        phone: readiness.identifiers.phone || null,
         email: null,
         emergency_contact_name: extractedData.demographics?.emergency_contact || null,
         emergency_contact_phone: extractedData.demographics?.emergency_phone || null,
@@ -115,6 +124,9 @@ export default function ReferralProcessor() {
       const newPatient = await base44.entities.Patient.create(patientData);
       setCreatedPatientId(newPatient.id);
       queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
 
       toast.success('Patient created successfully!');
       // Return the new id so callers can use it immediately — setCreatedPatientId

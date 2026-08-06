@@ -57,16 +57,37 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, already_awarded: true, badges_awarded: 0, badges: [] });
     }
 
-    // Claim the attempt BEFORE awarding. The marker was previously written only at
-    // the very end, so two concurrent requests for the same attempt both passed the
-    // check above and double-bumped streak/courses/points (the UserBadge backstop
-    // only dedups badge rows, not the leaderboard increments). Writing it first
-    // shrinks the race window to near-zero. (Base44 has no conditional update, so
-    // this isn't a perfect CAS; a mid-run failure after this point forfeits this
-    // attempt's badges rather than risking a double award — the safer trade.)
-    await base44.entities.TrainingAttempt.update(attemptData.id, {
-      badges_processed_at: new Date().toISOString(),
-    }).catch((e) => console.error('Failed to claim attempt badges_processed_at:', e?.message));
+    // Claim the attempt BEFORE awarding, then re-read to confirm we still own the
+    // claim. Concurrent awarders both pass the early checks; the loser sees the
+    // winner's badges_claim_token and skips. (Base44 has no conditional update /
+    // If-Match — this is best-effort CAS. See docs/PLATFORM-CAS.md.) A mid-run
+    // failure after a successful claim forfeits this attempt's badges rather than
+    // risking a double award — the safer trade.
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `badge-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const claimAt = new Date().toISOString();
+    try {
+      await base44.entities.TrainingAttempt.update(attemptData.id, {
+        badges_processed_at: claimAt,
+        badges_claim_token: claimToken,
+      });
+    } catch (e) {
+      console.error('Failed to claim attempt badges_processed_at:', e?.message);
+      return Response.json({ error: 'Could not claim attempt for badge award' }, { status: 409 });
+    }
+    const claimCheck = await base44.asServiceRole.entities.TrainingAttempt
+      .filter({ id: attemptData.id }, '-created_date', 1)
+      .catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].badges_claim_token !== claimToken) {
+      return Response.json({
+        success: true,
+        already_awarded: true,
+        badges_awarded: 0,
+        badges: [],
+        skipped_race: true,
+      });
+    }
 
     const badgesAwarded = [];
 

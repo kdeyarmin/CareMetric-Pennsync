@@ -95,13 +95,11 @@ export default function TelnyxSetupProgress({ onStepsChange, onNavigate } = {}) 
     refetchOnWindowFocus: false,
   });
 
-  const { data: settingsArr = [], isFetched: settingsFetched } = useQuery({
-    queryKey: ["agency-settings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+  const { data: settings = null, isFetched: settingsFetched } = useQuery({
+    queryKey: ["agencySettings"],
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
     refetchOnWindowFocus: false,
-    initialData: [],
   });
-  const settings = settingsArr[0];
 
   const { data: users = [], isFetched: usersFetched } = useQuery({
     queryKey: ["phone-users"],

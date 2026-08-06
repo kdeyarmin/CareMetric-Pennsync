@@ -84,7 +84,13 @@ test("sendSms posts the Telnyx Messages contract", async () => {
   ]);
   const handler = await loadHandler("../functions/sendSms/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_MESSAGING_PROFILE_ID: "MP1" },
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", messaging_profile_id: "MP1" }] } }),
+    makeClient: () => makeBase44({ data: {
+      IntegrationSecret: [{ api_key: "KEYtest", messaging_profile_id: "MP1" }],
+      // Contract tests are wall-clock independent: disable TCPA quiet hours so a
+      // night-time CI run does not 403 a Messages-API shape assertion.
+      AgencySettings: [{ tcpa_quiet_hours_enabled: false, sms_enabled: true }],
+      SmsConsent: [{ phone_e164: "+12155550133", consent_status: "opted_in", captured_at: "2026-01-01T00:00:00Z" }],
+    } }),
     fetchImpl: impl,
   });
   const res = await handler(new Request("https://app/functions/sendSms", {
@@ -226,9 +232,26 @@ function makeSpyBase44({ user = { email: "a@x.com", account_type: "super_admin",
   const entity = (name) => {
     if (!cache[name]) {
       cache[name] = {
-        create: async (row) => { writes.push({ entity: name, op: "create", row }); return { id: `${name}_1`, ...row }; },
-        update: async (id, patch) => { writes.push({ entity: name, op: "update", id, patch }); return { id, ...patch }; },
-        filter: async () => data[name] || [],
+        create: async (row) => {
+          const created = { id: `${name}_1`, ...row };
+          writes.push({ entity: name, op: "create", row });
+          if (!data[name]) data[name] = [];
+          data[name].push(created);
+          return created;
+        },
+        update: async (id, patch) => {
+          writes.push({ entity: name, op: "update", id, patch });
+          const rows = data[name] || [];
+          const idx = rows.findIndex((r) => r.id === id);
+          if (idx >= 0) rows[idx] = { ...rows[idx], ...patch };
+          return { id, ...patch };
+        },
+        // Support id-equality filters used by claim-before-assign / claim-before-send.
+        filter: async (query = {}) => {
+          const rows = data[name] || [];
+          if (query && query.id != null) return rows.filter((r) => r.id === query.id);
+          return rows;
+        },
         list: async () => data[name] || [],
       };
     }
@@ -826,7 +849,11 @@ test("a failed masked-bridge transfer falls back to speak+hangup and marks the c
 });
 
 test("sendSms forwards MMS media_urls and rejects non-https/oversized media", async () => {
-  const mk = () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest" }] } });
+  const mk = () => makeBase44({ data: {
+    IntegrationSecret: [{ api_key: "KEYtest" }],
+    AgencySettings: [{ tcpa_quiet_hours_enabled: false, sms_enabled: true }],
+    SmsConsent: [{ phone_e164: "+12155550133", consent_status: "opted_in", captured_at: "2026-01-01T00:00:00Z" }],
+  } });
   // Happy path: media_urls forwarded to Telnyx.
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/messages"), respond: () => ({ status: 200, json: { data: { id: "m", to: [{ status: "queued" }] } } }) },

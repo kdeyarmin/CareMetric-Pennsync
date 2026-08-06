@@ -142,6 +142,15 @@
       "format": "date-time",
       "description": "Timestamp of the most recent signature reminder sent"
     },
+    "reminder_claimed_by": {
+      "type": "string",
+      "description": "Per-run claim token so overlapping signature-reminder crons do not double-send"
+    },
+    "reminder_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When reminder_claimed_by was written"
+    },
     "created_by": {
       "type": "string"
     },
@@ -240,6 +249,10 @@
     "admin_notified": {
       "type": "boolean",
       "description": "Idempotency flag: admin has been notified of completion"
+    },
+    "admin_notify_claimed_by": {
+      "type": "string",
+      "description": "Best-effort claim token shared by notifyAdminOfSignedDocument and onDocumentSigned; re-read before emailing admins"
     },
     "audit_trail": {
       "type": "array",

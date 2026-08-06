@@ -12,6 +12,8 @@ can be evidenced, reviewed, and reported via `pnpm run readiness:report`.
 | File | Role |
 |---|---|
 | `docs/SECURITY-RLS-CHECKLIST.md` | Per-entity RLS matrix + multi-role verification |
+| `docs/HOSTED-RLS-PROOF.md` | Executable hosted proof worksheet (curl / cross-tenant) |
+| `docs/PLATFORM-CAS.md` | Platform If-Match / versioned-update ask (not fakeable in-repo) |
 | `docs/RLS-REMEDIATION-SPEC-2026-06-19.md` | Relation-based rules (dashboard) |
 | `docs/RLS-LAUNCH-RUNBOOK.md` | RLS apply/verify runbook |
 | `docs/audits/live-readiness-evidence.template.json` | Fillable evidence JSON for the CLI |

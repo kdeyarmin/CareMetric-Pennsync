@@ -36,7 +36,7 @@ export default function KPIDashboard({ dateRange }) {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['allPatients'],
+    queryKey: ['allPatients', '-created_date', 5000],
     queryFn: () => base44.entities.Patient.list('-created_date', 5000),
     initialData: [],
   });

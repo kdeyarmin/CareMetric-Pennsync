@@ -37,6 +37,10 @@
       "type": "string",
       "description": "Email of admin who sent invitation"
     },
+    "agency_name": {
+      "type": "string",
+      "description": "Agency of the inviting admin; used to scope agency_admin resend/cancel"
+    },
     "status": {
       "type": "string",
       "enum": [
@@ -60,6 +64,11 @@
       "type": "string",
       "format": "date-time",
       "description": "When invitation was last sent/resent"
+    },
+    "expiring_soon_notified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When admins were emailed that this pending invitation expires within 24 hours (one-shot per invitation)"
     },
     "resend_count": {
       "type": "number",

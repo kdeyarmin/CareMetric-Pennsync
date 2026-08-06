@@ -38,6 +38,29 @@ function allowedEditorOrigins() {
 	return origins;
 }
 
+/**
+ * Post to configured editor origins only. Prefer explicit allowlisted parents
+ * over `*` so a hostile framer cannot observe element payloads. When the only
+ * known origin is the app itself (unit tests / top-level), fall back to `*`.
+ * Dynamic / chart content is never included — that is PHI on patient pages.
+ */
+function postToEditors(data) {
+	const payload = { ...data };
+	if (payload.isDynamicContent) {
+		payload.content = '';
+	} else if (typeof payload.content === 'string' && payload.content.length > 120) {
+		payload.content = `${payload.content.slice(0, 120)}…`;
+	}
+	const origins = [...allowedEditorOrigins()].filter((o) => o !== window.location.origin);
+	if (origins.length === 0) {
+		window.parent.postMessage(payload, '*');
+		return;
+	}
+	for (const origin of origins) {
+		window.parent.postMessage(payload, origin);
+	}
+}
+
 export default function VisualEditAgent() {
 	// this functions job is to receive first a message from the parent window, to set or unset visual edits mode. 
 	// once in visual edits mode, every hover over an elelmnt that has linenumbers should show an overlay, when clicked - it should stick the overlay and send a message to the parent window with the selected element
@@ -225,7 +248,7 @@ export default function VisualEditAgent() {
 
 		// Close dropdowns when clicking anywhere in iframe if a dropdown is open
 		if (isDropdownOpenRef.current) {
-			window.parent.postMessage({ type: 'close-dropdowns' }, '*');
+			postToEditors({ type: 'close-dropdowns' });
 			return;
 		}
 
@@ -276,7 +299,9 @@ export default function VisualEditAgent() {
 			centerY: rect.top + rect.height / 2
 		};
 
-		// Send message to parent window with element info including position
+		// Send message to parent window with element info including position.
+		// Dynamic chart content is redacted by postToEditors — never ship PHI
+		// innerText to an arbitrary parent frame.
 		const elementData = {
 			type: 'element-selected',
 			tagName: element.tagName,
@@ -289,7 +314,7 @@ export default function VisualEditAgent() {
 			filename: element.dataset.filename, // Keep for backward compatibility
 			position: elementPosition // Add position data for popover
 		};
-		window.parent.postMessage(elementData, '*');
+		postToEditors(elementData);
 	}, [findElementsById, createOverlay, positionOverlay, clearHoverOverlays]);
 
 	// Unselect the current element
@@ -451,12 +476,12 @@ export default function VisualEditAgent() {
 						centerY: rect.top + rect.height / 2
 					};
 
-					window.parent.postMessage({
+					postToEditors({
 						type: 'element-position-update',
 						position: elementPosition,
 						isInViewport: isInViewport,
 						visualSelectorId: selectedElementIdRef.current
-					}, '*');
+					});
 				}
 			}
 		};
@@ -541,12 +566,12 @@ export default function VisualEditAgent() {
 								centerY: rect.top + rect.height / 2
 							};
 
-							window.parent.postMessage({
+							postToEditors({
 								type: 'element-position-update',
 								position: elementPosition,
 								isInViewport: isInViewport,
 								visualSelectorId: selectedElementIdRef.current
-							}, '*');
+							});
 						}
 					}
 					break;
@@ -587,7 +612,7 @@ export default function VisualEditAgent() {
 		document.addEventListener('scroll', handleScroll, true); // Also listen on document
 
 		// Send ready message to parent
-		window.parent.postMessage({ type: 'visual-edit-agent-ready' }, '*');
+		postToEditors({ type: 'visual-edit-agent-ready' });
 
 		return () => {
 			window.removeEventListener('message', handleMessage);

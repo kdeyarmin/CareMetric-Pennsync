@@ -14,6 +14,8 @@ import AssignmentWizard from "@/components/training/AssignmentWizard";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from "sonner";
+import { isPastLocalDueDate } from '@/lib/dateLocal';
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 export default function PolicyAcknowledgmentManager() {
   const queryClient = useQueryClient();
@@ -50,7 +52,7 @@ export default function PolicyAcknowledgmentManager() {
       const version = policy.version || "1";
       const rows = acks.filter((a) => a.policy_id === policy.id && a.policy_version === version);
       const acknowledged = rows.filter((a) => a.acknowledged).length;
-      const overdue = rows.filter((a) => !a.acknowledged && a.due_date && new Date(a.due_date) < new Date()).length;
+      const overdue = rows.filter((a) => !a.acknowledged && isPastLocalDueDate(a.due_date)).length;
       byPolicy[policy.id] = { total: rows.length, acknowledged, overdue, version, rows };
     }
     return byPolicy;
@@ -72,6 +74,7 @@ export default function PolicyAcknowledgmentManager() {
       });
       setResult(res?.data || res);
       queryClient.invalidateQueries({ queryKey: ["policy-acks"] });
+      queryClient.invalidateQueries({ queryKey: ["my-policy-acks"] });
     } catch (error) {
       setResult({ error: configNotReadyMessage(error) || error?.message || "Failed to distribute policy." });
     } finally {
@@ -91,7 +94,7 @@ export default function PolicyAcknowledgmentManager() {
     const escape = escapeCsvField;
     const header = ["Staff", "Email", "Version", "Status", "Signed Name", "Acknowledged At", "Due Date"];
     const lines = stats.rows.map((r) =>
-      [r.user_name || "", r.user_id || "", r.policy_version || "", r.acknowledged ? "Acknowledged" : (r.due_date && new Date(r.due_date) < new Date() ? "Overdue" : "Pending"), r.signed_name || "", r.acknowledged_at ? new Date(r.acknowledged_at).toISOString() : "", r.due_date || ""].map(escape).join(",")
+      [r.user_name || "", r.user_id || "", r.policy_version || "", r.acknowledged ? "Acknowledged" : (isPastLocalDueDate(r.due_date) ? "Overdue" : "Pending"), r.signed_name || "", r.acknowledged_at ? new Date(r.acknowledged_at).toISOString() : "", r.due_date || ""].map(escape).join(",")
     );
     const csv = [`Policy Acknowledgment — ${policy.title} (v${stats.version})`, header.map(escape).join(","), ...lines].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -140,7 +143,7 @@ export default function PolicyAcknowledgmentManager() {
           {selectedPolicy && (
             <p className="text-sm text-slate-500">
               {selectedPolicy.policy_number ? `${selectedPolicy.policy_number} · ` : ""}Version {selectedPolicy.version || "1"}
-              {selectedPolicy.doc_url ? <> · <a className="text-blue-600 underline hover:text-blue-700" href={selectedPolicy.doc_url} target="_blank" rel="noopener noreferrer">Document</a></> : null}
+              {selectedPolicy.doc_url && isSafeExternalUrl(selectedPolicy.doc_url) ? <> · <a className="text-blue-600 underline hover:text-blue-700" href={selectedPolicy.doc_url} target="_blank" rel="noopener noreferrer">Document</a></> : null}
             </p>
           )}
           {result && !result.error && (

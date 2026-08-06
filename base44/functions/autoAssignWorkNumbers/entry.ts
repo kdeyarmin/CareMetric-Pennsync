@@ -77,9 +77,15 @@ Deno.serve(async (req) => {
       if (norm) inUse.add(norm);
     }
 
+    // Agency admins may only auto-assign within their own agency.
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required to auto-assign work numbers.' }, { status: 403 });
+    }
+
     // Candidate users: those missing a work number (optionally limited to `emails`).
     const candidates = allUsers.filter((u) => {
       if (!isBlank(u.work_phone_number)) return false;
+      if (user.account_type === 'agency_admin' && u.agency_name !== user.agency_name) return false;
       if (onlyEmails && !onlyEmails.includes(String(u.email || '').trim().toLowerCase())) return false;
       return true;
     });
@@ -87,6 +93,14 @@ Deno.serve(async (req) => {
     const assigned = [];
     let poolIdx = 0;
     for (const target of candidates) {
+      // Re-read the user before assigning — a concurrent run (or a parallel
+      // managePhoneNumberPool assign) may have filled work_phone_number already.
+      // Only skip when the re-read succeeds AND shows a number; an empty filter
+      // result must not starve every candidate (some stores ignore id filters).
+      const freshUser = await base44.asServiceRole.entities.User
+        .filter({ id: target.id }, undefined, 1).catch(() => []);
+      if (freshUser[0] && !isBlank(freshUser[0].work_phone_number)) continue;
+
       // Find the next pool number that isn't already in use on a User.
       let chosen = null;
       while (poolIdx < pool.length) {
@@ -96,6 +110,24 @@ Deno.serve(async (req) => {
       }
       if (!chosen) break; // pool exhausted
 
+      // Claim the pool row BEFORE writing the user so two concurrent bulk
+      // assigns cannot hand the same E.164 to two nurses. Re-read to confirm
+      // we still own the claim (loser sees the winner's assigned_to_email).
+      try {
+        await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {
+          status: 'assigned', assigned_to_email: target.email,
+        });
+      } catch (err) {
+        console.error('pool claim failed:', err?.message);
+        continue;
+      }
+      const claimRows = await base44.asServiceRole.entities.PhoneNumber
+        .filter({ id: chosen.row.id }, undefined, 1).catch(() => []);
+      const claimed = claimRows.find((r) => r.id === chosen.row.id) || claimRows[0];
+      if (!claimed || claimed.assigned_to_email !== target.email) {
+        continue;
+      }
+
       const update = {
         work_phone_number: chosen.e164,
         twilio_phone_number_sid: chosen.row.twilio_phone_number_sid || '',
@@ -103,11 +135,14 @@ Deno.serve(async (req) => {
       if (target.duty_status === undefined || target.duty_status === null) update.duty_status = 'off_duty';
       const ok = await base44.asServiceRole.entities.User.update(target.id, update)
         .then(() => true).catch((err) => { console.error('work number assignment failed:', err?.message); return false; });
-      if (!ok) continue;
+      if (!ok) {
+        // Release the pool claim so another run can reuse the number.
+        await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {
+          status: 'available', assigned_to_email: '',
+        }).catch(() => {});
+        continue;
+      }
 
-      await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {
-        status: 'assigned', assigned_to_email: target.email,
-      }).catch(() => {});
       inUse.add(chosen.e164);
       assigned.push({ email: target.email, e164: chosen.e164 });
     }

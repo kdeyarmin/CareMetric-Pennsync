@@ -20,6 +20,7 @@ import {
   FileText
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatLocalDate } from "@/lib/dateLocal";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function EducationTracker({ patient }) {
@@ -28,7 +29,7 @@ export default function EducationTracker({ patient }) {
   const [teachBackNotes, setTeachBackNotes] = React.useState({});
 
   const { data: assignments = [], isLoading } = useQuery({
-    queryKey: ['patientEducation', patient?.id],
+    queryKey: ['patientEducation', patient?.id, '-assigned_date'],
     queryFn: () => base44.entities.PatientEducationAssignment.filter({ patient_id: patient?.id }, '-assigned_date', PATIENT_HISTORY_ROWS),
     enabled: !!patient?.id,
     initialData: []
@@ -157,10 +158,10 @@ export default function EducationTracker({ patient }) {
                           </div>
 
                           <div className="flex gap-3 text-xs text-slate-500 mb-2">
-                            <span>Assigned: {format(new Date(assignment.assigned_date), 'MMM d, yyyy')}</span>
+                            <span>Assigned: {formatLocalDate(assignment.assigned_date, { month: 'short', day: 'numeric', year: 'numeric' }) || assignment.assigned_date}</span>
                             {assignment.completed_date && (
                               <span className="text-green-600">
-                                Completed: {format(new Date(assignment.completed_date), 'MMM d, yyyy')}
+                                Completed: {formatLocalDate(assignment.completed_date, { month: 'short', day: 'numeric', year: 'numeric' }) || assignment.completed_date}
                               </span>
                             )}
                           </div>

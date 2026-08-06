@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && (
   u.role === 'admin' || u.account_type === 'agency_admin' ||
@@ -129,6 +138,14 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -140,6 +157,7 @@ Deno.serve(async (req) => {
     if (!isAdminLike(currentUser)) {
       return Response.json({ error: 'Unauthorized. Admin access required.' }, { status: 403 });
     }
+    if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
 
     const { userEmail } = await req.json();
 
@@ -166,10 +184,17 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
     }
 
+    // Agency admins may only reset staff in their own agency.
+    if (currentUser.account_type === 'agency_admin') {
+      if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
+    }
+
     // Re-invite the user — this sends them a fresh link to set/reset their password
     await base44.users.inviteUser(userEmail, targetUser.role || 'user');
 
-    const appUrl = `https://caremetricai.base44.app`;
+    const appUrl = getAppBaseUrl();
 
     // Also send a clear email with login details
     await base44.asServiceRole.integrations.Core.SendEmail({

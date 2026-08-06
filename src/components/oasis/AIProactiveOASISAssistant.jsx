@@ -26,6 +26,11 @@ export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = fal
   const [analysis, setAnalysis] = useState(null);
   const queryClient = useQueryClient();
 
+  // Clear sticky OASIS analysis when the parent chart switches patients.
+  React.useEffect(() => {
+    setAnalysis(null);
+  }, [patientId]);
+
   const { data: patient } = useQuery({
     queryKey: ['patient', patientId],
     queryFn: async () => {
@@ -36,21 +41,21 @@ export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = fal
   });
 
   const { data: visits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId],
+    queryKey: ['patientVisits', patientId, 20],
     queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 20),
     enabled: !!patientId,
     initialData: []
   });
 
   const { data: incidents = [] } = useQuery({
-    queryKey: ['patientIncidents', patientId],
+    queryKey: ['patientIncidents', patientId, 10],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 10),
     enabled: !!patientId,
     initialData: []
   });
 
   const { data: existingOASIS = [] } = useQuery({
-    queryKey: ['patientOASIS', patientId],
+    queryKey: ['patientOASIS', patientId, PATIENT_HISTORY_ROWS],
     queryFn: () => base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', PATIENT_HISTORY_ROWS),
     enabled: !!patientId,
     initialData: []

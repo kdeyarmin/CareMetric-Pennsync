@@ -14,12 +14,13 @@ import {
   Activity,
   Heart
 } from "lucide-react";
-import { format, differenceInDays, parseISO } from "date-fns";
+import { format, differenceInDays } from "date-fns";
+import { parseLocalDate } from "@/lib/dateLocal";
 
 const parseValidDate = (value) => {
   if (!value) return null;
-  const date = parseISO(String(value));
-  return Number.isNaN(date.getTime()) ? null : date;
+  const date = parseLocalDate(String(value));
+  return date && !Number.isNaN(date.getTime()) ? date : null;
 };
 
 export default function RealTimePatientAlerts({ 

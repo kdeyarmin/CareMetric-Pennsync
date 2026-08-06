@@ -71,7 +71,7 @@ export default function NursePerformanceDashboard() {
   });
 
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers'],
+    queryKey: ['allUsers', ALL_ROWS],
     queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
     enabled: isAdminView(currentUser),
     initialData: []

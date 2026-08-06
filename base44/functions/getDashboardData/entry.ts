@@ -34,16 +34,45 @@ Deno.serve(async (req) => {
     // kept inline since Deno functions can't import frontend modules.) Without
     // the account_type checks a super admin who isn't yet role:'admin' would
     // incorrectly get the nurse view.
-    const isAdmin =
+    const isPlatformAdmin =
       user.role === 'admin' ||
-      user.account_type === 'agency_admin' ||
       user.account_type === 'super_admin';
+    const isAgencyAdmin = user.account_type === 'agency_admin';
 
-    if (isAdmin) {
+    // Platform/facility admins: unchanged agency-wide lists.
+    if (isPlatformAdmin) {
       const [patients, visits, incidents] = await Promise.all([
         sr.Patient.filter({ status: 'active' }, '-updated_date', 100),
         sr.Visit.filter({ visit_date: today }, '-visit_time'),
         sr.Incident.list('-incident_date', 20),
+      ]);
+      return Response.json({ patients, visits, incidents });
+    }
+
+    // Agency admins: only patients tied to staff in their agency_name
+    // (parity with bulkCreateDocumentPackages) — not every tenant's PHI.
+    if (isAgencyAdmin) {
+      if (!user.agency_name) {
+        return Response.json({ patients: [], visits: [], incidents: [] });
+      }
+      const agencyUsers = await sr.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const allActive = await sr.Patient.filter({ status: 'active' }, '-updated_date', 500);
+      const patients = (allActive || []).filter((p) => {
+        if (p.created_by && agencyEmails.has(p.created_by)) return true;
+        return Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e));
+      }).slice(0, 100);
+      const ids = patients.map((p) => p.id).filter(Boolean);
+      if (ids.length === 0) {
+        return Response.json({ patients, visits: [], incidents: [] });
+      }
+      const [visits, incidents] = await Promise.all([
+        sr.Visit.filter({ patient_id: { $in: ids }, visit_date: today }, '-visit_time'),
+        sr.Incident.filter({ patient_id: { $in: ids } }, '-incident_date', 20),
       ]);
       return Response.json({ patients, visits, incidents });
     }

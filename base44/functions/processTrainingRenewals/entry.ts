@@ -37,6 +37,29 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+
+function localDaysUntil(dateStr, today = new Date()) {
+  if (!dateStr) return null;
+  const raw = String(dateStr).trim();
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number);
+    const due = new Date(y, m - 1, d);
+    const todayLocal = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return Math.round((due.getTime() - todayLocal.getTime()) / (1000 * 60 * 60 * 24));
+  }
+  const due = new Date(dateStr);
+  if (Number.isNaN(due.getTime())) return null;
+  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function localDatePlusDays(today, days) {
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -48,19 +71,22 @@ Deno.serve(async (req) => {
     if (authError) return authError;
 
     const today = new Date();
+    const runId = crypto.randomUUID();
     // Bound the fetch itself to the 30-day-or-already-expired window (matching
     // the per-cert check below): without this, a tenant with a large backlog of
     // long-expired-but-not-revoked certs would sort BEFORE near-expiry ones
     // under ascending 'expiration_date' and could fill the 5000-row cap before
     // the certs that actually need a renewal are ever reached.
-    const windowEnd = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    // windowEnd uses local calendar days (not UTC ISO) so US evenings don't
+    // shrink/expand the window by a day.
+    const windowEnd = localDatePlusDays(today, 30);
     const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false, expiration_date: { $lte: windowEnd } }, 'expiration_date', 5000);
     let renewalAssignmentsCreated = 0;
 
     for (const certificate of certificates) {
       if (!certificate.expiration_date || certificate.annual_cycle_year) continue;
-      const expiration = new Date(`${certificate.expiration_date}T00:00:00Z`);
-      const daysUntilExpiration = Math.ceil((expiration.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const daysUntilExpiration = localDaysUntil(certificate.expiration_date, today);
+      if (daysUntilExpiration === null) continue;
       // Create the renewal within 30 days of expiration (not only on the exact
       // 30-day mark), so a missed cron run doesn't skip it. The existing-renewal
       // check below prevents a duplicate assignment once one has been created.
@@ -86,14 +112,27 @@ Deno.serve(async (req) => {
       // renewal assignment is 'completed' (so it isn't caught by the active-status
       // guard above) — without this check the job re-assigns the renewal and
       // re-notifies every run despite a valid newer certificate.
-      const hasNewerCertificate = certificates.some((c) =>
-        c.id !== certificate.id &&
-        c.course_id === certificate.course_id &&
-        c.user_id === certificate.user_id &&
-        c.expiration_date &&
-        new Date(`${c.expiration_date}T00:00:00Z`).getTime() > expiration.getTime()
-      );
+      const hasNewerCertificate = certificates.some((c) => {
+        if (c.id === certificate.id || c.course_id !== certificate.course_id || c.user_id !== certificate.user_id || !c.expiration_date) return false;
+        const otherDays = localDaysUntil(c.expiration_date, today);
+        return otherDays != null && otherDays > daysUntilExpiration;
+      });
       if (hasNewerCertificate) continue;
+
+      // Claim before create so overlapping cron runs don't mint duplicate renewals.
+      try {
+        await base44.asServiceRole.entities.TrainingCertificate.update(certificate.id, {
+          renewal_assignment_claimed_by: runId,
+          renewal_assignment_claimed_at: new Date().toISOString(),
+        });
+      } catch {
+        continue;
+      }
+      const claimCheck = await base44.asServiceRole.entities.TrainingCertificate
+        .filter({ id: certificate.id }, '-created_date', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].renewal_assignment_claimed_by !== runId) {
+        continue;
+      }
 
       const newAssignment = await base44.asServiceRole.entities.TrainingAssignment.create({
         course_id: certificate.course_id,

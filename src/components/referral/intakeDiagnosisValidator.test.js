@@ -20,10 +20,18 @@ test("R-chapter symptom codes are unacceptable (RTP)", () => {
   assert.equal(r.category, "symptom_code");
 });
 
-test("Z-chapter status codes are unacceptable (RTP)", () => {
-  const z = validatePrimaryDiagnosis("Z48.00"); // aftercare surgical
+test("Z-chapter status codes are unacceptable (RTP) unless surgical-aftercare", () => {
+  const z = validatePrimaryDiagnosis("Z79.4"); // long-term insulin use — status, not aftercare
   assert.equal(z.acceptable, false);
   assert.equal(z.category, "status_code");
+});
+
+test("surgical-aftercare Z codes are acceptable PDGM principals", () => {
+  for (const code of ["Z47.1", "Z48.00", "Z96.641"]) {
+    const z = validatePrimaryDiagnosis(code);
+    assert.equal(z.acceptable, true, `${code} should be an acceptable principal`);
+    assert.equal(z.category, "acceptable");
+  }
 });
 
 test("a curated unacceptable code is flagged", () => {
@@ -95,8 +103,16 @@ test("validateIntakeDiagnoses passes a good primary and previews its group", () 
 // ── Regression: preview vs RTP coherence (2026-07 review) ───────────────────
 
 test("an RTP-unacceptable principal never previews with high confidence", () => {
-  const rtp = validatePrimaryDiagnosis("Z47.1");
-  const preview = previewClinicalGroup("Z47.1");
+  const rtp = validatePrimaryDiagnosis("Z79.4");
+  const preview = previewClinicalGroup("Z79.4");
   assert.equal(rtp.acceptable, false);
   assert.equal(preview.confidence, "low", "the preview must not confidently group a guaranteed-RTP code");
+});
+
+test("surgical-aftercare Z principals preview MMTA Surgical Aftercare with confidence", () => {
+  const ok = validatePrimaryDiagnosis("Z47.1");
+  const preview = previewClinicalGroup("Z47.1");
+  assert.equal(ok.acceptable, true);
+  assert.equal(preview.clinical_group, "MMTA - Surgical Aftercare");
+  assert.notEqual(preview.confidence, "low");
 });

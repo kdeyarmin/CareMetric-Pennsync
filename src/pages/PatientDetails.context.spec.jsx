@@ -67,7 +67,7 @@ describe('PatientDetails — getPatientContext seeding', () => {
     // Seeding: a child reading ['patientVisits','p1'] (or ['patient','p1']) finds
     // the payload already in cache — no second request.
     await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(CTX.visits), { timeout: 10000 });
-    expect(qc.getQueryData(['patient', 'p1'])).toEqual([PATIENT]);
+    expect(qc.getQueryData(['patient', 'p1'])).toEqual(PATIENT);
     expect(qc.getQueryData(['patientActiveAlerts', 'p1'])).toEqual(CTX.activeAlerts);
 
     // getPatientContext was the only patient-data round-trip the page issued.

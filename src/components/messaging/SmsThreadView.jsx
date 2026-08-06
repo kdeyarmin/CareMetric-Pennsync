@@ -42,6 +42,7 @@ export default function SmsThreadView({
   patient,
   currentUser,
   optedOut,
+  canText = !optedOut,
   onSent,
   onBack,
 }) {
@@ -85,15 +86,14 @@ export default function SmsThreadView({
     resendMutation.mutate(msg.body);
   };
 
-  const { data: settingsArr = [] } = useQuery({
-    queryKey: ["agency-settings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+  const { data: agencySettingsRow = null } = useQuery({
+    queryKey: ["agencySettings"],
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
     staleTime: 5 * 60 * 1000,
-    initialData: [],
   });
-  const quickReplies = getQuickReplies(settingsArr[0]);
-  const templates = getTemplates(settingsArr[0]);
-  const templateContext = buildTemplateContext({ patient, user: currentUser, settings: settingsArr[0] });
+  const quickReplies = getQuickReplies(agencySettingsRow);
+  const templates = getTemplates(agencySettingsRow);
+  const templateContext = buildTemplateContext({ patient, user: currentUser, settings: agencySettingsRow });
   const applyTemplate = (body) => setDraft(renderTemplate(body, templateContext));
 
   // Keep the latest message in view as the thread loads or grows.
@@ -158,7 +158,7 @@ export default function SmsThreadView({
                     <span className="capitalize">{msg.status.replace(/_/g, " ")}</span>
                   )}
                 </div>
-                {outbound && failed && !optedOut && (
+                {outbound && failed && canText && (
                   <button
                     type="button"
                     onClick={() => handleResend(msg)}
@@ -177,13 +177,22 @@ export default function SmsThreadView({
         <div ref={bottomRef} />
       </div>
 
-      {/* Compose / opted-out notice */}
+      {/* Compose / consent gate */}
       {optedOut ? (
         <div className="flex-shrink-0 border-t border-slate-200 bg-white p-3">
           <Alert className="border-red-200 bg-red-50">
             <AlertTriangle className="h-4 w-4 text-red-600" />
             <AlertDescription className="text-sm text-red-900">
               This patient opted out of texts (replied STOP). You can't text them until they reply START.
+            </AlertDescription>
+          </Alert>
+        </div>
+      ) : !canText ? (
+        <div className="flex-shrink-0 border-t border-slate-200 bg-white p-3">
+          <Alert className="border-amber-200 bg-amber-50">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-sm text-amber-900">
+              No texting consent on file for this number. Record opt-in (patient chart → Contact) before sending.
             </AlertDescription>
           </Alert>
         </div>

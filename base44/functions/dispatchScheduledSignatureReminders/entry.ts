@@ -99,6 +99,15 @@ Deno.serve(async (req) => {
         result.skipped++;
         continue;
       }
+      // Cancel can race the claim (offboard stamps canceled_at). Claim may
+      // overwrite status to 'sending' but canceled_at survives — honor it.
+      if (claimCheck[0].canceled_at || claimCheck[0].status === 'canceled') {
+        await base44.asServiceRole.entities.ScheduledSignatureReminder.update(row.id, {
+          status: 'canceled', claimed_by: '', claimed_at: null,
+        }).catch(() => {});
+        result.canceled++;
+        continue;
+      }
       result.processed++;
 
       const fail = async (reason) => {

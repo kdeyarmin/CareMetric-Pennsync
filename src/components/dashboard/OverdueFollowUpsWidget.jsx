@@ -35,7 +35,7 @@ export default function OverdueFollowUpsWidget() {
   const adminView = isAdminView(currentUser);
 
   const { data: referrals } = useQuery({
-    queryKey: ["referrals"],
+    queryKey: ["referrals", 200],
     queryFn: () => base44.entities.Referral.list("-created_date", 200),
     enabled: adminView,
   });

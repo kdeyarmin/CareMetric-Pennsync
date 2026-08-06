@@ -12,6 +12,12 @@ Deno.serve(async (req) => {
 
     const { employeeId, certificateIds, dateRangeStart, dateRangeEnd } = await req.json();
 
+    // Require the id up front: an undefined employeeId is dropped by the SDK's
+    // filter, so User/certificate queries below would run unscoped.
+    if (!employeeId || typeof employeeId !== 'string') {
+      return Response.json({ error: 'employeeId is required' }, { status: 400 });
+    }
+
     // Authorization: only admins can generate for others, users can only generate for themselves
     const isSuperAdmin = user.account_type === 'super_admin';
     const isAgencyAdmin = user.account_type === 'agency_admin';

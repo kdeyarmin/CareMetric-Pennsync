@@ -20,6 +20,10 @@ import {
   Info
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isSafeExternalUrl } from "@/components/utils/security";
+
+const isSafePreviewUrl = (url) =>
+  typeof url === "string" && (url.startsWith("blob:") || isSafeExternalUrl(url));
 
 export default function OASISPDFComparison({ 
   uploadedFileUrl, 
@@ -28,6 +32,7 @@ export default function OASISPDFComparison({
   oasisUploadId,
   onDataCorrected 
 }) {
+  const safeUploadedFileUrl = isSafePreviewUrl(uploadedFileUrl) ? uploadedFileUrl : null;
   const [editingField, setEditingField] = useState(null);
   const [editValues, setEditValues] = useState({});
   const [originalValues, setOriginalValues] = useState({});
@@ -276,11 +281,17 @@ export default function OASISPDFComparison({
                 <Badge variant="outline">Source</Badge>
               </div>
               <div className="border-2 border-slate-300 rounded-lg overflow-hidden bg-slate-100">
-                <iframe
-                  src={uploadedFileUrl}
-                  className="w-full h-[800px]"
-                  title="OASIS PDF"
-                />
+                {safeUploadedFileUrl ? (
+                  <iframe
+                    src={safeUploadedFileUrl}
+                    className="w-full h-[800px]"
+                    title="OASIS PDF"
+                  />
+                ) : (
+                  <div className="w-full h-[800px] flex items-center justify-center text-slate-500 text-sm">
+                    PDF preview unavailable
+                  </div>
+                )}
               </div>
             </div>
           )}

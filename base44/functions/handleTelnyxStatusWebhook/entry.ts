@@ -804,6 +804,11 @@ async function handleFaxEvent(base44, payload) {
     } else {
       exhaustedNow = retryCfg.notifyOnFinalFailure && !faxLog.final_failure_notified;
       update.final_failure_notified = true;
+      if (exhaustedNow) {
+        update.failure_notify_claimed_by = typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `fax-fail-${Date.now()}`;
+      }
     }
     update.failure_reason = failureReason;
   }
@@ -811,30 +816,60 @@ async function handleFaxEvent(base44, payload) {
   await base44.asServiceRole.entities.FaxLog.update(faxLog.id, update);
 
   // Tell the sender when a fax was delivered successfully (parity with the old
-  // handleTwilioFaxWebhook). Guarded by delivery_confirmation_sent so a
-  // re-delivered webhook can't double-notify.
+  // handleTwilioFaxWebhook). Claim + re-read so poller/webhook races don't
+  // double-notify; release stamp if create fails so a later run can retry.
   if (mapped === 'delivered' && faxLog.sent_by && !faxLog.delivery_confirmation_sent) {
-    await base44.asServiceRole.entities.FaxLog.update(faxLog.id, { delivery_confirmation_sent: true }).catch(() => {});
-    const recipientName = faxLog.to_name ? `${faxLog.to_name} (${faxLog.to_number})` : faxLog.to_number;
-    await base44.asServiceRole.entities.Notification.create({
-      user_email: faxLog.sent_by,
-      title: '✅ Fax delivered',
-      message: `Your fax to ${recipientName} was delivered successfully (${update.pages || faxLog.pages || 'N/A'} pages).`,
-      type: 'fax_delivered', priority: 'medium', metadata: { related_entity: 'FaxLog', related_entity_id: faxLog.id },
-      is_read: false, action_url: `/SendFax?tab=logs&fax_id=${faxLog.id}`,
-    }).catch((err) => console.error('Failed to send fax delivered notification:', err));
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `fax-del-${Date.now()}`;
+    await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
+      delivery_confirmation_sent: true,
+      delivery_notify_claimed_by: claimToken,
+    }).catch(() => {});
+    const claimCheck = await base44.asServiceRole.entities.FaxLog
+      .filter({ id: faxLog.id }, '-created_date', 1).catch(() => []);
+    if (claimCheck[0]?.delivery_notify_claimed_by === claimToken) {
+      const recipientName = faxLog.to_name ? `${faxLog.to_name} (${faxLog.to_number})` : faxLog.to_number;
+      try {
+        await base44.asServiceRole.entities.Notification.create({
+          user_email: faxLog.sent_by,
+          title: '✅ Fax delivered',
+          message: `Your fax to ${recipientName} was delivered successfully (${update.pages || faxLog.pages || 'N/A'} pages).`,
+          type: 'fax_delivered', priority: 'medium', metadata: { related_entity: 'FaxLog', related_entity_id: faxLog.id },
+          is_read: false, action_url: `/SendFax?tab=logs&fax_id=${faxLog.id}`,
+        });
+      } catch (err) {
+        console.error('Failed to send fax delivered notification:', err);
+        await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
+          delivery_confirmation_sent: false,
+          delivery_notify_claimed_by: '',
+        }).catch(() => {});
+      }
+    }
   }
 
   // Tell the sender when a fax has permanently failed (no retries left).
-  if (exhaustedNow && faxLog.sent_by) {
-    const recipient = faxLog.to_name ? `${faxLog.to_name} (${faxLog.to_number})` : faxLog.to_number;
-    await base44.asServiceRole.entities.Notification.create({
-      user_email: faxLog.sent_by,
-      title: '❌ Fax failed',
-      message: `"${faxLog.document_name || 'Your document'}" to ${recipient} could not be delivered (${update.failure_reason}). Verify the number and resend.`,
-      type: 'fax_failed', priority: 'high', metadata: { related_entity: 'FaxLog', related_entity_id: faxLog.id },
-      is_read: false, action_url: `/SendFax?fax_id=${faxLog.id}`,
-    }).catch((err) => console.error('Failed to send fax failure notification:', err));
+  if (exhaustedNow && faxLog.sent_by && update.failure_notify_claimed_by) {
+    const claimCheck = await base44.asServiceRole.entities.FaxLog
+      .filter({ id: faxLog.id }, '-created_date', 1).catch(() => []);
+    if (claimCheck[0]?.failure_notify_claimed_by === update.failure_notify_claimed_by) {
+      const recipient = faxLog.to_name ? `${faxLog.to_name} (${faxLog.to_number})` : faxLog.to_number;
+      try {
+        await base44.asServiceRole.entities.Notification.create({
+          user_email: faxLog.sent_by,
+          title: '❌ Fax failed',
+          message: `"${faxLog.document_name || 'Your document'}" to ${recipient} could not be delivered (${update.failure_reason}). Verify the number and resend.`,
+          type: 'fax_failed', priority: 'high', metadata: { related_entity: 'FaxLog', related_entity_id: faxLog.id },
+          is_read: false, action_url: `/SendFax?fax_id=${faxLog.id}`,
+        });
+      } catch (err) {
+        console.error('Failed to send fax failure notification:', err);
+        await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
+          final_failure_notified: false,
+          failure_notify_claimed_by: '',
+        }).catch(() => {});
+      }
+    }
   }
   return Response.json({ success: true, status: mapped });
 }

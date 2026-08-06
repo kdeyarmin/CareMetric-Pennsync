@@ -25,7 +25,10 @@ Deno.serve(async (req) => {
     const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
     let candidates = allUsers.filter((candidate) => candidate.email);
 
-    if (user.account_type === 'agency_admin' && user.agency_name) {
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
+      }
       candidates = candidates.filter((candidate) => candidate.agency_name === user.agency_name);
     }
 
@@ -101,8 +104,50 @@ Deno.serve(async (req) => {
       }));
 
     if (assignmentsToCreate.length > 0) {
-      await Promise.all(assignmentsToCreate.map((assignment) => base44.asServiceRole.entities.TrainingAssignment.create(assignment)));
-      await Promise.all(assignmentsToCreate.map((assignment) =>
+      // Create serially with a fresh existence check per assignee so concurrent
+      // admin clicks / cron enrolls shrink the duplicate-assignment race window.
+      const created = [];
+      for (const assignment of assignmentsToCreate) {
+        const existing = await base44.asServiceRole.entities.TrainingAssignment.filter(
+          { course_id: courseId, assigned_to_user_id: assignment.assigned_to_user_id },
+          '-created_date',
+          20,
+        ).catch(() => []);
+        const already = (existing || []).some(
+          (row) => (row.annual_cycle_year ?? null) === targetCycleYear && row.archived_status !== true,
+        );
+        if (already) continue;
+        try {
+          const createdRow = await base44.asServiceRole.entities.TrainingAssignment.create(assignment);
+          // Concurrent creates can still race past the existence check. Re-read
+          // and keep the earliest row for this cycle; skip notify if we lost.
+          const afterCreate = await base44.asServiceRole.entities.TrainingAssignment.filter(
+            { course_id: courseId, assigned_to_user_id: assignment.assigned_to_user_id },
+            '-created_date',
+            20,
+          ).catch(() => []);
+          const activeAfter = (afterCreate || []).filter(
+            (row) => (row.annual_cycle_year ?? null) === targetCycleYear && row.archived_status !== true,
+          );
+          if (activeAfter.length > 1) {
+            const keepId = activeAfter
+              .slice()
+              .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')))[0]?.id;
+            for (const row of activeAfter) {
+              if (row.id !== keepId) {
+                await base44.asServiceRole.entities.TrainingAssignment.delete(row.id).catch(() => {});
+              }
+            }
+            if (createdRow?.id && keepId && createdRow.id !== keepId) {
+              continue;
+            }
+          }
+          created.push(assignment);
+        } catch (err) {
+          console.error('assignInService create failed', assignment.assigned_to_user_id, err?.message || err);
+        }
+      }
+      await Promise.all(created.map((assignment) =>
         base44.asServiceRole.entities.Notification.create({
           user_email: assignment.assigned_to_user_id,
           title: 'New AI Compliance In-Service Assigned',
@@ -112,8 +157,11 @@ Deno.serve(async (req) => {
           action_url: '/MyTraining',
           action_label: 'Open training',
           metadata: { course_id: course.id, due_date: dueDate }
-        })
+        }).catch((err) => console.error('assignInService notify failed', err?.message || err))
       ));
+      // Replace bulk list so response counts reflect what actually landed.
+      assignmentsToCreate.length = 0;
+      assignmentsToCreate.push(...created);
     }
 
     await base44.asServiceRole.entities.TrainingAuditLog.create({

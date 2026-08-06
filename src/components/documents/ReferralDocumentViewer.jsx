@@ -40,7 +40,7 @@ export default function ReferralDocumentViewer({ patientId }) {
   const processedReferrals = referrals.filter(r => r.processed_document_url || r.document_url);
 
   const { data: users = [] } = useQuery({
-    queryKey: ['allUsers'],
+    queryKey: ['allUsers', ALL_ROWS],
     queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
     initialData: [],
   });

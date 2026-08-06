@@ -68,17 +68,20 @@ export function sanitizeInput(input) {
 
 /**
  * Validate that a URL is safe to navigate to / open in a new tab. Only http(s)
- * (and protocol-relative) URLs are allowed; javascript:, data:, vbscript: etc.
- * are rejected. Use before window.open()/href when the URL comes from entity or
- * AI-generated data.
+ * and same-origin site-relative paths are allowed; javascript:, data:,
+ * vbscript:, and protocol-relative `//host` URLs are rejected. Protocol-relative
+ * links inherit the page scheme and open an arbitrary third-party host — an
+ * open-redirect / phishing vector when the URL comes from entity or AI data.
+ * Use before window.open()/href for untrusted URLs.
  * @param {string} url
  * @returns {boolean}
  */
 export function isSafeExternalUrl(url) {
   if (typeof url !== 'string' || url.trim() === '') return false;
   const trimmed = url.trim();
-  // Allow protocol-relative and site-relative URLs.
-  if (trimmed.startsWith('//') || trimmed.startsWith('/')) return true;
+  // Site-relative only (must check // first — it also starts with /).
+  if (trimmed.startsWith('//')) return false;
+  if (trimmed.startsWith('/')) return true;
   try {
     const protocol = new URL(trimmed, window.location.origin).protocol;
     return protocol === 'http:' || protocol === 'https:';

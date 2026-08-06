@@ -10,8 +10,9 @@ import { useQuery } from '@tanstack/react-query';
 import ReportFilters from './ReportFilters';
 import { toCsv, exportTimestamp } from '../admin/csvExport';
 import { toast } from 'sonner';
+import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : '—');
+const formatDate = (value) => formatLocalDate(value) || '—';
 
 const statusColors = {
   active: 'bg-blue-100 text-blue-800',
@@ -22,11 +23,12 @@ const statusColors = {
 };
 
 // An enrollment is considered out of compliance when it is overdue, or still
-// open past its due date.
+// open past its due date. Date-only due dates compare on the local calendar so
+// UTC midnight parsing does not flag them overdue the evening before.
 const isOverdue = (e) => {
   if (e.status === 'completed' || e.status === 'cancelled') return false;
   if (e.status === 'overdue') return true;
-  return !!e.due_date && new Date(e.due_date) < new Date();
+  return isPastLocalDueDate(e.due_date);
 };
 
 export default function PlanComplianceReport() {

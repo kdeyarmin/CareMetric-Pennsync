@@ -136,3 +136,27 @@ export function toLocalISODate(date = new Date()) {
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+/**
+ * Whether a due date is overdue on the local calendar.
+ *
+ * Date-only values ("YYYY-MM-DD") compare against local midnight of `now`.
+ * "Due today" is NOT overdue — only a due date strictly before today counts.
+ * Datetime values compare against the full instant of `now`.
+ *
+ * @param {string|number|Date} dueDate
+ * @param {Date} [now]
+ * @returns {boolean}
+ */
+export function isPastLocalDueDate(dueDate, now = new Date()) {
+  if (dueDate == null || dueDate === "") return false;
+  const raw = String(dueDate).trim();
+  const dateOnly = /^\d{4}-\d{1,2}-\d{1,2}$/.test(raw);
+  const due = parseLocalDate(dueDate);
+  if (!due) return false;
+  if (dateOnly) {
+    const today = startOfLocalDay(now);
+    return !!today && due < today;
+  }
+  return due < now;
+}

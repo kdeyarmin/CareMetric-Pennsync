@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -122,6 +131,14 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -131,6 +148,7 @@ Deno.serve(async (req) => {
     if (!currentUser || (currentUser.role !== 'admin' && currentUser.account_type !== 'agency_admin' && currentUser.account_type !== 'super_admin')) {
       return Response.json({ error: 'Unauthorized. Admin access required.' }, { status: 403 });
     }
+    if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
 
     const { userEmail } = await req.json();
 
@@ -172,10 +190,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
     }
 
+    // Agency admins may only reset staff in their own agency (parity with
+    // getUserActivityLog / analyzeNursePerformance).
+    if (currentUser.account_type === 'agency_admin') {
+      if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
+    }
+
     // Update user password using service role
     await base44.asServiceRole.auth.updateUserPassword(userEmail, tempPassword);
 
-    const appUrl = `https://caremetricai.base44.app`;
+    const appUrl = getAppBaseUrl();
 
     // Send email with temporary password
     await base44.asServiceRole.integrations.Core.SendEmail({

@@ -93,6 +93,15 @@
         "type": "number"
       },
       "description": "Renewal reminder tiers (days before expiration) already sent by sendTrainingNotifications, so a missed cron run doesn't skip a tier permanently."
+    },
+    "renewal_assignment_claimed_by": {
+      "type": "string",
+      "description": "Per-run claim token so overlapping processTrainingRenewals / processAnnualEducationRenewals crons do not create duplicate renewal assignments"
+    },
+    "renewal_assignment_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When renewal_assignment_claimed_by was written"
     }
   },
   "required": [

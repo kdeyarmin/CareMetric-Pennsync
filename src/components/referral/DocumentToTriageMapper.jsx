@@ -10,6 +10,8 @@ import SearchablePatientSelect from "../ui/SearchablePatientSelect";
 import { todayEastern } from "@/components/utils/timezone";
 import { checkExtractedPatientMatch } from "./documentPatientMatch";
 import { findDuplicatesForCandidate } from "../patient/patientDuplicateUtils";
+import { referralPatientReadiness, splitPatientName } from "./referralPatientReadiness";
+import { toast } from "sonner";
 
 export default function DocumentToTriageMapper({ onTriageCreated }) {
   const navigate = useNavigate();
@@ -84,16 +86,38 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
     try {
       let patientId = mapping.patientId;
 
-      // Create or update patient
-      if (mapping.createPatient && extractedData.patient?.last_name) {
+      // Create or update patient — same readiness gate as triage/intake so we
+      // never mint "Unknown"/"Doe," placeholder charts into the active census.
+      if (mapping.createPatient) {
+        const readiness = referralPatientReadiness({
+          patient_name: extractedData.patient?.full_name
+            || [extractedData.patient?.first_name, extractedData.patient?.last_name].filter(Boolean).join(' '),
+          full_name: extractedData.patient?.full_name,
+          date_of_birth: extractedData.patient?.date_of_birth,
+          medical_record_number: extractedData.patient?.medical_record_number || extractedData.patient?.mrn,
+          phone: extractedData.patient?.phone,
+          address: extractedData.patient?.address,
+        });
+        // Prefer structured first/last when present and well-formed; otherwise
+        // use the readiness splitter (handles "Last, First").
+        const structured = splitPatientName(
+          extractedData.patient?.full_name
+            || [extractedData.patient?.first_name, extractedData.patient?.last_name].filter(Boolean).join(' ')
+        );
+        if (!readiness.ready) {
+          setError(`Cannot create patient chart. Missing: ${readiness.missing.join(', ')}.`);
+          toast.error(`Cannot create patient chart. Missing: ${readiness.missing.join(', ')}.`);
+          setProcessing(false);
+          return;
+        }
         const patientData = {
-          first_name: extractedData.patient.first_name || "Unknown",
-          last_name: extractedData.patient.last_name || "Unknown",
-          date_of_birth: extractedData.patient.date_of_birth || "",
-          medical_record_number: extractedData.patient.medical_record_number || "",
-          phone: extractedData.patient.phone || "",
-          email: extractedData.patient.email || "",
-          address: extractedData.patient.address || "",
+          first_name: readiness.first_name || structured.first_name,
+          last_name: readiness.last_name || structured.last_name,
+          date_of_birth: readiness.identifiers.date_of_birth || "",
+          medical_record_number: readiness.identifiers.medical_record_number || "",
+          phone: readiness.identifiers.phone || "",
+          email: extractedData.patient?.email || "",
+          address: readiness.identifiers.address || "",
           primary_diagnosis: extractedData.clinical?.primary_diagnosis || "",
           secondary_diagnoses: extractedData.clinical?.secondary_diagnoses || [],
           // Never synthesize a clinical negative: an empty extraction stays
@@ -184,6 +208,9 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
         // in the "Update Existing Patient" dropdown and app-wide patient/referral lists.
         queryClient.invalidateQueries({ queryKey: ['patients-for-triage-mapper'] });
         queryClient.invalidateQueries({ queryKey: ['patients'] });
+        queryClient.invalidateQueries({ queryKey: ['patients-list'] });
+        queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
+        queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
         queryClient.invalidateQueries({ queryKey: ['referrals'] });
 
         setResult({

@@ -26,7 +26,8 @@ import {
   Plus,
   History
 } from "lucide-react";
-import { format, differenceInDays, isValid, parseISO } from "date-fns";
+import { format, differenceInDays, isValid } from "date-fns";
+import { parseLocalDate } from "@/lib/dateLocal";
 import PatientRiskStratification from "./PatientRiskStratification";
 
 export default function AIPatientHistorySummary({
@@ -349,7 +350,10 @@ Return JSON:
               </div>
               <div className="bg-white p-2 rounded-lg border text-center">
                 <FileText className="w-4 h-4 mx-auto mb-1 text-green-500" />
-                <p className="text-sm font-bold text-slate-900">{summary.stats?.last_visit_date && isValid(parseISO(summary.stats.last_visit_date)) ? format(parseISO(summary.stats.last_visit_date), 'MM/dd') : '—'}</p>
+                <p className="text-sm font-bold text-slate-900">{(() => {
+                  const d = parseLocalDate(summary.stats?.last_visit_date);
+                  return d && isValid(d) ? format(d, 'MM/dd') : '—';
+                })()}</p>
                 <p className="text-xs text-slate-500">Last Visit</p>
               </div>
             </div>

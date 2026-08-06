@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -138,6 +146,14 @@ function renderBrandedEmail(opts) {
  * }
  */
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -147,6 +163,7 @@ Deno.serve(async (req) => {
     if (!currentUser) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
 
     const body = await req.json();
     const { user_email, title, message, type, priority = 'medium', action_url, action_label, metadata, patient_id } = body;
@@ -185,6 +202,47 @@ Deno.serve(async (req) => {
       const a = String(action_url);
       if (!a.startsWith('/') || a.startsWith('//')) {
         return Response.json({ error: 'action_url must be a relative in-app path' }, { status: 400 });
+      }
+    }
+
+    const isAdminLike = (u) => !!u && (
+      u.role === 'admin' || u.account_type === 'agency_admin' || u.account_type === 'super_admin'
+    );
+    const callerIsAdmin = isAdminLike(currentUser);
+    // Non-admins may only create low-risk peer/admin-notify types (account
+    // deletion uses system_update → admins). High-severity clinical/system
+    // types are admin-only.
+    const NON_ADMIN_TYPES = new Set([
+      'system_update', 'info', 'message_received', 'task_assigned', 'task_due_soon',
+    ]);
+    if (!callerIsAdmin && !NON_ADMIN_TYPES.has(type)) {
+      return Response.json({ error: 'Only admins can create this notification type' }, { status: 403 });
+    }
+    const recipientEmail = String(user_email).trim().toLowerCase();
+    const callerEmail = String(currentUser.email || '').trim().toLowerCase();
+    // Resolve the recipient once for peer-notify and agency-admin tenant gates.
+    const recipientRows = await base44.asServiceRole.entities.User
+      .filter({ email: recipientEmail }, undefined, 1)
+      .catch(() => []);
+    const recipient = recipientRows?.[0] || null;
+    if (!callerIsAdmin && recipientEmail !== callerEmail) {
+      // Peer notify: recipient must be an admin (e.g. account-deletion request).
+      if (!recipient || !isAdminLike(recipient)) {
+        return Response.json({
+          error: 'Non-admins may only notify themselves or an administrator',
+        }, { status: 403 });
+      }
+    }
+    // Agency admins (and peer-notifies from agency-scoped staff) may only target
+    // users in their own agency — otherwise createNotification is a cross-tenant
+    // spam / phishing channel via the service-role Notification create + email.
+    if (currentUser.account_type === 'agency_admin' ||
+        (!callerIsAdmin && recipientEmail !== callerEmail)) {
+      if (!currentUser.agency_name || !recipient ||
+          recipient.agency_name !== currentUser.agency_name) {
+        return Response.json({
+          error: 'Forbidden: recipient is outside your agency',
+        }, { status: 403 });
       }
     }
 
@@ -251,12 +309,10 @@ Deno.serve(async (req) => {
                            userPrefs.digest_mode === 'instant';
 
     if (shouldSendEmail) {
-      // Check quiet hours. The quiet_hours start/end times are entered by the
-      // user in THEIR local time, but Deno Deploy runs in UTC — using
-      // now.getHours() compared the window against UTC and shifted it by the
-      // agency's offset (~4–5h for ET), so emails fired during the user's night
-      // or were suppressed during their day. Evaluate the current HH:MM in the
-      // agency's configured timezone instead (default America/New_York).
+      // Check quiet hours. Quiet-hour start/end times are entered relative to the
+      // agency's configured business timezone (Agency Settings), not an arbitrary
+      // per-user IANA zone — Deno has no browser timezone for the recipient.
+      // Evaluate the current HH:MM in that agency timezone (default America/New_York).
       const agencyRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
       const tz = agencyRows[0]?.business_hours_timezone || agencyRows[0]?.duty_timezone || 'America/New_York';
       let currentTime;
@@ -287,7 +343,7 @@ Deno.serve(async (req) => {
         try {
           // Deep-link the in-app action_url (a relative path) into an absolute URL
           // so the email button actually works.
-          const appBase = 'https://caremetricai.base44.app';
+          const appBase = getAppBaseUrl();
           await base44.asServiceRole.integrations.Core.SendEmail({
             to: user_email,
             from_name: 'PennSync by CareMetric',

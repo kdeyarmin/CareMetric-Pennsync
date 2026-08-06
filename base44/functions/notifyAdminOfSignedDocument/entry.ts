@@ -122,6 +122,14 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -148,12 +156,27 @@ Deno.serve(async (req) => {
 
     // Shared idempotency with onDocumentSigned: both functions may be wired to
     // the same DocumentSignature-update trigger, and the trigger re-fires on
-    // every later update. Claim the shared admin_notified flag so admins get at
-    // most one "Document Signed" email per signature, whichever fires first.
+    // every later update. Claim with a unique token + re-read so concurrent
+    // fires don't both email every admin (boolean alone races).
     if (signature.admin_notified) {
       return Response.json({ success: true, skipped: 'admin already notified' });
     }
-    await base44.asServiceRole.entities.DocumentSignature.update(signature.id, { admin_notified: true }).catch(() => {});
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `admin-notify-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.asServiceRole.entities.DocumentSignature.update(signature.id, {
+        admin_notified: true,
+        admin_notify_claimed_by: claimToken,
+      });
+    } catch {
+      return Response.json({ success: true, skipped: 'could not claim admin notify' });
+    }
+    const claimCheck = await base44.asServiceRole.entities.DocumentSignature
+      .filter({ id: signature.id }, '-created_date', 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].admin_notify_claimed_by !== claimToken) {
+      return Response.json({ success: true, skipped: 'admin notify claimed by concurrent run' });
+    }
 
     // Fetch package info
     let pkg = null;
@@ -178,7 +201,10 @@ Deno.serve(async (req) => {
     const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000).catch(() => null);
 
     if (admins === null) {
-      await base44.asServiceRole.entities.DocumentSignature.update(signature.id, { admin_notified: false }).catch(() => {});
+      await base44.asServiceRole.entities.DocumentSignature.update(signature.id, {
+        admin_notified: false,
+        admin_notify_claimed_by: '',
+      }).catch(() => {});
       return Response.json({ success: false, error: 'Admin lookup failed' }, { status: 500 });
     }
     if (admins.length === 0) {
@@ -202,7 +228,7 @@ Deno.serve(async (req) => {
       .slice(-1)[0] || signature.completed_date;
 
     const subject = `Document signed: ${documentTitle}`;
-    const appBase = 'https://caremetricai.base44.app';
+    const appBase = getAppBaseUrl();
     const body = renderBrandedEmail({
       preheader: `${documentTitle} has been signed by ${signedByText}.`,
       eyebrow: 'Document signed',
@@ -240,7 +266,10 @@ Deno.serve(async (req) => {
     );
     const sent = results.filter((r) => r.status === 'fulfilled').length;
     if (sent === 0) {
-      await base44.asServiceRole.entities.DocumentSignature.update(signature.id, { admin_notified: false }).catch(() => {});
+      await base44.asServiceRole.entities.DocumentSignature.update(signature.id, {
+        admin_notified: false,
+        admin_notify_claimed_by: '',
+      }).catch(() => {});
     }
 
     return Response.json({

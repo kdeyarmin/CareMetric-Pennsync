@@ -55,6 +55,9 @@ export default function DischargeReportUploader() {
         setResults(processResults);
         toast.success(`Processed ${processResults.discharged_count} patient discharge(s)`);
         queryClient.invalidateQueries({ queryKey: ['patients'] });
+        queryClient.invalidateQueries({ queryKey: ['patients-list'] });
+        queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
+        queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
         queryClient.invalidateQueries({ queryKey: ['allPatients'] });
       } else {
         throw new Error(processResults.error || 'Failed to process discharge report');

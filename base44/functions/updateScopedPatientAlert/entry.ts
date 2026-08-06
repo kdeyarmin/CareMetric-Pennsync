@@ -41,16 +41,37 @@ Deno.serve(async (req) => {
     const [alert] = await base44.asServiceRole.entities.PatientAlert.filter({ id: alert_id }, undefined, 5000);
     if (!alert) return Response.json({ error: 'Alert not found' }, { status: 404 });
 
-    const isAdmin =
+    const isPlatformAdmin =
       user.role === 'admin' ||
-      user.account_type === 'agency_admin' ||
       user.account_type === 'super_admin';
+    const isAgencyAdmin = user.account_type === 'agency_admin';
+    const isAdmin = isPlatformAdmin || isAgencyAdmin;
 
     let allowed = isAdmin || alert.created_by === user.email;
     if (!allowed && alert.patient_id) {
       const [patient] = await base44.asServiceRole.entities.Patient.filter({ id: alert.patient_id }, undefined, 5000);
       allowed = patient?.created_by === user.email
         || (Array.isArray(patient?.assigned_nurses) && patient.assigned_nurses.includes(user.email));
+    }
+    // Agency admins: same patient-in-agency gate as getScopedPatientAlerts.
+    if (allowed && isAgencyAdmin) {
+      if (!user.agency_name) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      if (alert.patient_id) {
+        const [patient] = await base44.asServiceRole.entities.Patient.filter({ id: alert.patient_id }, undefined, 5000);
+        const inAgency = patient && (
+          (patient.created_by && agencyEmails.has(patient.created_by))
+          || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.some((e) => agencyEmails.has(e)))
+        );
+        if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      } else if (!agencyEmails.has(alert.created_by)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
     if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
 

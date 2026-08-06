@@ -44,6 +44,7 @@ const IDEMPOTENCY_FIELDS = {
   SmsMessage: 'client_message_id',
   ScheduledSms: 'claimed_by',
   ScheduledSignatureReminder: 'claimed_by',
+  IncomingFax: 'claimed_by',
   FaxLog: 'telnyx_fax_id',
 };
 
@@ -135,3 +136,40 @@ test('P1-04 provider follow-up public token functions persist expired/submitted 
   assert.match(submit, /status:\s*'expired'/, 'submitFollowUpResponse must persist status=expired when an expired token is presented');
   assert.match(submit, /status:\s*'delivered'/, 'submitFollowUpResponse must persist status=delivered after successful single-use submission');
 });
+
+test('hosted RLS proof worksheet exists and refuses to fake local proof', () => {
+  const proof = source('docs/HOSTED-RLS-PROOF.md');
+  assert.match(proof, /does not prove tenant isolation by itself/i);
+  assert.match(proof, /Do \*\*not\*\* mark LR-01 complete/i);
+  assert.match(proof, /Raw HTTP responses/i);
+  assert.match(proof, /Cross-tenant/i);
+  assert.match(proof, /Repo CI cannot greenlight/i);
+  const checklist = source('docs/SECURITY-RLS-CHECKLIST.md');
+  assert.match(checklist, /HOSTED-RLS-PROOF\.md/);
+});
+
+test('true CAS remains a platform ask; in-repo uses claim+re-read not decorative row_version', () => {
+  const cas = source('docs/PLATFORM-CAS.md');
+  assert.match(cas, /If-Match/i);
+  assert.match(cas, /Do \*\*not\*\* add decorative `row_version`/i);
+  const award = source('base44/functions/awardBadgeOnCompletion/entry.ts');
+  assert.match(award, /badges_claim_token/);
+  assert.match(award, /claimCheck/);
+  assert.equal(
+    /row_version/.test(award),
+    false,
+    'awardBadgeOnCompletion must not pretend row_version CAS exists',
+  );
+});
+
+test('login CSRF pending confirm path is wired for logged-out magic links', () => {
+  const trust = source('src/lib/accessTokenTrust.js');
+  assert.match(trust, /'pending'/);
+  const params = source('src/lib/app-params.js');
+  assert.match(params, /base44_pending_access_token/);
+  assert.match(params, /confirmPendingAccessToken/);
+  const signIn = source('src/components/auth/SignInScreen.jsx');
+  assert.match(signIn, /confirmPendingAccessToken/);
+  assert.match(signIn, /Continue with this sign-in link/);
+});
+

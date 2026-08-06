@@ -118,7 +118,10 @@ Deno.serve(async (req) => {
     const allUsers = await svc.User.list('-created_date', 5000);
     let candidates = allUsers.filter((u) => u.email && u.role !== 'admin' && u.is_approved !== false);
     // Agency admins only enroll their own agency's staff.
-    if (me?.account_type === 'agency_admin' && me?.agency_name) {
+    if (me?.account_type === 'agency_admin') {
+      if (!me.agency_name) {
+        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
+      }
       candidates = candidates.filter((u) => u.agency_name === me.agency_name);
     }
 
@@ -148,7 +151,9 @@ Deno.serve(async (req) => {
       const enrollKey = `${plan.id}|${user.email}`;
       if (!enrolledSet.has(enrollKey)) {
         enrolledSet.add(enrollKey);
-        await svc.PlanEnrollment.create({
+        // Create then re-read: overlapping cron/admin enroll runs can still race
+        // the prefetch→create gap (no unique index / CAS).
+        const createdEnrollment = await svc.PlanEnrollment.create({
           plan_id: plan.id,
           plan_name: plan.name,
           user_id: user.email,
@@ -161,7 +166,26 @@ Deno.serve(async (req) => {
           courses_total: planItems.length,
           due_date: defaultDueDate,
         });
-        enrolledUsers++;
+        const afterEnroll = await svc.PlanEnrollment.filter({
+          plan_id: plan.id,
+          user_id: user.email,
+        }, '-created_date', 10);
+        if (afterEnroll.length > 1) {
+          const keepId = afterEnroll
+            .slice()
+            .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')))[0]?.id;
+          if (keepId && createdEnrollment?.id && createdEnrollment.id !== keepId) {
+            try {
+              await svc.PlanEnrollment.delete(createdEnrollment.id);
+            } catch {
+              /* best-effort */
+            }
+          } else {
+            enrolledUsers++;
+          }
+        } else {
+          enrolledUsers++;
+        }
       }
 
       for (const item of planItems) {
@@ -169,7 +193,7 @@ Deno.serve(async (req) => {
         if (assignedSet.has(assignKey)) continue;
         assignedSet.add(assignKey);
 
-        await svc.TrainingAssignment.create({
+        const createdAssignment = await svc.TrainingAssignment.create({
           course_id: item.course_id,
           course_title: item.course_title,
           plan_id: plan.id,
@@ -194,6 +218,25 @@ Deno.serve(async (req) => {
           notes: 'Automatically enrolled in current-year required in-services.',
           archived_status: false,
         });
+        const afterAssign = await svc.TrainingAssignment.filter({
+          plan_id: plan.id,
+          course_id: item.course_id,
+          assigned_to_user_id: user.email,
+          annual_cycle_year: year,
+        }, '-created_date', 10);
+        if (afterAssign.length > 1) {
+          const keepId = afterAssign
+            .slice()
+            .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')))[0]?.id;
+          if (keepId && createdAssignment?.id && createdAssignment.id !== keepId) {
+            try {
+              await svc.TrainingAssignment.delete(createdAssignment.id);
+            } catch {
+              /* best-effort */
+            }
+            continue;
+          }
+        }
         assignmentsCreated++;
       }
     }

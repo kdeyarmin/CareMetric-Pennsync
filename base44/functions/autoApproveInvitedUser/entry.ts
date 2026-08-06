@@ -163,6 +163,14 @@ function renderBrandedEmail(opts) {
 // Finds any users who are NOT approved but have a pending UserInvitation,
 // then auto-approves them and sends a welcome email.
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -185,7 +193,7 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, message: 'No pending invitations found' });
     }
 
-    const appUrl = 'https://caremetricai.base44.app';
+    const appUrl = getAppBaseUrl();
     let approvedCount = 0;
     let skippedCount = 0;
 

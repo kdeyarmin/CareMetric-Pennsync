@@ -24,6 +24,13 @@ export default function PatientAlertAnalyzer({
   const [generatedAlerts, setGeneratedAlerts] = useState([]);
   const queryClient = useQueryClient();
 
+  // Drop prior-patient analysis output when the selector changes.
+  useEffect(() => {
+    setGeneratedAlerts([]);
+    setAnalysisProgress(0);
+    setIsAnalyzing(false);
+  }, [patientId]);
+
   // Current user — needed to assign generated tasks (Task.assigned_to is required;
   // without it the critical-alert escalation task create silently fails).
   const { data: currentUser } = useQuery({
@@ -40,14 +47,14 @@ export default function PatientAlertAnalyzer({
 
   // Fetch recent visits
   const { data: recentVisits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId],
+    queryKey: ['patientVisits', patientId, 10],
     queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 10),
     enabled: !!patientId
   });
 
   // Fetch incidents
   const { data: incidents = [] } = useQuery({
-    queryKey: ['patientIncidents', patientId],
+    queryKey: ['patientIncidents', patientId, 5],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 5),
     enabled: !!patientId
   });
@@ -260,6 +267,9 @@ Return JSON:
 
       // Refresh alerts query
       queryClient.invalidateQueries({ queryKey: ['patientAlerts', patientId] });
+      queryClient.invalidateQueries({ queryKey: ['patientRiskAlerts', patientId] });
+      queryClient.invalidateQueries({ queryKey: ['patientActiveAlerts', patientId] });
+      queryClient.invalidateQueries({ queryKey: ['patientContext', patientId] });
 
       if (onAlertsGenerated) {
         onAlertsGenerated(createdAlerts, result);

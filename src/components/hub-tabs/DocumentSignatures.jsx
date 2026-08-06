@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { openExternalUrl } from "@/components/utils/security";
+import { formatLocalDate } from "@/lib/dateLocal";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
@@ -47,14 +48,19 @@ export default function DocumentSignatures() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients-list'],
+    // Larger limit than Telehealth/OASIS — keep a distinct cache key.
+    queryKey: ['patients-list', '-created_date', 500],
     queryFn: () => base44.entities.Patient.list('-created_date', 500),
     initialData: []
   });
 
   const handleSignDocument = (sig) => {
-    const url = createPageUrl(`SignDocument?pdf_url=${encodeURIComponent(sig.document_url || sig.original_pdf_url || '')}&signature_id=${sig.id}&patient_id=${sig.patient_id}`);
-    navigate(url);
+    // SignDocument loads the PDF from the DocumentSignature entity by id —
+    // never put document_url / signed-PDF paths in the query string (browser
+    // history, Referer, analytics, and screenshots would retain PHI URLs).
+    const params = new URLSearchParams({ signature_id: sig.id });
+    if (sig.patient_id) params.set('patient_id', sig.patient_id);
+    navigate(createPageUrl(`SignDocument?${params.toString()}`));
   };
 
   const handleSendReminder = async (sig) => {
@@ -201,7 +207,7 @@ export default function DocumentSignatures() {
                           )}
                           {sig.due_date && (
                             <span className="text-xs text-slate-500">
-                              Due: {new Date(sig.due_date).toLocaleDateString()}
+                              Due: {formatLocalDate(sig.due_date)}
                             </span>
                           )}
                         </div>

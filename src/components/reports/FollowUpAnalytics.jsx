@@ -33,12 +33,12 @@ export default function FollowUpAnalytics() {
   const adminView = isAdminView(currentUser);
 
   const { data: referrals } = useQuery({
-    queryKey: ["referrals"],
+    queryKey: ["referrals", 10000],
     queryFn: () => base44.entities.Referral.list("-created_date", 10000),
   });
 
   const { data: rateConfig } = useQuery({
-    queryKey: ["pdgmRateConfig"],
+    queryKey: ["pdgm-rate-config"],
     queryFn: () => base44.entities.PDGMRateConfig.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
   });
 

@@ -51,7 +51,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   const visitDate = todayEastern();
 
   const { data: patients = [] } = useQuery({
-    queryKey: ["patients"],
+    queryKey: ["patients", "active", "first_name", 200],
     queryFn: async () => {
       try {
         return await base44.entities.Patient.filter({ status: "active" }, "first_name", 200);

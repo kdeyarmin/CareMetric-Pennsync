@@ -14,8 +14,9 @@ import { Progress } from "@/components/ui/progress";
 import LoadingState from "@/components/ui/LoadingState";
 import LearningPathProgress from "./LearningPathProgress";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
+import { formatLocalDate } from "@/lib/dateLocal";
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function MyAnnualEducationDashboard() {
   const currentYear = new Date().getFullYear();

@@ -24,8 +24,9 @@ import AnnualLearningPlanPanel from "@/components/training/AnnualLearningPlanPan
 import TrainingAttachmentManager from "@/components/training/TrainingAttachmentManager";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
+import { parseLocalDate, startOfLocalDay, formatLocalDate } from "@/lib/dateLocal";
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
+const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function AnnualMandatoryEducationHub() {
   const queryClient = useQueryClient();
@@ -78,14 +79,21 @@ export default function AnnualMandatoryEducationHub() {
   const { data: courses = [] } = useQuery({ queryKey: ["annual-courses"], queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500), initialData: [] });
   const { data: assignments = [] } = useQuery({ queryKey: ["annual-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), initialData: [] });
   const { data: certificates = [] } = useQuery({ queryKey: ["annual-certificates"], queryFn: () => base44.entities.TrainingCertificate.list('-issued_at', 500), initialData: [] });
-  const { data: plans = [] } = useQuery({ queryKey: ["annual-plans"], queryFn: () => base44.entities.LearningPlan.list('-created_date', 200), initialData: [] });
+  const { data: plans = [] } = useQuery({
+    queryKey: ["annual-plans", "-created_date", 200],
+    queryFn: () => base44.entities.LearningPlan.list('-created_date', 200),
+    initialData: [],
+  });
 
   const annualCourses = useMemo(() => courses.filter((course) => course.training_type === 'annual_mandatory' || course.annual_cycle_year === year), [courses, year]);
   const annualAssignments = useMemo(() => assignments.filter((assignment) => assignment.annual_cycle_year === year), [assignments, year]);
   const _annualCertificates = useMemo(() => certificates.filter((certificate) => certificate.annual_cycle_year === year), [certificates, year]);
   const dueSoon = annualAssignments.filter((assignment) => {
     if (!assignment.due_date || assignment.status === 'completed' || assignment.status === 'overdue') return false;
-    const daysUntilDue = (new Date(assignment.due_date) - new Date()) / (1000 * 60 * 60 * 24);
+    const dueDay = startOfLocalDay(parseLocalDate(assignment.due_date));
+    const today = startOfLocalDay(new Date());
+    if (!dueDay || !today) return false;
+    const daysUntilDue = Math.round((dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     return daysUntilDue >= 0 && daysUntilDue <= 7;
   }).length;
   const averageScore = Math.round((annualAssignments.filter((assignment) => typeof assignment.score_percentage === 'number').reduce((sum, assignment) => sum + assignment.score_percentage, 0) / Math.max(annualAssignments.filter((assignment) => typeof assignment.score_percentage === 'number').length, 1)) || 0);
@@ -172,6 +180,7 @@ export default function AnnualMandatoryEducationHub() {
       setSeedResult(result?.data || result);
       queryClient.invalidateQueries({ queryKey: ["annual-courses"] });
       queryClient.invalidateQueries({ queryKey: ["annual-plans"] });
+      queryClient.invalidateQueries({ queryKey: ["learning-plans"] });
     } catch (error) {
       setSeedResult({ error: configNotReadyMessage(error) || error?.message || "Failed to create yearly required in-services." });
     } finally {
@@ -186,6 +195,8 @@ export default function AnnualMandatoryEducationHub() {
       const result = await autoEnrollAnnualPlans({ scope: 'all' });
       setEnrollAllResult(result?.data || result);
       queryClient.invalidateQueries({ queryKey: ["annual-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["my-annual-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["lc-assignments"] });
     } catch (error) {
       setEnrollAllResult({ error: configNotReadyMessage(error) || error?.message || "Failed to enroll staff." });
     } finally {
@@ -197,12 +208,16 @@ export default function AnnualMandatoryEducationHub() {
     await assignInService({ courseId: selectedCourseId, dueDate, settings: retakeSettings, userEmails: pendingAssignmentPayload?.userEmails || [], filters: pendingAssignmentPayload?.filters || {}, annualCycleYear: year });
     setPendingAssignmentPayload(null);
     queryClient.invalidateQueries({ queryKey: ["annual-assignments"] });
+    queryClient.invalidateQueries({ queryKey: ["my-annual-assignments"] });
+    queryClient.invalidateQueries({ queryKey: ["lc-assignments"] });
   };
 
   const confirmPlanAssignment = async () => {
     await assignAnnualLearningPlan({ planId: selectedPlanId, dueDate, settings: retakeSettings, userEmails: pendingPlanAssignmentPayload?.userEmails || [], filters: pendingPlanAssignmentPayload?.filters || {} });
     setPendingPlanAssignmentPayload(null);
     queryClient.invalidateQueries({ queryKey: ["annual-assignments"] });
+    queryClient.invalidateQueries({ queryKey: ["my-annual-assignments"] });
+    queryClient.invalidateQueries({ queryKey: ["lc-assignments"] });
   };
 
   const updateCourseStatus = async (course, status) => {
@@ -398,7 +413,10 @@ export default function AnnualMandatoryEducationHub() {
               </Button>
             </CardContent>
           </Card>
-          <AnnualLearningPlanPanel plans={plans} courses={annualCourses} year={year} onRefresh={() => queryClient.invalidateQueries({ queryKey: ['annual-plans'] })} />
+          <AnnualLearningPlanPanel plans={plans} courses={annualCourses} year={year} onRefresh={() => {
+            queryClient.invalidateQueries({ queryKey: ['annual-plans'] });
+            queryClient.invalidateQueries({ queryKey: ['learning-plans'] });
+          }} />
           <div className="grid grid-cols-1 xl:grid-cols-[360px_minmax(0,1fr)] gap-6">
             <Card>
               <CardHeader><CardTitle>Assign annual plan</CardTitle></CardHeader>

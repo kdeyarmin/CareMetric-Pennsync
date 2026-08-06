@@ -10,6 +10,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * wage/gross-pay math.
  */
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 function toNonNegativeNumber(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
@@ -21,6 +29,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     // Admin = role 'admin' or an admin account_type (agency/super), matching the
     // app's role model (src/lib/roles.js) and other backend admin gates.
     const isAdmin = user.role === 'admin' || user.account_type === 'super_admin' || user.account_type === 'agency_admin';
@@ -47,11 +56,22 @@ Deno.serve(async (req) => {
 
     // Resolve the employee's display name from their user record (best-effort).
     let employee_name = email;
+    let targetUser = null;
     try {
       const users = await base44.asServiceRole.entities.User.filter({ email }, undefined, 5000);
-      if (users && users[0]) employee_name = users[0].full_name || email;
+      if (users && users[0]) {
+        targetUser = users[0];
+        employee_name = users[0].full_name || email;
+      }
     } catch (_e) {
       employee_name = email;
+    }
+
+    // Agency admins may only write payroll profiles for staff in their agency.
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name || !targetUser || targetUser.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
     }
 
     const fields = {
@@ -73,6 +93,24 @@ Deno.serve(async (req) => {
       saved = await base44.asServiceRole.entities.EmployeePayrollProfile.update(existing[0].id, fields);
     } else {
       saved = await base44.asServiceRole.entities.EmployeePayrollProfile.create(fields);
+      // Concurrent creates can race past the empty filter above. Re-read and
+      // collapse to a single row (keep earliest, delete extras, re-apply fields).
+      const afterCreate = await base44.asServiceRole.entities.EmployeePayrollProfile
+        .filter({ employee_email: email }, undefined, 20)
+        .catch(() => []);
+      if (afterCreate && afterCreate.length > 1) {
+        const sorted = [...afterCreate].sort((a, b) => {
+          const ac = String(a.created_date || '');
+          const bc = String(b.created_date || '');
+          if (ac !== bc) return ac.localeCompare(bc);
+          return String(a.id).localeCompare(String(b.id));
+        });
+        const keep = sorted[0];
+        for (const dup of sorted.slice(1)) {
+          await base44.asServiceRole.entities.EmployeePayrollProfile.delete(dup.id).catch(() => {});
+        }
+        saved = await base44.asServiceRole.entities.EmployeePayrollProfile.update(keep.id, fields);
+      }
     }
 
     return Response.json({ success: true, profile: saved });

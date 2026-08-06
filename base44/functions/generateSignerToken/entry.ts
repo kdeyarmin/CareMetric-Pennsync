@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && (
   u.role === 'admin' || u.account_type === 'agency_admin' ||
@@ -35,6 +44,7 @@ Deno.serve(async (req) => {
         { status: 403 }
       );
     }
+    if (user && isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { package_id, signer_email, signer_name, expires_in_days = 30 } = body;
 
@@ -57,6 +67,30 @@ Deno.serve(async (req) => {
     if (internalOk && pkg.signer_email &&
         String(pkg.signer_email).trim().toLowerCase() !== String(signer_email).trim().toLowerCase()) {
       return Response.json({ error: 'signer_email does not match package' }, { status: 403 });
+    }
+    // Interactive agency admins may only mint signing links for packages whose
+    // patient is tied to their agency (parity with bulkCreateDocumentPackages).
+    if (!internalOk && user?.account_type === 'agency_admin') {
+      if (!user.agency_name || !pkg.patient_id) {
+        return Response.json({ error: 'Forbidden: package is outside your agency.' }, { status: 403 });
+      }
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const patients = await base44.asServiceRole.entities.Patient
+        .filter({ id: pkg.patient_id }, undefined, 5)
+        .catch(() => []);
+      const patient = patients?.[0];
+      const inAgency = patient && (
+        (patient.created_by && agencyEmails.has(patient.created_by))
+        || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.some((e) => agencyEmails.has(e)))
+      );
+      if (!inAgency) {
+        return Response.json({ error: 'Forbidden: package is outside your agency.' }, { status: 403 });
+      }
     }
 
     // Generate secure token. Persist ONLY its SHA-256 hash (in the token field):
@@ -126,6 +160,9 @@ function generateSecureToken() {
 }
 
 function getAppBaseUrl() {
-  // Hardcoded app URL (matches the signer links built by notifySignerOfPackage).
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
   return 'https://caremetricai.base44.app';
 }

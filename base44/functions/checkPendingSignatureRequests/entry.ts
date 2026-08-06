@@ -176,10 +176,11 @@ Deno.serve(async (req) => {
     // service role: this is an admin-wide reminder sweep, so it must see EVERY
     // pending package, not just the ones the invoking admin created (a user-scoped
     // read would silently skip packages created by other staff). Mirrors the
-    // service-role scope of sendAutomatedSignatureReminders.
+    // service-role scope of sendAutomatedSignatureReminders. Cap matches sibling
+    // reminder crons (5000) — the prior 500-row cap left older packages unreminded.
     const packages = await base44.asServiceRole.entities.DocumentPackage.filter({
       status: { $in: ['pending', 'in_progress'] }
-    }, 'created_date', 500);
+    }, 'created_date', 5000);
 
     if (!packages || packages.length === 0) {
       return Response.json({ 
@@ -192,21 +193,52 @@ Deno.serve(async (req) => {
 
     const now = new Date();
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const runId = crypto.randomUUID();
     const emailsSent = [];
 
+    // Date-only due_date values compare on the local calendar — UTC midnight
+    // parsing flagged packages overdue the evening before the due day.
+    const isPastDue = (dueDate) => {
+      if (!dueDate) return false;
+      const raw = String(dueDate).trim();
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+        const [y, m, d] = raw.split('-').map(Number);
+        const due = new Date(y, m - 1, d);
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        return due < today;
+      }
+      const due = new Date(dueDate);
+      return !Number.isNaN(due.getTime()) && due < now;
+    };
+
     for (const pkg of packages) {
-      const shouldSendReminder = 
-        (pkg.due_date && new Date(pkg.due_date) < now) ||
+      const shouldSendReminder =
+        isPastDue(pkg.due_date) ||
         (pkg.created_date && new Date(pkg.created_date) < threeDaysAgo);
 
       if (!shouldSendReminder) continue;
 
-      // Idempotency: don't re-email the caregiver on every cron tick. Skip if a
-      // reminder for this package already went out in the last ~20h (allows a
-      // daily cadence with jitter). Without this the same package was re-emailed
-      // every run until signed.
-      const lastSent = pkg.last_reminder_sent_at ? new Date(pkg.last_reminder_sent_at).getTime() : 0;
+      // Audience-specific cadence only — never fall back to last_reminder_sent_at
+      // (that stamp is shared and would suppress the other audience's reminders).
+      const lastCaregiverAt = pkg.last_caregiver_reminder_sent_at;
+      const lastSent = lastCaregiverAt ? new Date(lastCaregiverAt).getTime() : 0;
       if (lastSent && (now.getTime() - lastSent) < 20 * 60 * 60 * 1000) continue;
+
+      // Claim before send so overlapping runs don't double-email caregivers.
+      const claimToken = `caregiver:${runId}`;
+      try {
+        await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
+          reminder_claimed_by: claimToken,
+          reminder_claimed_at: now.toISOString(),
+        });
+      } catch {
+        continue;
+      }
+      const claimCheck = await base44.asServiceRole.entities.DocumentPackage
+        .filter({ id: pkg.id }, '-created_date', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].reminder_claimed_by !== claimToken) {
+        continue;
+      }
 
       // Get patient to retrieve caregiver email. Tolerate a deleted/invalid
       // patient_id: without the catch a single bad row throws and aborts the
@@ -224,7 +256,6 @@ Deno.serve(async (req) => {
       const signedCount = allSignatures.filter(s => s?.status === 'completed').length;
 
       // Send follow-up email
-      const daysOverdue = Math.floor((now - new Date(pkg.due_date)) / (24 * 60 * 60 * 1000));
       const daysPending = Math.floor((now - new Date(pkg.created_date)) / (24 * 60 * 60 * 1000));
 
       const subject = `Reminder: signature needed for ${patient.first_name} ${patient.last_name}`;
@@ -248,23 +279,30 @@ Deno.serve(async (req) => {
         ],
       });
 
-      await base44.asServiceRole.integrations.Core.SendEmail({
-        to: patient.caregiver_email,
-        subject,
-        body,
-        from_name: 'PennSync by CareMetric'
-      });
+      try {
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          to: patient.caregiver_email,
+          subject,
+          body,
+          from_name: 'PennSync by CareMetric'
+        });
 
-      // Record that a reminder went out so the next run skips it within the window.
-      await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
-        last_reminder_sent_at: now.toISOString()
-      }).catch(() => {});
+        // Stamp audience-specific + legacy fields. Do NOT swallow failures after
+        // a successful send — a silent stamp miss lets the next run re-email.
+        const sentAt = now.toISOString();
+        await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
+          last_caregiver_reminder_sent_at: sentAt,
+          last_reminder_sent_at: sentAt,
+        });
 
-      emailsSent.push({
-        packageId: pkg.id,
-        caregiverEmail: patient.caregiver_email,
-        daysPending
-      });
+        emailsSent.push({
+          packageId: pkg.id,
+          caregiverEmail: patient.caregiver_email,
+          daysPending
+        });
+      } catch (error) {
+        console.error('checkPendingSignatureRequests send failed:', error?.message || error);
+      }
     }
 
     return Response.json({

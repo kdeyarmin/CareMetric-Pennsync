@@ -35,7 +35,8 @@ import {
   Shield
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
-import { logSecurityEvent } from "@/components/utils/security";
+import { logSecurityEvent, isSafeExternalUrl } from "@/components/utils/security";
+import { formatLocalDate } from "@/lib/dateLocal";
 import PageContainer from "@/components/ui/PageContainer";
 import PersonnelCredentialForm from "@/components/personnel/PersonnelCredentialForm";
 import PersonnelStatusBadge from "@/components/personnel/PersonnelStatusBadge";
@@ -474,7 +475,7 @@ export default function UserSettings() {
                             <PersonnelStatusBadge status={item.status} />
                           </div>
                           <p className="text-sm text-slate-600">
-                            {item.item_type} • Expires {new Date(item.expiration_date).toLocaleDateString()}
+                            {item.item_type} • Expires {formatLocalDate(item.expiration_date)}
                           </p>
                           {item.issuing_organization && (
                             <p className="text-sm text-slate-500">{item.issuing_organization}</p>
@@ -482,7 +483,7 @@ export default function UserSettings() {
                           {item.credential_number && (
                             <p className="text-sm text-slate-500">#{item.credential_number}</p>
                           )}
-                          {item.uploaded_file_url && (
+                          {item.uploaded_file_url && isSafeExternalUrl(item.uploaded_file_url) && (
                             <a href={item.uploaded_file_url} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 underline hover:text-indigo-700 mt-2 inline-block">
                               View Document
                             </a>

@@ -38,6 +38,7 @@ import PhoneFrame, { PhoneEmptyState } from "@/components/phone/PhoneFrame";
 import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
 import { shortAgo } from "@/components/phone/timeUtils";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 const PRIORITY_DOT = { urgent: "bg-red-500", high: "bg-orange-500", normal: "bg-navy-600" };
 
@@ -72,7 +73,7 @@ export default function Messages() {
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['allUsers'],
+    queryKey: ['allUsers', 'full_name', 200],
     queryFn: () => base44.entities.User.list('full_name', 200),
     initialData: [],
   });
@@ -344,7 +345,7 @@ export default function Messages() {
                       )}
                       {msg.attachments?.length > 0 && (
                         <div className="mt-1 flex flex-wrap gap-2 px-1">
-                          {msg.attachments.map((url, i) => (
+                          {msg.attachments.filter((url) => isSafeExternalUrl(url)).map((url, i) => (
                             <a
                               key={i}
                               href={url}
