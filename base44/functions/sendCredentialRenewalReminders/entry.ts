@@ -328,6 +328,13 @@ Deno.serve(async (req) => {
             });
           } catch (sendErr) {
             console.error('Failed to send renewal reminder for credential:', sendErr?.message || sendErr);
+            // Roll back the claimed offsets so a later run can retry — otherwise
+            // a transient SendEmail failure permanently suppresses this tier.
+            await base44.asServiceRole.entities.PersonnelCredential.update(cred.id, {
+              renewal_email_offsets_sent: remindersSent,
+              renewal_email_claimed_by: '',
+              last_reminder_sent_at: cred.last_reminder_sent_at || null,
+            }).catch(() => {});
           }
         }
       }

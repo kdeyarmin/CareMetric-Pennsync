@@ -20,7 +20,7 @@ import { Loader2,
   BookOpen, LayoutDashboard, Lock
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { format, subDays, startOfDay, parseISO, differenceInDays } from "date-fns";
+import { format, subDays, startOfDay } from "date-fns";
 import { toast } from "sonner";
 import ComplianceReportGenerator from "@/components/compliance/ComplianceReportGenerator";
 import AIComplianceAssistant from "@/components/compliance/AIComplianceAssistant";
@@ -28,6 +28,15 @@ import MedicareRuleSeeder from "@/components/compliance/MedicareRuleSeeder";
 import { isAdminView } from "@/lib/roles";
 import LoadingState from "@/components/ui/LoadingState";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { parseLocalDate } from "@/lib/dateLocal";
+
+/** Calendar-day delta from local midnight today to a date-only value (negative = past). */
+function localDaysUntil(dateStr) {
+  const due = parseLocalDate(dateStr);
+  const todayLocal = new Date();
+  todayLocal.setHours(0, 0, 0, 0);
+  return due ? Math.round((due - todayLocal) / 86400000) : null;
+}
 
 const RegulatoryCompliance = lazy(() => import("@/components/hub-tabs/RegulatoryCompliance"));
 const ComplianceMonitoringDashboard = lazy(() => import("@/components/hub-tabs/ComplianceMonitoringDashboard"));
@@ -115,7 +124,7 @@ export default function ComplianceCenter() {
   });
 
   const { data: trainingAssignments = [], refetch: _refetchAssignments } = useQuery({
-    queryKey: ['allTrainingAssignments'],
+    queryKey: ['allTrainingAssignments', '-updated_date', 500],
     queryFn: () => base44.entities.TrainingAssignment.list('-updated_date', 500),
     initialData: [],
     refetchInterval: 30000,
@@ -227,14 +236,13 @@ export default function ComplianceCenter() {
   // Calculate monitoring issues
   const complianceIssues = useMemo(() => {
     const issues = [];
-    const today = new Date();
 
     // Overdue training
     trainingAssignments.forEach(assignment => {
       if (assignment.status !== 'completed' && assignment.due_date) {
-        const dueDate = parseISO(assignment.due_date);
-        const daysOverdue = differenceInDays(today, dueDate);
-        
+        const daysUntil = localDaysUntil(assignment.due_date);
+        const daysOverdue = daysUntil != null && daysUntil < 0 ? Math.abs(daysUntil) : 0;
+
         if (daysOverdue > 0) {
           const user = allUsers.find(u => u.email === assignment.assigned_to_user_id);
           if (user) {
@@ -257,9 +265,9 @@ export default function ComplianceCenter() {
     // Expiring credentials
     personnelCredentials.forEach(cred => {
       if (cred.expiration_date) {
-        const expDate = parseISO(cred.expiration_date);
-        const daysUntilExpiry = differenceInDays(expDate, today);
-        
+        const daysUntilExpiry = localDaysUntil(cred.expiration_date);
+        if (daysUntilExpiry == null) return;
+
         if (daysUntilExpiry <= 30 || cred.status === 'expired') {
           const user = allUsers.find(u => u.email === cred.user_id);
           if (user) {

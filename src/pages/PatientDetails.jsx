@@ -12,12 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useNavigate, useSearchParams } from "react-router";
 import { createPageUrl } from "@/utils";
 import { ArrowLeft, Calendar, Plus, User, FileText, AlertTriangle, Phone, MapPin, Heart, Stethoscope, Activity, ClipboardList, ExternalLink, Users, Sparkles, Send } from "lucide-react";
-import { format, isValid, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import { formatLocalDate } from "@/lib/dateLocal";
 
 import { logSecurityEvent, sanitizeInput } from "@/components/utils/security";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
@@ -201,7 +202,7 @@ export default function PatientDetails() {
         icon={Users}
         eyebrow="Patient Care"
         title={`${sanitizeInput(patient.first_name)} ${sanitizeInput(patient.last_name)}`}
-        description={`MRN: ${sanitizeInput(patient.medical_record_number) || 'N/A'} · DOB: ${patient.date_of_birth && isValid(parseISO(patient.date_of_birth)) ? format(parseISO(patient.date_of_birth), 'MM/dd/yyyy') : 'N/A'}`}
+        description={`MRN: ${sanitizeInput(patient.medical_record_number) || 'N/A'} · DOB: ${formatLocalDate(patient.date_of_birth, { month: '2-digit', day: '2-digit', year: 'numeric' }) || 'N/A'}`}
         favoritePage="PatientDetails"
         actions={
           <div className="flex flex-wrap gap-2">
@@ -491,7 +492,7 @@ export default function PatientDetails() {
                               <div className="flex justify-between items-start mb-2">
                                 <div>
                                   <p className="font-semibold text-slate-900">
-                                    {visit.visit_date && isValid(parseISO(visit.visit_date)) ? format(parseISO(visit.visit_date), 'MMM d, yyyy') : 'Invalid date'}
+                                    {formatLocalDate(visit.visit_date, { month: 'short', day: 'numeric', year: 'numeric' }) || 'Invalid date'}
                                   </p>
                                   <Badge variant="outline" className="text-xs mt-1">
                                     {(visit.visit_type || '').replace(/_/g, ' ')}

@@ -270,32 +270,42 @@ Deno.serve(async (req) => {
         metadata: { personnel_credential_id: item.id, days_until_expiration: daysUntilExpiration }
       });
 
-      emailPromises.push(() =>
-        base44.asServiceRole.integrations.Core.SendEmail({
-          to: item.user_id,
-          from_name: 'PennSync by CareMetric',
-          subject: `Action needed: your ${item.title} expires in ${daysUntilExpiration} day(s)`,
-          body: renderBrandedEmail({
-            preheader: `Your ${item.title} expires in ${daysUntilExpiration} day(s).`,
-            eyebrow: 'Credential expiration',
-            title: `Hello ${employee?.full_name || 'there'},`,
-            intro: `Your ${item.item_type} "${item.title}" is expiring soon and needs to be renewed.`,
-            sections: [
-              {
-                rows: [
-                  ['Item', item.title],
-                  ['Type', item.item_type],
-                  ['Expiration date', expLabel],
-                  ['Days remaining', String(daysUntilExpiration)],
-                ],
-              },
-              {
-                callout: { tone: 'warn', text: 'Please upload a renewed copy to your personnel file for approval before it expires.' },
-              },
-            ],
-          }),
-        }).catch(err => console.error("Email failed:", err.message))
-      );
+      emailPromises.push(async () => {
+        try {
+          await base44.asServiceRole.integrations.Core.SendEmail({
+            to: item.user_id,
+            from_name: 'PennSync by CareMetric',
+            subject: `Action needed: your ${item.title} expires in ${daysUntilExpiration} day(s)`,
+            body: renderBrandedEmail({
+              preheader: `Your ${item.title} expires in ${daysUntilExpiration} day(s).`,
+              eyebrow: 'Credential expiration',
+              title: `Hello ${employee?.full_name || 'there'},`,
+              intro: `Your ${item.item_type} "${item.title}" is expiring soon and needs to be renewed.`,
+              sections: [
+                {
+                  rows: [
+                    ['Item', item.title],
+                    ['Type', item.item_type],
+                    ['Expiration date', expLabel],
+                    ['Days remaining', String(daysUntilExpiration)],
+                  ],
+                },
+                {
+                  callout: { tone: 'warn', text: 'Please upload a renewed copy to your personnel file for approval before it expires.' },
+                },
+              ],
+            }),
+          });
+        } catch (err) {
+          console.error("Email failed:", err.message);
+          // Roll back claimed offsets so a later run can retry this tier.
+          await base44.asServiceRole.entities.PersonnelCredential.update(item.id, {
+            reminder_offsets_sent: sentOffsets,
+            reminder_claimed_by: '',
+            last_reminder_sent_at: item.last_reminder_sent_at || null,
+          }).catch(() => {});
+        }
+      });
 
       for (const manager of agencyAdmins) {
         notificationsToCreate.push({

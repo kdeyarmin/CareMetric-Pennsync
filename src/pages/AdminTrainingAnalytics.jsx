@@ -53,7 +53,7 @@ export default function AdminTrainingAnalytics() {
   // Org-wide training activity now comes from the live TrainingAssignment system
   // (the retired TrainingCompletion entity is no longer written).
   const { data: assignments = [] } = useQuery({
-    queryKey: ['allTrainingAssignments'],
+    queryKey: ['allTrainingAssignments', '-created_date', 5000],
     queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 5000),
     enabled: isAdminView(currentUser)
   });

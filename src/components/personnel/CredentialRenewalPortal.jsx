@@ -22,8 +22,17 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { validateFileUpload } from "@/components/utils/security";
-import { format, parseISO, differenceInDays, addMonths } from "date-fns";
+import { format, addMonths } from "date-fns";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { parseLocalDate, formatLocalDate, isPastLocalDueDate } from "@/lib/dateLocal";
+
+/** Calendar-day delta from local midnight today to a date-only value (negative = past). */
+function localDaysUntil(dateStr) {
+  const due = parseLocalDate(dateStr);
+  const todayLocal = new Date();
+  todayLocal.setHours(0, 0, 0, 0);
+  return due ? Math.round((due - todayLocal) / 86400000) : null;
+}
 
 export default function CredentialRenewalPortal({ userId }) {
   const [selectedCredential, setSelectedCredential] = useState(null);
@@ -127,8 +136,6 @@ export default function CredentialRenewalPortal({ userId }) {
     submitRenewalMutation.mutate();
   };
 
-  const today = new Date();
-
   const expiringCredentials = credentials.filter(cred => {
     // Exclude rejected/expired/in-flight the same way expiredCredentials does, so a
     // dead 'rejected' submission doesn't reappear as "Expiring Soon".
@@ -138,10 +145,13 @@ export default function CredentialRenewalPortal({ userId }) {
       cred.status === 'pending_approval' ||
       cred.status === 'rejected'
     ) return false;
-    const expDate = parseISO(cred.expiration_date);
-    const daysUntil = differenceInDays(expDate, today);
-    return daysUntil <= 90 && daysUntil >= 0;
-  }).sort((a, b) => new Date(a.expiration_date) - new Date(b.expiration_date));
+    const daysUntil = localDaysUntil(cred.expiration_date);
+    return daysUntil != null && daysUntil <= 90 && daysUntil >= 0;
+  }).sort((a, b) => {
+    const aDate = parseLocalDate(a.expiration_date);
+    const bDate = parseLocalDate(b.expiration_date);
+    return (aDate?.getTime() ?? 0) - (bDate?.getTime() ?? 0);
+  });
 
   const expiredCredentials = credentials.filter(cred => {
     // A pending_approval record is a renewal-in-flight (typically with a future
@@ -155,10 +165,9 @@ export default function CredentialRenewalPortal({ userId }) {
       cred.status === 'expired' ||
       cred.status === 'rejected'
     ) return false;
-    const expDate = parseISO(cred.expiration_date);
     // Strictly before today (by calendar day) so a credential expiring TODAY is
     // "Expiring" only, not listed as Expired as well (which stacked two dialogs).
-    return differenceInDays(expDate, today) < 0;
+    return isPastLocalDueDate(cred.expiration_date);
   });
 
   const pendingRenewals = credentials.filter(cred => cred.status === 'pending_approval');
@@ -220,7 +229,7 @@ export default function CredentialRenewalPortal({ userId }) {
                 <div key={cred.id} className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div>
                     <h4 className="font-semibold text-slate-900">{cred.title}</h4>
-                    <p className="text-sm text-slate-600">Submitted {format(parseISO(cred.created_date), 'MMM d, yyyy')}</p>
+                    <p className="text-sm text-slate-600">Submitted {formatLocalDate(cred.created_date, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                   </div>
                   <Badge className="bg-blue-600">Pending Approval</Badge>
                 </div>
@@ -247,7 +256,8 @@ export default function CredentialRenewalPortal({ userId }) {
           ) : (
             <div className="space-y-3">
               {expiredCredentials.map(cred => {
-                const daysOverdue = Math.abs(differenceInDays(today, parseISO(cred.expiration_date)));
+                const daysUntil = localDaysUntil(cred.expiration_date);
+                const daysOverdue = daysUntil != null ? Math.abs(daysUntil) : 0;
                 
                 return (
                   <div key={cred.id} className="border-l-4 border-l-red-600 bg-red-50 rounded-lg p-4">
@@ -261,7 +271,7 @@ export default function CredentialRenewalPortal({ userId }) {
                           {cred.issuing_organization} • {cred.item_type}
                         </p>
                         <p className="text-sm text-red-700 font-medium">
-                          Expired {daysOverdue} days ago on {format(parseISO(cred.expiration_date), 'MMM d, yyyy')}
+                          Expired {daysOverdue} days ago on {formatLocalDate(cred.expiration_date, { month: 'short', day: 'numeric', year: 'numeric' })}
                         </p>
                       </div>
                       <Dialog
@@ -378,7 +388,7 @@ export default function CredentialRenewalPortal({ userId }) {
               })}
 
               {expiringCredentials.map(cred => {
-                const daysUntil = differenceInDays(parseISO(cred.expiration_date), today);
+                const daysUntil = localDaysUntil(cred.expiration_date) ?? 0;
                 
                 return (
                   <div key={cred.id} className={`border-l-4 rounded-lg p-4 ${daysUntil <= 7 ? 'border-l-red-500 bg-red-50' : daysUntil <= 30 ? 'border-l-orange-500 bg-orange-50' : 'border-l-yellow-500 bg-yellow-50'}`}>
@@ -394,7 +404,7 @@ export default function CredentialRenewalPortal({ userId }) {
                           {cred.issuing_organization} • {cred.item_type}
                         </p>
                         <p className="text-sm text-slate-700">
-                          Expires: {format(parseISO(cred.expiration_date), 'MMM d, yyyy')}
+                          Expires: {formatLocalDate(cred.expiration_date, { month: 'short', day: 'numeric', year: 'numeric' })}
                         </p>
                       </div>
                       <Dialog
