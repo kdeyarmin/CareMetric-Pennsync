@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // Transpile-check every Base44 Deno function (base44/functions/**/entry.ts).
 //
-// We can't run Deno here, but the TypeScript compiler (already a devDependency,
-// used by the inline-parity tests) catches SYNTAX errors — the main risk when
-// editing these single-file functions blind. This is the closest in-repo
-// equivalent of the deploy-time transpile/smoke check. It does NOT type-check
-// (Deno globals would make that noisy); it only fails on parse/syntax errors.
+// We can't run Deno here, but esbuild (see tools-transpile-ts.mjs) catches
+// SYNTAX errors — the main risk when editing these single-file functions
+// blind. This is the closest in-repo equivalent of the deploy-time
+// transpile/smoke check. It does NOT type-check (Deno globals would make that
+// noisy); it only fails on parse/syntax errors.
 import { readdir, readFile } from "node:fs/promises";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import { transpileTsCollectErrors } from "./tools-transpile-ts.mjs";
 
 const repoRoot = dirname(fileURLToPath(import.meta.url));
 const root = join(repoRoot, "base44", "functions");
@@ -31,17 +31,8 @@ for await (const file of entryFiles(root)) {
   checked++;
   backendFunctionNames.add(relative(root, dirname(file)).split(/[\\/]/)[0]);
   const src = await readFile(file, "utf8");
-  const out = ts.transpileModule(src, {
-    reportDiagnostics: true,
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-  });
-  // Category 1 === Error. transpileModule surfaces syntax errors here.
-  const errors = (out.diagnostics || []).filter((d) => d.category === ts.DiagnosticCategory.Error);
-  for (const d of errors) {
-    const msg = ts.flattenDiagnosticMessageText(d.messageText, "\n");
-    const pos = d.file && d.start != null ? d.file.getLineAndCharacterOfPosition(d.start) : null;
-    failures.push(`${file}${pos ? `:${pos.line + 1}:${pos.character + 1}` : ""} — ${msg}`);
-  }
+  const { errors } = transpileTsCollectErrors(src, { fileName: file });
+  for (const err of errors) failures.push(err);
 }
 
 async function* sourceFiles(dir) {

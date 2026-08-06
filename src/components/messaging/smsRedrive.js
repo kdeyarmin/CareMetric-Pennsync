@@ -43,7 +43,7 @@ export function isTransientFailureReason(reason) {
 /**
  * Should this SmsMessage row be re-driven now?
  *
- * @param {object} row  an SmsMessage ({ status, direction, failure_reason,
+ * @param {Record<string, any>} row  an SmsMessage ({ status, direction, failure_reason,
  *   retry_count, created_date, last_retry_at })
  * @param {number} now  epoch ms
  * @param {{maxAttempts?:number, baseGapMs?:number, maxAgeMs?:number}} [opts]

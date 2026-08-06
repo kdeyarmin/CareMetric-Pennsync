@@ -26,6 +26,7 @@
 const EFFECTIVE = "2024-01-01";
 
 /** @type {Array<object>} */
+/** @type {Array<Record<string, any>>} */
 export const DEFAULT_MEDICARE_RULES = [
   {
     rule_name: "Homebound Status Documentation",
@@ -268,7 +269,7 @@ function nameKey(name) {
  * Idempotent seed helper: the default rules not already present (by rule_name)
  * in `existingRules`. Safe to run repeatedly — a second run returns [].
  * @param {Array<{rule_name?: string}>} existingRules
- * @returns {Array<object>}
+ * @returns {Array<Record<string, any>>}
  */
 export function rulesToSeed(existingRules = []) {
   const have = new Set((Array.isArray(existingRules) ? existingRules : []).map((r) => nameKey(r?.rule_name)));

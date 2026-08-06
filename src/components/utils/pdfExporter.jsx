@@ -267,7 +267,8 @@ export const exportToPDF = async (options = {}) => {
           const angle = (value / total) * 360;
           const endAngle = startAngle + angle;
           
-          doc.setFillColor(...colors[i % colors.length]);
+          const sliceColor = colors[i % colors.length];
+          doc.setFillColor(sliceColor[0], sliceColor[1], sliceColor[2]);
           
           // Draw slice using triangle approximation
           const steps = Math.ceil(angle / 5);
@@ -303,7 +304,8 @@ export const exportToPDF = async (options = {}) => {
           const percentage = total > 0 ? Math.round((item[valueKey] / total) * 100) : 0;
           
           // Color box
-          doc.setFillColor(...colors[i % colors.length]);
+          const legendColor = colors[i % colors.length];
+          doc.setFillColor(legendColor[0], legendColor[1], legendColor[2]);
           doc.rect(margin, legendY - 3, 4, 4, 'F');
           
           // Label

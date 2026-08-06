@@ -36,7 +36,9 @@ export async function getPatientJoinLink(session) {
     res = await rotateTelehealthJoinToken({ session_id: session?.id });
   } catch (err) {
     // The SDK throws on non-2xx; surface the backend's message (403/404/409).
-    throw new Error(err?.response?.data?.error || err?.message || "Couldn't generate a join link");
+    throw new Error(err?.response?.data?.error || err?.message || "Couldn't generate a join link", {
+      cause: err,
+    });
   }
   const token = res?.data?.token;
   if (!token) throw new Error(res?.data?.error || "Couldn't generate a join link");

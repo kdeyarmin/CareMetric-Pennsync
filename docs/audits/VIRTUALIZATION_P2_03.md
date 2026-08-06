@@ -13,8 +13,9 @@
 
 ## Dependency
 
-`@tanstack/react-virtual` is installed via GitHub Actions workflow
-`Install virtualization deps (no local machine)` so no laptop is required.
+`@tanstack/react-virtual` is a normal `package.json` dependency (installed via
+`pnpm install`). The one-shot GitHub Actions installer that targeted
+`wire-p1-pure-helpers` has been retired.
 
 ## Behavior
 
@@ -22,7 +23,8 @@
 - Lists with **≥ 40** items only mount visible rows (+ overscan).
 - Does **not** reduce Base44 fetch size — still subject to `ALL_ROWS` / `2000` ceilings until server-side paging exists.
 
-## Install (browser only)
+## Install
 
-Actions → **Install virtualization deps** → Run workflow on `wire-p1-pure-helpers`
-(if the auto-push trigger did not already land the lockfile commit).
+```bash
+pnpm install --frozen-lockfile
+```

@@ -185,7 +185,6 @@ export default function VisualEditAgent() {
 
 		// Prefer data-source-location, fallback to data-visual-selector-id  
 		const selectorId = element.dataset.sourceLocation || element.dataset.visualSelectorId;
-		const useSourceLocation = !!element.dataset.sourceLocation;
 
 		// Skip if this element is already selected
 		if (selectedElementIdRef.current === selectorId) {
@@ -194,7 +193,7 @@ export default function VisualEditAgent() {
 		}
 
 		// Find all elements with the same ID
-		const elements = findElementsById(selectorId, useSourceLocation);
+		const elements = findElementsById(selectorId);
 
 		// Clear previous hover overlays
 		clearHoverOverlays();
@@ -262,7 +261,6 @@ export default function VisualEditAgent() {
 
 		// Prefer data-source-location, fallback to data-visual-selector-id
 		const visualSelectorId = element.dataset.sourceLocation || element.dataset.visualSelectorId;
-		const useSourceLocation = !!element.dataset.sourceLocation;
 
 		// Clear any existing selected overlays
 		selectedOverlaysRef.current.forEach(overlay => {
@@ -273,7 +271,7 @@ export default function VisualEditAgent() {
 		selectedOverlaysRef.current = [];
 
 		// Find all elements with the same ID
-		const elements = findElementsById(visualSelectorId, useSourceLocation);
+		const elements = findElementsById(visualSelectorId);
 
 		// Create selected overlays for all matching elements
 		elements.forEach(el => {

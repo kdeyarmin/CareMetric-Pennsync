@@ -43,7 +43,7 @@ export function generatePayrollPDF(table, { generatedOn = new Date() } = {}) {
   // ── Title block ──────────────────────────────────────────────────────────
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.setTextColor(...NAVY);
+  doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
   doc.text(table.title, margin, margin + 2);
 
   doc.setFont("helvetica", "normal");
@@ -59,12 +59,12 @@ export function generatePayrollPDF(table, { generatedOn = new Date() } = {}) {
   let y = subY + 5;
 
   const drawHeader = () => {
-    doc.setFillColor(...HEADER_FILL);
-    doc.setDrawColor(...LINE);
+    doc.setFillColor(HEADER_FILL[0], HEADER_FILL[1], HEADER_FILL[2]);
+    doc.setDrawColor(LINE[0], LINE[1], LINE[2]);
     doc.rect(margin, y, tableW, rowH, "FD");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
-    doc.setTextColor(...INK);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
     let x = margin;
     table.columns.forEach((col, i) => {
       const w = widths[i];
@@ -85,14 +85,14 @@ export function generatePayrollPDF(table, { generatedOn = new Date() } = {}) {
       drawHeader();
     }
     if (fill) {
-      doc.setFillColor(...fill);
+      doc.setFillColor(fill[0], fill[1], fill[2]);
       doc.rect(margin, y, tableW, rowH, "F");
     }
-    doc.setDrawColor(...LINE);
+    doc.setDrawColor(LINE[0], LINE[1], LINE[2]);
     doc.line(margin, y + rowH, margin + tableW, y + rowH);
     doc.setFont("helvetica", bold ? "bold" : "normal");
     doc.setFontSize(8.5);
-    doc.setTextColor(...INK);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
     let x = margin;
     table.columns.forEach((col, i) => {
       const w = widths[i];

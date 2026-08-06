@@ -4,7 +4,7 @@ import { readFile, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { transpileTs } from "../../tools-transpile-ts.mjs";
 import { DEFAULT_PDGM_RATES } from "../../src/components/pdgm/pdgmRates.js";
 
 /**
@@ -22,9 +22,7 @@ async function loadHandler({ agencySettings = [], rateRows = [] } = {}) {
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     "const createClientFromRequest = globalThis.__pdgmMakeClient;",
   );
-  const js = ts.transpileModule(src, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-  }).outputText;
+  const js = transpileTs(src).outputText;
   const tmp = join(tmpdir(), `pdgmctr_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(tmp, js);
 

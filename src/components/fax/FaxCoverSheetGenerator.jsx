@@ -107,7 +107,7 @@ export default function FaxCoverSheetGenerator({
     // Urgency badge
     const urgencyLabel = (data.urgency || "routine").toUpperCase();
     const urgencyColor = data.urgency === "stat" ? [220, 38, 38] : data.urgency === "urgent" ? [217, 119, 6] : [22, 163, 74];
-    pdf.setFillColor(...urgencyColor);
+    pdf.setFillColor(urgencyColor[0], urgencyColor[1], urgencyColor[2]);
     pdf.roundedRect(margin, y - 4, 40, 8, 2, 2, "F");
     pdf.setTextColor(255, 255, 255);
     pdf.setFontSize(9);
