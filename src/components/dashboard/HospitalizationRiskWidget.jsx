@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import { formatAge } from "@/lib/age";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function HospitalizationRiskWidget({ autoAnalyze = false }) {
+  const queryClient = useQueryClient();
   const [analyzing, setAnalyzing] = useState(false);
   const [riskScores, setRiskScores] = useState(null);
   const [lastAnalyzed, setLastAnalyzed] = useState(null);
@@ -212,6 +213,11 @@ Return detailed risk assessment:`,
           } else {
             await base44.entities.PatientAlert.create(alertData);
           }
+          queryClient.invalidateQueries({ queryKey: ['patientAlerts'] });
+          queryClient.invalidateQueries({ queryKey: ['patientRiskAlerts'] });
+          queryClient.invalidateQueries({ queryKey: ['allPatientRiskAlerts'] });
+          queryClient.invalidateQueries({ queryKey: ['patientActiveAlerts'] });
+          queryClient.invalidateQueries({ queryKey: ['patientContext', patientRisk.patient_id] });
         } catch (err) {
           console.error('Failed to upsert hospitalization risk alert:', err);
         }
@@ -224,7 +230,7 @@ Return detailed risk assessment:`,
       setAnalyzing(false);
       runningRef.current = false;
     }
-  }, [patients, recentVisits]);
+  }, [patients, recentVisits, queryClient]);
 
   React.useEffect(() => {
     if (autoAnalyze && patients.length > 0 && !riskScores) {

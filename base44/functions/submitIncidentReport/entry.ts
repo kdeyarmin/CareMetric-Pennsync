@@ -79,9 +79,17 @@ Deno.serve(async (req) => {
       // Same admin-tier predicate as isAdminLike — role==='admin' alone missed
     // agency_admin/super_admin accounts, notifying nobody at some agencies.
     const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
-    const users = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+    // Scope recipients to the reporter's agency (plus platform super_admins).
+    // Unscoped fan-out leaked patient name/id to every tenant's agency_admins.
+    let users = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
       u && (u.role === 'admin' || u.role === 'agency_admin' ||
         u.account_type === 'agency_admin' || u.account_type === 'super_admin'));
+    if (user.agency_name) {
+      users = users.filter((u) =>
+        u.account_type === 'super_admin' || u.agency_name === user.agency_name);
+    } else {
+      users = users.filter((u) => u.account_type === 'super_admin');
+    }
       // Notify every admin-tier recipient — an extra role==='admin' re-filter
       // here re-dropped the account_type-based admins the list above includes.
       if (users.length > 0) {

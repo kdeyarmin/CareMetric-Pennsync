@@ -25,7 +25,10 @@ Deno.serve(async (req) => {
     const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
     let candidates = allUsers.filter((candidate) => candidate.email);
 
-    if (user.account_type === 'agency_admin' && user.agency_name) {
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
+      }
       candidates = candidates.filter((candidate) => candidate.agency_name === user.agency_name);
     }
 
@@ -115,7 +118,30 @@ Deno.serve(async (req) => {
         );
         if (already) continue;
         try {
-          await base44.asServiceRole.entities.TrainingAssignment.create(assignment);
+          const createdRow = await base44.asServiceRole.entities.TrainingAssignment.create(assignment);
+          // Concurrent creates can still race past the existence check. Re-read
+          // and keep the earliest row for this cycle; skip notify if we lost.
+          const afterCreate = await base44.asServiceRole.entities.TrainingAssignment.filter(
+            { course_id: courseId, assigned_to_user_id: assignment.assigned_to_user_id },
+            '-created_date',
+            20,
+          ).catch(() => []);
+          const activeAfter = (afterCreate || []).filter(
+            (row) => (row.annual_cycle_year ?? null) === targetCycleYear && row.archived_status !== true,
+          );
+          if (activeAfter.length > 1) {
+            const keepId = activeAfter
+              .slice()
+              .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')))[0]?.id;
+            for (const row of activeAfter) {
+              if (row.id !== keepId) {
+                await base44.asServiceRole.entities.TrainingAssignment.delete(row.id).catch(() => {});
+              }
+            }
+            if (createdRow?.id && keepId && createdRow.id !== keepId) {
+              continue;
+            }
+          }
           created.push(assignment);
         } catch (err) {
           console.error('assignInService create failed', assignment.assigned_to_user_id, err?.message || err);

@@ -190,12 +190,38 @@ Deno.serve(async (req) => {
     let destination = normalizeE164(to_number);
     let resolvedPatientId = patient_id || null;
     let resolvedPatient = null;
-    const isAdminLike = (u) => !!u && (
-      u.role === 'admin' || u.account_type === 'agency_admin' || u.account_type === 'super_admin'
+    const isPlatformAdmin = !!user && (
+      user.role === 'admin' || user.account_type === 'super_admin'
     );
-    const canAccessPatient = (p) => {
+    // Agency admins must not click-to-call any patient tenant-wide via service
+    // role — scope by staff emails in their agency (same gate as updateScopedPatientAlert).
+    let agencyEmailSet = null;
+    const loadAgencyEmails = async () => {
+      if (agencyEmailSet) return agencyEmailSet;
+      if (user.account_type !== 'agency_admin') return null;
+      if (!user.agency_name) {
+        agencyEmailSet = new Set();
+        return agencyEmailSet;
+      }
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .list('-created_date', 5000)
+        .catch(() => []);
+      agencyEmailSet = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      return agencyEmailSet;
+    };
+    const canAccessPatient = async (p) => {
       if (!p) return false;
-      if (isAdminLike(user)) return true;
+      if (isPlatformAdmin) return true;
+      if (user.account_type === 'agency_admin') {
+        const emails = await loadAgencyEmails();
+        if (!emails || emails.size === 0) return false;
+        if (p.created_by && emails.has(p.created_by)) return true;
+        return Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => emails.has(e));
+      }
       if (p.created_by === user.email) return true;
       return Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email);
     };
@@ -203,7 +229,7 @@ Deno.serve(async (req) => {
     if (!destination && patient_id) {
       const p = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000).catch(() => []);
       resolvedPatient = p[0] || null;
-      if (!canAccessPatient(resolvedPatient)) {
+      if (!(await canAccessPatient(resolvedPatient))) {
         return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
       }
       destination = normalizeE164(resolvedPatient?.phone);
@@ -216,7 +242,7 @@ Deno.serve(async (req) => {
       for (const v of phoneVariants(destination)) {
         const m = await base44.asServiceRole.entities.Patient.filter({ phone: v }, undefined, 5000).catch(() => []);
         if (m.length > 0) {
-          if (!canAccessPatient(m[0])) {
+          if (!(await canAccessPatient(m[0]))) {
             return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
           }
           resolvedPatientId = m[0].id;
@@ -227,7 +253,7 @@ Deno.serve(async (req) => {
     } else if (!resolvedPatient) {
       // Client passed patient_id + to_number — still verify access to the named patient.
       const p = await base44.asServiceRole.entities.Patient.filter({ id: resolvedPatientId }, undefined, 1).catch(() => []);
-      if (!canAccessPatient(p[0])) {
+      if (!(await canAccessPatient(p[0]))) {
         return Response.json({ error: 'Forbidden: no access to this patient' }, { status: 403 });
       }
     }

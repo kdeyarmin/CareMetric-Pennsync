@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,8 +55,17 @@ export default function AIPatientDashboardSummary({
   const [summary, setSummary] = useState(null);
   const [generatedAt, setGeneratedAt] = useState(null);
   const ai = useAICall();
+  const patientIdRef = useRef(patient?.id);
+  patientIdRef.current = patient?.id;
+
+  // Clear sticky dashboard summary when the chart switches patients.
+  useEffect(() => {
+    setSummary(null);
+    setGeneratedAt(null);
+  }, [patient?.id]);
 
   const generateSummary = useCallback(async () => {
+    const requestPatientId = patient?.id;
     try {
       // Get recent visits (last 30 days)
       const recentVisits = visits.filter(v => isWithinLastDays(v.visit_date, 30)).slice(0, 10);
@@ -144,6 +153,8 @@ Provide a comprehensive yet concise dashboard summary in JSON:
         }
       });
 
+      // Drop stale results if the chart switched patients while the AI ran.
+      if (patientIdRef.current !== requestPatientId) return;
       setSummary(result);
       setGeneratedAt(new Date());
     } catch (error) {

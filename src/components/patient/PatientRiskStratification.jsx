@@ -176,6 +176,13 @@ Return JSON:
   }, [patient, visits, incidents, onRiskCalculated, calculateAge]);
 
   useEffect(() => {
+    // Clear sticky risk scores when the chart switches patients so autoCalculate
+    // re-fires for Patient B instead of permanently showing Patient A's scores.
+    setRiskData(null);
+    setLastCalculated(null);
+  }, [patient?.id]);
+
+  useEffect(() => {
     if (autoCalculate && patient && !riskData) {
       calculateRisk();
     }

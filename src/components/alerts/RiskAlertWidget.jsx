@@ -54,6 +54,11 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
       queryClient.invalidateQueries({
         queryKey: showAllPatients ? ['allPatientRiskAlerts'] : ['patientRiskAlerts', patientId]
       });
+      queryClient.invalidateQueries({ queryKey: ['patientAlerts'] });
+      queryClient.invalidateQueries({ queryKey: ['patientActiveAlerts'] });
+      if (patientId) {
+        queryClient.invalidateQueries({ queryKey: ['patientContext', patientId] });
+      }
     }
   });
 
@@ -63,6 +68,11 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
       queryClient.invalidateQueries({
         queryKey: showAllPatients ? ['allPatientRiskAlerts'] : ['patientRiskAlerts', patientId] 
       });
+      queryClient.invalidateQueries({ queryKey: ['patientAlerts'] });
+      queryClient.invalidateQueries({ queryKey: ['patientActiveAlerts'] });
+      if (patientId) {
+        queryClient.invalidateQueries({ queryKey: ['patientContext', patientId] });
+      }
     }
   });
 

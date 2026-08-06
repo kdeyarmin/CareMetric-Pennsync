@@ -11,7 +11,7 @@ import {
   Edit,
   Plus
 } from "lucide-react";
-import { format } from "date-fns";
+import { formatLocalDate } from "@/lib/dateLocal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -251,7 +251,7 @@ export default function HealthHistorySection({ patient }) {
                         {hosp.date && (
                           <span className="flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
-                            {Number.isNaN(new Date(hosp.date).getTime()) ? hosp.date : format(new Date(hosp.date), 'MMM d, yyyy')}
+                            {formatLocalDate(hosp.date, { month: 'short', day: 'numeric', year: 'numeric' }) || hosp.date}
                           </span>
                         )}
                         {hosp.length_of_stay && (

@@ -45,7 +45,10 @@ Deno.serve(async (req) => {
 
     // Agency admins must not package arbitrary cross-agency patients via service role.
     let agencyEmails = null;
-    if (user.account_type === 'agency_admin' && user.agency_name) {
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
+      }
       const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
       agencyEmails = new Set(
         (agencyUsers || [])

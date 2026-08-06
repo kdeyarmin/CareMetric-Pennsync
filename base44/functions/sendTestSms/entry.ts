@@ -160,11 +160,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Telnyx SMS is not configured (missing API key).' }, { status: 500 });
     }
 
-    // Resolve a from-number: the admin's own work number, else any provisioned one.
+    // Resolve a from-number: the admin's own work number, else a provisioned
+    // number from the same agency (never hijack another tenant's Telnyx "from").
     let fromNumber = user.work_phone_number || null;
     if (!fromNumber) {
       const provisioned = await base44.asServiceRole.entities.User.list('full_name', 1000).catch(() => []);
-      fromNumber = provisioned.find((u) => u.work_phone_number)?.work_phone_number || null;
+      const sameAgency = (u) => {
+        if (!u?.work_phone_number) return false;
+        if (user.agency_name) return u.agency_name === user.agency_name;
+        // No agency on caller — only reuse their own number (already checked).
+        return false;
+      };
+      fromNumber = (provisioned || []).find(sameAgency)?.work_phone_number || null;
     }
     if (!fromNumber) {
       return Response.json({ error: 'No work number is provisioned yet. Assign one to a nurse (or yourself) first.' }, { status: 400 });

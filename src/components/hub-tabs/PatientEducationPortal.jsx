@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { formatLocalDate } from "@/lib/dateLocal";
 
 export default function PatientEducationPortal() {
   const queryClient = useQueryClient();
@@ -406,7 +407,7 @@ function EducationMaterialCard({
             {delivered && material.delivery_date && (
               <div className="bg-green-100 border border-green-300 rounded-lg p-3">
                 <p className="text-xs text-green-800">
-                  <strong>Delivered:</strong> {new Date(material.delivery_date).toLocaleDateString()} via {material.delivery_method?.replace('_', ' ')}
+                  <strong>Delivered:</strong> {formatLocalDate(material.delivery_date) || '—'} via {material.delivery_method?.replace('_', ' ')}
                 </p>
                 {material.teach_back_notes && (
                   <p className="text-xs text-green-700 mt-2">

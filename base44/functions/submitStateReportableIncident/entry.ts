@@ -318,9 +318,18 @@ Deno.serve(async (req) => {
     // agency whose admins are account_type-based got ZERO notifications while
     // the function still returned success.
     const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
-    const adminList = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+    // Scope recipients to the submitter's agency (plus platform super_admins).
+    // Unscoped fan-out emailed full report text / patient identifiers to every
+    // tenant's agency_admins.
+    let adminList = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
       u && (u.role === 'admin' || u.role === 'agency_admin' ||
         u.account_type === 'agency_admin' || u.account_type === 'super_admin'));
+    if (user.agency_name) {
+      adminList = adminList.filter((u) =>
+        u.account_type === 'super_admin' || u.agency_name === user.agency_name);
+    } else {
+      adminList = adminList.filter((u) => u.account_type === 'super_admin');
+    }
 
     let notifiedCount = 0;
     const recipients = [];

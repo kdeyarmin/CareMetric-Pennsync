@@ -81,6 +81,20 @@ export default function PatientDetails() {
     status: 'scheduled'
   });
 
+  // Same-route patient switch (?id=A → ?id=B): clear sticky OASIS prompt/visit
+  // and visit form so Patient B never inherits Patient A's trigger state.
+  React.useEffect(() => {
+    setShowOASISPrompt(false);
+    setOasisTriggerVisit(null);
+    setShowVisitForm(false);
+    setNewVisit({
+      visit_date: format(new Date(), 'yyyy-MM-dd'),
+      visit_time: '',
+      visit_type: 'routine_visit',
+      status: 'scheduled'
+    });
+  }, [patientId]);
+
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
@@ -286,6 +300,7 @@ export default function PatientDetails() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <AIPatientDashboardSummary
+                key={patientId}
                 patient={patient}
                 visits={visits}
                 tasks={tasks}
@@ -527,7 +542,7 @@ export default function PatientDetails() {
         </TabsContent>
 
         {/* AI Tools Tab */}
-        <TabsContent value="ai-tools" className="space-y-6">
+        <TabsContent value="ai-tools" className="space-y-6" key={`ai-tools-${patientId}`}>
           <Tabs value={aiToolsTab} onValueChange={setAiToolsTab} className="w-full">
             <div className="overflow-x-auto scrollbar-hide">
               <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
@@ -633,7 +648,7 @@ export default function PatientDetails() {
         </TabsContent>
 
         <TabsContent value="telehealth" className="space-y-6">
-          <PatientTelehealthPanel patient={patient} currentUser={currentUser} />
+          <PatientTelehealthPanel key={patientId} patient={patient} currentUser={currentUser} />
         </TabsContent>
 
         {/* Documents Tab */}

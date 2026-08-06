@@ -48,6 +48,15 @@ export default function ProactiveClinicalTaskGenerator({
   const [dismissedTasks, setDismissedTasks] = useState(() => new Set());
   const [creatingTasks, setCreatingTasks] = useState(false);
 
+  // Clear sticky AI task suggestions when the chart switches patients — otherwise
+  // Approve can write Patient A's suggestions onto Patient B.
+  React.useEffect(() => {
+    setSuggestedTasks([]);
+    setExpandedTasks(new Set());
+    setDismissedTasks(new Set());
+    setAnalyzing(false);
+  }, [patientId]);
+
   const handleAnalyze = React.useCallback(async () => {
     setAnalyzing(true);
     try {

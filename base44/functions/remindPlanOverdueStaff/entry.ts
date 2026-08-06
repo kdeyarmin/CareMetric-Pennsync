@@ -54,7 +54,10 @@ Deno.serve(async (req) => {
 
     // Agency admins can only nudge staff inside their own agency.
     let allowedEmails = null;
-    if (user.account_type === 'agency_admin' && user.agency_name) {
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
+      }
       const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
       allowedEmails = new Set(allUsers.filter((u) => u.agency_name === user.agency_name).map((u) => u.email));
     }

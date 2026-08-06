@@ -267,6 +267,9 @@ Return JSON:
 
       // Refresh alerts query
       queryClient.invalidateQueries({ queryKey: ['patientAlerts', patientId] });
+      queryClient.invalidateQueries({ queryKey: ['patientRiskAlerts', patientId] });
+      queryClient.invalidateQueries({ queryKey: ['patientActiveAlerts', patientId] });
+      queryClient.invalidateQueries({ queryKey: ['patientContext', patientId] });
 
       if (onAlertsGenerated) {
         onAlertsGenerated(createdAlerts, result);

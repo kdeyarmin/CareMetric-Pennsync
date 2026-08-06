@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { DragDropContext } from "@hello-pangea/dnd";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -57,6 +57,14 @@ export default function CarePlanBuilder() {
   });
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
+
+  // Switching patients must not leave prior interventions attached to the new chart.
+  useEffect(() => {
+    setPlanItems([]);
+    setSelectedItem(null);
+    setLinkedPathways({});
+    setSaved(false);
+  }, [selectedPatientId]);
 
   const onDragEnd = useCallback((result) => {
     const { source, destination, draggableId } = result;

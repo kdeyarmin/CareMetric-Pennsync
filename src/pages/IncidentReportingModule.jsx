@@ -531,7 +531,7 @@ export default function IncidentReportingModule() {
                     </div>
                     {uploadedPhotos.length > 0 && (
                       <div className="mt-3 grid grid-cols-3 gap-2">
-                        {uploadedPhotos.map((url, idx) => (
+                        {uploadedPhotos.filter((url) => isSafeExternalUrl(url) || (typeof url === 'string' && url.startsWith('blob:'))).map((url, idx) => (
                           <div key={idx} className="relative group">
                             <img src={url} alt={`Upload ${idx + 1}`} className="w-full h-24 object-cover rounded-lg" />
                             <button

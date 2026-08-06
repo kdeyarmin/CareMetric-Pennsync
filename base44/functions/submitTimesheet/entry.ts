@@ -502,9 +502,17 @@ Deno.serve(async (req) => {
           recipients = [{ email: resolvedManagerEmail }];
         } else {
           const users = await base44.asServiceRole.entities.User.list('-created_date', 500);
+          // Scope admin fallback to the submitter's agency — unscoped list
+          // notified every tenant's agency_admins of timesheet submissions.
           recipients = users.filter(
             (u) => u.email && (u.role === 'admin' || u.account_type === 'super_admin' || u.account_type === 'agency_admin')
           );
+          if (user.agency_name) {
+            recipients = recipients.filter((u) =>
+              u.account_type === 'super_admin' || u.agency_name === user.agency_name);
+          } else {
+            recipients = recipients.filter((u) => u.account_type === 'super_admin');
+          }
         }
         const employeeName = user.full_name || user.email;
         const prettyService = service_type === 'hospice' ? 'Hospice' : 'Home Health';

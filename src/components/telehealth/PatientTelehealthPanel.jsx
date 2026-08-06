@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { todayEastern, nowEastern } from "@/components/utils/timezone";
 import { Video, Copy, Calendar, MessageSquare } from "lucide-react";
@@ -34,6 +34,16 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
   const [participantList, setParticipantList] = useState([]);
   const [newSession, setNewSession] = useState({ visit_type: "routine_followup", scheduled_at: "" });
   const endingRef = useRef(false);
+
+  // Clear sticky live-session UI when the chart switches patients mid-panel.
+  useEffect(() => {
+    setActiveSession(null);
+    setShowNewSession(false);
+    setShowDocumentation(false);
+    setParticipantList([]);
+    setNewSession({ visit_type: "routine_followup", scheduled_at: "" });
+    endingRef.current = false;
+  }, [patient?.id]);
 
   const { data: sessions = [] } = useQuery({
     queryKey: ["patient-telehealth-sessions", patient?.id],

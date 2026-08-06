@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
-import { format, isValid } from "date-fns";
+import { format } from "date-fns";
+import { parseLocalDate } from "@/lib/dateLocal";
 
 export default function PendingReferralsWidget() {
   const { data: currentUser } = useQuery({
@@ -87,13 +88,13 @@ export default function PendingReferralsWidget() {
                   </div>
                   <p className="text-xs text-slate-600">
                     {referral.referral_source || 'No source'} • {' '}
-                    {/* referral_date is AI-extracted free text, so it is not
-                        reliably parseable. format() throws a RangeError on an
-                        Invalid Date, which took out the whole Dashboard route
-                        via the error boundary rather than showing one bad row. */}
-                    {referral.referral_date && isValid(new Date(referral.referral_date))
-                      ? format(new Date(referral.referral_date), 'MMM d')
-                      : 'N/A'}
+                    {/* referral_date is often date-only — parse as local calendar
+                        day so west-of-UTC agencies don't see a day-shifted date.
+                        Unparseable AI-extracted free text falls back to N/A. */}
+                    {(() => {
+                      const d = parseLocalDate(referral.referral_date);
+                      return d ? format(d, 'MMM d') : 'N/A';
+                    })()}
                   </p>
                   {referral.missing_information?.length > 0 && (
                     <p className="text-xs text-orange-700 mt-1">
