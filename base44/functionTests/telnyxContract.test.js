@@ -86,7 +86,12 @@ test("sendSms posts the Telnyx Messages contract", async () => {
   ]);
   const handler = await loadHandler("../functions/sendSms/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_MESSAGING_PROFILE_ID: "MP1" },
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", messaging_profile_id: "MP1" }] } }),
+    makeClient: () => makeBase44({ data: {
+      IntegrationSecret: [{ api_key: "KEYtest", messaging_profile_id: "MP1" }],
+      // Contract tests are wall-clock independent: disable TCPA quiet hours so a
+      // night-time CI run does not 403 a Messages-API shape assertion.
+      AgencySettings: [{ tcpa_quiet_hours_enabled: false, sms_enabled: true }],
+    } }),
     fetchImpl: impl,
   });
   const res = await handler(new Request("https://app/functions/sendSms", {
@@ -828,7 +833,10 @@ test("a failed masked-bridge transfer falls back to speak+hangup and marks the c
 });
 
 test("sendSms forwards MMS media_urls and rejects non-https/oversized media", async () => {
-  const mk = () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest" }] } });
+  const mk = () => makeBase44({ data: {
+    IntegrationSecret: [{ api_key: "KEYtest" }],
+    AgencySettings: [{ tcpa_quiet_hours_enabled: false, sms_enabled: true }],
+  } });
   // Happy path: media_urls forwarded to Telnyx.
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/messages"), respond: () => ({ status: 200, json: { data: { id: "m", to: [{ status: "queued" }] } } }) },
