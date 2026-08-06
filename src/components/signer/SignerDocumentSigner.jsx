@@ -8,6 +8,7 @@ import { ArrowLeft, Download } from 'lucide-react';
 import SignaturePadCanvas from '@/components/signature/SignaturePadCanvas';
 import { submitSignerSignature } from '@/functions/submitSignerSignature';
 import { toast } from 'sonner';
+import { openExternalUrl } from '@/components/utils/security';
 
 export default function SignerDocumentSigner({
   documentId,
@@ -128,7 +129,7 @@ export default function SignerDocumentSigner({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open(documentUrl, '_blank')}
+                onClick={() => openExternalUrl(documentUrl)}
                 className="gap-2"
               >
                 <Download className="w-4 h-4" />

@@ -32,6 +32,7 @@ import {
   Settings
 } from "lucide-react";
 import { toast } from "sonner";
+import { openExternalUrl } from "@/components/utils/security";
 import TemplateFieldMapper from "./TemplateFieldMapper";
 import VisualPDFTemplateEditor from "./VisualPDFTemplateEditor";
 import TemplateSearchFilter from "./TemplateSearchFilter";
@@ -370,7 +371,7 @@ export default function PDFTemplateManager() {
                 {templateData.template_file_url && (
                   <Button
                     variant="outline"
-                    onClick={() => window.open(templateData.template_file_url, '_blank')}
+                    onClick={() => openExternalUrl(templateData.template_file_url)}
                   >
                     <Eye className="w-4 h-4" />
                   </Button>

@@ -53,8 +53,12 @@ export default function DocumentSignatures() {
   });
 
   const handleSignDocument = (sig) => {
-    const url = createPageUrl(`SignDocument?pdf_url=${encodeURIComponent(sig.document_url || sig.original_pdf_url || '')}&signature_id=${sig.id}&patient_id=${sig.patient_id}`);
-    navigate(url);
+    // SignDocument loads the PDF from the DocumentSignature entity by id —
+    // never put document_url / signed-PDF paths in the query string (browser
+    // history, Referer, analytics, and screenshots would retain PHI URLs).
+    const params = new URLSearchParams({ signature_id: sig.id });
+    if (sig.patient_id) params.set('patient_id', sig.patient_id);
+    navigate(createPageUrl(`SignDocument?${params.toString()}`));
   };
 
   const handleSendReminder = async (sig) => {

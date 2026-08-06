@@ -86,6 +86,7 @@ import { runReferralQuickScan } from "../components/referral/referralExtraction"
 import { markStartOfCareCompleted } from "../components/referral/intakeToSocTracker";
 import { referralToF2FInput, validateFaceToFace, toFaceToFaceEncounter } from "../components/referral/faceToFaceValidator";
 import { validateIntakeDiagnoses } from "../components/referral/intakeDiagnosisValidator";
+import { referralPatientReadiness, splitPatientName } from "../components/referral/referralPatientReadiness";
 import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import PatientMatchReview from "../components/referral/PatientMatchReview";
 import PatientVerificationStep from "../components/referral/PatientVerificationStep";
@@ -568,10 +569,11 @@ Actions available:
       const allPatients = await base44.entities.Patient.list('-created_date', 500);
       
       if (fullName || dob || phone) {
-        const nameParts = fullName.split(' ').filter(p => p.length > 0);
-        const firstName = nameParts[0] || '';
-        const middleName = nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '';
-        const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+        // Use the shared splitter so "Last, First" fax forms and placeholder
+        // names ("Unknown" / "Not provided on referral") match triage behavior
+        // instead of creating first_name "Doe," / treating placeholders as real.
+        const { first_name: firstName, last_name: lastName } = splitPatientName(fullName);
+        const middleName = '';
         
         // Helper: normalize string for comparison
         const normalize = (str) => str?.toLowerCase().trim().replace(/[^a-z0-9]/g, '') || '';
@@ -742,10 +744,31 @@ Actions available:
         // existingPatient, so without this guard a duplicate chart was created for
         // a patient a reviewer is about to confirm. Patient creation/linking then
         // happens in handleConfirmMatch (existing) or handleCreateNewFromReview.
-        const nameParts = (extractedData.demographics.full_name || '').split(' ');
-        const firstName = nameParts[0] || '';
-        const middleName = nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '';
-        const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+        // Also require the same minimum identity triage uses — otherwise intake
+        // minted active charts named "Doe," / "Unknown" with no verifiable ID.
+        const readiness = referralPatientReadiness({
+          patient_name: extractedData.demographics.full_name,
+          full_name: extractedData.demographics.full_name,
+          date_of_birth: extractedData.demographics.date_of_birth,
+          medical_record_number: extractedData.demographics.medical_record_number || extractedData.demographics.mrn,
+          phone: extractedData.demographics.phone,
+          address: extractedData.demographics.address,
+        });
+        if (!readiness.ready) {
+          updates.requires_manual_review = true;
+          updates.status = 'awaiting_info';
+          updates.follow_up_notes = [
+            ...(Array.isArray(existing.follow_up_notes) ? existing.follow_up_notes : []),
+            {
+              type: 'missing_patient_identity',
+              note: `Patient chart not auto-created. Missing: ${readiness.missing.join(', ')}.`,
+              created_at: new Date().toISOString(),
+            },
+          ];
+        } else {
+        const firstName = readiness.first_name;
+        const lastName = readiness.last_name;
+        const middleName = '';
 
         const newPatient = await base44.entities.Patient.create({
           first_name: firstName,
@@ -795,6 +818,7 @@ Actions available:
         updates.patient_id = newPatient.id;
         existingPatient = newPatient;
         createdNewPatient = true;
+        }
       } else if (existingPatient) {
         // Pull MRN from existing patient and update with referral data
         const updateData = {
@@ -1087,12 +1111,23 @@ Actions available:
       if (!referralToUpdate) return;
       const data = referralToUpdate.extracted_data || {};
       const demo = data.demographics || {};
-      const nameParts = (demo.full_name || '').split(' ');
+      const readiness = referralPatientReadiness({
+        patient_name: demo.full_name,
+        full_name: demo.full_name,
+        date_of_birth: demo.date_of_birth,
+        medical_record_number: demo.medical_record_number || demo.mrn,
+        phone: demo.phone,
+        address: demo.address,
+      });
+      if (!readiness.ready) {
+        toast.error(`Cannot create patient chart. Missing: ${readiness.missing.join(', ')}.`);
+        return;
+      }
       
       const newPatient = await base44.entities.Patient.create({
-        first_name: nameParts[0] || '',
-        middle_name: nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '',
-        last_name: nameParts.length > 1 ? nameParts[nameParts.length - 1] : '',
+        first_name: readiness.first_name,
+        middle_name: '',
+        last_name: readiness.last_name,
         medical_record_number: demo?.medical_record_number || demo?.mrn || null,
         date_of_birth: demo.date_of_birth,
         address: demo.address,

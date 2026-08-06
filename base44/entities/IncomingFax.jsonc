@@ -35,6 +35,14 @@
       ],
       "default": "pending"
     },
+    "claimed_by": {
+      "type": "string",
+      "description": "Per-run claim token so overlapping processInboundFaxes crons cannot double-OCR / double-match the same fax"
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "ocr_text": {
       "type": "string",
       "description": "Extracted text from OCR"
