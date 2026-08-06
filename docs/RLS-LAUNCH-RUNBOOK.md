@@ -172,3 +172,12 @@ UI — the UI filters client-side and will look correct even when RLS is open.
 **Sign-off:** all 7 pass → RLS gate cleared. Any failure on 1–4 is a **launch
 blocker**; failures on 5 mean a rule is too tight (fix before launch but not a security
 hole).
+
+---
+
+## 6. Hosted proof worksheet (LR-01)
+
+Executable curl/seed matrix, cross-tenant probes, and evidence capture rules
+live in **`docs/HOSTED-RLS-PROOF.md`**. This runbook applies policies; that
+worksheet is what you fill when collecting LR-01 artifacts. Repository tests
+never mark hosted isolation complete.

@@ -176,7 +176,8 @@ export const AuthProvider = ({ children }) => {
     if (window.location.pathname === '/login') return;
     // Plant a one-time auth_state on the return URL so an empty-referrer
     // handoff from hosted login can be distinguished from a phishing link
-    // that only carries ?access_token= (see trustedTokenReferrer in app-params).
+    // that only carries ?access_token= (see evaluateAccessTokenTrust /
+    // pending confirm on SignInScreen).
     const returnUrl = plantLoginReturnState(window.location.href);
     base44.auth.redirectToLogin(returnUrl);
   };

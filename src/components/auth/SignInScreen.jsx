@@ -1,13 +1,18 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { base44 } from '@/api/base44Client';
-import { appParams } from '@/lib/app-params';
+import {
+  appParams,
+  peekPendingAccessToken,
+  confirmPendingAccessToken,
+  declinePendingAccessToken,
+} from '@/lib/app-params';
 import { createAxiosClient } from '@/lib/base44AxiosClient';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Eye, EyeOff, Loader2, MailCheck } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Loader2, MailCheck, ShieldAlert } from 'lucide-react';
 import { BRAND_LOGO_URL, APP_NAME, PLATFORM_NAME } from '@/lib/brand';
 
 /**
@@ -22,6 +27,11 @@ import { BRAND_LOGO_URL, APP_NAME, PLATFORM_NAME } from '@/lib/brand';
  * Flows handled here: email/password sign-in and the password-reset request.
  * Everything else (sign-up for invited users, OTP verification, captcha
  * challenges) falls back to the platform-hosted page via navigateToLogin().
+ *
+ * Also handles a pending `?access_token=` handoff that arrived without a
+ * trusted referrer or planted auth_state (email-style magic links). Those are
+ * stashed by app-params and require an explicit confirm before becoming a
+ * session — closes silent logged-out login CSRF in-repo.
  */
 
 /** Default post-auth behavior: reload so the app bootstraps with the stored
@@ -36,9 +46,28 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [pendingToken, setPendingToken] = useState(() => peekPendingAccessToken());
 
   const switchMode = (nextMode) => {
     setMode(nextMode);
+    setError('');
+  };
+
+  const handleConfirmPending = () => {
+    if (busy) return;
+    setError('');
+    if (!confirmPendingAccessToken()) {
+      setPendingToken(null);
+      setError('That sign-in link is no longer available. Please sign in with email and password.');
+      return;
+    }
+    setBusy(true);
+    onAuthenticated();
+  };
+
+  const handleDeclinePending = () => {
+    declinePendingAccessToken();
+    setPendingToken(null);
     setError('');
   };
 
@@ -67,6 +96,9 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
         setError('This account needs an extra verification step. Please continue on the standard sign-in page (link below).');
         return;
       }
+      // Password login wins over any stashed magic-link handoff.
+      declinePendingAccessToken();
+      setPendingToken(null);
       base44.auth.setToken(result.access_token);
       onAuthenticated();
     } catch (err) {
@@ -126,14 +158,47 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
             by {PLATFORM_NAME}
           </p>
           <p className="mt-3 text-sm text-slate-500">
-            {mode === 'signin' ? 'Sign in to continue' : 'Password reset'}
+            {pendingToken
+              ? 'Confirm sign-in link'
+              : mode === 'signin'
+                ? 'Sign in to continue'
+                : 'Password reset'}
           </p>
         </div>
 
         <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-navy-600 via-navy-500 to-gold-400" />
           <div className="p-8">
-            {mode === 'signin' && (
+            {pendingToken && (
+              <div className="space-y-5">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 ring-1 ring-inset ring-amber-200/70">
+                  <ShieldAlert className="h-7 w-7 text-amber-700" aria-hidden />
+                </div>
+                <div className="text-center">
+                  <h2 className="text-lg font-semibold text-slate-900">Continue with this sign-in link?</h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    A sign-in link opened this page. Confirm only if you expected it
+                    (for example from your email). Decline if you did not request it.
+                  </p>
+                </div>
+                {error && (
+                  <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {error}
+                  </p>
+                )}
+                <Button type="button" disabled={busy} onClick={handleConfirmPending} className="h-11 w-full">
+                  {busy ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Continuing…</>) : 'Continue'}
+                </Button>
+                <Button type="button" variant="outline" disabled={busy} onClick={handleDeclinePending} className="h-11 w-full">
+                  Decline
+                </Button>
+                <p className="text-center text-xs text-slate-500">
+                  Or sign in with email and password below after declining.
+                </p>
+              </div>
+            )}
+
+            {!pendingToken && mode === 'signin' && (
               <form onSubmit={handleSignIn} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="signin-email" className="text-slate-700">Email</Label>
@@ -202,7 +267,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
               </form>
             )}
 
-            {mode === 'reset' && (
+            {!pendingToken && mode === 'reset' && (
               <form onSubmit={handleResetRequest} className="space-y-5">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Reset your password</h2>
@@ -241,7 +306,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
               </form>
             )}
 
-            {mode === 'reset-sent' && (
+            {!pendingToken && mode === 'reset-sent' && (
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-navy-50 ring-1 ring-inset ring-navy-200/60">
                   <MailCheck className="h-7 w-7 text-navy-600" />
