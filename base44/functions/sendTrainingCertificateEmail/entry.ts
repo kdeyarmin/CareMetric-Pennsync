@@ -235,10 +235,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Certificate not found' }, { status: 404 });
     }
     // Ownership: only the certificate's owner or an admin may (re)send it.
-    const isAdminLike = user.role === 'admin'
-      || user.account_type === 'agency_admin'
-      || user.account_type === 'super_admin';
-    if (certificate.user_id !== user.email && !isAdminLike) {
+    // Facility admins with an agency are agency-scoped (parity with PDF path).
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const ownsCert = certificate.user_id === user.email;
+    if (!ownsCert && !isPlatformAdmin && !isAgencyScopedAdmin) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     if (!certificate.user_id || !certificate.course_title || !certificate.issued_at) {
@@ -246,6 +250,11 @@ Deno.serve(async (req) => {
     }
 
     const [employee] = await base44.asServiceRole.entities.User.filter({ email: certificate.user_id }, '-created_date', 1);
+    if (!ownsCert && isAgencyScopedAdmin) {
+      if (!user.agency_name || !employee || employee.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: certificate owner is outside your agency' }, { status: 403 });
+      }
+    }
     const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 300);
     // Only notify admins of the employee's OWN agency. If the employee can't be
     // resolved (deleted/renamed user) we have no agency to scope to, so notify

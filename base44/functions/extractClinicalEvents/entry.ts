@@ -25,12 +25,32 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Authorize: only an assigned nurse (or admin) may write ClinicalEvent / Task
-    // / PatientAlert rows to this patient's chart. RLS-independent code check.
+    // Authorize: assigned nurse, platform admin, or agency-scoped admin for an
+    // in-agency patient. RLS-independent code check.
     const [evPatient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, '', 1);
     if (!evPatient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-    if (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin' && evPatient.created_by !== user.email && !(Array.isArray(evPatient.assigned_nurses) && evPatient.assigned_nurses.includes(user.email))) {
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isAssigned = evPatient.created_by === user.email
+      || (Array.isArray(evPatient.assigned_nurses) && evPatient.assigned_nurses.includes(user.email));
+    if (!isPlatformAdmin && !isAgencyScopedAdmin && !isAssigned) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (isAgencyScopedAdmin) {
+      if (!user.agency_name) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const inAgency = (evPatient.created_by && agencyEmails.has(evPatient.created_by))
+        || (Array.isArray(evPatient.assigned_nurses)
+          && evPatient.assigned_nurses.some((e) => agencyEmails.has(e)));
+      if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     // Bind visit_id to the authorized patient — otherwise ClinicalEvent/Task/
     // PatientAlert rows can be attached to a foreign visit under an accessible patient.
@@ -147,7 +167,7 @@ IMPORTANT: For source_text, provide the EXACT verbatim text from the note, not a
 
     // Save extracted events to database with text anchors
     const savedEvents = [];
-    for (const event of result.events || []) {
+    for (const event of (Array.isArray(result?.events) ? result.events : [])) {
       // Coerce out-of-enum AI values to safe defaults before persisting
       event.event_type = ALLOWED_EVENT_TYPES.has(event.event_type) ? event.event_type : 'other';
       event.severity = ALLOWED_SEVERITIES.has(event.severity) ? event.severity : 'medium';

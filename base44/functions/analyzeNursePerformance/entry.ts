@@ -28,20 +28,25 @@ Deno.serve(async (req) => {
 
     const { nurse_email, date_range_days = 30 } = await req.json();
 
-    // Admins can view any nurse, nurses can only view themselves. The dashboard
-    // shows the nurse picker to account_type admins too, so honor their selection
-    // here — otherwise their own data was returned mislabeled as the picked nurse.
-    // Agency admins are scoped to their own agency; role/super admins are not.
+    // Admins can view another nurse; nurses can only view themselves.
+    // Facility admins with an agency are agency-scoped (parity with
+    // generatePersonalizedLearningPath); only super_admin / admin-without-agency
+    // stay platform-wide.
     const isSuperAdmin = user.account_type === 'super_admin';
-    const isRoleAdmin = user.role === 'admin';
-    const isAgencyAdmin = user.account_type === 'agency_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
     let targetEmail = user.email;
-    if (nurse_email && nurse_email !== user.email && (isRoleAdmin || isSuperAdmin || isAgencyAdmin)) {
-      if (isRoleAdmin || isSuperAdmin) {
+    if (nurse_email && nurse_email !== user.email && (isPlatformAdmin || isAgencyScopedAdmin)) {
+      if (isPlatformAdmin) {
         targetEmail = nurse_email;
       } else {
         const [target] = await base44.asServiceRole.entities.User.filter({ email: nurse_email }, '-created_date', 1);
-        targetEmail = (target && user.agency_name && target.agency_name === user.agency_name) ? nurse_email : user.email;
+        if (!target || !user.agency_name || target.agency_name !== user.agency_name) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        targetEmail = nurse_email;
       }
     }
     

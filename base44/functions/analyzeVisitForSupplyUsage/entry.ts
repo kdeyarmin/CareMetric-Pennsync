@@ -20,11 +20,39 @@ Deno.serve(async (req) => {
 
     // Authorize against the patient (assigned nurse or admin) before writing a
     // SupplyUsageLog stamped with this patient_id and decrementing shared
-    // SupplyItem inventory. RLS-independent code check (mirrors getScopedPatientAlerts).
+    // SupplyItem inventory. Agency-scoped admins must match patient agency.
     const [supplyPatient] = await base44.asServiceRole.entities.Patient.filter({ id: patientId }, '', 1);
     if (!supplyPatient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-    if (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin' && supplyPatient.created_by !== user.email && !(Array.isArray(supplyPatient.assigned_nurses) && supplyPatient.assigned_nurses.includes(user.email))) {
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isAssigned = supplyPatient.created_by === user.email
+      || (Array.isArray(supplyPatient.assigned_nurses) && supplyPatient.assigned_nurses.includes(user.email));
+    if (!isPlatformAdmin && !isAgencyScopedAdmin && !isAssigned) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (isAgencyScopedAdmin) {
+      if (!user.agency_name) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const inAgency = (supplyPatient.created_by && agencyEmails.has(supplyPatient.created_by))
+        || (Array.isArray(supplyPatient.assigned_nurses)
+          && supplyPatient.assigned_nurses.some((e) => agencyEmails.has(e)));
+      if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // Bind visitId to the authorized patient before logging usage against it.
+    if (visitId) {
+      const [visit] = await base44.asServiceRole.entities.Visit
+        .filter({ id: visitId }, '', 1).catch(() => []);
+      if (!visit || visit.patient_id !== patientId) {
+        return Response.json({ error: 'Visit not found for this patient' }, { status: 404 });
+      }
     }
 
     // Use LLM to extract supply/medication usage from visit notes

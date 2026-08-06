@@ -175,13 +175,16 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'You cannot review your own time-off request.' }, { status: 403 });
     }
 
-    // Agency admins may only review time-off for staff in their own agency.
-    if (user.account_type === 'agency_admin') {
+    // Agency-scoped admins may only review time-off for staff in their agency.
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScoped) {
       const employees = await base44.asServiceRole.entities.User
         .filter({ email: request.employee_email }, undefined, 5)
         .catch(() => []);
       const employee = employees?.[0];
-      if (!user.agency_name || !employee || employee.agency_name !== user.agency_name) {
+      if (!employee || employee.agency_name !== user.agency_name) {
         return Response.json({ error: 'Forbidden: employee is outside your agency.' }, { status: 403 });
       }
     }

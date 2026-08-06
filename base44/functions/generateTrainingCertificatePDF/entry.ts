@@ -46,15 +46,18 @@ Deno.serve(async (req) => {
 
         // Verify user owns this certificate or is admin (skip when trusted internal invoke)
         if (!internalOk) {
-            const isPlatformAdmin = user.role === 'admin' || user.account_type === 'super_admin';
-            const isAgencyAdmin = user.account_type === 'agency_admin';
+            const isSuperAdmin = user.account_type === 'super_admin';
+            const isAgencyScopedAdmin =
+              user.account_type === 'agency_admin'
+              || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+            const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
             const ownsCert = certificate.user_id === user.email;
-            if (!ownsCert && !isPlatformAdmin && !isAgencyAdmin) {
+            if (!ownsCert && !isPlatformAdmin && !isAgencyScopedAdmin) {
                 return Response.json({ error: 'Forbidden' }, { status: 403 });
             }
-            // Agency admins may only generate PDFs for certificates belonging to
+            // Agency-scoped admins may only generate PDFs for certificates of
             // staff in their own agency (TrainingCertificate has no agency_name).
-            if (!ownsCert && isAgencyAdmin) {
+            if (!ownsCert && isAgencyScopedAdmin) {
                 if (!user.agency_name) {
                     return Response.json({ error: 'Forbidden' }, { status: 403 });
                 }

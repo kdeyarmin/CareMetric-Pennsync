@@ -23,13 +23,16 @@ Deno.serve(async (req) => {
     // Fail CLOSED on a missing sender: a legacy/system fax with no sent_by must
     // not be readable by any authenticated user who guesses its id — treat an
     // unknown owner as not-this-caller and require admin.
-    const isPlatformAdmin = user.role === 'admin' || user.account_type === 'super_admin';
-    const isAgencyAdmin = user.account_type === 'agency_admin';
-    if (!isPlatformAdmin && !isAgencyAdmin && fax.sent_by !== user.email) {
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    if (!isPlatformAdmin && !isAgencyScopedAdmin && fax.sent_by !== user.email) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    // Agency admins may only analyze faxes sent by staff in their agency.
-    if (isAgencyAdmin) {
+    // Agency-scoped admins may only analyze faxes sent by staff in their agency.
+    if (isAgencyScopedAdmin) {
       if (!user.agency_name || !fax.sent_by) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
@@ -108,15 +111,15 @@ Return JSON: {
         }
       });
 
-      summary = summaryResult;
+      summary = summaryResult || null;
 
       // Check for alerts based on urgency
-      if (summaryResult.urgency === 'critical' || summaryResult.urgency === 'high') {
+      if (summaryResult?.urgency === 'critical' || summaryResult?.urgency === 'high') {
         alerts.push({
           type: 'urgency',
           severity: summaryResult.urgency,
-          message: `High priority fax requires attention: ${summaryResult.topic}`,
-          action_required: summaryResult.action_items?.length > 0
+          message: `High priority fax requires attention: ${summaryResult.topic || 'unspecified topic'}`,
+          action_required: Array.isArray(summaryResult.action_items) && summaryResult.action_items.length > 0
         });
       }
     }

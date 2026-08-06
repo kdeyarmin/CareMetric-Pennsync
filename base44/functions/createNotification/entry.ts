@@ -233,10 +233,13 @@ Deno.serve(async (req) => {
         }, { status: 403 });
       }
     }
-    // Agency admins (and peer-notifies from agency-scoped staff) may only target
-    // users in their own agency — otherwise createNotification is a cross-tenant
-    // spam / phishing channel via the service-role Notification create + email.
-    if (currentUser.account_type === 'agency_admin' ||
+    // Agency-scoped admins (and peer-notifies from agency-scoped staff) may only
+    // target users in their own agency — otherwise createNotification is a
+    // cross-tenant spam / phishing channel via service-role Notification + email.
+    const callerIsAgencyScoped = currentUser.account_type !== 'super_admin'
+      && currentUser.agency_name
+      && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
+    if (callerIsAgencyScoped ||
         (!callerIsAdmin && recipientEmail !== callerEmail)) {
       if (!currentUser.agency_name || !recipient ||
           recipient.agency_name !== currentUser.agency_name) {

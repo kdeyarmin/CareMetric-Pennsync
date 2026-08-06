@@ -86,8 +86,30 @@ Deno.serve(async (req) => {
       patientData = patient[0] || null;
       // Authorize against the patient before its PHI drives the analyses
       // (assigned nurse or admin). RLS-independent code check.
-      if (patientData && user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin' && patientData.created_by !== user.email && !(Array.isArray(patientData.assigned_nurses) && patientData.assigned_nurses.includes(user.email))) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      if (patientData) {
+        const isSuperAdmin = user.account_type === 'super_admin';
+        const isAgencyScopedAdmin =
+          user.account_type === 'agency_admin'
+          || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+        const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+        const isAssigned = patientData.created_by === user.email
+          || (Array.isArray(patientData.assigned_nurses) && patientData.assigned_nurses.includes(user.email));
+        if (!isPlatformAdmin && !isAgencyScopedAdmin && !isAssigned) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        if (isAgencyScopedAdmin) {
+          if (!user.agency_name) return Response.json({ error: 'Forbidden' }, { status: 403 });
+          const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+          const agencyEmails = new Set(
+            (agencyUsers || [])
+              .filter((u) => u.agency_name === user.agency_name && u.email)
+              .map((u) => u.email),
+          );
+          const inAgency = (patientData.created_by && agencyEmails.has(patientData.created_by))
+            || (Array.isArray(patientData.assigned_nurses)
+              && patientData.assigned_nurses.some((e) => agencyEmails.has(e)));
+          if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
       }
       recentVisits = visits || [];
       oasisData = oasis[0] || null;

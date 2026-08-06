@@ -108,17 +108,41 @@ function timingSafeEqual(a, b) {
   return diff === 0;
 }
 
-// Same authorization model as sendSignatureReminder: admin / clinical lead, the
-// record's owner, or a nurse assigned to (or creator of) the patient.
+// Admin / owner / assigned nurse. Facility admins with an agency are scoped to
+// in-agency patients (dead roles clinician/nurse_manager removed — not in model).
 async function canMutate(base44, user, sig) {
-  const role = user.role;
-  if (role === 'admin' || role === 'clinician' || role === 'nurse_manager') return true;
+  const isSuperAdmin = user.account_type === 'super_admin';
+  const isAgencyScopedAdmin =
+    user.account_type === 'agency_admin'
+    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+  if (isPlatformAdmin) return true;
   if (sig.created_by === user.email || sig.created_by_email === user.email
     || sig.requested_by === user.email || sig.sender_email === user.email) return true;
   if (sig.patient_id) {
     const [p] = await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id }, undefined, 5000).catch(() => []);
-    if (p && (p.created_by === user.email
-      || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email)))) return true;
+    if (!p) return false;
+    if (p.created_by === user.email
+      || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email))) {
+      return true;
+    }
+    if (isAgencyScopedAdmin && user.agency_name) {
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      return !!(p.created_by && agencyEmails.has(p.created_by))
+        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)));
+    }
+  } else if (isAgencyScopedAdmin && user.agency_name) {
+    // No patient: allow only if an owner field is staff in-agency.
+    const owner = sig.created_by || sig.created_by_email || sig.requested_by || sig.sender_email;
+    if (!owner) return false;
+    const [ownerUser] = await base44.asServiceRole.entities.User
+      .filter({ email: owner }, undefined, 1).catch(() => []);
+    return !!(ownerUser && ownerUser.agency_name === user.agency_name);
   }
   return false;
 }

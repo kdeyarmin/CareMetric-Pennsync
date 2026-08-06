@@ -11,6 +11,9 @@ Deno.serve(async (req) => {
 
     let patientContext = '';
     let patientName = '';
+    // Chart-attached tasks require a patient the caller can access. Optional
+    // visitId must belong to that patient (service-role Task.create otherwise
+    // lets a foreign related_visit_id slip through).
     if (patientId) {
       // RLS-scoped read (NOT asServiceRole) so the caller cannot pull another
       // patient's PHI into the prompt via a guessed patientId.
@@ -23,6 +26,15 @@ Deno.serve(async (req) => {
       }
       patientName = `${patient.first_name} ${patient.last_name}`;
       patientContext = `Patient: ${patientName}, Primary Diagnosis: ${patient.primary_diagnosis || diagnosis || 'Not documented'}, Secondary Diagnoses: ${(patient.secondary_diagnoses || []).join(', ') || 'None'}`;
+      if (visitId) {
+        const [visit] = await base44.asServiceRole.entities.Visit
+          .filter({ id: visitId }, '', 1).catch(() => []);
+        if (!visit || visit.patient_id !== patientId) {
+          return Response.json({ error: 'Visit not found for this patient' }, { status: 404 });
+        }
+      }
+    } else if (visitId) {
+      return Response.json({ error: 'patientId is required when visitId is provided' }, { status: 400 });
     }
 
     const response = await base44.integrations.Core.InvokeLLM({
@@ -65,7 +77,7 @@ Return JSON array of tasks.`,
       }
     });
 
-    const suggestedTasks = response.tasks || [];
+    const suggestedTasks = Array.isArray(response?.tasks) ? response.tasks : [];
 
     const calculateDueDate = (timeframe) => {
       const date = new Date();

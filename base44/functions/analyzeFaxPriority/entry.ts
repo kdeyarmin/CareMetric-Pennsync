@@ -126,10 +126,10 @@ Respond with JSON: {"priority": "urgent|high|normal|low", "reason": "brief expla
     });
 
     return Response.json({
-      priority: aiResponse.priority || 'normal',
-      reason: aiResponse.reason || 'AI analysis',
-      confidence: aiResponse.confidence || 50,
-      notify: aiResponse.priority === 'urgent',
+      priority: aiResponse?.priority || 'normal',
+      reason: aiResponse?.reason || 'AI analysis',
+      confidence: aiResponse?.confidence || 50,
+      notify: aiResponse?.priority === 'urgent',
       notify_users: []
     });
 

@@ -190,15 +190,17 @@ Deno.serve(async (req) => {
     let destination = normalizeE164(to_number);
     let resolvedPatientId = patient_id || null;
     let resolvedPatient = null;
-    const isPlatformAdmin = !!user && (
-      user.role === 'admin' || user.account_type === 'super_admin'
-    );
-    // Agency admins must not click-to-call any patient tenant-wide via service
-    // role — scope by staff emails in their agency (same gate as updateScopedPatientAlert).
+    // Platform-wide: super_admin or role:admin without agency. Facility admins
+    // with an agency are scoped like agency_admin (parity with updateScopedPatientAlert).
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
     let agencyEmailSet = null;
     const loadAgencyEmails = async () => {
       if (agencyEmailSet) return agencyEmailSet;
-      if (user.account_type !== 'agency_admin') return null;
+      if (!isAgencyScopedAdmin) return null;
       if (!user.agency_name) {
         agencyEmailSet = new Set();
         return agencyEmailSet;
@@ -216,7 +218,7 @@ Deno.serve(async (req) => {
     const canAccessPatient = async (p) => {
       if (!p) return false;
       if (isPlatformAdmin) return true;
-      if (user.account_type === 'agency_admin') {
+      if (isAgencyScopedAdmin) {
         const emails = await loadAgencyEmails();
         if (!emails || emails.size === 0) return false;
         if (p.created_by && emails.has(p.created_by)) return true;

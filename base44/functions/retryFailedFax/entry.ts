@@ -134,13 +134,16 @@ Deno.serve(async (req) => {
     const originalFax = faxLogs[0];
 
     // Ownership: only the original sender (or an admin-tier user) may resend a PHI fax.
-    const isPlatformAdmin = user.role === 'admin' || user.account_type === 'super_admin';
-    const isAgencyAdmin = user.account_type === 'agency_admin';
-    if (originalFax.sent_by && originalFax.sent_by !== user.email && !isPlatformAdmin && !isAgencyAdmin) {
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    if (originalFax.sent_by && originalFax.sent_by !== user.email && !isPlatformAdmin && !isAgencyScopedAdmin) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    // Agency admins may only retry faxes sent by staff in their agency.
-    if (isAgencyAdmin && originalFax.sent_by !== user.email) {
+    // Agency-scoped admins may only retry faxes sent by staff in their agency.
+    if (isAgencyScopedAdmin && originalFax.sent_by !== user.email) {
       if (!user.agency_name || !originalFax.sent_by) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }

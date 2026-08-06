@@ -26,8 +26,28 @@ Deno.serve(async (req) => {
     // Authorize against the patient (assigned nurse or admin) before reading
     // their supply usage and writing a SupplyPrediction. The 404 above only
     // covers global non-existence, not access. RLS-independent code check.
-    if (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin' && patientData.created_by !== user.email && !(Array.isArray(patientData.assigned_nurses) && patientData.assigned_nurses.includes(user.email))) {
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isAssigned = patientData.created_by === user.email
+      || (Array.isArray(patientData.assigned_nurses) && patientData.assigned_nurses.includes(user.email));
+    if (!isPlatformAdmin && !isAgencyScopedAdmin && !isAssigned) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (isAgencyScopedAdmin) {
+      if (!user.agency_name) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const inAgency = (patientData.created_by && agencyEmails.has(patientData.created_by))
+        || (Array.isArray(patientData.assigned_nurses)
+          && patientData.assigned_nurses.some((e) => agencyEmails.has(e)));
+      if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Get 6 months of usage logs for this patient

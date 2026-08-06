@@ -57,10 +57,13 @@ Deno.serve(async (req) => {
     const target = targets[0];
     if (!target) return Response.json({ error: 'User not found.' }, { status: 404 });
 
-    // Agency admins may only inspect staff in their own agency (parity with
-    // analyzeNursePerformance / assignInService).
-    if (user.account_type === 'agency_admin') {
-      if (!user.agency_name || target.agency_name !== user.agency_name) {
+    // Agency-scoped admins (agency_admin, or role:admin with an agency) may only
+    // inspect staff in their own agency (parity with analyzeNursePerformance).
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScoped) {
+      if (target.agency_name !== user.agency_name) {
         return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
       }
     }
