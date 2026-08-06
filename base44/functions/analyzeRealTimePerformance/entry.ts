@@ -27,11 +27,22 @@ Deno.serve(async (req) => {
     }
 
     const { nurse_email, training_module_id, session_id } = await req.json();
-    // Only admins may analyze another nurse's real-time performance metrics.
-    // Mirrors analyzeNurseDeficits; without it any user reads another nurse's
-    // RealTimePerformanceMetric + an AI critique of them.
-    if (nurse_email && nurse_email !== user.email && user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    // Only admin-like callers may analyze another nurse's real-time
+    // performance metrics, and only within their agency.
+    if (nurse_email && nurse_email !== user.email) {
+      const isAdminLike = user.role === 'admin'
+        || user.account_type === 'agency_admin'
+        || user.account_type === 'super_admin';
+      if (!isAdminLike) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      if (user.account_type !== 'super_admin' && user.agency_name) {
+        const [target] = await base44.asServiceRole.entities.User
+          .filter({ email: nurse_email }, '-created_date', 1).catch(() => []);
+        if (!target?.agency_name || target.agency_name !== user.agency_name) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      }
     }
     const targetEmail = nurse_email || user.email;
 

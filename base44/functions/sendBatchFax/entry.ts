@@ -190,6 +190,11 @@ Deno.serve(async (req) => {
     if (!user && !internalOk) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    // Interactive callers: refuse deactivated accounts (offboarded sessions
+    // otherwise keep writing FaxLog PHI until the cookie dies).
+    if (user && user.is_active === false) {
+      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
 
     const { file_url, to_numbers, document_name, patient_id, cover_page_details, priority, from_name, sent_by: bodySentBy } = body;
     // Scheduled-fax cron has no session; attribute FaxLog.sent_by to the
@@ -210,6 +215,29 @@ Deno.serve(async (req) => {
       return Response.json({
         error: `Too many recipients: ${normalizedRecipients.length} (max ${MAX_BATCH_RECIPIENTS} per batch).`
       }, { status: 400 });
+    }
+
+    // If the client linked a patient_id, verify access so FaxLog rows cannot be
+    // attributed to an arbitrary chart (parity with sendFax).
+    let linkedPatientId = patient_id || null;
+    if (linkedPatientId && user) {
+      const [claimed] = await base44.asServiceRole.entities.Patient
+        .filter({ id: linkedPatientId }, '', 1).catch(() => []);
+      if (!claimed) {
+        return Response.json({ error: 'Patient not found' }, { status: 404 });
+      }
+      const isAdmin = user.role === 'admin'
+        || user.account_type === 'agency_admin'
+        || user.account_type === 'super_admin';
+      const isAssigned = Array.isArray(claimed.assigned_nurses)
+        && claimed.assigned_nurses.includes(user.email);
+      if (!isAdmin && claimed.created_by !== user.email && !isAssigned) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    } else if (linkedPatientId && !user) {
+      // Internal/scheduler path: keep the id but do not invent access for a
+      // caller-supplied chart without a session — clear it.
+      linkedPatientId = null;
     }
 
     // SSRF guard: file_url becomes Telnyx's media_url for every recipient, so an
@@ -306,7 +334,7 @@ Deno.serve(async (req) => {
           document_url: file_url,
           document_name: document_name || 'Batch Fax',
           status: 'queued',
-          patient_id: patient_id || null,
+          patient_id: linkedPatientId,
           sent_by: senderEmail,
           cover_page_details: cover_page_details || null,
           priority: finalPriority,

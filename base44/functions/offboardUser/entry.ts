@@ -84,9 +84,14 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
     return Response.json({ error: 'Only a super admin can offboard another administrator.' }, { status: 403 });
   }
 
-  // Agency admins may only offboard staff in their own agency.
-  if (currentUser.account_type === 'agency_admin') {
-    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+  // Agency-scoped admins (agency_admin, or role:admin with an agency) may only
+  // offboard staff in their own agency. Platform-wide: super_admin, or
+  // role:admin without agency_name.
+  const callerIsAgencyScoped = currentUser.account_type !== 'super_admin'
+    && currentUser.agency_name
+    && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
+  if (callerIsAgencyScoped) {
+    if (targetUser.agency_name !== currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
     }
   }
@@ -370,9 +375,12 @@ async function reactivateUser(base44, currentUser, params, callerIsSuperAdmin) {
     }, { status: 403 });
   }
 
-  // Agency admins may only reactivate staff in their own agency.
-  if (currentUser.account_type === 'agency_admin') {
-    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+  // Agency-scoped admins may only reactivate staff in their own agency.
+  const callerIsAgencyScoped = currentUser.account_type !== 'super_admin'
+    && currentUser.agency_name
+    && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
+  if (callerIsAgencyScoped) {
+    if (targetUser.agency_name !== currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
     }
   }

@@ -42,12 +42,25 @@ Deno.serve(async (req) => {
     // Same staff predicate as createTelehealthToken: stable identity only
     // (email/role), never the mutable, non-unique full_name.
     const participants = Array.isArray(session.participant_list) ? session.participant_list : [];
-    const authorized = user.role === 'admin'
-      || user.account_type === 'agency_admin'
-      || user.account_type === 'super_admin'
-      || session.host_email === user.email
+    const isHostOrParticipant = session.host_email === user.email
       || participants.includes(user.email);
-    if (!authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    if (!isHostOrParticipant && !isAdminLike) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const isAgencyScopedAdmin = !isHostOrParticipant
+      && user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScopedAdmin) {
+      const [host] = await base44.asServiceRole.entities.User
+        .filter({ email: session.host_email }, '-created_date', 1).catch(() => []);
+      if (!host?.agency_name || host.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
 
     if (session.status !== 'scheduled' && session.status !== 'active') {
       return Response.json({ error: 'This telehealth visit is no longer open' }, { status: 409 });

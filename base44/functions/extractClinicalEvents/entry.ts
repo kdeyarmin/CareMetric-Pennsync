@@ -32,6 +32,15 @@ Deno.serve(async (req) => {
     if (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin' && evPatient.created_by !== user.email && !(Array.isArray(evPatient.assigned_nurses) && evPatient.assigned_nurses.includes(user.email))) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
+    // Bind visit_id to the authorized patient — otherwise ClinicalEvent/Task/
+    // PatientAlert rows can be attached to a foreign visit under an accessible patient.
+    if (visit_id) {
+      const [visit] = await base44.asServiceRole.entities.Visit
+        .filter({ id: visit_id }, '', 1).catch(() => []);
+      if (!visit || visit.patient_id !== patient_id) {
+        return Response.json({ error: 'Visit not found for this patient' }, { status: 404 });
+      }
+    }
 
     // Use AI to extract clinical events from the note
     const result = await base44.integrations.Core.InvokeLLM({

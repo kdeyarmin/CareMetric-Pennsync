@@ -44,15 +44,33 @@ Deno.serve(async (req) => {
       : [];
     const patient = patientRows[0] || {};
 
-    const role = user.role;
-    const privilegedRole = role === 'admin' || role === 'clinician' || role === 'nurse_manager';
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
     const ownsSignature = sig.created_by === user.email
       || sig.requested_by === user.email
       || sig.sender_email === user.email;
     const assignedToPatient = patient.created_by === user.email
       || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.includes(user.email));
-    if (!privilegedRole && !ownsSignature && !assignedToPatient) {
+    if (!isAdminLike && !ownsSignature && !assignedToPatient) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // Agency-scoped admins may not schedule reminders for other tenants' charts.
+    const isAgencyScopedAdmin = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScopedAdmin && !ownsSignature && !assignedToPatient) {
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
+        || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
+      if (!inAgency) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // Recipients come from the document's own pending signers, NOT the request

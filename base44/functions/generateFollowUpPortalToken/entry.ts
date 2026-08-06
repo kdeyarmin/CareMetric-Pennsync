@@ -37,6 +37,9 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
+    if (user && user.is_active === false) {
+      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
     const isAdmin = user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
     if (!user || !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
@@ -54,12 +57,13 @@ Deno.serve(async (req) => {
     }
     const referral = referrals[0];
 
-    // Agency admins may only mint follow-up links for referrals created by /
-    // assigned within their agency.
-    if (user.account_type === 'agency_admin') {
-      if (!user.agency_name) {
-        return Response.json({ error: 'Forbidden: referral is outside your agency.' }, { status: 403 });
-      }
+    // Agency-scoped admins (agency_admin OR facility admin with agency_name)
+    // may only mint follow-up links for referrals created by / assigned within
+    // their agency.
+    const isAgencyScopedAdmin = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScopedAdmin) {
       const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
       const agencyEmails = new Set(
         (agencyUsers || [])

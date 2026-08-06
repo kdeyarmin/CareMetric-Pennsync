@@ -56,17 +56,42 @@ Deno.serve(async (req) => {
       if (!patient) {
         return Response.json({ error: 'Patient not found' }, { status: 404 });
       }
+      // Single-patient path must use the same agency gate as the bulk path —
+      // otherwise any admin-like caller can pull another tenant's chart into
+      // LLM prompts via a guessed patient_id.
+      if (user.account_type !== 'super_admin' && user.agency_name) {
+        const agencyUsers = await base44.asServiceRole.entities.User
+          .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+          .catch(() => []);
+        const agencyEmails = new Set(
+          (Array.isArray(agencyUsers) ? agencyUsers : [])
+            .map((u) => u?.email)
+            .filter(Boolean)
+        );
+        const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
+          || (Array.isArray(patient.assigned_nurses)
+            && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
+        if (!inAgency) {
+          return Response.json({ error: 'Forbidden: patient is outside your agency' }, { status: 403 });
+        }
+      }
       patientsToAnalyze = [patient];
     } else {
       // Analyze active patients. Scope to the caller's agency when known so an
       // agency_admin cannot pull every tenant's charts into LLM prompts.
+      // Facility role:admin with agency_name is also scoped (parity with
+      // getDashboardData) — only super_admin / admin-without-agency is global.
       const allActive = await base44.asServiceRole.entities.Patient.filter(
         { status: 'active' },
         '-updated_date',
         100
       );
-      if (user.account_type === 'super_admin' || !user.agency_name) {
+      const isPlatformWide = user.account_type === 'super_admin'
+        || (user.role === 'admin' && !user.agency_name);
+      if (isPlatformWide) {
         patientsToAnalyze = allActive;
+      } else if (!user.agency_name) {
+        patientsToAnalyze = [];
       } else {
         const agencyUsers = await base44.asServiceRole.entities.User
           .filter({ agency_name: user.agency_name }, '-created_date', 5000)

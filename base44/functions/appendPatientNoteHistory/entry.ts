@@ -48,6 +48,9 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (user.is_active === false) {
+      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
 
     const { patient_id, mode, entry, clinical_notes } = await req.json();
     if (!patient_id || (mode !== 'append' && mode !== 'update') || !entry || typeof entry !== 'object') {

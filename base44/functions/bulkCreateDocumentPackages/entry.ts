@@ -43,12 +43,12 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.DocumentTemplate.filter({ id: { $in: template_ids } }, undefined, 5000),
     ]);
 
-    // Agency admins must not package arbitrary cross-agency patients via service role.
+    // Agency-scoped admins must not package arbitrary cross-agency patients via service role.
     let agencyEmails = null;
-    if (user.account_type === 'agency_admin') {
-      if (!user.agency_name) {
-        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
-      }
+    const isAgencyScopedAdmin = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScopedAdmin) {
       const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
       agencyEmails = new Set(
         (agencyUsers || [])

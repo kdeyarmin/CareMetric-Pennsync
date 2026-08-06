@@ -364,7 +364,13 @@ export default function SmartNoteAssistant({ visitId = null }) {
         result = await api.recheck();
         if (!result) { setSaving(false); return; }
       }
-      await persistNote(result);
+      const out = await persistNote(result);
+      if (!out) {
+        // persistVisitNote returns null without throwing when inputs are insufficient
+        // — do NOT mark saved or clear the draft (would destroy the only copy).
+        toast.error("Could not save — check that a patient is selected and the note is complete.");
+        return;
+      }
       setSaved(true);
       clearDraft(patientId);
     } catch (err) {
@@ -383,7 +389,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
       offlineClientRequestId,
       facilityAcknowledgment: facilityOverrideRef.current,
     });
-    if (!out) return;
+    if (!out) return null;
     if (out.mode === 'create') {
       setSavedVisitId(out.visitId);
       setExistingVisitId(null);
@@ -399,6 +405,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     } else if (out.mode === 'offline' && out.offlineClientRequestId) {
       setOfflineClientRequestId(out.offlineClientRequestId);
     }
+    return out;
   };
 
   const analyzeSupplyUsage = async (noteText, visitId) => {

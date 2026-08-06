@@ -171,7 +171,12 @@ async function patchIncident(base44, currentUser, incident, body, isAdmin) {
 }
 
 async function assertAgencyIncidentAccess(base44, currentUser, incident) {
-  if (currentUser.account_type !== 'agency_admin') return null;
+  // Agency-scope facility admins too (parity with getDashboardData): only
+  // super_admin / admin-without-agency stay platform-wide.
+  const isAgencyScoped = currentUser.account_type !== 'super_admin'
+    && currentUser.agency_name
+    && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
+  if (!isAgencyScoped) return null;
   if (!currentUser.agency_name) {
     return Response.json({ error: 'Forbidden: incident is outside your agency.' }, { status: 403 });
   }
@@ -329,12 +334,10 @@ async function reassignIncidentPatient(base44, currentUser, incident, body, isAd
     return Response.json({ error: 'patient_id is required' }, { status: 400 });
   }
 
-  // Destination patient must also be in-agency for agency admins.
-  if (currentUser.account_type === 'agency_admin') {
-    const probe = { patient_id: patientId, created_by: incident.created_by };
-    const destDenied = await assertAgencyIncidentAccess(base44, currentUser, probe);
-    if (destDenied) return destDenied;
-  }
+  // Destination patient must also be in-agency for agency-scoped admins.
+  const probe = { patient_id: patientId, created_by: incident.created_by };
+  const destDenied = await assertAgencyIncidentAccess(base44, currentUser, probe);
+  if (destDenied) return destDenied;
 
   await base44.asServiceRole.entities.Incident.update(incident.id, { patient_id: patientId });
 

@@ -33,9 +33,13 @@ Deno.serve(async (req) => {
 
     const document = docs[0];
 
-    // Agency admins may only archive documents for patients in their agency.
-    if (user.account_type === 'agency_admin') {
-      if (!user.agency_name || !document.patient_id) {
+    // Agency-scoped admins (agency_admin OR facility admin with agency_name)
+    // may only archive documents for patients in their agency.
+    const isAgencyScopedAdmin = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScopedAdmin) {
+      if (!document.patient_id) {
         return Response.json({ error: 'Forbidden: document is outside your agency.' }, { status: 403 });
       }
       const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);

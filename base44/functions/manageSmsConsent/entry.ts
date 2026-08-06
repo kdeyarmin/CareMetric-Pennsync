@@ -130,6 +130,43 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'A valid E.164 phone number is required.' }, { status: 400 });
       }
 
+      // Agency-scoped admins must bind consent writes to a patient in their
+      // agency (or a phone already captured by agency staff) so they cannot
+      // overwrite another tenant's TCPA ledger.
+      let linkedPatientId = body.patient_id || null;
+      if (user.account_type !== 'super_admin' && user.agency_name) {
+        const agencyUsers = await base44.asServiceRole.entities.User
+          .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+          .catch(() => []);
+        const agencyEmails = new Set(
+          (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
+        );
+        if (linkedPatientId) {
+          const [claimed] = await base44.asServiceRole.entities.Patient
+            .filter({ id: linkedPatientId }, '', 1).catch(() => []);
+          const inAgency = claimed && (
+            (claimed.created_by && agencyEmails.has(claimed.created_by))
+            || (Array.isArray(claimed.assigned_nurses)
+              && claimed.assigned_nurses.some((e) => agencyEmails.has(e)))
+          );
+          if (!inAgency) {
+            return Response.json({ error: 'Forbidden: patient is outside your agency' }, { status: 403 });
+          }
+        } else {
+          const prior = await base44.asServiceRole.entities.SmsConsent
+            .filter({ phone_e164: phone }, '-captured_at', 5)
+            .catch(() => []);
+          const priorInAgency = (Array.isArray(prior) ? prior : []).some((r) =>
+            r?.captured_by && agencyEmails.has(r.captured_by)
+          );
+          if (!priorInAgency) {
+            return Response.json({
+              error: 'patient_id is required to set consent for a number not already managed by your agency',
+            }, { status: 400 });
+          }
+        }
+      }
+
       // A consumer-initiated STOP (keyword_stop) is a hard legal revocation only the
       // consumer can lift by texting START. The send-gate resolves consent from the
       // single newest row, so an admin_manual opt-in would become "latest" and
@@ -154,6 +191,7 @@ Deno.serve(async (req) => {
         consent_source: 'admin_manual',
         captured_by: user.email,
         captured_at: now,
+        patient_id: linkedPatientId,
         notes: 'Set by admin',
       });
 

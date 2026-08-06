@@ -160,16 +160,37 @@ Deno.serve(async (req) => {
     //   - the caller who created/owns the signature request, OR
     //   - a nurse assigned to (or creator of) the patient.
     // (Mirrors the assignment model used in getScopedPatientAlerts.)
-    const role = user.role;
-    const privilegedRole = role === 'admin' || role === 'clinician' || role === 'nurse_manager';
+    // Authorize: owner of the signature request, nurse on the patient chart, or
+    // an admin-like account. Dropped the blanket clinician/nurse_manager
+    // platform privilege (any clinician could remind any document_id) and added
+    // agency_admin which was previously locked out.
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
     const ownsSignature = sig.created_by === user.email
       || sig.requested_by === user.email
       || sig.sender_email === user.email;
     const assignedToPatient = patient.created_by === user.email
       || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.includes(user.email));
 
-    if (!privilegedRole && !ownsSignature && !assignedToPatient) {
+    if (!isAdminLike && !ownsSignature && !assignedToPatient) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const isAgencyScopedAdmin = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScopedAdmin && !ownsSignature && !assignedToPatient) {
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
+        || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
+      if (!inAgency) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // Send reminder email

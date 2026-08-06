@@ -135,19 +135,14 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []),
     ]);
 
-    // Agency admins only see comms from staff in their agency (parity with
-    // getDashboardData / getUserActivityLog).
+    // Agency-scoped admins (agency_admin, or role:admin with an agency) only
+    // see comms from staff in their agency (parity with getDashboardData).
+    // Platform-wide: super_admin, or role:admin without agency_name.
     let agencyEmails = null;
-    if (user.account_type === 'agency_admin') {
-      if (!user.agency_name) {
-        return Response.json({
-          success: true,
-          summary: summarize([], [], [], new Date()),
-          failures: [],
-          per_number: [],
-          generated_at: new Date().toISOString(),
-        });
-      }
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScoped) {
       agencyEmails = new Set(
         (users || [])
           .filter((u) => u.agency_name === user.agency_name && u.email)
