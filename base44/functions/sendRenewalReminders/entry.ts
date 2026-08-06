@@ -98,8 +98,21 @@ Deno.serve(async (req) => {
       if (!openStatuses.includes(a.status)) continue;
       if (!a.assigned_to_user_id) continue;
 
-      const due = new Date(`${a.due_date}T00:00:00Z`);
-      const daysUntilDue = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      // Date-only due_date values compare on the local calendar — UTC midnight
+      // parsing flagged assignments overdue / escalated tiers the evening before
+      // the due day (mirrors sendTrainingNotifications / remindPlanOverdueStaff).
+      const dueRaw = String(a.due_date).trim();
+      let daysUntilDue;
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dueRaw)) {
+        const [y, m, d] = dueRaw.split('-').map(Number);
+        const dueLocal = new Date(y, m - 1, d);
+        const todayLocal = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        daysUntilDue = Math.round((dueLocal.getTime() - todayLocal.getTime()) / (1000 * 60 * 60 * 24));
+      } else {
+        const due = new Date(a.due_date);
+        if (Number.isNaN(due.getTime())) continue;
+        daysUntilDue = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      }
 
       // Overdue only AFTER the due date has passed (daysUntilDue < 0). Due-today
       // (=== 0) is an upcoming reminder, not an overdue escalation.
