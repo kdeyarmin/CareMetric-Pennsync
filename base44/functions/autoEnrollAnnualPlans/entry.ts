@@ -37,6 +37,15 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // ───────────────────────────────────────────────────────────────────────────
 // Auto-enroll active staff into the CURRENT-YEAR annual required in-service
 // plan that matches their business line and role tier. This closes the gap
@@ -92,6 +101,7 @@ Deno.serve(async (req) => {
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
     const body = await req.json().catch(() => ({}));
     const scope = body.scope === 'all' ? 'all' : 'auto';

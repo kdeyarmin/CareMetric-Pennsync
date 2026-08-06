@@ -65,12 +65,13 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
   const [forecastError, setForecastError] = useState(null);
   const forecastAttemptedRef = useRef(false);
   
-  // Fetch agency settings for cost analysis
+  // Fetch agency settings for cost analysis (never newest-row across tenants).
   const { data: agencySettings } = useQuery({
     queryKey: ['agencySettings'],
     queryFn: async () => {
-      const result = await base44.entities.AgencySettings.list();
-      return result[0] || null;
+      const me = await base44.auth.me().catch(() => null);
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(me?.agency_name);
     }
   });
 

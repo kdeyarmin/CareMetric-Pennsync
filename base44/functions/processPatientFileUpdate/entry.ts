@@ -342,6 +342,11 @@ Deno.serve(async (req) => {
     if (!isAdminLike) {
       return Response.json({ success: false, error: 'Forbidden: Admin access required' }, { status: 403 });
     }
+    // agency_admin without agency_name must not fall through to platform-wide
+    // Patient.list/create (isAgencyScoped below requires a truthy agency_name).
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ success: false, error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
     // Facility admins with an agency may only import/match patients in their
     // agency. Platform-wide: super_admin or role:admin without agency_name.
     const isAgencyScoped = user.account_type !== 'super_admin'

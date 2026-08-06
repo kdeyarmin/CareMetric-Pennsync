@@ -25,6 +25,9 @@ Deno.serve(async (req) => {
     if (!isAdminLike(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
 
     const payload = await req.json();
     const { entity_type, entity_id } = payload;

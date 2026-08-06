@@ -773,6 +773,14 @@
       "default": false,
       "description": "Whether this patient record has been soft-archived (e.g. merged duplicate or discharged in a bulk cleanup)"
     },
+    "risk_predict_claimed_by": {
+      "type": "string",
+      "description": "Claim token for predictPatientRisks / predictiveRiskAnalysis idempotency. Set before LLM work and PatientAlert creates so concurrent runs cannot duplicate high-risk alerts."
+    },
+    "care_plans_gen_claimed_by": {
+      "type": "string",
+      "description": "Claim token for generateCarePlansFromReferral idempotency. Set before LLM work and CarePlan.create so concurrent runs cannot create duplicate active care plans."
+    },
     "assigned_nurses": {
       "type": "array",
       "items": {

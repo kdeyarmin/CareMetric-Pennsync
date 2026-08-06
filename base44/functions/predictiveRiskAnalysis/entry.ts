@@ -113,6 +113,28 @@ Deno.serve(async (req) => {
     const denied = await assertPatientAccess(base44, user, patientData);
     if (denied) return denied;
 
+    // Claim before LLM + PatientAlert.create (shared field with predictPatientRisks).
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `risk-predict-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.asServiceRole.entities.Patient.update(patient_id, {
+        risk_predict_claimed_by: claimToken,
+      });
+    } catch {
+      return Response.json({ error: 'Could not claim patient for risk analysis' }, { status: 409 });
+    }
+    const claimCheck = await base44.asServiceRole.entities.Patient
+      .filter({ id: patient_id }, '', 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].risk_predict_claimed_by !== claimToken) {
+      return Response.json({
+        success: true,
+        already_processed: true,
+        alerts_created: 0,
+        skipped: 'claimed by concurrent run',
+      });
+    }
+
     // Fetch related data
     const [visits, incidents, existingAlerts] = await Promise.all([
       base44.asServiceRole.entities.Visit.filter({ patient_id }, '-visit_date', 10),

@@ -56,6 +56,15 @@ const isAdminLike = (u) => !!u && (
 );
 // <<<END SHARED HELPER: isAdminLike>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // ── inlined outcome-measure engine (mirror of outcomeMeasureEngine.js) ────────
 const IMPROVEMENT_MEASURES = [
   // M1860 is a 0–6 scale (6 = bedfast); all levels are ratable, so startMax is 6 (mirror of outcomeMeasureEngine.js).
@@ -243,6 +252,7 @@ Deno.serve(async (req) => {
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
     let body = {};
     try { body = await req.json(); } catch { /* GET / cron invocation */ }

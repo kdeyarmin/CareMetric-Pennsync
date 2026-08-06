@@ -24,6 +24,9 @@ Deno.serve(async (req) => {
     if (!isAdminLike(user)) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
 
     const { template_id, patient_id, custom_values } = await req.json();
 
@@ -44,7 +47,12 @@ Deno.serve(async (req) => {
     if (!patient) {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }
-    if (user.account_type !== 'super_admin' && user.agency_name) {
+    // Agency-scoped facility admins (agency_admin OR role:admin + agency_name)
+    // — not only "has agency_name". Platform admin = super_admin or bare role:admin.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin = user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    if (isAgencyScopedAdmin) {
       const agencyUsers = await base44.asServiceRole.entities.User
         .filter({ agency_name: user.agency_name }, '-created_date', 5000)
         .catch(() => []);

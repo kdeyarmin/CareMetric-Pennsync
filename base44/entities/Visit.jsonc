@@ -202,6 +202,10 @@
       "type": "string",
       "format": "date-time",
       "description": "When extractClinicalEvents finished creating ClinicalEvent rows for this visit"
+    },
+    "followup_tasks_claimed_by": {
+      "type": "string",
+      "description": "Claim token for generateFollowUpTasks idempotency. Set before LLM extraction and Task.create so concurrent runs cannot create duplicate follow-up tasks for the same visit."
     }
   },
   "required": [

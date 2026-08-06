@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 /**
  * setNurseDutyStatus — self-service duty toggle, scheduled time-off window, and
  * off-duty message editor. A nurse updates their own status; an admin may target
@@ -15,6 +23,10 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
 
     const {
       duty_status,
@@ -72,9 +84,15 @@ Deno.serve(async (req) => {
       }
       const found = await base44.asServiceRole.entities.User.filter({ email: target_user_email }, undefined, 5000);
       if (!found[0]) return Response.json({ error: 'Target user not found' }, { status: 404 });
-      // Agency-scope: an agency_admin must not retarget staff in another tenant.
-      if (user.account_type !== 'super_admin' && user.agency_name
+      // Agency-scope: facility admins must not retarget staff in another tenant.
+      const isSuperAdmin = user.account_type === 'super_admin';
+      const isAgencyScopedAdmin = user.account_type === 'agency_admin'
+        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+      if (isAgencyScopedAdmin
         && found[0].agency_name && found[0].agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: user is outside your agency' }, { status: 403 });
+      }
+      if (isAgencyScopedAdmin && !found[0].agency_name) {
         return Response.json({ error: 'Forbidden: user is outside your agency' }, { status: 403 });
       }
       target = found[0];

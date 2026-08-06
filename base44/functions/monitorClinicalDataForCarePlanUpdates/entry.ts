@@ -42,6 +42,9 @@ Deno.serve(async (req) => {
     if (!isAdminLike(user)) {
       return Response.json({ error: 'Unauthorized - Admin only' }, { status: 403 });
     }
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
 
     const { patient_id, visit_id, timeframe_days = 7 } = await req.json();
 
@@ -59,7 +62,10 @@ Deno.serve(async (req) => {
       // Single-patient path must use the same agency gate as the bulk path —
       // otherwise any admin-like caller can pull another tenant's chart into
       // LLM prompts via a guessed patient_id.
-      if (user.account_type !== 'super_admin' && user.agency_name) {
+      const isSuperAdmin = user.account_type === 'super_admin';
+      const isAgencyScopedAdmin = user.account_type === 'agency_admin'
+        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+      if (isAgencyScopedAdmin) {
         const agencyUsers = await base44.asServiceRole.entities.User
           .filter({ agency_name: user.agency_name }, '-created_date', 5000)
           .catch(() => []);

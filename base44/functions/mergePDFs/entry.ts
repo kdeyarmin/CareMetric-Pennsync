@@ -1,6 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { PDFDocument } from 'npm:pdf-lib@1.17.1';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
 // internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
 // rather than env-configured; add a host here if file storage ever moves.
@@ -47,7 +56,8 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
-
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }

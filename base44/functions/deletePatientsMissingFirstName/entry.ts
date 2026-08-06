@@ -25,6 +25,9 @@ Deno.serve(async (req) => {
     if (!isAdminLike(user)) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
 
     // Require an explicit confirm so a single accidental call can't irreversibly
     // wipe charts. Default is a DRY RUN that previews what would be archived.
@@ -37,8 +40,12 @@ Deno.serve(async (req) => {
 
     // Scope to the caller's agency so an agency_admin cannot archive another
     // tenant's stub charts. Super admins (or admins with no agency) keep the
-    // platform-wide view.
-    if (user.account_type !== 'super_admin' && user.agency_name) {
+    // platform-wide view. Orphan stubs (no care team) are platform-admin only —
+    // including them for every agency let Agency A archive Agency B's unattributed PHI.
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && !!user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScoped) {
       const agencyUsers = await base44.asServiceRole.entities.User
         .filter({ agency_name: user.agency_name }, '-created_date', 5000)
         .catch(() => []);
@@ -50,9 +57,6 @@ Deno.serve(async (req) => {
       allPatients = (Array.isArray(allPatients) ? allPatients : []).filter((p) =>
         (p.created_by && agencyEmails.has(p.created_by))
         || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
-        // Orphan stubs with no care-team attribution stay visible so they can
-        // still be cleaned up by the agency that found them.
-        || (!p.created_by && !(Array.isArray(p.assigned_nurses) && p.assigned_nurses.length))
       );
     }
 

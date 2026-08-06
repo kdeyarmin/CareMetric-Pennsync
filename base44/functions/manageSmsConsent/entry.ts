@@ -60,16 +60,22 @@ Deno.serve(async (req) => {
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can manage SMS consent' }, { status: 403 });
     }
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || 'list');
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && !!user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
 
     if (action === 'list') {
       let rows = await base44.asServiceRole.entities.SmsConsent.list('-captured_at', 500);
       let list = Array.isArray(rows) ? rows : [];
       // Agency-scope consent rows by linked patient care team when the caller
-      // belongs to an agency (super_admin sees all).
-      if (user.account_type !== 'super_admin' && user.agency_name) {
+      // belongs to an agency (super_admin / bare role:admin sees all).
+      if (isAgencyScoped) {
         const agencyUsers = await base44.asServiceRole.entities.User
           .filter({ agency_name: user.agency_name }, '-created_date', 5000)
           .catch(() => []);
@@ -143,7 +149,7 @@ Deno.serve(async (req) => {
       // agency (or a phone already captured by agency staff) so they cannot
       // overwrite another tenant's TCPA ledger.
       let linkedPatientId = body.patient_id || null;
-      if (user.account_type !== 'super_admin' && user.agency_name) {
+      if (isAgencyScoped) {
         const agencyUsers = await base44.asServiceRole.entities.User
           .filter({ agency_name: user.agency_name }, '-created_date', 5000)
           .catch(() => []);

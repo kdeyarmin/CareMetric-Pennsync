@@ -71,6 +71,43 @@ Deno.serve(async (req) => {
         if (!visit || visit.patient_id !== patientId) {
           return Response.json({ error: 'Visit not found for this patient' }, { status: 404 });
         }
+        // Claim before LLM + Task.create so concurrent submits cannot both
+        // invent duplicate follow-ups (mirrors extractClinicalEvents).
+        const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `followup-tasks-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        try {
+          await base44.asServiceRole.entities.Visit.update(visitId, {
+            followup_tasks_claimed_by: claimToken,
+          });
+        } catch {
+          return Response.json({ error: 'Could not claim visit for follow-up tasks' }, { status: 409 });
+        }
+        const claimCheck = await base44.asServiceRole.entities.Visit
+          .filter({ id: visitId }, '', 1).catch(() => []);
+        if (!claimCheck[0] || claimCheck[0].followup_tasks_claimed_by !== claimToken) {
+          return Response.json({
+            success: true,
+            already_processed: true,
+            tasks_created: 0,
+            tasks: [],
+            patient_name: patientName,
+            skipped: 'claimed by concurrent run',
+          });
+        }
+        const existingAi = await base44.asServiceRole.entities.Task
+          .filter({ related_visit_id: visitId, source: 'ai_generated' }, undefined, 1)
+          .catch(() => []);
+        if (existingAi && existingAi.length > 0) {
+          return Response.json({
+            success: true,
+            already_processed: true,
+            tasks_created: 0,
+            tasks: [],
+            patient_name: patientName,
+            skipped: 'ai follow-up tasks already exist for visit',
+          });
+        }
       }
     } else if (visitId) {
       return Response.json({ error: 'patientId is required when visitId is provided' }, { status: 400 });
