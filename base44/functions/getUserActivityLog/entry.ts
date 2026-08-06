@@ -14,6 +14,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  */
 
 /** Mirrors maskPhone() in src/components/voice/phoneUtils.js — last-4 only. */
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 function maskLast4(raw) {
   if (!raw) return '';
   const d = String(raw).replace(/[^\d]/g, '');
@@ -40,6 +48,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     const isAdmin =
       user.role === 'admin' ||
       user.account_type === 'super_admin' ||

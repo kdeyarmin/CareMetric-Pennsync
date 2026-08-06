@@ -1,5 +1,28 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 /**
  * autoAssignWorkNumbers — admin-only, one-click bulk provisioning. Gives every
  * user who doesn't yet have a personal voice/SMS work number the next available
@@ -67,11 +90,11 @@ Deno.serve(async (req) => {
     // can sit in the pool (e.g. bought in-app), but handing one to a nurse
     // would break fax transmission/masking or office call routing. Treat them
     // as in-use.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+    const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
     for (const reserved of [
-      settingsRows[0]?.office_fax_number_e164,
-      settingsRows[0]?.outbound_fax_number_e164,
-      settingsRows[0]?.main_office_number_e164,
+      agencySettings?.office_fax_number_e164,
+      agencySettings?.outbound_fax_number_e164,
+      agencySettings?.main_office_number_e164,
     ]) {
       const norm = normalizeE164(reserved);
       if (norm) inUse.add(norm);

@@ -92,8 +92,22 @@ function shouldRedriveSms(row, now = Date.now(), maxAttempts = 4, baseGapMs = 60
   return true;
 }
 
-async function getAgencyConfig(base44) {
-  const settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+async function getAgencyConfig(base44, agencyHint) {
+  // Prefer the nurse/agency settings row when multi-tenant rows exist.
+  let settings = [];
+  if (agencyHint) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: agencyHint }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: agencyHint }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+  }
   const s = settings[0] || {};
   return {
     settings: s,
@@ -495,7 +509,6 @@ Deno.serve(async (req) => {
     const telnyxCreds = await resolveTelnyxCreds(base44);
 
     const { apiKey, messagingProfileId } = telnyxCreds;
-    const { settings, smsEnabled } = await getAgencyConfig(base44);
     const runId = crypto.randomUUID();
     const now = Date.now();
     // Reconcile terminal delivery status via the DLR webhook (mirrors sendSms) —
@@ -515,9 +528,26 @@ Deno.serve(async (req) => {
 
     const result = { scanned: 0, redriven: 0, recovered: 0, failed: 0, skipped: 0 };
 
-    if (!apiKey || smsEnabled === false) {
-      return Response.json({ success: true, ...result, note: 'Telnyx SMS not configured or disabled — nothing redriven.' });
+    if (!apiKey) {
+      return Response.json({ success: true, ...result, note: 'Telnyx SMS not configured — nothing redriven.' });
     }
+
+    // Per-nurse agency settings (cached) so quiet-hours / sms_enabled from one
+    // tenant cannot suppress or allow redrives for another.
+    const agencyConfigCache = new Map();
+    const configForNurse = async (nurseEmail) => {
+      let agencyName = '';
+      if (nurseEmail) {
+        const [nurse] = await base44.asServiceRole.entities.User
+          .filter({ email: nurseEmail }, undefined, 1).catch(() => []);
+        agencyName = nurse?.agency_name || '';
+      }
+      const key = agencyName || '__default__';
+      if (agencyConfigCache.has(key)) return agencyConfigCache.get(key);
+      const cfg = await getAgencyConfig(base44, agencyName);
+      agencyConfigCache.set(key, cfg);
+      return cfg;
+    };
 
     const failedRows = await base44.asServiceRole.entities.SmsMessage
       .filter({ status: 'failed', direction: 'outbound' }, '-created_date', BATCH_LIMIT).catch(() => []);
@@ -525,6 +555,8 @@ Deno.serve(async (req) => {
 
     for (const row of failedRows) {
       if (!shouldRedriveSms(row, now)) continue;
+      const { settings, smsEnabled } = await configForNurse(row.nurse_email || row.created_by);
+      if (smsEnabled === false) { result.skipped++; continue; }
       // Consent can have changed since the failure — re-check, require opted_in.
       let allowed = false;
       try {

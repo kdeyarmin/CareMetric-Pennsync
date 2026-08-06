@@ -16,6 +16,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * is NOT forgery-resistant, and is reported as such so the UI can be honest.
  */
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // Canonical, order-stable serialization of the integrity-relevant fields. Derived
 // from the stored record so any post-signing edit to a covered field changes the
 // recomputed value and fails verification.
@@ -168,6 +176,7 @@ Deno.serve(async (req) => {
     const { action, signature_id } = body;
     const internal = action === 'stamp' && isInternalInvoke(body);
     if (!user && !internal) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user && isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!signature_id) return Response.json({ error: 'signature_id is required' }, { status: 400 });
 
     const sig = await base44.asServiceRole.entities.DocumentSignature.get(signature_id).catch(() => null);

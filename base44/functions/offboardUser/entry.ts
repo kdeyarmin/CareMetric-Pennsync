@@ -17,6 +17,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * unbounded read, not a page size: reaching it means the sweep may be
  * incomplete, which the response reports via results.sweep_truncated.
  */
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 const PATIENT_SWEEP_LIMIT = 5000;
 
 Deno.serve(async (req) => {
@@ -26,6 +34,7 @@ Deno.serve(async (req) => {
     if (!currentUser) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
 
     const isAdmin = currentUser.role === 'admin'
       || currentUser.account_type === 'agency_admin'
@@ -34,14 +43,6 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
-    // Offboarding clears is_active but deliberately leaves role/account_type
-    // intact (history and audit joins key off them), so an offboarded admin
-    // still satisfies the isAdmin gate above. The platform does not yet reject
-    // entity-API calls from an inactive session, so refuse them here rather
-    // than letting a deactivated administrator keep driving this function.
-    if (currentUser.is_active === false) {
-      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
-    }
 
     const callerIsSuperAdmin = currentUser.account_type === 'super_admin';
 

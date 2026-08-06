@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 /**
  * submitDocumentSignatures — server-side completion for the internal (in-person)
  * signing flow used by /SignDocument.
@@ -62,6 +70,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const body = await req.json().catch(() => ({}));
     const { signature_id, signatures } = body;
@@ -87,6 +96,27 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'This document is already completed.' }, { status: 409 });
     }
 
+    // Claim before rewriting signers so concurrent collectors cannot clobber.
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `submit-sig-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.asServiceRole.entities.DocumentSignature.update(signature_id, {
+        submit_claimed_by: claimToken,
+        submit_claimed_at: new Date().toISOString(),
+      });
+    } catch {
+      return Response.json({ error: 'Could not claim document for signature submit' }, { status: 409 });
+    }
+    const claimCheck = await base44.asServiceRole.entities.DocumentSignature
+      .get(signature_id).catch(() => null);
+    if (!claimCheck || claimCheck.submit_claimed_by !== claimToken) {
+      return Response.json({ error: 'Document is being submitted by another session' }, { status: 409 });
+    }
+    if (claimCheck.signature_hash || claimCheck.status === 'completed') {
+      return Response.json({ error: 'This document is already completed.' }, { status: 409 });
+    }
+
     const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
     const now = new Date().toISOString();
 
@@ -98,7 +128,7 @@ Deno.serve(async (req) => {
     // Same fallback keying as the signing page (signer.id, else `idx_<n>`):
     // legacy signer rows have no id, so keying on String(undefined) collided
     // every id-less row on multi-signer documents.
-    const updatedSigners = sig.signers.map((signer, index) => {
+    const updatedSigners = (Array.isArray(claimCheck.signers) ? claimCheck.signers : sig.signers).map((signer, index) => {
       const sub = submittedById.get(String(signer.id ?? `idx_${index}`));
       if (!sub || !sub.signature) return signer;
       return {
@@ -127,7 +157,7 @@ Deno.serve(async (req) => {
       status: 'completed',
       completed_date: now,
       audit_trail: [
-        ...(Array.isArray(sig.audit_trail) ? sig.audit_trail : []),
+        ...(Array.isArray(claimCheck.audit_trail) ? claimCheck.audit_trail : (Array.isArray(sig.audit_trail) ? sig.audit_trail : [])),
         {
           action: 'all_signatures_completed',
           timestamp: now,

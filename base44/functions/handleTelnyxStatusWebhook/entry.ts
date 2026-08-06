@@ -418,9 +418,22 @@ async function sendAutoReply(apiKey, messagingProfileId, from, to, text) {
   }
 }
 
-async function getAgencyConfig(base44) {
-  const settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-  const s = settings[0] || {};
+async function getAgencyConfig(base44, agencyHint) {
+  // Prefer a settings row matching the nurse/agency when multi-tenant rows exist.
+  let rows = [];
+  const key = String(agencyHint || '').trim();
+  if (key) {
+    rows = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1).catch(() => []);
+    if (!rows?.length) {
+      rows = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1).catch(() => []);
+    }
+  }
+  if (!rows?.length) {
+    rows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+  }
+  const s = rows[0] || {};
   // The office / after-hours numbers become Call Control `transfer` targets, and
   // Telnyx rejects a formatted number — so a stored "(724) 465-0440" would
   // dead-end every after-hours call at the apology fallback. Normalize to E.164
@@ -446,6 +459,23 @@ async function getAgencyConfig(base44) {
     afterHoursTransfer: toE164(s.after_hours_transfer_number_e164 || s.main_office_number_e164),
     afterHoursGreeting: s.after_hours_call_greeting || '',
   };
+}
+
+/** Match a dialed/to number to an AgencySettings row (fax/office lines). */
+async function resolveAgencySettingsByNumber(base44, e164) {
+  const target = normalizeE164(e164);
+  if (!target) return null;
+  const rows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 200).catch(() => []);
+  for (const row of (rows || [])) {
+    const candidates = [
+      row.office_fax_number_e164,
+      row.outbound_fax_number_e164,
+      row.main_office_number_e164,
+      row.after_hours_transfer_number_e164,
+    ];
+    if (candidates.some((c) => normalizeE164(c) === target)) return row;
+  }
+  return null;
 }
 
 const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
@@ -503,11 +533,11 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
   const providerMessageId = payload?.id || null;
   if (!source || !destination) return Response.json({ success: true, skipped: 'missing parties' });
 
-  const config = await getAgencyConfig(base44);
   const patientNum = normalizeE164(source) || source;
   const workNum = normalizeE164(destination) || destination;
 
-  // Resolve the nurse who owns this work number.
+  // Resolve the nurse who owns this work number — then load THAT agency's
+  // settings (newest-row-wins would apply another tenant's auto-reply/SMS gates).
   let nurse = null;
   for (const variant of phoneVariants(workNum)) {
     const matches = await base44.asServiceRole.entities.User.filter({ work_phone_number: variant }, undefined, 5000).catch(() => []);
@@ -520,6 +550,7 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
     }).catch(() => {});
     return Response.json({ success: true, skipped: 'unresolved work number' });
   }
+  const config = await getAgencyConfig(base44, nurse.agency_name);
 
   // Idempotency: Telnyx may re-deliver. If we already stored this id, ack.
   if (providerMessageId) {
@@ -680,8 +711,13 @@ async function handleInboundFax(base44, payload) {
     return Response.json({ success: true, deduped: true });
   }
 
-  const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-  const settings = settingsRows[0];
+  // Match the dialed fax line to the owning agency's settings (not newest-row).
+  const dialedFax = normalizeE164(payload?.to) || payload?.to || '';
+  let settings = await resolveAgencySettingsByNumber(base44, dialedFax);
+  if (!settings) {
+    const fallback = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+    settings = fallback[0] || null;
+  }
 
   if (settings?.fax_receiving_enabled) {
     // Opt-in ingestion: keep the fax in-app for OCR + referral matching.
@@ -1027,9 +1063,21 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
     // Step 1: a fresh inbound call rings in. Answer it first (consistent with the
     // outbound path), carrying the routing decision forward in client_state.
     if (eventType === 'call.initiated' && direction === 'incoming' && !state) {
-      const config = await getAgencyConfig(base44);
       const callerNum = normalizeE164(payload?.from) || payload?.from || '';
       const workNum = normalizeE164(payload?.to) || payload?.to || '';
+      // Resolve agency from the dialed work number's nurse (or matching settings
+      // lines) so multi-tenant IVR uses that tenant's greetings/transfer targets.
+      let agencyHint = '';
+      for (const variant of phoneVariants(workNum)) {
+        const matches = await base44.asServiceRole.entities.User
+          .filter({ work_phone_number: variant }, undefined, 1).catch(() => []);
+        if (matches[0]?.agency_name) { agencyHint = matches[0].agency_name; break; }
+      }
+      if (!agencyHint) {
+        const byLine = await resolveAgencySettingsByNumber(base44, workNum);
+        agencyHint = byLine?.agency_code || byLine?.office_name || '';
+      }
+      const config = await getAgencyConfig(base44, agencyHint);
       const route = await decideInboundRouting(base44, config, workNum);
       await logInboundCall(base44, callControlId, callerNum, workNum, route);
       await callCommand(apiKey, callControlId, 'answer', {
@@ -1089,8 +1137,18 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
     // no routing state. Re-derive the route and act so the call is never stranded
     // on a silent answered leg.
     if (eventType === 'call.answered' && direction === 'incoming' && !state) {
-      const config = await getAgencyConfig(base44);
       const workNum = normalizeE164(payload?.to) || payload?.to || '';
+      let agencyHint = '';
+      for (const variant of phoneVariants(workNum)) {
+        const matches = await base44.asServiceRole.entities.User
+          .filter({ work_phone_number: variant }, undefined, 1).catch(() => []);
+        if (matches[0]?.agency_name) { agencyHint = matches[0].agency_name; break; }
+      }
+      if (!agencyHint) {
+        const byLine = await resolveAgencySettingsByNumber(base44, workNum);
+        agencyHint = byLine?.agency_code || byLine?.office_name || '';
+      }
+      const config = await getAgencyConfig(base44, agencyHint);
       const route = await decideInboundRouting(base44, config, workNum);
       // Log here as well as on call.initiated: without a CallLog row every later
       // write for this call (status, voicemail recording, transcript, the new-

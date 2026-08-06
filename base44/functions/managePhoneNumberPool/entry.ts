@@ -9,6 +9,30 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 /**
  * managePhoneNumberPool — admin-only CRUD + assignment for the Telnyx number
  * pool (the PhoneNumber entity). One backend entry point keeps the pool inventory
@@ -120,11 +144,11 @@ Deno.serve(async (req) => {
       // The office fax, outbound fax, and main office lines are reserved:
       // handing one to a nurse would break fax transmission/masking or office
       // call routing.
-      const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+      const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
       const reserved = [
-        normalizeE164(settingsRows[0]?.office_fax_number_e164),
-        normalizeE164(settingsRows[0]?.outbound_fax_number_e164),
-        normalizeE164(settingsRows[0]?.main_office_number_e164),
+        normalizeE164(agencySettings?.office_fax_number_e164),
+        normalizeE164(agencySettings?.outbound_fax_number_e164),
+        normalizeE164(agencySettings?.main_office_number_e164),
       ].filter(Boolean);
       if (reserved.includes(e164)) {
         return Response.json({ error: `${e164} is a reserved office/fax line — it can't be a personal work number.` }, { status: 409 });

@@ -75,6 +75,30 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 /**
  * Read-only probe of the Telnyx `/v2/whoami` endpoint, bounded by an
  * AbortController timeout so a slow/blackholed host can't hang the diagnostic.
@@ -194,7 +218,7 @@ Deno.serve(async (req) => {
         (raw.startsWith('+') && d.length >= 8 && d.length <= 15 && d[0] !== '0')
       );
     };
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+    const settingsRows = [await resolveAgencySettings(base44, user?.agency_name)].filter(Boolean);
     const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
     const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
     const officeFaxValid = officeFaxRaw !== '' && validFaxNumber(officeFaxRaw);

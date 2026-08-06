@@ -189,8 +189,42 @@ Deno.serve(async (req) => {
     // unset, or no settings row — keeps them off, the safe companion-mode
     // default. Rules keyed to in-app artifacts (RISK 5: homebound wording
     // missing from a visit note that EXISTS in PennSync) always run.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const pennsyncIsSystemOfRecord = settingsRows?.[0]?.pennsync_is_system_of_record === true;
+    // Per-agency SoR flag (cached). Newest-row-wins would enable absence-based
+    // alerts for every tenant when only one agency opted into system-of-record.
+    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+    const emailToAgency = new Map(
+      (allUsers || []).filter((u) => u?.email).map((u) => [u.email, u.agency_name || '']),
+    );
+    const sorCache = new Map();
+    const agencyIsSystemOfRecord = async (agencyName) => {
+      const key = agencyName || '__default__';
+      if (sorCache.has(key)) return sorCache.get(key);
+      let rows = [];
+      if (agencyName) {
+        rows = await base44.asServiceRole.entities.AgencySettings
+          .filter({ agency_code: agencyName }, '-created_date', 1).catch(() => []);
+        if (!rows?.length) {
+          rows = await base44.asServiceRole.entities.AgencySettings
+            .filter({ office_name: agencyName }, '-created_date', 1).catch(() => []);
+        }
+      }
+      if (!rows?.length) {
+        rows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+      }
+      const flag = rows?.[0]?.pennsync_is_system_of_record === true;
+      sorCache.set(key, flag);
+      return flag;
+    };
+    const patientAgencyName = (patient) => {
+      if (patient?.created_by && emailToAgency.has(patient.created_by)) {
+        return emailToAgency.get(patient.created_by);
+      }
+      const assigned = Array.isArray(patient?.assigned_nurses) ? patient.assigned_nurses : [];
+      for (const email of assigned) {
+        if (emailToAgency.has(email)) return emailToAgency.get(email);
+      }
+      return '';
+    };
 
     // Service role for monitoring all patients (bounded — an unbounded list would
     // silently truncate at the SDK page default and time out at scale).
@@ -199,6 +233,7 @@ Deno.serve(async (req) => {
     const currentDate = new Date();
     
     for (const patient of patients) {
+      const pennsyncIsSystemOfRecord = await agencyIsSystemOfRecord(patientAgencyName(patient));
       const patientAlerts = [];
       
       // Fetch patient data

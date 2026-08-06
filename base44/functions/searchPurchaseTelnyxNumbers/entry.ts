@@ -112,6 +112,30 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 1)
+      .catch(() => []);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 async function fetchJson(url, init) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -126,16 +150,16 @@ async function fetchJson(url, init) {
 
 const TELNYX_API_BASE = 'https://api.telnyx.com/v2';
 
-// Store `e164` as the single blind OUTBOUND fax line (the technical `from`
-// every outbound fax transmits with; presented to recipients under the office
-// fax number). One AgencySettings row is the source of truth app-wide (newest
-// row wins everywhere it's read).
-async function setOutboundFaxNumber(base44, e164) {
-  const rows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-  if (rows[0]?.id) {
-    await base44.asServiceRole.entities.AgencySettings.update(rows[0].id, { outbound_fax_number_e164: e164 });
+// Store `e164` as the outbound fax line on the caller's agency settings row
+// (not newest-row-wins — multi-tenant must not overwrite another agency's line).
+async function setOutboundFaxNumber(base44, e164, agencyName) {
+  const row = await resolveAgencySettings(base44, agencyName);
+  if (row?.id) {
+    await base44.asServiceRole.entities.AgencySettings.update(row.id, { outbound_fax_number_e164: e164 });
   } else {
-    await base44.asServiceRole.entities.AgencySettings.create({ outbound_fax_number_e164: e164 });
+    const createPayload = { outbound_fax_number_e164: e164 };
+    if (agencyName) createPayload.agency_code = agencyName;
+    await base44.asServiceRole.entities.AgencySettings.create(createPayload);
   }
 }
 
@@ -203,7 +227,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Telnyx rejected the fax-connection update.', status: patch.status, details: firstErr || patch.data }, { status: 502 });
       }
 
-      if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164);
+      if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164, user?.agency_name);
       // Refresh the stored id from the authoritative lookup (it may hold a
       // number-order id from an old in-app purchase).
       if (poolRows[0]?.id && poolRows[0].twilio_phone_number_sid !== numberId) {
@@ -303,7 +327,7 @@ Deno.serve(async (req) => {
           ? 'Purchased in-app via Telnyx numbers API (fax line — attached to the Programmable Fax connection)'
           : 'Purchased in-app via Telnyx numbers API',
       });
-      if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164);
+      if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164, user?.agency_name);
 
       // Auto-enroll a new SMS-capable line in the agency's approved A2P 10DLC
       // campaign (AgencySettings.a2p_campaign_id) so its texts are carrier-
@@ -313,8 +337,8 @@ Deno.serve(async (req) => {
       // be enrolled manually in the Telnyx portal.
       let campaignAssigned = false;
       if (purpose !== 'fax') {
-        const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-        const campaignId = String(settingsRows[0]?.a2p_campaign_id || '').trim();
+        const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+        const campaignId = String(agencySettings?.a2p_campaign_id || '').trim();
         if (!campaignId) {
           warnings.push('No A2P 10DLC campaign id is saved in Agency Settings, so this number was NOT campaign-registered — US carriers may filter its texts until you register it.');
         } else {
@@ -345,8 +369,8 @@ Deno.serve(async (req) => {
       // line actually work" is a one-click action.
       let e164 = normalizeE164(body.e164);
       if (!e164 && !body.e164) {
-        const rows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-        e164 = normalizeE164(rows[0]?.office_fax_number_e164);
+        const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+        e164 = normalizeE164(agencySettings?.office_fax_number_e164);
       }
       if (!e164) return Response.json({ error: 'Enter a valid fax number to provision.' }, { status: 400 });
       if (!faxConnectionId) {
