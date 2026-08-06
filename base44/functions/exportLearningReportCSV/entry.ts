@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -8,6 +16,7 @@ Deno.serve(async (req) => {
     if (!user || (user.account_type !== 'agency_admin' && user.account_type !== 'super_admin')) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     // Agency admins are scoped to their OWN agency (mirrors
     // getTeamTrainingReadiness / distributePolicyAcknowledgment): resolve the set
@@ -15,8 +24,13 @@ Deno.serve(async (req) => {
     // it. Without this an agency_admin could pass another agency's
     // employeeId/courseId/planId and export that tenant's certificates, scores and
     // completion records. super_admin is not scoped.
+    // Fail closed when agency_admin lacks agency_name — otherwise agencyEmails
+    // stays null and inAgency() admits every tenant's rows.
     let agencyEmails = null;
-    if (user.account_type === 'agency_admin' && user.agency_name) {
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
+      }
       const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
       agencyEmails = new Set(
         agencyUsers.filter((u) => u.agency_name === user.agency_name).map((u) => u.email)

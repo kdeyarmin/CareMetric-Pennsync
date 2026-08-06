@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -21,6 +29,7 @@ Deno.serve(async (req) => {
         if (!user && !internalOk) {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
+        if (user && isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
         const { assignment_id, user_id, course_id } = body;
 
@@ -37,6 +46,17 @@ Deno.serve(async (req) => {
 
         if (!assignment || !course) {
             return Response.json({ error: 'Assignment or course not found' }, { status: 404 });
+        }
+
+        // Agency admins may only mint certificates for assignees in their agency
+        // (skip trusted internal gradeTrainingAttempt path).
+        if (!internalOk && user?.account_type === 'agency_admin') {
+            const assignee = userData?.[0];
+            if (!user.agency_name || !assignee || assignee.agency_name !== user.agency_name) {
+                return Response.json({
+                    error: 'Forbidden: assignee is outside your agency',
+                }, { status: 403 });
+            }
         }
 
         // The certificate subject must match the assignment's assignee — prevents

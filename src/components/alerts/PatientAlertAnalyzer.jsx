@@ -24,6 +24,13 @@ export default function PatientAlertAnalyzer({
   const [generatedAlerts, setGeneratedAlerts] = useState([]);
   const queryClient = useQueryClient();
 
+  // Drop prior-patient analysis output when the selector changes.
+  useEffect(() => {
+    setGeneratedAlerts([]);
+    setAnalysisProgress(0);
+    setIsAnalyzing(false);
+  }, [patientId]);
+
   // Current user — needed to assign generated tasks (Task.assigned_to is required;
   // without it the critical-alert escalation task create silently fails).
   const { data: currentUser } = useQuery({

@@ -26,6 +26,11 @@ export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = fal
   const [analysis, setAnalysis] = useState(null);
   const queryClient = useQueryClient();
 
+  // Clear sticky OASIS analysis when the parent chart switches patients.
+  React.useEffect(() => {
+    setAnalysis(null);
+  }, [patientId]);
+
   const { data: patient } = useQuery({
     queryKey: ['patient', patientId],
     queryFn: async () => {

@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -155,6 +163,7 @@ Deno.serve(async (req) => {
     if (!currentUser) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
 
     const body = await req.json();
     const { user_email, title, message, type, priority = 'medium', action_url, action_label, metadata, patient_id } = body;
@@ -211,14 +220,28 @@ Deno.serve(async (req) => {
     }
     const recipientEmail = String(user_email).trim().toLowerCase();
     const callerEmail = String(currentUser.email || '').trim().toLowerCase();
+    // Resolve the recipient once for peer-notify and agency-admin tenant gates.
+    const recipientRows = await base44.asServiceRole.entities.User
+      .filter({ email: recipientEmail }, undefined, 1)
+      .catch(() => []);
+    const recipient = recipientRows?.[0] || null;
     if (!callerIsAdmin && recipientEmail !== callerEmail) {
       // Peer notify: recipient must be an admin (e.g. account-deletion request).
-      const recipientRows = await base44.asServiceRole.entities.User
-        .filter({ email: recipientEmail }, undefined, 1)
-        .catch(() => []);
-      if (!recipientRows?.[0] || !isAdminLike(recipientRows[0])) {
+      if (!recipient || !isAdminLike(recipient)) {
         return Response.json({
           error: 'Non-admins may only notify themselves or an administrator',
+        }, { status: 403 });
+      }
+    }
+    // Agency admins (and peer-notifies from agency-scoped staff) may only target
+    // users in their own agency — otherwise createNotification is a cross-tenant
+    // spam / phishing channel via the service-role Notification create + email.
+    if (currentUser.account_type === 'agency_admin' ||
+        (!callerIsAdmin && recipientEmail !== callerEmail)) {
+      if (!currentUser.agency_name || !recipient ||
+          recipient.agency_name !== currentUser.agency_name) {
+        return Response.json({
+          error: 'Forbidden: recipient is outside your agency',
         }, { status: 403 });
       }
     }

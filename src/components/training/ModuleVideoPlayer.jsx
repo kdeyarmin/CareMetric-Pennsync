@@ -137,7 +137,11 @@ export default function ModuleVideoPlayer({ module, onEnded }) {
         <video
           controls
           preload="metadata"
-          poster={module.video_thumbnail_url || undefined}
+          poster={
+            module.video_thumbnail_url && isSafeExternalUrl(module.video_thumbnail_url)
+              ? module.video_thumbnail_url
+              : undefined
+          }
           className="w-full aspect-video"
           onEnded={() => onEndedRef.current?.()}
         >

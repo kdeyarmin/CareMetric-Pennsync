@@ -1,6 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -19,6 +27,7 @@ Deno.serve(async (req) => {
         if (!user && !internalOk) {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
+        if (user && isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
         const { certificate_id } = body;
 
@@ -37,9 +46,24 @@ Deno.serve(async (req) => {
 
         // Verify user owns this certificate or is admin (skip when trusted internal invoke)
         if (!internalOk) {
-            const isAdmin = user.role === 'admin' || user.account_type === 'agency_admin' || user.account_type === 'super_admin';
-            if (certificate.user_id !== user.email && !isAdmin) {
+            const isPlatformAdmin = user.role === 'admin' || user.account_type === 'super_admin';
+            const isAgencyAdmin = user.account_type === 'agency_admin';
+            const ownsCert = certificate.user_id === user.email;
+            if (!ownsCert && !isPlatformAdmin && !isAgencyAdmin) {
                 return Response.json({ error: 'Forbidden' }, { status: 403 });
+            }
+            // Agency admins may only generate PDFs for certificates belonging to
+            // staff in their own agency (TrainingCertificate has no agency_name).
+            if (!ownsCert && isAgencyAdmin) {
+                if (!user.agency_name) {
+                    return Response.json({ error: 'Forbidden' }, { status: 403 });
+                }
+                const owners = await base44.asServiceRole.entities.User
+                    .filter({ email: certificate.user_id }, undefined, 1)
+                    .catch(() => []);
+                if (!owners?.[0] || owners[0].agency_name !== user.agency_name) {
+                    return Response.json({ error: 'Forbidden: certificate owner is outside your agency' }, { status: 403 });
+                }
             }
         }
 

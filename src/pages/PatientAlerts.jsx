@@ -37,9 +37,14 @@ export default function PatientAlerts() {
   useEffect(() => {
     if (urlPatientId) {
       setSelectedPatientId(urlPatientId);
-      setAnalysisResults(null);
     }
   }, [urlPatientId]);
+
+  // Clear sticky analysis summary whenever the selected patient changes
+  // (URL deep-link OR manual dropdown), so Patient B never shows Patient A's results.
+  useEffect(() => {
+    setAnalysisResults(null);
+  }, [selectedPatientId]);
 
   const { data: patients = [] } = useQuery({
     // Namespaced: this is the ACTIVE-only patient set. The bare ['patients'] key is

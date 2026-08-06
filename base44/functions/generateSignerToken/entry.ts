@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && (
   u.role === 'admin' || u.account_type === 'agency_admin' ||
@@ -35,6 +44,7 @@ Deno.serve(async (req) => {
         { status: 403 }
       );
     }
+    if (user && isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { package_id, signer_email, signer_name, expires_in_days = 30 } = body;
 

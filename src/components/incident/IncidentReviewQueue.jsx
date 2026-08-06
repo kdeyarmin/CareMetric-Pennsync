@@ -58,6 +58,9 @@ function IncidentReviewCard({ incident, actorEmail }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-incidents"] });
       queryClient.invalidateQueries({ queryKey: ["incidents"] });
+      queryClient.invalidateQueries({ queryKey: ["my-incidents"] });
+      queryClient.invalidateQueries({ queryKey: ["incidentsForKPI"] });
+      queryClient.invalidateQueries({ queryKey: ["all-incidents"] });
     },
     onError: (e) => toast.error(e?.message || "Couldn't update the incident"),
   });

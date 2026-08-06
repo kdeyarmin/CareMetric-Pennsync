@@ -32,6 +32,10 @@ export default function Incidents() {
 
   const handleSubmitted = () => {
     queryClient.invalidateQueries({ queryKey: ["my-incidents"] });
+    queryClient.invalidateQueries({ queryKey: ["incidents"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-incidents"] });
+    queryClient.invalidateQueries({ queryKey: ["incidentsForKPI"] });
+    queryClient.invalidateQueries({ queryKey: ["all-incidents"] });
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
   };
 
