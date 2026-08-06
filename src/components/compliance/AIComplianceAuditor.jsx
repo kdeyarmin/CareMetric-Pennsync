@@ -40,8 +40,12 @@ export default function AIComplianceAuditor({
 
   const { data: patient } = useQuery({
     queryKey: ['patient', patientId],
-    queryFn: () => base44.entities.Patient.filter({ id: patientId }),
-    select: (data) => data[0],
+    queryFn: async () => {
+      const rows = await base44.entities.Patient.filter({ id: patientId });
+      return rows[0] || null;
+    },
+    // PatientDetails may have seeded an object under this key — accept both.
+    select: (data) => (Array.isArray(data) ? data[0] : data) || null,
     enabled: !!patientId,
   });
 

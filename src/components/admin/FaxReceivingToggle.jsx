@@ -9,13 +9,10 @@ import { toast } from "sonner";
 export default function FaxReceivingToggle() {
   const queryClient = useQueryClient();
 
-  const { data: settings = [], isLoading } = useQuery({
+  const { data: setting = null, isLoading } = useQuery({
     queryKey: ['agencySettings'],
-    queryFn: () => base44.entities.AgencySettings.list('-created_date', 1),
-    initialData: []
+    queryFn: async () => (await base44.entities.AgencySettings.list('-created_date', 1).catch(() => []))[0] || null,
   });
-
-  const setting = settings[0];
 
   const updateMutation = useMutation({
     mutationFn: ({ settingId, enabled }) => {

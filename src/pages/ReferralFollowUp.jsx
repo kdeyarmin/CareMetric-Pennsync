@@ -34,6 +34,7 @@ import ProviderFollowUpForm, { followUpFormPdfContent } from "../components/refe
 import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import { estimateFollowUpRevenueImpact, fmtUsd } from "../components/referral/followUpRevenueImpact";
 import { exportToPDF } from "@/components/utils/pdfExporter";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 const severityBadge = (severity) =>
   severity === "critical" ? "bg-red-600 text-white" : severity === "high" ? "bg-orange-500 text-white" : "bg-yellow-500 text-white";
@@ -94,7 +95,7 @@ export default function ReferralFollowUp() {
 
   const { data: agencySettings } = useQuery({
     queryKey: ["agencySettings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
   });
 
   const { data: physicians } = useQuery({
@@ -618,7 +619,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                           <p className="text-xs text-blue-800 mt-1">
                             Review the faxed document and mark the answered items resolved below.
                           </p>
-                          {tracking.fax_back.document_url && (
+                          {tracking.fax_back.document_url && isSafeExternalUrl(tracking.fax_back.document_url) && (
                             <a
                               href={tracking.fax_back.document_url}
                               target="_blank"

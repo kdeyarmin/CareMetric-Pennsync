@@ -5,6 +5,7 @@ import { createPageUrl } from "@/utils";
 import { safePercent } from "@/lib/safePercent";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { isPastLocalDueDate } from '@/lib/dateLocal';
 
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : "—");
 
@@ -41,7 +42,7 @@ export default function RequiredTrainingSummary({ assignments = [], courseMap = 
     const outstanding = required.filter((a) => !isComplete(a));
     const now = new Date();
     const overdue = outstanding.filter(
-      (a) => a.status === "overdue" || (a.due_date && new Date(a.due_date) < now)
+      (a) => a.status === "overdue" || isPastLocalDueDate(a.due_date, now)
     );
 
     // The single most urgent next action: soonest due date among outstanding,

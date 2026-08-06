@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { FileCheck2, ExternalLink, CheckCircle2, Loader2 } from "lucide-react";
 import { policyAcknowledgment } from "@/functions/policyAcknowledgment";
 import { toast } from "sonner";
+import { isPastLocalDueDate } from '@/lib/dateLocal';
 
 // Learner-facing policy sign-off. Lists the user's PolicyAcknowledgment rows;
 // pending ones require reading the document, typing their name, and confirming.
@@ -67,7 +68,7 @@ export default function LearnerPolicyAcknowledgments() {
     <div className="space-y-4">
       {pending.map((ack) => {
         const draft = drafts[ack.id] || {};
-        const overdue = ack.due_date && new Date(ack.due_date) < new Date();
+        const overdue = isPastLocalDueDate(ack.due_date);
         return (
           <Card key={ack.id} className={overdue ? "border-red-200" : "border-blue-200"}>
             <CardHeader>

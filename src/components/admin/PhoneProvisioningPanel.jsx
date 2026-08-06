@@ -80,16 +80,14 @@ export default function PhoneProvisioningPanel() {
     initialData: [],
   });
 
-  const { data: settingsArr = [] } = useQuery({
+  const { data: settings = null } = useQuery({
     queryKey: ["agencySettings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
     enabled: isAdmin,
     // Don't refetch on window focus: it would re-run the form-init effect below
     // and overwrite the admin's unsaved edits.
     refetchOnWindowFocus: false,
-    initialData: [],
   });
-  const settings = settingsArr[0];
 
   const [agency, setAgency] = useState({
     main_office_number_e164: "",

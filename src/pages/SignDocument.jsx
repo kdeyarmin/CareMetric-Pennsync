@@ -57,8 +57,14 @@ export default function SignDocument() {
 
   const { data: patient, isLoading: patientLoading } = useQuery({
     queryKey: ['patient', effectivePatientId],
-    queryFn: () => base44.entities.Patient.filter({ id: effectivePatientId }),
-    select: (data) => data[0],
+    queryFn: async () => {
+      const rows = await base44.entities.Patient.filter({ id: effectivePatientId });
+      return rows[0] || null;
+    },
+    // Cache may already hold an object seeded by PatientDetails — accept both
+    // shapes during the transition so select([row]) never turns an object into
+    // undefined demographics beside the document.
+    select: (data) => (Array.isArray(data) ? data[0] : data) || null,
     enabled: !!effectivePatientId
   });
 

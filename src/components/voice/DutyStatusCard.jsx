@@ -60,13 +60,11 @@ export default function DutyStatusCard() {
   // Agency settings drive the auto-off cutoff (default 5pm): after it, the
   // routing treats every nurse as off duty regardless of the toggle — surface
   // that here so the card never claims "Available" while calls go to the office.
-  const { data: settingsArr = [] } = useQuery({
+  const { data: agencySettings = null } = useQuery({
     queryKey: ["agencySettings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
     refetchOnWindowFocus: false,
-    initialData: [],
   });
-  const agencySettings = settingsArr[0];
 
   useEffect(() => {
     if (!user) return;

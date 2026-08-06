@@ -89,7 +89,7 @@ export default function DocumentationImpact() {
   // Agency wage index (calculatePDGM applies AgencySettings.wage_index the same way).
   const { data: agencySettings = null } = useQuery({
     queryKey: ["agencySettings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
   });
   const effectiveRates = useMemo(() => mergePdgmRates(rateConfig?.rates), [rateConfig]);
   const wageIndex = Number.isFinite(agencySettings?.wage_index) ? agencySettings.wage_index : 1.0;

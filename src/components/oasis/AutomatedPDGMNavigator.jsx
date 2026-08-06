@@ -223,14 +223,20 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
   const [isExporting, setIsExporting] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
 
-  // Fetch historical patient data for forecasting
+  // Fetch historical patient data for forecasting — scoped by patient id when
+  // available. Never load an unfiltered global OASIS list into this patient's
+  // forecast cache (that mixed other patients' uploads into client memory).
+  const patientIdForHistory = pdgmData?.patient_info?.id || pdgmData?.patient_id || null;
   const { data: _patientHistory = [] } = useQuery({
-    queryKey: ['patientOasisHistory', pdgmData?.patient_info?.name],
+    queryKey: ['patientOasisHistory', patientIdForHistory || pdgmData?.patient_info?.name || null],
     queryFn: async () => {
-      if (!pdgmData?.patient_info?.name) return [];
-      return await base44.entities.OASISUpload.filter({}, '-created_date', 10);
+      if (patientIdForHistory) {
+        return await base44.entities.OASISUpload.filter({ patient_id: patientIdForHistory }, '-created_date', 10);
+      }
+      // Name-only fallback: do not fan out to all uploads.
+      return [];
     },
-    enabled: !!pdgmData
+    enabled: !!pdgmData && (!!patientIdForHistory || !!pdgmData?.patient_info?.name)
   });
 
   const { data: allPatients = [] } = useQuery({

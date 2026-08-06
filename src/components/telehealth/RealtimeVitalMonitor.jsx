@@ -64,7 +64,7 @@ export default function RealtimeVitalMonitor({ sessionId, patientId }) {
   // Fetch agency settings for custom thresholds
   const { data: _agencySettings = {} } = useQuery({
     queryKey: ['agencySettings'],
-    queryFn: () => base44.entities.AgencySettings.list('-created_date', 1),
+    queryFn: async () => (await base44.entities.AgencySettings.list('-created_date', 1))[0] || null,
     initialData: [],
   });
 

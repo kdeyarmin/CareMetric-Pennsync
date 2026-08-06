@@ -46,19 +46,18 @@ export default function PatientContactActions({ patient, currentUser }) {
   const consentStatus = consents[0]?.consent_status || "unknown";
   const optedOut = consentStatus === "opted_out";
 
-  const { data: settingsArr = [] } = useQuery({
+  const { data: agencySettingsRow = null } = useQuery({
     queryKey: ["agencySettings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
     staleTime: 5 * 60 * 1000,
-    initialData: [],
   });
   // Warn (don't block) when the agency is outside its global calling/texting
   // hours — the send still goes through, but the patient may get an after-hours
   // auto-reply or transfer.
-  const afterHours = !isWithinBusinessHours(new Date(), agencyHoursConfig(settingsArr[0])).open;
-  const quickReplies = getQuickReplies(settingsArr[0]);
-  const templates = getTemplates(settingsArr[0]);
-  const templateContext = buildTemplateContext({ patient, user: currentUser, settings: settingsArr[0] });
+  const afterHours = !isWithinBusinessHours(new Date(), agencyHoursConfig(agencySettingsRow)).open;
+  const quickReplies = getQuickReplies(agencySettingsRow);
+  const templates = getTemplates(agencySettingsRow);
+  const templateContext = buildTemplateContext({ patient, user: currentUser, settings: agencySettingsRow });
   const insertReply = (text) =>
     setDraft((d) => (d.trim() ? `${d.replace(/\s*$/, "")} ${text}` : text));
   const applyTemplate = (body) => setDraft(renderTemplate(body, templateContext));

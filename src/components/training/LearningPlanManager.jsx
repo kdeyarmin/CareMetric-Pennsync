@@ -22,6 +22,7 @@ import AssignmentWizard from "./AssignmentWizard";
 import { seedYearlyRequiredInServices } from "@/functions/seedYearlyRequiredInServices";
 import { assignAnnualLearningPlan } from "@/functions/assignAnnualLearningPlan";
 import { remindPlanOverdueStaff } from "@/functions/remindPlanOverdueStaff";
+import { isPastLocalDueDate } from '@/lib/dateLocal';
 
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : "—");
 
@@ -138,7 +139,7 @@ export default function LearningPlanManager() {
       const overdue =
         a.status !== "completed" &&
         a.pass_fail_result !== "passed" &&
-        (a.status === "overdue" || (a.due_date && new Date(a.due_date) < now));
+        (a.status === "overdue" || isPastLocalDueDate(a.due_date, now));
       if (overdue && a.assigned_to_user_id) users.add(a.assigned_to_user_id);
     }
     return users.size;
@@ -633,7 +634,7 @@ export default function LearningPlanManager() {
                         {planEnrollments.map((e) => {
                           const overdue =
                             e.status === "overdue" ||
-                            (e.status !== "completed" && e.due_date && new Date(e.due_date) < new Date());
+                            (e.status !== "completed" && isPastLocalDueDate(e.due_date));
                           return (
                             <div key={e.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-white">
                               <div className="min-w-0 flex-1">

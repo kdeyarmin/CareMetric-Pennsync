@@ -47,9 +47,11 @@ describe('VisualEditAgent preview click handling', () => {
     enableVisualEditMode();
     fireEvent.click(screen.getByText('Care plan summary'));
 
+    // Target origin may be '*' (no configured editor) or an allowlisted
+    // backend/editor origin from appParams — assert payload, not the origin.
     expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'element-selected', visualSelectorId: 'card-title' }),
-      '*'
+      expect.any(String),
     );
   });
 
@@ -72,7 +74,7 @@ describe('VisualEditAgent preview click handling', () => {
         isDynamicContent: true,
         content: '',
       }),
-      '*'
+      expect.any(String),
     );
   });
 

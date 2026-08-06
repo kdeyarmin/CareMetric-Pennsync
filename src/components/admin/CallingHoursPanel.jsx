@@ -56,13 +56,11 @@ const parseHolidays = (text) =>
  */
 export default function CallingHoursPanel() {
   const queryClient = useQueryClient();
-  const { data: settingsArr = [] } = useQuery({
+  const { data: settings = null } = useQuery({
     queryKey: ["agencySettings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
     refetchOnWindowFocus: false,
-    initialData: [],
   });
-  const settings = settingsArr[0];
 
   const [form, setForm] = useState({
     business_hours_enabled: false,

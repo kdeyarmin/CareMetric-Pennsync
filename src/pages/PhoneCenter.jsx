@@ -40,13 +40,12 @@ export default function PhoneCenter() {
   // header/duty chips would still read "On duty" after the cutoff while inbound
   // calls/texts already route to the office — mirror DutyStatusCard so the two
   // views agree.
-  const { data: settingsArr = [] } = useQuery({
+  const { data: agencySettings = null } = useQuery({
     queryKey: ["agencySettings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
-    initialData: [],
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
   });
 
-  const offNow = isOffDutyNow(user, new Date(), settingsArr[0]);
+  const offNow = isOffDutyNow(user, new Date(), agencySettings);
   const hasWorkNumber = !!user?.work_phone_number;
 
   // Live status chips shown in the header so a nurse sees at a glance whether

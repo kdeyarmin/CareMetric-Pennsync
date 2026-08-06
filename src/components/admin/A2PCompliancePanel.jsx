@@ -38,14 +38,12 @@ export default function A2PCompliancePanel() {
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const isAdmin = isAdminLike(currentUser);
 
-  const { data: settingsArr = [] } = useQuery({
+  const { data: settings = null } = useQuery({
     queryKey: ["agencySettings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
     enabled: isAdmin,
     refetchOnWindowFocus: false,
-    initialData: [],
   });
-  const settings = settingsArr[0];
 
   const [form, setForm] = useState({
     a2p_10dlc_status: "not_registered",

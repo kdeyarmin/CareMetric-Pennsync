@@ -85,15 +85,14 @@ export default function SmsThreadView({
     resendMutation.mutate(msg.body);
   };
 
-  const { data: settingsArr = [] } = useQuery({
+  const { data: agencySettingsRow = null } = useQuery({
     queryKey: ["agencySettings"],
-    queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
+    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
     staleTime: 5 * 60 * 1000,
-    initialData: [],
   });
-  const quickReplies = getQuickReplies(settingsArr[0]);
-  const templates = getTemplates(settingsArr[0]);
-  const templateContext = buildTemplateContext({ patient, user: currentUser, settings: settingsArr[0] });
+  const quickReplies = getQuickReplies(agencySettingsRow);
+  const templates = getTemplates(agencySettingsRow);
+  const templateContext = buildTemplateContext({ patient, user: currentUser, settings: agencySettingsRow });
   const applyTemplate = (body) => setDraft(renderTemplate(body, templateContext));
 
   // Keep the latest message in view as the thread loads or grows.

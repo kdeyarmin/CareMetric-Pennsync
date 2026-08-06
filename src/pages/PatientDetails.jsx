@@ -108,7 +108,7 @@ export default function PatientDetails() {
     queryKey: ['patientContext', patientId],
     queryFn: async () => {
       const data = (await base44.functions.invoke('getPatientContext', { patientId }))?.data || {};
-      queryClient.setQueryData(['patient', patientId], data.patient ? [data.patient] : []);
+      queryClient.setQueryData(['patient', patientId], data.patient || null);
       queryClient.setQueryData(['patientVisits', patientId], data.visits || []);
       queryClient.setQueryData(['patientIncidents', patientId], data.incidents || []);
       queryClient.setQueryData(['patientTasks', patientId], data.tasks || []);

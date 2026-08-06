@@ -14,6 +14,7 @@ import { useIsEmbedded } from "@/components/ui/embeddedPage";
 import { Input } from "@/components/ui/input";
 import LoadingState from "@/components/ui/LoadingState";
 import RequiredTrainingSummary from "./RequiredTrainingSummary";
+import { isPastLocalDueDate } from '@/lib/dateLocal';
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
 
@@ -256,7 +257,7 @@ export default function MyTrainingDashboard({ filterByType }) {
             </Card>
           ) : (
             enrollments.map((enrollment) => {
-              const overdue = enrollment.status === 'overdue' || (enrollment.due_date && new Date(enrollment.due_date) < new Date() && enrollment.status !== 'completed');
+              const overdue = enrollment.status === 'overdue' || (isPastLocalDueDate(enrollment.due_date) && enrollment.status !== 'completed');
               return (
                 <Card key={enrollment.id} className={`border transition-all hover:shadow-md ${overdue ? 'border-red-200 bg-red-50/20' : ''}`}>
                   <CardHeader className="pb-2">

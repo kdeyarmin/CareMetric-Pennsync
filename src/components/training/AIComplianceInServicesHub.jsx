@@ -20,6 +20,7 @@ import TemplateLibraryPanel from "@/components/training/TemplateLibraryPanel";
 import AssignmentWizard from "@/components/training/AssignmentWizard";
 import RetakeSettingsPanel from "@/components/training/RetakeSettingsPanel";
 import TrainingAttachmentManager from "@/components/training/TrainingAttachmentManager";
+import { isPastLocalDueDate } from '@/lib/dateLocal';
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : "—";
 
@@ -572,7 +573,7 @@ export default function AIComplianceInServicesHub() {
 
         <TabsContent value="plans" className="space-y-3 sm:space-y-4">
           {planEnrollments.map((enrollment) => {
-            const overdue = enrollment.status === 'overdue' || (enrollment.due_date && new Date(enrollment.due_date) < now && enrollment.status !== 'completed');
+            const overdue = enrollment.status === 'overdue' || (isPastLocalDueDate(enrollment.due_date, now) && enrollment.status !== 'completed');
             return (
               <Card key={enrollment.id} className="shadow-md">
                 <CardContent className="p-4 sm:p-5 space-y-3">
