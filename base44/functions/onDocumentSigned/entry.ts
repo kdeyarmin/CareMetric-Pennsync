@@ -122,6 +122,40 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// Agency-scoped admin-tier recipients (isAdminLike). Unscoped User.filter({role:'admin'})
+// emailed patient/document PHI to every tenant's admins — derive agency from the
+// patient's care team and only notify that agency (plus platform super_admins).
+async function adminsForPatientAgency(svc, patient) {
+  // Let User.list failures throw so callers can release idempotency claims and
+  // retry; seed User.filter lookups below are best-effort (.catch → []).
+  const allUsers = await svc.User.list('-created_date', 5000);
+  let admins = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+    u && u.email && (
+      u.role === 'admin' ||
+      u.account_type === 'agency_admin' ||
+      u.account_type === 'super_admin'
+    )
+  );
+  const seedEmails = [
+    patient?.created_by,
+    ...(Array.isArray(patient?.assigned_nurses) ? patient.assigned_nurses : []),
+  ].filter(Boolean);
+  const agencyNames = new Set();
+  for (const email of seedEmails) {
+    const [u] = await svc.User.filter({ email }, '-created_date', 1).catch(() => []);
+    if (u?.agency_name) agencyNames.add(u.agency_name);
+  }
+  if (agencyNames.size > 0) {
+    admins = admins.filter((u) =>
+      u.account_type === 'super_admin' || agencyNames.has(u.agency_name)
+    );
+  } else {
+    // Unknown agency — do not fan out PHI to every tenant's admins
+    admins = admins.filter((u) => u.account_type === 'super_admin');
+  }
+  return admins;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -235,7 +269,8 @@ Deno.serve(async (req) => {
       }
       let releaseClaim = false;
       try {
-        const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
+        const patient = await base44.asServiceRole.entities.Patient.get(signature.patient_id).catch(() => null);
+        const admins = await adminsForPatientAgency(base44.asServiceRole.entities, patient);
         if (admins && admins.length > 0) {
           // Signer identity lives in the signers[] array, not flat fields. Report
           // the signers that have completed on this document.
