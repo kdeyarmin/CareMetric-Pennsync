@@ -653,16 +653,21 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Re-check opt-out at send time (fail closed on a read error).
-      let optedOut = true;
+      // Re-check consent at send time (fail closed on a read error). Require
+      // explicit opted_in — unknown/missing is not sufficient for TCPA.
+      let allowed = false;
       try {
         const consents = await base44.asServiceRole.entities.SmsConsent
           .filter({ phone_e164: row.to_number }, '-captured_at', 1);
-        optedOut = consents[0]?.consent_status === 'opted_out';
+        allowed = consents[0]?.consent_status === 'opted_in';
+        if (consents[0]?.consent_status === 'opted_out') {
+          await fail('Recipient opted out before the scheduled send');
+          continue;
+        }
       } catch {
-        optedOut = true;
+        allowed = false;
       }
-      if (optedOut) { await fail('Recipient opted out before the scheduled send'); continue; }
+      if (!allowed) { await fail('No texting consent on file at send time'); continue; }
 
       // TCPA quiet hours (recipient timezone). When enabled and the recipient is
       // in their quiet hours, leave the row pending to retry on a later run.

@@ -41,12 +41,12 @@ export default function SmsConversationList() {
     initialData: [],
   });
 
-  // phone (last10) -> latest opt-out flag
-  const optOutByPhone = useMemo(() => {
+  // phone (last10) -> latest consent status (newest-first list)
+  const consentByPhone = useMemo(() => {
     const map = {};
     consents.forEach((c) => {
       const key = last10(c.phone_e164);
-      if (!(key in map)) map[key] = c.consent_status === "opted_out"; // list is already newest-first
+      if (!(key in map)) map[key] = c.consent_status || "unknown";
     });
     return map;
   }, [consents]);
@@ -80,12 +80,13 @@ export default function SmsConversationList() {
           patientId: patient?.id || pid,
           label,
           unreadCount: sorted.filter((m) => m.direction === "inbound" && !m.is_read).length,
-          optedOut: !!optOutByPhone[last10(otherNumber)],
+          optedOut: consentByPhone[last10(otherNumber)] === "opted_out",
+          canText: consentByPhone[last10(otherNumber)] === "opted_in",
           patient,
         };
       })
       .sort((a, b) => new Date(b.lastMessage.created_date) - new Date(a.lastMessage.created_date));
-  }, [messages, patientById, patientByPhone, optOutByPhone]);
+  }, [messages, patientById, patientByPhone, consentByPhone]);
 
   const selected = threads.find((t) => t.threadId === selectedThreadId) || null;
 
@@ -133,6 +134,7 @@ export default function SmsConversationList() {
         patient={selected.patient}
         currentUser={user}
         optedOut={selected.optedOut}
+        canText={selected.canText}
         onBack={() => setSelectedThreadId(null)}
         onSent={() => queryClient.invalidateQueries({ queryKey: ["sms-messages", user?.email] })}
       />

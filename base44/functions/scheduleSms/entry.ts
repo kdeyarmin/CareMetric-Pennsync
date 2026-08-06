@@ -67,12 +67,19 @@ Deno.serve(async (req) => {
     if (t > nowMs + MAX_SCHEDULE_MS) return Response.json({ error: 'Pick a time within 365 days.' }, { status: 400 });
     const sendAtIso = new Date(t).toISOString();
 
-    // TCPA: refuse to schedule to a number that has already opted out. (The
-    // dispatcher re-checks at send time in case it changes before then.)
+    // TCPA: refuse to schedule without prior express consent on file. The
+    // dispatcher re-checks at send time (including unknown → block).
     const consents = await base44.asServiceRole.entities.SmsConsent
       .filter({ phone_e164: destination }, '-captured_at', 1).catch(() => []);
-    if (consents[0]?.consent_status === 'opted_out') {
+    const consentStatus = consents[0]?.consent_status || 'unknown';
+    if (consentStatus === 'opted_out') {
       return Response.json({ error: 'This patient has opted out of text messages (replied STOP).' }, { status: 403 });
+    }
+    if (consentStatus !== 'opted_in') {
+      return Response.json({
+        error: 'No texting consent is on file for this number. Record opt-in before scheduling.',
+        reason: 'consent_required',
+      }, { status: 403 });
     }
 
     const row = await base44.entities.ScheduledSms.create({

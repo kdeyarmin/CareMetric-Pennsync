@@ -45,6 +45,7 @@ export default function PatientContactActions({ patient, currentUser }) {
   });
   const consentStatus = consents[0]?.consent_status || "unknown";
   const optedOut = consentStatus === "opted_out";
+  const canText = consentStatus === "opted_in";
 
   const { data: agencySettingsRow = null } = useQuery({
     queryKey: ["agencySettings"],
@@ -96,7 +97,7 @@ export default function PatientContactActions({ patient, currentUser }) {
   const disabled = !!disabledReason;
 
   const TextButton = (
-    <Button variant="outline" className="flex-1" disabled={disabled || optedOut} onClick={() => setTextOpen(true)}>
+    <Button variant="outline" className="flex-1" disabled={disabled || !canText} onClick={() => setTextOpen(true)}>
       <MessageSquare className="w-4 h-4 mr-2" />
       Text
     </Button>
@@ -134,7 +135,15 @@ export default function PatientContactActions({ patient, currentUser }) {
             </AlertDescription>
           </Alert>
         )}
-        {!optedOut && consentStatus === "opted_in" && (
+        {!optedOut && !canText && (
+          <Alert className="bg-amber-50 border-amber-200 py-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600" />
+            <AlertDescription className="text-amber-800 text-xs">
+              No texting consent on file. Record opt-in before sending texts (TCPA). Calling is still allowed.
+            </AlertDescription>
+          </Alert>
+        )}
+        {canText && (
           <Badge className="bg-green-100 text-green-800 text-xs">
             <ShieldCheck className="w-3 h-3 mr-1" /> Texting consent on file
           </Badge>
@@ -225,7 +234,7 @@ export default function PatientContactActions({ patient, currentUser }) {
             <Alert className="bg-amber-50 border-amber-200 py-2">
               <AlertTriangle className="w-4 h-4 text-amber-600" />
               <AlertDescription className="text-amber-800 text-xs">
-                No texting consent is recorded for this patient. Confirm they've agreed to receive texts before sending.
+                No texting consent is recorded for this patient. Close this dialog and record opt-in before sending.
               </AlertDescription>
             </Alert>
           )}
@@ -281,12 +290,12 @@ export default function PatientContactActions({ patient, currentUser }) {
               toNumber={patient?.phone}
               patientId={patient?.id}
               body={draft}
-              disabled={!draft.trim() || sendText.isPending || optedOut}
+              disabled={!draft.trim() || sendText.isPending || !canText}
               onScheduled={() => { setDraft(""); setTextOpen(false); }}
             />
             <Button
               onClick={() => draft.trim() && sendText.mutate(draft.trim())}
-              disabled={!draft.trim() || sendText.isPending}
+              disabled={!draft.trim() || sendText.isPending || !canText}
               className="bg-blue-600 hover:bg-blue-700"
             >
               <Send className="w-4 h-4 mr-2" />

@@ -558,12 +558,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // TCPA: refuse to text a number that has opted out.
+    // TCPA: refuse to text without prior express consent on file. Opted-out is
+    // blocked; so is `unknown` / missing — care messaging without recorded
+    // consent is still a TCPA risk. Staff must record opt-in (or the patient
+    // must text START) before outbound texts.
     const consents = await base44.asServiceRole.entities.SmsConsent
       .filter({ phone_e164: destination }, '-captured_at', 1).catch(() => []);
     const consentStatus = consents[0]?.consent_status || 'unknown';
     if (consentStatus === 'opted_out') {
       return Response.json({ error: 'This patient has opted out of text messages (replied STOP).' }, { status: 403 });
+    }
+    if (consentStatus !== 'opted_in') {
+      return Response.json({
+        error: 'No texting consent is on file for this number. Record opt-in before sending.',
+        reason: 'consent_required',
+      }, { status: 403 });
     }
 
     // TCPA quiet hours (recipient timezone). Hard block when enabled.

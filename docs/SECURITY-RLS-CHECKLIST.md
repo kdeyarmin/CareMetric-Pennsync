@@ -144,3 +144,32 @@ Apply that shared gate to the whole cron family, including:
   (`src/components/medication/drugInteractions.js`) — expand over time; it does
   not replace a full interaction database.
 - Medication reconciliation: consider a richer per-decision reconciled-med model.
+
+## 9. Residual risks that cannot be closed in this repo alone
+
+### Hosted RLS / tenant isolation
+Entity `rls` blocks in `base44/entities/*.jsonc` are **declarations** for the
+Base44 dashboard. Client role checks and query filters are UX only. Prove
+enforcement with checklist §7 against the **hosted** app (raw network
+responses), including relation-based "by patient access" rules that the repo
+DSL cannot express (`docs/RLS-REMEDIATION-SPEC-2026-06-19.md`).
+
+### True compare-and-swap (CAS)
+Reminder/fax/SMS claim tokens (`claimed_by` + re-read) are best-effort. The
+entity store has no atomic conditional update / version column, so overlapping
+writes can still lose. Closing this needs platform CAS (If-Match / versioned
+updates) or a transactional claim API.
+
+### Login CSRF nonce (remaining gap)
+In-app hardening (`src/lib/app-params.js`): planted `auth_state` on hosted-login
+return, and never overwrite an existing session from an empty/untrusted
+referrer. **Still open:** a logged-out victim who opens a phishing
+`?access_token=` link with no referrer and no planted state (email-style
+handoff). Fully closing that needs Base44 to issue a state/nonce on every
+return URL.
+
+### SMS consent
+Outbound patient texts (`sendSms` / `scheduleSms` / dispatcher / redrive) now
+**require `consent_status === 'opted_in'`**. `unknown` is no longer sufficient.
+Admin `sendTestSms` still only blocks `opted_out` so provisioned-line smoke
+tests work.

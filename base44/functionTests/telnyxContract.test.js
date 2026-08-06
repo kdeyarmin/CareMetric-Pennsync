@@ -91,6 +91,7 @@ test("sendSms posts the Telnyx Messages contract", async () => {
       // Contract tests are wall-clock independent: disable TCPA quiet hours so a
       // night-time CI run does not 403 a Messages-API shape assertion.
       AgencySettings: [{ tcpa_quiet_hours_enabled: false, sms_enabled: true }],
+      SmsConsent: [{ phone_e164: "+12155550133", consent_status: "opted_in", captured_at: "2026-01-01T00:00:00Z" }],
     } }),
     fetchImpl: impl,
   });
@@ -853,6 +854,7 @@ test("sendSms forwards MMS media_urls and rejects non-https/oversized media", as
   const mk = () => makeBase44({ data: {
     IntegrationSecret: [{ api_key: "KEYtest" }],
     AgencySettings: [{ tcpa_quiet_hours_enabled: false, sms_enabled: true }],
+    SmsConsent: [{ phone_e164: "+12155550133", consent_status: "opted_in", captured_at: "2026-01-01T00:00:00Z" }],
   } });
   // Happy path: media_urls forwarded to Telnyx.
   const { impl, calls } = makeFetch([

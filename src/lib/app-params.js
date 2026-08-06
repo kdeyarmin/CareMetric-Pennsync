@@ -71,27 +71,71 @@ const sanitizeServerUrl = (value) => {
 	}
 };
 
-// Referrer gate for accepting a session token from the URL. A `?access_token=`
-// handoff is how the platform's hosted-login flows (OTP / sign-up / captcha /
-// password-reset completion) return an authenticated session, so we can't drop
-// it — but an unsolicited phishing link carrying `?access_token=<attacker's
-// session>` is otherwise persisted verbatim and silently switches the victim
-// into the attacker's account (login CSRF / session fixation). Reject the URL
-// value ONLY when we can positively tell it arrived from a foreign origin; fail
-// OPEN on a same-origin / trusted-Base44 / absent referrer so the legitimate
-// handoff (whose hosted page may set Referrer-Policy: no-referrer) never breaks.
-// NOTE: an attacker who redirects with no referrer still bypasses this — fully
-// closing login CSRF needs a backend-issued state/nonce echoed on return.
+// Referrer / session gate for accepting a session token from the URL. A
+// `?access_token=` handoff is how the platform's hosted-login flows (OTP /
+// sign-up / captcha / password-reset completion) return an authenticated
+// session, so we can't drop it — but an unsolicited phishing link carrying
+// `?access_token=<attacker's session>` is otherwise persisted verbatim and
+// silently switches the victim into the attacker's account (login CSRF /
+// session fixation).
+//
+// Accept the URL token when:
+//   1. Referrer is same-origin or a trusted Base44 host, OR
+//   2. A short-lived `base44_login_state` we planted before redirecting to
+//      hosted login matches `auth_state` on the return URL, OR
+//   3. There is no existing stored session (first-time magic link / email
+//      handoff) AND referrer is empty — still needed because hosted pages may
+//      send Referrer-Policy: no-referrer and email links have no referrer.
+//
+// Reject when an existing session would be overwritten from an empty /
+// untrusted referrer without a matching planted state — that is the classic
+// logged-in fixation vector. Fully closing the logged-out phishing case still
+// needs a Base44-issued state/nonce on every return URL.
+const LOGIN_STATE_KEY = 'base44_login_state';
+
+/** Snapshot of `auth_state` from the landing URL, captured before we strip it. */
+let landingAuthState = null;
+
 const trustedTokenReferrer = () => {
 	if (isNode) return true;
-	const ref = document.referrer;
-	if (!ref) return true;
+	const urlState = landingAuthState;
+	const planted = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(LOGIN_STATE_KEY) : null;
+	if (planted) {
+		try { sessionStorage.removeItem(LOGIN_STATE_KEY); } catch { /* ignore */ }
+		if (urlState && urlState === planted) return true;
+		// We expected a hosted-login return but state mismatched — reject.
+		if (urlState || storage.getItem('base44_access_token')) return false;
+	}
+	const ref = typeof document !== 'undefined' ? document.referrer : '';
+	if (!ref) {
+		// Empty referrer: never clobber an already-stored session.
+		return !storage.getItem('base44_access_token');
+	}
 	try {
 		const refHost = new URL(ref).host.toLowerCase();
 		if (refHost === window.location.host.toLowerCase()) return true;
 		return isTrustedBackendHost(refHost);
 	} catch {
-		return true;
+		return !storage.getItem('base44_access_token');
+	}
+};
+
+/** Plant a one-time state before redirecting to hosted login; append it to the
+ * return URL so a matching `auth_state` proves the handoff was solicited. */
+export const plantLoginReturnState = (returnUrl) => {
+	if (isNode || typeof crypto === 'undefined' || !crypto.randomUUID) return returnUrl;
+	const state = crypto.randomUUID();
+	try {
+		sessionStorage.setItem(LOGIN_STATE_KEY, state);
+	} catch {
+		return returnUrl;
+	}
+	try {
+		const u = new URL(returnUrl, window.location.origin);
+		u.searchParams.set('auth_state', state);
+		return u.toString();
+	} catch {
+		return returnUrl;
 	}
 };
 
@@ -154,6 +198,15 @@ const getAppParams = () => {
 		if (new URLSearchParams(window.location.search).get('clear_access_token') === 'true') {
 			storage.removeItem('base44_access_token');
 			storage.removeItem('token');
+		}
+		// Capture auth_state BEFORE stripping it so trustedTokenReferrer can
+		// match against the planted sessionStorage value.
+		const cleanParams = new URLSearchParams(window.location.search);
+		landingAuthState = cleanParams.get('auth_state');
+		if (cleanParams.has('auth_state')) {
+			cleanParams.delete('auth_state');
+			const newUrl = `${window.location.pathname}${cleanParams.toString() ? `?${cleanParams.toString()}` : ''}${window.location.hash}`;
+			window.history.replaceState({}, document.title, newUrl);
 		}
 		// Self-heal a device an earlier bad `?app_id=` link already pinned to the
 		// wrong app: drop the stored id (and the functions version pinned with it)
