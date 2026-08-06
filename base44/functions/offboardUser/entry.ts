@@ -34,8 +34,6 @@ Deno.serve(async (req) => {
     if (!currentUser) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
-
     const isAdmin = currentUser.role === 'admin'
       || currentUser.account_type === 'agency_admin'
       || currentUser.account_type === 'super_admin';
@@ -43,6 +41,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
+    // Offboarding clears is_active but deliberately leaves role/account_type
+    // intact (history and audit joins key off them), so an offboarded admin
+    // still satisfies the isAdmin gate above. The platform does not yet reject
+    // entity-API calls from an inactive session, so refuse them here rather
+    // than letting a deactivated administrator keep driving this function.
+    if (currentUser.is_active === false) {
+      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
 
     const callerIsSuperAdmin = currentUser.account_type === 'super_admin';
 
