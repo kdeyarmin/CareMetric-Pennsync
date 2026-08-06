@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, User, FileCheck, Mail } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatLocalDate } from '@/lib/dateLocal';
 
 export default function DocumentAuditLogViewer() {
   const [logs, setLogs] = useState([]);
@@ -56,7 +57,7 @@ export default function DocumentAuditLogViewer() {
             packageId: pkg.id,
             signer: pkg.signer_name,
             signerEmail: pkg.signer_email,
-            details: `Due on ${new Date(pkg.due_date).toLocaleDateString()}`,
+            details: `Due on ${formatLocalDate(pkg.due_date) || pkg.due_date}`,
             icon: Calendar,
             color: 'yellow',
           });

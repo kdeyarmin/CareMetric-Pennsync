@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import DischargeSummaryWorkflow from '@/components/discharge/DischargeSummaryWorkflow';
 import { formatLocalDate } from '@/lib/dateLocal';
 
-const formatPdfDate = (value) => value ? new Date(value).toLocaleDateString() : '—';
+const formatPdfDate = (value) => formatLocalDate(value) || '—';
 
 async function downloadSummaryPDF(summary) {
   try {

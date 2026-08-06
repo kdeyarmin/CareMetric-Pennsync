@@ -42,6 +42,11 @@ export default function PDFEditor({ pdfUrl, onSave }) {
 
   const loadPDF = useCallback(async () => {
     setIsLoading(true);
+    if (!isSafePdfUrl(pdfUrl)) {
+      toast.error("Blocked unsafe PDF URL");
+      setIsLoading(false);
+      return;
+    }
     try {
       const loadingTask = pdfjsLib.getDocument(pdfUrl);
       const pdf = await loadingTask.promise;

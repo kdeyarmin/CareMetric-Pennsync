@@ -103,6 +103,15 @@ Deno.serve(async (req) => {
         // Another run claimed it first — skip to avoid a duplicate send.
         continue;
       }
+      // Cancel can race the claim: offboard sets canceled_at + status cancelled,
+      // then claim overwrites status to processing — but canceled_at survives.
+      // Never send (or requeue to pending) after an explicit cancel.
+      if (claimCheck[0].canceled_at || claimCheck[0].status === 'cancelled') {
+        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+          status: 'cancelled', claimed_by: '', claimed_at: null,
+        }).catch(() => {});
+        continue;
+      }
       try {
         // Use the batch send function for each scheduled fax
         const response = await base44.asServiceRole.functions.invoke('sendBatchFax', {
@@ -139,6 +148,16 @@ Deno.serve(async (req) => {
         // no client idempotency key and requeueing could re-transmit PHI.
         if (batchNeverDispatched(data, response?.status)) {
           console.error('A scheduled fax was not dispatched and has been requeued:', data.error);
+          // Re-read before requeue — a cancel that landed mid-send must not be
+          // resurrected as pending.
+          const mid = await base44.asServiceRole.entities.ScheduledFax
+            .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
+          if (mid[0]?.canceled_at || mid[0]?.status === 'cancelled') {
+            await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+              status: 'cancelled', claimed_by: '', claimed_at: null,
+            }).catch(() => {});
+            continue;
+          }
           await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
             status: 'pending', claimed_by: '', claimed_at: null,
           }).catch((err) => console.error('Failed to requeue scheduled fax:', err?.message || err));
@@ -156,6 +175,14 @@ Deno.serve(async (req) => {
         // never-dispatched signal arrives here too — same reasoning as above:
         // requeue rather than destroy the queued document.
         if (batchNeverDispatched(error?.response?.data, error?.response?.status)) {
+          const mid = await base44.asServiceRole.entities.ScheduledFax
+            .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
+          if (mid[0]?.canceled_at || mid[0]?.status === 'cancelled') {
+            await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+              status: 'cancelled', claimed_by: '', claimed_at: null,
+            }).catch(() => {});
+            continue;
+          }
           await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
             status: 'pending', claimed_by: '', claimed_at: null,
           }).catch((err) => console.error('Failed to requeue scheduled fax:', err?.message || err));

@@ -244,6 +244,9 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   if (!isAdmin) {
     return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
   }
+  if (currentUser.account_type === 'agency_admin' && !currentUser.agency_name) {
+    return Response.json({ error: 'Forbidden: agency_name is required to invite staff.' }, { status: 403 });
+  }
 
   const { email, full_name, role, care_scope, phone, credentials } = params;
 
@@ -274,6 +277,7 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     phone: phone || null,
     credentials: credentials || null,
     invited_by: currentUser.email,
+    agency_name: currentUser.agency_name || null,
     status: 'pending',
     expires_at: expiresAt.toISOString(),
     last_sent_at: now.toISOString(),
@@ -349,6 +353,24 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
       error: 'This invitation was cancelled and cannot be resent. Create a new invitation instead.',
     }, { status: 409 });
   }
+
+  // Agency admins may only resend invites for their own agency.
+  if (currentUser.account_type === 'agency_admin') {
+    if (!currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+    }
+    let inviteAgency = invitation.agency_name || null;
+    if (!inviteAgency && invitation.invited_by) {
+      const inviters = await base44.asServiceRole.entities.User
+        .filter({ email: invitation.invited_by }, undefined, 5)
+        .catch(() => []);
+      inviteAgency = inviters?.[0]?.agency_name || null;
+    }
+    if (inviteAgency !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+    }
+  }
+
   const now = new Date();
   const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const prior = {
@@ -682,6 +704,23 @@ async function cancelInvitation(base44, currentUser, params, isAdmin) {
   }
   if (invitation.status === 'cancelled') {
     return Response.json({ success: true, message: 'Invitation already cancelled' });
+  }
+
+  // Agency admins may only cancel invites for their own agency.
+  if (currentUser.account_type === 'agency_admin') {
+    if (!currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+    }
+    let inviteAgency = invitation.agency_name || null;
+    if (!inviteAgency && invitation.invited_by) {
+      const inviters = await base44.asServiceRole.entities.User
+        .filter({ email: invitation.invited_by }, undefined, 5)
+        .catch(() => []);
+      inviteAgency = inviters?.[0]?.agency_name || null;
+    }
+    if (inviteAgency !== currentUser.agency_name) {
+      return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+    }
   }
 
   // Soft-cancel (preserve audit history). Hard-delete destroyed the trail and

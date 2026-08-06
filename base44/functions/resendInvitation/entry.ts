@@ -48,6 +48,24 @@ Deno.serve(async (req) => {
         { status: 409 }
       );
     }
+
+    // Agency admins may only resend invites for their own agency.
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+      }
+      let inviteAgency = invitation.agency_name || null;
+      if (!inviteAgency && invitation.invited_by) {
+        const inviters = await base44.asServiceRole.entities.User
+          .filter({ email: invitation.invited_by }, undefined, 5)
+          .catch(() => []);
+        inviteAgency = inviters?.[0]?.agency_name || null;
+      }
+      if (inviteAgency !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
+      }
+    }
+
     const now = new Date();
     const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 

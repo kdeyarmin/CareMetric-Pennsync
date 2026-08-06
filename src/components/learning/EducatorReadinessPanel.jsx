@@ -7,13 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { toCsv, exportTimestamp } from '@/components/admin/csvExport';
 import { downloadCsv } from '@/lib/downloadCsv';
+import { formatLocalDate } from '@/lib/dateLocal';
 
 const readinessColor = (pct) =>
   pct >= 90 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : 'text-red-600';
 const barColor = (pct) =>
   pct >= 90 ? '[&>div]:bg-emerald-500' : pct >= 70 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500';
 
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : '');
+const formatDate = (value) => formatLocalDate(value) || '';
 
 /**
  * Org-wide required-training readiness for educators and admins. Data is fetched

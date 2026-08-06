@@ -10,9 +10,13 @@ import {
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import * as pdfjsLib from "pdfjs-dist";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 // Use unpkg CDN to reliably load the worker without Vite import issues
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+
+const isSafePdfUrl = (url) =>
+  typeof url === "string" && (url.startsWith("blob:") || isSafeExternalUrl(url));
 
 const TOOLS = {
   PEN: "pen",
@@ -51,6 +55,11 @@ export default function PDFAnnotator({ pdfUrl, onAnnotatedReady, onClose }) {
   // Load PDF
   useEffect(() => {
     if (!pdfUrl) return;
+    if (!isSafePdfUrl(pdfUrl)) {
+      toast.error("Blocked unsafe PDF URL");
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     pdfjsLib.getDocument({ url: pdfUrl, withCredentials: false }).promise
       .then((doc) => {

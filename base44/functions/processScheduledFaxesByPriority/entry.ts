@@ -125,6 +125,13 @@ Deno.serve(async (req) => {
         // Another run claimed it first — skip to avoid a duplicate send.
         continue;
       }
+      // Honor durable cancel stamp (parity with processScheduledFaxes / SMS).
+      if (claimCheck[0].canceled_at || claimCheck[0].status === 'cancelled') {
+        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+          status: 'cancelled', claimed_by: '', claimed_at: null,
+        }).catch(() => {});
+        continue;
+      }
       try {
         // Send to all recipients via the batch sender, invoked with the service
         // role. The previous per-recipient base44.functions.invoke('sendFax')
@@ -158,6 +165,14 @@ Deno.serve(async (req) => {
         // would re-fax PHI. Mirrors the processScheduledFaxes sibling.
         if (batchNeverDispatched(data, sendResult?.status)) {
           console.error('A scheduled fax was not dispatched and has been requeued:', data.error);
+          const mid = await base44.asServiceRole.entities.ScheduledFax
+            .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
+          if (mid[0]?.canceled_at || mid[0]?.status === 'cancelled') {
+            await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+              status: 'cancelled', claimed_by: '', claimed_at: null,
+            }).catch(() => {});
+            continue;
+          }
           await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
             status: 'pending', claimed_by: '', claimed_at: null,
           }).catch((err) => console.error('Failed to requeue scheduled fax:', err?.message || err));
@@ -178,6 +193,14 @@ Deno.serve(async (req) => {
         // A non-2xx from sendBatchFax rejects rather than resolving, so the
         // never-dispatched signal arrives here too — requeue, don't destroy.
         if (batchNeverDispatched(error?.response?.data, error?.response?.status)) {
+          const mid = await base44.asServiceRole.entities.ScheduledFax
+            .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
+          if (mid[0]?.canceled_at || mid[0]?.status === 'cancelled') {
+            await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+              status: 'cancelled', claimed_by: '', claimed_at: null,
+            }).catch(() => {});
+            continue;
+          }
           await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
             status: 'pending', claimed_by: '', claimed_at: null,
           }).catch((err) => console.error('Failed to requeue scheduled fax:', err?.message || err));

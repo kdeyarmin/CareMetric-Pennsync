@@ -57,6 +57,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Only a super admin can modify another administrator account.' }, { status: 403 });
     }
 
+    // Agency admins may only mutate staff in their own agency.
+    if (currentUser.account_type === 'agency_admin') {
+      if (!currentUser.agency_name || !targetUser || targetUser.agency_name !== currentUser.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
+    }
+
     const result = await base44.asServiceRole.entities.User.update(userId, safeUpdates);
 
     return Response.json({ success: true, result });

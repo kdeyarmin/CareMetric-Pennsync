@@ -281,6 +281,10 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
       const ok = await revoke('scheduled fax cancel', row.id, () =>
         base44.asServiceRole.entities.ScheduledFax.update(row.id, {
           status: 'cancelled',
+          // Durable cancel stamp — claim may overwrite status to 'processing'
+          // but must not clear canceled_at (parity with ScheduledSms).
+          canceled_at: at,
+          canceled_by: currentUser.email,
         }));
       if (ok) results.scheduled_faxes_canceled += 1;
     }
@@ -303,6 +307,8 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
       const ok = await revoke('signature reminder cancel', row.id, () =>
         base44.asServiceRole.entities.ScheduledSignatureReminder.update(row.id, {
           status: 'canceled',
+          canceled_at: at,
+          canceled_by: currentUser.email,
         }));
       if (ok) results.signature_reminders_canceled += 1;
     }

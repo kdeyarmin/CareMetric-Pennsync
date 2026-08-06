@@ -16,11 +16,28 @@ Deno.serve(async (req) => {
     if (!isAdminLike(currentUser)) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
+    if (currentUser.is_active === false) {
+      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
 
     const { action, email, otp } = await req.json();
 
     if (!email) {
       return Response.json({ error: 'Email is required' }, { status: 400 });
+    }
+
+    // Agency admins may only resend/verify OTP for staff in their own agency.
+    if (currentUser.account_type === 'agency_admin') {
+      if (!currentUser.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
+      const targets = await base44.asServiceRole.entities.User
+        .filter({ email }, undefined, 5)
+        .catch(() => []);
+      const target = targets?.[0];
+      if (!target || target.agency_name !== currentUser.agency_name) {
+        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+      }
     }
 
     // NOTE: the debug 'inspect' / 'raw_resend' / 'raw_verify' passthrough actions

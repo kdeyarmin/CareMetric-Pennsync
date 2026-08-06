@@ -278,6 +278,13 @@ Deno.serve(async (req) => {
     if (!user || (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin')) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
+    if (user.is_active === false) {
+      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
+    // Agency admins must have an agency_name so invites can be tenant-scoped.
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required to invite staff.' }, { status: 403 });
+    }
 
     const payload = await req.json();
     const { email, full_name, role, care_scope, phone, credentials } = payload;
@@ -327,6 +334,7 @@ Deno.serve(async (req) => {
       phone: phone || null,
       credentials: credentials || null,
       invited_by: user.email,
+      agency_name: user.agency_name || null,
       status: 'pending',
       expires_at: expiresAt.toISOString(),
       last_sent_at: now.toISOString(),

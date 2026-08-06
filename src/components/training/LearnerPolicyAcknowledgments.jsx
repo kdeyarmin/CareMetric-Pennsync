@@ -49,6 +49,7 @@ export default function LearnerPolicyAcknowledgments() {
       await policyAcknowledgment({ action: "acknowledge", acknowledgment_id: ack.id, signed_name: signedName });
       toast.success("Policy acknowledged");
       queryClient.invalidateQueries({ queryKey: ["my-policy-acks", email] });
+      queryClient.invalidateQueries({ queryKey: ["policy-acks"] });
     } catch (err) {
       toast.error("Failed to record acknowledgment");
       console.error(err);

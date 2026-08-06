@@ -132,8 +132,33 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.SmsMessage.list('-created_date', 1000).catch(() => []),
       base44.asServiceRole.entities.CallLog.list('-created_date', 1000).catch(() => []),
       base44.asServiceRole.entities.FaxLog.list('-created_date', 1000).catch(() => []),
-      base44.asServiceRole.entities.User.list('-created_date', 1000).catch(() => []),
+      base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []),
     ]);
+
+    // Agency admins only see comms from staff in their agency (parity with
+    // getDashboardData / getUserActivityLog).
+    let agencyEmails = null;
+    if (user.account_type === 'agency_admin') {
+      if (!user.agency_name) {
+        return Response.json({
+          success: true,
+          summary: summarize([], [], [], new Date()),
+          failures: [],
+          per_number: [],
+          generated_at: new Date().toISOString(),
+        });
+      }
+      agencyEmails = new Set(
+        (users || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+    }
+    const inAgency = (row) => {
+      if (!agencyEmails) return true;
+      const owner = row.nurse_email || row.sent_by || row.created_by || row.host_email;
+      return owner && agencyEmails.has(owner);
+    };
 
     const now = new Date();
     const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).getTime();
@@ -141,9 +166,9 @@ Deno.serve(async (req) => {
       const t = new Date(row.created_date).getTime();
       return Number.isFinite(t) ? t >= cutoff : true;
     };
-    const recentMessages = (messages || []).filter(inWindow);
-    const recentCalls = (calls || []).filter(inWindow);
-    const recentFaxes = (faxes || []).filter(inWindow);
+    const recentMessages = (messages || []).filter(inWindow).filter(inAgency);
+    const recentCalls = (calls || []).filter(inWindow).filter(inAgency);
+    const recentFaxes = (faxes || []).filter(inWindow).filter(inAgency);
 
     const summary = summarize(recentMessages, recentCalls, recentFaxes, now);
 

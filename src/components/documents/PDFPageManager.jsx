@@ -13,9 +13,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 // Use unpkg CDN to reliably load the worker without Vite import issues
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+
+const isSafePdfUrl = (url) =>
+  typeof url === "string" && (url.startsWith("blob:") || isSafeExternalUrl(url));
 
 export default function PDFPageManager({ pdfUrl, onSave }) {
   const [pages, setPages] = useState([]);

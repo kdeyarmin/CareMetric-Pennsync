@@ -74,6 +74,7 @@ export default function PolicyAcknowledgmentManager() {
       });
       setResult(res?.data || res);
       queryClient.invalidateQueries({ queryKey: ["policy-acks"] });
+      queryClient.invalidateQueries({ queryKey: ["my-policy-acks"] });
     } catch (error) {
       setResult({ error: configNotReadyMessage(error) || error?.message || "Failed to distribute policy." });
     } finally {
