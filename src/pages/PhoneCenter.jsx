@@ -41,7 +41,7 @@ export default function PhoneCenter() {
   // calls/texts already route to the office — mirror DutyStatusCard so the two
   // views agree.
   const { data: settingsArr = [] } = useQuery({
-    queryKey: ["agency-settings"],
+    queryKey: ["agencySettings"],
     queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
     initialData: [],
   });

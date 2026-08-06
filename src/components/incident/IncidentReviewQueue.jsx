@@ -14,6 +14,7 @@ import {
   createIncidentReviewEvent,
   incidentNeedsCorrectiveAction,
 } from "@/components/incident/incidentLifecycle";
+import { isSafeExternalUrl } from "@/components/utils/security";
 
 const severityClasses = {
   low: "bg-emerald-100 text-emerald-800",
@@ -163,7 +164,7 @@ function IncidentReviewCard({ incident, actorEmail }) {
 
             {incident.photo_urls?.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {incident.photo_urls.map((url) => (
+                {incident.photo_urls.filter((url) => isSafeExternalUrl(url)).map((url) => (
                   <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="block">
                     <img src={url} alt="Incident" className="h-20 w-20 rounded-lg object-cover border" />
                   </a>
@@ -171,7 +172,7 @@ function IncidentReviewCard({ incident, actorEmail }) {
               </div>
             )}
 
-            {incident.state_reportable_pdf_url && (
+            {incident.state_reportable_pdf_url && isSafeExternalUrl(incident.state_reportable_pdf_url) && (
               <a
                 href={incident.state_reportable_pdf_url}
                 target="_blank"

@@ -83,7 +83,7 @@ export default function ReferralFollowUp() {
   });
 
   const { data: rateConfig } = useQuery({
-    queryKey: ["pdgmRateConfig"],
+    queryKey: ["pdgm-rate-config"],
     queryFn: () => base44.entities.PDGMRateConfig.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
   });
 

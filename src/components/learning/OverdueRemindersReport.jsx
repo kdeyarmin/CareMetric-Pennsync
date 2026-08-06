@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import ReportFilters from './ReportFilters';
 import { toCsv, exportTimestamp } from '../admin/csvExport';
 import { toast } from 'sonner';
-import { parseLocalDate, formatLocalDate } from '@/lib/dateLocal';
+import { parseLocalDate, formatLocalDate, isPastLocalDueDate } from '@/lib/dateLocal';
 
 const formatDate = (value) => formatLocalDate(value) || '—';
 
@@ -32,9 +32,7 @@ const daysOverdue = (dueDate) => {
 const isOverdue = (a) => {
   if (a.status === 'completed') return false;
   if (a.status === 'overdue') return true;
-  if (!a.due_date) return false;
-  const due = parseLocalDate(a.due_date);
-  return !!due && due < startOfToday();
+  return isPastLocalDueDate(a.due_date);
 };
 
 export default function OverdueRemindersReport() {

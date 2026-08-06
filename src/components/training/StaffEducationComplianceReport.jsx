@@ -28,6 +28,7 @@ import { exportToPDF } from "../utils/pdfExporter";
 import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from 'sonner';
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { isPastLocalDueDate } from '@/lib/dateLocal';
 
 export default function StaffEducationComplianceReport() {
   const [timeframe, setTimeframe] = useState('30');
@@ -47,13 +48,12 @@ export default function StaffEducationComplianceReport() {
   });
 
   const complianceData = React.useMemo(() => {
-    const now = new Date();
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - parseInt(timeframe));
 
     const isCompleted = (a) => a.status === 'completed' || a.pass_fail_result === 'passed';
     const isOverdue = (a) =>
-      !isCompleted(a) && (a.status === 'overdue' || (a.due_date && new Date(a.due_date) < now));
+      !isCompleted(a) && (a.status === 'overdue' || isPastLocalDueDate(a.due_date));
     // Recency is based on when the assignment was acted on (completed) or, if
     // still open, when it was assigned — so the timeframe filter reflects activity.
     const activityDate = (a) => new Date(a.completion_date || a.submitted_at || a.assigned_date || a.created_date);

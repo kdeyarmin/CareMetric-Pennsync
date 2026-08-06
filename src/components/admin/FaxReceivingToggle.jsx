@@ -10,7 +10,7 @@ export default function FaxReceivingToggle() {
   const queryClient = useQueryClient();
 
   const { data: settings = [], isLoading } = useQuery({
-    queryKey: ['agency-settings'],
+    queryKey: ['agencySettings'],
     queryFn: () => base44.entities.AgencySettings.list('-created_date', 1),
     initialData: []
   });
@@ -29,7 +29,7 @@ export default function FaxReceivingToggle() {
       });
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['agency-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['agencySettings'] });
       toast.success(
         variables.enabled 
           ? "Fax receiving enabled" 

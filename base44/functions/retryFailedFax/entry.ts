@@ -263,6 +263,14 @@ Deno.serve(async (req) => {
     if (displayName) retryPayload.from_display_name = displayName;
     if (functionsBaseUrl) retryPayload.webhook_url = `${functionsBaseUrl}/handleTelnyxStatusWebhook`;
 
+    // Re-verify claim ownership immediately before the provider call. The initial
+    // claim+re-read still has a TOCTOU window where a second retry can overwrite
+    // claimed_by after we passed the first check; abort if we no longer own it.
+    const preSendClaim = await base44.entities.FaxLog.filter({ id: fax_log_id }, '-created_date', 1).catch(() => []);
+    if (!preSendClaim[0] || preSendClaim[0].retry_claimed_by !== runId) {
+      return Response.json({ error: 'A retry for this fax is already in progress', success: false }, { status: 409 });
+    }
+
     // Re-send the fax
     let telnyxResponse;
     try {

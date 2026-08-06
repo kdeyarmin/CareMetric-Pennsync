@@ -14,26 +14,23 @@ export default function AdvancedComplianceAnalyzer({ analysisResults, pdgmData, 
   const [complianceReport, setComplianceReport] = useState(null);
   const [autoAnalyze, setAutoAnalyze] = useState(false);
 
-  // Fetch historical OASIS data for pattern analysis
+  // Fetch historical OASIS data for pattern analysis — ALWAYS scoped to the
+  // current patient. Falling back to a global list when patientId is missing
+  // mixed other patients' assessments into this case's metrics/AI context.
   // Gate the one-shot auto-analyze on isFetched (settled — success OR error), not
   // isSuccess: a failed historical fetch should let the analysis run with empty
   // history rather than suppressing the automatic run for the life of the mount.
   const { data: historicalOASIS = [], isFetched: historicalOASISLoaded } = useQuery({
     queryKey: ['historicalOASIS', patientId],
-    queryFn: () => {
-      if (patientId) {
-        return base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 50);
-      }
-      return base44.entities.OASISUpload.list('-created_date', 100);
-    },
-    enabled: !!analysisResults
+    queryFn: () => base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 50),
+    enabled: !!analysisResults && !!patientId
   });
 
-  // Fetch historical compliance audits
+  // Fetch historical compliance audits for this patient only.
   const { data: historicalAudits = [], isFetched: historicalAuditsLoaded } = useQuery({
-    queryKey: ['complianceAudits'],
-    queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 100),
-    enabled: !!analysisResults
+    queryKey: ['complianceAudits', patientId],
+    queryFn: () => base44.entities.ComplianceAudit.filter({ patient_id: patientId }, '-audit_date', 100),
+    enabled: !!analysisResults && !!patientId
   });
 
   const analyzeCompliance = useCallback(async () => {
@@ -232,16 +229,18 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [analysisResults, pdgmData, historicalOASIS, historicalAudits]);
 
-  // Auto-analyze only once the historical queries have actually resolved and
-  // pdgmData is present, so the 'HISTORICAL PATTERN ANALYSIS' section is built
-  // from real data rather than the empty defaults (a vacuous length >= 0 check
-  // previously latched the run before the data loaded).
+  // Auto-analyze once historical queries have settled (or been intentionally
+  // skipped when there is no patientId — never fall back to a global list).
+  // Previously a missing patientId left disabled queries with isFetched=false
+  // forever and suppressed analysis for the life of the mount.
+  const historyReady = patientId
+    ? (historicalOASISLoaded && historicalAuditsLoaded)
+    : true;
   useEffect(() => {
     if (
       analysisResults &&
       pdgmData &&
-      historicalOASISLoaded &&
-      historicalAuditsLoaded &&
+      historyReady &&
       !complianceReport &&
       !ai.loading &&
       !autoAnalyze
@@ -249,7 +248,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
       setAutoAnalyze(true);
       analyzeCompliance();
     }
-  }, [analysisResults, pdgmData, historicalOASISLoaded, historicalAuditsLoaded, complianceReport, ai.loading, autoAnalyze, analyzeCompliance]);
+  }, [analysisResults, pdgmData, historyReady, complianceReport, ai.loading, autoAnalyze, analyzeCompliance]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {

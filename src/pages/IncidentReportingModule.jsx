@@ -45,6 +45,7 @@ import { toast } from "sonner";
 import { format, parseISO, subMonths } from "date-fns";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import { isSafeExternalUrl, openExternalUrl } from "@/components/utils/security";
 
 const STATUS_OPTIONS = [
   { value: "reported", label: "Reported" },
@@ -666,7 +667,7 @@ export default function IncidentReportingModule() {
                             <span className="text-emerald-700">Admins alerted</span>
                           )}
                         </div>
-                        {incident.state_reportable_pdf_url && (
+                        {incident.state_reportable_pdf_url && isSafeExternalUrl(incident.state_reportable_pdf_url) && (
                           <a
                             href={incident.state_reportable_pdf_url}
                             target="_blank"
@@ -740,7 +741,7 @@ export default function IncidentReportingModule() {
                             src={url}
                             alt={`Incident photo ${idx + 1}`}
                             className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-80"
-                            onClick={() => window.open(url, '_blank')}
+                            onClick={() => openExternalUrl(url)}
                           />
                         ))}
                       </div>

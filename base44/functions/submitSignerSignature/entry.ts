@@ -86,27 +86,30 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'This document is assigned to a different signer' }, { status: 403 });
     }
 
-    // 5) Record the signature INSIDE the signers[] array (schema shape) with the
-    //    SERVER-derived identity (from the token) — never a client-supplied
-    //    signer name. There are no flat signer_* fields on the schema.
+    // 5) Record the signature INSIDE the signers[] array with merge-and-retry so
+    //    concurrent required signers do not clobber each other's completed rows.
+    //    Pattern mirrors appendPatientNoteHistory: re-read → merge this signer →
+    //    write → verify our row still holds → bounded retry.
     const signedAt = new Date().toISOString();
-    let updatedSigners;
-    if (matchIndex >= 0) {
-      updatedSigners = existingSigners.map((s, i) =>
-        i === matchIndex
-          ? {
-              ...s,
-              status: 'completed',
-              signed_date: signedAt,
-              signature: signature_image_url || s.signature || null,
-            }
-          : s
-      );
-    } else {
-      // No declared signer row to update — append the token's signer so the
-      // signature is still recorded in the schema-defined array.
-      updatedSigners = [
-        ...existingSigners,
+    const applySigner = (signers) => {
+      const list = Array.isArray(signers) ? signers : [];
+      const idx = signerEmail
+        ? list.findIndex((s) => String(s?.email || '').toLowerCase() === signerEmail)
+        : matchIndex;
+      if (idx >= 0) {
+        return list.map((s, i) =>
+          i === idx
+            ? {
+                ...s,
+                status: 'completed',
+                signed_date: signedAt,
+                signature: signature_image_url || s.signature || null,
+              }
+            : s
+        );
+      }
+      return [
+        ...list,
         {
           name: tokenRecord.signer_name || typed_name || '',
           email: tokenRecord.signer_email || '',
@@ -118,24 +121,57 @@ Deno.serve(async (req) => {
           signature_method: signature_image_url ? 'signature_image' : 'digital_signature',
         },
       ];
-    }
-
-    // Completion = every REQUIRED signer in the array is completed. The row only
-    // becomes 'completed' when all required signatures are in; otherwise it is
-    // 'in_progress'.
-    const requiredSigners = updatedSigners.filter((s) => s?.required !== false);
-    const allSigned = requiredSigners.length > 0 &&
-      requiredSigners.every((s) => s?.status === 'completed' || s?.signed_date);
-    const rowStatus = allSigned ? 'completed' : 'in_progress';
-
-    const updatePayload = {
-      status: rowStatus,
-      signers: updatedSigners,
     };
-    if (allSigned) {
-      updatePayload.completed_date = signedAt;
+    const ourSignerSettled = (signers) => {
+      const list = Array.isArray(signers) ? signers : [];
+      if (!signerEmail) {
+        return list.some((s) => s?.signed_date === signedAt || s?.status === 'completed');
+      }
+      const row = list.find((s) => String(s?.email || '').toLowerCase() === signerEmail);
+      return !!(row && (row.signed_date || row.status === 'completed'));
+    };
+
+    let updatedSigners = applySigner(existingSigners);
+    let allSigned = false;
+    let rowStatus = 'in_progress';
+    const MAX_ATTEMPTS = 3;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const latest = attempt === 0
+        ? signature
+        : await base44.asServiceRole.entities.DocumentSignature.get(document_id).catch(() => null);
+      if (!latest) {
+        return Response.json({ error: 'Document not found' }, { status: 404 });
+      }
+      if (latest.status === 'completed') {
+        return Response.json({ error: 'This document has already been signed', already_signed: true }, { status: 409 });
+      }
+      updatedSigners = applySigner(latest.signers);
+      const requiredSigners = updatedSigners.filter((s) => s?.required !== false);
+      allSigned = requiredSigners.length > 0 &&
+        requiredSigners.every((s) => s?.status === 'completed' || s?.signed_date);
+      rowStatus = allSigned ? 'completed' : 'in_progress';
+      const updatePayload = {
+        status: rowStatus,
+        signers: updatedSigners,
+      };
+      if (allSigned) {
+        updatePayload.completed_date = signedAt;
+      }
+      await base44.asServiceRole.entities.DocumentSignature.update(document_id, updatePayload);
+      const verify = await base44.asServiceRole.entities.DocumentSignature.get(document_id).catch(() => null);
+      if (verify && ourSignerSettled(verify.signers)) {
+        updatedSigners = Array.isArray(verify.signers) ? verify.signers : updatedSigners;
+        const req = updatedSigners.filter((s) => s?.required !== false);
+        allSigned = req.length > 0 && req.every((s) => s?.status === 'completed' || s?.signed_date);
+        rowStatus = allSigned ? 'completed' : 'in_progress';
+        break;
+      }
+      if (attempt === MAX_ATTEMPTS - 1) {
+        return Response.json({
+          error: 'Could not persist signature due to a concurrent update. Please try again.',
+        }, { status: 409 });
+      }
     }
-    await base44.asServiceRole.entities.DocumentSignature.update(document_id, updatePayload);
 
     // 5a-bis) Stamp tamper-evidence over the now-completed record, exactly as
     //     submitDocumentSignatures does for the in-app path. Without this a

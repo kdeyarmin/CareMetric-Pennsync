@@ -1,3 +1,5 @@
+import { isPastLocalDueDate } from '@/lib/dateLocal';
+
 export function getDocumentDisplayName(signatureRecord) {
   return (
     signatureRecord?.document_name
@@ -93,11 +95,13 @@ export function isSignatureOverdue(signatureRecord) {
     ? signatureRecord
     : getNormalizedSignatureStatus(signatureRecord);
 
+  // Date-only due_date/expires_at must compare on the local calendar — UTC
+  // midnight parsing flagged packets overdue the evening before the due day.
   return Boolean(
     dueDate
     && normalizedStatus !== 'signed'
     && normalizedStatus !== 'declined'
     && normalizedStatus !== 'expired'
-    && new Date(dueDate) < new Date()
+    && isPastLocalDueDate(dueDate)
   );
 }

@@ -122,6 +122,14 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -202,7 +210,7 @@ Deno.serve(async (req) => {
       .slice(-1)[0] || signature.completed_date;
 
     const subject = `Document signed: ${documentTitle}`;
-    const appBase = 'https://caremetricai.base44.app';
+    const appBase = getAppBaseUrl();
     const body = renderBrandedEmail({
       preheader: `${documentTitle} has been signed by ${signedByText}.`,
       eyebrow: 'Document signed',

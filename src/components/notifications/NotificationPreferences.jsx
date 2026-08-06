@@ -371,7 +371,11 @@ export default function NotificationPreferences({ currentUser }) {
           </div>
 
           {preferences?.quiet_hours?.enabled && (
-            <div className="grid grid-cols-2 gap-4 pt-2">
+            <div className="space-y-3 pt-2">
+              <p className="text-xs text-slate-500">
+                Times are interpreted in your agency business timezone (Agency Settings), not your device clock.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="start-time" className="text-sm">Start Time</Label>
                 <Input
@@ -391,6 +395,7 @@ export default function NotificationPreferences({ currentUser }) {
                   onChange={(e) => handleQuietHoursChange('end_time', e.target.value)}
                   className="mt-1"
                 />
+              </div>
               </div>
             </div>
           )}

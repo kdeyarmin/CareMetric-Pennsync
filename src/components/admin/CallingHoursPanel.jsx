@@ -57,7 +57,7 @@ const parseHolidays = (text) =>
 export default function CallingHoursPanel() {
   const queryClient = useQueryClient();
   const { data: settingsArr = [] } = useQuery({
-    queryKey: ["agency-settings"],
+    queryKey: ["agencySettings"],
     queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
     refetchOnWindowFocus: false,
     initialData: [],
@@ -119,7 +119,7 @@ export default function CallingHoursPanel() {
       .then((res) => {
         const updated = (res?.data ?? res)?.updated_count ?? 0;
         if (updated > 0) {
-          queryClient.invalidateQueries({ queryKey: ["agency-settings"] });
+          queryClient.invalidateQueries({ queryKey: ["agencySettings"] });
           toast.success("TCPA quiet hours are now enforced by default for outbound texting.");
         }
       })
@@ -150,7 +150,7 @@ export default function CallingHoursPanel() {
         : base44.entities.AgencySettings.create(payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agency-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["agencySettings"] });
       toast.success("Calling & texting hours saved");
     },
     onError: (err) => toast.error(err?.message || "Failed to save hours"),

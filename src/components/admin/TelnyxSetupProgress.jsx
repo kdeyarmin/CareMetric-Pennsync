@@ -96,7 +96,7 @@ export default function TelnyxSetupProgress({ onStepsChange, onNavigate } = {}) 
   });
 
   const { data: settingsArr = [], isFetched: settingsFetched } = useQuery({
-    queryKey: ["agency-settings"],
+    queryKey: ["agencySettings"],
     queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
     refetchOnWindowFocus: false,
     initialData: [],

@@ -262,6 +262,14 @@ export function buildWelcomeEmail(opts = {}) {
   return { subject, body };
 }
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -333,7 +341,7 @@ Deno.serve(async (req) => {
     // (public/manuals/*, served at the app origin root); the builder derives the
     // manual link from the app origin.
     try {
-      const appUrl = 'https://caremetricai.base44.app';
+      const appUrl = getAppBaseUrl();
       const { subject, body } = buildWelcomeEmail({
         fullName: full_name,
         email,

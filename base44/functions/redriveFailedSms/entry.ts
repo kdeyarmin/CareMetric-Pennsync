@@ -539,7 +539,7 @@ Deno.serve(async (req) => {
       // TCPA quiet hours (recipient timezone): a text that failed during the day
       // must not be redriven into the recipient's quiet hours. Skip for now; a
       // later run during allowed hours will pick it up.
-      if (settings?.tcpa_quiet_hours_enabled === true) {
+      if (settings?.tcpa_quiet_hours_enabled !== false) {
         const q = quietHoursCheck(row.to_number, new Date(), settings);
         if (!q.allowed) { result.skipped++; continue; }
       }

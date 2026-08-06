@@ -86,7 +86,7 @@ export default function SmsThreadView({
   };
 
   const { data: settingsArr = [] } = useQuery({
-    queryKey: ["agency-settings"],
+    queryKey: ["agencySettings"],
     queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
     staleTime: 5 * 60 * 1000,
     initialData: [],

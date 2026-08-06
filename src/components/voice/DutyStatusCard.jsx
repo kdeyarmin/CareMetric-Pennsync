@@ -61,7 +61,7 @@ export default function DutyStatusCard() {
   // routing treats every nurse as off duty regardless of the toggle — surface
   // that here so the card never claims "Available" while calls go to the office.
   const { data: settingsArr = [] } = useQuery({
-    queryKey: ["agency-settings"],
+    queryKey: ["agencySettings"],
     queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
     refetchOnWindowFocus: false,
     initialData: [],

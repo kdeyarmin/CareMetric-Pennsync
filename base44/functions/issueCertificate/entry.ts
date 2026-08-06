@@ -58,6 +58,18 @@ Deno.serve(async (req) => {
         // state (pass_fail_result / status).
         const callerIsAdmin = !!user && (user.role === 'admin' ||
             user.account_type === 'super_admin' || user.account_type === 'agency_admin');
+        // Bind the certificate subject to the authenticated caller for non-admin
+        // direct calls. Without this, any authenticated user who knows another
+        // user's assignment_id/user_id could mint/re-fetch their certificate once
+        // a passed TrainingAttempt exists. Nested gradeTrainingAttempt invokes
+        // (internalOk) and admins may still issue for any subject.
+        if (user && !callerIsAdmin && !internalOk) {
+            if (String(user.email || '').toLowerCase() !== String(user_id || '').toLowerCase()) {
+                return Response.json({
+                    error: 'Forbidden: certificates can only be issued for the authenticated user.'
+                }, { status: 403 });
+            }
+        }
         // Nested service-role path (gradeTrainingAttempt) is trusted like an admin
         // for the assignmentPassed fallback once a server-written attempt exists —
         // but we still require a passed TrainingAttempt for non-admin callers.
@@ -93,8 +105,10 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Generate unique certificate ID
-        const certificateId = `CERT-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+        // Generate unique certificate ID with CSPRNG bytes (not Math.random).
+        const rand = crypto.getRandomValues(new Uint8Array(5));
+        const suffix = Array.from(rand, (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 9).toUpperCase();
+        const certificateId = `CERT-${Date.now()}-${suffix}`;
 
         // Generate verification hash
         const verificationData = `${user_id}|${course_id}|${assignment.completion_date || new Date().toISOString()}`;

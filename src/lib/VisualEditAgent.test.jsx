@@ -53,6 +53,29 @@ describe('VisualEditAgent preview click handling', () => {
     );
   });
 
+  it('redacts dynamic chart content from element-selected payloads', () => {
+    const postMessage = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+    render(
+      <>
+        <VisualEditAgent />
+        <div data-source-location="patient-name" data-dynamic-content="true">Jane Doe PHI</div>
+      </>
+    );
+
+    enableVisualEditMode();
+    fireEvent.click(screen.getByText('Jane Doe PHI'));
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'element-selected',
+        visualSelectorId: 'patient-name',
+        isDynamicContent: true,
+        content: '',
+      }),
+      '*'
+    );
+  });
+
   it('ignores a toggle from an origin outside the editor allowlist', () => {
     // The origin check was commented out while this component mounts in
     // production, so any page framing the app could enable edit mode and then

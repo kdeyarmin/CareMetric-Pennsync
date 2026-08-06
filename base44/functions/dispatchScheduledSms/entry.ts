@@ -666,7 +666,7 @@ Deno.serve(async (req) => {
 
       // TCPA quiet hours (recipient timezone). When enabled and the recipient is
       // in their quiet hours, leave the row pending to retry on a later run.
-      if (settings?.tcpa_quiet_hours_enabled === true) {
+      if (settings?.tcpa_quiet_hours_enabled !== false) {
         const q = quietHoursCheck(row.to_number, new Date(), settings);
         if (!q.allowed) {
           await base44.asServiceRole.entities.ScheduledSms.update(row.id, {

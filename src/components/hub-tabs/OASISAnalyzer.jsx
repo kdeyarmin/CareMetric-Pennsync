@@ -1834,7 +1834,7 @@ Return scores (0-100) and top 3-5 issues in each category.`,
                     </div>
                   </Button>
                 </Link>
-                <Link to="/OASISCenter?tab=quality" state={{ analysisResults, pdgmData, patientName, navigationData }}>
+                <Link to="/OASISCenter?tab=quality" state={{ analysisResults, pdgmData, patientName, navigationData, patientId: selectedPatientId }}>
                   <Button className="w-full bg-navy-600 hover:bg-navy-700 h-auto py-4 flex flex-col items-center gap-2">
                     <FileText className="w-8 h-8" />
                     <div className="text-center">

@@ -176,6 +176,14 @@ function randomInt(max) {
   return x % max;
 }
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -274,7 +282,7 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
 
   // Send invitation email
   try {
-    const signupUrl = 'https://caremetricai.base44.app';
+    const signupUrl = getAppBaseUrl();
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: email,
       subject: 'You’re invited to join PennSync by CareMetric',
@@ -346,7 +354,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   });
 
   // Resend email
-  const signupUrl = 'https://caremetricai.base44.app';
+  const signupUrl = getAppBaseUrl();
   await base44.asServiceRole.integrations.Core.SendEmail({
     to: invitation.email,
     subject: 'Reminder: your invitation to PennSync by CareMetric',

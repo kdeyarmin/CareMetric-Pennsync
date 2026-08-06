@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { createPageUrl } from "@/utils";
 import { useNavigate, useSearchParams } from "react-router";
 import SignatureCanvas from "../components/documents/SignatureCanvas";
-import { sanitizeHtml } from "@/components/utils/security";
+import { sanitizeHtml, isSafeExternalUrl } from "@/components/utils/security";
 
 export default function SignDocument() {
   const navigate = useNavigate();
@@ -209,7 +209,7 @@ export default function SignDocument() {
           <CardTitle className="text-lg">Document Preview</CardTitle>
         </CardHeader>
         <CardContent>
-          {signatureRecord.document_url ? (
+          {signatureRecord.document_url && isSafeExternalUrl(signatureRecord.document_url) ? (
             <div className="border rounded-lg overflow-hidden">
               <iframe
                 src={signatureRecord.document_url}

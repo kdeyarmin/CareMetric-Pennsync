@@ -7,6 +7,7 @@ import {
   startOfLocalDay,
   daysAgoLocal,
   isWithinLastDays,
+  isPastLocalDueDate,
 } from "./dateLocal";
 
 describe("parseLocalDate", () => {
@@ -167,5 +168,24 @@ describe("isWithinLastDays", () => {
     expect(isWithinLastDays(undefined, 30, now)).toBe(false);
     expect(isWithinLastDays("", 30, now)).toBe(false);
     expect(isWithinLastDays("not-a-date", 30, now)).toBe(false);
+  });
+});
+
+describe("isPastLocalDueDate", () => {
+  it("treats date-only due dates as overdue only after that local calendar day", () => {
+    // Evening of the due day (US zones): must NOT be overdue yet.
+    expect(isPastLocalDueDate("2026-06-15", new Date(2026, 5, 15, 20, 0, 0))).toBe(false);
+    // Next local midnight: overdue.
+    expect(isPastLocalDueDate("2026-06-15", new Date(2026, 5, 16, 0, 0, 1))).toBe(true);
+  });
+
+  it("compares datetime due dates against the full instant", () => {
+    expect(isPastLocalDueDate("2026-06-15T18:00:00", new Date("2026-06-15T17:00:00"))).toBe(false);
+    expect(isPastLocalDueDate("2026-06-15T18:00:00", new Date("2026-06-15T19:00:00"))).toBe(true);
+  });
+
+  it("returns false for empty values", () => {
+    expect(isPastLocalDueDate("")).toBe(false);
+    expect(isPastLocalDueDate(null)).toBe(false);
   });
 });

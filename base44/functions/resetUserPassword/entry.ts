@@ -122,6 +122,14 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -175,7 +183,7 @@ Deno.serve(async (req) => {
     // Update user password using service role
     await base44.asServiceRole.auth.updateUserPassword(userEmail, tempPassword);
 
-    const appUrl = `https://caremetricai.base44.app`;
+    const appUrl = getAppBaseUrl();
 
     // Send email with temporary password
     await base44.asServiceRole.integrations.Core.SendEmail({

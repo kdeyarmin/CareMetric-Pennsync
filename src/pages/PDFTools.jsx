@@ -11,6 +11,7 @@ import { Pencil, Combine, Settings, FileText, Upload } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { toast } from "sonner";
+import { openExternalUrl } from "@/components/utils/security";
 
 export default function PDFTools() {
   const [pdfUrl, setPdfUrl] = useState('');
@@ -132,7 +133,7 @@ export default function PDFTools() {
                 </p>
                 <div className="flex gap-2">
                   <Button
-                    onClick={() => window.open(resultUrl, '_blank')}
+                    onClick={() => openExternalUrl(resultUrl)}
                     variant="outline"
                   >
                     View PDF

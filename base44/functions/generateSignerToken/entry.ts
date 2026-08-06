@@ -126,6 +126,9 @@ function generateSecureToken() {
 }
 
 function getAppBaseUrl() {
-  // Hardcoded app URL (matches the signer links built by notifySignerOfPackage).
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
   return 'https://caremetricai.base44.app';
 }

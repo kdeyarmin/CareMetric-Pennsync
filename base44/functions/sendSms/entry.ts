@@ -567,7 +567,9 @@ Deno.serve(async (req) => {
     }
 
     // TCPA quiet hours (recipient timezone). Hard block when enabled.
-    if (settings?.tcpa_quiet_hours_enabled === true) {
+    // Missing settings rows default to enabled (schema default is true) so a
+    // fresh agency without AgencySettings configured still gets TCPA protection.
+    if (settings?.tcpa_quiet_hours_enabled !== false) {
       const q = quietHoursCheck(destination, new Date(), settings);
       if (!q.allowed) {
         return Response.json(

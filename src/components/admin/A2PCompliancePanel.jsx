@@ -39,7 +39,7 @@ export default function A2PCompliancePanel() {
   const isAdmin = isAdminLike(currentUser);
 
   const { data: settingsArr = [] } = useQuery({
-    queryKey: ["agency-settings"],
+    queryKey: ["agencySettings"],
     queryFn: () => base44.entities.AgencySettings.list("-created_date", 1),
     enabled: isAdmin,
     refetchOnWindowFocus: false,
@@ -69,7 +69,7 @@ export default function A2PCompliancePanel() {
         ? base44.entities.AgencySettings.update(settings.id, form)
         : base44.entities.AgencySettings.create(form),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agency-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["agencySettings"] });
       toast.success("A2P 10DLC registration saved");
     },
     onError: (err) => toast.error(err?.message || "Failed to save A2P settings"),

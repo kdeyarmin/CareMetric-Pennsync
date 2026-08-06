@@ -122,6 +122,14 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+function getAppBaseUrl() {
+  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  }
+  return 'https://caremetricai.base44.app';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -188,7 +196,7 @@ Deno.serve(async (req) => {
 
     // Send email notification
     const dueDate = pkg.due_date ? new Date(pkg.due_date).toLocaleDateString() : 'soon';
-    const signerPortalLink = `https://caremetricai.base44.app/signer?token=${tokenData.token}`;
+    const signerPortalLink = `${getAppBaseUrl()}/signer?token=${tokenData.token}`;
 
     const subject = `Documents ready for your signature — ${pkg.package_name}`;
     const body = renderBrandedEmail({
