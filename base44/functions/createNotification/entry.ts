@@ -196,6 +196,33 @@ Deno.serve(async (req) => {
       }
     }
 
+    const isAdminLike = (u) => !!u && (
+      u.role === 'admin' || u.account_type === 'agency_admin' || u.account_type === 'super_admin'
+    );
+    const callerIsAdmin = isAdminLike(currentUser);
+    // Non-admins may only create low-risk peer/admin-notify types (account
+    // deletion uses system_update → admins). High-severity clinical/system
+    // types are admin-only.
+    const NON_ADMIN_TYPES = new Set([
+      'system_update', 'info', 'message_received', 'task_assigned', 'task_due_soon',
+    ]);
+    if (!callerIsAdmin && !NON_ADMIN_TYPES.has(type)) {
+      return Response.json({ error: 'Only admins can create this notification type' }, { status: 403 });
+    }
+    const recipientEmail = String(user_email).trim().toLowerCase();
+    const callerEmail = String(currentUser.email || '').trim().toLowerCase();
+    if (!callerIsAdmin && recipientEmail !== callerEmail) {
+      // Peer notify: recipient must be an admin (e.g. account-deletion request).
+      const recipientRows = await base44.asServiceRole.entities.User
+        .filter({ email: recipientEmail }, undefined, 1)
+        .catch(() => []);
+      if (!recipientRows?.[0] || !isAdminLike(recipientRows[0])) {
+        return Response.json({
+          error: 'Non-admins may only notify themselves or an administrator',
+        }, { status: 403 });
+      }
+    }
+
     // If this is a patient-related notification, verify the recipient has charted on this patient
     if (patient_id && type !== 'compliance_alert' && type !== 'report_ready' && type !== 'training_due') {
       const chartedVisits = await base44.asServiceRole.entities.Visit.filter({

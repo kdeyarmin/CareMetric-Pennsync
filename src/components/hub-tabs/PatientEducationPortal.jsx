@@ -39,7 +39,7 @@ export default function PatientEducationPortal() {
   });
 
   const { data: _visits = [] } = useQuery({
-    queryKey: ["patient-visits", selectedPatientId],
+    queryKey: ["patient-visits", selectedPatientId, "completed", 10],
     queryFn: () =>
       selectedPatientId
         ? base44.entities.Visit.filter(

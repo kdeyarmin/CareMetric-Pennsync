@@ -28,7 +28,7 @@ export default function EducationTracker({ patient }) {
   const [teachBackNotes, setTeachBackNotes] = React.useState({});
 
   const { data: assignments = [], isLoading } = useQuery({
-    queryKey: ['patientEducation', patient?.id],
+    queryKey: ['patientEducation', patient?.id, '-assigned_date'],
     queryFn: () => base44.entities.PatientEducationAssignment.filter({ patient_id: patient?.id }, '-assigned_date', PATIENT_HISTORY_ROWS),
     enabled: !!patient?.id,
     initialData: []

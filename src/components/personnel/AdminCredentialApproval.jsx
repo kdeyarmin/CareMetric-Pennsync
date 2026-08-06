@@ -75,6 +75,8 @@ export default function AdminCredentialApproval() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['pendingCredentials'] });
       queryClient.invalidateQueries({ queryKey: ['userCredentials'] });
+      queryClient.invalidateQueries({ queryKey: ['personnel-credentials'] });
+      queryClient.invalidateQueries({ queryKey: ['allPersonnelCredentials'] });
     }
   });
 
@@ -88,6 +90,9 @@ export default function AdminCredentialApproval() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pendingCredentials'] });
+      queryClient.invalidateQueries({ queryKey: ['userCredentials'] });
+      queryClient.invalidateQueries({ queryKey: ['personnel-credentials'] });
+      queryClient.invalidateQueries({ queryKey: ['allPersonnelCredentials'] });
       setShowRejectDialog(false);
       setRejectionReason("");
       setSelectedCredential(null);

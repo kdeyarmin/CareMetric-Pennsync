@@ -37,7 +37,7 @@ export default function BreachDetectionSystem() {
   });
 
   const { data: userActivities = [] } = useQuery({
-    queryKey: ['userActivities'],
+    queryKey: ['userActivities', 2000],
     queryFn: () => base44.entities.UserActivity.list('-created_date', 2000),
     enabled: currentUser?.role === 'admin'
   });

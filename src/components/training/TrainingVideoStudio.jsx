@@ -247,7 +247,7 @@ export default function TrainingVideoStudio({ course = null }) {
                       {i + 1}
                     </span>
 
-                    {m.video_thumbnail_url ? (
+                    {m.video_thumbnail_url && isSafeExternalUrl(m.video_thumbnail_url) ? (
                       <img src={m.video_thumbnail_url} alt="" className="w-20 h-12 rounded object-cover border flex-shrink-0" />
                     ) : (
                       <div className="w-20 h-12 rounded bg-slate-100 border flex items-center justify-center flex-shrink-0">

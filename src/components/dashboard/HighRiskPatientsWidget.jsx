@@ -42,7 +42,7 @@ export default function HighRiskPatientsWidget() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['allPatients'],
+    queryKey: ['allPatients', '-updated_date', 500],
     queryFn: () => base44.entities.Patient.list('-updated_date', 500),
     initialData: []
   });

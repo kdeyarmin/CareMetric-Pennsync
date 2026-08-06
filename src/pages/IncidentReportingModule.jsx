@@ -117,7 +117,7 @@ export default function IncidentReportingModule() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['allPatients'],
+    queryKey: ['allPatients', '-updated_date', 2000],
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
     initialData: [],
   });
@@ -735,7 +735,7 @@ export default function IncidentReportingModule() {
                     </div>
                     {incident.photo_urls?.length > 0 && (
                       <div className="mt-3 flex gap-2">
-                        {incident.photo_urls.map((url, idx) => (
+                        {incident.photo_urls.filter((url) => isSafeExternalUrl(url)).map((url, idx) => (
                           <img
                             key={idx}
                             src={url}

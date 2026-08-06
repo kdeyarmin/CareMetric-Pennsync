@@ -46,12 +46,12 @@ export default function RealTimeComplianceDashboard() {
 
   // Fetch all compliance-related data
   const { data: complianceAudits = [] } = useQuery({
-    queryKey: ['complianceAudits'],
+    queryKey: ['complianceAudits', 'list', 1000],
     queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 1000),
   });
 
   const { data: userActivities = [] } = useQuery({
-    queryKey: ['userActivities'],
+    queryKey: ['userActivities', 1000],
     queryFn: () => base44.entities.UserActivity.list('-created_date', 1000),
   });
 
@@ -80,7 +80,7 @@ export default function RealTimeComplianceDashboard() {
   });
 
   const { data: allPatients = [] } = useQuery({
-    queryKey: ['allPatients'],
+    queryKey: ['allPatients', '-updated_date', 2000],
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
   });
 

@@ -75,20 +75,42 @@ Deno.serve(async (req) => {
       if (fu.stale_notified_at && Date.parse(fu.stale_notified_at) >= sentMs) continue;
       if (!r.created_by) continue;
 
-      await base44.asServiceRole.entities.Notification.create({
-        user_email: r.created_by,
-        title: '⏰ Provider follow-up request unanswered',
-        message: `The information request for ${r.patient_name || 'a referral'} has had no provider response for ${staleDays}+ days. The SOC clock is running — consider a phone follow-up or re-sending the form.`,
-        type: 'info',
-        priority: 'high',
-        metadata: { related_entity: 'Referral', related_entity_id: r.id },
-        is_read: false,
-        action_url: `/ReferralFollowUp?id=${r.id}`,
-      }).catch(() => {});
+      // Claim before notify so overlapping cron runs don't double-escalate, and
+      // only keep the stamp when Notification.create succeeds.
+      const claimAt = now;
+      const priorStale = fu.stale_notified_at || null;
+      try {
+        await base44.asServiceRole.entities.Referral.update(r.id, {
+          follow_up_requests: { ...fu, stale_notified_at: claimAt },
+        });
+      } catch {
+        continue;
+      }
+      const claimCheck = await base44.asServiceRole.entities.Referral
+        .filter({ id: r.id }, '-created_date', 1).catch(() => []);
+      const claimedFu = claimCheck[0]?.follow_up_requests;
+      if (!claimedFu || claimedFu.stale_notified_at !== claimAt) {
+        continue;
+      }
 
-      await base44.asServiceRole.entities.Referral.update(r.id, {
-        follow_up_requests: { ...fu, stale_notified_at: now },
-      }).catch(() => {});
+      try {
+        await base44.asServiceRole.entities.Notification.create({
+          user_email: r.created_by,
+          title: '⏰ Provider follow-up request unanswered',
+          message: `The information request for ${r.patient_name || 'a referral'} has had no provider response for ${staleDays}+ days. The SOC clock is running — consider a phone follow-up or re-sending the form.`,
+          type: 'info',
+          priority: 'high',
+          metadata: { related_entity: 'Referral', related_entity_id: r.id },
+          is_read: false,
+          action_url: `/ReferralFollowUp?id=${r.id}`,
+        });
+      } catch (err) {
+        console.error('checkStaleFollowUpRequests: notify failed', err?.message || err);
+        await base44.asServiceRole.entities.Referral.update(r.id, {
+          follow_up_requests: { ...fu, stale_notified_at: priorStale },
+        }).catch(() => {});
+        continue;
+      }
       escalated += 1;
     }
 

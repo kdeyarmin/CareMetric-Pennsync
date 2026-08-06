@@ -153,17 +153,31 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: 'No signer email' });
     }
 
-    // Idempotency claim (mirrors notifyAdminOfSignedDocument's admin_notified):
-    // the create-trigger can re-fire, and this endpoint is unauthenticated, so a
-    // re-POST of a real package id would otherwise mint ANOTHER 30-day signer
-    // bearer token and re-email the signer on every call. Claim before doing
-    // privileged work; released below if the send fails so a re-fire can retry.
+    // Idempotency claim: the create-trigger can re-fire, and this endpoint is
+    // unauthenticated, so a re-POST of a real package id would otherwise mint
+    // ANOTHER 30-day signer bearer token and re-email the signer. Claim with a
+    // unique token + re-read (boolean/timestamp alone races); release below if
+    // the send fails so a re-fire can retry.
     if (pkg.signer_notified_at) {
       return Response.json({ success: true, skipped: 'signer already notified' });
     }
-    await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
-      signer_notified_at: new Date().toISOString(),
-    }).catch(() => {});
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `signer-notify-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const claimAt = new Date().toISOString();
+    try {
+      await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
+        signer_notified_at: claimAt,
+        signer_notify_claimed_by: claimToken,
+      });
+    } catch {
+      return Response.json({ success: true, skipped: 'could not claim notify' });
+    }
+    const claimCheck = await base44.asServiceRole.entities.DocumentPackage
+      .filter({ id: pkg.id }, '-created_date', 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].signer_notify_claimed_by !== claimToken) {
+      return Response.json({ success: true, skipped: 'signer notify claimed by concurrent run' });
+    }
 
     // Generate token for this signer. functions.invoke wraps the body under
     // `.data` (same convention as gradeTrainingAttempt's certResult.data), so
@@ -183,6 +197,7 @@ Deno.serve(async (req) => {
       // Transient failure — release the claim so a trigger re-fire can retry.
       await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
         signer_notified_at: null,
+        signer_notify_claimed_by: '',
       }).catch(() => {});
       return Response.json({ error: 'Failed to generate signer token' }, { status: 500 });
     }
@@ -236,6 +251,7 @@ Deno.serve(async (req) => {
       // email outage — release the claim so a trigger re-fire retries.
       await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
         signer_notified_at: null,
+        signer_notify_claimed_by: '',
       }).catch(() => {});
       throw sendError;
     }

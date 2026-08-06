@@ -99,7 +99,7 @@ export default function ComplianceCenter() {
   });
 
   const { data: audits = [] } = useQuery({
-    queryKey: ['complianceAudits', timeRange],
+    queryKey: ['complianceAudits', 'list', 1000, timeRange],
     queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 1000),
     initialData: [],
   });

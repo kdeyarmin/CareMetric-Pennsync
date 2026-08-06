@@ -139,18 +139,45 @@ Deno.serve(async (req) => {
       }
 
       if (daysUntilDue < 0 && assignment.status !== 'overdue') {
-        const notification = await base44.asServiceRole.entities.Notification.create({
-          user_email: assignment.assigned_to_user_id,
-          title: 'Training overdue',
-          message: `Your assigned in-service "${assignment.course_title}" is overdue. Please complete it immediately.`,
-          type: 'compliance_alert',
-          priority: 'critical',
-          action_url: '/MyTraining',
-          action_label: 'Complete now',
-          metadata: { assignment_id: assignment.id, course_id: assignment.course_id }
-        });
-        notificationsSent.push(notification.id);
-        await base44.asServiceRole.entities.TrainingAssignment.update(assignment.id, { status: 'overdue' });
+        const claimToken = `overdue:${runId}`;
+        try {
+          await base44.asServiceRole.entities.TrainingAssignment.update(assignment.id, {
+            reminder_claimed_by: claimToken,
+            reminder_claimed_at: new Date().toISOString(),
+          });
+        } catch {
+          continue;
+        }
+        const overdueClaim = await base44.asServiceRole.entities.TrainingAssignment
+          .filter({ id: assignment.id }, '-created_date', 1).catch(() => []);
+        if (!overdueClaim[0] || overdueClaim[0].reminder_claimed_by !== claimToken) {
+          continue;
+        }
+        if (overdueClaim[0].status === 'overdue') {
+          continue;
+        }
+        try {
+          const notification = await base44.asServiceRole.entities.Notification.create({
+            user_email: assignment.assigned_to_user_id,
+            title: 'Training overdue',
+            message: `Your assigned in-service "${assignment.course_title}" is overdue. Please complete it immediately.`,
+            type: 'compliance_alert',
+            priority: 'critical',
+            action_url: '/MyTraining',
+            action_label: 'Complete now',
+            metadata: { assignment_id: assignment.id, course_id: assignment.course_id }
+          });
+          notificationsSent.push(notification.id);
+          await base44.asServiceRole.entities.TrainingAssignment.update(assignment.id, {
+            status: 'overdue',
+            reminder_claimed_by: '',
+          });
+        } catch (err) {
+          console.error('sendTrainingNotifications: overdue notify failed', err?.message || err);
+          await base44.asServiceRole.entities.TrainingAssignment.update(assignment.id, {
+            reminder_claimed_by: '',
+          }).catch(() => {});
+        }
       }
     }
 

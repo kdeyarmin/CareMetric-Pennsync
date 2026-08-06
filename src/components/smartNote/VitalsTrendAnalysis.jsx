@@ -10,7 +10,7 @@ import { AlertCircle, TrendingUp, Activity } from "lucide-react";
 export default function VitalsTrendAnalysis({ patientId }) {
   // Fetch all visits for the patient
   const { data: visits = [], isLoading } = useQuery({
-    queryKey: ["patient-visits", patientId],
+    queryKey: ["patient-visits", patientId, "all", 100],
     queryFn: () => patientId ? base44.entities.Visit.filter({ patient_id: patientId }, "-visit_date", 100) : Promise.resolve([]),
     enabled: !!patientId,
   });

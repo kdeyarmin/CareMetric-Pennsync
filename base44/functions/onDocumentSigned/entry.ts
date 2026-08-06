@@ -209,10 +209,30 @@ Deno.serve(async (req) => {
     // too. Send the admin notice at most once per signature by claiming the
     // shared admin_notified flag first.
     if (!signature.admin_notified) {
-      // Claim the shared flag first so concurrent / re-fired triggers don't
-      // double-send. But RELEASE it again if no email actually goes out, so a
-      // transient SendEmail outage doesn't permanently suppress the admin notice.
-      await base44.asServiceRole.entities.DocumentSignature.update(signature.id, { admin_notified: true }).catch(() => {});
+      // Claim with unique token + re-read so concurrent / re-fired triggers
+      // (and the sibling notifyAdminOfSignedDocument) don't double-send.
+      // RELEASE if no email actually goes out so a transient outage can retry.
+      const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `admin-notify-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      try {
+        await base44.asServiceRole.entities.DocumentSignature.update(signature.id, {
+          admin_notified: true,
+          admin_notify_claimed_by: claimToken,
+        });
+      } catch {
+        return Response.json({ success: true, skipped: 'could not claim admin notify' });
+      }
+      const claimCheck = await base44.asServiceRole.entities.DocumentSignature
+        .filter({ id: signature.id }, '-created_date', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].admin_notify_claimed_by !== claimToken) {
+        return Response.json({
+          success: true,
+          package_updated: allSigned,
+          all_signed: allSigned,
+          skipped: 'admin notify claimed by concurrent run',
+        });
+      }
       let releaseClaim = false;
       try {
         const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
@@ -261,7 +281,10 @@ Deno.serve(async (req) => {
         releaseClaim = true;
       }
       if (releaseClaim) {
-        await base44.asServiceRole.entities.DocumentSignature.update(signature.id, { admin_notified: false }).catch(() => {});
+        await base44.asServiceRole.entities.DocumentSignature.update(signature.id, {
+          admin_notified: false,
+          admin_notify_claimed_by: '',
+        }).catch(() => {});
       }
     }
 

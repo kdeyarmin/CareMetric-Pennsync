@@ -489,13 +489,17 @@ async function checkExpiredInvitations(base44) {
         status: 'expired'
       });
     } else if (tomorrow > expiresAt) {
-      expiringSoon.push(invitation);
+      // One-shot admin digest per invitation (mirrors checkExpiredInvitations).
+      if (!invitation.expiring_soon_notified_at) {
+        expiringSoon.push(invitation);
+      }
     }
   }
 
   // Notify admins if needed
   if (expired.length > 0 || expiringSoon.length > 0) {
     const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
+    let emailsSent = 0;
 
     for (const admin of admins) {
       const sections = [];
@@ -526,9 +530,20 @@ async function checkExpiredInvitations(base44) {
             sections,
           }),
         });
+        emailsSent += 1;
       } catch (emailError) {
         console.error('Failed to send email to admin:', emailError?.message || emailError);
       }
+    }
+    if (emailsSent > 0 && expiringSoon.length > 0) {
+      const stampedAt = new Date().toISOString();
+      await Promise.allSettled(
+        expiringSoon.map((inv) =>
+          base44.asServiceRole.entities.UserInvitation.update(inv.id, {
+            expiring_soon_notified_at: stampedAt,
+          })
+        )
+      );
     }
   }
 

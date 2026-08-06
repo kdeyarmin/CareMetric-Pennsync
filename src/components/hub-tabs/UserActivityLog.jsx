@@ -46,7 +46,7 @@ export default function UserActivityLog() {
   const [dateRange, setDateRange] = useState("7");
 
   const { data: activities = [], isLoading } = useQuery({
-    queryKey: ['userActivities'],
+    queryKey: ['userActivities', 500],
     queryFn: () => base44.entities.UserActivity.list('-created_date', 500),
   });
 

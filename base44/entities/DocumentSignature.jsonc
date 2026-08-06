@@ -250,6 +250,10 @@
       "type": "boolean",
       "description": "Idempotency flag: admin has been notified of completion"
     },
+    "admin_notify_claimed_by": {
+      "type": "string",
+      "description": "Best-effort claim token shared by notifyAdminOfSignedDocument and onDocumentSigned; re-read before emailing admins"
+    },
     "audit_trail": {
       "type": "array",
       "items": {

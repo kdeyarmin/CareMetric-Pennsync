@@ -82,6 +82,10 @@
       "format": "date-time",
       "description": "Idempotency marker: when notifySignerOfPackage emailed the signer their portal link (one initial notification per package)"
     },
+    "signer_notify_claimed_by": {
+      "type": "string",
+      "description": "Best-effort claim token for notifySignerOfPackage; re-read before minting signer token / emailing"
+    },
     "signer_email": {
       "type": "string",
       "description": "Primary signer email for reminder notifications"

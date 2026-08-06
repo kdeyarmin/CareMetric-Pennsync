@@ -218,10 +218,9 @@ Deno.serve(async (req) => {
 
       if (!shouldSendReminder) continue;
 
-      // Audience-specific cadence: caregiver reminders must not be suppressed by
-      // a recent signer reminder. Fall back to the legacy shared stamp only when
-      // the audience field has never been written.
-      const lastCaregiverAt = pkg.last_caregiver_reminder_sent_at || pkg.last_reminder_sent_at;
+      // Audience-specific cadence only — never fall back to last_reminder_sent_at
+      // (that stamp is shared and would suppress the other audience's reminders).
+      const lastCaregiverAt = pkg.last_caregiver_reminder_sent_at;
       const lastSent = lastCaregiverAt ? new Date(lastCaregiverAt).getTime() : 0;
       if (lastSent && (now.getTime() - lastSent) < 20 * 60 * 60 * 1000) continue;
 

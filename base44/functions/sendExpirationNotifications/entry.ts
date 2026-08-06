@@ -79,12 +79,9 @@ Deno.serve(async (req) => {
 
     const notifications = [];
     const adminNotifications = [];
-    // Deferred reminder-tier marker writes. These must run only AFTER the employee
-    // notifications are persisted — marking a tier "sent" before bulkCreate means a
-    // bulkCreate failure permanently suppresses that reminder for every record
-    // processed before the failure. Worst case if a marker write fails post-create
-    // is a duplicate reminder next run (the safe direction).
-    const markerUpdates = [];
+    const runId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `exp-${Date.now()}`;
 
     // Reminder tiers (days before expiration). Fire when the count is AT or
     // BELOW a tier that hasn't been sent yet, rather than on an exact-day match.
@@ -107,8 +104,26 @@ Deno.serve(async (req) => {
         (offset) => daysUntilExpiration >= 0 && daysUntilExpiration <= offset && !remindersSent.includes(offset)
       );
 
-      if (dueOffsets.length > 0) {
-        notifications.push({
+      if (dueOffsets.length === 0) continue;
+
+      const nextOffsets = [...remindersSent, ...dueOffsets];
+      const claimToken = `exp:${runId}`;
+      try {
+        await base44.asServiceRole.entities.TrainingAssignment.update(assignment.id, {
+          expiration_note_offsets_sent: nextOffsets,
+          expiration_note_claimed_by: claimToken,
+        });
+      } catch {
+        continue;
+      }
+      const claimCheck = await base44.asServiceRole.entities.TrainingAssignment
+        .filter({ id: assignment.id }, '-created_date', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].expiration_note_claimed_by !== claimToken) {
+        continue;
+      }
+
+      try {
+        await base44.asServiceRole.entities.Notification.create({
           user_email: assignment.assigned_to_user_id,
           type: 'expiration_warning',
           title: `Training Renewal Due Soon: ${assignment.course_title}`,
@@ -118,7 +133,7 @@ Deno.serve(async (req) => {
           is_read: false,
           expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
         });
-
+        notifications.push(1);
         adminNotifications.push({
           type: 'training_expiration',
           user_id: assignment.assigned_to_user_id,
@@ -126,10 +141,12 @@ Deno.serve(async (req) => {
           days_until_expiration: daysUntilExpiration,
           renewal_due_date: assignment.renewal_due_date
         });
-
-        markerUpdates.push(() => base44.asServiceRole.entities.TrainingAssignment.update(assignment.id, {
-          expiration_note_offsets_sent: [...remindersSent, ...dueOffsets]
-        }));
+      } catch (err) {
+        console.error('sendExpirationNotifications: assignment notify failed', err?.message || err);
+        await base44.asServiceRole.entities.TrainingAssignment.update(assignment.id, {
+          expiration_note_offsets_sent: remindersSent,
+          expiration_note_claimed_by: '',
+        }).catch(() => {});
       }
     }
 
@@ -148,8 +165,26 @@ Deno.serve(async (req) => {
         (offset) => daysUntilExpiration >= 0 && daysUntilExpiration <= offset && !remindersSent.includes(offset)
       );
 
-      if (dueOffsets.length > 0) {
-        notifications.push({
+      if (dueOffsets.length === 0) continue;
+
+      const nextOffsets = [...remindersSent, ...dueOffsets];
+      const claimToken = `exp:${runId}`;
+      try {
+        await base44.asServiceRole.entities.PersonnelCredential.update(credential.id, {
+          expiration_note_offsets_sent: nextOffsets,
+          expiration_note_claimed_by: claimToken,
+        });
+      } catch {
+        continue;
+      }
+      const claimCheck = await base44.asServiceRole.entities.PersonnelCredential
+        .filter({ id: credential.id }, '-created_date', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].expiration_note_claimed_by !== claimToken) {
+        continue;
+      }
+
+      try {
+        await base44.asServiceRole.entities.Notification.create({
           user_email: credential.user_id,
           type: 'credential_expiration',
           title: `Credential Expiring Soon: ${credential.title}`,
@@ -159,7 +194,7 @@ Deno.serve(async (req) => {
           is_read: false,
           expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
         });
-
+        notifications.push(1);
         adminNotifications.push({
           type: 'credential_expiration',
           user_id: credential.user_id,
@@ -168,19 +203,13 @@ Deno.serve(async (req) => {
           days_until_expiration: daysUntilExpiration,
           expiration_date: credential.expiration_date
         });
-
-        markerUpdates.push(() => base44.asServiceRole.entities.PersonnelCredential.update(credential.id, {
-          expiration_note_offsets_sent: [...remindersSent, ...dueOffsets]
-        }));
+      } catch (err) {
+        console.error('sendExpirationNotifications: credential notify failed', err?.message || err);
+        await base44.asServiceRole.entities.PersonnelCredential.update(credential.id, {
+          expiration_note_offsets_sent: remindersSent,
+          expiration_note_claimed_by: '',
+        }).catch(() => {});
       }
-    }
-
-    if (notifications.length > 0) {
-      await base44.asServiceRole.entities.Notification.bulkCreate(notifications);
-    }
-
-    for (const applyMarker of markerUpdates) {
-      await applyMarker();
     }
 
     if (adminNotifications.length > 0) {

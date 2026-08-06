@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       allowedEmails = new Set(allUsers.filter((u) => u.agency_name === user.agency_name).map((u) => u.email));
     }
 
-    const today = now.toISOString().slice(0, 10);
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     // Group overdue assignments per learner so each person gets one reminder.
     // Skip assignments already reminded today so re-clicks don't re-notify.

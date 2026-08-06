@@ -520,7 +520,7 @@ export default function ReferralPDFSummarizer({
                     </div>
                   </div>
                 </CardHeader>
-                {showPreview && (
+                {showPreview && (isSafeExternalUrl(fileUrl) || fileUrl.startsWith('blob:')) && (
                   <CardContent className="p-0">
                     {previewIsImage ? (
                       <div className="max-h-[78vh] overflow-auto bg-slate-100">

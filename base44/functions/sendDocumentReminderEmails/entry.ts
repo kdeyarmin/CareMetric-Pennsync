@@ -210,10 +210,9 @@ Deno.serve(async (req) => {
           (dueDate - today) / (1000 * 60 * 60 * 24)
         );
 
-        // Audience-specific cadence: signer reminders must not be suppressed by a
-        // recent caregiver reminder (and vice versa). Fall back to the legacy
-        // shared stamp only when the audience field has never been written.
-        const lastSignerAt = pkg.last_signer_reminder_sent_at || pkg.last_reminder_sent_at;
+        // Audience-specific cadence only — never fall back to last_reminder_sent_at
+        // (that stamp is shared and would suppress the other audience's reminders).
+        const lastSignerAt = pkg.last_signer_reminder_sent_at;
         if (lastSignerAt) {
           const lastSent = new Date(lastSignerAt);
           // `today` is midnight-normalized, so comparing it against the raw

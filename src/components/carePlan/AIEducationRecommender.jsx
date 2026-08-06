@@ -26,7 +26,7 @@ export default function AIEducationRecommender({ patient, carePlans = [], onAssi
 
   // Fetch existing education assignments
   const { data: existingEducation = [] } = useQuery({
-    queryKey: ['patientEducation', patient?.id],
+    queryKey: ['patientEducation', patient?.id, 'unsorted'],
     queryFn: () => base44.entities.PatientEducationAssignment.filter({ patient_id: patient?.id }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!patient?.id,
     initialData: []

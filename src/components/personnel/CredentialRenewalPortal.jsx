@@ -115,6 +115,9 @@ export default function CredentialRenewalPortal({ userId }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userCredentials'] });
+      queryClient.invalidateQueries({ queryKey: ['personnel-credentials'] });
+      queryClient.invalidateQueries({ queryKey: ['pendingCredentials'] });
+      queryClient.invalidateQueries({ queryKey: ['allPersonnelCredentials'] });
       setShowUploadDialog(false);
       setSelectedCredential(null);
       setRenewalData({

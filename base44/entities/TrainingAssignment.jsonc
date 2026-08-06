@@ -191,6 +191,10 @@
       },
       "description": "Expiration-note offsets already sent by sendExpirationNotifications (own marker so it doesn't collide with sendRenewalReminders)"
     },
+    "expiration_note_claimed_by": {
+      "type": "string",
+      "description": "Per-run claim token for sendExpirationNotifications before creating in-app notes"
+    },
     "completion_date": {
       "type": "string",
       "format": "date-time",

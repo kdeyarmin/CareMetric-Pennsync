@@ -209,8 +209,11 @@ Deno.serve(async (req) => {
           status: 'expired'
         });
       } else if (tomorrow > expiresAt) {
-        // Expiring within 24 hours
-        expiringSoon.push(invitation);
+        // Expiring within 24 hours — one-shot admin digest per invitation so
+        // daily cron re-runs do not re-email the same pending invites forever.
+        if (!invitation.expiring_soon_notified_at) {
+          expiringSoon.push(invitation);
+        }
       }
     }
 
@@ -222,6 +225,7 @@ Deno.serve(async (req) => {
 
     // Send notifications if there are expired or expiring invitations
     if (expired.length > 0 || expiringSoon.length > 0) {
+      let emailsSent = 0;
       for (const admin of admins) {
         const sections = [];
         if (expired.length > 0) {
@@ -251,9 +255,22 @@ Deno.serve(async (req) => {
               sections,
             }),
           });
+          emailsSent += 1;
         } catch (emailError) {
           console.error('Failed to send email to admin:', emailError?.message || emailError);
         }
+      }
+      // Stamp expiring-soon only after at least one admin email succeeded so a
+      // total outage can retry on the next cron run.
+      if (emailsSent > 0 && expiringSoon.length > 0) {
+        const stampedAt = new Date().toISOString();
+        await Promise.allSettled(
+          expiringSoon.map((inv) =>
+            base44.asServiceRole.entities.UserInvitation.update(inv.id, {
+              expiring_soon_notified_at: stampedAt,
+            })
+          )
+        );
       }
     }
 
@@ -261,7 +278,7 @@ Deno.serve(async (req) => {
       success: true,
       expired: expired.length,
       expiring_soon: expiringSoon.length,
-      notifications_sent: admins.length
+      notifications_sent: (expired.length > 0 || expiringSoon.length > 0) ? admins.length : 0
     });
 
   } catch (error) {
