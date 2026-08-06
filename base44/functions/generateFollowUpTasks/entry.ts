@@ -8,6 +8,41 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+
+/** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
+async function assertPatientAccess(base44, user, patient) {
+  if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
+  const isSuperAdmin = user.account_type === 'super_admin';
+  const isAgencyScopedAdmin =
+    user.account_type === 'agency_admin'
+    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+  const isAssigned = Array.isArray(patient.assigned_nurses)
+    && patient.assigned_nurses.includes(user.email);
+  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (isAgencyScopedAdmin) {
+    if (!user.agency_name) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const agencyUsers = await base44.asServiceRole.entities.User
+      .list('-created_date', 5000).catch(() => []);
+    const agencyEmails = new Set(
+      (agencyUsers || [])
+        .filter((u) => u.agency_name === user.agency_name && u.email)
+        .map((u) => u.email),
+    );
+    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
+      || (Array.isArray(patient.assigned_nurses)
+        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
+    if (!inAgency) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -24,15 +59,10 @@ Deno.serve(async (req) => {
     // visitId must belong to that patient (service-role Task.create otherwise
     // lets a foreign related_visit_id slip through).
     if (patientId) {
-      // RLS-scoped read (NOT asServiceRole) so the caller cannot pull another
-      // patient's PHI into the prompt via a guessed patientId.
-      const patients = await base44.entities.Patient.filter({ id: patientId }, undefined, 5000);
-      const patient = patients[0];
-      // Make the access check BLOCKING: if the RLS-scoped read returns nothing
-      // the caller can't see this patient, so don't attach AI Tasks to it below.
-      if (!patient) {
-        return Response.json({ error: 'Patient not found' }, { status: 404 });
-      }
+      const [patient] = await base44.asServiceRole.entities.Patient
+        .filter({ id: patientId }, '', 1).catch(() => []);
+      const denied = await assertPatientAccess(base44, user, patient);
+      if (denied) return denied;
       patientName = `${patient.first_name} ${patient.last_name}`;
       patientContext = `Patient: ${patientName}, Primary Diagnosis: ${patient.primary_diagnosis || diagnosis || 'Not documented'}, Secondary Diagnoses: ${(patient.secondary_diagnoses || []).join(', ') || 'None'}`;
       if (visitId) {

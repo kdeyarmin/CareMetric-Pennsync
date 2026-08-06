@@ -28,10 +28,6 @@ const FUNCTIONS_DIR = join(process.cwd(), 'base44/functions');
 
 /** Authenticated functions that do not yet refuse a deactivated caller. */
 const UNGUARDED_LEGACY_FUNCTIONS = new Set([
-  'analyzeAndGenerateClinicalTasks',
-  'analyzeClinicalEvents',
-  'analyzeClinicalRisks',
-  'analyzeClinicalTrends',
   'analyzeDocument',
   'analyzeOASISNarrativeMatch',
   'analyzeReferral',
@@ -74,7 +70,6 @@ const UNGUARDED_LEGACY_FUNCTIONS = new Set([
   'generateAndCacheCertificatePacket',
   'generateBagTechniquePDF',
   'generateCarePlanFromReferral',
-  'generateCarePlanSuggestions',
   'generateCertificatePacketPDF',
   'generateComprehensiveOASISReport',
   'generateComprehensiveReport',
@@ -82,7 +77,6 @@ const UNGUARDED_LEGACY_FUNCTIONS = new Set([
   'generateDynamicCoverSheet',
   'generateLearningTranscriptPDF',
   'generateMessageSuggestions',
-  'generateOASISAssessment',
   'generateOASISReportPDF',
   'generatePDGMComparisonPDF',
   'generatePDGMNavigatorPDF',

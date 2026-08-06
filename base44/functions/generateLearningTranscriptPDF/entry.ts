@@ -83,8 +83,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'employeeId is required' }, { status: 400 });
     }
 
-    // Only admins can generate transcripts for others
-    if (employeeId !== user.email && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin') {
+    // Only admins can generate transcripts for others (role:admin or admin account types).
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    if (employeeId !== user.email && !isAdminLike) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 

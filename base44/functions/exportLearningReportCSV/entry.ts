@@ -13,7 +13,13 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 
-    if (!user || (user.account_type !== 'agency_admin' && user.account_type !== 'super_admin')) {
+    // Platform facility admins (role:admin) and agency/super admins.
+    const isAdminLike = !!user && (
+      user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin'
+    );
+    if (!isAdminLike) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();

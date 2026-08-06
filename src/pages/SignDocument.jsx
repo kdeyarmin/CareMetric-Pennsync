@@ -75,10 +75,13 @@ export default function SignDocument() {
     // DocumentSignature.update keyed only on the URL id, so any authenticated user
     // with an id could blanket-complete a document they had no relationship to.
     mutationFn: async ({ signatures }) => {
-      return await base44.functions.invoke('submitDocumentSignatures', {
+      const res = await base44.functions.invoke('submitDocumentSignatures', {
         signature_id: signatureId,
         signatures,
       });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['signature-record'] });
@@ -147,8 +150,8 @@ export default function SignDocument() {
       setTimeout(() => {
         navigate(createPageUrl("DocumentSignatures"));
       }, 1500);
-    } catch {
-      toast.error("Failed to save signatures");
+    } catch (error) {
+      toast.error(error?.message || "Failed to save signatures");
     }
   };
 
