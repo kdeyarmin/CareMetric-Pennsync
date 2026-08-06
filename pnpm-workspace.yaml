@@ -13,6 +13,12 @@ overrides:
   socket.io-parser: 4.2.7
   undici: 7.28.0
   ws: 8.21.0
+# eslint-plugin-react / jsx-a11y have not widened their peer ranges to eslint 10
+# yet, but both run clean under 10.8.0 in this repo (CI lint gate).
+peerDependencyRules:
+  allowedVersions:
+    'eslint-plugin-react>eslint': '10'
+    'eslint-plugin-jsx-a11y>eslint': '10'
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.17
   - vitest@4.1.10

@@ -39,6 +39,9 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 - `pnpm test` runs `test:utils` (node `--test`) then `test:components` (Vitest/jsdom).
 - `pnpm run lint` is clean: 0 errors AND 0 warnings. Keep it that way — a new warning is a real finding, not background noise. Coverage includes `src/App.jsx`, `src/main.jsx`, and `src/routes.jsx`.
 - `pnpm run typecheck` is an informational baseline in CI (`continue-on-error`); it may report pre-existing errors and is not a gate.
+- `pnpm run typecheck:signal` **is** a CI gate (CI + Workflow Quality). It filters the checkJs pass to high-signal defect codes; keep it at 0 findings.
+- Accessibility axe runs on PRs/`main` via `.github/workflows/a11y.yml` (`test:a11y` + Playwright public routes). Local: `pnpm run build && pnpm run test:a11y:e2e`.
+- Stay on TypeScript 6.x for now. TypeScript 7 redesigns the default package export and removes the classic `transpileModule` / `ScriptTarget` API that `tools-check-backend-transpile.mjs` and the Base44 inline-parity tests rely on.
 - CI uses Node 24.18.0 with pnpm 11.9.0. Use `.nvmrc` / `.node-version` plus Corepack in cloud environments.
 
 | Task | Command |
@@ -48,6 +51,9 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Build | `pnpm run build` |
 | Lint | `pnpm run lint` |
 | Typecheck baseline | `pnpm run typecheck` |
+| High-signal typecheck (gate) | `pnpm run typecheck:signal` |
+| Accessibility (component) | `pnpm run test:a11y` |
+| Accessibility (Playwright) | `pnpm run build && pnpm run test:a11y:e2e` |
 | Tests | `pnpm test` |
 
 ## Environment config
