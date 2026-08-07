@@ -442,3 +442,38 @@ test('backend service-role console logs do not include direct identifiers', () =
     `Backend console logs must stay aggregate/status-only; direct emails, patient/fax/signature ids, and downstream provider ids can leak identifiers into retained logs.\n${offenders.join('\n')}`,
   );
 });
+
+// 18. Agency-scoped gates written as `!== 'super_admin' && user.agency_name`
+//     are fail-OPEN when account_type is agency_admin and agency_name is empty
+//     (the && short-circuits and the caller is treated as platform-wide). Every
+//     such function must refuse that shape via agencyAdminMissingAgencyResponse
+//     or an equivalent inline `agency_admin && !….agency_name` check.
+test('functions with agency_name scope gates refuse agency_admin without agency_name', () => {
+  const openGate =
+    /account_type\s*!==\s*['"]super_admin['"]\s*&&\s*\w+\.agency_name/;
+  // Must be a CALL site or inline check — not merely the helper function definition.
+  const closedGate =
+    /_agencyAdminGate\s*=\s*agencyAdminMissingAgencyResponse\s*\(|return\s+agencyAdminMissingAgencyResponse\s*\(|account_type\s*===\s*['"]agency_admin['"]\s*&&\s*!\s*\w+\.agency_name|account_type\s*===\s*['"]agency_admin['"]\s*&&\s*!String\(\w+\.agency_name/;
+
+  const offenders = [];
+  for (const entry of readdirSync(join(REPO, 'base44/functions'), { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    let src;
+    try {
+      src = readFileSync(join(REPO, 'base44/functions', entry.name, 'entry.ts'), 'utf8');
+    } catch {
+      continue;
+    }
+    if (!openGate.test(src)) continue;
+    if (!closedGate.test(src)) offenders.push(entry.name);
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    'These functions scope by agency_name but do not refuse agency_admin without '
+      + 'agency_name (fail-open to platform-wide). Inline requireAgencyAdminAgency '
+      + 'or `if (user.account_type === \'agency_admin\' && !user.agency_name) return 403`:\n  '
+      + offenders.join('\n  '),
+  );
+});

@@ -7,6 +7,16 @@ const isAdminLike = (u) => !!u && (
 );
 // <<<END SHARED HELPER: isAdminLike>>>
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 
 Deno.serve(async (req) => {
   try {
@@ -18,6 +28,10 @@ Deno.serve(async (req) => {
     }
     if (currentUser.is_active === false) {
       return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(currentUser);
+      if (_agencyAdminGate) return _agencyAdminGate;
     }
 
     const { action, email, otp } = await req.json();

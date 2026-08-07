@@ -781,6 +781,10 @@
       "type": "string",
       "description": "Claim token for generateCarePlansFromReferral idempotency. Set before LLM work and CarePlan.create so concurrent runs cannot create duplicate active care plans."
     },
+    "care_plan_monitor_claimed_by": {
+      "type": "string",
+      "description": "Claim token for monitorClinicalDataForCarePlanUpdates idempotency. Set before LLM work and CarePlanProposal/PatientAlert creates so concurrent runs cannot duplicate proposals."
+    },
     "assigned_nurses": {
       "type": "array",
       "items": {

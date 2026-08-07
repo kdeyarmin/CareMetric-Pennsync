@@ -45,6 +45,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 
 // ───────────────────────────────────────────────────────────────────────────
 // Auto-enroll active staff into the CURRENT-YEAR annual required in-service
@@ -102,6 +112,10 @@ Deno.serve(async (req) => {
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(me);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
 
     const body = await req.json().catch(() => ({}));
     const scope = body.scope === 'all' ? 'all' : 'auto';

@@ -1,5 +1,6 @@
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
+import { isAdminLike } from "@/lib/superAdmin";
 
 import RegulatoryMonitor from "@/components/compliance/RegulatoryMonitor";
 import NurseRegulatoryAlerts from "@/components/compliance/NurseRegulatoryAlerts";
@@ -10,7 +11,7 @@ export default function RegulatoryCompliance() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminLike(currentUser);
 
   return (
     <div className="space-y-4 sm:space-y-6">

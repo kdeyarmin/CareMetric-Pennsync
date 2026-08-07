@@ -25,12 +25,26 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 const PATIENT_SWEEP_LIMIT = 5000;
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const currentUser = await base44.auth.me();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(currentUser);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
     if (!currentUser) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }

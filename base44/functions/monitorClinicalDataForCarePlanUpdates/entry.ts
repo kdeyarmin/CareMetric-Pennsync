@@ -176,6 +176,24 @@ Deno.serve(async (req) => {
       // Current care plan interventions
       const currentInterventions = carePlans.flatMap(cp => cp.interventions || []);
 
+      // Claim before LLM + CarePlanProposal/PatientAlert creates so concurrent
+      // monitor runs cannot both invent duplicate proposals for the same patient.
+      const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `care-plan-monitor-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      try {
+        await base44.asServiceRole.entities.Patient.update(pt.id, {
+          care_plan_monitor_claimed_by: claimToken,
+        });
+      } catch {
+        continue;
+      }
+      const claimCheck = await base44.asServiceRole.entities.Patient
+        .filter({ id: pt.id }, '', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].care_plan_monitor_claimed_by !== claimToken) {
+        continue;
+      }
+
       // AI Analysis. The raw result must go through parseLLMJson (this function
       // intentionally omits response_json_schema). Every use below referenced an
       // undeclared `analysis` — a guaranteed ReferenceError that 500'd the run, so

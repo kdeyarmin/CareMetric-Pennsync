@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { getNormalizedSignatureStatus, isSignatureOverdue } from "@/components/signature/signatureUtils";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { isAdminLike } from '@/lib/superAdmin';
 
 export default function DocumentSignatures() {
   const navigate = useNavigate();
@@ -224,7 +225,7 @@ export default function DocumentSignatures() {
                         <Pen className="w-4 h-4 mr-2" />
                         Sign
                       </Button>
-                      {currentUser?.role === 'admin' && (
+                      {isAdminLike(currentUser) && (
                         <Button
                           variant="outline"
                           size="sm"

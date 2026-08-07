@@ -37,7 +37,7 @@ import FaxSearchInterface from "../components/fax/FaxSearchInterface";
 import FaxTemplateManager from "../components/fax/FaxTemplateManager";
 import BatchFaxSender from "../components/fax/BatchFaxSender";
 import RealtimeFaxStatusTracker from "../components/fax/RealtimeFaxStatusTracker";
-import { isSuperAdmin } from "@/lib/superAdmin";
+import { isAdminLike } from "@/lib/superAdmin";
 import LoadingState from "@/components/ui/LoadingState";
 
 const FaxContacts = lazy(() => import("@/components/hub-tabs/FaxContacts"));
@@ -94,7 +94,8 @@ export default function SendFax() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin' || isSuperAdmin(currentUser);
+  // Match getCommsDashboard / backend isAdminLike — agency_admin can open analytics.
+  const isAdmin = isAdminLike(currentUser);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");

@@ -100,6 +100,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
   { status: 403 },
 );`,
 
+  // agency_admin without agency_name must not fall through agency-scoped gates
+  // that are written as `!== super_admin && agency_name` (empty name ⇒ platform-wide).
+  // Call immediately after auth/admin checks: if (resp) return resp;
+  // Bare role:admin without agency_name remains platform-wide by design.
+  requireAgencyAdminAgency: `function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}`,
+
   // Shared scheduler/internal auth for privileged cron-style functions. Base44
   // function URLs are plain HTTP endpoints, so these jobs must require either an
   // admin session or the configured shared secret header.

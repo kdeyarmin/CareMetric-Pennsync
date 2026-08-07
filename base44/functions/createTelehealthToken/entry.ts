@@ -1,5 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 /**
  * createTelehealthToken — mint a Telnyx Video join token for a telehealth
  * session. Two authorization paths:
@@ -184,6 +194,10 @@ Deno.serve(async (req) => {
       participantIdentity = session.patient_name || 'Patient';
     } else {
       const user = await base44.auth.me();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
       if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
       if (user.is_active === false) {
         return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
