@@ -95,8 +95,10 @@ Deno.serve(async (req) => {
     // so adding docs after mint cannot expand PHI on this link. Legacy tokens
     // without a snapshot keep live membership only.
     const liveIds = Array.isArray(pkg.document_signatures) ? pkg.document_signatures : [];
+    // Empty [] is a valid mint-time snapshot (package had no docs). Only a
+    // missing/non-array field means "legacy token — use live membership".
     const snapshot = Array.isArray(tokenRecord.document_ids) ? tokenRecord.document_ids : null;
-    const signatureIds = snapshot
+    const signatureIds = snapshot !== null
       ? liveIds.filter((id) => snapshot.includes(id))
       : liveIds;
     const signatures = await Promise.all(

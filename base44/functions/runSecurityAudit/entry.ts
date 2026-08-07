@@ -75,22 +75,32 @@ Deno.serve(async (req) => {
     let activities;
     try {
       if (isAgencyScoped) {
+        // Agency cohort FIRST — never sample a global newest-N window and then
+        // filter (an older/smaller agency can vanish from the sample and look
+        // like a perfect score).
         users = await base44.asServiceRole.entities.User
           .filter({ agency_name: agency }, '-created_date', 2000);
         if (!Array.isArray(users)) throw new Error('User cohort read failed');
-        const staffEmails = new Set((users || []).map((u) => u?.email).filter(Boolean));
-        // Patient has no agency_name field — load a wide window then filter by staff.
-        const patientPool = await base44.asServiceRole.entities.Patient
-          .list('-created_date', 5000);
-        if (!Array.isArray(patientPool)) throw new Error('Patient cohort read failed');
-        patients = patientPool.filter((p) =>
-          (p?.created_by && staffEmails.has(p.created_by))
-          || (Array.isArray(p?.assigned_nurses) && p.assigned_nurses.some((e) => staffEmails.has(e))),
-        );
-        const activityPool = await base44.asServiceRole.entities.UserActivity
-          .list('-created_date', 5000);
-        if (!Array.isArray(activityPool)) throw new Error('Activity cohort read failed');
-        activities = activityPool.filter((a) => staffEmails.has(a?.user_email));
+        const staffEmails = [...new Set((users || []).map((u) => u?.email).filter(Boolean))];
+        const patientById = new Map();
+        const activityById = new Map();
+        for (const email of staffEmails) {
+          const owned = await base44.asServiceRole.entities.Patient
+            .filter({ created_by: email }, '-created_date', 500);
+          if (!Array.isArray(owned)) throw new Error('Patient cohort read failed');
+          for (const p of owned) {
+            if (p?.id) patientById.set(p.id, p);
+          }
+          const acts = await base44.asServiceRole.entities.UserActivity
+            .filter({ user_email: email }, '-created_date', 500);
+          if (!Array.isArray(acts)) throw new Error('Activity cohort read failed');
+          for (const a of acts) {
+            if (a?.id) activityById.set(a.id, a);
+            else activityById.set(`${a?.user_email}:${a?.created_date}:${a?.action}`, a);
+          }
+        }
+        patients = [...patientById.values()];
+        activities = [...activityById.values()];
       } else {
         users = await base44.asServiceRole.entities.User.list('-created_date', 2000);
         patients = await base44.asServiceRole.entities.Patient.list('-created_date', 2000);

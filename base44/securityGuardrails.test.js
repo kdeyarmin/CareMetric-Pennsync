@@ -353,12 +353,95 @@ test('signer tokens snapshot document_ids at mint and intersect on validate/subm
     'Empty document_ids snapshots must still intersect (do not fall back to live membership).',
   );
   assert.ok(
+    /snapshot\s*!==\s*null/.test(validate) && /snapshot\s*!==\s*null/.test(submit),
+    'validate/submit must distinguish absent snapshot from empty array via !== null.',
+  );
+  assert.ok(
     /tokenRecord\.document_ids/.test(submit) && /allowedIds/.test(submit),
     'submitSignerSignature must require document_id ∈ snapshot ∩ live package membership.',
   );
   assert.ok(
     /"document_ids"/.test(entity),
     'DocumentPackageToken must define the document_ids snapshot field.',
+  );
+});
+
+// Codex P1/P2 regression locks (PR review on deep-app-review).
+test('Codex review: SoR and FaxRetry stay in scope across loops', () => {
+  const monitor = read('base44/functions/monitorComplianceRisks/entry.ts');
+  const autoRetry = read('base44/functions/autoRetryFailedFaxes/entry.ts');
+  assert.ok(
+    /dischargedIsSoR\s*=\s*await agencyIsSystemOfRecord/.test(monitor),
+    'monitorComplianceRisks must resolve SoR per discharged patient (not reuse loop-local flag).',
+  );
+  assert.ok(
+    /if\s*\(\s*agencyName\s*\)\s*\{[\s\S]*?sorCache\.set\(\s*key\s*,\s*false\s*\)/.test(monitor),
+    'monitorComplianceRisks must fail closed on keyed AgencySettings miss.',
+  );
+  assert.ok(
+    /dueFaxes\.push\(\s*\{\s*fax\s*,\s*cfg\s*,\s*c\s*\}\s*\)/.test(autoRetry)
+    && /for\s*\(\s*const\s*\{\s*fax\s*,\s*cfg\s*,\s*c\s*\}\s*of\s*dueFaxes\s*\)/.test(autoRetry),
+    'autoRetryFailedFaxes must carry cfg/c into the dispatch loop.',
+  );
+});
+
+test('Codex review: follow-up claim before finalize; invitation fail-closed', () => {
+  const followUp = read('base44/functions/submitFollowUpResponse/entry.ts');
+  const userMgmt = read('base44/functions/userManagement/entry.ts');
+  assert.ok(
+    /submit_claimed_by:\s*claimToken/.test(followUp)
+    && /Referral\.update/.test(followUp)
+    && /submitted_at:\s*now/.test(followUp),
+    'submitFollowUpResponse must claim, merge Referral, then set terminal fields.',
+  );
+  const claimIdx = followUp.indexOf('submit_claimed_by: claimToken');
+  const mergeIdx = followUp.indexOf('Referral.update');
+  const terminalIdx = followUp.indexOf("status: 'delivered'");
+  assert.ok(
+    claimIdx >= 0 && mergeIdx > claimIdx && terminalIdx > mergeIdx,
+    'Terminal follow-up fields must be stamped after the Referral merge.',
+  );
+  assert.ok(
+    /async function resendInvitation[\s\S]*account_type === 'agency_admin' && !String\(currentUser\.agency_name/.test(userMgmt)
+    && /async function cancelInvitation[\s\S]*account_type === 'agency_admin' && !String\(currentUser\.agency_name/.test(userMgmt),
+    'resend/cancelInvitation must deny agency_admin without agency_name before scoped checks.',
+  );
+});
+
+test('Codex review: scheduleSms auth, digests, fax sender agency, audit cohort', () => {
+  const sms = read('base44/functions/scheduleSms/entry.ts');
+  const digest = read('base44/functions/sendCredentialRenewalReminders/entry.ts');
+  const batch = read('base44/functions/sendBatchFax/entry.ts');
+  const retry = read('base44/functions/retryFailedFax/entry.ts');
+  const timesheet = read('base44/functions/submitTimesheet/entry.ts');
+  const audit = read('base44/functions/runSecurityAudit/entry.ts');
+  assert.ok(
+    /canAccessPatient\(match\)/.test(sms),
+    'scheduleSms must authorize every phone-resolved patient before linking.',
+  );
+  assert.ok(
+    /i\.agency_name === admin\.agency_name/.test(digest)
+    && /never unscoped/.test(digest),
+    'Agency credential digests must exclude unscoped items.',
+  );
+  assert.ok(
+    /senderAgency/.test(batch) && /senderEmail/.test(batch),
+    'sendBatchFax must resolve AgencySettings from the attributed sender.',
+  );
+  assert.ok(
+    /senderAgency/.test(retry) && /originalFax\.sent_by/.test(retry),
+    'retryFailedFax must resolve fax settings from the original sender agency.',
+  );
+  assert.ok(
+    /legacy\.length === 1/.test(timesheet) && /VisitPointConfig/.test(timesheet),
+    'submitTimesheet must adopt a single unscoped VisitPointConfig legacy row.',
+  );
+  assert.ok(
+    /filter\(\{\s*agency_name:\s*agency/.test(audit)
+    && /filter\(\{\s*created_by:\s*email/.test(audit)
+    && /status:\s*503/.test(audit)
+    && /status:\s*422/.test(audit),
+    'runSecurityAudit must query agency cohort first and fail on incomplete/empty reads.',
   );
 });
 

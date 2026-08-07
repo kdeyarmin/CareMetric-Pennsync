@@ -53,6 +53,15 @@ describe('fetchCallerAgencySettings', () => {
     const row = await fetchCallerAgencySettings(undefined);
     expect(row?.id).toBe('only');
   });
+
+  it('fails closed on keyed agency miss (never adopts a foreign sole row)', async () => {
+    base44.entities.AgencySettings.filter
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const row = await fetchCallerAgencySettings('Acme');
+    expect(row).toBeNull();
+    expect(base44.entities.AgencySettings.list).not.toHaveBeenCalled();
+  });
 });
 
 describe('fetchCallerPdgmRateConfig / FollowUpRuleConfig', () => {
@@ -75,5 +84,23 @@ describe('fetchCallerPdgmRateConfig / FollowUpRuleConfig', () => {
     ]);
     const row = await fetchCallerFollowUpRuleConfig(null);
     expect(row).toBeNull();
+  });
+
+  it('does not adopt another agency row on keyed PDGM miss', async () => {
+    base44.entities.PDGMRateConfig.filter.mockResolvedValueOnce([]);
+    base44.entities.PDGMRateConfig.list.mockResolvedValueOnce([
+      { id: 'foreign', agency_name: 'OtherAgency' },
+    ]);
+    const row = await fetchCallerPdgmRateConfig('Acme');
+    expect(row).toBeNull();
+  });
+
+  it('may adopt a single unscoped legacy PDGM row on keyed miss', async () => {
+    base44.entities.PDGMRateConfig.filter.mockResolvedValueOnce([]);
+    base44.entities.PDGMRateConfig.list.mockResolvedValueOnce([
+      { id: 'legacy', agency_name: '' },
+    ]);
+    const row = await fetchCallerPdgmRateConfig('Acme');
+    expect(row?.id).toBe('legacy');
   });
 });
