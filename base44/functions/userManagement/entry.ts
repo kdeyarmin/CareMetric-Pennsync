@@ -355,7 +355,10 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   }
 
   // Agency admins may only resend invites for their own agency.
-  if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
+  if (currentUser.account_type === 'agency_admin' && !String(currentUser.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  if (currentUser.account_type !== 'super_admin' && (currentUser.account_type === 'agency_admin' || (currentUser.role === 'admin' && currentUser.agency_name))) {
     if (!currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
     }
@@ -735,7 +738,10 @@ async function cancelInvitation(base44, currentUser, params, isAdmin) {
   }
 
   // Agency admins may only cancel invites for their own agency.
-  if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
+  if (currentUser.account_type === 'agency_admin' && !String(currentUser.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  if (currentUser.account_type !== 'super_admin' && (currentUser.account_type === 'agency_admin' || (currentUser.role === 'admin' && currentUser.agency_name))) {
     if (!currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
     }

@@ -376,10 +376,14 @@ Deno.serve(async (req) => {
             .filter({ agency_name: agency }, '-updated_date', 10)
             .catch(() => []);
         }
-        if (!configs?.length && !agency) {
+        if (!configs?.length) {
+          // Adopt a single unscoped legacy row (pre-agency_name deployments)
+          // so nurses with an agency don't silently compute 0 points.
           const newest = await base44.asServiceRole.entities.VisitPointConfig
             .list('-updated_date', 5).catch(() => []);
-          if ((newest || []).length <= 1) configs = newest || [];
+          const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+          if (legacy.length === 1) configs = legacy;
+          else if (!agency && (newest || []).length <= 1) configs = newest || [];
         }
         const cfg = (configs || []).find((c) => c && c.active !== false) || (configs || [])[0] || {};
         computedPoints = computeVisitPoints(visit_counts, cfg);

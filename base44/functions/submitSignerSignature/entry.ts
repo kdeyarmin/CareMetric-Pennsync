@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     }
     const memberIds = Array.isArray(pkg.document_signatures) ? pkg.document_signatures : [];
     const snapshot = Array.isArray(tokenRecord.document_ids) ? tokenRecord.document_ids : null;
-    const allowedIds = snapshot && snapshot.length > 0
+    const allowedIds = snapshot
       ? memberIds.filter((id) => snapshot.includes(id))
       : memberIds;
     if (!allowedIds.includes(document_id)) {

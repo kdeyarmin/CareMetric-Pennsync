@@ -302,7 +302,15 @@ Deno.serve(async (req) => {
     const { apiKey, faxConnectionId } = telnyxCreds;
     // Resolve the shared office fax number server-side (AgencySettings, else env),
     // identical to sendFax — never trust a caller-supplied from_number.
-    const agencySettings = (await resolveAgencySettings(base44, user?.agency_name)) || {};
+    // Resolve fax settings from the attributed sender (session user, or
+    // ScheduledFax creator via body.sent_by for internal cron invokes).
+    let senderAgency = user?.agency_name || '';
+    if (!senderAgency && senderEmail && senderEmail !== 'scheduler@system') {
+      const [sender] = await base44.asServiceRole.entities.User
+        .filter({ email: senderEmail }, undefined, 1).catch(() => []);
+      senderAgency = sender?.agency_name || '';
+    }
+    const agencySettings = (await resolveAgencySettings(base44, senderAgency)) || {};
     // Transmit from the single blind outbound line; present the office fax
     // machine's number (display name + cover sheet) so replies go straight to
     // the office. Legacy fallback: office number as the technical from.

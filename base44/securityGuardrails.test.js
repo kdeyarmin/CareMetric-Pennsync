@@ -345,6 +345,13 @@ test('signer tokens snapshot document_ids at mint and intersect on validate/subm
     /tokenRecord\.document_ids/.test(validate) && /snapshot/.test(validate),
     'validateSignerToken must intersect live membership with the mint-time document_ids snapshot.',
   );
+  // Empty arrays are valid snapshots (package had no docs at mint). Treating
+  // `snapshot.length > 0` as "no snapshot" would expand PHI if docs are added later.
+  assert.ok(
+    !/snapshot\s*&&\s*snapshot\.length\s*>\s*0/.test(validate)
+    && !/snapshot\s*&&\s*snapshot\.length\s*>\s*0/.test(submit),
+    'Empty document_ids snapshots must still intersect (do not fall back to live membership).',
+  );
   assert.ok(
     /tokenRecord\.document_ids/.test(submit) && /allowedIds/.test(submit),
     'submitSignerSignature must require document_id ∈ snapshot ∩ live package membership.',

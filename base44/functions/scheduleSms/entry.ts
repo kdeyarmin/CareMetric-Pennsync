@@ -91,10 +91,33 @@ Deno.serve(async (req) => {
       }, { status: 403 });
     }
 
-    // Prefer phone→patient resolution. If the client supplied a patient_id,
-    // verify it matches the destination (or that the caller can access that
-    // chart) so scheduled SMS history cannot be linked to the wrong patient.
+    // Prefer phone→patient resolution. Authorize EVERY resolved row (including
+    // phone matches) so a foreign chart with the same number cannot be linked.
     let resolvedPatientId = null;
+    const canAccessPatient = async (claimed) => {
+      if (!claimed) return false;
+      const isSuperAdmin = user.account_type === 'super_admin';
+      const isAgencyScopedAdmin =
+        user.account_type === 'agency_admin'
+        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+      const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+      const isAssigned = Array.isArray(claimed.assigned_nurses)
+        && claimed.assigned_nurses.includes(user.email);
+      if (isPlatformAdmin || claimed.created_by === user.email || isAssigned) return true;
+      if (!isAgencyScopedAdmin) return false;
+      if (!user.agency_name) return false;
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      return (claimed.created_by && agencyEmails.has(claimed.created_by))
+        || (Array.isArray(claimed.assigned_nurses)
+          && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
+    };
+
     if (destination) {
       const d = destination.replace(/[^\d]/g, '').slice(-10);
       if (d.length === 10) {
@@ -102,8 +125,14 @@ Deno.serve(async (req) => {
         const variants = [destination, `+1${d}`, `1${d}`, d, `(${a}) ${b}-${c}`, `${a}-${b}-${c}`];
         for (const variant of variants) {
           const matches = await base44.asServiceRole.entities.Patient
-            .filter({ phone: variant }, undefined, 1).catch(() => []);
-          if (matches?.[0]?.id) { resolvedPatientId = matches[0].id; break; }
+            .filter({ phone: variant }, undefined, 10).catch(() => []);
+          for (const match of matches || []) {
+            if (match?.id && await canAccessPatient(match)) {
+              resolvedPatientId = match.id;
+              break;
+            }
+          }
+          if (resolvedPatientId) break;
         }
       }
     }
@@ -120,38 +149,15 @@ Deno.serve(async (req) => {
         if (!claimed) {
           return Response.json({ error: 'Patient not found' }, { status: 404 });
         }
-        const isSuperAdmin = user.account_type === 'super_admin';
-        const isAgencyScopedAdmin =
-          user.account_type === 'agency_admin'
-          || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-        const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-        const isAssigned = Array.isArray(claimed.assigned_nurses)
-          && claimed.assigned_nurses.includes(user.email);
-        if (!isPlatformAdmin && !isAgencyScopedAdmin && claimed.created_by !== user.email && !isAssigned) {
+        if (!(await canAccessPatient(claimed))) {
           return Response.json({ error: 'Forbidden' }, { status: 403 });
-        }
-        if (isAgencyScopedAdmin) {
-          if (!user.agency_name) {
-            return Response.json({ error: 'Forbidden' }, { status: 403 });
-          }
-          const agencyUsers = await base44.asServiceRole.entities.User
-            .list('-created_date', 5000).catch(() => []);
-          const agencyEmails = new Set(
-            (agencyUsers || [])
-              .filter((u) => u.agency_name === user.agency_name && u.email)
-              .map((u) => u.email),
-          );
-          const inAgency = (claimed.created_by && agencyEmails.has(claimed.created_by))
-            || (Array.isArray(claimed.assigned_nurses)
-              && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
-          if (!inAgency) {
-            return Response.json({ error: 'Forbidden' }, { status: 403 });
-          }
         }
         resolvedPatientId = patient_id;
       } else {
         resolvedPatientId = patient_id;
       }
+    } else if (resolvedPatientId) {
+      // Phone match already authorized above.
     }
 
     const row = await base44.entities.ScheduledSms.create({

@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
     // without a snapshot keep live membership only.
     const liveIds = Array.isArray(pkg.document_signatures) ? pkg.document_signatures : [];
     const snapshot = Array.isArray(tokenRecord.document_ids) ? tokenRecord.document_ids : null;
-    const signatureIds = snapshot && snapshot.length > 0
+    const signatureIds = snapshot
       ? liveIds.filter((id) => snapshot.includes(id))
       : liveIds;
     const signatures = await Promise.all(

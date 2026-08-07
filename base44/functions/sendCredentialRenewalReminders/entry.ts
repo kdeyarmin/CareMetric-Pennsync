@@ -262,13 +262,21 @@ Deno.serve(async (req) => {
 
       // Anything expiring within 90 days (or already expired) goes into the admin digest.
       if (daysUntilExpiry <= 90) {
+        let itemAgency = cred.agency_name || null;
+        // Attribute legacy unscoped credentials via the owning User so they
+        // land in the correct agency digest instead of fanning out to all.
+        if (!itemAgency && cred.user_id) {
+          const owners = await base44.asServiceRole.entities.User
+            .filter({ email: cred.user_id }, undefined, 1).catch(() => []);
+          itemAgency = owners?.[0]?.agency_name || null;
+        }
         adminDigestItems.push({
           user_name: cred.user_name || cred.user_id,
           title: cred.title,
           item_type: cred.item_type,
           expiration_date: cred.expiration_date,
           daysUntilExpiry,
-          agency_name: cred.agency_name || null,
+          agency_name: itemAgency,
         });
       }
 
@@ -456,8 +464,10 @@ Deno.serve(async (req) => {
               || (!i.agency_name && claimedUnscoped)
             );
           } else if (admin.agency_name && claimedAgencyKeys.has(admin.agency_name)) {
+            // Agency admins only receive items attributed to their agency —
+            // never unscoped/legacy rows (those go to super_admin only).
             scoped = adminDigestItems.filter((i) =>
-              !i.agency_name || i.agency_name === admin.agency_name
+              i.agency_name === admin.agency_name
             );
           } else {
             continue;

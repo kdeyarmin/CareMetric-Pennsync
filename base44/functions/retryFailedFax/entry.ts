@@ -266,7 +266,7 @@ Deno.serve(async (req) => {
     // Resolve the from-number the same way sendFax does: transmit from the
     // blind outbound line (outbound_fax_number_e164), presented as the office
     // fax machine; legacy fallback to office_fax_number_e164 as the from.
-    const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+    const agencySettings = await resolveAgencySettings(base44, senderAgency);
     const officeFaxRaw = (agencySettings?.office_fax_number_e164 || '').toString().trim();
     const outboundFaxRaw = (agencySettings?.outbound_fax_number_e164 || '').toString().trim();
     const officeFax = normalizeFromE164(officeFaxRaw);

@@ -70,24 +70,46 @@ Deno.serve(async (req) => {
       user.account_type !== 'super_admin' && !!agency
       && (user.account_type === 'agency_admin' || user.role === 'admin');
 
-    let users = await base44.asServiceRole.entities.User.list('-created_date', 500).catch(() => []);
-    if (isAgencyScoped) {
-      users = (users || []).filter((u) => u?.agency_name === agency);
+    let users;
+    let patients;
+    let activities;
+    try {
+      if (isAgencyScoped) {
+        users = await base44.asServiceRole.entities.User
+          .filter({ agency_name: agency }, '-created_date', 2000);
+        if (!Array.isArray(users)) throw new Error('User cohort read failed');
+        const staffEmails = new Set((users || []).map((u) => u?.email).filter(Boolean));
+        // Patient has no agency_name field — load a wide window then filter by staff.
+        const patientPool = await base44.asServiceRole.entities.Patient
+          .list('-created_date', 5000);
+        if (!Array.isArray(patientPool)) throw new Error('Patient cohort read failed');
+        patients = patientPool.filter((p) =>
+          (p?.created_by && staffEmails.has(p.created_by))
+          || (Array.isArray(p?.assigned_nurses) && p.assigned_nurses.some((e) => staffEmails.has(e))),
+        );
+        const activityPool = await base44.asServiceRole.entities.UserActivity
+          .list('-created_date', 5000);
+        if (!Array.isArray(activityPool)) throw new Error('Activity cohort read failed');
+        activities = activityPool.filter((a) => staffEmails.has(a?.user_email));
+      } else {
+        users = await base44.asServiceRole.entities.User.list('-created_date', 2000);
+        patients = await base44.asServiceRole.entities.Patient.list('-created_date', 2000);
+        activities = await base44.asServiceRole.entities.UserActivity.list('-created_date', 2000);
+        if (!Array.isArray(users) || !Array.isArray(patients) || !Array.isArray(activities)) {
+          throw new Error('Required audit cohort read failed');
+        }
+      }
+    } catch (readErr) {
+      console.error('runSecurityAudit cohort read failed:', readErr?.message || readErr);
+      return Response.json({
+        error: 'Security audit could not load the inspected cohort. Retry later.',
+      }, { status: 503 });
     }
-    const staffEmails = new Set((users || []).map((u) => u?.email).filter(Boolean));
 
-    let patients = await base44.asServiceRole.entities.Patient.list('-created_date', 500).catch(() => []);
-    if (isAgencyScoped) {
-      patients = (patients || []).filter((p) =>
-        (p?.created_by && staffEmails.has(p.created_by))
-        || (Array.isArray(p?.assigned_nurses) && p.assigned_nurses.some((e) => staffEmails.has(e))),
-      );
-    }
-
-    let activities = await base44.asServiceRole.entities.UserActivity
-      .list('-created_date', 1000).catch(() => []);
-    if (isAgencyScoped) {
-      activities = (activities || []).filter((a) => staffEmails.has(a?.user_email));
+    if ((users || []).length === 0 && (patients || []).length === 0) {
+      return Response.json({
+        error: 'Security audit found an empty cohort — refusing to record a misleading score.',
+      }, { status: 422 });
     }
 
     const findings = [];

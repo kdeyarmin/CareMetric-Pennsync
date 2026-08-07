@@ -445,7 +445,7 @@ Deno.serve(async (req) => {
         skippedCount++;
         continue;
       }
-      if (isFaxRetryDue(fax, now.getTime(), cfg)) dueFaxes.push(fax);
+      if (isFaxRetryDue(fax, now.getTime(), cfg)) dueFaxes.push({ fax, cfg, c });
       else skippedCount++;
     }
     if (dueFaxes.length === 0) {
@@ -505,7 +505,7 @@ Deno.serve(async (req) => {
       return resolved;
     };
 
-    for (const fax of dueFaxes) {
+    for (const { fax, cfg, c } of dueFaxes) {
       // SSRF guard: re-validate the STORED document URL before handing it back
       // to Telnyx as media_url — a tampered or legacy row must not aim the fax
       // provider at an arbitrary/internal host. Clearing next_retry_at stops

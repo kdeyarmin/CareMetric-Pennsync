@@ -239,8 +239,12 @@ Deno.serve(async (req) => {
         }
       }
       if (!rows?.length) {
-        // Multi-tenant miss: default SoR off (safe companion-EMR mode). Only
-        // fall back to newest-row when a single settings row exists.
+        // Keyed agency miss: never adopt another tenant's sole SoR row.
+        // Legacy single-row fallback only when no agency can be determined.
+        if (agencyName) {
+          sorCache.set(key, false);
+          return false;
+        }
         const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
         if ((newest || []).length > 1) {
           sorCache.set(key, false);
@@ -406,12 +410,15 @@ Deno.serve(async (req) => {
     // Discharged-patient sweep: the main loop only iterates ACTIVE patients, so
     // separately catch recently-discharged patients whose episode closed without
     // a completed Discharge OASIS (the highest-value, critical-severity case).
-    // Same absence-based rule as RISK 6, so same companion-mode gate.
-    if (pennsyncIsSystemOfRecord) {
+    // Same absence-based rule as RISK 6 — resolve SoR per patient (never reuse
+    // a loop-local flag from the active sweep).
+    {
       const dischargedPatients = await base44.asServiceRole.entities.Patient.filter(
         { status: 'discharged' }, '-updated_date', 2000,
       );
       for (const patient of dischargedPatients) {
+        const dischargedIsSoR = await agencyIsSystemOfRecord(patientAgencyName(patient));
+        if (!dischargedIsSoR) continue;
         const [visits, oasisAssessments] = await Promise.all([
           base44.asServiceRole.entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
           base44.asServiceRole.entities.OASISAssessment.filter({ patient_id: patient.id }, '-assessment_date', 20),
@@ -425,7 +432,8 @@ Deno.serve(async (req) => {
       success: true,
       alerts_generated: alerts.length,
       patients_monitored: patients.length,
-      absence_based_rules_enabled: pennsyncIsSystemOfRecord,
+      // Per-patient SoR; response reports whether any agency still uses companion mode.
+      absence_based_rules_per_agency: true,
       timestamp: currentDate.toISOString()
     });
     

@@ -79,17 +79,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'No responses matched the requested items.' }, { status: 400 });
     }
 
-    // Claim BEFORE the Referral merge. Without this, two concurrent submits both
-    // pass the submitted_at check and last-write-wins on follow_up_requests.
+    // Claim BEFORE the Referral merge (non-terminal). Terminal fields
+    // (submitted_at / delivered / inactive) are stamped only AFTER the merge
+    // succeeds — otherwise a failed Referral write permanently loses the response.
     const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `followup-submit-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     try {
       await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, {
         submit_claimed_by: claimToken,
-        is_active: false,
-        status: 'delivered',
-        submitted_at: now,
       });
     } catch {
       return Response.json({ error: 'This request was already submitted.' }, { status: 409 });
@@ -99,15 +97,33 @@ Deno.serve(async (req) => {
     if (!claimCheck[0] || claimCheck[0].submit_claimed_by !== claimToken) {
       return Response.json({ error: 'This request was already submitted.' }, { status: 409 });
     }
+    if (claimCheck[0].submitted_at) {
+      return Response.json({ error: 'This request was already submitted.' }, { status: 409 });
+    }
 
-    await base44.asServiceRole.entities.Referral.update(referral.id, {
-      follow_up_requests: {
-        ...followUp,
-        items,
-        status: 'received',
-        received_at: now,
-      },
-    });
+    try {
+      await base44.asServiceRole.entities.Referral.update(referral.id, {
+        follow_up_requests: {
+          ...followUp,
+          items,
+          status: 'received',
+          received_at: now,
+        },
+      });
+    } catch (mergeErr) {
+      // Release the claim so the provider can retry.
+      await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, {
+        submit_claimed_by: null,
+      }).catch(() => {});
+      console.error('submitFollowUpResponse Referral merge failed:', mergeErr?.message || mergeErr);
+      return Response.json({ error: 'Unable to save responses. Please try again.' }, { status: 500 });
+    }
+
+    await base44.asServiceRole.entities.ProviderFollowUpToken.update(record.id, {
+      is_active: false,
+      status: 'delivered',
+      submitted_at: now,
+    }).catch(() => {});
 
     // Tell the requesting staff member the provider responded.
     if (referral.created_by) {
