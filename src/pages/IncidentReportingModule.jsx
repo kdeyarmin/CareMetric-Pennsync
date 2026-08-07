@@ -129,6 +129,7 @@ export default function IncidentReportingModule() {
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const createIncidentMutation = useMutation({

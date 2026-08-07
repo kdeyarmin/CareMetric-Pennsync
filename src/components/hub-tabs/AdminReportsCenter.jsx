@@ -41,6 +41,7 @@ export default function AdminReportsCenterPage() {
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
     initialData: [],
+    enabled: !!currentUser,
   });
   const { data: visits = [] } = useQuery({
     queryKey: ["reports-visits"],

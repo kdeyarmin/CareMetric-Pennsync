@@ -101,9 +101,8 @@ export default function LearningPlanManager() {
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
-    enabled: !!currentUser,
     initialData: [],
-    enabled: showAssignDialog,
+    enabled: showAssignDialog && !!currentUser,
   });
 
   const courseMap = useMemo(

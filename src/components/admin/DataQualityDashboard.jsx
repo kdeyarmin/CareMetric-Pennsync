@@ -24,6 +24,7 @@ export default function DataQualityDashboard() {
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const { data: users = [] } = useQuery({

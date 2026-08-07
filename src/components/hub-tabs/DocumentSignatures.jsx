@@ -57,7 +57,8 @@ export default function DocumentSignatures() {
       const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
-    initialData: []
+    initialData: [],
+    enabled: !!currentUser,
   });
 
   const handleSignDocument = (sig) => {

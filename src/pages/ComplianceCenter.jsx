@@ -119,6 +119,7 @@ export default function ComplianceCenter() {
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const { data: allUsers = [], refetch: _refetchUsers } = useQuery({

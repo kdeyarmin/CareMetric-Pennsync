@@ -41,6 +41,7 @@ export default function OASISReview() {
       const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
+    enabled: !!currentUser,
   });
 
   // Fetch all OASIS uploads with AI suggestions

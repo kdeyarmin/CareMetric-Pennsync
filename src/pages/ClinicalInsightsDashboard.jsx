@@ -24,6 +24,7 @@ export default function ClinicalInsightsDashboard() {
       return allPatients.filter(p => p.status === "active");
     },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const { data: visits = [] } = useQuery({

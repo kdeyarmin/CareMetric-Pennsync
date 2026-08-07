@@ -74,7 +74,7 @@ export default function AgencyAnalytics() {
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
     initialData: [],
-    enabled: isAdmin,
+    enabled: (isAdmin) && !!currentUser,
   });
 
   const { data: incidents = [] } = useQuery({

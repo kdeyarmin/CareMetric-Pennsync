@@ -185,11 +185,21 @@ export default function DuplicateScanner() {
   });
   const queryClient = useQueryClient();
 
-  // Fetch all patients for advanced scanning
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  // Fetch all patients for advanced scanning (agency-scoped for facility admins)
   const { data: allPatients = [] } = useQuery({
-    queryKey: ['all-patients-scan'],
-    queryFn: () => base44.entities.Patient.list('-created_date', 10000),
-    enabled: scanMode === 'advanced'
+    queryKey: ['all-patients-scan', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-created_date', 10000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
+    enabled: scanMode === 'advanced' && !!currentUser,
   });
 
   const scanAndRemoveDuplicates = async () => {

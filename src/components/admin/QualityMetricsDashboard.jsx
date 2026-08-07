@@ -84,6 +84,7 @@ export default function QualityMetricsDashboard() {
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const { data: allIncidents } = useQuery({

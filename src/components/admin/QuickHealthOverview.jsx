@@ -23,6 +23,7 @@ export default function QuickHealthOverview() {
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const { data: users = [] } = useQuery({

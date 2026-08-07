@@ -71,10 +71,14 @@ export default function AdminTraining() {
   }, [hasAccess, navigate, userLoading]);
 
   const { data: users = [] } = useQuery({
-    queryKey: ["skill-gap-users"],
-    queryFn: () => base44.entities.User.list('-created_date', 500),
+    queryKey: ["skill-gap-users", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 500);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     initialData: [],
-    enabled: hasAccess,
+    enabled: hasAccess && !!currentUser,
   });
 
   const { data: assignments = [] } = useQuery({

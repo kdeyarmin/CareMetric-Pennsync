@@ -96,7 +96,7 @@ export default function PatientDataManagement() {
       }
     },
     initialData: [],
-    enabled: isAdmin,
+    enabled: (isAdmin) && !!currentUser,
   });
 
   const { data: allVisits = [] } = useQuery({

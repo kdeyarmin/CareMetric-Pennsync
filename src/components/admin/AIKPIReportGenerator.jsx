@@ -51,6 +51,7 @@ export default function AIKPIReportGenerator() {
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const { data: complianceAudits = [] } = useQuery({

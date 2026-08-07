@@ -92,6 +92,7 @@ export default function RealTimeComplianceDashboard() {
       const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
       return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
     },
+    enabled: !!currentUser,
   });
 
   // Calculate date filter

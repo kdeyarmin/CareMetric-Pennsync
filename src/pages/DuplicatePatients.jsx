@@ -53,6 +53,7 @@ export default function DuplicatePatients() {
     // fixes deployed), which looked like "the fix didn't work" when it actually had.
     staleTime: 0,
     refetchOnMount: 'always',
+    enabled: !!currentUser,
   });
 
   const { data: allVisits = [], isLoading: visitsLoading } = useQuery({
