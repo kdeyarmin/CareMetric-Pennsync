@@ -47,3 +47,20 @@ else: side effects (send email / award badges / …)
 
 Do **not** add decorative `row_version` fields that are never checked by the
 platform API — that fakes CAS and misleads reviewers.
+
+### In-repo claim fields (Visit / fax / reminders)
+
+| Flow | Claim field | Notes |
+|---|---|---|
+| `processCompletedVisit` | `Visit.ai_process_claimed_by` | Claim before LLM; skip if lost |
+| `analyzeVisitForSupplyUsage` | `Visit.supply_usage_claimed_by` | Claim before LLM + stock writes |
+| `extractClinicalEvents` | `Visit.events_extract_claimed_by` (+ `events_extracted_at`) | Claim before LLM; skip if events already exist; re-check before stamp |
+| `generateFollowUpTasks` | `Visit.followup_tasks_claimed_by` | Claim before LLM; skip if ai_generated tasks exist |
+| `predictPatientRisks` / `predictiveRiskAnalysis` | `Patient.risk_predict_claimed_by` | Claim before LLM + PatientAlert creates |
+| `generateCarePlansFromReferral` | `Patient.care_plans_gen_claimed_by` | Claim before LLM; skip if active CarePlans exist |
+| `monitorClinicalDataForCarePlanUpdates` | `Patient.care_plan_monitor_claimed_by` | Per-patient claim before LLM + proposal/alert creates |
+| `monitorComplianceRisks` | `Patient.compliance_monitor_claimed_by` | Claim before PatientAlert batch create |
+| `processInboundFaxes` | `IncomingFax.claimed_by` | Claim pending→processing; **re-check after OCR** before attach/write |
+| `retryFailedFax` / `autoRetryFailedFaxes` | `FaxLog.retry_claimed_by` | Claim + pre-send re-check |
+
+True atomic CAS still requires the platform APIs listed above.

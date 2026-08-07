@@ -41,8 +41,11 @@ export default function PhoneCenter() {
   // calls/texts already route to the office — mirror DutyStatusCard so the two
   // views agree.
   const { data: agencySettings = null } = useQuery({
-    queryKey: ["agencySettings"],
-    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
+    queryKey: ["agencySettings", user?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(user?.agency_name);
+    },
   });
 
   const offNow = isOffDutyNow(user, new Date(), agencySettings);

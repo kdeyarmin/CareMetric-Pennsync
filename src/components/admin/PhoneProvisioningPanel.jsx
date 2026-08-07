@@ -75,15 +75,22 @@ export default function PhoneProvisioningPanel() {
 
   const { data: users = [] } = useQuery({
     queryKey: ["phone-users"],
-    queryFn: () => base44.entities.User.list("full_name", 200),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list("full_name", 200);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     enabled: isAdmin,
     initialData: [],
   });
 
   const { data: settings = null } = useQuery({
-    queryKey: ["agencySettings"],
-    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
-    enabled: isAdmin,
+    queryKey: ["agencySettings", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(currentUser?.agency_name);
+    },
+    enabled: isAdmin && !!currentUser,
     // Don't refetch on window focus: it would re-run the form-init effect below
     // and overwrite the admin's unsaved edits.
     refetchOnWindowFocus: false,
@@ -126,6 +133,7 @@ export default function PhoneProvisioningPanel() {
     mutationFn: () => {
       // Coerce the monthly cap to a positive number or null ("no cap").
       const capNum = Number(agency.monthly_sms_cap);
+      const agencyKey = String(currentUser?.agency_name || "").trim();
       const payload = {
         ...agency,
         // Store the office numbers in strict E.164 — sendFax/sendBatchFax use
@@ -141,6 +149,7 @@ export default function PhoneProvisioningPanel() {
           ? normalizeE164(agency.outbound_fax_number_e164) || agency.outbound_fax_number_e164
           : "",
         monthly_sms_cap: Number.isFinite(capNum) && capNum > 0 ? capNum : null,
+        ...(agencyKey ? { agency_code: agencyKey, office_name: agencyKey } : {}),
       };
       return settings?.id
         ? base44.entities.AgencySettings.update(settings.id, payload)

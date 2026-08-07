@@ -46,7 +46,11 @@ export default function AdminTrainingAnalytics() {
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers', 5000],
-    queryFn: () => base44.entities.User.list('-created_date', 5000),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 5000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     enabled: isAdminView(currentUser)
   });
 

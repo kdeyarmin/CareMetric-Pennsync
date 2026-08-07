@@ -355,7 +355,10 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   }
 
   // Agency admins may only resend invites for their own agency.
-  if (currentUser.account_type === 'agency_admin') {
+  if (currentUser.account_type === 'agency_admin' && !String(currentUser.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  if (currentUser.account_type !== 'super_admin' && (currentUser.account_type === 'agency_admin' || (currentUser.role === 'admin' && currentUser.agency_name))) {
     if (!currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
     }
@@ -469,8 +472,11 @@ async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuper
   }
 
   // Agency admins may only reset staff in their own agency.
-  if (currentUser.account_type === 'agency_admin') {
-    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+  if (currentUser.account_type === 'agency_admin' && !currentUser.agency_name) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
+    if (targetUser.agency_name !== currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
     }
   }
@@ -548,23 +554,37 @@ async function checkExpiredInvitations(base44) {
     }
   }
 
-  // Notify admins if needed
+  // Notify admins if needed — scoped per admin agency (super_admins see all).
   if (expired.length > 0 || expiringSoon.length > 0) {
-    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
+    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+    const admins = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+      u && u.email && (
+        u.role === 'admin' ||
+        u.account_type === 'agency_admin' ||
+        u.account_type === 'super_admin'
+      )
+    );
     let emailsSent = 0;
 
     for (const admin of admins) {
+      const scopedExpired = admin.account_type === 'super_admin'
+        ? expired
+        : expired.filter((inv) => !inv.agency_name || inv.agency_name === admin.agency_name);
+      const scopedExpiring = admin.account_type === 'super_admin'
+        ? expiringSoon
+        : expiringSoon.filter((inv) => !inv.agency_name || inv.agency_name === admin.agency_name);
+      if (scopedExpired.length === 0 && scopedExpiring.length === 0) continue;
       const sections = [];
-      if (expired.length > 0) {
+      if (scopedExpired.length > 0) {
         sections.push({
-          heading: `Expired invitations (${expired.length})`,
-          bullets: expired.map(inv => `${inv.full_name} (${inv.email}) — expired ${new Date(inv.expires_at).toLocaleString()}`),
+          heading: `Expired invitations (${scopedExpired.length})`,
+          bullets: scopedExpired.map(inv => `${inv.full_name} (${inv.email}) — expired ${new Date(inv.expires_at).toLocaleString()}`),
         });
       }
-      if (expiringSoon.length > 0) {
+      if (scopedExpiring.length > 0) {
         sections.push({
-          heading: `Expiring soon — within 24 hours (${expiringSoon.length})`,
-          bullets: expiringSoon.map(inv => `${inv.full_name} (${inv.email}) — expires ${new Date(inv.expires_at).toLocaleString()}`),
+          heading: `Expiring soon — within 24 hours (${scopedExpiring.length})`,
+          bullets: scopedExpiring.map(inv => `${inv.full_name} (${inv.email}) — expires ${new Date(inv.expires_at).toLocaleString()}`),
         });
       }
       sections.push({ note: 'You can resend any of these invitations from the User Management page in PennSync.' });
@@ -573,9 +593,9 @@ async function checkExpiredInvitations(base44) {
         await base44.asServiceRole.integrations.Core.SendEmail({
           to: admin.email,
           from_name: 'PennSync by CareMetric',
-          subject: `Invitation status: ${expired.length} expired, ${expiringSoon.length} expiring soon`,
+          subject: `Invitation status: ${scopedExpired.length} expired, ${scopedExpiring.length} expiring soon`,
           body: renderBrandedEmail({
-            preheader: `${expired.length} expired and ${expiringSoon.length} expiring-soon invitation(s) need your attention.`,
+            preheader: `${scopedExpired.length} expired and ${scopedExpiring.length} expiring-soon invitation(s) need your attention.`,
             eyebrow: 'Invitation status',
             title: `Hello ${admin.full_name},`,
             intro: 'Here is the current status of pending user invitations that need your attention.',
@@ -648,6 +668,17 @@ async function updateUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     return Response.json({ error: 'Only a super admin can modify another administrator\'s account.' }, { status: 403 });
   }
 
+  // Agency-scoped admins may only update staff in their own agency.
+  if (currentUser.account_type === 'agency_admin' && !currentUser.agency_name) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  const isAgencyScoped = currentUser.account_type !== 'super_admin'
+    && currentUser.agency_name
+    && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
+  if (isAgencyScoped && targetUser.agency_name !== currentUser.agency_name) {
+    return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
+  }
+
   // Only include fields that were actually provided so we never wipe values.
   const updates = {};
   if (typeof full_name === 'string' && full_name.trim()) updates.full_name = full_name.trim();
@@ -707,7 +738,10 @@ async function cancelInvitation(base44, currentUser, params, isAdmin) {
   }
 
   // Agency admins may only cancel invites for their own agency.
-  if (currentUser.account_type === 'agency_admin') {
+  if (currentUser.account_type === 'agency_admin' && !String(currentUser.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  if (currentUser.account_type !== 'super_admin' && (currentUser.account_type === 'agency_admin' || (currentUser.role === 'admin' && currentUser.agency_name))) {
     if (!currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
     }

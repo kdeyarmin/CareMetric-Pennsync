@@ -13,6 +13,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  * invalidations are left untouched.
  */
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // Today's date in America/New_York (matches the client's todayEastern()). Returns YYYY-MM-DD.
 function todayEastern() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -25,21 +33,21 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const sr = base44.asServiceRole.entities;
     const today = todayEastern();
 
-    // Agency-wide view for any administrator tier: the agency `admin` role, or an
-    // agency_admin/super_admin account_type. (Mirrors lib/roles.js getRoleView —
-    // kept inline since Deno functions can't import frontend modules.) Without
-    // the account_type checks a super admin who isn't yet role:'admin' would
-    // incorrectly get the nurse view.
-    const isPlatformAdmin =
-      user.role === 'admin' ||
-      user.account_type === 'super_admin';
-    const isAgencyAdmin = user.account_type === 'agency_admin';
+    // Platform-wide view only for super_admin (or legacy facility admin with no
+    // agency_name). A role:'admin' who belongs to an agency must NOT see every
+    // tenant's PHI — treat them like agency_admin.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
 
-    // Platform/facility admins: unchanged agency-wide lists.
+    // Platform/facility admins with no agency: unchanged tenant-wide lists.
     if (isPlatformAdmin) {
       const [patients, visits, incidents] = await Promise.all([
         sr.Patient.filter({ status: 'active' }, '-updated_date', 100),
@@ -49,9 +57,9 @@ Deno.serve(async (req) => {
       return Response.json({ patients, visits, incidents });
     }
 
-    // Agency admins: only patients tied to staff in their agency_name
+    // Agency-scoped admins: only patients tied to staff in their agency_name
     // (parity with bulkCreateDocumentPackages) — not every tenant's PHI.
-    if (isAgencyAdmin) {
+    if (isAgencyScopedAdmin) {
       if (!user.agency_name) {
         return Response.json({ patients: [], visits: [], incidents: [] });
       }

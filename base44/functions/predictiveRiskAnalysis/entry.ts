@@ -8,6 +8,37 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: formatAge — generated, edit base44/_shared/backendHelpers.mjs>>>
+function parseLocalDate(value) {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(value).trim());
+  if (iso) {
+    const y = Number(iso[1]);
+    const mo = Number(iso[2]) - 1;
+    const day = Number(iso[3]);
+    const d = new Date(y, mo, day);
+    if (d.getFullYear() !== y || d.getMonth() !== mo || d.getDate() !== day) return null;
+    return d;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function calculateAge(dob, now = new Date()) {
+  const birth = parseLocalDate(dob);
+  const today = parseLocalDate(now);
+  if (!birth || !today) return null;
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+function formatAge(dob, now = new Date(), fallback = 'Unknown') {
+  const age = calculateAge(dob, now);
+  return age == null ? fallback : age;
+}
+// <<<END SHARED HELPER: formatAge>>>
+
 
 // Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
 // response_json_schema, because the provider rejects deeply-nested object
@@ -26,6 +57,41 @@ function parseLLMJson(raw) {
   }
 }
 
+
+/** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
+async function assertPatientAccess(base44, user, patient) {
+  if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
+  const isSuperAdmin = user.account_type === 'super_admin';
+  const isAgencyScopedAdmin =
+    user.account_type === 'agency_admin'
+    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+  const isAssigned = Array.isArray(patient.assigned_nurses)
+    && patient.assigned_nurses.includes(user.email);
+  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (isAgencyScopedAdmin) {
+    if (!user.agency_name) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const agencyUsers = await base44.asServiceRole.entities.User
+      .list('-created_date', 5000).catch(() => []);
+    const agencyEmails = new Set(
+      (agencyUsers || [])
+        .filter((u) => u.agency_name === user.agency_name && u.email)
+        .map((u) => u.email),
+    );
+    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
+      || (Array.isArray(patient.assigned_nurses)
+        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
+    if (!inAgency) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -42,25 +108,42 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'patient_id is required' }, { status: 400 });
     }
 
-    // Fetch comprehensive patient data
-    const patient = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
-    if (!patient || patient.length === 0) {
-      return Response.json({ error: 'Patient not found' }, { status: 404 });
-    }
+    const [patientData] = await base44.asServiceRole.entities.Patient
+      .filter({ id: patient_id }, '', 1).catch(() => []);
+    const denied = await assertPatientAccess(base44, user, patientData);
+    if (denied) return denied;
 
-    const patientData = patient[0];
+    // Claim before LLM + PatientAlert.create (shared field with predictPatientRisks).
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `risk-predict-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.asServiceRole.entities.Patient.update(patient_id, {
+        risk_predict_claimed_by: claimToken,
+      });
+    } catch {
+      return Response.json({ error: 'Could not claim patient for risk analysis' }, { status: 409 });
+    }
+    const claimCheck = await base44.asServiceRole.entities.Patient
+      .filter({ id: patient_id }, '', 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].risk_predict_claimed_by !== claimToken) {
+      return Response.json({
+        success: true,
+        already_processed: true,
+        alerts_created: 0,
+        skipped: 'claimed by concurrent run',
+      });
+    }
 
     // Fetch related data
     const [visits, incidents, existingAlerts] = await Promise.all([
-      base44.entities.Visit.filter({ patient_id }, '-visit_date', 10),
-      base44.entities.Incident.filter({ patient_id }, '-incident_date', 5),
-      base44.entities.PatientAlert.filter({ patient_id, status: 'active' }, undefined, 5000)
+      base44.asServiceRole.entities.Visit.filter({ patient_id }, '-visit_date', 10),
+      base44.asServiceRole.entities.Incident.filter({ patient_id }, '-incident_date', 5),
+      base44.asServiceRole.entities.PatientAlert.filter({ patient_id, status: 'active' }, undefined, 5000)
     ]);
 
     // Calculate age
-    const age = patientData.date_of_birth 
-      ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000))
-      : null;
+    const age = calculateAge(patientData.date_of_birth);
 
     // Analyze vital sign trends
     const vitalTrends = analyzeVitalTrends(visits);
@@ -69,7 +152,7 @@ Deno.serve(async (req) => {
     const patientContext = `
 PATIENT PROFILE:
 - Name: ${patientData.first_name} ${patientData.last_name}
-- Age: ${age || 'Unknown'}
+- Age: ${age ?? 'Unknown'}
 - Primary Diagnosis: ${patientData.primary_diagnosis || 'Not specified'}
 - Secondary Diagnoses: ${patientData.secondary_diagnoses?.join(', ') || 'None'}
 - Care Type: ${patientData.care_type || 'home_health'}

@@ -232,6 +232,10 @@
       "type": "string",
       "format": "date-time",
       "description": "When the attempt was submitted"
+    },
+    "certificate_issue_claimed_by": {
+      "type": "string",
+      "description": "Claim token for issueCertificate idempotency. Set before TrainingCertificate.create so concurrent grade/issue paths cannot mint duplicate certificates for the same assignment."
     }
   },
   "required": [

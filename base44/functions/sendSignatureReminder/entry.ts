@@ -1,5 +1,23 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -130,7 +148,12 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
     const { signature_id } = await req.json();
 
     if (!signature_id) {
@@ -160,16 +183,61 @@ Deno.serve(async (req) => {
     //   - the caller who created/owns the signature request, OR
     //   - a nurse assigned to (or creator of) the patient.
     // (Mirrors the assignment model used in getScopedPatientAlerts.)
-    const role = user.role;
-    const privilegedRole = role === 'admin' || role === 'clinician' || role === 'nurse_manager';
+    // Authorize: owner of the signature request, nurse on the patient chart, or
+    // an admin-like account. Dropped the blanket clinician/nurse_manager
+    // platform privilege (any clinician could remind any document_id) and added
+    // agency_admin which was previously locked out.
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
     const ownsSignature = sig.created_by === user.email
       || sig.requested_by === user.email
       || sig.sender_email === user.email;
     const assignedToPatient = patient.created_by === user.email
       || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.includes(user.email));
 
-    if (!privilegedRole && !ownsSignature && !assignedToPatient) {
+    if (!isAdminLike && !ownsSignature && !assignedToPatient) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const isAgencyScopedAdmin = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScopedAdmin && !ownsSignature && !assignedToPatient) {
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
+        || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
+      if (!inAgency) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+
+    // Claim before email/Notification so double-clicks cannot spam the patient
+    // (mirrors sendAutomatedSignatureReminders / checkPendingSignatureRequests).
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `sig-reminder-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.asServiceRole.entities.DocumentSignature.update(sig.id, {
+        reminder_claimed_by: claimToken,
+        reminder_claimed_at: new Date().toISOString(),
+      });
+    } catch {
+      return Response.json({ error: 'Could not claim signature for reminder' }, { status: 409 });
+    }
+    const claimCheck = await base44.asServiceRole.entities.DocumentSignature
+      .filter({ id: sig.id }, undefined, 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].reminder_claimed_by !== claimToken) {
+      return Response.json({
+        success: true,
+        already_processed: true,
+        message: 'Reminder already in progress',
+        skipped: 'claimed by concurrent run',
+      });
     }
 
     // Send reminder email

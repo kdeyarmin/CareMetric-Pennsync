@@ -84,18 +84,30 @@ export default function ReferralFollowUp() {
   });
 
   const { data: rateConfig } = useQuery({
-    queryKey: ["pdgm-rate-config"],
-    queryFn: () => base44.entities.PDGMRateConfig.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
+    queryKey: ["pdgm-rate-config", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerPdgmRateConfig } = await import("@/lib/agencySettings");
+      return fetchCallerPdgmRateConfig(currentUser?.agency_name);
+    },
+    enabled: !!currentUser,
   });
 
   const { data: ruleConfig } = useQuery({
-    queryKey: ["followUpRuleConfig"],
-    queryFn: () => base44.entities.FollowUpRuleConfig.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
+    queryKey: ["followUpRuleConfig", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerFollowUpRuleConfig } = await import("@/lib/agencySettings");
+      return fetchCallerFollowUpRuleConfig(currentUser?.agency_name);
+    },
+    enabled: !!currentUser,
   });
 
   const { data: agencySettings } = useQuery({
-    queryKey: ["agencySettings"],
-    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
+    queryKey: ["agencySettings", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(currentUser?.agency_name);
+    },
+    enabled: !!currentUser,
   });
 
   const { data: physicians } = useQuery({

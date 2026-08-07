@@ -13,10 +13,21 @@ import QuickHealthOverview from "./QuickHealthOverview";
 import { getDocumentDisplayName, getNormalizedSignatureStatus, getSignatureStatusLabel } from "@/components/signature/signatureUtils";
 
 export default function AdminDashboardOverview() {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+
   // Fetch user count
   const { data: users = [] } = useQuery({
-    queryKey: ['admin-users'],
-    queryFn: () => base44.entities.User.list('-created_date', 1000),
+    queryKey: ['admin-users', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 1000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
 

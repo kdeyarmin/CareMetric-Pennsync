@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // ---- BM25 relevance ranking (algorithm mirrors src/lib/bm25.js, tested there) ----
 // BM25 weights term frequency by document length and term rarity (IDF), so a rare
 // clinical term that recurs in a short note outranks a common word in a long one —
@@ -46,6 +54,7 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const {
       query,
@@ -74,9 +83,47 @@ Deno.serve(async (req) => {
     // Authorize the patient scope. Non-admins may only search PDFs for patients
     // they are assigned to; without this, omitting patient_id returned EVERY
     // indexed PDF's extracted PHI agency-wide. Mirrors getScopedPatientAlerts.
-    const isAdmin = user.role === 'admin';
-    if (isAdmin) {
+    // Use isAdminLike + agency scope — role==='admin' alone locked out
+    // agency_admin and over-granted facility admins across tenants.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isAdmin = isPlatformAdmin || isAgencyScopedAdmin;
+
+    if (isPlatformAdmin) {
       if (patient_id) filter.patient_id = patient_id;
+    } else if (isAgencyScopedAdmin) {
+      if (!user.agency_name) return Response.json({ results: [], total: 0 });
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      if (patient_id) {
+        const [scopePatient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000);
+        const inAgency = (scopePatient?.created_by && agencyEmails.has(scopePatient.created_by))
+          || (Array.isArray(scopePatient?.assigned_nurses)
+            && scopePatient.assigned_nurses.some((e) => agencyEmails.has(e)));
+        if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
+        filter.patient_id = patient_id;
+      } else {
+        const agencyPatients = await base44.asServiceRole.entities.Patient
+          .list('-created_date', 2000).catch(() => []);
+        const allowedIds = [...new Set(
+          (agencyPatients || [])
+            .filter((p) =>
+              (p.created_by && agencyEmails.has(p.created_by))
+              || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
+            )
+            .map((p) => p.id)
+            .filter(Boolean),
+        )];
+        if (allowedIds.length === 0) return Response.json({ results: [], total: 0 });
+        filter.patient_id = { $in: allowedIds };
+      }
     } else if (patient_id) {
       const [scopePatient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000);
       // Mirror the Patient RLS: assigned nurse OR creator OR admin.

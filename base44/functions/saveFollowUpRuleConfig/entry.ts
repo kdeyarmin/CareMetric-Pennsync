@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // saveFollowUpRuleConfig — the ONLY write path for the agency's follow-up
 // review configuration (mirrors savePDGMRateConfig). The FollowUpRuleConfig
 // entity is service-role-write only, so browsers can't write it directly;
@@ -11,6 +20,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     const isAdmin = user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
     if (!user || !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
@@ -54,14 +64,45 @@ Deno.serve(async (req) => {
           }))
       : [];
 
+    const agencyName = String(user.agency_name || '').trim();
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && agencyName
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    // Only agency_admin accounts require agency_name. Bare role:admin with no
+    // agency is platform-wide and may manage the unscoped legacy config row.
+    // (The prior `isAgencyScoped && !agencyName` check was dead — isAgencyScoped
+    // already requires a truthy agencyName.)
+    if (user.account_type === 'agency_admin' && !agencyName) {
+      return Response.json({ error: 'Forbidden: agency_name is required' }, { status: 403 });
+    }
+
     const payload = {
       disabled_rules,
       severity_overrides,
       custom_items,
       updated_by_email: user.email,
+      ...(agencyName ? { agency_name: agencyName } : {}),
     };
 
-    const existing = await base44.asServiceRole.entities.FollowUpRuleConfig.list('-created_date', 1).catch(() => []);
+    // Prefer the caller's agency row; never overwrite another tenant's newest row.
+    let existing = [];
+    if (agencyName) {
+      existing = await base44.asServiceRole.entities.FollowUpRuleConfig
+        .filter({ agency_name: agencyName }, '-created_date', 1).catch(() => []);
+    }
+    if (!existing?.length && !isAgencyScoped) {
+      // Only touch a legacy unscoped row when it is unambiguously the only
+      // candidate — never clobber another tenant's newest row.
+      const newest = await base44.asServiceRole.entities.FollowUpRuleConfig
+        .list('-created_date', 5).catch(() => []);
+      const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+      if (legacy.length === 1) existing = legacy;
+      else if ((newest || []).length === 1 && !String(newest[0]?.agency_name || '').trim()) {
+        existing = newest;
+      } else {
+        existing = [];
+      }
+    }
     const current = existing && existing[0];
     const saved = current
       ? await base44.asServiceRole.entities.FollowUpRuleConfig.update(current.id, payload)

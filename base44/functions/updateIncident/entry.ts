@@ -25,6 +25,24 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * the two copies in agreement.
  */
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 const INCIDENT_STATUS_TO_LIFECYCLE = {
   reported: 'submitted',
   under_review: 'in_review',
@@ -92,6 +110,11 @@ Deno.serve(async (req) => {
     const currentUser = await base44.auth.me();
     if (!currentUser) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(currentUser);
+      if (_agencyAdminGate) return _agencyAdminGate;
     }
     if (currentUser.is_active === false) {
       return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
@@ -171,7 +194,12 @@ async function patchIncident(base44, currentUser, incident, body, isAdmin) {
 }
 
 async function assertAgencyIncidentAccess(base44, currentUser, incident) {
-  if (currentUser.account_type !== 'agency_admin') return null;
+  // Agency-scope facility admins too (parity with getDashboardData): only
+  // super_admin / admin-without-agency stay platform-wide.
+  const isAgencyScoped = currentUser.account_type !== 'super_admin'
+    && currentUser.agency_name
+    && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
+  if (!isAgencyScoped) return null;
   if (!currentUser.agency_name) {
     return Response.json({ error: 'Forbidden: incident is outside your agency.' }, { status: 403 });
   }
@@ -329,12 +357,10 @@ async function reassignIncidentPatient(base44, currentUser, incident, body, isAd
     return Response.json({ error: 'patient_id is required' }, { status: 400 });
   }
 
-  // Destination patient must also be in-agency for agency admins.
-  if (currentUser.account_type === 'agency_admin') {
-    const probe = { patient_id: patientId, created_by: incident.created_by };
-    const destDenied = await assertAgencyIncidentAccess(base44, currentUser, probe);
-    if (destDenied) return destDenied;
-  }
+  // Destination patient must also be in-agency for agency-scoped admins.
+  const probe = { patient_id: patientId, created_by: incident.created_by };
+  const destDenied = await assertAgencyIncidentAccess(base44, currentUser, probe);
+  if (destDenied) return destDenied;
 
   await base44.asServiceRole.entities.Incident.update(incident.id, { patient_id: patientId });
 

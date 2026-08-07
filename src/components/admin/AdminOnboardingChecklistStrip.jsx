@@ -11,17 +11,27 @@ import { buildAdminOnboardingChecklist } from '@/components/admin/adminOnboardin
  * Self-loads lightweight counts so host pages only need to mount the strip.
  */
 export default function AdminOnboardingChecklistStrip() {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
   const { data: settings } = useQuery({
-    queryKey: ['agencySettings'],
+    queryKey: ['agencySettings', currentUser?.agency_name || null],
     queryFn: async () => {
-      const rows = await base44.entities.AgencySettings.list('-created_date', 1);
-      return rows?.[0] || null;
+      const { fetchCallerAgencySettings } = await import('@/lib/agencySettings');
+      return fetchCallerAgencySettings(currentUser?.agency_name);
     },
+    enabled: !!currentUser,
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['onboardingUserCount'],
-    queryFn: () => base44.entities.User.list('-created_date', 50),
+    queryKey: ['onboardingUserCount', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 50);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     staleTime: 120000,
   });
 

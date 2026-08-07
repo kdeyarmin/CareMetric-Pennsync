@@ -59,13 +59,19 @@ export default function TimeOff() {
 
   // Candidate approvers for the request form. User listing is admin-oriented;
   // if it's not permitted for this user we fall back gracefully to "route to admins".
+  // Agency-scoped callers only see same-agency approvers (backend enforces too).
   const { data: approvers = [] } = useQuery({
-    queryKey: ["timeoff", "approvers", currentUser?.email],
+    queryKey: ["timeoff", "approvers", currentUser?.email, currentUser?.agency_name || null],
     queryFn: async () => {
       try {
         const users = await base44.entities.User.list("full_name", 500);
-        return users
-          .filter((u) => u.email && (u.role === "admin" || u.is_manager === true))
+        const { filterUsersByCallerAgency } = await import("@/lib/agencyScope");
+        const scoped = filterUsersByCallerAgency(users, currentUser);
+        return scoped
+          .filter((u) =>
+            u.email
+            && (u.role === "admin" || u.account_type === "agency_admin" || u.is_manager === true),
+          )
           .filter((u) => u.email !== currentUser?.email)
           .map((u) => ({ email: u.email, name: u.full_name || u.email, role: u.role }));
       } catch {

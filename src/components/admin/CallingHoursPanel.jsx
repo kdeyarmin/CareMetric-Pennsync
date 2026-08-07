@@ -56,9 +56,17 @@ const parseHolidays = (text) =>
  */
 export default function CallingHoursPanel() {
   const queryClient = useQueryClient();
+  const { data: currentUser } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me(),
+  });
   const { data: settings = null } = useQuery({
-    queryKey: ["agencySettings"],
-    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
+    queryKey: ["agencySettings", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(currentUser?.agency_name);
+    },
+    enabled: !!currentUser,
     refetchOnWindowFocus: false,
   });
 
@@ -138,10 +146,12 @@ export default function CallingHoursPanel() {
       }
       // Parse the raw holidays text at save time so the saved array always
       // matches what's in the textarea, even if it never lost focus.
+      const agencyKey = String(currentUser?.agency_name || "").trim();
       const payload = {
         ...form,
         business_hours_holidays: parseHolidays(holidaysText),
         after_hours_transfer_number_e164: normalizedTransfer,
+        ...(agencyKey ? { agency_code: agencyKey, office_name: agencyKey } : {}),
       };
       return settings?.id
         ? base44.entities.AgencySettings.update(settings.id, payload)

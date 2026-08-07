@@ -53,8 +53,13 @@ export default function ComplianceMonitoringDashboard() {
 
   const { data: allUsers = [], refetch: refetchUsers } = useQuery({
     queryKey: ['allUsers', ALL_ROWS],
-    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     initialData: [],
+    enabled: !!currentUser,
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 

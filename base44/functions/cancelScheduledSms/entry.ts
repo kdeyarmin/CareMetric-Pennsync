@@ -1,5 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 /**
  * cancelScheduledSms — cancel a still-pending scheduled text. A nurse may cancel
  * their own; an admin may cancel any. Only 'pending' rows can be canceled (one
@@ -11,6 +20,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { scheduled_id } = await req.json();
     if (!scheduled_id) return Response.json({ error: 'Missing scheduled_id' }, { status: 400 });
@@ -19,8 +29,26 @@ Deno.serve(async (req) => {
     const row = rows[0];
     if (!row) return Response.json({ error: 'Scheduled message not found' }, { status: 404 });
 
-    if (row.nurse_email !== user.email && user.role !== 'admin') {
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isAdminLike = isPlatformAdmin || isAgencyScopedAdmin;
+    if (row.nurse_email !== user.email && !isAdminLike) {
       return Response.json({ error: 'You can only cancel your own scheduled messages' }, { status: 403 });
+    }
+    // Agency-scope: facility/agency admins must not cancel another tenant's SMS.
+    // Fail closed when the owner has no agency_name (orphan) — unknown tenant.
+    if (row.nurse_email !== user.email && isAgencyScopedAdmin) {
+      if (!user.agency_name) {
+        return Response.json({ error: 'Forbidden: agency_name is required' }, { status: 403 });
+      }
+      const [owner] = await base44.asServiceRole.entities.User
+        .filter({ email: row.nurse_email }, '-created_date', 1).catch(() => []);
+      if (!owner?.agency_name || owner.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: message is outside your agency' }, { status: 403 });
+      }
     }
     if (row.status !== 'pending') {
       return Response.json({ error: `This message can no longer be canceled (status: ${row.status}).` }, { status: 409 });

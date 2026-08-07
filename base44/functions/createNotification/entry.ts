@@ -1,5 +1,34 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -7,6 +36,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
   { status: 403 },
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
 
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
@@ -165,6 +204,10 @@ Deno.serve(async (req) => {
     }
     if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
 
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(currentUser);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
     const body = await req.json();
     const { user_email, title, message, type, priority = 'medium', action_url, action_label, metadata, patient_id } = body;
 
@@ -233,10 +276,13 @@ Deno.serve(async (req) => {
         }, { status: 403 });
       }
     }
-    // Agency admins (and peer-notifies from agency-scoped staff) may only target
-    // users in their own agency — otherwise createNotification is a cross-tenant
-    // spam / phishing channel via the service-role Notification create + email.
-    if (currentUser.account_type === 'agency_admin' ||
+    // Agency-scoped admins (and peer-notifies from agency-scoped staff) may only
+    // target users in their own agency — otherwise createNotification is a
+    // cross-tenant spam / phishing channel via service-role Notification + email.
+    const callerIsAgencyScoped = currentUser.account_type !== 'super_admin'
+      && currentUser.agency_name
+      && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
+    if (callerIsAgencyScoped ||
         (!callerIsAdmin && recipientEmail !== callerEmail)) {
       if (!currentUser.agency_name || !recipient ||
           recipient.agency_name !== currentUser.agency_name) {
@@ -313,8 +359,11 @@ Deno.serve(async (req) => {
       // agency's configured business timezone (Agency Settings), not an arbitrary
       // per-user IANA zone — Deno has no browser timezone for the recipient.
       // Evaluate the current HH:MM in that agency timezone (default America/New_York).
-      const agencyRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-      const tz = agencyRows[0]?.business_hours_timezone || agencyRows[0]?.duty_timezone || 'America/New_York';
+      const agencySettingsRow = await resolveAgencySettings(
+        base44,
+        recipient?.agency_name || currentUser?.agency_name,
+      );
+      const tz = agencySettingsRow?.business_hours_timezone || agencySettingsRow?.duty_timezone || 'America/New_York';
       let currentTime;
       try {
         currentTime = new Intl.DateTimeFormat('en-GB', {

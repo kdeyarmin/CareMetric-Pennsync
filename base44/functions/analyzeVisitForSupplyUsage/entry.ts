@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -8,6 +16,7 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { visitId, visitNotes, patientId } = await req.json();
 
@@ -20,11 +29,63 @@ Deno.serve(async (req) => {
 
     // Authorize against the patient (assigned nurse or admin) before writing a
     // SupplyUsageLog stamped with this patient_id and decrementing shared
-    // SupplyItem inventory. RLS-independent code check (mirrors getScopedPatientAlerts).
+    // SupplyItem inventory. Agency-scoped admins must match patient agency.
     const [supplyPatient] = await base44.asServiceRole.entities.Patient.filter({ id: patientId }, '', 1);
     if (!supplyPatient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-    if (user.role !== 'admin' && supplyPatient.created_by !== user.email && !(Array.isArray(supplyPatient.assigned_nurses) && supplyPatient.assigned_nurses.includes(user.email))) {
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isAssigned = supplyPatient.created_by === user.email
+      || (Array.isArray(supplyPatient.assigned_nurses) && supplyPatient.assigned_nurses.includes(user.email));
+    if (!isPlatformAdmin && !isAgencyScopedAdmin && !isAssigned) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (isAgencyScopedAdmin) {
+      if (!user.agency_name) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      const inAgency = (supplyPatient.created_by && agencyEmails.has(supplyPatient.created_by))
+        || (Array.isArray(supplyPatient.assigned_nurses)
+          && supplyPatient.assigned_nurses.some((e) => agencyEmails.has(e)));
+      if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // Bind visitId to the authorized patient before logging usage against it.
+    if (visitId) {
+      const [visit] = await base44.asServiceRole.entities.Visit
+        .filter({ id: visitId }, '', 1).catch(() => []);
+      if (!visit || visit.patient_id !== patientId) {
+        return Response.json({ error: 'Visit not found for this patient' }, { status: 404 });
+      }
+      // Claim before the slow LLM + inventory writes so concurrent runs cannot
+      // both see empty SupplyUsageLog and double-decrement stock.
+      const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `supply-usage-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      try {
+        await base44.asServiceRole.entities.Visit.update(visitId, {
+          supply_usage_claimed_by: claimToken,
+        });
+      } catch {
+        return Response.json({ error: 'Could not claim visit for supply analysis' }, { status: 409 });
+      }
+      const claimCheck = await base44.asServiceRole.entities.Visit
+        .filter({ id: visitId }, '', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].supply_usage_claimed_by !== claimToken) {
+        return Response.json({
+          success: true,
+          already_processed: true,
+          usageLogs: 0,
+          alertsCreated: 0,
+          alerts: [],
+          skipped: 'claimed by concurrent run',
+        });
+      }
     }
 
     // Use LLM to extract supply/medication usage from visit notes

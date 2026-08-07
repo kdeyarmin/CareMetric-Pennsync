@@ -180,6 +180,32 @@
       "type": "boolean",
       "default": false,
       "description": "True when the note was saved offline and the AI grounding (fact-check) pass was deferred until reconnect. The deterministic value-guard still ran, but live grounding had not — so the record carries this audit-trail signal until a later online re-save clears it. Surfaced as a pending-verification state in compliance reporting."
+    },
+    "ai_process_claimed_by": {
+      "type": "string",
+      "description": "Claim token for processCompletedVisit idempotency. Set before LLM work and re-read before writing the narrative so concurrent double-submits cannot both overwrite nurse_notes."
+    },
+    "ai_processed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When processCompletedVisit finished AI narrative/task generation for this visit"
+    },
+    "supply_usage_claimed_by": {
+      "type": "string",
+      "description": "Claim token for analyzeVisitForSupplyUsage idempotency. Set before LLM extraction and inventory writes so concurrent runs cannot double-decrement SupplyItem stock or create duplicate SupplyUsageLog rows."
+    },
+    "events_extract_claimed_by": {
+      "type": "string",
+      "description": "Claim token for extractClinicalEvents idempotency. Set before LLM extraction and ClinicalEvent/Task/PatientAlert writes so concurrent runs cannot create duplicate clinical events from the same visit note."
+    },
+    "events_extracted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When extractClinicalEvents finished creating ClinicalEvent rows for this visit"
+    },
+    "followup_tasks_claimed_by": {
+      "type": "string",
+      "description": "Claim token for generateFollowUpTasks idempotency. Set before LLM extraction and Task.create so concurrent runs cannot create duplicate follow-up tasks for the same visit."
     }
   },
   "required": [

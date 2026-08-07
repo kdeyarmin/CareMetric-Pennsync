@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { getNormalizedSignatureStatus, isSignatureOverdue } from "@/components/signature/signatureUtils";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { isAdminLike } from '@/lib/superAdmin';
 
 export default function DocumentSignatures() {
   const navigate = useNavigate();
@@ -50,8 +51,14 @@ export default function DocumentSignatures() {
   const { data: patients = [] } = useQuery({
     // Larger limit than Telehealth/OASIS — keep a distinct cache key.
     queryKey: ['patients-list', '-created_date', 500],
-    queryFn: () => base44.entities.Patient.list('-created_date', 500),
-    initialData: []
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-created_date', 500);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
+    initialData: [],
+    enabled: !!currentUser,
   });
 
   const handleSignDocument = (sig) => {
@@ -65,9 +72,11 @@ export default function DocumentSignatures() {
 
   const handleSendReminder = async (sig) => {
     try {
-      await base44.functions.invoke('sendSignatureReminder', {
+      const res = await base44.functions.invoke('sendSignatureReminder', {
         signature_id: sig.id
       });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
       toast.success("Reminder sent successfully!");
     } catch (error) {
       toast.error(`Failed to send reminder: ${error.message}`);
@@ -222,7 +231,7 @@ export default function DocumentSignatures() {
                         <Pen className="w-4 h-4 mr-2" />
                         Sign
                       </Button>
-                      {currentUser?.role === 'admin' && (
+                      {isAdminLike(currentUser) && (
                         <Button
                           variant="outline"
                           size="sm"

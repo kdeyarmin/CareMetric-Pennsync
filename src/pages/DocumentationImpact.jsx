@@ -83,13 +83,21 @@ export default function DocumentationImpact() {
   // (Readable by all authenticated users; write is service-role only.)
   const { data: rateConfig = null } = useQuery({
     queryKey: ["pdgm-rate-config"],
-    queryFn: () => base44.entities.PDGMRateConfig.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
+    queryFn: async () => {
+      const me = await base44.auth.me().catch(() => null);
+      const { fetchCallerPdgmRateConfig } = await import("@/lib/agencySettings");
+      return fetchCallerPdgmRateConfig(me?.agency_name);
+    },
     initialData: null,
   });
   // Agency wage index (calculatePDGM applies AgencySettings.wage_index the same way).
   const { data: agencySettings = null } = useQuery({
     queryKey: ["agencySettings"],
-    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
+    queryFn: async () => {
+      const me = await base44.auth.me().catch(() => null);
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(me?.agency_name);
+    },
   });
   const effectiveRates = useMemo(() => mergePdgmRates(rateConfig?.rates), [rateConfig]);
   const wageIndex = Number.isFinite(agencySettings?.wage_index) ? agencySettings.wage_index : 1.0;

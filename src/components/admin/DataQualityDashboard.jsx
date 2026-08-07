@@ -9,15 +9,32 @@ import { AlertTriangle, CheckCircle2, Users, FileText, ClipboardCheck } from "lu
 import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function DataQualityDashboard() {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+
   const { data: patients = [] } = useQuery({
     queryKey: ['all-patients-quality'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['all-users-quality'],
-    queryFn: () => base44.entities.User.list('-created_date', 200),
+    queryKey: ['all-users-quality', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 200);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
 

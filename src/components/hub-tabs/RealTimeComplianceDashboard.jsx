@@ -71,7 +71,12 @@ export default function RealTimeComplianceDashboard() {
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers', ALL_ROWS],
-    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
   });
 
   const { data: allVisits = [] } = useQuery({
@@ -81,7 +86,13 @@ export default function RealTimeComplianceDashboard() {
 
   const { data: allPatients = [] } = useQuery({
     queryKey: ['allPatients', '-updated_date', 2000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
+    enabled: !!currentUser,
   });
 
   // Calculate date filter

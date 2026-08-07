@@ -17,16 +17,37 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * unbounded read, not a page size: reaching it means the sweep may be
  * incomplete, which the response reports via results.sweep_truncated.
  */
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 const PATIENT_SWEEP_LIMIT = 5000;
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const currentUser = await base44.auth.me();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(currentUser);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
     if (!currentUser) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
     const isAdmin = currentUser.role === 'admin'
       || currentUser.account_type === 'agency_admin'
       || currentUser.account_type === 'super_admin';
@@ -84,9 +105,14 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
     return Response.json({ error: 'Only a super admin can offboard another administrator.' }, { status: 403 });
   }
 
-  // Agency admins may only offboard staff in their own agency.
-  if (currentUser.account_type === 'agency_admin') {
-    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+  // Agency-scoped admins (agency_admin, or role:admin with an agency) may only
+  // offboard staff in their own agency. Platform-wide: super_admin, or
+  // role:admin without agency_name.
+  const callerIsAgencyScoped = currentUser.account_type !== 'super_admin'
+    && currentUser.agency_name
+    && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
+  if (callerIsAgencyScoped) {
+    if (targetUser.agency_name !== currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
     }
   }
@@ -370,9 +396,12 @@ async function reactivateUser(base44, currentUser, params, callerIsSuperAdmin) {
     }, { status: 403 });
   }
 
-  // Agency admins may only reactivate staff in their own agency.
-  if (currentUser.account_type === 'agency_admin') {
-    if (!currentUser.agency_name || targetUser.agency_name !== currentUser.agency_name) {
+  // Agency-scoped admins may only reactivate staff in their own agency.
+  const callerIsAgencyScoped = currentUser.account_type !== 'super_admin'
+    && currentUser.agency_name
+    && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
+  if (callerIsAgencyScoped) {
+    if (targetUser.agency_name !== currentUser.agency_name) {
       return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
     }
   }

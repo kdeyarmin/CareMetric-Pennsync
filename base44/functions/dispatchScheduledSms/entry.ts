@@ -55,8 +55,26 @@ const BATCH_LIMIT = 100;
 // reminder is worse than none. Mirrors redriveFailedSms' 24h ceiling.
 const MAX_SCHEDULE_AGE_MS = 24 * 60 * 60 * 1000;
 
-async function getAgencyConfig(base44) {
-  const settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+async function getAgencyConfig(base44, agencyHint) {
+  // Prefer a settings row matching the nurse/agency when multi-tenant rows exist.
+  let settings = [];
+  if (agencyHint) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: agencyHint }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: agencyHint }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
+    if ((newest || []).length > 1) {
+      return { settings: {}, smsEnabled: false, missingAgencySettings: true };
+    }
+    settings = (newest || []).slice(0, 1);
+  }
   const s = settings[0] || {};
   return {
     settings: s,
@@ -515,6 +533,15 @@ function isAllowedDestination(e164, settings = {}) {
   return { allowed: false, reason: "international_blocked" };
 }
 // <<<END SHARED HELPER: isAllowedDestination>>>
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 function monthStartISO(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
@@ -527,6 +554,7 @@ Deno.serve(async (req) => {
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
     const telnyxCreds = await resolveTelnyxCreds(base44);
 

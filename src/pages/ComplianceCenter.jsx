@@ -112,14 +112,25 @@ export default function ComplianceCenter() {
 
   const { data: _patients = [] } = useQuery({
     queryKey: ['patients', 'updated', 2000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const { data: allUsers = [], refetch: _refetchUsers } = useQuery({
     queryKey: ['allUsers', 5000],
-    queryFn: () => base44.entities.User.list('-created_date', 5000),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 5000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     initialData: [],
+    enabled: !!currentUser,
     refetchInterval: 30000,
   });
 

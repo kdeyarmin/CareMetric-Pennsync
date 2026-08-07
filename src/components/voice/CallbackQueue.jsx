@@ -59,7 +59,15 @@ export default function CallbackQueue() {
   const queue = useMemo(() => buildCallbackQueue(calls), [calls]);
 
   const callBack = useMutation({
-    mutationFn: ({ patient_id, to_number }) => base44.functions.invoke("startMaskedCall", { patient_id: patient_id || undefined, to_number: to_number || undefined }),
+    mutationFn: async ({ patient_id, to_number }) => {
+      const res = await base44.functions.invoke("startMaskedCall", {
+        patient_id: patient_id || undefined,
+        to_number: to_number || undefined,
+      });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
     onSuccess: () => toast.success("Connecting… your phone will ring shortly, then we'll dial the patient."),
     onError: (err) => toast.error(err?.message || "Failed to start call"),
   });

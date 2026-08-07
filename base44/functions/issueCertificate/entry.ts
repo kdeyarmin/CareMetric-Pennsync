@@ -125,6 +125,35 @@ Deno.serve(async (req) => {
             });
         }
 
+        // Claim the assignment before create so concurrent grade/issue paths
+        // cannot mint duplicate certificates for the same assignment.
+        const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `cert-issue-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        try {
+            await base44.asServiceRole.entities.TrainingAssignment.update(assignment_id, {
+                certificate_issue_claimed_by: claimToken,
+            });
+        } catch {
+            return Response.json({ error: 'Could not claim assignment for certificate issue' }, { status: 409 });
+        }
+        const claimCheck = await base44.asServiceRole.entities.TrainingAssignment
+            .filter({ id: assignment_id }, undefined, 1).catch(() => []);
+        if (!claimCheck[0] || claimCheck[0].certificate_issue_claimed_by !== claimToken) {
+            const raced = await base44.asServiceRole.entities.TrainingCertificate.filter({
+                assignment_id,
+                user_id
+            }, undefined, 1).catch(() => []);
+            if (raced?.[0]) {
+                return Response.json({
+                    success: true,
+                    certificate: raced[0],
+                    message: 'Certificate already issued',
+                });
+            }
+            return Response.json({ error: 'Certificate issue already in progress' }, { status: 409 });
+        }
+
         // Generate unique certificate ID with CSPRNG bytes (not Math.random).
         const rand = crypto.getRandomValues(new Uint8Array(5));
         const suffix = Array.from(rand, (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 9).toUpperCase();

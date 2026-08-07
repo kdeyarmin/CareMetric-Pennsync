@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
 // response_json_schema, because the provider rejects deeply-nested object
 // schemas that lack an explicit `required` array at every level.
@@ -25,13 +33,28 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { nurse_email, training_module_id, session_id } = await req.json();
-    // Only admins may analyze another nurse's real-time performance metrics.
-    // Mirrors analyzeNurseDeficits; without it any user reads another nurse's
-    // RealTimePerformanceMetric + an AI critique of them.
-    if (nurse_email && nurse_email !== user.email && user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    // Only admin-like callers may analyze another nurse's real-time
+    // performance metrics, and only within their agency.
+    if (nurse_email && nurse_email !== user.email) {
+      const isAdminLike = user.role === 'admin'
+        || user.account_type === 'agency_admin'
+        || user.account_type === 'super_admin';
+      if (!isAdminLike) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
+    if (user.account_type !== 'super_admin' && user.agency_name) {
+        const [target] = await base44.asServiceRole.entities.User
+          .filter({ email: nurse_email }, '-created_date', 1).catch(() => []);
+        if (!target?.agency_name || target.agency_name !== user.agency_name) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      }
     }
     const targetEmail = nurse_email || user.email;
 

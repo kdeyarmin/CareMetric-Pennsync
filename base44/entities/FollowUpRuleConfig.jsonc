@@ -25,6 +25,10 @@
     "updated_by_email": {
       "type": "string",
       "description": "Email of the admin who last saved this configuration"
+    },
+    "agency_name": {
+      "type": "string",
+      "description": "Tenant agency this config belongs to. saveFollowUpRuleConfig filters/updates by this so multi-tenant admins cannot clobber another agency's row."
     }
   },
   "required": [],

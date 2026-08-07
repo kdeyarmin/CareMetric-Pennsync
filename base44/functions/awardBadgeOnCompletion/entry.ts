@@ -1,10 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
-
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -25,7 +35,11 @@ Deno.serve(async (req) => {
     // Fail closed: do NOT short-circuit when attemptData.user_id is falsy — a
     // legacy/imported attempt with a missing user_id must not award to whoever
     // forwards its id; treat an unknown owner as not-this-user.
-    if (user.role !== 'admin' && attemptData.user_id !== user.email) {
+    // Platform-wide admin only; facility admins with an agency must not award
+    // badges for attempts outside their care (attempt ownership still applies).
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    if (!isPlatformAdmin && attemptData.user_id !== user.email) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -171,10 +185,27 @@ Deno.serve(async (req) => {
 
     // Check for Early Completion (completed before due date) — only for a passing
     // attempt; finishing a FAILED in-service early must not earn the badge/points.
+    // Compare on local calendar days: date-only due_date parsed as UTC midnight
+    // would deny early_completion for US-evening finishes that are still early locally.
     if (passed && assignment && assignment.length > 0) {
-      const dueDate = new Date(assignment[0].due_date);
-      const completedDate = new Date(attemptData.submitted_at);
-      const daysEarly = Math.ceil((dueDate - completedDate) / (1000 * 60 * 60 * 24));
+      const dueRaw = String(assignment[0].due_date || '').trim();
+      let dueLocal = null;
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dueRaw)) {
+        const [y, m, d] = dueRaw.split('-').map(Number);
+        dueLocal = new Date(y, m - 1, d);
+      } else if (dueRaw) {
+        const parsed = new Date(dueRaw);
+        if (!Number.isNaN(parsed.getTime())) {
+          dueLocal = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+        }
+      }
+      const completedParsed = new Date(attemptData.submitted_at);
+      const completedLocal = Number.isNaN(completedParsed.getTime())
+        ? null
+        : new Date(completedParsed.getFullYear(), completedParsed.getMonth(), completedParsed.getDate());
+      const daysEarly = (dueLocal && completedLocal)
+        ? Math.round((dueLocal.getTime() - completedLocal.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
 
       if (daysEarly > 0) {
         const earlyBadge = allBadges.find(b => b.badge_type === 'early_completion');

@@ -14,17 +14,34 @@ import NoteConversionReport from "@/components/admin/NoteConversionReport";
  * reports, and documentation note-conversion analytics.
  */
 export default function AdminReportsCenterPage() {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+
   // ReportsCenter expects roster/clinical data as props (it filters them
   // directly), so fetch them here and pass arrays with safe defaults.
   const { data: users = [] } = useQuery({
-    queryKey: ["reports-users"],
-    queryFn: () => base44.entities.User.list("-created_date", 1000),
+    queryKey: ["reports-users", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list("-created_date", 1000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
   const { data: patients = [] } = useQuery({
     queryKey: ["reports-patients"],
-    queryFn: () => base44.entities.Patient.list("-created_date", 1000),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list("-created_date", 1000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
     initialData: [],
+    enabled: !!currentUser,
   });
   const { data: visits = [] } = useQuery({
     queryKey: ["reports-visits"],

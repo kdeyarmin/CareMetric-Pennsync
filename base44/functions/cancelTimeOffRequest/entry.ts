@@ -122,6 +122,25 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
+
 /**
  * cancelTimeOffRequest — withdraw a time-off request.
  *
@@ -134,6 +153,11 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { request_id } = (await req.json()) || {};
@@ -147,8 +171,26 @@ Deno.serve(async (req) => {
     }
 
     const isOwner = request.employee_email === user.email || request.created_by === user.email;
-    if (!isOwner && user.role !== 'admin') {
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    if (!isOwner && !isAdminLike) {
       return Response.json({ error: 'You can only cancel your own time-off requests.' }, { status: 403 });
+    }
+    // Agency-scoped admins may only cancel requests for staff in their agency.
+    // Require a matching agency on the employee — empty target agency is deny
+    // (previously `if (employee?.agency_name && …)` let unscoped employees through).
+    if (!isOwner) {
+      const isSuperAdmin = user.account_type === 'super_admin';
+      const isAgencyScopedAdmin = user.account_type === 'agency_admin'
+        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+      if (isAgencyScopedAdmin) {
+        const [employee] = await base44.asServiceRole.entities.User
+          .filter({ email: request.employee_email }, '-created_date', 1).catch(() => []);
+        if (!employee?.agency_name || employee.agency_name !== user.agency_name) {
+          return Response.json({ error: 'Forbidden: request is outside your agency' }, { status: 403 });
+        }
+      }
     }
 
     if (!['pending', 'approved'].includes(request.status)) {

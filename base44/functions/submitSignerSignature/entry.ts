@@ -59,7 +59,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Document package is no longer available' }, { status: 404 });
     }
     const memberIds = Array.isArray(pkg.document_signatures) ? pkg.document_signatures : [];
-    if (!memberIds.includes(document_id)) {
+    // Empty [] is a valid mint-time snapshot — do not treat it as "no snapshot".
+    const snapshot = Array.isArray(tokenRecord.document_ids) ? tokenRecord.document_ids : null;
+    const allowedIds = snapshot !== null
+      ? memberIds.filter((id) => snapshot.includes(id))
+      : memberIds;
+    if (!allowedIds.includes(document_id)) {
       return Response.json({ error: 'This document is not part of the signer\'s package' }, { status: 403 });
     }
 

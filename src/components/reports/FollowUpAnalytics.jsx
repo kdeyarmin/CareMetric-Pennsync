@@ -38,8 +38,12 @@ export default function FollowUpAnalytics() {
   });
 
   const { data: rateConfig } = useQuery({
-    queryKey: ["pdgm-rate-config"],
-    queryFn: () => base44.entities.PDGMRateConfig.list("-created_date", 1).then((rows) => rows?.[0] || null).catch(() => null),
+    queryKey: ["pdgm-rate-config", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerPdgmRateConfig } = await import("@/lib/agencySettings");
+      return fetchCallerPdgmRateConfig(currentUser?.agency_name);
+    },
+    enabled: !!currentUser,
   });
 
   const stats = useMemo(() => {

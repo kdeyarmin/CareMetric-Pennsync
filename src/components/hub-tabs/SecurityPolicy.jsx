@@ -9,6 +9,7 @@ import SecurityAnomalyDetector from "@/components/security/SecurityAnomalyDetect
 import PHIDeIdentifier from "@/components/security/PHIDeIdentifier";
 import BreachDetectionSystem from "@/components/security/BreachDetectionSystem";
 import EncryptionStatusIndicator from "@/components/security/EncryptionStatusIndicator";
+import { isAdminView } from "@/lib/roles";
 
 export default function SecurityPolicy() {
   const { data: currentUser } = useQuery({
@@ -16,7 +17,7 @@ export default function SecurityPolicy() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   return (
     <Tabs defaultValue="documentation" className="space-y-4 sm:space-y-6">

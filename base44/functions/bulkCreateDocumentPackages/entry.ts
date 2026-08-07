@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && (
   u.role === 'admin' || u.account_type === 'agency_admin' ||
@@ -11,6 +19,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     // Same admin gate as generateSignerToken/archiveSignedDocument —
     // role==='admin' alone rejected agency_admin/super_admin.
@@ -43,12 +52,15 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.DocumentTemplate.filter({ id: { $in: template_ids } }, undefined, 5000),
     ]);
 
-    // Agency admins must not package arbitrary cross-agency patients via service role.
+    // Agency-scoped admins must not package arbitrary cross-agency patients via service role.
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
     let agencyEmails = null;
-    if (user.account_type === 'agency_admin') {
-      if (!user.agency_name) {
-        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
-      }
+    const isAgencyScopedAdmin = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScopedAdmin) {
       const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
       agencyEmails = new Set(
         (agencyUsers || [])

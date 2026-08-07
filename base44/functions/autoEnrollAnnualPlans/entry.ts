@@ -37,6 +37,25 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
+
 // ───────────────────────────────────────────────────────────────────────────
 // Auto-enroll active staff into the CURRENT-YEAR annual required in-service
 // plan that matches their business line and role tier. This closes the gap
@@ -92,6 +111,11 @@ Deno.serve(async (req) => {
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(me);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
 
     const body = await req.json().catch(() => ({}));
     const scope = body.scope === 'all' ? 'all' : 'auto';
@@ -118,7 +142,7 @@ Deno.serve(async (req) => {
     const allUsers = await svc.User.list('-created_date', 5000);
     let candidates = allUsers.filter((u) => u.email && u.role !== 'admin' && u.is_approved !== false);
     // Agency admins only enroll their own agency's staff.
-    if (me?.account_type === 'agency_admin') {
+    if (me && me.account_type !== 'super_admin' && me.agency_name && (me.account_type === 'agency_admin' || me.role === 'admin')) {
       if (!me.agency_name) {
         return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
       }

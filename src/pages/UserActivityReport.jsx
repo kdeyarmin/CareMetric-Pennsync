@@ -87,7 +87,11 @@ export default function UserActivityReport() {
 
   const { data: _users = [] } = useQuery({
     queryKey: ['all-users-report'],
-    queryFn: () => base44.entities.User.list('-created_date', 500),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 500);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     enabled: isAdmin,
   });
 

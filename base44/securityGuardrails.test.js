@@ -48,6 +48,10 @@ test('ReferralAdmissionNote does not serialize referral PHI into the URL', () =>
     !/referral_data=\$\{encodeURIComponent\(JSON\.stringify/.test(src),
     'ReferralAdmissionNote must pass the prepopulation payload via sessionStorage keyed by referral id — not a URL query param.',
   );
+  assert.ok(
+    !/patient_id=\$\{referral\.patient_id\}/.test(src),
+    'ReferralAdmissionNote must not put patient_id in the iframe URL — pass it via sessionStorage with the prepopulate payload.',
+  );
 });
 
 // 3. CSV exports must neutralize spreadsheet formula injection on attacker-
@@ -117,11 +121,12 @@ test('expandClinicalPhrase re-authorizes patient-bound templates against patient
     /asServiceRole\.entities\.ClinicalLibraryTemplate\.filter/.test(src),
     'expandClinicalPhrase reads templates via service role — if that changes, revisit this guard.',
   );
-  // A user-context Patient read must gate the patient-bound branch (drops the
-  // match to undefined when the caller cannot read the patient).
+  // Explicit patient access must gate the patient-bound branch (drops the
+  // match when the caller cannot read the patient). Uses assertPatientAccess
+  // so facility admins are agency-scoped — Patient RLS alone is bare role:admin.
   assert.ok(
-    /base44\.entities\.Patient\.filter/.test(src) && /patientBound\s*=\s*undefined/.test(src),
-    'expandClinicalPhrase must drop a patient-bound template when the caller cannot read the patient (user-context Patient.filter). Without it, the service-role read + early generic-branch return leaks bound order text for arbitrary patient ids.',
+    /assertPatientAccess/.test(src) && /patientBound\s*=\s*undefined/.test(src),
+    'expandClinicalPhrase must drop a patient-bound template when the caller cannot read the patient (assertPatientAccess). Without it, the service-role read + early generic-branch return leaks bound order text for arbitrary patient ids.',
   );
 });
 
@@ -320,6 +325,126 @@ test('validateSignerToken caps its ip/user-agent access tracking', () => {
   );
 });
 
+// 13b. Signer tokens must snapshot package document membership at mint so a
+//      later add/swap of DocumentSignature ids cannot expand the PHI the
+//      public signing link can read or sign.
+test('signer tokens snapshot document_ids at mint and intersect on validate/submit', () => {
+  const mint = read('base44/functions/generateSignerToken/entry.ts');
+  const validate = read('base44/functions/validateSignerToken/entry.ts');
+  const submit = read('base44/functions/submitSignerSignature/entry.ts');
+  const entity = read('base44/entities/DocumentPackageToken.jsonc');
+  assert.ok(
+    /document_ids:\s*mintedDocumentIds/.test(mint) || /document_ids:\s*mintedDocumentIds/.test(mint.replace(/\s+/g, ' ')),
+    'generateSignerToken must persist document_ids from the package at mint time.',
+  );
+  assert.ok(
+    /document_ids/.test(mint) && /document_signatures/.test(mint),
+    'generateSignerToken must snapshot package document_signatures into document_ids.',
+  );
+  assert.ok(
+    /tokenRecord\.document_ids/.test(validate) && /snapshot/.test(validate),
+    'validateSignerToken must intersect live membership with the mint-time document_ids snapshot.',
+  );
+  // Empty arrays are valid snapshots (package had no docs at mint). Treating
+  // `snapshot.length > 0` as "no snapshot" would expand PHI if docs are added later.
+  assert.ok(
+    !/snapshot\s*&&\s*snapshot\.length\s*>\s*0/.test(validate)
+    && !/snapshot\s*&&\s*snapshot\.length\s*>\s*0/.test(submit),
+    'Empty document_ids snapshots must still intersect (do not fall back to live membership).',
+  );
+  assert.ok(
+    /snapshot\s*!==\s*null/.test(validate) && /snapshot\s*!==\s*null/.test(submit),
+    'validate/submit must distinguish absent snapshot from empty array via !== null.',
+  );
+  assert.ok(
+    /tokenRecord\.document_ids/.test(submit) && /allowedIds/.test(submit),
+    'submitSignerSignature must require document_id ∈ snapshot ∩ live package membership.',
+  );
+  assert.ok(
+    /"document_ids"/.test(entity),
+    'DocumentPackageToken must define the document_ids snapshot field.',
+  );
+});
+
+// Codex P1/P2 regression locks (PR review on deep-app-review).
+test('Codex review: SoR and FaxRetry stay in scope across loops', () => {
+  const monitor = read('base44/functions/monitorComplianceRisks/entry.ts');
+  const autoRetry = read('base44/functions/autoRetryFailedFaxes/entry.ts');
+  assert.ok(
+    /dischargedIsSoR\s*=\s*await agencyIsSystemOfRecord/.test(monitor),
+    'monitorComplianceRisks must resolve SoR per discharged patient (not reuse loop-local flag).',
+  );
+  assert.ok(
+    /if\s*\(\s*agencyName\s*\)\s*\{[\s\S]*?sorCache\.set\(\s*key\s*,\s*false\s*\)/.test(monitor),
+    'monitorComplianceRisks must fail closed on keyed AgencySettings miss.',
+  );
+  assert.ok(
+    /dueFaxes\.push\(\s*\{\s*fax\s*,\s*cfg\s*,\s*c\s*\}\s*\)/.test(autoRetry)
+    && /for\s*\(\s*const\s*\{\s*fax\s*,\s*cfg\s*,\s*c\s*\}\s*of\s*dueFaxes\s*\)/.test(autoRetry),
+    'autoRetryFailedFaxes must carry cfg/c into the dispatch loop.',
+  );
+});
+
+test('Codex review: follow-up claim before finalize; invitation fail-closed', () => {
+  const followUp = read('base44/functions/submitFollowUpResponse/entry.ts');
+  const userMgmt = read('base44/functions/userManagement/entry.ts');
+  assert.ok(
+    /submit_claimed_by:\s*claimToken/.test(followUp)
+    && /Referral\.update/.test(followUp)
+    && /submitted_at:\s*now/.test(followUp),
+    'submitFollowUpResponse must claim, merge Referral, then set terminal fields.',
+  );
+  const claimIdx = followUp.indexOf('submit_claimed_by: claimToken');
+  const mergeIdx = followUp.indexOf('Referral.update');
+  const terminalIdx = followUp.indexOf("status: 'delivered'");
+  assert.ok(
+    claimIdx >= 0 && mergeIdx > claimIdx && terminalIdx > mergeIdx,
+    'Terminal follow-up fields must be stamped after the Referral merge.',
+  );
+  assert.ok(
+    /async function resendInvitation[\s\S]*account_type === 'agency_admin' && !String\(currentUser\.agency_name/.test(userMgmt)
+    && /async function cancelInvitation[\s\S]*account_type === 'agency_admin' && !String\(currentUser\.agency_name/.test(userMgmt),
+    'resend/cancelInvitation must deny agency_admin without agency_name before scoped checks.',
+  );
+});
+
+test('Codex review: scheduleSms auth, digests, fax sender agency, audit cohort', () => {
+  const sms = read('base44/functions/scheduleSms/entry.ts');
+  const digest = read('base44/functions/sendCredentialRenewalReminders/entry.ts');
+  const batch = read('base44/functions/sendBatchFax/entry.ts');
+  const retry = read('base44/functions/retryFailedFax/entry.ts');
+  const timesheet = read('base44/functions/submitTimesheet/entry.ts');
+  const audit = read('base44/functions/runSecurityAudit/entry.ts');
+  assert.ok(
+    /canAccessPatient\(match\)/.test(sms),
+    'scheduleSms must authorize every phone-resolved patient before linking.',
+  );
+  assert.ok(
+    /i\.agency_name === admin\.agency_name/.test(digest)
+    && /never unscoped/.test(digest),
+    'Agency credential digests must exclude unscoped items.',
+  );
+  assert.ok(
+    /senderAgency/.test(batch) && /senderEmail/.test(batch),
+    'sendBatchFax must resolve AgencySettings from the attributed sender.',
+  );
+  assert.ok(
+    /senderAgency/.test(retry) && /originalFax\.sent_by/.test(retry),
+    'retryFailedFax must resolve fax settings from the original sender agency.',
+  );
+  assert.ok(
+    /legacy\.length === 1/.test(timesheet) && /VisitPointConfig/.test(timesheet),
+    'submitTimesheet must adopt a single unscoped VisitPointConfig legacy row.',
+  );
+  assert.ok(
+    /filter\(\{\s*agency_name:\s*agency/.test(audit)
+    && /filter\(\{\s*created_by:\s*email/.test(audit)
+    && /status:\s*503/.test(audit)
+    && /status:\s*422/.test(audit),
+    'runSecurityAudit must query agency cohort first and fail on incomplete/empty reads.',
+  );
+});
+
 // 14. submitDocumentSignatures must authorize with the platform's real role
 //     model (role 'admin' + account_type agency/super admin). 'clinician' and
 //     'nurse_manager' are not role values in this platform — branches keyed on
@@ -405,5 +530,40 @@ test('backend service-role console logs do not include direct identifiers', () =
     offenders,
     [],
     `Backend console logs must stay aggregate/status-only; direct emails, patient/fax/signature ids, and downstream provider ids can leak identifiers into retained logs.\n${offenders.join('\n')}`,
+  );
+});
+
+// 18. Agency-scoped gates written as `!== 'super_admin' && user.agency_name`
+//     are fail-OPEN when account_type is agency_admin and agency_name is empty
+//     (the && short-circuits and the caller is treated as platform-wide). Every
+//     such function must refuse that shape via agencyAdminMissingAgencyResponse
+//     or an equivalent inline `agency_admin && !….agency_name` check.
+test('functions with agency_name scope gates refuse agency_admin without agency_name', () => {
+  const openGate =
+    /account_type\s*!==\s*['"]super_admin['"]\s*&&\s*\w+\.agency_name/;
+  // Must be a CALL site or inline check — not merely the helper function definition.
+  const closedGate =
+    /_agencyAdminGate\s*=\s*agencyAdminMissingAgencyResponse\s*\(|return\s+agencyAdminMissingAgencyResponse\s*\(|account_type\s*===\s*['"]agency_admin['"]\s*&&\s*!\s*\w+\.agency_name|account_type\s*===\s*['"]agency_admin['"]\s*&&\s*!String\(\w+\.agency_name/;
+
+  const offenders = [];
+  for (const entry of readdirSync(join(REPO, 'base44/functions'), { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    let src;
+    try {
+      src = readFileSync(join(REPO, 'base44/functions', entry.name, 'entry.ts'), 'utf8');
+    } catch {
+      continue;
+    }
+    if (!openGate.test(src)) continue;
+    if (!closedGate.test(src)) offenders.push(entry.name);
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    'These functions scope by agency_name but do not refuse agency_admin without '
+      + 'agency_name (fail-open to platform-wide). Inline requireAgencyAdminAgency '
+      + 'or `if (user.account_type === \'agency_admin\' && !user.agency_name) return 403`:\n  '
+      + offenders.join('\n  '),
   );
 });

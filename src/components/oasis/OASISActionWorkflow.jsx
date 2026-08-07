@@ -75,7 +75,11 @@ export default function OASISActionWorkflow({
   // Fetch users for assignment
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
-    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS)
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    }
   });
 
   // Current user, for the reviewed_by audit trail

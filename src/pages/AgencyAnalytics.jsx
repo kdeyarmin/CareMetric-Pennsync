@@ -56,16 +56,25 @@ export default function AgencyAnalytics() {
   // these two didn't, capping agency stats and top-performers at 50 rows.
   const { data: users = [] } = useQuery({
     queryKey: ['all-users'],
-    queryFn: () => base44.entities.User.list('-created_date', 5000),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 5000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     initialData: [],
     enabled: isAdmin,
   });
 
   const { data: allPatients = [] } = useQuery({
     queryKey: ['all-patients'],
-    queryFn: () => base44.entities.Patient.list('-created_date', 5000),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-created_date', 5000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
     initialData: [],
-    enabled: isAdmin,
+    enabled: (isAdmin) && !!currentUser,
   });
 
   const { data: incidents = [] } = useQuery({

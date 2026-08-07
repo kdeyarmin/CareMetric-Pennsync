@@ -35,6 +35,10 @@
     "notes": {
       "type": "string",
       "description": "Admin note about this point schedule"
+    },
+    "agency_name": {
+      "type": "string",
+      "description": "Tenant agency this point schedule belongs to. saveVisitPointConfig filters/updates by this so multi-tenant admins cannot clobber another agency's timesheet points."
     }
   },
   "required": [],

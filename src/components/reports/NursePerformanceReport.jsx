@@ -10,6 +10,10 @@ import { exportToPDF } from "../utils/pdfExporter";
 import { format } from "date-fns";
 
 export default function NursePerformanceReport({ dateRange }) {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
   // Base44 caps un-limited list() at 50 rows; these per-nurse aggregates need the
   // full set or counts/averages are wrong and nurses go missing from the report.
   const { data: noteConversions = [] } = useQuery({
@@ -26,7 +30,12 @@ export default function NursePerformanceReport({ dateRange }) {
 
   const { data: users = [] } = useQuery({
     queryKey: ['allUsers', 5000],
-    queryFn: () => base44.entities.User.list('-created_date', 5000),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 5000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
 

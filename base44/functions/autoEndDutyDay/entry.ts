@@ -37,6 +37,15 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 /**
  * autoEndDutyDay — scheduled end-of-day sweep. Flips every nurse who is still
  * toggled 'on_duty' back to 'off_duty', so the next morning everyone starts off
@@ -62,6 +71,7 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, user);
     if (authError) return authError;
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     // Find everyone still toggled on and flip them off.
     const onDuty = await base44.asServiceRole.entities.User.filter({ duty_status: 'on_duty' }, '-created_date', 5000).catch(() => []);

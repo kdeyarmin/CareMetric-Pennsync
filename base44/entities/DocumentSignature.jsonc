@@ -254,6 +254,15 @@
       "type": "string",
       "description": "Best-effort claim token shared by notifyAdminOfSignedDocument and onDocumentSigned; re-read before emailing admins"
     },
+    "submit_claimed_by": {
+      "type": "string",
+      "description": "Claim token for submitDocumentSignatures idempotency. Set before rewriting signers/status so concurrent in-person collectors cannot clobber each other's signatures or double-complete."
+    },
+    "submit_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When submit_claimed_by was written"
+    },
     "audit_trail": {
       "type": "array",
       "items": {

@@ -37,6 +37,59 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
+// <<<BEGIN SHARED HELPER: resolveFaxRetryConfig — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveFaxRetryConfig(base44, agencyName) {
+  const key = String(agencyName || '').trim();
+  if (key) {
+    const rows = await base44.asServiceRole.entities.FaxRetryConfig
+      .filter({ agency_name: key }, '-created_date', 1)
+      .catch(() => []);
+    if (rows?.[0]) return rows[0];
+  }
+  const newest = await base44.asServiceRole.entities.FaxRetryConfig
+    .list('-created_date', 5)
+    .catch(() => []);
+  const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+  // Prefer a single unscoped legacy row when the agency-specific row is missing.
+  if (legacy.length === 1) return legacy[0];
+  if (key) return null;
+  if ((newest || []).length > 1) return null;
+  return newest?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveFaxRetryConfig>>>
+
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -235,6 +288,15 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 /**
  * Re-dispatches failed faxes whose config-aware backoff window (set by the
  * status webhook) has elapsed. Called every few minutes by a scheduled
@@ -340,15 +402,9 @@ Deno.serve(async (req) => {
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
     const runId = crypto.randomUUID();
-
-    const cfgRows = await base44.asServiceRole.entities.FaxRetryConfig.list('-created_date', 1).catch(() => []);
-    const cfg = cfgRows[0] || {};
-    const c = faxRetryConfig(cfg);
-    if (!c.enabled) {
-      return Response.json({ success: true, retried: 0, skipped: 0, note: 'Auto-retry disabled in FaxRetryConfig.' });
-    }
 
     // Get all faxes that are failed and have a scheduled next_retry_at
     const allFailed = await base44.asServiceRole.entities.FaxLog.filter(
@@ -361,15 +417,42 @@ Deno.serve(async (req) => {
     let retriedCount = 0;
     let skippedCount = 0;
 
+    // Per-sender agency retry policy (cached). Global newest-row would apply
+    // Agency A's disable/budget to Agency B's failed faxes.
+    const agencyCfgCache = new Map();
+    const resolveCfgForSender = async (sentBy) => {
+      let agencyName = '';
+      if (sentBy) {
+        const [sender] = await base44.asServiceRole.entities.User
+          .filter({ email: sentBy }, undefined, 1).catch(() => []);
+        agencyName = sender?.agency_name || '';
+      }
+      const cacheKey = agencyName || '__default__';
+      if (agencyCfgCache.has(cacheKey)) return agencyCfgCache.get(cacheKey);
+      const cfg = (await resolveFaxRetryConfig(base44, agencyName)) || {};
+      agencyCfgCache.set(cacheKey, cfg);
+      return cfg;
+    };
+
     // Filter to faxes that are actually due for retry before resolving
     // credentials — if nothing is due, there's no need to check Telnyx config
     // (which may legitimately be absent on agencies that don't use fax).
-    const dueFaxes = allFailed.filter(fax => isFaxRetryDue(fax, now.getTime(), cfg));
+    const dueFaxes = [];
+    for (const fax of allFailed) {
+      const cfg = await resolveCfgForSender(fax.sent_by);
+      const c = faxRetryConfig(cfg);
+      if (!c.enabled) {
+        skippedCount++;
+        continue;
+      }
+      if (isFaxRetryDue(fax, now.getTime(), cfg)) dueFaxes.push({ fax, cfg, c });
+      else skippedCount++;
+    }
     if (dueFaxes.length === 0) {
       return Response.json({
         success: true,
         retried: 0,
-        skipped: allFailed.length,
+        skipped: skippedCount || allFailed.length,
         timestamp: now.toISOString()
       });
     }
@@ -377,16 +460,6 @@ Deno.serve(async (req) => {
     const telnyxCreds = await resolveTelnyxCreds(base44);
 
     const { apiKey, faxConnectionId } = telnyxCreds;
-    // Resolve the from-number the same way sendFax does: transmit from the
-    // blind outbound line (outbound_fax_number_e164), presented as the office
-    // fax machine; legacy fallback to office_fax_number_e164 as the from.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
-    const officeFax = normalizeFromE164(officeFaxRaw);
-    const outboundFax = normalizeFromE164(outboundFaxRaw);
-    const fromNumber = outboundFax || officeFax;
-    const faxFromDisplayName = officeFaxDisplayName(officeFax);
     // Include the same DLR webhook sendFax uses so the retried fax reports status.
     // Derive the functions base from this request's own URL — every backend
     // function (including handleTelnyxStatusWebhook) is served from the same
@@ -403,20 +476,36 @@ Deno.serve(async (req) => {
     if (!apiKey || !faxConnectionId) {
       return Response.json({ error: 'Telnyx API key or fax connection ID not configured. Store them in the Telnyx secret panel.' }, { status: 500 });
     }
-    if (outboundFaxRaw && !outboundFax) {
-      return Response.json({
-        error: `Outbound fax number "${outboundFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`,
-      }, { status: 500 });
-    }
-    if (!fromNumber) {
-      return Response.json({
-        error: officeFaxRaw
-          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650444).`
-          : 'No outbound fax number configured. Set the outbound fax line (and office fax number) in Agency Settings.',
-      }, { status: 500 });
-    }
 
-    for (const fax of dueFaxes) {
+    // Per-sender agency fax lines (cached). Newest-row-wins would transmit
+    // Agency A's PHI on Agency B's outbound line in multi-tenant deployments.
+    const agencyFaxCache = new Map();
+    const resolveFaxFromForSender = async (sentBy) => {
+      let agencyName = '';
+      if (sentBy) {
+        const [sender] = await base44.asServiceRole.entities.User
+          .filter({ email: sentBy }, undefined, 1).catch(() => []);
+        agencyName = sender?.agency_name || '';
+      }
+      const cacheKey = agencyName || '__default__';
+      if (agencyFaxCache.has(cacheKey)) return agencyFaxCache.get(cacheKey);
+      const settings = await resolveAgencySettings(base44, agencyName);
+      const officeFaxRaw = (settings?.office_fax_number_e164 || '').toString().trim();
+      const outboundFaxRaw = (settings?.outbound_fax_number_e164 || '').toString().trim();
+      const officeFax = normalizeFromE164(officeFaxRaw);
+      const outboundFax = normalizeFromE164(outboundFaxRaw);
+      const resolved = {
+        fromNumber: outboundFax || officeFax,
+        faxFromDisplayName: officeFaxDisplayName(officeFax),
+        officeFaxRaw,
+        outboundFaxRaw,
+        outboundFax,
+      };
+      agencyFaxCache.set(cacheKey, resolved);
+      return resolved;
+    };
+
+    for (const { fax, cfg, c } of dueFaxes) {
       // SSRF guard: re-validate the STORED document URL before handing it back
       // to Telnyx as media_url — a tampered or legacy row must not aim the fax
       // provider at an arbitrary/internal host. Clearing next_retry_at stops
@@ -449,15 +538,36 @@ Deno.serve(async (req) => {
 
       // Attempt the retry via Telnyx
       try {
+        const faxLine = await resolveFaxFromForSender(fax.sent_by);
+        if (faxLine.outboundFaxRaw && !faxLine.outboundFax) {
+          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+            status: 'failed',
+            next_retry_at: null,
+            failure_reason: `Outbound fax number "${faxLine.outboundFaxRaw}" is not a valid phone number`,
+            retry_claimed_by: null,
+          }).catch(() => {});
+          skippedCount++;
+          continue;
+        }
+        if (!faxLine.fromNumber) {
+          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+            status: 'failed',
+            next_retry_at: null,
+            failure_reason: 'No outbound fax number configured for sender agency',
+            retry_claimed_by: null,
+          }).catch(() => {});
+          skippedCount++;
+          continue;
+        }
         const retryPayload = {
           connection_id: faxConnectionId,
-          from: fromNumber,
+          from: faxLine.fromNumber,
           to: fax.to_number,
           media_url: fax.document_url,
           quality: 'high'
         };
         // Mask the blind line: present the office fax number as the caller-id name.
-        if (faxFromDisplayName) retryPayload.from_display_name = faxFromDisplayName;
+        if (faxLine.faxFromDisplayName) retryPayload.from_display_name = faxLine.faxFromDisplayName;
         if (webhookUrl) retryPayload.webhook_url = webhookUrl;
         const telnyxResp = await fetch('https://api.telnyx.com/v2/faxes', {
           method: 'POST',

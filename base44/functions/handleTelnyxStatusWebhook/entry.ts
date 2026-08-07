@@ -74,6 +74,28 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
+// <<<BEGIN SHARED HELPER: resolveFaxRetryConfig — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveFaxRetryConfig(base44, agencyName) {
+  const key = String(agencyName || '').trim();
+  if (key) {
+    const rows = await base44.asServiceRole.entities.FaxRetryConfig
+      .filter({ agency_name: key }, '-created_date', 1)
+      .catch(() => []);
+    if (rows?.[0]) return rows[0];
+  }
+  const newest = await base44.asServiceRole.entities.FaxRetryConfig
+    .list('-created_date', 5)
+    .catch(() => []);
+  const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+  // Prefer a single unscoped legacy row when the agency-specific row is missing.
+  if (legacy.length === 1) return legacy[0];
+  if (key) return null;
+  if ((newest || []).length > 1) return null;
+  return newest?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveFaxRetryConfig>>>
+
+
 // ---- value mapping (mirrors telnyxUtils.js) ----
 function mapMessageStatus(status) {
   switch (String(status || '').toLowerCase()) {
@@ -418,9 +440,29 @@ async function sendAutoReply(apiKey, messagingProfileId, from, to, text) {
   }
 }
 
-async function getAgencyConfig(base44) {
-  const settings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-  const s = settings[0] || {};
+async function getAgencyConfig(base44, agencyHint) {
+  // Prefer a settings row matching the nurse/agency when multi-tenant rows exist.
+  let rows = [];
+  const key = String(agencyHint || '').trim();
+  if (key) {
+    rows = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1).catch(() => []);
+    if (!rows?.length) {
+      rows = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1).catch(() => []);
+    }
+  }
+  if (!rows?.length) {
+    const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
+    if ((newest || []).length > 1) {
+      // Multi-tenant miss (with or without a hint): empty config (safe defaults
+      // below) rather than another agency's greetings/transfer targets.
+      rows = [];
+    } else {
+      rows = (newest || []).slice(0, 1);
+    }
+  }
+  const s = rows[0] || {};
   // The office / after-hours numbers become Call Control `transfer` targets, and
   // Telnyx rejects a formatted number — so a stored "(724) 465-0440" would
   // dead-end every after-hours call at the apology fallback. Normalize to E.164
@@ -446,6 +488,28 @@ async function getAgencyConfig(base44) {
     afterHoursTransfer: toE164(s.after_hours_transfer_number_e164 || s.main_office_number_e164),
     afterHoursGreeting: s.after_hours_call_greeting || '',
   };
+}
+
+/** Match a dialed/to number to an AgencySettings row (fax/office lines). */
+async function resolveAgencySettingsByNumber(base44, e164) {
+  const target = normalizeE164(e164);
+  if (!target) return null;
+  const rows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 200).catch(() => []);
+  for (const row of (rows || [])) {
+    const candidates = [
+      row.office_fax_number_e164,
+      row.outbound_fax_number_e164,
+      row.main_office_number_e164,
+      row.after_hours_transfer_number_e164,
+    ];
+    if (candidates.some((c) => normalizeE164(c) === target)) return row;
+  }
+  // Single-tenant: legacy configs often store only the office machine number
+  // while the blind Telnyx transmit line is what receives stray fax-backs.
+  // With exactly one settings row that fallback is safe; multi-tenant misses
+  // must fail closed so PHI is not routed to the wrong office.
+  if ((rows || []).length === 1) return rows[0];
+  return null;
 }
 
 const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
@@ -503,11 +567,11 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
   const providerMessageId = payload?.id || null;
   if (!source || !destination) return Response.json({ success: true, skipped: 'missing parties' });
 
-  const config = await getAgencyConfig(base44);
   const patientNum = normalizeE164(source) || source;
   const workNum = normalizeE164(destination) || destination;
 
-  // Resolve the nurse who owns this work number.
+  // Resolve the nurse who owns this work number — then load THAT agency's
+  // settings (newest-row-wins would apply another tenant's auto-reply/SMS gates).
   let nurse = null;
   for (const variant of phoneVariants(workNum)) {
     const matches = await base44.asServiceRole.entities.User.filter({ work_phone_number: variant }, undefined, 5000).catch(() => []);
@@ -520,6 +584,7 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
     }).catch(() => {});
     return Response.json({ success: true, skipped: 'unresolved work number' });
   }
+  const config = await getAgencyConfig(base44, nurse.agency_name);
 
   // Idempotency: Telnyx may re-deliver. If we already stored this id, ack.
   if (providerMessageId) {
@@ -680,8 +745,14 @@ async function handleInboundFax(base44, payload) {
     return Response.json({ success: true, deduped: true });
   }
 
-  const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-  const settings = settingsRows[0];
+  // Match the dialed fax line to the owning agency's settings. Fail closed when
+  // the dialed number doesn't match any agency — newest-row would mis-route PHI.
+  const dialedFax = normalizeE164(payload?.to) || payload?.to || '';
+  const settings = await resolveAgencySettingsByNumber(base44, dialedFax);
+  if (!settings) {
+    console.error('inbound fax: no AgencySettings match for dialed line');
+    return Response.json({ success: true, skipped: 'unresolved fax line' });
+  }
 
   if (settings?.fax_receiving_enabled) {
     // Opt-in ingestion: keep the fax in-app for OCR + referral matching.
@@ -784,9 +855,14 @@ async function handleFaxEvent(base44, payload) {
   let exhaustedNow = false;
   if (mapped === 'failed') {
     const failureReason = payload?.failure_reason || payload?.failover?.failure_reason || 'Fax delivery failed';
-    // Honor the admin FaxRetryConfig: schedule a retry or give up (and notify once).
-    const cfgRows = await base44.asServiceRole.entities.FaxRetryConfig.list('-created_date', 1).catch(() => []);
-    const cfg = cfgRows[0] || {};
+    // Honor the admin FaxRetryConfig for the sender's agency (never global newest).
+    let senderAgency = '';
+    if (faxLog.sent_by) {
+      const [sender] = await base44.asServiceRole.entities.User
+        .filter({ email: faxLog.sent_by }, undefined, 1).catch(() => []);
+      senderAgency = sender?.agency_name || '';
+    }
+    const cfg = (await resolveFaxRetryConfig(base44, senderAgency)) || {};
     const retryCfg = faxRetryConfig(cfg);
     const plan = planFaxRetry({
       retryCount: faxLog.retry_count || 0,
@@ -1027,9 +1103,21 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
     // Step 1: a fresh inbound call rings in. Answer it first (consistent with the
     // outbound path), carrying the routing decision forward in client_state.
     if (eventType === 'call.initiated' && direction === 'incoming' && !state) {
-      const config = await getAgencyConfig(base44);
       const callerNum = normalizeE164(payload?.from) || payload?.from || '';
       const workNum = normalizeE164(payload?.to) || payload?.to || '';
+      // Resolve agency from the dialed work number's nurse (or matching settings
+      // lines) so multi-tenant IVR uses that tenant's greetings/transfer targets.
+      let agencyHint = '';
+      for (const variant of phoneVariants(workNum)) {
+        const matches = await base44.asServiceRole.entities.User
+          .filter({ work_phone_number: variant }, undefined, 1).catch(() => []);
+        if (matches[0]?.agency_name) { agencyHint = matches[0].agency_name; break; }
+      }
+      if (!agencyHint) {
+        const byLine = await resolveAgencySettingsByNumber(base44, workNum);
+        agencyHint = byLine?.agency_code || byLine?.office_name || '';
+      }
+      const config = await getAgencyConfig(base44, agencyHint);
       const route = await decideInboundRouting(base44, config, workNum);
       await logInboundCall(base44, callControlId, callerNum, workNum, route);
       await callCommand(apiKey, callControlId, 'answer', {
@@ -1089,8 +1177,18 @@ async function handleCallEvent(base44, apiKey, eventType, payload) {
     // no routing state. Re-derive the route and act so the call is never stranded
     // on a silent answered leg.
     if (eventType === 'call.answered' && direction === 'incoming' && !state) {
-      const config = await getAgencyConfig(base44);
       const workNum = normalizeE164(payload?.to) || payload?.to || '';
+      let agencyHint = '';
+      for (const variant of phoneVariants(workNum)) {
+        const matches = await base44.asServiceRole.entities.User
+          .filter({ work_phone_number: variant }, undefined, 1).catch(() => []);
+        if (matches[0]?.agency_name) { agencyHint = matches[0].agency_name; break; }
+      }
+      if (!agencyHint) {
+        const byLine = await resolveAgencySettingsByNumber(base44, workNum);
+        agencyHint = byLine?.agency_code || byLine?.office_name || '';
+      }
+      const config = await getAgencyConfig(base44, agencyHint);
       const route = await decideInboundRouting(base44, config, workNum);
       // Log here as well as on call.initiated: without a CallLog row every later
       // write for this call (status, voicemail recording, transcript, the new-

@@ -1,5 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 /**
  * createTelehealthToken — mint a Telnyx Video join token for a telehealth
  * session. Two authorization paths:
@@ -168,26 +178,56 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'This telehealth visit is no longer open' }, { status: 403 });
       }
       // Time-bound the capability token so a leaked/forgotten invite link can't
-      // grant A/V access indefinitely. Fail open when scheduled_at is absent,
-      // consistent with the rest of the codebase's "unknown → allow" convention.
+      // grant A/V access indefinitely. Fail CLOSED when scheduled_at is absent —
+      // fall back to created_date, otherwise reject (unknown → allow let stale
+      // invites live forever).
       const scheduledAtMs = session.scheduled_at ? Date.parse(session.scheduled_at) : NaN;
-      if (Number.isFinite(scheduledAtMs) && Date.now() - scheduledAtMs > GUEST_JOIN_WINDOW_MS) {
+      const createdAtMs = session.created_date ? Date.parse(session.created_date) : NaN;
+      const anchorMs = Number.isFinite(scheduledAtMs) ? scheduledAtMs
+        : (Number.isFinite(createdAtMs) ? createdAtMs : NaN);
+      if (!Number.isFinite(anchorMs)) {
+        return Response.json({ error: 'This telehealth invite link has expired' }, { status: 403 });
+      }
+      if (Date.now() - anchorMs > GUEST_JOIN_WINDOW_MS) {
         return Response.json({ error: 'This telehealth invite link has expired' }, { status: 403 });
       }
       participantIdentity = session.patient_name || 'Patient';
     } else {
       const user = await base44.auth.me();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
       if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      if (user.is_active === false) {
+        return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+      }
       // Authorize on stable identity only (email / role), never on the mutable,
       // non-unique full_name: participant_list contains the patient's display name,
       // so a full_name match would let any authenticated user rename themselves to a
       // patient's name and join that patient's session. The host is covered by
-      // host_email; supervisors by the admin role.
+      // host_email; supervisors by admin-like roles (agency-scoped below).
       const participants = Array.isArray(session.participant_list) ? session.participant_list : [];
-      const authorized = user.role === 'admin'
-        || session.host_email === user.email
+      const isHostOrParticipant = session.host_email === user.email
         || participants.includes(user.email);
-      if (!authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      const isAdminLike = user.role === 'admin'
+        || user.account_type === 'agency_admin'
+        || user.account_type === 'super_admin';
+      if (!isHostOrParticipant && !isAdminLike) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      // Agency-scoped admins may supervise only sessions hosted by their agency.
+      const isAgencyScopedAdmin = !isHostOrParticipant
+        && user.account_type !== 'super_admin'
+        && user.agency_name
+        && (user.account_type === 'agency_admin' || user.role === 'admin');
+      if (isAgencyScopedAdmin) {
+        const [host] = await base44.asServiceRole.entities.User
+          .filter({ email: session.host_email }, '-created_date', 1).catch(() => []);
+        if (!host?.agency_name || host.agency_name !== user.agency_name) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      }
       participantIdentity = user.full_name || user.email;
     }
 

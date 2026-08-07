@@ -50,6 +50,10 @@
     "is_active": {
       "type": "boolean",
       "default": true
+    },
+    "agency_name": {
+      "type": "string",
+      "description": "Tenant agency this retry policy belongs to. Readers must filter by caller/sender agency — never take global newest-row across tenants."
     }
   },
   "required": []

@@ -121,7 +121,13 @@ ${data.orders_treatments?.physician_orders?.join('\n') || 'To be clarified with 
       // and Referer headers.
       try {
         if (referral.id) {
-          sessionStorage.setItem(`referral_prepopulate:${referral.id}`, JSON.stringify(prepopulated));
+          sessionStorage.setItem(`referral_prepopulate:${referral.id}`, JSON.stringify({
+            ...prepopulated,
+            // Keep patient/visit identity out of the iframe URL (history,
+            // proxy logs, Referer). SmartNoteAssistant reads these from here.
+            patientId: referral.patient_id || '',
+            visitType: 'admission',
+          }));
         }
       } catch { /* ignore storage quota */ }
     }
@@ -201,7 +207,7 @@ ${data.orders_treatments?.physician_orders?.join('\n') || 'To be clarified with 
       {prepopulatedData && (
         <div className="bg-white rounded-lg shadow-lg p-6">
           <iframe
-            src={createPageUrl(`SmartNoteAssistant?patient_id=${referral.patient_id}&visit_type=admission&referral_mode=true&referral_id=${encodeURIComponent(referral.id)}`)}
+            src={createPageUrl(`SmartNoteAssistant?visit_type=admission&referral_mode=true&referral_id=${encodeURIComponent(referral.id)}`)}
             className="w-full h-[800px] border-0"
             title="Smart Note Assistant"
           />

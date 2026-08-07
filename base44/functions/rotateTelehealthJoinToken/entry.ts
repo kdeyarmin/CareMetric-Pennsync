@@ -1,5 +1,24 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
+
 /**
  * rotateTelehealthJoinToken — mint (or re-mint) the patient's guest join token
  * for a telehealth session, storing only its SHA-256 hash at rest.
@@ -31,7 +50,12 @@ Deno.serve(async (req) => {
 
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
     const { session_id } = await req.json();
     if (!session_id) return Response.json({ error: 'session_id is required' }, { status: 400 });
 
@@ -42,10 +66,25 @@ Deno.serve(async (req) => {
     // Same staff predicate as createTelehealthToken: stable identity only
     // (email/role), never the mutable, non-unique full_name.
     const participants = Array.isArray(session.participant_list) ? session.participant_list : [];
-    const authorized = user.role === 'admin'
-      || session.host_email === user.email
+    const isHostOrParticipant = session.host_email === user.email
       || participants.includes(user.email);
-    if (!authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    if (!isHostOrParticipant && !isAdminLike) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const isAgencyScopedAdmin = !isHostOrParticipant
+      && user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScopedAdmin) {
+      const [host] = await base44.asServiceRole.entities.User
+        .filter({ email: session.host_email }, '-created_date', 1).catch(() => []);
+      if (!host?.agency_name || host.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
 
     if (session.status !== 'scheduled' && session.status !== 'active') {
       return Response.json({ error: 'This telehealth visit is no longer open' }, { status: 409 });

@@ -125,6 +125,10 @@
       "type": "string",
       "description": "Agency ID for enterprise users"
     },
+    "agency_name": {
+      "type": "string",
+      "description": "Tenant agency display name / office key. Used at runtime to distinguish platform facility admins (role:admin with empty agency_name) from agency-scoped facility admins (role:admin with agency_name) and agency_admin accounts. Declared here so schema matches the fields backend functions and the SPA already read/write; entity RLS still cannot express role:admin ∧ agency_name — see docs/HOSTED-RLS-PROOF.md §5."
+    },
     "agency_role": {
       "type": "string",
       "enum": [

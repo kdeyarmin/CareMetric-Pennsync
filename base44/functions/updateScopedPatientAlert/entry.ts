@@ -41,11 +41,14 @@ Deno.serve(async (req) => {
     const [alert] = await base44.asServiceRole.entities.PatientAlert.filter({ id: alert_id }, undefined, 5000);
     if (!alert) return Response.json({ error: 'Alert not found' }, { status: 404 });
 
-    const isPlatformAdmin =
-      user.role === 'admin' ||
-      user.account_type === 'super_admin';
-    const isAgencyAdmin = user.account_type === 'agency_admin';
-    const isAdmin = isPlatformAdmin || isAgencyAdmin;
+    // Parity with getScopedPatientAlerts: facility admins with an agency are
+    // agency-scoped; only super_admin / admin-without-agency stay platform-wide.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isAdmin = isPlatformAdmin || isAgencyScopedAdmin;
 
     let allowed = isAdmin || alert.created_by === user.email;
     if (!allowed && alert.patient_id) {
@@ -53,8 +56,8 @@ Deno.serve(async (req) => {
       allowed = patient?.created_by === user.email
         || (Array.isArray(patient?.assigned_nurses) && patient.assigned_nurses.includes(user.email));
     }
-    // Agency admins: same patient-in-agency gate as getScopedPatientAlerts.
-    if (allowed && isAgencyAdmin) {
+    // Agency-scoped admins: same patient-in-agency gate as getScopedPatientAlerts.
+    if (allowed && isAgencyScopedAdmin) {
       if (!user.agency_name) return Response.json({ error: 'Forbidden' }, { status: 403 });
       const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
       const agencyEmails = new Set(

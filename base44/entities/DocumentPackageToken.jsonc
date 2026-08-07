@@ -6,6 +6,13 @@
       "type": "string",
       "description": "Reference to DocumentPackage"
     },
+    "document_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Snapshot of DocumentSignature ids in the package at token mint time. validateSignerToken/submitSignerSignature intersect this with live package membership so adding docs after mint cannot expand the PHI the signing link can read or sign. Legacy tokens without a snapshot fall back to live membership only."
+    },
     "token": {
       "type": "string",
       "description": "SHA-256 hash of the secure access token. The plaintext token exists only in the emailed signing link; validators hash the presented token before lookup. (Legacy rows may still hold a plaintext token until they expire.)"

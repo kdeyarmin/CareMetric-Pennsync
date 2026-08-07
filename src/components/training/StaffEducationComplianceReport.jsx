@@ -31,12 +31,22 @@ import { ALL_ROWS } from '@/lib/queryLimits';
 import { isPastLocalDueDate } from '@/lib/dateLocal';
 
 export default function StaffEducationComplianceReport() {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+
   const [timeframe, setTimeframe] = useState('30');
   const [isGenerating, setIsGenerating] = useState(false);
 
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
+    queryKey: ['users', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
   });
 
   // Derive compliance from the entities the grading/certificate pipeline

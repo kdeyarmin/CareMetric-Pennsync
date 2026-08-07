@@ -18,13 +18,19 @@ export default function AgencySettings() {
   const queryClient = useQueryClient();
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // Fetch existing settings
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  // Fetch existing settings for THIS agency (never global newest-row).
   const { data: settings, isLoading } = useQuery({
-    queryKey: ['agencySettings'],
+    queryKey: ['agencySettings', currentUser?.agency_name || null],
     queryFn: async () => {
-      const result = await base44.entities.AgencySettings.list();
-      return result[0] || null;
-    }
+      const { fetchCallerAgencySettings } = await import('@/lib/agencySettings');
+      return fetchCallerAgencySettings(currentUser?.agency_name);
+    },
+    enabled: !!currentUser,
   });
 
   // Form state
@@ -60,11 +66,15 @@ export default function AgencySettings() {
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async (data) => {
+      const agencyKey = String(currentUser?.agency_name || '').trim();
+      const payload = {
+        ...data,
+        ...(agencyKey ? { agency_code: agencyKey, office_name: data.office_name || agencyKey } : {}),
+      };
       if (settings?.id) {
-        return await base44.entities.AgencySettings.update(settings.id, data);
-      } else {
-        return await base44.entities.AgencySettings.create(data);
+        return await base44.entities.AgencySettings.update(settings.id, payload);
       }
+      return await base44.entities.AgencySettings.create(payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agencySettings'] });

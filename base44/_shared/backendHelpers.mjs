@@ -100,6 +100,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
   { status: 403 },
 );`,
 
+  // agency_admin without agency_name must not fall through agency-scoped gates
+  // that are written as `!== super_admin && agency_name` (empty name ⇒ platform-wide).
+  // Call immediately after auth/admin checks: if (resp) return resp;
+  // Bare role:admin without agency_name remains platform-wide by design.
+  requireAgencyAdminAgency: `function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}`,
+
   // Shared scheduler/internal auth for privileged cron-style functions. Base44
   // function URLs are plain HTTP endpoints, so these jobs must require either an
   // admin session or the configured shared secret header.
@@ -367,6 +378,59 @@ function telnyxCredsMessage(creds, what) {
     return \`Could not read Telnyx \${label} — the stored-credential lookup failed (\${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.\`;
   }
   return \`Telnyx \${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).\`;
+}`,
+
+  // Resolve AgencySettings for a caller's (or patient's) agency. Multi-tenant
+  // deployments have one row per agency; newest-row-wins silently applies another
+  // tenant's fax line / dial allowlist / wage index / quiet-hour timezone.
+  // Prefer agency_code, then office_name; fall back to newest only for
+  // single-tenant / missing agency (matches sendSms getAgencyConfig).
+  resolveAgencySettings: `async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}`,
+
+  // Resolve FaxRetryConfig for a sender/caller agency. Newest-row-wins would
+  // apply Agency A's retry budget/disable flag to Agency B's failed faxes.
+  resolveFaxRetryConfig: `async function resolveFaxRetryConfig(base44, agencyName) {
+  const key = String(agencyName || '').trim();
+  if (key) {
+    const rows = await base44.asServiceRole.entities.FaxRetryConfig
+      .filter({ agency_name: key }, '-created_date', 1)
+      .catch(() => []);
+    if (rows?.[0]) return rows[0];
+  }
+  const newest = await base44.asServiceRole.entities.FaxRetryConfig
+    .list('-created_date', 5)
+    .catch(() => []);
+  const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+  // Prefer a single unscoped legacy row when the agency-specific row is missing.
+  if (legacy.length === 1) return legacy[0];
+  if (key) return null;
+  if ((newest || []).length > 1) return null;
+  return newest?.[0] || null;
 }`,
 
   // Did a sendBatchFax call reject the whole batch before dispatching anything?

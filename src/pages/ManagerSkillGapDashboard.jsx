@@ -21,7 +21,16 @@ export default function ManagerSkillGapDashboard() {
   // see it too, not just admins. Gating on isAdminView alone locked the
   // intended audience out. isManager already includes the admin tiers.
   const canViewManagement = isManager(currentUser);
-  const { data: users = [] } = useQuery({ queryKey: ["skill-gap-users"], queryFn: () => base44.entities.User.list('-created_date', 500), initialData: [], enabled: canViewManagement });
+  const { data: users = [] } = useQuery({
+    queryKey: ["skill-gap-users", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 500);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    initialData: [],
+    enabled: canViewManagement && !!currentUser,
+  });
   const { data: assignments = [] } = useQuery({ queryKey: ["skill-gap-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), initialData: [] });
   const { data: attempts = [] } = useQuery({ queryKey: ["skill-gap-attempts"], queryFn: () => base44.entities.TrainingAttempt.list('-submitted_at', 1000), initialData: [] });
   const { data: courses = [] } = useQuery({ queryKey: ["skill-gap-courses"], queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500), initialData: [] });
@@ -29,9 +38,14 @@ export default function ManagerSkillGapDashboard() {
   const teamMembers = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.account_type === "super_admin") return users.filter((user) => user.email && user.role !== "admin");
+    if (currentUser.account_type === "agency_admin" && !currentUser.agency_name) return [];
+    const agency = String(currentUser.agency_name || "").trim();
+    const isAgencyScoped = currentUser.account_type !== "super_admin"
+      && agency
+      && (currentUser.account_type === "agency_admin" || currentUser.role === "admin");
     return users.filter((user) => {
       if (!user.email || user.role === "admin") return false;
-      if (currentUser.account_type === "agency_admin" && currentUser.agency_name) return user.agency_name === currentUser.agency_name;
+      if (isAgencyScoped) return user.agency_name === agency;
       if (currentUser.department && user.department === currentUser.department) return true;
       if (currentUser.location && user.location === currentUser.location) return true;
       if (currentUser.business_line && user.business_line === currentUser.business_line) return true;

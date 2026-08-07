@@ -37,7 +37,11 @@ export default function NumberPoolPanel() {
   });
   const { data: users = [] } = useQuery({
     queryKey: ["phone-users"],
-    queryFn: () => base44.entities.User.list("full_name", 200),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list("full_name", 200);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     enabled: isAdmin,
     initialData: [],
   });

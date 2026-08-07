@@ -39,9 +39,12 @@ export default function A2PCompliancePanel() {
   const isAdmin = isAdminLike(currentUser);
 
   const { data: settings = null } = useQuery({
-    queryKey: ["agencySettings"],
-    queryFn: async () => (await base44.entities.AgencySettings.list("-created_date", 1).catch(() => []))[0] || null,
-    enabled: isAdmin,
+    queryKey: ["agencySettings", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(currentUser?.agency_name);
+    },
+    enabled: isAdmin && !!currentUser,
     refetchOnWindowFocus: false,
   });
 
@@ -62,10 +65,16 @@ export default function A2PCompliancePanel() {
   }, [settings]);
 
   const save = useMutation({
-    mutationFn: () =>
-      settings?.id
-        ? base44.entities.AgencySettings.update(settings.id, form)
-        : base44.entities.AgencySettings.create(form),
+    mutationFn: () => {
+      const agencyKey = String(currentUser?.agency_name || "").trim();
+      const payload = {
+        ...form,
+        ...(agencyKey ? { agency_code: agencyKey, office_name: agencyKey } : {}),
+      };
+      return settings?.id
+        ? base44.entities.AgencySettings.update(settings.id, payload)
+        : base44.entities.AgencySettings.create(payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agencySettings"] });
       toast.success("A2P 10DLC registration saved");

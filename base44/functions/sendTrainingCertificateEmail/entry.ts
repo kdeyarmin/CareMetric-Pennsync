@@ -123,6 +123,15 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 const sanitizeFileName = (value) => String(value || 'certificate').replace(/[^a-z0-9]+/gi, '_');
 const safeText = (value, fallback = '') => value || fallback;
 
@@ -218,6 +227,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const payload = await req.json();
@@ -235,7 +245,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Certificate not found' }, { status: 404 });
     }
     // Ownership: only the certificate's owner or an admin may (re)send it.
-    if (certificate.user_id !== user.email && user.role !== 'admin') {
+    // Facility admins with an agency are agency-scoped (parity with PDF path).
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const ownsCert = certificate.user_id === user.email;
+    if (!ownsCert && !isPlatformAdmin && !isAgencyScopedAdmin) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     if (!certificate.user_id || !certificate.course_title || !certificate.issued_at) {
@@ -243,6 +260,11 @@ Deno.serve(async (req) => {
     }
 
     const [employee] = await base44.asServiceRole.entities.User.filter({ email: certificate.user_id }, '-created_date', 1);
+    if (!ownsCert && isAgencyScopedAdmin) {
+      if (!user.agency_name || !employee || employee.agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden: certificate owner is outside your agency' }, { status: 403 });
+      }
+    }
     const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 300);
     // Only notify admins of the employee's OWN agency. If the employee can't be
     // resolved (deleted/renamed user) we have no agency to scope to, so notify

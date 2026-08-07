@@ -1,5 +1,24 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
+
 const isAdminUser = (user) =>
   user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
 
@@ -16,6 +35,11 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const me = await base44.auth.me();
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(me);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
     if (!isAdminUser(me)) {
       return Response.json({ error: 'Unauthorized' }, { status: 403 });
     }
@@ -35,7 +59,7 @@ Deno.serve(async (req) => {
     const allUsers = await svc.User.list('-created_date', 5000);
     let candidates = allUsers.filter((u) => u.email && u.role !== 'admin' && u.is_approved !== false);
     // Agency admins without agency_name must not distribute to every tenant.
-    if (me.account_type === 'agency_admin') {
+    if (me.account_type !== 'super_admin' && me.agency_name && (me.account_type === 'agency_admin' || me.role === 'admin')) {
       if (!me.agency_name) {
         return Response.json({ error: 'Forbidden: agency_name is required to distribute policies.' }, { status: 403 });
       }

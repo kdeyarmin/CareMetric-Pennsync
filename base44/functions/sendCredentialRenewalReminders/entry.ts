@@ -37,6 +37,37 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -159,6 +190,15 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // Local calendar day count for date-only YYYY-MM-DD fields (mirrors
 // sendPersonnelExpirationNotifications / remindPlanOverdueStaff).
 function localDaysUntil(dateOnly, now = new Date()) {
@@ -186,6 +226,7 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, user);
     if (authError) return authError;
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const today = new Date();
     const todayIso = today.toISOString().slice(0, 10);
@@ -221,12 +262,21 @@ Deno.serve(async (req) => {
 
       // Anything expiring within 90 days (or already expired) goes into the admin digest.
       if (daysUntilExpiry <= 90) {
+        let itemAgency = cred.agency_name || null;
+        // Attribute legacy unscoped credentials via the owning User so they
+        // land in the correct agency digest instead of fanning out to all.
+        if (!itemAgency && cred.user_id) {
+          const owners = await base44.asServiceRole.entities.User
+            .filter({ email: cred.user_id }, undefined, 1).catch(() => []);
+          itemAgency = owners?.[0]?.agency_name || null;
+        }
         adminDigestItems.push({
           user_name: cred.user_name || cred.user_id,
           title: cred.title,
           item_type: cred.item_type,
           expiration_date: cred.expiration_date,
           daysUntilExpiry,
+          agency_name: itemAgency,
         });
       }
 
@@ -340,62 +390,106 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Send a consolidated 90-day expiration digest to all admins — at most once
-    // per calendar day. Claim the day stamp on AgencySettings BEFORE sending so
-    // overlapping cron runs don't double-email admins.
+    // Send a consolidated 90-day expiration digest to admins — at most once per
+    // calendar day PER AGENCY. Claim the day stamp on that agency's
+    // AgencySettings row (by id) before sending so overlapping crons and
+    // multi-tenant newest-row-wins cannot suppress or double-email the wrong tenant.
     let adminDigestSent = 0;
     if (adminDigestItems.length > 0) {
-      const settingsRows = await base44.asServiceRole.entities.AgencySettings
-        .list('-created_date', 1).catch(() => []);
-      const settings = settingsRows[0] || null;
-
-      let shouldSendDigest = true;
-      if (settings?.last_credential_digest_sent_on === todayIso) {
-        shouldSendDigest = false;
-      } else if (settings) {
-        const digestClaimToken = runId;
+      const tryClaimDigest = async (settings, claimToken) => {
+        if (!settings?.id) return false;
+        if (settings.last_credential_digest_sent_on === todayIso) return false;
         try {
           await base44.asServiceRole.entities.AgencySettings.update(settings.id, {
             last_credential_digest_sent_on: todayIso,
-            credential_digest_claimed_by: digestClaimToken,
+            credential_digest_claimed_by: claimToken,
             credential_digest_claimed_at: new Date().toISOString(),
           });
           const claimCheck = await base44.asServiceRole.entities.AgencySettings
-            .list('-created_date', 1).catch(() => []);
-          if (!claimCheck[0] || claimCheck[0].credential_digest_claimed_by !== digestClaimToken) {
-            shouldSendDigest = false;
-          }
+            .filter({ id: settings.id }, '-created_date', 1).catch(() => []);
+          return !!(claimCheck[0] && claimCheck[0].credential_digest_claimed_by === claimToken);
         } catch {
-          shouldSendDigest = false;
+          return false;
+        }
+      };
+
+      const agencyKeys = [...new Set(
+        adminDigestItems.map((i) => i.agency_name).filter(Boolean),
+      )];
+      const hasUnscoped = adminDigestItems.some((i) => !i.agency_name);
+      const claimedAgencyKeys = new Set();
+      let claimedUnscoped = false;
+
+      for (const agencyName of agencyKeys) {
+        const settings = await resolveAgencySettings(base44, agencyName);
+        if (await tryClaimDigest(settings, `${runId}:${agencyName}`)) {
+          claimedAgencyKeys.add(agencyName);
         }
       }
-      // No AgencySettings row: send once this run, then try to create a stub with
-      // the day stamp so subsequent runs skip. If create is not allowed/fails,
-      // we still sent (safe direction: one extra digest possible until a row exists).
+      if (hasUnscoped) {
+        const fallback = await resolveAgencySettings(base44, null);
+        if (fallback?.id && await tryClaimDigest(fallback, `${runId}:__unscoped__`)) {
+          claimedUnscoped = true;
+        } else if (!fallback?.id) {
+          // No AgencySettings row yet — send unscoped once, then stub a stamp.
+          claimedUnscoped = true;
+          try {
+            await base44.asServiceRole.entities.AgencySettings.create({
+              last_credential_digest_sent_on: todayIso,
+              credential_digest_claimed_by: `${runId}:__unscoped__`,
+              credential_digest_claimed_at: new Date().toISOString(),
+            });
+          } catch (createErr) {
+            console.error('Failed to create AgencySettings digest stamp:', createErr?.message || createErr);
+          }
+        }
+      }
 
-      if (shouldSendDigest) {
-        const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
+      if (claimedAgencyKeys.size > 0 || claimedUnscoped) {
+        const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+        const admins = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+          u && u.email && (
+            u.role === 'admin' ||
+            u.account_type === 'agency_admin' ||
+            u.account_type === 'super_admin'
+          )
+        );
         adminDigestItems.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
 
-        const digestBullets = adminDigestItems.map((i) => {
-          const when = i.daysUntilExpiry < 0
-            ? `expired ${Math.abs(i.daysUntilExpiry)} day(s) ago`
-            : `${i.daysUntilExpiry} day(s) remaining`;
-          const [y, m, d] = String(i.expiration_date).split('-').map(Number);
-          const expLabel = Number.isFinite(y)
-            ? new Date(y, m - 1, d).toLocaleDateString()
-            : String(i.expiration_date);
-          return `${i.user_name} — ${i.title} (${i.item_type}) — expires ${expLabel} (${when})`;
-        });
-
         for (const admin of admins) {
+          let scoped;
+          if (admin.account_type === 'super_admin') {
+            scoped = adminDigestItems.filter((i) =>
+              (i.agency_name && claimedAgencyKeys.has(i.agency_name))
+              || (!i.agency_name && claimedUnscoped)
+            );
+          } else if (admin.agency_name && claimedAgencyKeys.has(admin.agency_name)) {
+            // Agency admins only receive items attributed to their agency —
+            // never unscoped/legacy rows (those go to super_admin only).
+            scoped = adminDigestItems.filter((i) =>
+              i.agency_name === admin.agency_name
+            );
+          } else {
+            continue;
+          }
+          if (scoped.length === 0) continue;
+          const digestBullets = scoped.map((i) => {
+            const when = i.daysUntilExpiry < 0
+              ? `expired ${Math.abs(i.daysUntilExpiry)} day(s) ago`
+              : `${i.daysUntilExpiry} day(s) remaining`;
+            const [y, m, d] = String(i.expiration_date).split('-').map(Number);
+            const expLabel = Number.isFinite(y)
+              ? new Date(y, m - 1, d).toLocaleDateString()
+              : String(i.expiration_date);
+            return `${i.user_name} — ${i.title} (${i.item_type}) — expires ${expLabel} (${when})`;
+          });
           try {
             await base44.asServiceRole.integrations.Core.SendEmail({
               to: admin.email,
               from_name: 'PennSync by CareMetric',
-              subject: `Personnel expiration digest — ${adminDigestItems.length} item(s) within 90 days`,
+              subject: `Personnel expiration digest — ${scoped.length} item(s) within 90 days`,
               body: renderBrandedEmail({
-                preheader: `${adminDigestItems.length} personnel file item(s) are expired or expiring within 90 days.`,
+                preheader: `${scoped.length} personnel file item(s) are expired or expiring within 90 days.`,
                 eyebrow: 'Compliance digest',
                 title: 'Personnel expiration digest',
                 intro: 'The following personnel file items are expired or expiring within the next 90 days.',
@@ -408,20 +502,6 @@ Deno.serve(async (req) => {
             adminDigestSent++;
           } catch (digestErr) {
             console.error('Failed to send admin digest:', digestErr?.message || digestErr);
-          }
-        }
-
-        if (!settings) {
-          try {
-            await base44.asServiceRole.entities.AgencySettings.create({
-              last_credential_digest_sent_on: todayIso,
-              credential_digest_claimed_by: runId,
-              credential_digest_claimed_at: new Date().toISOString(),
-            });
-          } catch (createErr) {
-            // Prefer update of first row; if none existed and create fails, we
-            // already sent once above — document and move on.
-            console.error('Failed to create AgencySettings digest stamp:', createErr?.message || createErr);
           }
         }
       }

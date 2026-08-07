@@ -12,6 +12,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  * are told to reply to).
  */
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: isSafeFetchUrl — generated, edit base44/_shared/backendHelpers.mjs>>>
 // SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
 // internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
@@ -108,6 +116,36 @@ function isAllowedDestination(e164, settings = {}) {
   return { allowed: false, reason: "international_blocked" };
 }
 // <<<END SHARED HELPER: isAllowedDestination>>>
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 function blockedReasonMessage(reason) {
   switch (reason) {
     case 'premium_number_blocked': return 'Premium-rate numbers (900/976) are blocked.';
@@ -177,10 +215,50 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { file_url, to_number, document_name, to_name, patient_id } = await req.json();
     if (!file_url || !to_number) {
       return Response.json({ error: 'Missing required fields: file_url, to_number' }, { status: 400 });
+    }
+
+    // If the client linked a patient_id, verify access so FaxLog rows cannot be
+    // attributed to an arbitrary chart.
+    let linkedPatientId = patient_id || null;
+    if (linkedPatientId) {
+      const [claimed] = await base44.asServiceRole.entities.Patient
+        .filter({ id: linkedPatientId }, '', 1).catch(() => []);
+      if (!claimed) {
+        return Response.json({ error: 'Patient not found' }, { status: 404 });
+      }
+      const isSuperAdmin = user.account_type === 'super_admin';
+      const isAgencyScopedAdmin =
+        user.account_type === 'agency_admin'
+        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+      const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+      const isAssigned = Array.isArray(claimed.assigned_nurses)
+        && claimed.assigned_nurses.includes(user.email);
+      if (!isPlatformAdmin && !isAgencyScopedAdmin && claimed.created_by !== user.email && !isAssigned) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      if (isAgencyScopedAdmin) {
+        if (!user.agency_name) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        const agencyUsers = await base44.asServiceRole.entities.User
+          .list('-created_date', 5000).catch(() => []);
+        const agencyEmails = new Set(
+          (agencyUsers || [])
+            .filter((u) => u.agency_name === user.agency_name && u.email)
+            .map((u) => u.email),
+        );
+        const inAgency = (claimed.created_by && agencyEmails.has(claimed.created_by))
+          || (Array.isArray(claimed.assigned_nurses)
+            && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
+        if (!inAgency) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      }
     }
 
     // SSRF guard: file_url becomes Telnyx's media_url, so an arbitrary
@@ -200,16 +278,16 @@ Deno.serve(async (req) => {
     // fax-backs are dialed straight to the physical office machine — the app
     // expects no inbound faxes. Legacy fallback: with no outbound line set, the
     // office number itself is the technical from (pre-split behavior).
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
+    const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+    const officeFaxRaw = (agencySettings?.office_fax_number_e164 || '').toString().trim();
+    const outboundFaxRaw = (agencySettings?.outbound_fax_number_e164 || '').toString().trim();
     const officeFax = normalizeFromE164(officeFaxRaw);
     const outboundFax = normalizeFromE164(outboundFaxRaw);
     const fromNumber = outboundFax || officeFax;
 
     // Cost control: block premium/blocked/international fax destinations by default.
     const faxDest = normalizeFaxDest(to_number);
-    const destAllowed = isAllowedDestination(faxDest, settingsRows[0] || {});
+    const destAllowed = isAllowedDestination(faxDest, agencySettings || {});
     if (!destAllowed.allowed) {
       return Response.json({ error: blockedReasonMessage(destAllowed.reason), reason: destAllowed.reason }, { status: 403 });
     }
@@ -252,7 +330,7 @@ Deno.serve(async (req) => {
       document_url: file_url,
       document_name: document_name || 'Fax',
       status: 'queued',
-      patient_id: patient_id || null,
+      patient_id: linkedPatientId,
       sent_by: user.email,
     });
 

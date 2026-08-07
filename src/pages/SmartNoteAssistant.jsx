@@ -70,21 +70,26 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [searchParams] = useSearchParams();
   const queryPatientId = searchParams.get("patientId") || searchParams.get("patient_id") || "";
   const queryVisitType = searchParams.get("visitType") || searchParams.get("visit_type") || "";
-  const referralDraftNote = useMemo(() => {
-    if (searchParams.get("referral_mode") !== "true") return "";
+  const referralHandoff = useMemo(() => {
+    if (searchParams.get("referral_mode") !== "true") return { draftNote: "", patientId: "", visitType: "" };
     const referralId = searchParams.get("referral_id");
-    if (!referralId) return "";
+    if (!referralId) return { draftNote: "", patientId: "", visitType: "" };
     try {
       const raw = sessionStorage.getItem(`referral_prepopulate:${referralId}`);
-      if (!raw) return "";
+      if (!raw) return { draftNote: "", patientId: "", visitType: "" };
       const parsed = JSON.parse(raw);
-      return String(parsed.roughNote || "").trim();
+      return {
+        draftNote: String(parsed.roughNote || "").trim(),
+        patientId: String(parsed.patientId || "").trim(),
+        visitType: String(parsed.visitType || "").trim(),
+      };
     } catch {
-      return "";
+      return { draftNote: "", patientId: "", visitType: "" };
     }
   }, [searchParams]);
-  const [patientId, setPatientId] = useState(queryPatientId);
-  const [visitType, setVisitType] = useState(queryVisitType || "routine_visit");
+  const referralDraftNote = referralHandoff.draftNote;
+  const [patientId, setPatientId] = useState(queryPatientId || referralHandoff.patientId);
+  const [visitType, setVisitType] = useState(queryVisitType || referralHandoff.visitType || "routine_visit");
   const visitDate = todayEastern();
   const [note, setNote] = useState(referralDraftNote);
   const [vitals, setVitals] = useState({});
@@ -359,7 +364,13 @@ export default function SmartNoteAssistant({ visitId = null }) {
         result = await api.recheck();
         if (!result) { setSaving(false); return; }
       }
-      await persistNote(result);
+      const out = await persistNote(result);
+      if (!out) {
+        // persistVisitNote returns null without throwing when inputs are insufficient
+        // — do NOT mark saved or clear the draft (would destroy the only copy).
+        toast.error("Could not save — check that a patient is selected and the note is complete.");
+        return;
+      }
       setSaved(true);
       clearDraft(patientId);
     } catch (err) {
@@ -378,7 +389,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
       offlineClientRequestId,
       facilityAcknowledgment: facilityOverrideRef.current,
     });
-    if (!out) return;
+    if (!out) return null;
     if (out.mode === 'create') {
       setSavedVisitId(out.visitId);
       setExistingVisitId(null);
@@ -394,6 +405,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     } else if (out.mode === 'offline' && out.offlineClientRequestId) {
       setOfflineClientRequestId(out.offlineClientRequestId);
     }
+    return out;
   };
 
   const analyzeSupplyUsage = async (noteText, visitId) => {

@@ -27,6 +27,12 @@ import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 const formatDate = (value) => formatLocalDate(value) || "—";
 
 export default function LearningPlanManager() {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const year = new Date().getFullYear();
@@ -89,10 +95,14 @@ export default function LearningPlanManager() {
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ["plan-assign-users"],
-    queryFn: () => base44.entities.User.list("-created_date", 500),
+    queryKey: ["plan-assign-users", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list("-created_date", 500);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     initialData: [],
-    enabled: showAssignDialog,
+    enabled: showAssignDialog && !!currentUser,
   });
 
   const courseMap = useMemo(

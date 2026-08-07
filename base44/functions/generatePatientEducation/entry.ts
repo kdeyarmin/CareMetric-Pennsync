@@ -84,7 +84,7 @@ Return JSON: { "topics": [{ "title": "string", "reason": "brief explanation why 
     // Generate detailed content for each topic
     const educationMaterials = [];
 
-    for (const topic of topicsResult.topics || []) {
+    for (const topic of topicsResult?.topics || []) {
       const contentPrompt = `Create patient-friendly educational material on "${topic.title}" for a patient with ${patient.primary_diagnosis || 'chronic health condition'}.
 
 Key Points to Cover:

@@ -8,26 +8,33 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { RefreshCw, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { fetchCallerFaxRetryConfig } from "@/lib/agencySettings";
 
 /**
  * FaxRetryConfigPanel — admin editor for the FaxRetryConfig entity that drives
  * outbound-fax auto-retry (used by autoRetryFailedFaxes, the status webhook,
- * pollFaxStatuses, and manual retryFailedFax). Previously the entity was
- * backend-read-only with no UI, so admins couldn't tune the retry budget/cadence
- * without hand-creating a row. Writes the single config row directly (like
- * FaxReceivingToggle writes AgencySettings). Defaults mirror the entity schema
- * and faxRetry.js: 3 retries, 15-minute base delay, exponential backoff.
+ * pollFaxStatuses, and manual retryFailedFax). Writes the caller's agency row
+ * (or the single legacy unscoped row) — never global newest across tenants.
+ * Defaults mirror the entity schema and faxRetry.js: 3 retries, 15-minute base
+ * delay, exponential backoff.
  */
 const DEFAULTS = { max_retries: 3, retry_delay_minutes: 15, auto_retry_enabled: true, notify_on_final_failure: true };
 
 export default function FaxRetryConfigPanel() {
   const queryClient = useQueryClient();
-  const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["fax-retry-config"],
-    queryFn: () => base44.entities.FaxRetryConfig.list("-created_date", 1),
-    initialData: [],
+
+  const { data: currentUser } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me(),
   });
-  const config = rows[0];
+
+  const agencyKey = currentUser?.agency_name || null;
+  const { data: config = null, isLoading } = useQuery({
+    queryKey: ["fax-retry-config", agencyKey],
+    queryFn: () => fetchCallerFaxRetryConfig(agencyKey),
+    enabled: !!currentUser,
+    initialData: null,
+  });
 
   const [form, setForm] = useState(DEFAULTS);
   // Seed the form from the saved row once it loads (or keep defaults when none).
@@ -39,6 +46,8 @@ export default function FaxRetryConfigPanel() {
         auto_retry_enabled: config.auto_retry_enabled !== false,
         notify_on_final_failure: config.notify_on_final_failure !== false,
       });
+    } else {
+      setForm(DEFAULTS);
     }
   }, [config]);
 
@@ -58,18 +67,21 @@ export default function FaxRetryConfigPanel() {
   const delay = Number(form.retry_delay_minutes);
   const maxRetriesValid = Number.isInteger(maxRetries) && maxRetries >= 0 && maxRetries <= 10;
   const delayValid = Number.isFinite(delay) && delay >= 1 && delay <= 360;
-  const canSave = maxRetriesValid && delayValid && !save.isPending;
+  const canSave = maxRetriesValid && delayValid && !save.isPending && !!currentUser;
 
-  const handleSave = () =>
+  const handleSave = () => {
+    const agency = String(currentUser?.agency_name || "").trim();
     save.mutate({
       max_retries: maxRetries,
       retry_delay_minutes: delay,
       auto_retry_enabled: form.auto_retry_enabled,
       notify_on_final_failure: form.notify_on_final_failure,
       is_active: true,
+      ...(agency ? { agency_name: agency } : {}),
     });
+  };
 
-  if (isLoading) return null;
+  if (isLoading || !currentUser) return null;
 
   return (
     <Card>
@@ -82,6 +94,7 @@ export default function FaxRetryConfigPanel() {
           How the app re-sends a fax that Telnyx reports as failed. Applies to automatic retries and the
           manual &ldquo;Retry&rdquo; button. Busy / no-answer failures are treated as temporary; hard rejections
           (bad number, blocked) are never retried.
+          {agencyKey ? ` Scoped to ${agencyKey}.` : ""}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -121,9 +134,7 @@ export default function FaxRetryConfigPanel() {
               onChange={(e) => setForm((f) => ({ ...f, retry_delay_minutes: e.target.value }))}
               className={`mt-1 ${delayValid ? "" : "border-red-400 focus-visible:ring-red-400"}`}
             />
-            <p className="mt-1 text-[11px] text-slate-500">
-              1&ndash;360. Doubles each attempt (e.g. {delayValid ? `${delay}, ${delay * 2}, ${delay * 4}` : "15, 30, 60"} min).
-            </p>
+            <p className="mt-1 text-[11px] text-slate-500">1&ndash;360. Base wait before the first retry; later attempts back off.</p>
           </div>
         </div>
 
@@ -131,7 +142,7 @@ export default function FaxRetryConfigPanel() {
           <div className="flex-1 pr-4">
             <Label className="text-sm font-semibold">Notify on final failure</Label>
             <p className="text-xs text-slate-600 mt-0.5">
-              Alert the sender when all retries are exhausted and the fax could not be delivered.
+              Email the sender once retries are exhausted.
             </p>
           </div>
           <Switch
@@ -140,12 +151,19 @@ export default function FaxRetryConfigPanel() {
           />
         </div>
 
-        <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={!canSave} className="bg-indigo-600 hover:bg-indigo-700">
-            {save.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-            Save retry settings
-          </Button>
-        </div>
+        <Button onClick={handleSave} disabled={!canSave} className="w-full sm:w-auto">
+          {save.isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4 mr-2" />
+              Save retry settings
+            </>
+          )}
+        </Button>
       </CardContent>
     </Card>
   );

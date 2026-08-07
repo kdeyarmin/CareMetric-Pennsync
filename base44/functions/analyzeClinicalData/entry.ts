@@ -32,6 +32,40 @@ function parseLLMJson(raw) {
   }
 }
 
+/** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
+async function assertPatientAccess(base44, user, patient) {
+  if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
+  const isSuperAdmin = user.account_type === 'super_admin';
+  const isAgencyScopedAdmin =
+    user.account_type === 'agency_admin'
+    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+  const isAssigned = Array.isArray(patient.assigned_nurses)
+    && patient.assigned_nurses.includes(user.email);
+  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (isAgencyScopedAdmin) {
+    if (!user.agency_name) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const agencyUsers = await base44.asServiceRole.entities.User
+      .list('-created_date', 5000).catch(() => []);
+    const agencyEmails = new Set(
+      (agencyUsers || [])
+        .filter((u) => u.agency_name === user.agency_name && u.email)
+        .map((u) => u.email),
+    );
+    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
+      || (Array.isArray(patient.assigned_nurses)
+        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
+    if (!inAgency) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -112,82 +146,8 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
   }
 });
 
-async function extractEvents(base44, params) {
-  const { visit_id, patient_id, nurse_notes, visit_date } = params;
-
-  if (!visit_id || !patient_id || !nurse_notes) {
-    return Response.json({ error: 'Missing required fields' }, { status: 400 });
-  }
-
-  const rawResult = await base44.integrations.Core.InvokeLLM({
-    model: "automatic",
-    prompt: `Extract ALL significant clinical events from this nursing note. Be thorough.
-
-Visit Note:
-${nurse_notes}
-
-Extract: medication changes, appointments, hospitalizations, falls, wounds, labs, symptoms, vital changes, cognitive/functional changes, pain, infections, procedures, therapy changes, DME, and other significant events.
-
-For each event provide: event_type, event_title, event_description, structured_data, severity, requires_followup, followup_notes, source_text (exact quote), source_section, extraction_confidence (0-100).
-
-event_type must be one of: medication_change, medication_started, medication_stopped, physician_appointment, hospitalization, er_visit, fall, wound_new, wound_change, lab_result, symptom_new, symptom_resolved, vital_change, cognitive_change, functional_change, pain_change, infection, surgery, therapy_change, dme_ordered, other.
-severity must be one of: low, medium, high, critical.
-
-Return ONLY valid JSON, no prose or code fences, with this shape:
-{"events":[{"event_type":"","event_title":"","event_description":"","structured_data":{},"severity":"low|medium|high|critical","requires_followup":false,"followup_notes":"","source_text":"","source_section":"","extraction_confidence":0}]}`
-  });
-  const parsed = parseLLMJson(rawResult) || {};
-
-  // Allowed ClinicalEvent enums; coerce any AI value outside these sets to a
-  // safe default so ClinicalEvent.create won't reject the record.
-  const ALLOWED_EVENT_TYPES = new Set([
-    'medication_change', 'medication_started', 'medication_stopped',
-    'physician_appointment', 'hospitalization', 'er_visit', 'fall',
-    'wound_new', 'wound_change', 'lab_result', 'symptom_new',
-    'symptom_resolved', 'vital_change', 'cognitive_change',
-    'functional_change', 'pain_change', 'infection', 'surgery',
-    'therapy_change', 'dme_ordered', 'other'
-  ]);
-  const ALLOWED_SEVERITIES = new Set(['low', 'medium', 'high', 'critical']);
-
-  // Save extracted events
-  const savedEvents = [];
-  for (const event of parsed.events || []) {
-    // Coerce out-of-enum AI values to safe defaults before persisting
-    event.event_type = ALLOWED_EVENT_TYPES.has(event.event_type) ? event.event_type : 'other';
-    event.severity = ALLOWED_SEVERITIES.has(event.severity) ? event.severity : 'medium';
-
-    let text_anchor_start = null;
-    let text_anchor_end = null;
-
-    if (event.source_text && nurse_notes) {
-      const index = nurse_notes.indexOf(event.source_text.trim());
-      if (index !== -1) {
-        text_anchor_start = index;
-        text_anchor_end = index + event.source_text.length;
-      }
-    }
-
-    const eventData = {
-      patient_id,
-      visit_id,
-      event_date: visit_date,
-      ...event,
-      text_anchor_start,
-      text_anchor_end,
-      verified: false
-    };
-
-    const savedEvent = await base44.asServiceRole.entities.ClinicalEvent.create(eventData);
-    savedEvents.push(savedEvent);
-  }
-
-  return Response.json({
-    success: true,
-    events_extracted: savedEvents.length,
-    events: savedEvents
-  });
-}
+// Persisting ClinicalEvent rows belongs in extractClinicalEvents (claim +
+// access gates). The extract_events action above is read-only LLM analysis.
 
 async function analyzeEvents(base44, params) {
   const { patient_id } = params;
@@ -196,7 +156,14 @@ async function analyzeEvents(base44, params) {
     return Response.json({ error: 'Missing patient_id' }, { status: 400 });
   }
 
-  const events = await base44.entities.ClinicalEvent.filter({
+  const user = await base44.auth.me().catch(() => null);
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  const [patient] = await base44.asServiceRole.entities.Patient
+    .filter({ id: patient_id }, '', 1).catch(() => []);
+  const denied = await assertPatientAccess(base44, user, patient);
+  if (denied) return denied;
+
+  const events = await base44.asServiceRole.entities.ClinicalEvent.filter({
     patient_id,
     verified: false
   }, '-event_date', 5000);
@@ -208,9 +175,6 @@ async function analyzeEvents(base44, params) {
       message: 'No unverified events to analyze'
     });
   }
-
-  const patients = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
-  const patient = patients[0];
 
   const eventsContext = events.map(e => ({
     id: e.id,
@@ -263,16 +227,17 @@ async function analyzeTrends(base44, params) {
     return Response.json({ error: 'Missing patient_id' }, { status: 400 });
   }
 
-  const [patients, visits, clinicalEvents] = await Promise.all([
-    base44.entities.Patient.filter({ id: patient_id }, undefined, 5000),
-    base44.entities.Visit.filter({ patient_id }, '-visit_date', 100),
-    base44.entities.ClinicalEvent.filter({ patient_id }, '-event_date', 100)
-  ]);
+  const user = await base44.auth.me().catch(() => null);
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  const [patient] = await base44.asServiceRole.entities.Patient
+    .filter({ id: patient_id }, '', 1).catch(() => []);
+  const denied = await assertPatientAccess(base44, user, patient);
+  if (denied) return denied;
 
-  const patient = patients[0];
-  if (!patient) {
-    return Response.json({ error: 'Patient not found' }, { status: 404 });
-  }
+  const [visits, clinicalEvents] = await Promise.all([
+    base44.asServiceRole.entities.Visit.filter({ patient_id }, '-visit_date', 100),
+    base44.asServiceRole.entities.ClinicalEvent.filter({ patient_id }, '-event_date', 100)
+  ]);
 
   const vitalsHistory = visits
     .filter(v => v.vital_signs)

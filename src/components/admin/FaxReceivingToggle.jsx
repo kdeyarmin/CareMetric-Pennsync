@@ -9,21 +9,31 @@ import { toast } from "sonner";
 export default function FaxReceivingToggle() {
   const queryClient = useQueryClient();
 
+  const { data: currentUser } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me(),
+  });
+
   const { data: setting = null, isLoading } = useQuery({
-    queryKey: ['agencySettings'],
-    queryFn: async () => (await base44.entities.AgencySettings.list('-created_date', 1).catch(() => []))[0] || null,
+    queryKey: ['agencySettings', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(currentUser?.agency_name);
+    },
+    enabled: !!currentUser,
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ settingId, enabled }) => {
+      const agencyKey = String(currentUser?.agency_name || "").trim();
+      const payload = {
+        fax_receiving_enabled: enabled,
+        ...(agencyKey ? { agency_code: agencyKey, office_name: agencyKey } : {}),
+      };
       if (settingId) {
-        return base44.entities.AgencySettings.update(settingId, {
-          fax_receiving_enabled: enabled
-        });
+        return base44.entities.AgencySettings.update(settingId, payload);
       }
-      return base44.entities.AgencySettings.create({
-        fax_receiving_enabled: enabled
-      });
+      return base44.entities.AgencySettings.create(payload);
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agencySettings'] });

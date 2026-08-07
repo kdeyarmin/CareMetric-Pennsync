@@ -122,6 +122,15 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 /**
  * submitTimeOffRequest — create a time-off request on behalf of the
  * authenticated caller.
@@ -172,6 +181,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
@@ -216,6 +226,12 @@ Deno.serve(async (req) => {
       const mgrIsAdmin = mgr && (mgr.role === 'admin' || mgr.account_type === 'super_admin' || mgr.account_type === 'agency_admin');
       if (!mgr || !(mgrIsAdmin || mgr.is_manager === true)) {
         return Response.json({ error: 'The selected approver is not authorized to approve time off.' }, { status: 400 });
+      }
+      const callerAgency = String(user.agency_name || '').trim();
+      if (callerAgency && user.account_type !== 'super_admin') {
+        if (!mgr.agency_name || mgr.agency_name !== callerAgency) {
+          return Response.json({ error: 'The selected approver is outside your agency.' }, { status: 403 });
+        }
       }
       resolvedManagerEmail = mgr.email;
       resolvedManagerName = mgr.full_name || mgr.email;

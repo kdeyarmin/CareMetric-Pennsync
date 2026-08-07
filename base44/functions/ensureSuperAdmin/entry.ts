@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 /**
  * ensureSuperAdmin — promotes the calling administrator to the super
  * administrator account so the rest of the app recognizes them:
@@ -23,6 +31,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const caller = await base44.auth.me();
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(caller)) return DEACTIVATED_USER_RESPONSE();
 
     // An existing super_admin may always run this (self-repair). A plain
     // platform admin may claim super-admin ONLY while no super_admin exists yet

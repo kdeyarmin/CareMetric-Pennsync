@@ -37,6 +37,15 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // Local calendar day count for date-only YYYY-MM-DD fields (mirrors
 // sendPersonnelExpirationNotifications / remindPlanOverdueStaff).
 function localDaysUntil(dateOnly, now = new Date()) {
@@ -62,6 +71,7 @@ Deno.serve(async (req) => {
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
     const today = new Date();
 
@@ -201,7 +211,8 @@ Deno.serve(async (req) => {
           user_name: credential.user_name,
           credential_title: credential.title,
           days_until_expiration: daysUntilExpiration,
-          expiration_date: credential.expiration_date
+          expiration_date: credential.expiration_date,
+          agency_name: credential.agency_name || null,
         });
       } catch (err) {
         console.error('sendExpirationNotifications: credential notify failed', err?.message || err);
@@ -213,18 +224,33 @@ Deno.serve(async (req) => {
     }
 
     if (adminNotifications.length > 0) {
-      const adminUsers = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, '', 100);
+      // Scope each admin to expirations from their own agency (super_admins see all).
+      // Unscoped fan-out leaked staff names/credential titles across tenants.
+      const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const adminUsers = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+        u && u.email && (
+          u.role === 'admin' ||
+          u.account_type === 'agency_admin' ||
+          u.account_type === 'super_admin'
+        )
+      );
 
       for (const admin of adminUsers) {
+        const scoped = admin.account_type === 'super_admin'
+          ? adminNotifications
+          : adminNotifications.filter((n) =>
+            !n.agency_name || n.agency_name === admin.agency_name
+          );
+        if (scoped.length === 0) continue;
         await base44.asServiceRole.entities.Notification.create({
           user_email: admin.email,
           type: 'admin_expiration_summary',
-          title: `${adminNotifications.length} Upcoming Expirations`,
-          message: `There are ${adminNotifications.length} training certifications or credentials expiring soon.`,
+          title: `${scoped.length} Upcoming Expirations`,
+          message: `There are ${scoped.length} training certifications or credentials expiring soon.`,
           action_url: '/AdminOperations',
           priority: 'medium',
           is_read: false,
-          metadata: { expirations: adminNotifications },
+          metadata: { expirations: scoped },
           expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
         });
       }

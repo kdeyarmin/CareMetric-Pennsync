@@ -39,6 +39,14 @@ function phoneVariants(value) {
 }
 
 // ---- cost controls (mirrors src/components/voice/costControls.js) ----
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // <<<BEGIN SHARED HELPER: isAllowedDestination — generated, edit base44/_shared/backendHelpers.mjs>>>
 // Cost-control destination gate. Single source of truth is the frontend
 // src/components/voice/costControls.js — this copy is generated from it verbatim.
@@ -66,6 +74,36 @@ function isAllowedDestination(e164, settings = {}) {
   return { allowed: false, reason: "international_blocked" };
 }
 // <<<END SHARED HELPER: isAllowedDestination>>>
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 function blockedReasonMessage(reason) {
   switch (reason) {
     case 'premium_number_blocked': return 'Premium-rate numbers (900/976) are blocked.';
@@ -178,6 +216,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { patient_id, to_number } = await req.json();
 
@@ -190,15 +229,17 @@ Deno.serve(async (req) => {
     let destination = normalizeE164(to_number);
     let resolvedPatientId = patient_id || null;
     let resolvedPatient = null;
-    const isPlatformAdmin = !!user && (
-      user.role === 'admin' || user.account_type === 'super_admin'
-    );
-    // Agency admins must not click-to-call any patient tenant-wide via service
-    // role — scope by staff emails in their agency (same gate as updateScopedPatientAlert).
+    // Platform-wide: super_admin or role:admin without agency. Facility admins
+    // with an agency are scoped like agency_admin (parity with updateScopedPatientAlert).
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
     let agencyEmailSet = null;
     const loadAgencyEmails = async () => {
       if (agencyEmailSet) return agencyEmailSet;
-      if (user.account_type !== 'agency_admin') return null;
+      if (!isAgencyScopedAdmin) return null;
       if (!user.agency_name) {
         agencyEmailSet = new Set();
         return agencyEmailSet;
@@ -216,7 +257,7 @@ Deno.serve(async (req) => {
     const canAccessPatient = async (p) => {
       if (!p) return false;
       if (isPlatformAdmin) return true;
-      if (user.account_type === 'agency_admin') {
+      if (isAgencyScopedAdmin) {
         const emails = await loadAgencyEmails();
         if (!emails || emails.size === 0) return false;
         if (p.created_by && emails.has(p.created_by)) return true;
@@ -266,8 +307,8 @@ Deno.serve(async (req) => {
     }
 
     // Cost control: block premium/blocked/international destinations by default.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const destAllowed = isAllowedDestination(destination, settingsRows[0] || {});
+    const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+    const destAllowed = isAllowedDestination(destination, agencySettings || {});
     if (!destAllowed.allowed) {
       return Response.json({ error: blockedReasonMessage(destAllowed.reason), reason: destAllowed.reason }, { status: 403 });
     }

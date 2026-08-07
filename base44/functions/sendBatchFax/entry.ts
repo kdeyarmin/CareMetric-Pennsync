@@ -102,6 +102,36 @@ function isAllowedDestination(e164, settings = {}) {
   return { allowed: false, reason: "international_blocked" };
 }
 // <<<END SHARED HELPER: isAllowedDestination>>>
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 function blockedReasonMessage(reason) {
   switch (reason) {
     case 'premium_number_blocked': return 'Premium-rate numbers (900/976) are blocked.';
@@ -190,6 +220,11 @@ Deno.serve(async (req) => {
     if (!user && !internalOk) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    // Interactive callers: refuse deactivated accounts (offboarded sessions
+    // otherwise keep writing FaxLog PHI until the cookie dies).
+    if (user && user.is_active === false) {
+      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
 
     const { file_url, to_numbers, document_name, patient_id, cover_page_details, priority, from_name, sent_by: bodySentBy } = body;
     // Scheduled-fax cron has no session; attribute FaxLog.sent_by to the
@@ -212,6 +247,49 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
+    // If the client linked a patient_id, verify access so FaxLog rows cannot be
+    // attributed to an arbitrary chart (parity with sendFax).
+    let linkedPatientId = patient_id || null;
+    if (linkedPatientId && user) {
+      const [claimed] = await base44.asServiceRole.entities.Patient
+        .filter({ id: linkedPatientId }, '', 1).catch(() => []);
+      if (!claimed) {
+        return Response.json({ error: 'Patient not found' }, { status: 404 });
+      }
+      const isSuperAdmin = user.account_type === 'super_admin';
+      const isAgencyScopedAdmin =
+        user.account_type === 'agency_admin'
+        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+      const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+      const isAssigned = Array.isArray(claimed.assigned_nurses)
+        && claimed.assigned_nurses.includes(user.email);
+      if (!isPlatformAdmin && !isAgencyScopedAdmin && claimed.created_by !== user.email && !isAssigned) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      if (isAgencyScopedAdmin) {
+        if (!user.agency_name) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        const agencyUsers = await base44.asServiceRole.entities.User
+          .list('-created_date', 5000).catch(() => []);
+        const agencyEmails = new Set(
+          (agencyUsers || [])
+            .filter((u) => u.agency_name === user.agency_name && u.email)
+            .map((u) => u.email),
+        );
+        const inAgency = (claimed.created_by && agencyEmails.has(claimed.created_by))
+          || (Array.isArray(claimed.assigned_nurses)
+            && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
+        if (!inAgency) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      }
+    } else if (linkedPatientId && !user) {
+      // Internal/scheduler path: keep the id but do not invent access for a
+      // caller-supplied chart without a session — clear it.
+      linkedPatientId = null;
+    }
+
     // SSRF guard: file_url becomes Telnyx's media_url for every recipient, so an
     // arbitrary client-supplied URL would make the fax provider fetch (and
     // transmit) any reachable document. Only app-storage https URLs are allowed.
@@ -224,8 +302,15 @@ Deno.serve(async (req) => {
     const { apiKey, faxConnectionId } = telnyxCreds;
     // Resolve the shared office fax number server-side (AgencySettings, else env),
     // identical to sendFax — never trust a caller-supplied from_number.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const agencySettings = settingsRows[0] || {};
+    // Resolve fax settings from the attributed sender (session user, or
+    // ScheduledFax creator via body.sent_by for internal cron invokes).
+    let senderAgency = user?.agency_name || '';
+    if (!senderAgency && senderEmail && senderEmail !== 'scheduler@system') {
+      const [sender] = await base44.asServiceRole.entities.User
+        .filter({ email: senderEmail }, undefined, 1).catch(() => []);
+      senderAgency = sender?.agency_name || '';
+    }
+    const agencySettings = (await resolveAgencySettings(base44, senderAgency)) || {};
     // Transmit from the single blind outbound line; present the office fax
     // machine's number (display name + cover sheet) so replies go straight to
     // the office. Legacy fallback: office number as the technical from.
@@ -306,7 +391,7 @@ Deno.serve(async (req) => {
           document_url: file_url,
           document_name: document_name || 'Batch Fax',
           status: 'queued',
-          patient_id: patient_id || null,
+          patient_id: linkedPatientId,
           sent_by: senderEmail,
           cover_page_details: cover_page_details || null,
           priority: finalPriority,

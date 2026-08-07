@@ -37,6 +37,15 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // processInboundFaxes — scheduled job: OCR newly received inbound faxes and
 // auto-match provider fax-backs to open referral follow-up requests.
 //
@@ -128,6 +137,7 @@ Deno.serve(async (req) => {
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
     const pending = (await base44.asServiceRole.entities.IncomingFax.filter({ processing_status: 'pending' }, undefined, 5000).catch(() => []))
       .slice(0, 10);
@@ -202,6 +212,17 @@ Deno.serve(async (req) => {
           claimed_by: null,
           claimed_at: null,
         }).catch(() => {});
+        continue;
+      }
+
+      // Re-check claim after the slow OCR so a concurrent cron that overwrote
+      // claimed_by mid-flight cannot both attach the same fax (best-effort;
+      // Base44 updates are still last-write-wins — docs/PLATFORM-CAS.md).
+      const preWriteClaim = await base44.asServiceRole.entities.IncomingFax
+        .filter({ id: fax.id }, undefined, 1)
+        .catch(() => []);
+      if (!preWriteClaim[0] || preWriteClaim[0].claimed_by !== runId) {
+        console.error('Lost inbound fax claim after OCR; skipping write', fax.id);
         continue;
       }
 

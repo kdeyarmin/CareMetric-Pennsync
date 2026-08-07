@@ -8,6 +8,37 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: formatAge — generated, edit base44/_shared/backendHelpers.mjs>>>
+function parseLocalDate(value) {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(value).trim());
+  if (iso) {
+    const y = Number(iso[1]);
+    const mo = Number(iso[2]) - 1;
+    const day = Number(iso[3]);
+    const d = new Date(y, mo, day);
+    if (d.getFullYear() !== y || d.getMonth() !== mo || d.getDate() !== day) return null;
+    return d;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function calculateAge(dob, now = new Date()) {
+  const birth = parseLocalDate(dob);
+  const today = parseLocalDate(now);
+  if (!birth || !today) return null;
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+function formatAge(dob, now = new Date(), fallback = 'Unknown') {
+  const age = calculateAge(dob, now);
+  return age == null ? fallback : age;
+}
+// <<<END SHARED HELPER: formatAge>>>
+
 
 // Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
 // response_json_schema, because the provider rejects deeply-nested object
@@ -24,6 +55,41 @@ function parseLLMJson(raw) {
     if (start === -1 || end <= start) return null;
     try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
   }
+}
+
+
+/** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
+async function assertPatientAccess(base44, user, patient) {
+  if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
+  const isSuperAdmin = user.account_type === 'super_admin';
+  const isAgencyScopedAdmin =
+    user.account_type === 'agency_admin'
+    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+  const isAssigned = Array.isArray(patient.assigned_nurses)
+    && patient.assigned_nurses.includes(user.email);
+  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (isAgencyScopedAdmin) {
+    if (!user.agency_name) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const agencyUsers = await base44.asServiceRole.entities.User
+      .list('-created_date', 5000).catch(() => []);
+    const agencyEmails = new Set(
+      (agencyUsers || [])
+        .filter((u) => u.agency_name === user.agency_name && u.email)
+        .map((u) => u.email),
+    );
+    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
+      || (Array.isArray(patient.assigned_nurses)
+        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
+    if (!inAgency) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -46,18 +112,40 @@ Deno.serve(async (req) => {
     // asServiceRole) so the platform enforces that this user may access this
     // patient — prevents cross-patient IDOR via a guessed patient_id. Mirrors
     // the safe pattern in processCompletedVisit / expandClinicalPhrase.
-    const [patients, visits, incidents, alerts] = await Promise.all([
-      base44.entities.Patient.filter({ id: patient_id }, undefined, 5000),
-      base44.entities.Visit.filter({ patient_id }, '-visit_date', 20),
-      base44.entities.Incident.filter({ patient_id }, undefined, 5000),
-      base44.entities.PatientAlert.filter({ patient_id, status: 'active' }, undefined, 5000)
-    ]);
+    const [patient] = await base44.asServiceRole.entities.Patient
+      .filter({ id: patient_id }, '', 1).catch(() => []);
+    const denied = await assertPatientAccess(base44, user, patient);
+    if (denied) return denied;
 
-    const patient = patients[0];
-    if (!patient) {
-      // Either the patient doesn't exist or the caller isn't authorized for it.
-      return Response.json({ error: 'Patient not found' }, { status: 404 });
+    // Claim before LLM + PatientAlert.create so concurrent runs cannot both
+    // see empty alerts and duplicate high-risk rows.
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `risk-predict-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.asServiceRole.entities.Patient.update(patient_id, {
+        risk_predict_claimed_by: claimToken,
+      });
+    } catch {
+      return Response.json({ error: 'Could not claim patient for risk prediction' }, { status: 409 });
     }
+    const claimCheck = await base44.asServiceRole.entities.Patient
+      .filter({ id: patient_id }, '', 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].risk_predict_claimed_by !== claimToken) {
+      return Response.json({
+        success: true,
+        already_processed: true,
+        alerts_created: 0,
+        alerts: [],
+        skipped: 'claimed by concurrent run',
+      });
+    }
+
+    const [visits, incidents, alerts] = await Promise.all([
+      base44.asServiceRole.entities.Visit.filter({ patient_id }, '-visit_date', 20),
+      base44.asServiceRole.entities.Incident.filter({ patient_id }, undefined, 5000),
+      base44.asServiceRole.entities.PatientAlert.filter({ patient_id, status: 'active' }, undefined, 5000)
+    ]);
 
     const completedVisits = visits.filter(v => v.status === 'completed');
     const recentVisits = completedVisits.slice(0, 5);
@@ -65,7 +153,7 @@ Deno.serve(async (req) => {
     // Prepare data for AI analysis
     const analysisData = {
       patient_info: {
-        age: patient.date_of_birth ? Math.floor((new Date() - new Date(patient.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+        age: calculateAge(patient.date_of_birth),
         primary_diagnosis: patient.primary_diagnosis,
         secondary_diagnoses: patient.secondary_diagnoses || [],
         care_type: patient.care_type,

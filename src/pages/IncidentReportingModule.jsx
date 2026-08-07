@@ -104,7 +104,10 @@ export default function IncidentReportingModule() {
     // user change keeps serving the previous nurse's cached patient list.
     queryKey: ['myPatients', currentUser?.email],
     queryFn: async () => {
-      const allPatients = await base44.entities.Patient.list('-updated_date', 2000);
+      const _rawPatients = await base44.entities.Patient.list('-updated_date', 2000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      const allPatients = filterPatientsByCallerAgency(_rawPatients, _userRows, currentUser);
       return allPatients.filter(p => p.assigned_nurses?.includes(currentUser?.email));
     },
     enabled: !!currentUser,
@@ -119,8 +122,14 @@ export default function IncidentReportingModule() {
 
   const { data: patients = [] } = useQuery({
     queryKey: ['allPatients', '-updated_date', 2000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const createIncidentMutation = useMutation({

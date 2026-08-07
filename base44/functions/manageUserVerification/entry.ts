@@ -7,6 +7,16 @@ const isAdminLike = (u) => !!u && (
 );
 // <<<END SHARED HELPER: isAdminLike>>>
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 
 Deno.serve(async (req) => {
   try {
@@ -19,6 +29,10 @@ Deno.serve(async (req) => {
     if (currentUser.is_active === false) {
       return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
     }
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(currentUser);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
 
     const { action, email, otp } = await req.json();
 
@@ -27,7 +41,7 @@ Deno.serve(async (req) => {
     }
 
     // Agency admins may only resend/verify OTP for staff in their own agency.
-    if (currentUser.account_type === 'agency_admin') {
+    if (currentUser.account_type !== 'super_admin' && currentUser.agency_name && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin')) {
       if (!currentUser.agency_name) {
         return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
       }

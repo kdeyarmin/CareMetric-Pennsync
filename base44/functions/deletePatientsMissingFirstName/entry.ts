@@ -8,6 +8,13 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
 
 Deno.serve(async (req) => {
   try {
@@ -15,8 +22,11 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
-    if (user?.role !== 'admin') {
+    if (!isAdminLike(user)) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
     }
 
     // Require an explicit confirm so a single accidental call can't irreversibly
@@ -26,7 +36,29 @@ Deno.serve(async (req) => {
 
     // Fetch patients (bounded to the SDK's 5000/request max; omitting a limit
     // silently caps at the SDK default of 50). Re-run if more remain.
-    const allPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
+    let allPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
+
+    // Scope to the caller's agency so an agency_admin cannot archive another
+    // tenant's stub charts. Super admins (or admins with no agency) keep the
+    // platform-wide view. Orphan stubs (no care team) are platform-admin only —
+    // including them for every agency let Agency A archive Agency B's unattributed PHI.
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && !!user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScoped) {
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+        .catch(() => []);
+      const agencyEmails = new Set(
+        (Array.isArray(agencyUsers) ? agencyUsers : [])
+          .map((u) => u?.email)
+          .filter(Boolean)
+      );
+      allPatients = (Array.isArray(allPatients) ? allPatients : []).filter((p) =>
+        (p.created_by && agencyEmails.has(p.created_by))
+        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
+      );
+    }
 
     // Filter patients without first_name. Skip already-archived records —
     // re-archiving flipped e.g. a 'discharged' status to 'merged'.

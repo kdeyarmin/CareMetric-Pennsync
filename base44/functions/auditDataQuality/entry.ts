@@ -7,22 +7,53 @@ const isAdminLike = (u) => !!u && (
 );
 // <<<END SHARED HELPER: isAdminLike>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     if (!isAdminLike(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
-    // Fetch all active data
-    const [patients, users, visits, credentials] = await Promise.all([
+    // Fetch active data. Scope to the caller's agency when known so an
+    // agency_admin cannot audit (and see names/ids for) every tenant.
+    let [patients, users, visits, credentials] = await Promise.all([
       base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000),
       base44.asServiceRole.entities.User.list('-created_date', 500),
       base44.asServiceRole.entities.Visit.filter({ status: 'completed' }, '-visit_date', 200),
       base44.asServiceRole.entities.PersonnelCredential.list('-expiration_date', 500),
     ]);
+
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
+    if (user.account_type !== 'super_admin' && user.agency_name) {
+      users = (Array.isArray(users) ? users : []).filter((u) =>
+        u.account_type === 'super_admin' || u.agency_name === user.agency_name
+      );
+      const agencyEmails = new Set(users.map((u) => u?.email).filter(Boolean));
+      patients = (Array.isArray(patients) ? patients : []).filter((p) =>
+        (p.created_by && agencyEmails.has(p.created_by))
+        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
+      );
+      const patientIds = new Set(patients.map((p) => p.id));
+      visits = (Array.isArray(visits) ? visits : []).filter((v) => patientIds.has(v.patient_id));
+      credentials = (Array.isArray(credentials) ? credentials : []).filter((c) =>
+        (c.agency_name && c.agency_name === user.agency_name)
+        || (c.employee_email && agencyEmails.has(c.employee_email))
+      );
+    }
 
     const criticalFields = {
       patient: ['emergency_contact_name', 'emergency_contact_phone', 'physician_name', 'phone', 'date_of_birth'],

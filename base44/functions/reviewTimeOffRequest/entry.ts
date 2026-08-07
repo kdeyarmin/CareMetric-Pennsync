@@ -9,6 +9,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -147,6 +157,10 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
     const { request_id, decision, note = '' } = (await req.json()) || {};
 
     if (!request_id) {
@@ -175,13 +189,16 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'You cannot review your own time-off request.' }, { status: 403 });
     }
 
-    // Agency admins may only review time-off for staff in their own agency.
-    if (user.account_type === 'agency_admin') {
+    // Agency-scoped admins may only review time-off for staff in their agency.
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScoped) {
       const employees = await base44.asServiceRole.entities.User
         .filter({ email: request.employee_email }, undefined, 5)
         .catch(() => []);
       const employee = employees?.[0];
-      if (!user.agency_name || !employee || employee.agency_name !== user.agency_name) {
+      if (!employee || employee.agency_name !== user.agency_name) {
         return Response.json({ error: 'Forbidden: employee is outside your agency.' }, { status: 403 });
       }
     }

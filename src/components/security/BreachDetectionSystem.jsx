@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { formatEastern } from "../utils/timezone";
 import { toast } from 'sonner';
+import { isAdminView } from "@/lib/roles";
 
 /**
  * Breach Detection System
@@ -33,13 +34,13 @@ export default function BreachDetectionSystem() {
   const { data: securityLogs = [] } = useQuery({
     queryKey: ['securityLogs', '-timestamp', 1000],
     queryFn: () => base44.entities.SecurityLog.list('-timestamp', 1000),
-    enabled: currentUser?.role === 'admin'
+    enabled: isAdminView(currentUser)
   });
 
   const { data: userActivities = [] } = useQuery({
     queryKey: ['userActivities', 2000],
     queryFn: () => base44.entities.UserActivity.list('-created_date', 2000),
-    enabled: currentUser?.role === 'admin'
+    enabled: isAdminView(currentUser)
   });
 
   const scanForBreaches = async () => {

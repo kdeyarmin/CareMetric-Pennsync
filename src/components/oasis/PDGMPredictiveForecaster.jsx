@@ -34,8 +34,9 @@ export default function PDGMPredictiveForecaster({ pdgmData, analysisResults, cu
   const { data: agencySettings } = useQuery({
     queryKey: ['agencySettings'],
     queryFn: async () => {
-      const result = await base44.entities.AgencySettings.list();
-      return result[0] || null;
+      const me = await base44.auth.me().catch(() => null);
+      const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
+      return fetchCallerAgencySettings(me?.agency_name);
     }
   });
 

@@ -9,6 +9,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && (
   u.role === 'admin' || u.account_type === 'agency_admin' ||
@@ -33,6 +43,10 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
     const body = await req.json();
     const internalOk = isInternalInvoke(body);
 
@@ -68,10 +82,15 @@ Deno.serve(async (req) => {
         String(pkg.signer_email).trim().toLowerCase() !== String(signer_email).trim().toLowerCase()) {
       return Response.json({ error: 'signer_email does not match package' }, { status: 403 });
     }
-    // Interactive agency admins may only mint signing links for packages whose
-    // patient is tied to their agency (parity with bulkCreateDocumentPackages).
-    if (!internalOk && user?.account_type === 'agency_admin') {
-      if (!user.agency_name || !pkg.patient_id) {
+    // Interactive agency-scoped admins (agency_admin OR facility admin with an
+    // agency_name) may only mint signing links for packages whose patient is
+    // tied to their agency. Super_admin / admin-without-agency stay platform-wide.
+    const isAgencyScopedAdmin = user
+      && user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (!internalOk && isAgencyScopedAdmin) {
+      if (!pkg.patient_id) {
         return Response.json({ error: 'Forbidden: package is outside your agency.' }, { status: 403 });
       }
       const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
@@ -92,6 +111,27 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Forbidden: package is outside your agency.' }, { status: 403 });
       }
     }
+    // Interactive mint must target a signer already on the package — otherwise
+    // an admin can mint a PHI-bearing link for an arbitrary email.
+    if (!internalOk) {
+      const packageSignerEmail = String(pkg.signer_email || '').trim().toLowerCase();
+      const requested = String(signer_email).trim().toLowerCase();
+      const memberIds = Array.isArray(pkg.document_signatures) ? pkg.document_signatures : [];
+      let memberMatch = packageSignerEmail && packageSignerEmail === requested;
+      if (!memberMatch && memberIds.length > 0) {
+        const members = await Promise.all(
+          memberIds.map((id) => base44.asServiceRole.entities.DocumentSignature.get(id).catch(() => null))
+        );
+        memberMatch = members.some((sig) =>
+          Array.isArray(sig?.signers) && sig.signers.some((s) =>
+            String(s?.email || '').trim().toLowerCase() === requested
+          )
+        );
+      }
+      if (!memberMatch) {
+        return Response.json({ error: 'signer_email is not a signer on this package' }, { status: 403 });
+      }
+    }
 
     // Generate secure token. Persist ONLY its SHA-256 hash (in the token field):
     // the plaintext lives solely in the emailed signing link, so read access to
@@ -107,6 +147,12 @@ Deno.serve(async (req) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + days);
 
+    // Snapshot package membership at mint so later add/swap of documents cannot
+    // expand the PHI this signing link can read or sign.
+    const mintedDocumentIds = (Array.isArray(pkg.document_signatures) ? pkg.document_signatures : [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean);
+
     const tokenRecord = await base44.asServiceRole.entities.DocumentPackageToken.create({
       package_id,
       token: tokenHash,
@@ -114,6 +160,7 @@ Deno.serve(async (req) => {
       // refuse the legacy-plaintext fallback for hashed rows — otherwise a leaked
       // stored hash could itself be replayed as a bearer token.
       token_hashed: true,
+      document_ids: mintedDocumentIds,
       signer_email,
       signer_name: signer_name || signer_email,
       token_created_at: new Date().toISOString(),

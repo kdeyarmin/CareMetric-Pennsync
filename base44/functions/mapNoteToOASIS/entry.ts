@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -8,6 +16,7 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { enhancedNote, patientId, visitType, diagnosis, vitalSigns } = await req.json();
 
@@ -22,8 +31,28 @@ Deno.serve(async (req) => {
       // prompt/response (assigned nurse or admin). RLS-independent code check.
       const [oasisPatient] = await base44.asServiceRole.entities.Patient.filter({ id: patientId }, '', 1);
       if (!oasisPatient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-      if (user.role !== 'admin' && oasisPatient.created_by !== user.email && !(Array.isArray(oasisPatient.assigned_nurses) && oasisPatient.assigned_nurses.includes(user.email))) {
+      const isSuperAdmin = user.account_type === 'super_admin';
+      const isAgencyScopedAdmin =
+        user.account_type === 'agency_admin'
+        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+      const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+      const isAssigned = oasisPatient.created_by === user.email
+        || (Array.isArray(oasisPatient.assigned_nurses) && oasisPatient.assigned_nurses.includes(user.email));
+      if (!isPlatformAdmin && !isAgencyScopedAdmin && !isAssigned) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      if (isAgencyScopedAdmin) {
+        if (!user.agency_name) return Response.json({ error: 'Forbidden' }, { status: 403 });
+        const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+        const agencyEmails = new Set(
+          (agencyUsers || [])
+            .filter((u) => u.agency_name === user.agency_name && u.email)
+            .map((u) => u.email),
+        );
+        const inAgency = (oasisPatient.created_by && agencyEmails.has(oasisPatient.created_by))
+          || (Array.isArray(oasisPatient.assigned_nurses)
+            && oasisPatient.assigned_nurses.some((e) => agencyEmails.has(e)));
+        if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
       const oasisRecords = await base44.asServiceRole.entities.OASISUpload.filter(
         { patient_id: patientId },

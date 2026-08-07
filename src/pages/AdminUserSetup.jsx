@@ -34,14 +34,21 @@ export default function AdminUserSetup() {
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers', 5000],
-    queryFn: () => base44.entities.User.list('-created_date', 5000),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 5000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     initialData: [],
     enabled: isAdminView(currentUser),
   });
 
   const inviteUserMutation = useMutation({
     mutationFn: async ({ email, full_name, role }) => {
-      return await base44.functions.invoke('createUserWithTempPassword', { email, full_name, role });
+      const res = await base44.functions.invoke('createUserWithTempPassword', { email, full_name, role });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      return data;
     },
     onSuccess: (_data, variables) => {
       const manualLabel = variables?.role === 'admin' ? 'Facility Administrator Manual' : 'User Manual';

@@ -98,15 +98,20 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
 
   const processAudioMutation = useMutation({
     mutationFn: async (audioFile) => {
+      if (!patientId) throw new Error('Patient is required to generate a note from audio');
       const uploadResult = await base44.integrations.Core.UploadFile({ file: audioFile });
       const result = await base44.functions.invoke('generateNoteFromRecording', {
         audio_url: uploadResult.file_url,
+        patient_id: patientId,
+        visit_type: visitType || 'routine_visit',
+        diagnosis: patient?.primary_diagnosis || undefined,
       });
-      return result;
+      const body = result?.data ?? result;
+      if (body?.error) throw new Error(body.error);
+      return body;
     },
     onSuccess: (data) => {
-      const body = data?.data || data;
-      const payload = body?.data || body;
+      const payload = data?.data || data;
       const transcription = payload.transcription || "";
       setTranscription(transcription);
       setRoughNote(transcription || payload.generatedNote || "");
@@ -116,6 +121,9 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       setSaved(false);
       setNoteSeq(n => n + 1);
       logActivity(ActivityActions.NOTE_AI_GENERATED, { page: 'ClinicalDocumentation', source: 'audio_recording' });
+    },
+    onError: (err) => {
+      toast.error(err?.message || 'Failed to generate note from recording');
     },
   });
 

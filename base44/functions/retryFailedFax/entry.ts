@@ -1,5 +1,56 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
+// <<<BEGIN SHARED HELPER: resolveFaxRetryConfig — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveFaxRetryConfig(base44, agencyName) {
+  const key = String(agencyName || '').trim();
+  if (key) {
+    const rows = await base44.asServiceRole.entities.FaxRetryConfig
+      .filter({ agency_name: key }, '-created_date', 1)
+      .catch(() => []);
+    if (rows?.[0]) return rows[0];
+  }
+  const newest = await base44.asServiceRole.entities.FaxRetryConfig
+    .list('-created_date', 5)
+    .catch(() => []);
+  const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+  // Prefer a single unscoped legacy row when the agency-specific row is missing.
+  if (legacy.length === 1) return legacy[0];
+  if (key) return null;
+  if ((newest || []).length > 1) return null;
+  return newest?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveFaxRetryConfig>>>
+
+
 // Strict E.164 normalization for the OFFICE FAX `from` number (null when it
 // can't normalize). The admin-entered office fax may carry formatting
 // ("(724) 465-0441"); Telnyx requires E.164 on `from`, so an unnormalizable
@@ -107,6 +158,15 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 /**
  * Retry a failed fax transmission
  */
@@ -114,6 +174,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -134,13 +195,16 @@ Deno.serve(async (req) => {
     const originalFax = faxLogs[0];
 
     // Ownership: only the original sender (or an admin-tier user) may resend a PHI fax.
-    const isPlatformAdmin = user.role === 'admin' || user.account_type === 'super_admin';
-    const isAgencyAdmin = user.account_type === 'agency_admin';
-    if (originalFax.sent_by && originalFax.sent_by !== user.email && !isPlatformAdmin && !isAgencyAdmin) {
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    if (originalFax.sent_by && originalFax.sent_by !== user.email && !isPlatformAdmin && !isAgencyScopedAdmin) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    // Agency admins may only retry faxes sent by staff in their agency.
-    if (isAgencyAdmin && originalFax.sent_by !== user.email) {
+    // Agency-scoped admins may only retry faxes sent by staff in their agency.
+    if (isAgencyScopedAdmin && originalFax.sent_by !== user.email) {
       if (!user.agency_name || !originalFax.sent_by) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
@@ -165,10 +229,15 @@ Deno.serve(async (req) => {
 
     // Honor the admin-configured retry budget (FaxRetryConfig.max_retries) so a
     // manual retry uses the same limit as the auto-retry cron, instead of a
-    // separate hardcoded value. Falls back to 3 when no config row exists.
-    const retryCfgRows = await base44.asServiceRole.entities.FaxRetryConfig
-      .list('-created_date', 1).catch(() => []);
-    const cfgMax = Number(retryCfgRows?.[0]?.max_retries);
+    // separate hardcoded value. Resolve by sender agency — never global newest.
+    let senderAgency = user.agency_name || '';
+    if (originalFax.sent_by) {
+      const [sender] = await base44.asServiceRole.entities.User
+        .filter({ email: originalFax.sent_by }, undefined, 1).catch(() => []);
+      if (sender?.agency_name) senderAgency = sender.agency_name;
+    }
+    const retryCfg = (await resolveFaxRetryConfig(base44, senderAgency)) || {};
+    const cfgMax = Number(retryCfg.max_retries);
     const maxRetries = Number.isFinite(cfgMax) && cfgMax >= 0 ? cfgMax : 3;
 
     // Check retry limit — coerce undefined retry_count to 0 so max_retries: 0
@@ -197,9 +266,9 @@ Deno.serve(async (req) => {
     // Resolve the from-number the same way sendFax does: transmit from the
     // blind outbound line (outbound_fax_number_e164), presented as the office
     // fax machine; legacy fallback to office_fax_number_e164 as the from.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const officeFaxRaw = (settingsRows[0]?.office_fax_number_e164 || '').toString().trim();
-    const outboundFaxRaw = (settingsRows[0]?.outbound_fax_number_e164 || '').toString().trim();
+    const agencySettings = await resolveAgencySettings(base44, senderAgency);
+    const officeFaxRaw = (agencySettings?.office_fax_number_e164 || '').toString().trim();
+    const outboundFaxRaw = (agencySettings?.outbound_fax_number_e164 || '').toString().trim();
     const officeFax = normalizeFromE164(officeFaxRaw);
     const outboundFax = normalizeFromE164(outboundFaxRaw);
     const fromNumber = outboundFax || officeFax;

@@ -7,6 +7,7 @@ import NotificationPreferences from "../components/notifications/NotificationPre
 import AnnouncementManager from "../components/admin/AnnouncementManager";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import { isAdminView } from "@/lib/roles";
 
 export default function NotificationSettings() {
   const { data: currentUser } = useQuery({
@@ -14,7 +15,7 @@ export default function NotificationSettings() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   return (
     <PageContainer>

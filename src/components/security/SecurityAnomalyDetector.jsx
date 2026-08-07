@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { formatEastern } from "../utils/timezone";
 import { toast } from 'sonner';
+import { isAdminView } from "@/lib/roles";
 
 export default function SecurityAnomalyDetector() {
   const [analyzing, setAnalyzing] = useState(false);
@@ -31,13 +32,13 @@ export default function SecurityAnomalyDetector() {
   const { data: securityLogs = [] } = useQuery({
     queryKey: ['recentSecurityLogs'],
     queryFn: () => base44.entities.SecurityLog.list('-timestamp', 500),
-    enabled: currentUser?.role === 'admin'
+    enabled: isAdminView(currentUser)
   });
 
   const { data: userActivities = [] } = useQuery({
     queryKey: ['recentUserActivities'],
     queryFn: () => base44.entities.UserActivity.list('-created_date', 1000),
-    enabled: currentUser?.role === 'admin'
+    enabled: isAdminView(currentUser)
   });
 
   const analyzeSecurityPatterns = async () => {

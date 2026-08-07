@@ -37,6 +37,15 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 // Compliance-risk monitor. COMPANION-MODE AWARE: PennSync usually runs
 // alongside the agency's EMR, so rules that fire on the ABSENCE of EMR-owned
 // data (visits, vitals, Discharge OASIS) are gated behind
@@ -146,6 +155,26 @@ function detectMissingDischargeOASIS(ctx, opts = {}) {
 // Persist a batch of candidate alerts for one patient, skipping active
 // same-type/same-title duplicates created within the last 24h.
 async function persistAlerts(base44, patientAlerts, currentDate, sink) {
+  if (!patientAlerts?.length) return;
+  const patientId = patientAlerts[0].patient_id;
+  // Claim before creates so overlapping crons cannot both see "no duplicate"
+  // and double-insert the same compliance alert (best-effort; docs/PLATFORM-CAS.md).
+  const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `compliance-monitor-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {
+    await base44.asServiceRole.entities.Patient.update(patientId, {
+      compliance_monitor_claimed_by: claimToken,
+    });
+  } catch {
+    return;
+  }
+  const claimCheck = await base44.asServiceRole.entities.Patient
+    .filter({ id: patientId }, '', 1).catch(() => []);
+  if (!claimCheck[0] || claimCheck[0].compliance_monitor_claimed_by !== claimToken) {
+    return;
+  }
+
   for (const alert of patientAlerts) {
     const existingAlerts = await base44.asServiceRole.entities.PatientAlert.filter({
       patient_id: alert.patient_id,
@@ -176,6 +205,7 @@ Deno.serve(async (req) => {
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
     // Companion-EMR gate: PennSync typically runs ALONGSIDE the agency's EMR,
     // so visits, vitals, and Discharge OASIS assessments may be documented only
@@ -189,8 +219,53 @@ Deno.serve(async (req) => {
     // unset, or no settings row — keeps them off, the safe companion-mode
     // default. Rules keyed to in-app artifacts (RISK 5: homebound wording
     // missing from a visit note that EXISTS in PennSync) always run.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
-    const pennsyncIsSystemOfRecord = settingsRows?.[0]?.pennsync_is_system_of_record === true;
+    // Per-agency SoR flag (cached). Newest-row-wins would enable absence-based
+    // alerts for every tenant when only one agency opted into system-of-record.
+    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+    const emailToAgency = new Map(
+      (allUsers || []).filter((u) => u?.email).map((u) => [u.email, u.agency_name || '']),
+    );
+    const sorCache = new Map();
+    const agencyIsSystemOfRecord = async (agencyName) => {
+      const key = agencyName || '__default__';
+      if (sorCache.has(key)) return sorCache.get(key);
+      let rows = [];
+      if (agencyName) {
+        rows = await base44.asServiceRole.entities.AgencySettings
+          .filter({ agency_code: agencyName }, '-created_date', 1).catch(() => []);
+        if (!rows?.length) {
+          rows = await base44.asServiceRole.entities.AgencySettings
+            .filter({ office_name: agencyName }, '-created_date', 1).catch(() => []);
+        }
+      }
+      if (!rows?.length) {
+        // Keyed agency miss: never adopt another tenant's sole SoR row.
+        // Legacy single-row fallback only when no agency can be determined.
+        if (agencyName) {
+          sorCache.set(key, false);
+          return false;
+        }
+        const newest = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 5).catch(() => []);
+        if ((newest || []).length > 1) {
+          sorCache.set(key, false);
+          return false;
+        }
+        rows = (newest || []).slice(0, 1);
+      }
+      const flag = rows?.[0]?.pennsync_is_system_of_record === true;
+      sorCache.set(key, flag);
+      return flag;
+    };
+    const patientAgencyName = (patient) => {
+      if (patient?.created_by && emailToAgency.has(patient.created_by)) {
+        return emailToAgency.get(patient.created_by);
+      }
+      const assigned = Array.isArray(patient?.assigned_nurses) ? patient.assigned_nurses : [];
+      for (const email of assigned) {
+        if (emailToAgency.has(email)) return emailToAgency.get(email);
+      }
+      return '';
+    };
 
     // Service role for monitoring all patients (bounded — an unbounded list would
     // silently truncate at the SDK page default and time out at scale).
@@ -199,6 +274,7 @@ Deno.serve(async (req) => {
     const currentDate = new Date();
     
     for (const patient of patients) {
+      const pennsyncIsSystemOfRecord = await agencyIsSystemOfRecord(patientAgencyName(patient));
       const patientAlerts = [];
       
       // Fetch patient data
@@ -334,12 +410,15 @@ Deno.serve(async (req) => {
     // Discharged-patient sweep: the main loop only iterates ACTIVE patients, so
     // separately catch recently-discharged patients whose episode closed without
     // a completed Discharge OASIS (the highest-value, critical-severity case).
-    // Same absence-based rule as RISK 6, so same companion-mode gate.
-    if (pennsyncIsSystemOfRecord) {
+    // Same absence-based rule as RISK 6 — resolve SoR per patient (never reuse
+    // a loop-local flag from the active sweep).
+    {
       const dischargedPatients = await base44.asServiceRole.entities.Patient.filter(
         { status: 'discharged' }, '-updated_date', 2000,
       );
       for (const patient of dischargedPatients) {
+        const dischargedIsSoR = await agencyIsSystemOfRecord(patientAgencyName(patient));
+        if (!dischargedIsSoR) continue;
         const [visits, oasisAssessments] = await Promise.all([
           base44.asServiceRole.entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
           base44.asServiceRole.entities.OASISAssessment.filter({ patient_id: patient.id }, '-assessment_date', 20),
@@ -353,7 +432,8 @@ Deno.serve(async (req) => {
       success: true,
       alerts_generated: alerts.length,
       patients_monitored: patients.length,
-      absence_based_rules_enabled: pennsyncIsSystemOfRecord,
+      // Per-patient SoR; response reports whether any agency still uses companion mode.
+      absence_based_rules_per_agency: true,
       timestamp: currentDate.toISOString()
     });
     

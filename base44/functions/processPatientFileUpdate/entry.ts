@@ -336,9 +336,22 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (user.role !== 'admin') {
+    const isAdminLike = user.role === 'admin'
+      || user.account_type === 'agency_admin'
+      || user.account_type === 'super_admin';
+    if (!isAdminLike) {
       return Response.json({ success: false, error: 'Forbidden: Admin access required' }, { status: 403 });
     }
+    // agency_admin without agency_name must not fall through to platform-wide
+    // Patient.list/create (isAgencyScoped below requires a truthy agency_name).
+    if (user.account_type === 'agency_admin' && !user.agency_name) {
+      return Response.json({ success: false, error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
+    // Facility admins with an agency may only import/match patients in their
+    // agency. Platform-wide: super_admin or role:admin without agency_name.
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
 
     const body = await req.json();
     const reportType = body.report_type === 'discharge_report' ? 'discharge_report' : 'active_census';
@@ -389,7 +402,20 @@ Deno.serve(async (req) => {
       existingPatients.push(...page);
       if (page.length < PATIENT_PAGE) break;
     }
-    const { existingByMrn, existingByNameDob } = buildExistingLookups(existingPatients);
+    let scopedPatients = existingPatients;
+    if (isAgencyScoped) {
+      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      scopedPatients = existingPatients.filter((p) =>
+        (p.created_by && agencyEmails.has(p.created_by))
+        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
+      );
+    }
+    const { existingByMrn, existingByNameDob } = buildExistingLookups(scopedPatients);
 
     const results = {
       reportType,
@@ -499,6 +525,10 @@ Deno.serve(async (req) => {
             address: patient.address || undefined,
             care_type: 'home_health',
             is_archived: false,
+            // Bind new charts to the importing admin so agency-scoped RLS /
+            // function gates can attribute the patient to this tenant.
+            assigned_nurses: user.email ? [user.email] : undefined,
+            created_by: user.email || undefined,
           },
         });
         continue;

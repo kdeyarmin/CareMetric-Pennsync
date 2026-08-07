@@ -1,5 +1,42 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
 // CMS PDGM base payment rate
 const BASE_PAYMENT_RATE_2026 = 2038.22; // CY2026 national standardized 30-day period payment, quality submitters (CMS-1828-F, eff. 2026-01-01)
 
@@ -677,6 +714,7 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { pdgmData, correctedPdgmData, wageIndex } = await req.json();
 
@@ -690,9 +728,9 @@ Deno.serve(async (req) => {
     let appliedWageIndex = Number.isFinite(Number(wageIndex)) && Number(wageIndex) > 0 ? Number(wageIndex) : 0;
     if (!appliedWageIndex) {
       try {
-        const agencySettings = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1);
-        if (agencySettings && agencySettings.length > 0 && agencySettings[0].wage_index) {
-          appliedWageIndex = agencySettings[0].wage_index;
+        const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+        if (agencySettings?.wage_index) {
+          appliedWageIndex = agencySettings.wage_index;
         }
       } catch (e) {
         console.log('No agency settings found, using default wage index');
@@ -708,7 +746,19 @@ Deno.serve(async (req) => {
     let isOfficial = false;
     let icdMap = ICD10_CLINICAL_GROUPS;
     try {
-      const rateRows = await base44.asServiceRole.entities.PDGMRateConfig.list('-created_date', 1);
+      let rateRows = [];
+      if (user?.agency_name) {
+        rateRows = await base44.asServiceRole.entities.PDGMRateConfig
+          .filter({ agency_name: user.agency_name }, '-created_date', 1).catch(() => []);
+      }
+      if (!rateRows?.length) {
+        // Callers with an agency must not inherit another tenant's (or a lone
+        // unscoped) rate row — fall through to built-in defaults instead.
+        if (!user?.agency_name) {
+          const newest = await base44.asServiceRole.entities.PDGMRateConfig.list('-created_date', 5).catch(() => []);
+          if ((newest || []).length <= 1) rateRows = (newest || []).slice(0, 1);
+        }
+      }
       const rateConfig = rateRows && rateRows.length > 0 ? rateRows[0] : null;
       if (rateConfig) {
         rates = deepMergeNumbers(DEFAULT_RATES, rateConfig.rates);

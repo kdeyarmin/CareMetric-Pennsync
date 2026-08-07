@@ -13,7 +13,8 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
  * saveVisitPointConfig — admin upsert of the facility's per-visit-type point
  * values (SOC, ROC, Recert, Routine, Discharge). Home-health nurses enter visit
  * counts by type on their timesheet; the server multiplies those by these values
- * to compute total points. One active config row per facility.
+ * to compute total points. One active config row per agency (or one global row
+ * for platform admins without an agency).
  *
  * Admin-only. Point VALUES are units of work (not dollars or wage rates) — this
  * system holds no pay rates.
@@ -31,8 +32,8 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     // Admin = role 'admin' or an admin account_type (agency/super), matching the
     // app's role model (src/lib/roles.js) and other backend admin gates.
     const isAdmin = user.role === 'admin' || user.account_type === 'super_admin' || user.account_type === 'agency_admin';
@@ -48,11 +49,44 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Request body is required' }, { status: 400 });
     }
 
-    const fields = { active: true, notes: String(body.notes || '').slice(0, 1000) };
+    const agencyName = String(user.agency_name || '').trim();
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && agencyName
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    // Only agency_admin accounts require agency_name. Bare role:admin with no
+    // agency is platform-wide and may manage the unscoped legacy config row.
+    if (user.account_type === 'agency_admin' && !agencyName) {
+      return Response.json({ error: 'Forbidden: agency_name is required' }, { status: 403 });
+    }
+
+    const fields = {
+      active: true,
+      notes: String(body.notes || '').slice(0, 1000),
+      ...(agencyName ? { agency_name: agencyName } : {}),
+    };
     for (const f of POINT_FIELDS) fields[f] = toNonNegativeNumber(body[f]);
 
-    // One config per facility: update the existing (active) row, else create it.
-    const existing = await base44.asServiceRole.entities.VisitPointConfig.list('-updated_date', 50).catch(() => []);
+    // Prefer the caller's agency row; never overwrite another tenant's newest row.
+    let existing = [];
+    if (agencyName) {
+      existing = await base44.asServiceRole.entities.VisitPointConfig
+        .filter({ agency_name: agencyName }, '-updated_date', 50).catch(() => []);
+    }
+    if (!existing?.length && !isAgencyScoped) {
+      // Only touch a legacy unscoped row when it is unambiguously the only
+      // candidate — never clobber another tenant's newest row.
+      const newest = await base44.asServiceRole.entities.VisitPointConfig
+        .list('-updated_date', 50).catch(() => []);
+      const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+      if (legacy.length === 1) existing = legacy;
+      else if ((newest || []).length === 1 && !String(newest[0]?.agency_name || '').trim()) {
+        existing = newest;
+      } else if ((newest || []).length <= 1) {
+        existing = newest || [];
+      } else {
+        existing = [];
+      }
+    }
     const target = (existing || []).find((c) => c && c.active !== false) || (existing || [])[0];
 
     let saved;

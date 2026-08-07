@@ -159,6 +159,15 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 Deno.serve(async (req) => {
   try {
     console.log('=== checkExpiredInvitations started ===');
@@ -170,6 +179,7 @@ Deno.serve(async (req) => {
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
+    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -231,24 +241,39 @@ Deno.serve(async (req) => {
     console.log('Expired invitations:', expired.length);
     console.log('Expiring soon:', expiringSoon.length);
 
-    // Get all admins
-    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1000);
+    // Scope invitation digests to each admin's agency (super_admins see all).
+    // Unscoped fan-out emailed invitee names/emails to every tenant's admins.
+    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+    const admins = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+      u && u.email && (
+        u.role === 'admin' ||
+        u.account_type === 'agency_admin' ||
+        u.account_type === 'super_admin'
+      )
+    );
 
     // Send notifications if there are expired or expiring invitations
     if (expired.length > 0 || expiringSoon.length > 0) {
       let emailsSent = 0;
       for (const admin of admins) {
+        const scopedExpired = admin.account_type === 'super_admin'
+          ? expired
+          : expired.filter((inv) => !inv.agency_name || inv.agency_name === admin.agency_name);
+        const scopedExpiring = admin.account_type === 'super_admin'
+          ? expiringSoon
+          : expiringSoon.filter((inv) => !inv.agency_name || inv.agency_name === admin.agency_name);
+        if (scopedExpired.length === 0 && scopedExpiring.length === 0) continue;
         const sections = [];
-        if (expired.length > 0) {
+        if (scopedExpired.length > 0) {
           sections.push({
-            heading: `Expired invitations (${expired.length})`,
-            bullets: expired.map(inv => `${inv.full_name} (${inv.email}) — expired ${new Date(inv.expires_at).toLocaleString()}`),
+            heading: `Expired invitations (${scopedExpired.length})`,
+            bullets: scopedExpired.map(inv => `${inv.full_name} (${inv.email}) — expired ${new Date(inv.expires_at).toLocaleString()}`),
           });
         }
-        if (expiringSoon.length > 0) {
+        if (scopedExpiring.length > 0) {
           sections.push({
-            heading: `Expiring soon — within 24 hours (${expiringSoon.length})`,
-            bullets: expiringSoon.map(inv => `${inv.full_name} (${inv.email}) — expires ${new Date(inv.expires_at).toLocaleString()}`),
+            heading: `Expiring soon — within 24 hours (${scopedExpiring.length})`,
+            bullets: scopedExpiring.map(inv => `${inv.full_name} (${inv.email}) — expires ${new Date(inv.expires_at).toLocaleString()}`),
           });
         }
         sections.push({ note: 'You can resend any of these invitations from the User Management page in PennSync.' });
@@ -257,9 +282,9 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.integrations.Core.SendEmail({
             to: admin.email,
             from_name: 'PennSync by CareMetric',
-            subject: `Invitation status: ${expired.length} expired, ${expiringSoon.length} expiring soon`,
+            subject: `Invitation status: ${scopedExpired.length} expired, ${scopedExpiring.length} expiring soon`,
             body: renderBrandedEmail({
-              preheader: `${expired.length} expired and ${expiringSoon.length} expiring-soon invitation(s) need your attention.`,
+              preheader: `${scopedExpired.length} expired and ${scopedExpiring.length} expiring-soon invitation(s) need your attention.`,
               eyebrow: 'Invitation status',
               title: `Hello ${admin.full_name},`,
               intro: 'Here is the current status of pending user invitations that need your attention.',

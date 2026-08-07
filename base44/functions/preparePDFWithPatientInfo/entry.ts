@@ -1,6 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
 
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
 // SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
 // internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
 // rather than env-configured; add a host here if file storage ever moves.
@@ -51,6 +59,7 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
     const { 
       pdf_template_url, 
@@ -73,12 +82,44 @@ Deno.serve(async (req) => {
 
     if (patient_id && field_mappings.length > 0) {
       try {
-        patientData = await base44.entities.Patient.filter({ id: patient_id }, undefined, 5000);
-        if (patientData.length > 0) patientData = patientData[0];
+        const [claimed] = await base44.asServiceRole.entities.Patient
+          .filter({ id: patient_id }, '', 1).catch(() => []);
+        if (!claimed) {
+          return Response.json({ error: 'Patient not found' }, { status: 404 });
+        }
+        const isSuperAdmin = user.account_type === 'super_admin';
+        const isAgencyScopedAdmin =
+          user.account_type === 'agency_admin'
+          || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+        const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+        const isAssigned = Array.isArray(claimed.assigned_nurses)
+          && claimed.assigned_nurses.includes(user.email);
+        if (!isPlatformAdmin && !isAgencyScopedAdmin && claimed.created_by !== user.email && !isAssigned) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        if (isAgencyScopedAdmin) {
+          if (!user.agency_name) {
+            return Response.json({ error: 'Forbidden' }, { status: 403 });
+          }
+          const agencyUsers = await base44.asServiceRole.entities.User
+            .list('-created_date', 5000).catch(() => []);
+          const agencyEmails = new Set(
+            (agencyUsers || [])
+              .filter((u) => u.agency_name === user.agency_name && u.email)
+              .map((u) => u.email),
+          );
+          const inAgency = (claimed.created_by && agencyEmails.has(claimed.created_by))
+            || (Array.isArray(claimed.assigned_nurses)
+              && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
+          if (!inAgency) {
+            return Response.json({ error: 'Forbidden' }, { status: 403 });
+          }
+        }
+        patientData = claimed;
 
         // Get latest visit if needed
         if (field_mappings.some(m => m.data_source === 'visit')) {
-          const visits = await base44.entities.Visit.filter(
+          const visits = await base44.asServiceRole.entities.Visit.filter(
             { patient_id },
             '-visit_date',
             1

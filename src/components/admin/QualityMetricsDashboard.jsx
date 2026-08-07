@@ -40,6 +40,12 @@ import { format, subDays, differenceInMinutes } from "date-fns";
 import { escapeCsvField } from "@/components/admin/csvExport";
 
 export default function QualityMetricsDashboard() {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+
   const [timeRange, setTimeRange] = useState("30");
   const [selectedNurse, setSelectedNurse] = useState("all");
   const [aiInsights, setAiInsights] = useState(null); // State for AI insights
@@ -71,8 +77,14 @@ export default function QualityMetricsDashboard() {
     queryKey: ['allPatientsMetrics'],
     // The sibling Visit/Incident/SecurityLog queries here pass limits; this one
     // didn't, so patient-derived metrics were capped at Base44's default 50.
-    queryFn: () => base44.entities.Patient.list('-updated_date', 5000),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-updated_date', 5000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
     initialData: [],
+    enabled: !!currentUser,
   });
 
   const { data: allIncidents } = useQuery({
@@ -86,7 +98,12 @@ export default function QualityMetricsDashboard() {
 
   const { data: allUsers } = useQuery({
     queryKey: ['allUsersMetrics'],
-    queryFn: () => base44.entities.User.list('-created_date', 1000),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 1000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
 

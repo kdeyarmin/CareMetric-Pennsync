@@ -117,7 +117,10 @@ Provide actionable insights in a structured format with clear sections.`,
 
   const retryFax = async (faxId) => {
     try {
-      await base44.functions.invoke('retryFailedFax', { fax_log_id: faxId });
+      const res = await base44.functions.invoke('retryFailedFax', { fax_log_id: faxId });
+      const data = res?.data ?? res;
+      if (data?.error) throw new Error(data.error);
+      if (data?.success === false) throw new Error(data?.message || 'Fax retry was not started');
       toast.success("Fax retry initiated");
       refetch();
     } catch (error) {

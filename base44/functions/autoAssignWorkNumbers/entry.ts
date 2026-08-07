@@ -1,5 +1,43 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
+
+
 /**
  * autoAssignWorkNumbers — admin-only, one-click bulk provisioning. Gives every
  * user who doesn't yet have a personal voice/SMS work number the next available
@@ -40,6 +78,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     // Same admin surface as managePhoneNumberPool / the isAdminLike frontend
     // gate — an agency_admin can reach the panel, so the backend must accept them.
@@ -67,17 +106,23 @@ Deno.serve(async (req) => {
     // can sit in the pool (e.g. bought in-app), but handing one to a nurse
     // would break fax transmission/masking or office call routing. Treat them
     // as in-use.
-    const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+    const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
     for (const reserved of [
-      settingsRows[0]?.office_fax_number_e164,
-      settingsRows[0]?.outbound_fax_number_e164,
-      settingsRows[0]?.main_office_number_e164,
+      agencySettings?.office_fax_number_e164,
+      agencySettings?.outbound_fax_number_e164,
+      agencySettings?.main_office_number_e164,
     ]) {
       const norm = normalizeE164(reserved);
       if (norm) inUse.add(norm);
     }
 
-    // Agency admins may only auto-assign within their own agency.
+    // Agency-scoped admins (agency_admin or role:admin with agency) may only
+    // auto-assign within their own agency.
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    // Only agency_admin accounts require agency_name. A bare role:admin with no
+    // agency is the platform-wide facility admin and may assign across tenants.
     if (user.account_type === 'agency_admin' && !user.agency_name) {
       return Response.json({ error: 'Forbidden: agency_name is required to auto-assign work numbers.' }, { status: 403 });
     }
@@ -85,7 +130,7 @@ Deno.serve(async (req) => {
     // Candidate users: those missing a work number (optionally limited to `emails`).
     const candidates = allUsers.filter((u) => {
       if (!isBlank(u.work_phone_number)) return false;
-      if (user.account_type === 'agency_admin' && u.agency_name !== user.agency_name) return false;
+      if (isAgencyScoped && u.agency_name !== user.agency_name) return false;
       if (onlyEmails && !onlyEmails.includes(String(u.email || '').trim().toLowerCase())) return false;
       return true;
     });

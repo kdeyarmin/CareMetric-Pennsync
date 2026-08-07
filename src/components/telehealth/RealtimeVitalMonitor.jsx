@@ -66,7 +66,11 @@ export default function RealtimeVitalMonitor({ sessionId, patientId }) {
   // cache as a settings row; an array poisons business-hours / SMS templates).
   const { data: _agencySettings = null } = useQuery({
     queryKey: ['agencySettings'],
-    queryFn: async () => (await base44.entities.AgencySettings.list('-created_date', 1))[0] || null,
+    queryFn: async () => {
+      const me = await base44.auth.me().catch(() => null);
+      const { fetchCallerAgencySettings } = await import('@/lib/agencySettings');
+      return fetchCallerAgencySettings(me?.agency_name);
+    },
   });
 
   // Read the vitals captured on this telehealth session. The prior code read a

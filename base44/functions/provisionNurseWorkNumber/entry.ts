@@ -8,6 +8,46 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+
+
+
+// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveAgencySettings(base44, agencyName) {
+  let settings = [];
+  const key = String(agencyName || '').trim();
+  if (key) {
+    settings = await base44.asServiceRole.entities.AgencySettings
+      .filter({ agency_code: key }, '-created_date', 1)
+      .catch(() => []);
+    if (!settings?.length) {
+      settings = await base44.asServiceRole.entities.AgencySettings
+        .filter({ office_name: key }, '-created_date', 1)
+        .catch(() => []);
+    }
+  }
+  if (!settings?.length) {
+    // Fail closed when the agency hint missed (or no hint but multiple tenant
+    // rows exist). Newest-row-wins would silently apply another agency's fax
+    // line / dial allowlist / wage index / quiet-hour timezone.
+    if (key) return null;
+    const newest = await base44.asServiceRole.entities.AgencySettings
+      .list('-created_date', 5)
+      .catch(() => []);
+    if ((newest || []).length > 1) return null;
+    settings = (newest || []).slice(0, 1);
+  }
+  return settings?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveAgencySettings>>>
 
 /**
  * provisionNurseWorkNumber — admin-only. Assigns a nurse their dedicated Telnyx
@@ -48,6 +88,10 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
     // Same admin surface as managePhoneNumberPool / the isAdminLike frontend
     // gate — an agency_admin can reach the panel, so the backend must accept them.
     const isAdmin =
@@ -79,7 +123,7 @@ Deno.serve(async (req) => {
     }
 
     // Agency admins may only provision numbers for staff in their own agency.
-    if (user.account_type === 'agency_admin') {
+    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
       if (!user.agency_name || target.agency_name !== user.agency_name) {
         return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
       }
@@ -95,11 +139,11 @@ Deno.serve(async (req) => {
       // The office fax, outbound fax, and main office lines are reserved:
       // handing one to a nurse would break fax transmission/masking or office
       // call routing.
-      const settingsRows = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 1).catch(() => []);
+      const agencySettings = await resolveAgencySettings(base44, target?.agency_name || user?.agency_name);
       const reserved = [
-        normalizeE164(settingsRows[0]?.office_fax_number_e164),
-        normalizeE164(settingsRows[0]?.outbound_fax_number_e164),
-        normalizeE164(settingsRows[0]?.main_office_number_e164),
+        normalizeE164(agencySettings?.office_fax_number_e164),
+        normalizeE164(agencySettings?.outbound_fax_number_e164),
+        normalizeE164(agencySettings?.main_office_number_e164),
       ].filter(Boolean);
       if (reserved.includes(workNum)) {
         return Response.json({ error: `${workNum} is a reserved office/fax line — it can't be a personal work number.` }, { status: 409 });
