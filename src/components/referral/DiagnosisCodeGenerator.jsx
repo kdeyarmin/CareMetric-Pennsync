@@ -34,17 +34,20 @@ export default function DiagnosisCodeGenerator({ referralData }) {
 
   useEffect(() => {
     let cancelled = false;
-    // PDGMRateConfig is readable by all authenticated users (write is
-    // service-role only). Any failure just falls back to the built-in defaults.
-    base44.entities.PDGMRateConfig.list("-created_date", 1)
-      .then((rows) => {
-        if (!cancelled && rows && rows[0]) setRateConfig(rows[0]);
-      })
-      .catch(() => {});
+    // Prefer the caller's agency rate row — never newest-row across tenants.
+    (async () => {
+      try {
+        const { fetchCallerPdgmRateConfig } = await import("@/lib/agencySettings");
+        const row = await fetchCallerPdgmRateConfig(currentUser?.agency_name);
+        if (!cancelled && row) setRateConfig(row);
+      } catch {
+        /* fall back to built-in defaults */
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentUser?.agency_name]);
 
   const result = useMemo(
     () =>

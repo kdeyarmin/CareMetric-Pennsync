@@ -155,6 +155,26 @@ function detectMissingDischargeOASIS(ctx, opts = {}) {
 // Persist a batch of candidate alerts for one patient, skipping active
 // same-type/same-title duplicates created within the last 24h.
 async function persistAlerts(base44, patientAlerts, currentDate, sink) {
+  if (!patientAlerts?.length) return;
+  const patientId = patientAlerts[0].patient_id;
+  // Claim before creates so overlapping crons cannot both see "no duplicate"
+  // and double-insert the same compliance alert (best-effort; docs/PLATFORM-CAS.md).
+  const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `compliance-monitor-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {
+    await base44.asServiceRole.entities.Patient.update(patientId, {
+      compliance_monitor_claimed_by: claimToken,
+    });
+  } catch {
+    return;
+  }
+  const claimCheck = await base44.asServiceRole.entities.Patient
+    .filter({ id: patientId }, '', 1).catch(() => []);
+  if (!claimCheck[0] || claimCheck[0].compliance_monitor_claimed_by !== claimToken) {
+    return;
+  }
+
   for (const alert of patientAlerts) {
     const existingAlerts = await base44.asServiceRole.entities.PatientAlert.filter({
       patient_id: alert.patient_id,

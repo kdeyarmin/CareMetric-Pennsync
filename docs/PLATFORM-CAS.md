@@ -59,6 +59,7 @@ platform API — that fakes CAS and misleads reviewers.
 | `predictPatientRisks` / `predictiveRiskAnalysis` | `Patient.risk_predict_claimed_by` | Claim before LLM + PatientAlert creates |
 | `generateCarePlansFromReferral` | `Patient.care_plans_gen_claimed_by` | Claim before LLM; skip if active CarePlans exist |
 | `monitorClinicalDataForCarePlanUpdates` | `Patient.care_plan_monitor_claimed_by` | Per-patient claim before LLM + proposal/alert creates |
+| `monitorComplianceRisks` | `Patient.compliance_monitor_claimed_by` | Claim before PatientAlert batch create |
 | `processInboundFaxes` | `IncomingFax.claimed_by` | Claim pending→processing; **re-check after OCR** before attach/write |
 | `retryFailedFax` / `autoRetryFailedFaxes` | `FaxLog.retry_claimed_by` | Claim + pre-send re-check |
 

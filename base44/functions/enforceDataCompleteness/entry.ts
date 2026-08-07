@@ -78,9 +78,14 @@ Deno.serve(async (req) => {
     } else if (entity_type === 'User') {
       entity = await base44.asServiceRole.entities.User.get(entity_id);
       if (!entity) return Response.json({ error: 'User not found' }, { status: 404 });
-      if (user.account_type !== 'super_admin' && user.agency_name
-        && entity.agency_name && entity.agency_name !== user.agency_name
-        && entity.account_type !== 'super_admin') {
+      // Agency-scoped admins require a matching non-empty target agency —
+      // empty target agency previously bypassed the check (`entity.agency_name &&`).
+      const isSuperAdmin = user.account_type === 'super_admin';
+      const isAgencyScopedAdmin = user.account_type === 'agency_admin'
+        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+      if (isAgencyScopedAdmin
+        && entity.account_type !== 'super_admin'
+        && (!entity.agency_name || entity.agency_name !== user.agency_name)) {
         return Response.json({ error: 'Forbidden: user is outside your agency' }, { status: 403 });
       }
       criticalFields = [

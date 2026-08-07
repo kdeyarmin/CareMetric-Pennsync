@@ -8,6 +8,15 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
 async function assertPatientAccess(base44, user, patient) {
   if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
   const isSuperAdmin = user.account_type === 'super_admin';
@@ -51,6 +60,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
+      if (_agencyAdminGate) return _agencyAdminGate;
+    }
 
     const { phrase, patientId, contextData } = await req.json();
 
@@ -86,9 +99,12 @@ Deno.serve(async (req) => {
 
     // Agency-wide templates must be authored by someone in the caller's agency
     // (or the caller themselves). Without this, any is_agency_wide row from
-    // another tenant matches first.
+    // another tenant matches first. Platform admin (super_admin or bare
+    // role:admin without agency) may use any agency-wide row.
     let agencyEmailSet = null;
-    if (user.agency_name && user.account_type !== 'super_admin') {
+    const isPlatformWide = user.account_type === 'super_admin'
+      || (user.role === 'admin' && !user.agency_name);
+    if (!isPlatformWide && user.agency_name) {
       const agencyUsers = await base44.asServiceRole.entities.User
         .list('-created_date', 5000).catch(() => []);
       agencyEmailSet = new Set(
@@ -99,7 +115,8 @@ Deno.serve(async (req) => {
     }
     const agencyWideOk = (t) => {
       if (!t.is_agency_wide) return false;
-      if (!agencyEmailSet) return true; // platform admin / no agency
+      if (isPlatformWide) return true;
+      if (!agencyEmailSet) return false;
       return t.created_by && agencyEmailSet.has(t.created_by);
     };
 

@@ -8,6 +8,22 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
+function agencyAdminMissingAgencyResponse(user) {
+  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+  }
+  return null;
+}
+// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
 
 // <<<BEGIN GENERATED ENGINE — DO NOT EDIT BY HAND.
 // Source: src/components/patient/patientDuplicateUtils.js
@@ -1034,8 +1050,12 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
-    if (!user || user.role !== 'admin') {
+    if (!isAdminLike(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
+    }
+    {
+      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
+      if (_agencyAdminGate) return _agencyAdminGate;
     }
 
     // DRY-RUN BY DEFAULT. The merge is destructive, so callers must explicitly
@@ -1049,7 +1069,26 @@ Deno.serve(async (req) => {
 
     // Bounded to the SDK's 5000/request max; omitting a limit silently caps at
     // the SDK default of 50. Re-run the scan if more patients remain.
-    const loadedPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
+    let loadedPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
+    // Agency-scoped admins may only merge charts in their own agency — otherwise
+    // a facility admin soft-merges every tenant via service-role Patient.list.
+    const isAgencyScoped = user.account_type !== 'super_admin'
+      && !!user.agency_name
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    if (isAgencyScoped) {
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .filter({ agency_name: user.agency_name }, '-created_date', 5000)
+        .catch(() => []);
+      const agencyEmails = new Set(
+        (Array.isArray(agencyUsers) ? agencyUsers : [])
+          .map((u) => u?.email)
+          .filter(Boolean),
+      );
+      loadedPatients = (Array.isArray(loadedPatients) ? loadedPatients : []).filter((p) =>
+        (p.created_by && agencyEmails.has(p.created_by))
+        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
+      );
+    }
     // Exclude merged / soft-archived duplicates from the candidate set: a merged
     // loser keeps the survivor's MRN and name, so re-scanning it re-buckets the
     // same pair as a phantom duplicate on every run (and could even pick an

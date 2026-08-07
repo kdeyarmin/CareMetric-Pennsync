@@ -67,10 +67,12 @@ export default function ReferralProcessor() {
       // diagnosis set when the user hasn't hand-picked one above.
       let coding = null;
       try {
-        const rateRows = await base44.entities.PDGMRateConfig.list('-created_date', 1).catch(() => []);
+        const me = await base44.auth.me().catch(() => null);
+        const { fetchCallerPdgmRateConfig } = await import('@/lib/agencySettings');
+        const rateRow = await fetchCallerPdgmRateConfig(me?.agency_name);
         coding = generateDiagnosisCodes(extractedData, {
-          rates: rateRows?.[0]?.rates,
-          icdGroups: rateRows?.[0]?.icd10_clinical_groups,
+          rates: rateRow?.rates,
+          icdGroups: rateRow?.icd10_clinical_groups,
         });
       } catch {
         coding = generateDiagnosisCodes(extractedData);

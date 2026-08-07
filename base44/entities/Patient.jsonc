@@ -785,6 +785,10 @@
       "type": "string",
       "description": "Claim token for monitorClinicalDataForCarePlanUpdates idempotency. Set before LLM work and CarePlanProposal/PatientAlert creates so concurrent runs cannot duplicate proposals."
     },
+    "compliance_monitor_claimed_by": {
+      "type": "string",
+      "description": "Claim token for monitorComplianceRisks idempotency. Set before PatientAlert creates so concurrent cron runs cannot duplicate compliance alerts."
+    },
     "assigned_nurses": {
       "type": "array",
       "items": {

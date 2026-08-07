@@ -143,10 +143,10 @@ export default function PDGMRateSettings() {
   const canEdit = isAdminLike(user);
 
   const { data: config, isLoading, isFetching: configFetching, isError: configError } = useQuery({
-    queryKey: ["pdgm-rate-config"],
+    queryKey: ["pdgm-rate-config", user?.agency_name || null],
     queryFn: async () => {
-      const rows = await base44.entities.PDGMRateConfig.list("-created_date", 1);
-      return rows?.[0] || null;
+      const { fetchCallerPdgmRateConfig } = await import("@/lib/agencySettings");
+      return fetchCallerPdgmRateConfig(user?.agency_name);
     },
     enabled: canEdit,
     initialData: null,

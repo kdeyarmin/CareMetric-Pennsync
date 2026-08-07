@@ -106,12 +106,12 @@ export default function Timesheets() {
           .catch(() => []);
       }
       if (!rows?.length) {
-        // Legacy rows may lack agency_name; only use unscoped list when the
-        // caller has no agency (platform) or as a single-tenant fallback.
-        const all = await base44.entities.VisitPointConfig.list("-updated_date", 10);
-        rows = agency
-          ? (all || []).filter((c) => !c.agency_name || c.agency_name === agency)
-          : (all || []);
+        // Legacy unscoped rows: only for platform callers (no agency). When the
+        // caller has an agency, never apply another tenant's empty-agency config.
+        if (!agency) {
+          const all = await base44.entities.VisitPointConfig.list("-updated_date", 5);
+          if ((all || []).length <= 1) rows = all || [];
+        }
       }
       return (rows || []).find((c) => c.active !== false) || (rows || [])[0] || null;
     },

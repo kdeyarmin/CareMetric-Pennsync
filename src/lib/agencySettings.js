@@ -24,3 +24,34 @@ export async function fetchCallerAgencySettings(agencyName) {
   if ((newest || []).length > 1) return null;
   return newest?.[0] || null;
 }
+
+/**
+ * Resolve a per-agency config entity (PDGMRateConfig, FollowUpRuleConfig, …)
+ * by agency_name. Never take global newest when multiple tenant rows exist.
+ *
+ * @param {'PDGMRateConfig' | 'FollowUpRuleConfig'} entityName
+ * @param {string | null | undefined} agencyName
+ * @returns {Promise<object | null>}
+ */
+export async function fetchCallerScopedConfig(entityName, agencyName) {
+  const entity = base44.entities[entityName];
+  if (!entity) return null;
+  const key = String(agencyName || '').trim();
+  if (key) {
+    const rows = await entity.filter({ agency_name: key }, '-created_date', 1).catch(() => []);
+    if (rows?.[0]) return rows[0];
+  }
+  const newest = await entity.list('-created_date', 5).catch(() => []);
+  if ((newest || []).length > 1) return null;
+  return newest?.[0] || null;
+}
+
+/** @param {string | null | undefined} agencyName */
+export function fetchCallerPdgmRateConfig(agencyName) {
+  return fetchCallerScopedConfig('PDGMRateConfig', agencyName);
+}
+
+/** @param {string | null | undefined} agencyName */
+export function fetchCallerFollowUpRuleConfig(agencyName) {
+  return fetchCallerScopedConfig('FollowUpRuleConfig', agencyName);
+}

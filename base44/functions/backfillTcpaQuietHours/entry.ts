@@ -23,8 +23,10 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    // Platform-wide TCPA default backfill — only super_admin. Facility admins
+    // must not flip every tenant's AgencySettings via service role.
+    if (!user || user.account_type !== 'super_admin') {
+      return Response.json({ error: 'Super admin access required' }, { status: 403 });
     }
 
     const settingsList = await base44.asServiceRole.entities.AgencySettings.list('-created_date', 500);

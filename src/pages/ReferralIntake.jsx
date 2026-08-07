@@ -533,11 +533,13 @@ Actions available:
       // not inside extracted_data — so it can't leak into the
       // referral→admission-note bridges. Best-effort: never blocks intake.
       try {
-        const rateRows = await base44.entities.PDGMRateConfig.list('-created_date', 1).catch(() => []);
+        const me = await base44.auth.me().catch(() => null);
+        const { fetchCallerPdgmRateConfig } = await import('@/lib/agencySettings');
+        const rateRow = await fetchCallerPdgmRateConfig(me?.agency_name);
         updates.diagnosis_coding = toPersistedCoding(
           generateDiagnosisCodes(extractedData, {
-            rates: rateRows?.[0]?.rates,
-            icdGroups: rateRows?.[0]?.icd10_clinical_groups,
+            rates: rateRow?.rates,
+            icdGroups: rateRow?.icd10_clinical_groups,
           })
         );
       } catch (codingError) {
