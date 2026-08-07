@@ -84,7 +84,11 @@ export default function PhoneAnalyticsPanel() {
   });
   const { data: users = [] } = useQuery({
     queryKey: ["analytics-users"],
-    queryFn: () => base44.entities.User.list("full_name", 1000),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list("full_name", 1000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     enabled: isAdmin,
     initialData: [],
   });

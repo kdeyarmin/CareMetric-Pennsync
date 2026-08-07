@@ -20,6 +20,10 @@ import { assignInService } from "@/functions/assignInService";
 // targeting and the existing assignInService backend (dedup + notifications +
 // audit), which already accepts any published course.
 export default function CourseAssignDialog({ course }) {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
   const [open, setOpen] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState("high");
@@ -29,10 +33,14 @@ export default function CourseAssignDialog({ course }) {
   const [error, setError] = useState("");
 
   const { data: users = [] } = useQuery({
-    queryKey: ["assign-users"],
-    queryFn: () => base44.entities.User.list("-created_date", 5000),
+    queryKey: ["assign-users", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list("-created_date", 5000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     initialData: [],
-    enabled: open,
+    enabled: open && !!currentUser,
   });
 
   // Pre-fill the role filter when the course targets a single role.

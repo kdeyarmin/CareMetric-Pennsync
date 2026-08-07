@@ -29,7 +29,7 @@ export async function fetchCallerAgencySettings(agencyName) {
  * Resolve a per-agency config entity (PDGMRateConfig, FollowUpRuleConfig, …)
  * by agency_name. Never take global newest when multiple tenant rows exist.
  *
- * @param {'PDGMRateConfig' | 'FollowUpRuleConfig'} entityName
+ * @param {'PDGMRateConfig' | 'FollowUpRuleConfig' | 'FaxRetryConfig'} entityName
  * @param {string | null | undefined} agencyName
  * @returns {Promise<object | null>}
  */
@@ -54,4 +54,9 @@ export function fetchCallerPdgmRateConfig(agencyName) {
 /** @param {string | null | undefined} agencyName */
 export function fetchCallerFollowUpRuleConfig(agencyName) {
   return fetchCallerScopedConfig('FollowUpRuleConfig', agencyName);
+}
+
+/** @param {string | null | undefined} agencyName */
+export function fetchCallerFaxRetryConfig(agencyName) {
+  return fetchCallerScopedConfig('FaxRetryConfig', agencyName);
 }

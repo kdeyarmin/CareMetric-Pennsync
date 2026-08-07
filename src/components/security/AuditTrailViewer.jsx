@@ -38,6 +38,7 @@ import {
 import { formatEastern } from "../utils/timezone";
 import { toCsvRows } from "@/components/admin/csvExport";
 import { getSeverityBadge } from "@/components/security/auditSeverityBadge";
+import { isAdminView } from "@/lib/roles";
 
 // UserActivity has no top-level `severity` field — auditLogger stores it inside
 // the free-form `details` object (as `severity`), and anomaly SecurityLogs store
@@ -59,7 +60,7 @@ export default function AuditTrailViewer({ filterType = "all" }) {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   const { data: auditLogs = [], isLoading } = useQuery({
     queryKey: ['auditLogs'],

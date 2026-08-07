@@ -37,6 +37,28 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+// <<<BEGIN SHARED HELPER: resolveFaxRetryConfig — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveFaxRetryConfig(base44, agencyName) {
+  const key = String(agencyName || '').trim();
+  if (key) {
+    const rows = await base44.asServiceRole.entities.FaxRetryConfig
+      .filter({ agency_name: key }, '-created_date', 1)
+      .catch(() => []);
+    if (rows?.[0]) return rows[0];
+  }
+  const newest = await base44.asServiceRole.entities.FaxRetryConfig
+    .list('-created_date', 5)
+    .catch(() => []);
+  const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+  // Prefer a single unscoped legacy row when the agency-specific row is missing.
+  if (legacy.length === 1) return legacy[0];
+  if (key) return null;
+  if ((newest || []).length > 1) return null;
+  return newest?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveFaxRetryConfig>>>
+
+
 // <<<BEGIN SHARED HELPER: resolveTelnyxCreds — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
@@ -186,11 +208,22 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${nonFinalFaxes.length} pending faxes to sync.`);
 
-    // Load the admin retry policy ONCE so a Telnyx-reported failure schedules a
-    // retry instead of being declared final (mirrors pollFaxStatuses).
-    const cfgRows = await base44.asServiceRole.entities.FaxRetryConfig.list('-created_date', 1).catch(() => []);
-    const cfg = cfgRows[0] || {};
-    const retryCfg = faxRetryConfig(cfg);
+    // Per-sender agency retry policy (cached). Newest-row-wins would apply
+    // another tenant's budget/disable flag to this fax's failure path.
+    const agencyCfgCache = new Map();
+    const resolveCfgForSender = async (sentBy) => {
+      let agencyName = '';
+      if (sentBy) {
+        const [sender] = await base44.asServiceRole.entities.User
+          .filter({ email: sentBy }, undefined, 1).catch(() => []);
+        agencyName = sender?.agency_name || '';
+      }
+      const cacheKey = agencyName || '__default__';
+      if (agencyCfgCache.has(cacheKey)) return agencyCfgCache.get(cacheKey);
+      const resolved = (await resolveFaxRetryConfig(base44, agencyName)) || {};
+      agencyCfgCache.set(cacheKey, resolved);
+      return resolved;
+    };
 
     let updatedCount = 0;
 
@@ -228,6 +261,8 @@ Deno.serve(async (req) => {
             // of declaring every failure permanent and stranding the fax.
             const failureReason = telnyxData?.data?.failure_reason || faxLog.failure_reason || 'Fax delivery failed';
             update.failure_reason = failureReason;
+            const cfg = await resolveCfgForSender(faxLog.sent_by);
+            const retryCfg = faxRetryConfig(cfg);
             const plan = planFaxRetry({
               retryCount: faxLog.retry_count || 0,
               errorCode: telnyxData?.data?.failure_code || telnyxData?.data?.error_code,

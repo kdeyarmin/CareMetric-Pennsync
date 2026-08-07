@@ -73,7 +73,19 @@ Deno.serve(async (req) => {
         .filter({ agency_name: agencyName }, '-updated_date', 50).catch(() => []);
     }
     if (!existing?.length && !isAgencyScoped) {
-      existing = await base44.asServiceRole.entities.VisitPointConfig.list('-updated_date', 50).catch(() => []);
+      // Only touch a legacy unscoped row when it is unambiguously the only
+      // candidate — never clobber another tenant's newest row.
+      const newest = await base44.asServiceRole.entities.VisitPointConfig
+        .list('-updated_date', 50).catch(() => []);
+      const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+      if (legacy.length === 1) existing = legacy;
+      else if ((newest || []).length === 1 && !String(newest[0]?.agency_name || '').trim()) {
+        existing = newest;
+      } else if ((newest || []).length <= 1) {
+        existing = newest || [];
+      } else {
+        existing = [];
+      }
     }
     const target = (existing || []).find((c) => c && c.active !== false) || (existing || [])[0];
 

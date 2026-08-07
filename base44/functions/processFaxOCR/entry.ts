@@ -8,6 +8,14 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
+
 
 // SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
 // internal IPs / metadata. Mirrors analyzeDocument.
@@ -55,9 +63,25 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Fax not found' }, { status: 404 });
     }
     // Only the sender (or an admin) may OCR/read a fax's PHI. Mirrors
-    // analyzeFaxContent / retryFailedFax; the prior code had no ownership check.
-    if (user.role !== 'admin' && existingFax.sent_by && existingFax.sent_by !== user.email) {
+    // analyzeFaxContent / retryFailedFax.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    if (!isPlatformAdmin && !isAgencyScopedAdmin && existingFax.sent_by !== user.email) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (isAgencyScopedAdmin && existingFax.sent_by !== user.email) {
+      if (!user.agency_name || !existingFax.sent_by) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      const senders = await base44.asServiceRole.entities.User
+        .filter({ email: existingFax.sent_by }, undefined, 5)
+        .catch(() => []);
+      if (!senders?.[0] || senders[0].agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // OCR the fax's OWN stored document, never an arbitrary caller-supplied URL:

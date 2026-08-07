@@ -41,7 +41,10 @@ export default function DuplicatePatients() {
   const { data: patients = [], isLoading } = useQuery({
     queryKey: ['all-patients-duplicate-scan'],
     queryFn: async () => {
-      const all = await base44.entities.Patient.list('-created_date', 10000);
+      const _rawPatients = await base44.entities.Patient.list('-created_date', 10000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      const all = filterPatientsByCallerAgency(_rawPatients, _userRows, currentUser);
       // Don't surface already-archived/merged records as fresh duplicates.
       return all.filter((p) => !p.is_archived);
     },

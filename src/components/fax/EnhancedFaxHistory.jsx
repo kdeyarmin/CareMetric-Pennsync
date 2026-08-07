@@ -25,15 +25,23 @@ export default function EnhancedFaxHistory({ patientId }) {
     refetchInterval: 15000
   });
 
-  // Gate the manual Retry button on the admin-configured budget the backend
-  // actually enforces. A hardcoded 3 hid the button while attempts remained
-  // (max_retries > 3) or offered it into a guaranteed HTTP 400 (max_retries < 3).
-  const { data: retryConfigRows = [] } = useQuery({
-    queryKey: ['fax-retry-config'],
-    queryFn: () => base44.entities.FaxRetryConfig.list('-created_date', 1),
-    initialData: []
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
   });
-  const maxRetries = faxRetryConfig(retryConfigRows[0]).maxRetries;
+
+  // Gate the manual Retry button on the admin-configured budget the backend
+  // actually enforces. Resolve by caller agency — never global newest-row.
+  const { data: retryConfig = null } = useQuery({
+    queryKey: ['fax-retry-config', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const { fetchCallerFaxRetryConfig } = await import('@/lib/agencySettings');
+      return fetchCallerFaxRetryConfig(currentUser?.agency_name);
+    },
+    enabled: !!currentUser,
+    initialData: null,
+  });
+  const maxRetries = faxRetryConfig(retryConfig).maxRetries;
 
   const retryMutation = useMutation({
     mutationFn: async (faxLogId) => {

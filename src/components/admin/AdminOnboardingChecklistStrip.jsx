@@ -25,8 +25,13 @@ export default function AdminOnboardingChecklistStrip() {
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['onboardingUserCount'],
-    queryFn: () => base44.entities.User.list('-created_date', 50),
+    queryKey: ['onboardingUserCount', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 50);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     staleTime: 120000,
   });
 

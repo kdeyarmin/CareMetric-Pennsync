@@ -33,6 +33,7 @@ import {
   TrendingUp
 } from "lucide-react";
 import { toast } from 'sonner';
+import { isAdminView } from "@/lib/roles";
 
 export default function AIGroupAssignmentValidator({ 
   oasisData, 
@@ -55,7 +56,7 @@ export default function AIGroupAssignmentValidator({
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   const performValidation = useCallback(async () => {
     if (!oasisData || !pdgmData) return;

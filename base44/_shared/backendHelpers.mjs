@@ -412,6 +412,27 @@ function telnyxCredsMessage(creds, what) {
   return settings?.[0] || null;
 }`,
 
+  // Resolve FaxRetryConfig for a sender/caller agency. Newest-row-wins would
+  // apply Agency A's retry budget/disable flag to Agency B's failed faxes.
+  resolveFaxRetryConfig: `async function resolveFaxRetryConfig(base44, agencyName) {
+  const key = String(agencyName || '').trim();
+  if (key) {
+    const rows = await base44.asServiceRole.entities.FaxRetryConfig
+      .filter({ agency_name: key }, '-created_date', 1)
+      .catch(() => []);
+    if (rows?.[0]) return rows[0];
+  }
+  const newest = await base44.asServiceRole.entities.FaxRetryConfig
+    .list('-created_date', 5)
+    .catch(() => []);
+  const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+  // Prefer a single unscoped legacy row when the agency-specific row is missing.
+  if (legacy.length === 1) return legacy[0];
+  if (key) return null;
+  if ((newest || []).length > 1) return null;
+  return newest?.[0] || null;
+}`,
+
   // Did a sendBatchFax call reject the whole batch before dispatching anything?
   // Used by both scheduled-fax processors to decide requeue vs. terminal-fail.
   // sendBatchFax answers with { successful, failed, ... } once it has actually

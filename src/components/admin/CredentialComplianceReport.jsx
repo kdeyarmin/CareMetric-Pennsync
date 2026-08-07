@@ -19,11 +19,22 @@ const WINDOW_OPTIONS = [
 ];
 
 export default function CredentialComplianceReport() {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+
   const [itemType, setItemType] = useState("all");
   const [windowFilter, setWindowFilter] = useState("90");
   const { data: users = [] } = useQuery({
-    queryKey: ['all-users'],
-    queryFn: () => base44.entities.User.list('-created_date', 500),
+    queryKey: ['all-users', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 500);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
 

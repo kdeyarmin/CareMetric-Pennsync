@@ -8,6 +8,14 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
+
 
 Deno.serve(async (req) => {
   try {
@@ -15,8 +23,12 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     
-    // Only admins can run cleanup
-    if (user?.account_type !== 'super_admin' && user?.role !== 'admin') {
+    // Platform-wide cache sweep: super_admin or bare role:admin (no agency).
+    // Agency-scoped admins must not delete other tenants' cache entries.
+    const isPlatformAdmin =
+      user?.account_type === 'super_admin'
+      || (user?.role === 'admin' && !String(user?.agency_name || '').trim());
+    if (!isPlatformAdmin) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 

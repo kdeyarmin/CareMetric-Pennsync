@@ -39,15 +39,20 @@ export default function ReferralDocumentViewer({ patientId }) {
   // Filter to only show processed documents
   const processedReferrals = referrals.filter(r => r.processed_document_url || r.document_url);
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['allUsers', ALL_ROWS],
-    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
-    initialData: [],
-  });
-
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
+  });
+
+  const { data: users = [] } = useQuery({
+    queryKey: ['allUsers', ALL_ROWS, currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    initialData: [],
+    enabled: !!currentUser,
   });
 
   const handleSendDocument = async () => {

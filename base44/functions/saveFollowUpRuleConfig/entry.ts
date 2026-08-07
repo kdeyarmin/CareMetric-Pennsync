@@ -91,7 +91,17 @@ Deno.serve(async (req) => {
         .filter({ agency_name: agencyName }, '-created_date', 1).catch(() => []);
     }
     if (!existing?.length && !isAgencyScoped) {
-      existing = await base44.asServiceRole.entities.FollowUpRuleConfig.list('-created_date', 1).catch(() => []);
+      // Only touch a legacy unscoped row when it is unambiguously the only
+      // candidate — never clobber another tenant's newest row.
+      const newest = await base44.asServiceRole.entities.FollowUpRuleConfig
+        .list('-created_date', 5).catch(() => []);
+      const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+      if (legacy.length === 1) existing = legacy;
+      else if ((newest || []).length === 1 && !String(newest[0]?.agency_name || '').trim()) {
+        existing = newest;
+      } else {
+        existing = [];
+      }
     }
     const current = existing && existing[0];
     const saved = current

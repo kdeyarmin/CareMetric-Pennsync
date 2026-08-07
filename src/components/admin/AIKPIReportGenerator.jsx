@@ -27,6 +27,11 @@ import {
 } from "lucide-react";
 
 export default function AIKPIReportGenerator() {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
   const [timeframe, setTimeframe] = useState("30");
   const [report, setReport] = useState(null);
   const ai = useAICall();
@@ -39,7 +44,12 @@ export default function AIKPIReportGenerator() {
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patientsForKPI'],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
     initialData: [],
   });
 

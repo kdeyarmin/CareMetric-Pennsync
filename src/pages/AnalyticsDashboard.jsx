@@ -61,7 +61,11 @@ export default function AnalyticsDashboard() {
   // Fetch all users for admin
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers', 10000],
-    queryFn: () => base44.entities.User.list('-created_date', 10000),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 10000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     enabled: isAdmin,
   });
 

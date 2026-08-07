@@ -121,12 +121,18 @@ export default function Timesheets() {
 
   // Candidate approvers for the timesheet form (admins + flagged managers).
   const { data: approvers = [] } = useQuery({
-    queryKey: ["timesheets", "approvers", currentUser?.email],
+    queryKey: ["timesheets", "approvers", currentUser?.email, currentUser?.agency_name || null],
     queryFn: async () => {
       try {
         const users = await base44.entities.User.list("full_name", 500);
-        return users
-          .filter((u) => u.email && (u.role === "admin" || u.is_manager === true))
+        const { filterUsersByCallerAgency } = await import("@/lib/agencyScope");
+        // Nurses with an agency only see same-agency approvers (backend enforces too).
+        const scoped = filterUsersByCallerAgency(users, currentUser);
+        return scoped
+          .filter((u) =>
+            u.email
+            && (u.role === "admin" || u.account_type === "agency_admin" || u.is_manager === true),
+          )
           .filter((u) => u.email !== currentUser?.email)
           .map((u) => ({ email: u.email, name: u.full_name || u.email, role: u.role }));
       } catch {

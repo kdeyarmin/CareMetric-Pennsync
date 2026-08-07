@@ -16,7 +16,10 @@ export default function ClinicalInsightsDashboard() {
   const { data: patients = [] } = useQuery({
     queryKey: ['myPatients'],
     queryFn: async () => {
-      const allPatients = await base44.entities.Patient.list('-updated_date', 2000);
+      const _rawPatients = await base44.entities.Patient.list('-updated_date', 2000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      const allPatients = filterPatientsByCallerAgency(_rawPatients, _userRows, currentUser);
       // For nurses, filter to their assigned patients (simplification - all active for now)
       return allPatients.filter(p => p.status === "active");
     },

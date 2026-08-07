@@ -368,7 +368,19 @@ Deno.serve(async (req) => {
         || (body.visit_counts && typeof body.visit_counts === 'object' ? body.visit_counts : {});
       for (const k of VISIT_TYPE_KEYS) visit_counts[k] = toNonNegativeNumber(rawCounts[k]);
       try {
-        const configs = await base44.asServiceRole.entities.VisitPointConfig.list('-updated_date', 50);
+        // Prefer the caller's agency point schedule — never newest-row across tenants.
+        const agency = String(user.agency_name || '').trim();
+        let configs = [];
+        if (agency) {
+          configs = await base44.asServiceRole.entities.VisitPointConfig
+            .filter({ agency_name: agency }, '-updated_date', 10)
+            .catch(() => []);
+        }
+        if (!configs?.length && !agency) {
+          const newest = await base44.asServiceRole.entities.VisitPointConfig
+            .list('-updated_date', 5).catch(() => []);
+          if ((newest || []).length <= 1) configs = newest || [];
+        }
         const cfg = (configs || []).find((c) => c && c.active !== false) || (configs || [])[0] || {};
         computedPoints = computeVisitPoints(visit_counts, cfg);
       } catch (_cfgError) {
@@ -409,6 +421,14 @@ Deno.serve(async (req) => {
       const mgrIsAdmin = mgr && (mgr.role === 'admin' || mgr.account_type === 'super_admin' || mgr.account_type === 'agency_admin');
       if (!mgr || !(mgrIsAdmin || mgr.is_manager === true)) {
         return Response.json({ error: 'The selected approver is not authorized to approve timesheets.' }, { status: 400 });
+      }
+      // Callers with an agency may only nominate approvers in the same agency
+      // (empty manager agency → deny — prevents cross-tenant PHI notify).
+      const callerAgency = String(user.agency_name || '').trim();
+      if (callerAgency && user.account_type !== 'super_admin') {
+        if (!mgr.agency_name || mgr.agency_name !== callerAgency) {
+          return Response.json({ error: 'The selected approver is outside your agency.' }, { status: 403 });
+        }
       }
       resolvedManagerEmail = mgr.email;
       resolvedManagerName = mgr.full_name || mgr.email;

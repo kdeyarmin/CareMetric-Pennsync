@@ -69,14 +69,18 @@ export default function OASISAuditDashboard() {
     enabled: isAdmin
   });
 
-  // Fetch admins for assignment
+  // Fetch admins for assignment (agency-scoped for facility admins)
   const { data: admins = [] } = useQuery({
-    queryKey: ['adminUsers'],
+    queryKey: ['adminUsers', currentUser?.agency_name || null],
     queryFn: async () => {
       const users = await base44.entities.User.list(undefined, ALL_ROWS);
-      return users.filter(u => u.role === 'admin');
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      const scoped = filterUsersByCallerAgency(users, currentUser);
+      return scoped.filter((u) =>
+        u.role === 'admin' || u.account_type === 'agency_admin',
+      );
     },
-    enabled: isAdmin
+    enabled: isAdmin && !!currentUser,
   });
 
   // Update audit mutation

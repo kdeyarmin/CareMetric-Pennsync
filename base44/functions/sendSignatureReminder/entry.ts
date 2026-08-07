@@ -216,6 +216,30 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Claim before email/Notification so double-clicks cannot spam the patient
+    // (mirrors sendAutomatedSignatureReminders / checkPendingSignatureRequests).
+    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `sig-reminder-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      await base44.asServiceRole.entities.DocumentSignature.update(sig.id, {
+        reminder_claimed_by: claimToken,
+        reminder_claimed_at: new Date().toISOString(),
+      });
+    } catch {
+      return Response.json({ error: 'Could not claim signature for reminder' }, { status: 409 });
+    }
+    const claimCheck = await base44.asServiceRole.entities.DocumentSignature
+      .filter({ id: sig.id }, undefined, 1).catch(() => []);
+    if (!claimCheck[0] || claimCheck[0].reminder_claimed_by !== claimToken) {
+      return Response.json({
+        success: true,
+        already_processed: true,
+        message: 'Reminder already in progress',
+        skipped: 'claimed by concurrent run',
+      });
+    }
+
     // Send reminder email
     const documentName = sig.document_name || sig.document_title || sig.document_type || 'Document';
     const dueDate = sig.due_date || sig.expires_at;

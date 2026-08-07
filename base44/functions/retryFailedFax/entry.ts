@@ -29,6 +29,28 @@ async function resolveAgencySettings(base44, agencyName) {
 }
 // <<<END SHARED HELPER: resolveAgencySettings>>>
 
+// <<<BEGIN SHARED HELPER: resolveFaxRetryConfig — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveFaxRetryConfig(base44, agencyName) {
+  const key = String(agencyName || '').trim();
+  if (key) {
+    const rows = await base44.asServiceRole.entities.FaxRetryConfig
+      .filter({ agency_name: key }, '-created_date', 1)
+      .catch(() => []);
+    if (rows?.[0]) return rows[0];
+  }
+  const newest = await base44.asServiceRole.entities.FaxRetryConfig
+    .list('-created_date', 5)
+    .catch(() => []);
+  const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+  // Prefer a single unscoped legacy row when the agency-specific row is missing.
+  if (legacy.length === 1) return legacy[0];
+  if (key) return null;
+  if ((newest || []).length > 1) return null;
+  return newest?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveFaxRetryConfig>>>
+
+
 // Strict E.164 normalization for the OFFICE FAX `from` number (null when it
 // can't normalize). The admin-entered office fax may carry formatting
 // ("(724) 465-0441"); Telnyx requires E.164 on `from`, so an unnormalizable
@@ -207,10 +229,15 @@ Deno.serve(async (req) => {
 
     // Honor the admin-configured retry budget (FaxRetryConfig.max_retries) so a
     // manual retry uses the same limit as the auto-retry cron, instead of a
-    // separate hardcoded value. Falls back to 3 when no config row exists.
-    const retryCfgRows = await base44.asServiceRole.entities.FaxRetryConfig
-      .list('-created_date', 1).catch(() => []);
-    const cfgMax = Number(retryCfgRows?.[0]?.max_retries);
+    // separate hardcoded value. Resolve by sender agency — never global newest.
+    let senderAgency = user.agency_name || '';
+    if (originalFax.sent_by) {
+      const [sender] = await base44.asServiceRole.entities.User
+        .filter({ email: originalFax.sent_by }, undefined, 1).catch(() => []);
+      if (sender?.agency_name) senderAgency = sender.agency_name;
+    }
+    const retryCfg = (await resolveFaxRetryConfig(base44, senderAgency)) || {};
+    const cfgMax = Number(retryCfg.max_retries);
     const maxRetries = Number.isFinite(cfgMax) && cfgMax >= 0 ? cfgMax : 3;
 
     // Check retry limit — coerce undefined retry_count to 0 so max_retries: 0

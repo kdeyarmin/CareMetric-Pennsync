@@ -72,7 +72,11 @@ export default function NursePerformanceDashboard() {
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers', ALL_ROWS],
-    queryFn: () => base44.entities.User.list(undefined, ALL_ROWS),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
     enabled: isAdminView(currentUser),
     initialData: []
   });

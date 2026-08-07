@@ -35,7 +35,12 @@ export default function OASISReview() {
   // Fetch patients with pending OASIS reviews
   const { data: patients = [] } = useQuery({
     queryKey: ['patients', 'updated', 2000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
   });
 
   // Fetch all OASIS uploads with AI suggestions

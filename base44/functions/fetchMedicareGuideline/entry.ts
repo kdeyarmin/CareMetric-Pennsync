@@ -8,6 +8,14 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin'
+);
+// <<<END SHARED HELPER: isAdminLike>>>
+
+
 
 Deno.serve(async (req) => {
   try {
@@ -17,7 +25,7 @@ Deno.serve(async (req) => {
     // 500 from an uncaught auth.me() rejection)
     const user = await base44.auth.me().catch(() => null);
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    if (!user || user.role !== 'admin') {
+    if (!user || !isAdminLike(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 

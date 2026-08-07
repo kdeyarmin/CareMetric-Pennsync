@@ -227,6 +227,12 @@ Deno.serve(async (req) => {
       if (!mgr || !(mgrIsAdmin || mgr.is_manager === true)) {
         return Response.json({ error: 'The selected approver is not authorized to approve time off.' }, { status: 400 });
       }
+      const callerAgency = String(user.agency_name || '').trim();
+      if (callerAgency && user.account_type !== 'super_admin') {
+        if (!mgr.agency_name || mgr.agency_name !== callerAgency) {
+          return Response.json({ error: 'The selected approver is outside your agency.' }, { status: 403 });
+        }
+      }
       resolvedManagerEmail = mgr.email;
       resolvedManagerName = mgr.full_name || mgr.email;
     }

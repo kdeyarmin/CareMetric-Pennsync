@@ -8,15 +8,31 @@ import { parseLocalDate } from "@/lib/dateLocal";
 import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 export default function QuickHealthOverview() {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+
   const { data: patients = [] } = useQuery({
     queryKey: ['patients-health'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
     initialData: [],
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['users-health'],
-    queryFn: () => base44.entities.User.list('-created_date', 200),
+    queryKey: ['users-health', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('-created_date', 200);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
 

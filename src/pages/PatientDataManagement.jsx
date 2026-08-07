@@ -85,7 +85,10 @@ export default function PatientDataManagement() {
     queryKey: ['patients', 'roster', 'created', 2000],
     queryFn: async () => {
       try {
-        const allPatients = await base44.entities.Patient.list('-created_date', 2000);
+        const _rawPatients = await base44.entities.Patient.list('-created_date', 2000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      const allPatients = filterPatientsByCallerAgency(_rawPatients, _userRows, currentUser);
         return allPatients.filter(patient => !patient.is_archived);
       } catch (err) {
         console.error('Failed to load patients:', err);

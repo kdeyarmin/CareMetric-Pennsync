@@ -21,6 +21,10 @@ import { linesToArray } from "@/utils";
 // by course_id. Splitting objectives from a textarea keeps the entity's
 // learning_objectives array in sync without a separate editor.
 export default function CourseForm({ course, onSuccess }) {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
   const [formData, setFormData] = useState(() => ({
     title: "",
     short_description: "",
@@ -48,7 +52,12 @@ export default function CourseForm({ course, onSuccess }) {
   // what role-based assignment later filters on (job_title || credential_type || role).
   const { data: users = [] } = useQuery({
     queryKey: ["course-role-options"],
-    queryFn: () => base44.entities.User.list("-created_date", 1000),
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list("-created_date", 1000);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
   const roleOptions = useMemo(() => {

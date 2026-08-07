@@ -110,8 +110,13 @@ export default function TelnyxSetupProgress({ onStepsChange, onNavigate } = {}) 
   });
 
   const { data: users = [], isFetched: usersFetched } = useQuery({
-    queryKey: ["phone-users"],
-    queryFn: () => base44.entities.User.list("full_name", 200),
+    queryKey: ["phone-users", currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list("full_name", 200);
+      const { filterUsersByCallerAgency } = await import("@/lib/agencyScope");
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
 

@@ -51,7 +51,12 @@ export default function DocumentSignatures() {
   const { data: patients = [] } = useQuery({
     // Larger limit than Telehealth/OASIS — keep a distinct cache key.
     queryKey: ['patients-list', '-created_date', 500],
-    queryFn: () => base44.entities.Patient.list('-created_date', 500),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-created_date', 500);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
     initialData: []
   });
 

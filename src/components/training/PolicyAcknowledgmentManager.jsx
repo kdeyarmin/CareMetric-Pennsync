@@ -27,7 +27,11 @@ export default function PolicyAcknowledgmentManager() {
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const isAdminUser = currentUser?.role === "admin" || currentUser?.account_type === "agency_admin" || currentUser?.account_type === "super_admin";
 
-  const { data: users = [] } = useQuery({ queryKey: ["policy-users"], queryFn: () => base44.entities.User.list("-created_date", 500), initialData: [], enabled: isAdminUser });
+  const { data: users = [] } = useQuery({ queryKey: ["policy-users"], queryFn: async () => {
+      const _rows = await base44.entities.User.list("-created_date", 500);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    }, initialData: [], enabled: isAdminUser });
   const { data: policies = [] } = useQuery({ queryKey: ["policy-library"], queryFn: () => base44.entities.PolicyLibrary.list("-created_date", 200), initialData: [], enabled: isAdminUser });
   // Read org-wide acknowledgments through the service-role `list` action so
   // account_type admins (agency_admin/super_admin) see all rows, not just their

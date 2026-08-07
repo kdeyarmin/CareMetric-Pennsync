@@ -26,6 +26,10 @@ const KPI_COLOR_CLASSES = {
 };
 
 export default function KPIDashboard({ dateRange }) {
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
   // Base44 list/filter silently cap at 50 rows when no limit is passed, so these
   // KPI aggregates were computed over only the first 50 records — wrong totals and
   // percentages for any agency with more. Pass the SDK's 5000/request max.
@@ -37,7 +41,12 @@ export default function KPIDashboard({ dateRange }) {
 
   const { data: patients = [] } = useQuery({
     queryKey: ['allPatients', '-created_date', 5000],
-    queryFn: () => base44.entities.Patient.list('-created_date', 5000),
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-created_date', 5000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
     initialData: [],
   });
 

@@ -98,10 +98,16 @@ export default function PatientAlertsDashboard({ patientId = null }) {
     return allAlerts.filter((alert) => favoritedIds.includes(alert.patient_id));
   }, [allAlerts, patientId, currentUser, isAdmin]);
 
-  // Fetch patients for lookup
+  // Fetch patients for lookup (agency-scoped for facility admins)
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'lookup', 'alerts'],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000)
+    queryKey: ['patients', 'lookup', 'alerts', currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
+    enabled: !!currentUser,
   });
 
   // (No clinical-event query here: an unused `_clinicalEvents` useQuery used to

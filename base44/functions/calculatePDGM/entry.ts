@@ -752,9 +752,12 @@ Deno.serve(async (req) => {
           .filter({ agency_name: user.agency_name }, '-created_date', 1).catch(() => []);
       }
       if (!rateRows?.length) {
-        const newest = await base44.asServiceRole.entities.PDGMRateConfig.list('-created_date', 5).catch(() => []);
-        // Multi-tenant: don't apply another agency's official rates.
-        rateRows = (user?.agency_name && (newest || []).length > 1) ? [] : (newest || []).slice(0, 1);
+        // Callers with an agency must not inherit another tenant's (or a lone
+        // unscoped) rate row — fall through to built-in defaults instead.
+        if (!user?.agency_name) {
+          const newest = await base44.asServiceRole.entities.PDGMRateConfig.list('-created_date', 5).catch(() => []);
+          if ((newest || []).length <= 1) rateRows = (newest || []).slice(0, 1);
+        }
       }
       const rateConfig = rateRows && rateRows.length > 0 ? rateRows[0] : null;
       if (rateConfig) {

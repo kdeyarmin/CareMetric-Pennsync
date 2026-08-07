@@ -73,14 +73,25 @@ export default function Messages() {
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['allUsers', 'full_name', 200],
-    queryFn: () => base44.entities.User.list('full_name', 200),
+    queryKey: ['allUsers', 'full_name', 200, currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.User.list('full_name', 200);
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return filterUsersByCallerAgency(_rows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'first_name', 100],
-    queryFn: () => base44.entities.Patient.list('first_name', 100),
+    queryKey: ['patients', 'first_name', 100, currentUser?.agency_name || null],
+    queryFn: async () => {
+      const _rows = await base44.entities.Patient.list('first_name', 100);
+      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
+      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
+      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+    },
+    enabled: !!currentUser,
     initialData: [],
   });
 

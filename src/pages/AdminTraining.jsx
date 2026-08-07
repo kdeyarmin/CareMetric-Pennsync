@@ -101,10 +101,17 @@ export default function AdminTraining() {
   const teamMembers = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.account_type === "super_admin") return users.filter((user) => user.email && user.role !== "admin");
+    // Facility admins (role:admin + agency_name) and agency_admin must stay
+    // in-agency — do not fall through to department/location across tenants.
+    if (currentUser.account_type === "agency_admin" && !currentUser.agency_name) return [];
+    const agency = String(currentUser.agency_name || "").trim();
+    const isAgencyScoped = currentUser.account_type !== "super_admin"
+      && agency
+      && (currentUser.account_type === "agency_admin" || currentUser.role === "admin");
     return users.filter((user) => {
       if (!user.email || user.role === "admin") return false;
-      if (currentUser.account_type === "agency_admin" && currentUser.agency_name) 
-        return user.agency_name === currentUser.agency_name;
+      if (isAgencyScoped) return user.agency_name === agency;
+      if (currentUser.account_type === "super_admin") return true;
       if (currentUser.department && user.department === currentUser.department) return true;
       if (currentUser.location && user.location === currentUser.location) return true;
       if (currentUser.business_line && user.business_line === currentUser.business_line) return true;

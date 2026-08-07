@@ -20,6 +20,7 @@ import ClinicalLibraryIntro from "./ClinicalLibraryIntro";
 import ClinicalPhraseSeeder from "./ClinicalPhraseSeeder";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { fetchAllClinicalTemplates } from "./fetchAllClinicalTemplates";
+import { isAdminView } from "@/lib/roles";
 
 export default function ClinicalLibraryManager() {
   const confirm = useConfirm();
@@ -299,7 +300,7 @@ export default function ClinicalLibraryManager() {
     setSelectedTemplateIds(new Set());
   };
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
   const userTemplates = templates.filter(t => t.created_by === currentUser?.email || t.is_agency_wide);
   const userFolders = folders.filter(f => f.created_by === currentUser?.email || f.is_agency_wide);
 

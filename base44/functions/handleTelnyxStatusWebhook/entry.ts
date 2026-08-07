@@ -74,6 +74,28 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
+// <<<BEGIN SHARED HELPER: resolveFaxRetryConfig — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveFaxRetryConfig(base44, agencyName) {
+  const key = String(agencyName || '').trim();
+  if (key) {
+    const rows = await base44.asServiceRole.entities.FaxRetryConfig
+      .filter({ agency_name: key }, '-created_date', 1)
+      .catch(() => []);
+    if (rows?.[0]) return rows[0];
+  }
+  const newest = await base44.asServiceRole.entities.FaxRetryConfig
+    .list('-created_date', 5)
+    .catch(() => []);
+  const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+  // Prefer a single unscoped legacy row when the agency-specific row is missing.
+  if (legacy.length === 1) return legacy[0];
+  if (key) return null;
+  if ((newest || []).length > 1) return null;
+  return newest?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveFaxRetryConfig>>>
+
+
 // ---- value mapping (mirrors telnyxUtils.js) ----
 function mapMessageStatus(status) {
   switch (String(status || '').toLowerCase()) {
@@ -833,9 +855,14 @@ async function handleFaxEvent(base44, payload) {
   let exhaustedNow = false;
   if (mapped === 'failed') {
     const failureReason = payload?.failure_reason || payload?.failover?.failure_reason || 'Fax delivery failed';
-    // Honor the admin FaxRetryConfig: schedule a retry or give up (and notify once).
-    const cfgRows = await base44.asServiceRole.entities.FaxRetryConfig.list('-created_date', 1).catch(() => []);
-    const cfg = cfgRows[0] || {};
+    // Honor the admin FaxRetryConfig for the sender's agency (never global newest).
+    let senderAgency = '';
+    if (faxLog.sent_by) {
+      const [sender] = await base44.asServiceRole.entities.User
+        .filter({ email: faxLog.sent_by }, undefined, 1).catch(() => []);
+      senderAgency = sender?.agency_name || '';
+    }
+    const cfg = (await resolveFaxRetryConfig(base44, senderAgency)) || {};
     const retryCfg = faxRetryConfig(cfg);
     const plan = planFaxRetry({
       retryCount: faxLog.retry_count || 0,

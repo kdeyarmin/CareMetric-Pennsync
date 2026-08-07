@@ -68,6 +68,28 @@ async function resolveAgencySettings(base44, agencyName) {
 }
 // <<<END SHARED HELPER: resolveAgencySettings>>>
 
+// <<<BEGIN SHARED HELPER: resolveFaxRetryConfig — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function resolveFaxRetryConfig(base44, agencyName) {
+  const key = String(agencyName || '').trim();
+  if (key) {
+    const rows = await base44.asServiceRole.entities.FaxRetryConfig
+      .filter({ agency_name: key }, '-created_date', 1)
+      .catch(() => []);
+    if (rows?.[0]) return rows[0];
+  }
+  const newest = await base44.asServiceRole.entities.FaxRetryConfig
+    .list('-created_date', 5)
+    .catch(() => []);
+  const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+  // Prefer a single unscoped legacy row when the agency-specific row is missing.
+  if (legacy.length === 1) return legacy[0];
+  if (key) return null;
+  if ((newest || []).length > 1) return null;
+  return newest?.[0] || null;
+}
+// <<<END SHARED HELPER: resolveFaxRetryConfig>>>
+
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -384,13 +406,6 @@ Deno.serve(async (req) => {
 
     const runId = crypto.randomUUID();
 
-    const cfgRows = await base44.asServiceRole.entities.FaxRetryConfig.list('-created_date', 1).catch(() => []);
-    const cfg = cfgRows[0] || {};
-    const c = faxRetryConfig(cfg);
-    if (!c.enabled) {
-      return Response.json({ success: true, retried: 0, skipped: 0, note: 'Auto-retry disabled in FaxRetryConfig.' });
-    }
-
     // Get all faxes that are failed and have a scheduled next_retry_at
     const allFailed = await base44.asServiceRole.entities.FaxLog.filter(
       { status: 'failed' },
@@ -402,15 +417,42 @@ Deno.serve(async (req) => {
     let retriedCount = 0;
     let skippedCount = 0;
 
+    // Per-sender agency retry policy (cached). Global newest-row would apply
+    // Agency A's disable/budget to Agency B's failed faxes.
+    const agencyCfgCache = new Map();
+    const resolveCfgForSender = async (sentBy) => {
+      let agencyName = '';
+      if (sentBy) {
+        const [sender] = await base44.asServiceRole.entities.User
+          .filter({ email: sentBy }, undefined, 1).catch(() => []);
+        agencyName = sender?.agency_name || '';
+      }
+      const cacheKey = agencyName || '__default__';
+      if (agencyCfgCache.has(cacheKey)) return agencyCfgCache.get(cacheKey);
+      const cfg = (await resolveFaxRetryConfig(base44, agencyName)) || {};
+      agencyCfgCache.set(cacheKey, cfg);
+      return cfg;
+    };
+
     // Filter to faxes that are actually due for retry before resolving
     // credentials — if nothing is due, there's no need to check Telnyx config
     // (which may legitimately be absent on agencies that don't use fax).
-    const dueFaxes = allFailed.filter(fax => isFaxRetryDue(fax, now.getTime(), cfg));
+    const dueFaxes = [];
+    for (const fax of allFailed) {
+      const cfg = await resolveCfgForSender(fax.sent_by);
+      const c = faxRetryConfig(cfg);
+      if (!c.enabled) {
+        skippedCount++;
+        continue;
+      }
+      if (isFaxRetryDue(fax, now.getTime(), cfg)) dueFaxes.push(fax);
+      else skippedCount++;
+    }
     if (dueFaxes.length === 0) {
       return Response.json({
         success: true,
         retried: 0,
-        skipped: allFailed.length,
+        skipped: skippedCount || allFailed.length,
         timestamp: now.toISOString()
       });
     }

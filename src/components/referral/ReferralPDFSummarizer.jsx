@@ -17,6 +17,7 @@ import {
   REFERRAL_ACCEPT_ATTR,
 } from "./referralUploadUtils";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { isAdminView } from "@/lib/roles";
 import {
   FileText,
   UploadCloud,
@@ -104,7 +105,7 @@ export default function ReferralPDFSummarizer({
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   // Clear the progress interval if the component unmounts mid-processing.
   React.useEffect(() => () => {
