@@ -566,7 +566,16 @@ export default function TrainingCoursePlayer() {
           {/* Active module */}
           {modules[activeModuleIndex] && (
             <div className="space-y-4">
-              <TrainingModuleViewer module={modules[activeModuleIndex]} />
+              {/* Keyed on the module: the viewer's `viewedSections` progress
+                  ("N/M sections read") and each section's expanded state are
+                  per-module. Without a remount, advancing to the next module
+                  carried the previous module's read count over — showing a
+                  full progress bar (or "5/3 sections read") on a module the
+                  learner had not opened. */}
+              <TrainingModuleViewer
+                key={modules[activeModuleIndex].id || activeModuleIndex}
+                module={modules[activeModuleIndex]}
+              />
 
               {/* Module attachments */}
               {(modules[activeModuleIndex].attachment_urls || []).length > 0 && (

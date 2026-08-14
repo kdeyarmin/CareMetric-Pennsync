@@ -90,7 +90,9 @@ export default function NurseTraining() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to training
         </Button>
-        <TrainingModuleViewer module={selectedModule} />
+        {/* Keyed on the module so the viewer's per-module read progress resets
+            when a different module is opened (see TrainingCoursePlayer.jsx). */}
+        <TrainingModuleViewer key={selectedModule.id} module={selectedModule} />
         {/* Deliberately no "Mark complete" here. Completion is owned by the
             graded flow (TrainingAssignment + TrainingAttempt + certificate); a
             button in this viewer could only close the panel, so it would have
