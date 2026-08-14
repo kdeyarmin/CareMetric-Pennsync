@@ -448,10 +448,14 @@ export default function UserSettings() {
                     <CardTitle>{editingCredential ? 'Update Credential' : 'Add License, Certification, or Insurance'}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <PersonnelCredentialForm 
-                      currentUser={currentUser} 
-                      existingItem={editingCredential} 
-                      onDone={() => { setShowCredentialForm(false); setEditingCredential(null); }} 
+                    {/* Keyed on the target credential — see PersonnelFile.jsx:
+                        Edit sets editingCredential while the form is already
+                        open, and the form only seeds its fields on mount. */}
+                    <PersonnelCredentialForm
+                      key={editingCredential?.id || 'new'}
+                      currentUser={currentUser}
+                      existingItem={editingCredential}
+                      onDone={() => { setShowCredentialForm(false); setEditingCredential(null); }}
                     />
                   </CardContent>
                 </Card>

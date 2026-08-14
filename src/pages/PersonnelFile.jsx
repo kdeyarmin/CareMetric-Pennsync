@@ -59,7 +59,12 @@ export default function PersonnelFile() {
             <Card>
               <CardHeader><CardTitle>{editingItem ? 'Update Personnel File Item' : 'Add Personnel File Item'}</CardTitle></CardHeader>
               <CardContent>
-                <PersonnelCredentialForm currentUser={currentUser} existingItem={editingItem} onDone={() => { setShowForm(false); setEditingItem(null); }} />
+                {/* Keyed on the target item: the form seeds its fields from
+                    `existingItem` once. "Upload New Copy" sets editingItem
+                    while the form is already open, so without a remount the
+                    fields kept the previous (or blank) item's values and the
+                    save wrote those onto the newly targeted credential. */}
+                <PersonnelCredentialForm key={editingItem?.id || 'new'} currentUser={currentUser} existingItem={editingItem} onDone={() => { setShowForm(false); setEditingItem(null); }} />
               </CardContent>
             </Card>
           )}
