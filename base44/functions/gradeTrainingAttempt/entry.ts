@@ -124,6 +124,55 @@ ${JSON.stringify(questionsForGrading)}`;
   return parsed?.evaluations || [];
 };
 
+/** A course with nothing to grade — no ACTIVE questions to score against. */
+function hasNoGradableQuestions(questions) {
+  return !Array.isArray(questions) || questions.length === 0;
+}
+
+/**
+ * What to do with an attempt that has NO active questions to grade.
+ *
+ * `attestation_required` alone does NOT prove a course was authored without an
+ * assessment: assignAnnualLearningPlan sets it on every annual-plan assignment
+ * (`settings.attestationRequired !== false`), and the seeded annual courses
+ * require attestation AND carry graded questions. Keying the auto-pass off it
+ * would hand a 100% completion — certificate included — to a learner whose
+ * course had simply had its questions deactivated.
+ *
+ * The honest discriminator is whether the course has any questions AT ALL:
+ *   - none authored + attestation required → attestation-only in-service; the
+ *     acknowledgement IS the completion, so pass.
+ *   - questions exist but none are active → an admin deactivated them; a
+ *     misconfiguration, and an unassessed pass must not enter the Medicare
+ *     in-service record.
+ *   - nothing authored and nothing attested → nothing to record at all.
+ * The last two are refused rather than written down, matching the
+ * partial-AI-grading guard.
+ *
+ * @returns {'attestation_only'|'questions_deactivated'|'nothing_to_record'}
+ */
+function resolveUngradedOutcome({ hasAnyQuestions, attestationRequired }) {
+  if (hasAnyQuestions) return 'questions_deactivated';
+  if (!attestationRequired) return 'nothing_to_record';
+  return 'attestation_only';
+}
+
+/**
+ * Percentage score for an attempt.
+ *
+ * A question-less course scores 100, not 0. The arithmetic used to be
+ * `earnedPoints / (sum(points) || 1)`, so with no questions it produced
+ * 0 / 1 = 0% — which, against the default 80% pass mark, recorded a FAILED
+ * attempt (and, at max_attempts: 1, LOCKED the assignment) for a learner who
+ * did everything the course asked. Only reached once the caller has confirmed
+ * via resolveUngradedOutcome that the empty question set is legitimate.
+ */
+function computeAttemptScore(questions, earnedPoints) {
+  if (hasNoGradableQuestions(questions)) return 100;
+  const totalPossible = questions.reduce((sum, question) => sum + (question.points || 1), 0) || 1;
+  return Math.round((earnedPoints / totalPossible) * 100);
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -170,8 +219,40 @@ Deno.serve(async (req) => {
       }
     }
 
-    if ((assignment.attestation_required || course?.requires_attestation) && (!attestation.acknowledged || !attestation.signedName)) {
+    const attestationRequired = !!(assignment.attestation_required || course?.requires_attestation);
+    if (attestationRequired && (!attestation.acknowledged || !attestation.signedName)) {
       return Response.json({ error: 'Attestation is required before submitting the test' }, { status: 400 });
+    }
+
+    // Nothing to grade: work out WHY before deciding, because
+    // `attestation_required` is set on every annual-plan assignment and so
+    // cannot stand in for "authored without an assessment" (see
+    // resolveUngradedOutcome). The extra read only happens on this rare path.
+    if (hasNoGradableQuestions(questions)) {
+      const anyQuestion = await base44.asServiceRole.entities.TrainingQuestion
+        .filter({ course_id: assignment.course_id }, undefined, 1)
+        .catch(() => null);
+      // A failed lookup must not be read as "no questions authored" — that is
+      // the branch that auto-passes. Fail closed.
+      if (anyQuestion === null) {
+        return Response.json({
+          error: 'Could not verify this in-service before scoring it. Your attempt was not recorded — please try again.',
+        }, { status: 503 });
+      }
+      const outcome = resolveUngradedOutcome({
+        hasAnyQuestions: anyQuestion.length > 0,
+        attestationRequired,
+      });
+      if (outcome === 'questions_deactivated') {
+        return Response.json({
+          error: 'This in-service has no active questions, so it cannot be scored. Your attempt was not recorded — ask your administrator to restore its questions.',
+        }, { status: 409 });
+      }
+      if (outcome === 'nothing_to_record') {
+        return Response.json({
+          error: 'This in-service has no test and no attestation, so there is nothing to record. Ask your administrator to finish setting it up.',
+        }, { status: 409 });
+      }
     }
 
     const responseMap = new Map(responses.map((response) => [response.questionId, response.answer]));
@@ -265,8 +346,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const totalPossible = questions.reduce((sum, question) => sum + (question.points || 1), 0) || 1;
-    const score = Math.round((earnedPoints / totalPossible) * 100);
+    const score = computeAttemptScore(questions, earnedPoints);
     const passingScore = assignment.passing_score_required || course?.passing_score || 80;
     const passed = score >= passingScore;
     const attemptNumber = attempts.length + 1;

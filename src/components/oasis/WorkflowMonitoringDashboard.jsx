@@ -54,8 +54,11 @@ export default function WorkflowMonitoringDashboard() {
 
   // Fetch automation rules for filtering
   const { data: automationRules = [] } = useQuery({
+    // Same sort as OASISAutomationSettings so the two views that share the
+    // ['automationRules'] cache entry can't hand each other a differently
+    // ordered list depending on which mounted first.
     queryKey: ['automationRules'],
-    queryFn: () => base44.entities.OASISAutomationRule.list(undefined, ALL_ROWS),
+    queryFn: () => base44.entities.OASISAutomationRule.list('-priority', ALL_ROWS),
   });
 
   // Filter data

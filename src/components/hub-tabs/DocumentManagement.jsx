@@ -13,7 +13,7 @@ export default function DocumentManagement() {
   const [activeTab, setActiveTab] = useState("all");
 
   const { data: documents = [] } = useQuery({
-    queryKey: ['documents'],
+    queryKey: ['documents', 500],
     queryFn: () => base44.entities.Document.list('-created_date', 500),
     initialData: []
   });

@@ -31,7 +31,10 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
   const [annotatedUrl, setAnnotatedUrl] = useState(null);
 
   const { data: documents = [] } = useQuery({
-    queryKey: patientId ? ['patient-documents', patientId] : ['documents'],
+    // DocumentList reads 500 rows under these same keys; without the limit in
+    // the key the larger list was silently truncated to 100 (or this picker
+    // over-fetched) depending on mount order. Prefix invalidation still works.
+    queryKey: patientId ? ['patient-documents', patientId, 100] : ['documents', 100],
     queryFn: () => patientId
       ? base44.entities.Document.filter({ patient_id: patientId }, '-created_date', 100)
       : base44.entities.Document.list('-created_date', 100),

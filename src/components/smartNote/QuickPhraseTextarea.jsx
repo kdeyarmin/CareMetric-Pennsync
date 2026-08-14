@@ -1,11 +1,11 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { Sparkles, Loader2, User, Globe, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { expandClinicalPhrase } from "@/functions/expandClinicalPhrase";
 import { DEFAULT_CLINICAL_PHRASES } from "@/components/clinical/defaultClinicalPhrases";
+import { fetchAllClinicalTemplates } from "@/components/clinical/fetchAllClinicalTemplates";
 import { detectPhraseTrigger, rankPhrases, applyExpansion, phraseNeedsPatient, normalizePhraseText, isPhraseVisible } from "./quickPhrase";
 
 // Merge the agency's authored ClinicalLibraryTemplate records with the bundled
@@ -71,9 +71,14 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
     [openQuickPhrases],
   );
 
+  // Must use the SAME paging queryFn as the library manager / analytics /
+  // phrase seeder: all four read the ['clinical-templates'] cache entry, so a
+  // flat `list(sort, 200)` here silently truncated the shared cache whenever
+  // this editor populated it first — which also broke the seeder's
+  // "only create what's missing" check into creating duplicates.
   const { data: templates = [] } = useQuery({
     queryKey: ["clinical-templates"],
-    queryFn: () => base44.entities.ClinicalLibraryTemplate.list("-usage_count", 200),
+    queryFn: fetchAllClinicalTemplates,
     initialData: [],
     staleTime: 5 * 60 * 1000,
   });

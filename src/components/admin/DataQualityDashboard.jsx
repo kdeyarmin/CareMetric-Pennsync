@@ -90,10 +90,18 @@ export default function DataQualityDashboard() {
 
     // Credential tracking. PersonnelCredential is 1-to-many per user (multiple
     // credential types / renewals), so the row count is not the number of users
-    // covered — counting unique user_ids prevents >100% coverage and a negative
-    // "missing" figure.
-    const coveredUsers = new Set(credentials.map(c => c.user_id).filter(Boolean)).size;
-    const missingCredentials = Math.max(0, users.length - coveredUsers);
+    // covered — count distinct owners instead.
+    //
+    // The credential list is NOT agency-scoped while `users` is, so counting
+    // every distinct user_id let owners outside this roster (other tenants,
+    // ex-employees, users past the fetch window) inflate coverage past 100%
+    // and clamp "missing" to 0 — hiding the exact gap this dashboard exists to
+    // surface. Intersect against the loaded roster, matching the reference
+    // implementation in QuickHealthOverview.jsx. PersonnelCredential.user_id
+    // holds the user's email.
+    const credentialOwners = new Set(credentials.map(c => c.user_id).filter(Boolean));
+    const coveredUsers = users.filter(u => u?.email && credentialOwners.has(u.email)).length;
+    const missingCredentials = users.length - coveredUsers;
     const credentialCoverage = users.length > 0
       ? ((coveredUsers / users.length) * 100).toFixed(1)
       : 0;

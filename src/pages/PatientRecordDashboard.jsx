@@ -47,12 +47,15 @@ export default function PatientRecordDashboard() {
 
   // Fetch all data in parallel
   const { data: patients = [], isLoading: loadingPatients } = useQuery({
-    queryKey: ['all-patients'],
+    // Sort + limit belong in the key: AgencyAnalytics reads a different,
+    // agency-scoped 5000-row patient set under the ['all-patients'] root, and a
+    // shared cache entry served whichever query happened to run first.
+    queryKey: ['all-patients', 'updated', 1000],
     queryFn: () => base44.entities.Patient.list('-updated_date', 1000)
   });
 
   const { data: visits = [] } = useQuery({
-    queryKey: ['all-visits'],
+    queryKey: ['all-visits', 'created', 500],
     queryFn: () => base44.entities.Visit.list('-created_date', 500)
   });
 

@@ -251,7 +251,15 @@ export default function TrainingCoursePlayer() {
       setResult(response.data || response);
       setStep("result");
     } catch (err) {
-      setSubmitError(err?.message || "Failed to submit quiz. Please try again.");
+      // The SDK throws on non-2xx with the body under response.data, so
+      // `err.message` alone is the generic "Request failed with status code N".
+      // gradeTrainingAttempt's messages are the ones the learner needs — whether
+      // their attempt was consumed, why it could not be scored, when a retake
+      // opens — so read them the way the rest of the app does.
+      setSubmitError(
+        err?.response?.data?.error || err?.data?.error || err?.message
+          || "Failed to submit quiz. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -566,7 +574,16 @@ export default function TrainingCoursePlayer() {
           {/* Active module */}
           {modules[activeModuleIndex] && (
             <div className="space-y-4">
-              <TrainingModuleViewer module={modules[activeModuleIndex]} />
+              {/* Keyed on the module: the viewer's `viewedSections` progress
+                  ("N/M sections read") and each section's expanded state are
+                  per-module. Without a remount, advancing to the next module
+                  carried the previous module's read count over — showing a
+                  full progress bar (or "5/3 sections read") on a module the
+                  learner had not opened. */}
+              <TrainingModuleViewer
+                key={modules[activeModuleIndex].id || activeModuleIndex}
+                module={modules[activeModuleIndex]}
+              />
 
               {/* Module attachments */}
               {(modules[activeModuleIndex].attachment_urls || []).length > 0 && (
@@ -658,7 +675,10 @@ export default function TrainingCoursePlayer() {
               onClick={() => setStep("test")}
               className="w-full sm:w-auto"
             >
-              Proceed to Quiz <ChevronRight className="w-4 h-4 ml-1" />
+              {/* An attestation-only in-service has no questions; calling the
+                  next step a quiz sent the learner looking for one. */}
+              {totalQuestions > 0 ? "Proceed to Quiz" : "Finish In-Service"}
+              <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </CardContent>
         </Card>
@@ -671,9 +691,13 @@ export default function TrainingCoursePlayer() {
           <Card className="border-0 shadow-sm bg-blue-50 border border-blue-100">
             <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex-1">
-                <h2 className="font-bold text-blue-900">Competency Assessment</h2>
+                <h2 className="font-bold text-blue-900">
+                  {totalQuestions > 0 ? "Competency Assessment" : "Complete This In-Service"}
+                </h2>
                 <p className="text-sm text-blue-700 mt-0.5">
-                  Answer all {totalQuestions} questions to submit. You need {passingScore}% to pass.
+                  {totalQuestions > 0
+                    ? `Answer all ${totalQuestions} questions to submit. You need ${passingScore}% to pass.`
+                    : "This in-service has no competency test — submit to record your completion."}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -732,7 +756,7 @@ export default function TrainingCoursePlayer() {
               <div className="flex-1 text-sm text-slate-600">
                 {answeredCount < totalQuestions
                   ? <span className="text-amber-600 font-medium flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" />{totalQuestions - answeredCount} question(s) unanswered</span>
-                  : <span className="text-emerald-600 font-medium flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" />All questions answered — ready to submit!</span>
+                  : <span className="text-emerald-600 font-medium flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" />{totalQuestions > 0 ? "All questions answered — ready to submit!" : "Ready to submit."}</span>
                 }
               </div>
               <Button
@@ -744,7 +768,7 @@ export default function TrainingCoursePlayer() {
                 {submitting ? (
                   <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Submitting...</>
                 ) : (
-                  <><Send className="w-4 h-4 mr-2" />Submit Quiz</>
+                  <><Send className="w-4 h-4 mr-2" />{totalQuestions > 0 ? "Submit Quiz" : "Submit"}</>
                 )}
               </Button>
             </div>

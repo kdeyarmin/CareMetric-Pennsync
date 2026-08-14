@@ -333,8 +333,13 @@ export default function ADRCenter() {
         </>
       )}
 
+      {/* Keyed on the case: the step panels below hold per-case local state
+          (AdrSubmissionPanel seeds the fax recipient from contractor_name and
+          keeps the typed fax number; AdrPacketVerifier keeps its in-flight /
+          error state). Switching cases without a remount carried the previous
+          case's fax recipient into the next case's submission. */}
       {selectedCase && (
-        <div className="space-y-4">
+        <div className="space-y-4" key={selectedCase.id}>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <Button variant="outline" onClick={() => setSelectedCaseId(null)} className="min-h-[44px] w-full sm:w-auto">
               <ArrowLeft className="w-4 h-4 mr-2" />

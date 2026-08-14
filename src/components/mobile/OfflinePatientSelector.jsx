@@ -136,20 +136,46 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
         }
       });
 
-      localStorage.setItem('offline_patient_data', JSON.stringify(mergedCache));
-      localStorage.setItem('offline_cache_timestamp', new Date().toISOString());
+      // Two INDEPENDENT stores, neither allowed to abort the other.
+      //
+      // OfflineMode.jsx reads and merges both: IndexedDB carries the canonical
+      // roster (and has orders of magnitude more room), while the localStorage
+      // mirror is the only home of the recent-visit detail. So each has a
+      // failure mode the other survives — a full chart plus five visits of
+      // nurse_notes per patient runs to hundreds of KB and can blow the ~5MB
+      // localStorage quota, and IndexedDB can be blocked or unavailable
+      // (private mode, corrupt store). Whichever fails, the other still gives
+      // the nurse something usable in the field, so the download only counts as
+      // failed when BOTH are lost.
+      let rosterSaved = true;
+      try {
+        await savePatients(mergedCache.map((entry) => entry.patient).filter(Boolean));
+      } catch (dbError) {
+        rosterSaved = false;
+        console.warn('Offline IndexedDB roster write failed:', dbError?.message);
+      }
 
-      // Keep the canonical IndexedDB roster in sync with this explicit offline
-      // download flow. OfflineManager also refreshes this store in the
-      // background, and the offline patient pickers read it when the network is
-      // gone; writing selected patients here avoids two disconnected caches.
-      await savePatients(mergedCache.map((entry) => entry.patient).filter(Boolean));
+      let mirrored = true;
+      try {
+        localStorage.setItem('offline_patient_data', JSON.stringify(mergedCache));
+        localStorage.setItem('offline_cache_timestamp', new Date().toISOString());
+      } catch (storageError) {
+        mirrored = false;
+        console.warn('Offline localStorage mirror skipped:', storageError?.message);
+      }
+
+      if (!rosterSaved && !mirrored) {
+        throw new Error('This device has no room to store offline data. Free up space and try again.');
+      }
+
       window.dispatchEvent(new CustomEvent('offline-patients-updated'));
 
       setCacheResult({
         success: true,
         patientsCached: cachedData.length,
-        totalSize: JSON.stringify(mergedCache).length
+        totalSize: JSON.stringify(mergedCache).length,
+        mirrored,
+        rosterSaved
       });
 
       onCacheComplete?.(cachedData.length);
@@ -188,8 +214,26 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
             <AlertDescription className="text-sm">
               {cacheResult.success ? (
                 <>
-                  ✅ Successfully cached {cacheResult.patientsCached} patient{cacheResult.patientsCached !== 1 ? 's' : ''} 
+                  ✅ Successfully cached {cacheResult.patientsCached} patient{cacheResult.patientsCached !== 1 ? 's' : ''}
                   ({(cacheResult.totalSize / 1024).toFixed(1)} KB)
+                  {/* The recent-visit detail lives only in the localStorage
+                      mirror (OfflineMode merges it over the IndexedDB roster),
+                      so say plainly what the nurse will and won't have in the
+                      field rather than reporting an unqualified success. */}
+                  {cacheResult.mirrored === false && (
+                    <span className="block mt-1 text-amber-800">
+                      Device storage is full, so recent-visit detail wasn’t saved. The patient
+                      list is still available offline — free up space and download again to
+                      include visit notes.
+                    </span>
+                  )}
+                  {cacheResult.rosterSaved === false && (
+                    <span className="block mt-1 text-amber-800">
+                      This device’s offline database couldn’t be written, so only the
+                      downloaded chart detail is stored. Reload the app and download again
+                      to restore the full offline patient list.
+                    </span>
+                  )}
                 </>
               ) : (
                 `❌ Cache failed: ${cacheResult.error}`

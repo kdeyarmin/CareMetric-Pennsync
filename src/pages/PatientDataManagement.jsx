@@ -82,7 +82,9 @@ export default function PatientDataManagement() {
   const isAdmin = isAdminView(currentUser);
 
   const { data: patients = [], isLoading } = useQuery({
-    queryKey: ['patients', 'roster', 'created', 2000],
+    // Agency-scoped result set — Patients.jsx reads the unscoped variant under
+    // the bare key, so they must not share one cache entry.
+    queryKey: ['patients', 'roster', 'created', 2000, 'agency', currentUser?.agency_name ?? null],
     queryFn: async () => {
       try {
         const _rawPatients = await base44.entities.Patient.list('-created_date', 2000);

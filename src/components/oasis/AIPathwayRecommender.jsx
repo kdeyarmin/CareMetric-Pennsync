@@ -44,7 +44,10 @@ export default function AIPathwayRecommender({
   });
 
   const { data: availablePathways = [], isPending: pathwaysPending } = useQuery({
-    queryKey: ['clinicalPathways'],
+    // Active-only: ClinicalPathwayManager lists every pathway (including
+    // retired ones) under the bare key, so a shared entry could recommend
+    // deactivated pathways. Prefix-invalidated by the manager's writes.
+    queryKey: ['clinicalPathways', 'active'],
     queryFn: () => base44.entities.ClinicalPathway.filter({ is_active: true }, undefined, ALL_ROWS),
   });
 

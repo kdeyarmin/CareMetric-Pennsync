@@ -208,8 +208,11 @@ export default function Layout() {
   const activeAlerts = useMemo(() => isAdmin ? [] : allActiveAlerts, [allActiveAlerts, isAdmin]);
 
   const { data: inAppNotifications = [] } = useQuery({
+    // Same 100-row window as NotificationCenter: both read this cache entry, so
+    // a 50-row fetch here made the header badge disagree with the panel it
+    // opens (and truncated the panel when the layout populated the cache first).
     queryKey: ['notifications', currentUser?.email],
-    queryFn: () => base44.entities.Notification.filter({ user_email: currentUser?.email }, '-created_date', 50),
+    queryFn: () => base44.entities.Notification.filter({ user_email: currentUser?.email }, '-created_date', 100),
     initialData: [], refetchInterval: 30000, enabled: !!currentUser?.email,
   });
 

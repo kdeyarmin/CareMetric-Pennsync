@@ -34,7 +34,11 @@ export default function OASISReview() {
 
   // Fetch patients with pending OASIS reviews
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'updated', 2000],
+    // Agency-scoped result set — it MUST NOT share the plain
+    // ['patients','updated',2000] cache entry that the unscoped rosters use, or
+    // whichever mounted first would decide whether this view shows other
+    // tenants' charts.
+    queryKey: ['patients', 'updated', 2000, 'agency', currentUser?.agency_name ?? null],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.list('-updated_date', 2000);
       const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);

@@ -272,8 +272,12 @@ export default function DischargeSummaries() {
         </CardContent>
       </Card>
 
+      {/* `initialStep` is only read on mount, and openWorkflow() can retarget
+          the summary/step while the workflow is already open — key it so the
+          workflow actually restarts on the summary it was reopened for. */}
       {showWorkflow && selectedSummaryId && (
         <DischargeSummaryWorkflow
+          key={`${selectedSummaryId}-${workflowStep}`}
           patientId={summaries.find(s => s.id === selectedSummaryId)?.patient_id}
           summaryId={selectedSummaryId}
           initialStep={workflowStep}
