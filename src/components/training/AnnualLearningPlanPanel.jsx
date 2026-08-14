@@ -18,6 +18,11 @@ const templates = [
 export default function AnnualLearningPlanPanel({ plans = [], courses = [], year, onRefresh }) {
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [selectedCourses, setSelectedCourses] = useState([]);
+  // Which plan's saved rows the checkboxes actually reflect. Save refuses
+  // unless this matches the selected plan, so a failed (or still-running) seed
+  // can never be mistaken for "the admin unchecked everything" — the same
+  // "never save before the editor has seeded" guard useCourseContentBuilder uses.
+  const [seededPlanId, setSeededPlanId] = useState("");
   const [planDraft, setPlanDraft] = useState({ name: `${year} Annual Mandatory Education`, business_line_scope: 'all', description: 'Annual education bundle' });
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId);
 
@@ -26,6 +31,7 @@ export default function AnnualLearningPlanPanel({ plans = [], courses = [], year
   // plan's ticks), and savePlanCourses would delete every saved row and
   // recreate only the freshly-checked boxes — wiping the plan's saved modules.
   useEffect(() => {
+    setSeededPlanId("");
     if (!selectedPlanId) {
       setSelectedCourses([]);
       return;
@@ -34,9 +40,18 @@ export default function AnnualLearningPlanPanel({ plans = [], courses = [], year
     (async () => {
       try {
         const rows = await base44.entities.LearningPlanCourse.filter({ plan_id: selectedPlanId }, 'order_index', 200);
-        if (!cancelled) setSelectedCourses(rows.map((row) => row.course_id));
-      } catch {
-        if (!cancelled) setSelectedCourses([]);
+        if (cancelled) return;
+        setSelectedCourses(rows.map((row) => row.course_id));
+        setSeededPlanId(selectedPlanId);
+      } catch (err) {
+        // Leave seededPlanId unset: an empty checkbox list here means "we could
+        // not read the plan", not "the plan has no courses", and saving that
+        // would delete every module in it.
+        console.error('Failed to load plan courses:', err);
+        if (!cancelled) {
+          setSelectedCourses([]);
+          toast.error("Couldn't load this plan's courses. Reopen the plan before editing it.");
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -66,17 +81,42 @@ export default function AnnualLearningPlanPanel({ plans = [], courses = [], year
 
   const savePlanCourses = async () => {
     if (!selectedPlan) return;
+    if (seededPlanId !== selectedPlan.id) {
+      toast.error("This plan's courses haven't loaded yet. Reopen the plan and try again.");
+      return;
+    }
     try {
       const existing = await base44.entities.LearningPlanCourse.filter({ plan_id: selectedPlan.id }, 'order_index', 200);
-      await Promise.all(existing.map((item) => base44.entities.LearningPlanCourse.delete(item.id)));
+
+      // Diff instead of delete-all-then-recreate. The old order deleted every
+      // saved row FIRST, so any failure in the recreate step left the annual
+      // mandatory-education plan empty while the toast said nothing was saved
+      // — and it also exposed a window where the enrollment jobs read a plan
+      // with no courses. Reuse the rows that survive, add the new ones, and
+      // only then drop what the admin actually deselected.
+      const keep = new Set(selectedCourses);
+      const reuse = new Map();
+      const surplus = [];
+      for (const row of existing) {
+        if (keep.has(row.course_id) && !reuse.has(row.course_id)) reuse.set(row.course_id, row);
+        else surplus.push(row); // deselected, or a duplicate of a kept course
+      }
+
       await Promise.all(selectedCourses.map((courseId, index) => {
         const course = courses.find((item) => item.id === courseId);
-        return base44.entities.LearningPlanCourse.create({ plan_id: selectedPlan.id, course_id: courseId, course_title: course?.title, order_index: index, is_required: true });
+        const payload = { plan_id: selectedPlan.id, course_id: courseId, course_title: course?.title, order_index: index, is_required: true };
+        const row = reuse.get(courseId);
+        return row
+          ? base44.entities.LearningPlanCourse.update(row.id, payload)
+          : base44.entities.LearningPlanCourse.create(payload);
       }));
+      await Promise.all(surplus.map((row) => base44.entities.LearningPlanCourse.delete(row.id)));
+
       await base44.entities.LearningPlan.update(selectedPlan.id, { total_courses: selectedCourses.length });
       onRefresh?.();
       toast.success("Plan courses saved.");
-    } catch {
+    } catch (err) {
+      console.error('Failed to save plan courses:', err);
       toast.error("Couldn't save the plan courses. Please try again.");
     }
   };
@@ -115,7 +155,7 @@ export default function AnnualLearningPlanPanel({ plans = [], courses = [], year
         <CardHeader><CardTitle>Plan Modules</CardTitle></CardHeader>
         <CardContent className="space-y-3 max-h-[720px] overflow-y-auto">
           {!selectedPlan ? <div className="text-sm text-slate-500">Select an annual plan to add required education items.</div> : courses.map((course) => <label key={course.id} htmlFor={`plan-course-${course.id}`} className="flex items-start gap-3 rounded-xl border p-4 bg-white"><Checkbox id={`plan-course-${course.id}`} checked={selectedCourses.includes(course.id)} onCheckedChange={() => setSelectedCourses((prev) => prev.includes(course.id) ? prev.filter((item) => item !== course.id) : [...prev, course.id])} /><div><p className="font-semibold text-slate-900">{course.title}</p><p className="text-sm text-slate-500">{course.business_line_scope || 'all'}</p></div></label>)}
-          {selectedPlan && <Button className="w-full" onClick={savePlanCourses}>Save plan modules</Button>}
+          {selectedPlan && <Button className="w-full" onClick={savePlanCourses} disabled={seededPlanId !== selectedPlan.id}>Save plan modules</Button>}
         </CardContent>
       </Card>
     </div>
