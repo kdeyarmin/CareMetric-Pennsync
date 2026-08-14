@@ -136,20 +136,37 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
         }
       });
 
-      localStorage.setItem('offline_patient_data', JSON.stringify(mergedCache));
-      localStorage.setItem('offline_cache_timestamp', new Date().toISOString());
-
-      // Keep the canonical IndexedDB roster in sync with this explicit offline
-      // download flow. OfflineManager also refreshes this store in the
-      // background, and the offline patient pickers read it when the network is
-      // gone; writing selected patients here avoids two disconnected caches.
+      // Write the canonical IndexedDB roster FIRST. OfflineManager also refreshes
+      // this store in the background, and the offline patient pickers read it
+      // when the network is gone; writing selected patients here avoids two
+      // disconnected caches.
+      //
+      // Order matters: a full chart plus five visits of nurse_notes per patient
+      // runs to hundreds of KB, so the localStorage mirror below can hit the ~5MB
+      // quota and throw. When it ran first, that QuotaExceededError aborted the
+      // whole handler and the nurse got NO offline data at all — including in
+      // IndexedDB, which has orders of magnitude more room and is what the field
+      // app actually reads.
       await savePatients(mergedCache.map((entry) => entry.patient).filter(Boolean));
+
+      // Legacy localStorage mirror — best effort. A quota failure here must not
+      // fail a download that already succeeded in the canonical store.
+      let mirrored = true;
+      try {
+        localStorage.setItem('offline_patient_data', JSON.stringify(mergedCache));
+        localStorage.setItem('offline_cache_timestamp', new Date().toISOString());
+      } catch (storageError) {
+        mirrored = false;
+        console.warn('Offline localStorage mirror skipped:', storageError?.message);
+      }
+
       window.dispatchEvent(new CustomEvent('offline-patients-updated'));
 
       setCacheResult({
         success: true,
         patientsCached: cachedData.length,
-        totalSize: JSON.stringify(mergedCache).length
+        totalSize: JSON.stringify(mergedCache).length,
+        mirrored
       });
 
       onCacheComplete?.(cachedData.length);
@@ -188,8 +205,19 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
             <AlertDescription className="text-sm">
               {cacheResult.success ? (
                 <>
-                  ✅ Successfully cached {cacheResult.patientsCached} patient{cacheResult.patientsCached !== 1 ? 's' : ''} 
+                  ✅ Successfully cached {cacheResult.patientsCached} patient{cacheResult.patientsCached !== 1 ? 's' : ''}
                   ({(cacheResult.totalSize / 1024).toFixed(1)} KB)
+                  {/* The recent-visit detail lives only in the localStorage
+                      mirror (OfflineMode merges it over the IndexedDB roster),
+                      so say plainly what the nurse will and won't have in the
+                      field rather than reporting an unqualified success. */}
+                  {cacheResult.mirrored === false && (
+                    <span className="block mt-1 text-amber-800">
+                      Device storage is full, so recent-visit detail wasn’t saved. The patient
+                      list is still available offline — free up space and download again to
+                      include visit notes.
+                    </span>
+                  )}
                 </>
               ) : (
                 `❌ Cache failed: ${cacheResult.error}`
