@@ -272,9 +272,13 @@ export default function OASISAutomationSettings() {
                     </div>
                     <div>
                       <Label>Score Value (%)</Label>
+                      {/* `??`, not `||`: numOrDefault deliberately keeps a typed
+                          0, but a `|| 70` display fallback re-rendered the box
+                          as 70, so the admin could never enter or see a 0
+                          threshold. */}
                       <Input
                         type="number"
-                        value={formData.trigger_conditions?.score_value || 70}
+                        value={formData.trigger_conditions?.score_value ?? 70}
                         onChange={(e) => setFormData({
                           ...formData,
                           trigger_conditions: { 
@@ -311,9 +315,12 @@ export default function OASISAutomationSettings() {
                     </div>
                     <div>
                       <Label>Due in (Days)</Label>
+                      {/* `??` for the same reason as Score Value above: "due in
+                          0 days" (due today) is what a critical-compliance rule
+                          wants, and `|| 7` snapped the field back to a week. */}
                       <Input
                         type="number"
-                        value={formData.action_config?.due_in_days || 7}
+                        value={formData.action_config?.due_in_days ?? 7}
                         onChange={(e) => setFormData({
                           ...formData,
                           action_config: { 
@@ -383,7 +390,7 @@ export default function OASISAutomationSettings() {
                     <div className="flex gap-4 text-xs text-slate-500">
                       <span>Action: {rule.action_type.replace(/_/g, ' ')}</span>
                       <span>Priority: {rule.action_config?.task_priority || 'medium'}</span>
-                      <span>Due: {rule.action_config?.due_in_days || 7} days</span>
+                      <span>Due: {rule.action_config?.due_in_days ?? 7} days</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
