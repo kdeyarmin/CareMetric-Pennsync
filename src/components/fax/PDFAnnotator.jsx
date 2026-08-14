@@ -52,7 +52,13 @@ export default function PDFAnnotator({ pdfUrl, onAnnotatedReady, onClose }) {
   const textInputRef = useRef(null);
   const [textInput, setTextInput] = useState({ visible: false, x: 0, y: 0, value: "" });
 
-  // Load PDF
+  // Load PDF.
+  //
+  // The annotator renders inline while the document picker above it stays
+  // interactive, so `pdfUrl` can change mid-load. Without the stale guard a
+  // slower earlier fetch could resolve last and install the PREVIOUS document —
+  // the nurse would then annotate one file while the sender faxed another.
+  // Cancel the superseded load and drop its result.
   useEffect(() => {
     if (!pdfUrl) return;
     if (!isSafePdfUrl(pdfUrl)) {
@@ -61,17 +67,25 @@ export default function PDFAnnotator({ pdfUrl, onAnnotatedReady, onClose }) {
       return;
     }
     setIsLoading(true);
-    pdfjsLib.getDocument({ url: pdfUrl, withCredentials: false }).promise
+    let stale = false;
+    const task = pdfjsLib.getDocument({ url: pdfUrl, withCredentials: false });
+    task.promise
       .then((doc) => {
+        if (stale) return;
         setPdfDoc(doc);
         setNumPages(doc.numPages);
         setPageNum(1);
       })
       .catch((err) => {
+        if (stale) return;
         console.error("PDF load error:", err);
         toast.error("Failed to load PDF for annotation");
         setIsLoading(false);
       });
+    return () => {
+      stale = true;
+      try { task.destroy(); } catch { /* already settled/destroyed */ }
+    };
   }, [pdfUrl]);
 
   const getAnnotations = useCallback((page) => annotationsRef.current[page] || [], []);
