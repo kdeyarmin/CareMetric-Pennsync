@@ -1,6 +1,6 @@
 // Validation utilities for patient data
 
-import { calculateAge } from '@/lib/dateLocal';
+import { calculateAge, parseLocalDate } from '@/lib/dateLocal';
 
 export const SEVERITY = {
   ERROR: 'error',
@@ -34,19 +34,25 @@ export const validatePhone = (phone) => {
 };
 
 // Date validation (YYYY-MM-DD format)
+//
+// The shape check is not enough: `new Date('2026-02-31T00:00:00')` does NOT
+// produce Invalid Date — V8 rolls the overflow forward to 2026-03-03. So this
+// validator used to PASS 2/30, 2/31, 4/31, 6/31, 9/31, 11/31 and Feb 29 in a
+// non-leap year, and every downstream reader then silently interpreted the
+// typo as a different calendar day. parseLocalDate rejects those (see the
+// header of src/lib/dateLocal.js), which is what a validator has to do.
 export const validateDate = (dateString) => {
   if (!dateString) return null;
-  
+
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
   if (!dateRegex.test(dateString)) {
     return VALIDATION_ERRORS.INVALID_DATE;
   }
-  
-  const date = new Date(dateString + 'T00:00:00');
-  if (isNaN(date.getTime())) {
+
+  if (!parseLocalDate(dateString)) {
     return VALIDATION_ERRORS.INVALID_DATE;
   }
-  
+
   return null;
 };
 
@@ -54,33 +60,34 @@ export const validateDate = (dateString) => {
 export const validateDateOfBirth = (dob) => {
   const error = validateDate(dob);
   if (error) return error;
-  
-  const dobDate = new Date(dob + 'T00:00:00');
+
+  const dobDate = parseLocalDate(dob);
   const today = new Date();
-  
+
   if (dobDate > today) {
     return VALIDATION_ERRORS.FUTURE_DOB;
   }
-  
+
   const age = calculateAge(dobDate, today);
   if (age > 125) {
     return VALIDATION_ERRORS.INVALID_AGE;
   }
-  
+
   return null;
 };
 
 // Cross-field validation: admission before discharge
 export const validateDateOrder = (admissionDate, dischargeDate) => {
-  if (!admissionDate || !dischargeDate) return null;
-  
-  const admission = new Date(admissionDate + 'T00:00:00');
-  const discharge = new Date(dischargeDate + 'T00:00:00');
-  
+  const admission = parseLocalDate(admissionDate);
+  const discharge = parseLocalDate(dischargeDate);
+  // An unparseable side is reported by validateDate on its own field; don't
+  // also emit a misleading ordering error for it.
+  if (!admission || !discharge) return null;
+
   if (admission > discharge) {
     return VALIDATION_ERRORS.INVALID_DATE_ORDER;
   }
-  
+
   return null;
 };
 
@@ -133,9 +140,8 @@ export const validatePatient = (patient) => {
       });
     } else {
       // Age warning for very young patients
-      const dobDate = new Date(patient.date_of_birth + 'T00:00:00');
-      const age = calculateAge(dobDate);
-      if (age < 18) {
+      const age = calculateAge(patient.date_of_birth);
+      if (age != null && age < 18) {
         validationResults.push({
           field: 'date_of_birth',
           message: `Patient is ${age} years old. Is this correct?`,
