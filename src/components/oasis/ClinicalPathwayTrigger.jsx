@@ -37,7 +37,8 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
 
   // Fetch all active clinical pathways
   const { data: pathways = [] } = useQuery({
-    queryKey: ['clinicalPathways'],
+    // Active-only — see AIPathwayRecommender.jsx.
+    queryKey: ['clinicalPathways', 'active'],
     queryFn: async () => {
       const result = await base44.entities.ClinicalPathway.filter({ is_active: true }, undefined, ALL_ROWS);
       return result;

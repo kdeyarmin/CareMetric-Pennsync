@@ -111,7 +111,9 @@ export default function ComplianceCenter() {
   });
 
   const { data: _patients = [] } = useQuery({
-    queryKey: ['patients', 'updated', 2000],
+    // Agency-scoped result set — keep it out of the shared unscoped
+    // ['patients','updated',2000] cache entry (see OASISReview.jsx).
+    queryKey: ['patients', 'updated', 2000, 'agency', currentUser?.agency_name ?? null],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.list('-updated_date', 2000);
       const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);

@@ -76,7 +76,7 @@ export default function PatientAlertsDashboard({ patientId = null }) {
   // Keep the ['patientAlerts'] key so the app-wide invalidations (workflow
   // engine, alert analyzers/widgets, risk analyzers) still refresh this view.
   const { data: allAlerts = [], isLoading } = useQuery({
-    queryKey: ['patientAlerts', patientId],
+    queryKey: ['patientAlerts', patientId, 'scoped'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getScopedPatientAlerts', {
         patient_id: patientId || undefined,

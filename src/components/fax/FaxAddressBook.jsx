@@ -66,7 +66,7 @@ export default function FaxAddressBook({ onSelectContact }) {
   const queryClient = useQueryClient();
 
   const { data: contacts = [] } = useQuery({
-    queryKey: ['fax-contacts'],
+    queryKey: ['fax-contacts', 500],
     queryFn: () => base44.entities.FaxContact.list('-created_date', 500),
     initialData: []
   });

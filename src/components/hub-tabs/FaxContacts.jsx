@@ -97,7 +97,10 @@ export default function FaxContactsPage() {
   const queryClient = useQueryClient();
 
   const { data: contacts = [], isLoading } = useQuery({
-    queryKey: ['fax-contacts'],
+    // Row limit is part of the identity — FaxAddressBook reads 500 under the
+    // same root, and a shared entry truncated this directory to 500 contacts
+    // whenever the address book loaded first.
+    queryKey: ['fax-contacts', 1000],
     queryFn: () => base44.entities.FaxContact.list('-created_date', 1000),
     initialData: []
   });

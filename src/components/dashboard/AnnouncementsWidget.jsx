@@ -47,7 +47,11 @@ export default function AnnouncementsWidget() {
   const [expanded, setExpanded] = useState(false);
 
   const { data: announcements = [], isLoading } = useQuery({
-    queryKey: ['announcements'],
+    // Active-only. The admin manager reads EVERY announcement under the bare
+    // ['announcements'] key, so sharing that entry showed deactivated/expired
+    // announcements to staff (and hid them from the admin, depending on which
+    // view loaded first). Still invalidated by the manager's ['announcements'].
+    queryKey: ['announcements', 'active'],
     queryFn: () => base44.entities.Announcement.filter({ is_active: true }, '-created_date', ALL_ROWS),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,

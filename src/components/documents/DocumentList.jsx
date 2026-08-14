@@ -173,7 +173,9 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
   const queryClient = useQueryClient();
 
   const { data: documents = [], isLoading } = useQuery({
-    queryKey: patientId ? ['patient-documents', patientId] : ['documents'],
+    // Row limit is part of the identity — DocumentFaxSender reads 100 rows
+    // under the same roots (see its comment).
+    queryKey: patientId ? ['patient-documents', patientId, 500] : ['documents', 500],
     queryFn: () => patientId
       ? base44.entities.Document.filter({ patient_id: patientId }, '-created_date', 500)
       : base44.entities.Document.list('-created_date', 500),

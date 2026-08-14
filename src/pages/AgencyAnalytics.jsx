@@ -39,7 +39,10 @@ export default function AgencyAnalytics() {
 
   // Fetch all necessary data
   const { data: visits = [] } = useQuery({
-    queryKey: ['all-visits'],
+    // Limit is part of the identity: PatientRecordDashboard reads only 500 rows
+    // under the same root, and sharing one entry silently truncated whichever
+    // page mounted second.
+    queryKey: ['all-visits', 'created', 1000],
     queryFn: () => base44.entities.Visit.list('-created_date', 1000),
     initialData: [],
     enabled: isAdmin,
@@ -66,7 +69,9 @@ export default function AgencyAnalytics() {
   });
 
   const { data: allPatients = [] } = useQuery({
-    queryKey: ['all-patients'],
+    // Agency-scoped and differently shaped from PatientRecordDashboard's
+    // unscoped 1000-row list — must not share its cache entry.
+    queryKey: ['all-patients', 'created', 5000, 'agency', currentUser?.agency_name ?? null],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.list('-created_date', 5000);
       const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);

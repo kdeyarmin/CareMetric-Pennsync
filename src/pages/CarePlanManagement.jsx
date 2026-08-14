@@ -85,7 +85,7 @@ export default function CarePlanManagement() {
 
   // Fetch only patients the user has charted on
   const { data: myVisits = [] } = useQuery({
-    queryKey: ['myVisits'],
+    queryKey: ['myVisits', currentUser?.email ?? null],
     queryFn: () => currentUser ? base44.entities.Visit.filter({ created_by: currentUser.email }, undefined, PATIENT_HISTORY_ROWS) : Promise.resolve([]),
     enabled: !!currentUser,
     initialData: [],

@@ -28,7 +28,12 @@ export default function ClinicalInsightsDashboard() {
   });
 
   const { data: visits = [] } = useQuery({
-    queryKey: ['myVisits'],
+    // This is the agency-wide visit list, NOT the caller's own visits. It used
+    // the ['myVisits'] key that CarePlanManagement uses for
+    // `Visit.filter({ created_by: me })`, so whichever page mounted first
+    // decided whether "patients I have charted on" meant everyone's charts.
+    // ['allVisits'] is the existing key for exactly this query.
+    queryKey: ['allVisits'],
     queryFn: async () => {
       return await base44.entities.Visit.list('-visit_date', 500);
     },

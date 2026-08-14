@@ -61,7 +61,11 @@ export default function PatientAlertAnalyzer({
 
   // Fetch existing alerts
   const { data: existingAlerts = [] } = useQuery({
-    queryKey: ['patientAlerts', patientId],
+    // Distinct from PatientAlertsDashboard's server-scoped, all-status feed,
+    // which reads ['patientAlerts', patientId] via getScopedPatientAlerts —
+    // sharing one entry mixed the two result sets. Still a ['patientAlerts']
+    // prefix so the app-wide invalidations refresh it.
+    queryKey: ['patientAlerts', patientId, 'active-entity'],
     queryFn: () => base44.entities.PatientAlert.filter({ patient_id: patientId, status: 'active' }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!patientId
   });
