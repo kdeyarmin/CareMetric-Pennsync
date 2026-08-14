@@ -40,6 +40,7 @@ const load = () =>
   loadInline("../functions/gradeTrainingAttempt/entry.ts", [
     "computeAttemptScore",
     "hasNoGradableQuestions",
+    "resolveUngradedOutcome",
   ]);
 
 test("hasNoGradableQuestions recognizes an unscoreable course", async () => {
@@ -77,4 +78,41 @@ test("weights questions by their point value and rounds", async () => {
 test("a question with no point value still counts as one point", async () => {
   const { computeAttemptScore } = await load();
   assert.equal(computeAttemptScore([{}, {}], 1), 50);
+});
+
+/**
+ * `attestation_required` cannot stand in for "authored without an assessment":
+ * assignAnnualLearningPlan sets it on EVERY annual-plan assignment
+ * (`settings.attestationRequired !== false`) and the seeded annual courses
+ * require attestation while also carrying graded questions. Keying the
+ * auto-pass off it would hand a 100% completion — certificate included — to a
+ * learner whose course had merely had its questions deactivated.
+ */
+test("an attestation-only course (no questions authored) is the only auto-pass", async () => {
+  const { resolveUngradedOutcome } = await load();
+  assert.equal(
+    resolveUngradedOutcome({ hasAnyQuestions: false, attestationRequired: true }),
+    "attestation_only",
+  );
+});
+
+test("a course whose questions were deactivated is refused, not passed", async () => {
+  const { resolveUngradedOutcome } = await load();
+  // The annual-plan shape: attestation required AND questions exist, all inactive.
+  assert.equal(
+    resolveUngradedOutcome({ hasAnyQuestions: true, attestationRequired: true }),
+    "questions_deactivated",
+  );
+  assert.equal(
+    resolveUngradedOutcome({ hasAnyQuestions: true, attestationRequired: false }),
+    "questions_deactivated",
+  );
+});
+
+test("a course with neither a test nor an attestation records nothing", async () => {
+  const { resolveUngradedOutcome } = await load();
+  assert.equal(
+    resolveUngradedOutcome({ hasAnyQuestions: false, attestationRequired: false }),
+    "nothing_to_record",
+  );
 });

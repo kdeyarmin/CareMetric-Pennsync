@@ -74,7 +74,13 @@ export default function WorkflowExecutionEngine({
   }, [oasisUploadId, patientId, analysisResults, pdgmData]);
 
   const { data: automationRules, isLoading: isLoadingRules, error: rulesError } = useQuery({
-    queryKey: ["automationRules"],
+    // Active-only, and it must NOT share the bare ['automationRules'] entry
+    // that OASISAutomationSettings / WorkflowMonitoringDashboard fill with
+    // EVERY rule: this list is what executeWorkflows() iterates and runs, so a
+    // shared cache let deactivated rules execute (and rendered them as
+    // "N active automation rules ready") whenever an admin had opened the
+    // settings page first. Prefix-invalidated by the settings page's writes.
+    queryKey: ['automationRules', 'active'],
     queryFn: () => base44.entities.OASISAutomationRule.filter({ is_active: true }, undefined, ALL_ROWS)
   });
 

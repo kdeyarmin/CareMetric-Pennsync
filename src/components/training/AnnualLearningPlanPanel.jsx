@@ -41,7 +41,11 @@ export default function AnnualLearningPlanPanel({ plans = [], courses = [], year
       try {
         const rows = await base44.entities.LearningPlanCourse.filter({ plan_id: selectedPlanId }, 'order_index', 200);
         if (cancelled) return;
-        setSelectedCourses(rows.map((row) => row.course_id));
+        // De-duplicate: a plan can carry two rows for the same course (an
+        // earlier bad save). One course is one checkbox, so seeding both IDs
+        // would update the same reused row twice with racing order_index values
+        // and then write total_courses: 2 for a plan left holding one row.
+        setSelectedCourses([...new Set(rows.map((row) => row.course_id).filter(Boolean))]);
         setSeededPlanId(selectedPlanId);
       } catch (err) {
         // Leave seededPlanId unset: an empty checkbox list here means "we could
@@ -94,7 +98,11 @@ export default function AnnualLearningPlanPanel({ plans = [], courses = [], year
       // — and it also exposed a window where the enrollment jobs read a plan
       // with no courses. Reuse the rows that survive, add the new ones, and
       // only then drop what the admin actually deselected.
-      const keep = new Set(selectedCourses);
+      // Defensive de-dupe as well as at seed time: one course must map to one
+      // row, or the map below updates the same reused row more than once and
+      // total_courses over-counts what actually survives.
+      const wanted = [...new Set(selectedCourses.filter(Boolean))];
+      const keep = new Set(wanted);
       const reuse = new Map();
       const surplus = [];
       for (const row of existing) {
@@ -102,7 +110,7 @@ export default function AnnualLearningPlanPanel({ plans = [], courses = [], year
         else surplus.push(row); // deselected, or a duplicate of a kept course
       }
 
-      await Promise.all(selectedCourses.map((courseId, index) => {
+      await Promise.all(wanted.map((courseId, index) => {
         const course = courses.find((item) => item.id === courseId);
         const payload = { plan_id: selectedPlan.id, course_id: courseId, course_title: course?.title, order_index: index, is_required: true };
         const row = reuse.get(courseId);
@@ -112,7 +120,8 @@ export default function AnnualLearningPlanPanel({ plans = [], courses = [], year
       }));
       await Promise.all(surplus.map((row) => base44.entities.LearningPlanCourse.delete(row.id)));
 
-      await base44.entities.LearningPlan.update(selectedPlan.id, { total_courses: selectedCourses.length });
+      // Count what was actually written, not the raw selection.
+      await base44.entities.LearningPlan.update(selectedPlan.id, { total_courses: wanted.length });
       onRefresh?.();
       toast.success("Plan courses saved.");
     } catch (err) {

@@ -77,6 +77,17 @@ function optionValue(body, name) {
 
 const normalize = (s) => s.replace(/\s+/g, ' ').trim();
 
+/**
+ * Normalize a queryKey the way React Query compares one: structurally. Quote
+ * STYLE and spacing around the brackets/commas are cosmetic — `["a"]`,
+ * `['a']` and `[ 'a' ]` are one cache entry at runtime, so the guard has to
+ * group them together or it silently reviews two half-populations of the same
+ * key, each internally consistent.
+ */
+const normalizeKey = (s) => normalize(s)
+  .replace(/"/g, "'")
+  .replace(/\s*([[\],])\s*/g, '$1');
+
 /** Control flow and plumbing — present in a queryFn but not part of its result set. */
 const IGNORED_CALLS = new Set([
   'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'await', 'async',
@@ -111,7 +122,11 @@ function signature(fn) {
       }
     }
     const sort = /['"](-?\w+)['"]/.exec(rest);
-    const limit = /(\b\d{2,}\b|ALL_ROWS|[A-Z][A-Z_]*ROWS)/.exec(rest);
+    // Any digit run, not just 2+: single-digit caps are real and common here
+    // (`filter({ id }, '-created_date', 1)`, `list('-usage_count', 5)`), and
+    // requiring two digits made a 1-row read and a 5-row read look identical.
+    // `\b` keeps it off digits embedded in identifiers (m1830, PAGE_2).
+    const limit = /(\b\d+\b|ALL_ROWS|[A-Z][A-Z_]*ROWS)/.exec(rest);
     parts.add(`${m[1]}.${method}`);
     if (sort) parts.add(`sort:${sort[1]}`);
     if (limit) parts.add(`limit:${limit[1]}`);
@@ -147,7 +162,7 @@ function collectQueries() {
       sites.push({
         file: rel,
         line: text.slice(0, m.index).split('\n').length,
-        key: normalize(key),
+        key: normalizeKey(key),
         signature: signature(fn),
       });
     }
@@ -189,10 +204,21 @@ test('the signature reducer distinguishes the shapes that matter', () => {
     signature("async () => { const r = await base44.entities.Patient.list('-updated_date', 2000); return filterPatientsByCallerAgency(r, u, me); }"),
     signature("() => base44.entities.Patient.list('-updated_date', 2000)"),
   );
-  // Row limits change the result set.
+  // Row limits change the result set — including single-digit caps, which a
+  // `\d{2,}` limit pattern used to drop, making a 1-row and a 5-row read of
+  // the same entity look like the same query.
   assert.notEqual(
     signature("() => base44.entities.FaxContact.list('-created_date', 1000)"),
     signature("() => base44.entities.FaxContact.list('-created_date', 500)"),
+  );
+  assert.notEqual(
+    signature("() => base44.entities.Patient.filter({ id }, '-created_date', 1)"),
+    signature("() => base44.entities.Patient.filter({ id }, '-created_date', 5)"),
+  );
+  // …but a digit inside an identifier is not a limit.
+  assert.equal(
+    signature("() => base44.entities.OASISAssessment.list('-m1830_bathing', 50)"),
+    signature("() => base44.entities.OASISAssessment.list('-m1830_bathing', 50)"),
   );
   // A filtered subset is not the full list.
   assert.notEqual(
@@ -213,4 +239,15 @@ test('the signature reducer distinguishes the shapes that matter', () => {
     signature("async () => { return await base44.entities.Visit.list('-visit_date', 500); }"),
     signature("() => base44.entities.Visit.list('-visit_date', 500)"),
   );
+});
+
+test('keys are grouped the way React Query compares them, not by quote style', () => {
+  // React Query keys on the VALUE, so these are one cache entry. Grouping them
+  // separately split every shared key into two half-populations, each
+  // internally consistent — which is how an active-only automation-rule read
+  // sat undetected under the same key as the full rule list.
+  assert.equal(normalizeKey(`["clinical-templates"]`), normalizeKey(`['clinical-templates']`));
+  assert.equal(normalizeKey(`[ 'patients' , 'updated' , 2000 ]`), normalizeKey(`["patients", "updated", 2000]`));
+  // Genuinely different keys stay different.
+  assert.notEqual(normalizeKey(`['automationRules']`), normalizeKey(`['automationRules', 'active']`));
 });
