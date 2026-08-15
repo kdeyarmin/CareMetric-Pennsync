@@ -192,7 +192,10 @@ Return JSON: {"text": "extracted text", "confidence": 0-100}`;
     await base44.asServiceRole.entities.FaxLog.update(fax_log_id, {
       ocr_text: extractedText,
       ocr_processed: true,
-      ocr_confidence: Math.round(adjustedConfidence)
+      ocr_confidence: Math.round(adjustedConfidence),
+      // Clear any reason left by a prior transient OCR failure now that OCR
+      // succeeded, so it doesn't linger on the row.
+      ocr_failure_reason: null
     });
 
     return Response.json({

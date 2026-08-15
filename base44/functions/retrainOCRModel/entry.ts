@@ -36,7 +36,11 @@ Deno.serve(async (req) => {
     // agencies' OCR'd fax content (PHI) to the LLM and starving their own
     // training runs. Fail closed for an agency-scoped admin with no agency_name.
     const isSuperAdmin = user.account_type === 'super_admin';
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !String(user.agency_name || '').trim());
+    // A user who is BOTH account_type agency_admin AND role admin with no
+    // agency_name must NOT be promoted to platform-wide via the bare-role:admin
+    // path — an agency_admin without an agency_name fails closed by design.
+    const isPlatformAdmin = isSuperAdmin
+      || (user.role === 'admin' && user.account_type !== 'agency_admin' && !String(user.agency_name || '').trim());
     let agencyEmails = null;
     if (!isPlatformAdmin) {
       const agency = String(user.agency_name || '').trim();

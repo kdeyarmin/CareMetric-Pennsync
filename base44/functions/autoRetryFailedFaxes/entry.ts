@@ -659,7 +659,13 @@ Deno.serve(async (req) => {
           if (transient) {
             const attempts = Number(fax.retry_count) || 0;
             const nextCount = attempts + 1;
-            const within = nextCount < c.maxRetries;
+            // Mirror the webhook's planFaxRetry budget EXACTLY: it schedules while
+            // the CURRENT retry_count is < maxRetries (willRetry = attempts <
+            // maxRetries), producing a retry_count up to and INCLUDING maxRetries —
+            // which isFaxRetryDue still honors (it drops only retry_count >
+            // maxRetries). Gating on `nextCount < maxRetries` exhausted one attempt
+            // early, so the same fax got fewer retries here than via the webhook.
+            const within = attempts < c.maxRetries;
             const delayMin = nextRetryDelayMinutes(attempts, cfg, fax.priority || 'normal');
             await base44.asServiceRole.entities.FaxLog.update(fax.id, {
               status: 'failed',
@@ -682,12 +688,13 @@ Deno.serve(async (req) => {
         // re-queues this fax at the base interval forever, never reaching
         // handleRetryExhausted. Reschedule (within budget) using the SAME
         // config-aware, priority-scaled backoff as the webhook; otherwise exhaust +
-        // notify. Boundary mirrors the webhook (`plan.nextRetryCount < maxRetries`):
-        // isFaxRetryDue refuses any fax whose retry_count >= maxRetries, so a
-        // scheduled retry at the cap would strand forever — treat it as exhausted.
+        // notify. Boundary mirrors the webhook's planFaxRetry (willRetry = current
+        // retry_count < maxRetries), which schedules a retry_count up to and
+        // INCLUDING maxRetries; isFaxRetryDue honors those (it drops only
+        // retry_count > maxRetries), so the last allowed send is not stranded.
         const attempts = Number(fax.retry_count) || 0;
         const nextCount = attempts + 1;
-        const within = nextCount < c.maxRetries;
+        const within = attempts < c.maxRetries;
         const delayMin = nextRetryDelayMinutes(attempts, cfg, fax.priority || 'normal');
         await base44.asServiceRole.entities.FaxLog.update(fax.id, {
           status: 'failed',

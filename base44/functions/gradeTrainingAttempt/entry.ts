@@ -435,7 +435,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    const maxAttemptsReached = assignment.max_attempts && attemptNumber >= assignment.max_attempts && !passed;
+    // Use the EFFECTIVE cap (course ∩ assignment), the same value the attempt
+    // gate above enforces. Using the learner-writable assignment.max_attempts
+    // here would leave the assignment 'failed' with retake_required:true even
+    // when the stricter course cap is already reached, so the UI would offer a
+    // retake that the gate then always rejects (a dead end).
+    const maxAttemptsReached = !!effectiveMaxAttempts && attemptNumber >= effectiveMaxAttempts && !passed;
     await base44.asServiceRole.entities.TrainingAssignment.update(assignmentId, {
       status: passed ? 'completed' : maxAttemptsReached ? 'locked' : 'failed',
       latest_attempt_number: attemptNumber,

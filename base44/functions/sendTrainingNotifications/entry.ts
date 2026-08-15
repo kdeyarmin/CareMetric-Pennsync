@@ -191,11 +191,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Sort ASCENDING by expiration_date, not newest-issued-first: the certs this
-    // renewal sweep exists to warn about are the SOONEST-expiring, which are the
-    // oldest-issued. Under '-issued_at' they fell off the 1000-row tail once the
-    // catalog grew, so their renewal reminders never fired.
-    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false }, 'expiration_date', 1000);
+    // Bound the fetch to a window around now (mirrors sendPersonnelExpiration-
+    // Notifications). Fetching ALL non-revoked certs sorted ascending by
+    // expiration_date fills the cap with the ever-growing backlog of already-
+    // expired certs (which the loop below skips because daysUntilExpiration < 0),
+    // starving the soon-expiring certs this renewal sweep exists to warn about —
+    // exactly what '-issued_at' also did from the other end. The window spans
+    // recently-expired through the furthest reminder tier (30 days).
+    const certWindowStart = new Date(today); certWindowStart.setDate(today.getDate() - 30);
+    const certWindowEnd = new Date(today); certWindowEnd.setDate(today.getDate() + 30);
+    const certStartStr = certWindowStart.toISOString().split('T')[0];
+    const certEndStr = certWindowEnd.toISOString().split('T')[0];
+    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter(
+      { revoked: false, expiration_date: { $gte: certStartStr, $lte: certEndStr } },
+      'expiration_date',
+      5000,
+    );
     for (const certificate of certificates) {
       if (!certificate.expiration_date) continue;
       const daysUntilExpiration = localDaysUntil(certificate.expiration_date, today);

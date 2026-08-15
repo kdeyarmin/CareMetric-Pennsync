@@ -992,9 +992,13 @@ function isUnansweredHangup(cause) {
 // to agency B's nurse's personal cell (a cross-tenant PHI conversation) in any
 // multi-tenant deployment — every sibling read here filters by agency.
 async function otherOnDutyCells(base44, config, primaryEmail, primaryAgency) {
+  const agency = String(primaryAgency || '').trim();
+  // Fail closed: if the primary nurse has no agency, an equality filter would
+  // match every OTHER agency-less (legacy/malformed) user and bridge the patient
+  // call to their personal cell. An unattributable primary gets no backup ring.
+  if (!agency) return [];
   const users = await base44.asServiceRole.entities.User.list('full_name', 5000).catch(() => []);
   const now = new Date();
-  const agency = String(primaryAgency || '').trim();
   const cells = [];
   for (const u of Array.isArray(users) ? users : []) {
     if (!u || u.email === primaryEmail) continue;
