@@ -180,11 +180,25 @@ Before enabling multi-tenancy, in this order:
 3. Only then populate `User.agency_name` / `agency_id`. Doing this before the
    backfill is the outage.
 
-Client-side scoping is enforced by contract tests in
-`src/queryKeyContract.test.js`: every cross-chart `Patient.list` must go
-through a scope helper, and every agency-scoped query must carry
-`agencyQueryKey(currentUser)` in its cache key (a scoped result set keyed
-without the agency lets two admins share one cache entry).
+Read the roster through `useScopedPatients()` (`src/hooks/useScopedPatients.js`),
+or `scopePatientsToCallerAgency()` / `scopePatientsForCurrentCaller()` when the
+read is imperative. Three contract tests in `src/queryKeyContract.test.js`
+enforce it:
+
+1. **Every cross-chart patient read is scoped.** Covers `Patient.list(…)` and
+   `Patient.filter({ … })` alike. A read pinned to specific ids, or to the
+   caller via `assigned_nurses`, is already narrow and exempt.
+2. **Every agency-scoped query carries `agencyQueryKey(currentUser)`** in its
+   cache key. React Query keys on the value, so a scoped result set keyed
+   without the agency lets two admins in different agencies share one entry.
+3. **Every patient roster query is rooted at `['patients', …]`**, the key that
+   patient create / merge / delete invalidate. Prefix matching is per array
+   element, so `['allPatients', …]` was never reached.
+
+Note that `src/components/offline/OfflineManager.jsx` mirrors the roster into
+IndexedDB. That read must stay scoped: it is the roster every offline fallback
+in the app serves when the network is gone, and an unscoped mirror would persist
+another tenant's charts to disk past the end of the session.
 
 ---
 

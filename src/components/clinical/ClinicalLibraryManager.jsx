@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,11 +64,7 @@ export default function ClinicalLibraryManager() {
     initialData: []
   });
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'active', 'first_name', 200],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, 'first_name', 200),
-    initialData: []
-  });
+  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: 'first_name', limit: 200 });
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.ClinicalLibraryTemplate.create(data),

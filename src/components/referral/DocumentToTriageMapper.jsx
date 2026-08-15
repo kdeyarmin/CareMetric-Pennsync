@@ -203,11 +203,7 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
 
         // Refresh the lists this just changed so a newly created patient appears
         // in the "Update Existing Patient" dropdown and app-wide patient/referral lists.
-        queryClient.invalidateQueries({ queryKey: ['patients-for-triage-mapper'] });
         queryClient.invalidateQueries({ queryKey: ['patients'] });
-        queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-        queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-        queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
         queryClient.invalidateQueries({ queryKey: ['referrals'] });
 
         setResult({

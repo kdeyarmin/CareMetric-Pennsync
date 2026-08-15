@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -49,16 +49,7 @@ export default function DocumentSignatures() {
     refetchInterval: 5000
   });
 
-  const { data: patients = [] } = useQuery({
-    // Larger limit than Telehealth/OASIS — keep a distinct cache key.
-    queryKey: ['patients-list', '-created_date', 500, agencyQueryKey(currentUser)],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('-created_date', 500);
-      return scopePatientsToCallerAgency(_rows, currentUser);
-    },
-    initialData: [],
-    enabled: !!currentUser,
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 500 });
 
   const handleSignDocument = (sig) => {
     // SignDocument loads the PDF from the DocumentSignature entity by id —

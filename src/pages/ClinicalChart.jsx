@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey, scopePatientsToCallerAgency } from "@/lib/agencyRoster";
 import { isAdminLike } from "@/lib/superAdmin";
 import { Users, Activity } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
@@ -21,11 +22,18 @@ export default function ClinicalChart() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ["chart-patients", currentUser?.email],
-    queryFn: () =>
+    queryKey: ["patients", "chart", currentUser?.email, agencyQueryKey(currentUser)],
+    // The admin branch is the cross-chart read, and the one that bypasses the
+    // per-nurse narrowing the other branch gets for free — so it needs the
+    // agency scope. Applying it to both keeps the two branches one expression;
+    // on the nurse branch it is a no-op, since their own charts are by
+    // definition inside their own agency.
+    queryFn: async () => scopePatientsToCallerAgency(
       isAdminLike(currentUser)
-        ? base44.entities.Patient.filter({ status: "active" }, "-updated_date", 100)
-        : base44.entities.Patient.filter({ assigned_nurses: currentUser?.email, status: "active" }, "-updated_date", 100),
+        ? await base44.entities.Patient.filter({ status: "active" }, "-updated_date", 100)
+        : await base44.entities.Patient.filter({ assigned_nurses: currentUser?.email, status: "active" }, "-updated_date", 100),
+      currentUser,
+    ),
     enabled: !!currentUser,
     initialData: [],
   });

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
-import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -74,17 +75,7 @@ export default function QualityMetricsDashboard() {
     initialData: [],
   });
 
-  const { data: allPatients } = useQuery({
-    queryKey: ['allPatientsMetrics', agencyQueryKey(currentUser)],
-    // The sibling Visit/Incident/SecurityLog queries here pass limits; this one
-    // didn't, so patient-derived metrics were capped at Base44's default 50.
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('-updated_date', 5000);
-      return scopePatientsToCallerAgency(_rows, currentUser);
-    },
-    initialData: [],
-    enabled: !!currentUser,
-  });
+  const { data: allPatients } = useScopedPatients({ sort: '-updated_date', limit: 5000 });
 
   const { data: allIncidents } = useQuery({
     queryKey: ['allIncidentsMetrics', timeRange],

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
@@ -28,10 +28,6 @@ import {
 } from "lucide-react";
 
 export default function AIKPIReportGenerator() {
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
 
   const [timeframe, setTimeframe] = useState("30");
   const [report, setReport] = useState(null);
@@ -43,15 +39,7 @@ export default function AIKPIReportGenerator() {
     initialData: [],
   });
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patientsForKPI', agencyQueryKey(currentUser)],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
-      return scopePatientsToCallerAgency(_rows, currentUser);
-    },
-    initialData: [],
-    enabled: !!currentUser,
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
 
   const { data: complianceAudits = [] } = useQuery({
     queryKey: ['complianceAuditsForKPI'],

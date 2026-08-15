@@ -117,9 +117,6 @@ export default function ReferralTriage() {
       } catch (referralError) {
         console.error('Error creating referral from triage:', referralError);
         queryClient.invalidateQueries({ queryKey: ['patients'] });
-        queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-        queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-        queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
         toast.error(
           `Patient ${lastAnalysis.patient_name} was created, but the referral queue record failed. Add the referral manually from Referral Intake.`
         );
@@ -144,9 +141,6 @@ export default function ReferralTriage() {
       setShowCreatePatient(false);
       setLastAnalysis(null);
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       toast.success(`Patient ${lastAnalysis.patient_name} created and added to the referral queue.`);
     } catch (error) {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,15 +85,7 @@ export default function Messages() {
     initialData: [],
   });
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'first_name', 100, agencyQueryKey(currentUser)],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('first_name', 100);
-      return scopePatientsToCallerAgency(_rows, currentUser);
-    },
-    enabled: !!currentUser,
-    initialData: [],
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: 'first_name', limit: 100 });
 
   const markAsReadMutation = useMutation({
     mutationFn: async (messageId) => {

@@ -7,8 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, Calendar, Stethoscope } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { toLocalISODate } from "@/lib/dateLocal";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 export default function PatientQuickActions({ onActionComplete }) {
@@ -18,10 +19,7 @@ export default function PatientQuickActions({ onActionComplete }) {
 
   const queryClient = useQueryClient();
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients-quick-action'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, '-updated_date', 100)
-  });
+  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: '-updated_date', limit: 100 });
 
   // New Patient Form
   const [newPatient, setNewPatient] = useState({

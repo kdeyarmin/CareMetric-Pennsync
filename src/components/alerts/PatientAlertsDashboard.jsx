@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,14 +100,7 @@ export default function PatientAlertsDashboard({ patientId = null }) {
   }, [allAlerts, patientId, currentUser, isAdmin]);
 
   // Fetch patients for lookup (agency-scoped for facility admins)
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'lookup', 'alerts', agencyQueryKey(currentUser)],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
-      return scopePatientsToCallerAgency(_rows, currentUser);
-    },
-    enabled: !!currentUser,
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
 
   // (No clinical-event query here: an unused `_clinicalEvents` useQuery used to
   // bulk-list 200 ClinicalEvent rows — per-patient PHI, across every patient,

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey, scopePatientsForCurrentCaller } from "@/lib/agencyRoster";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -147,11 +148,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const careScope = currentUser?.care_scope || "home_health";
   const { data: patients = [] } = useQuery({
-    queryKey: ["patients", "active-200"],
+    queryKey: ["patients", "active-200", agencyQueryKey(currentUser)],
     networkMode: 'always',
+    // Scope the LIVE list only — the offline branch below serves the IndexedDB
+    // roster, which was mirrored from an already-scoped read.
     queryFn: async () => {
         try {
-            return await base44.entities.Patient.filter({ status: "active" }, "first_name", 200);
+            return await scopePatientsForCurrentCaller(
+              await base44.entities.Patient.filter({ status: "active" }, "first_name", 200),
+            );
         } catch (e) {
             if (!navigator.onLine) {
                 const { getPatientsLocally } = await import('@/lib/indexedDB');

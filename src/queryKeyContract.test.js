@@ -232,28 +232,81 @@ test('an agency-scoped query keys on the agency it was scoped to', () => {
   );
 });
 
-test('every cross-chart Patient.list goes through an agency scope', () => {
-  // Reading the roster and handing it straight to the UI is how 24 views ended
-  // up rendering every tenant's charts. New views should use useScopedPatients;
-  // the direct callers below all narrow the rows before returning them.
+/**
+ * Fields a `Patient.filter({ … })` predicate constrains on. A read is only
+ * exempt from agency scoping when the predicate already pins it to specific
+ * charts (`id`) or to the caller's own charts (`assigned_nurses`) — anything
+ * else (`status: 'active'`, `care_type`, …) returns other people's charts.
+ */
+function crossChartPatientReads(text) {
+  const reads = [];
+  if (/entities\.Patient\.list\(/.test(text)) reads.push('Patient.list');
+  for (const m of text.matchAll(/entities\.Patient\.filter\(\s*(?=\{)/g)) {
+    const objAt = text.indexOf('{', m.index + m[0].length - 1);
+    const fields = [...readBalanced(text, objAt).matchAll(/([A-Za-z_$][\w$]*)\s*:/g)]
+      .map((f) => f[1]);
+    if (fields.every((f) => f === 'id' || f === '$in' || f === 'assigned_nurses')) continue;
+    reads.push(`Patient.filter({ ${fields.join(', ')} })`);
+  }
+  return reads;
+}
+
+test('every cross-chart patient read goes through an agency scope', () => {
+  // Reading the roster and handing it straight to the UI is how two dozen views
+  // ended up rendering every tenant's charts. The second population read it via
+  // `filter({ status: 'active' })` rather than `list()`, which an earlier
+  // version of this guard did not cover. New views should use
+  // useScopedPatients; the direct callers all narrow rows before returning them.
   const HOOK = 'src/hooks/useScopedPatients.js'; // the one place that may read raw
   const unscoped = [];
   for (const file of collectSources(ROOT)) {
     const rel = file.slice(process.cwd().length + 1).replace(/\\/g, '/');
     if (rel === HOOK) continue;
     const text = readFileSync(file, 'utf8');
-    if (!/entities\.Patient\.list\(/.test(text)) continue;
     if (usesScopeHelper(text)) continue;
-    unscoped.push(`  ${rel}`);
+    const reads = crossChartPatientReads(text);
+    if (reads.length) unscoped.push(`  ${rel}  →  ${[...new Set(reads)].join(', ')}`);
   }
 
   assert.deepEqual(
     unscoped,
     [],
-    'These files read a patient roster without applying an agency scope. Use '
-      + `useScopedPatients() (${HOOK}), or scopePatientsToCallerAgency() when `
-      + 'the read is imperative rather than a query:\n'
+    'These files read across patient charts without applying an agency scope. '
+      + `Use useScopedPatients() (${HOOK}), or scopePatientsToCallerAgency() when `
+      + 'the read is imperative rather than a query. A read pinned to specific '
+      + 'ids, or to the caller via assigned_nurses, is already narrow and exempt:\n'
       + unscoped.join('\n'),
+  );
+});
+
+test('every patient roster query is rooted at the key patient mutations invalidate', () => {
+  // Patient create / merge / delete fire invalidateQueries(['patients']). React
+  // Query prefix-matches on array elements, so ['allPatients', …] and
+  // ['patientsForKPI', …] were never reached and those views served stale rows
+  // for a full staleTime after a merge.
+  //
+  // Cross-chart patient reads only. Single-chart lookups (`where:id`), reads
+  // already pinned to the caller (`where:assigned_nurses`), and the user-roster
+  // queries that share the scoping helpers all key on their own subjects.
+  const isCrossChartRoster = (signature) => {
+    if (!/\bPatient\.(list|filter)\b/.test(signature)) return false;
+    const where = /where:([\w+$]+)/.exec(signature);
+    if (!where) return true; // Patient.list — always the whole roster
+    return !where[1].split('+').every((f) => f === 'id' || f === '$in' || f === 'assigned_nurses');
+  };
+
+  const stray = collectQueries()
+    .filter((s) => isCrossChartRoster(s.signature))
+    .filter((s) => !/^\['patients'[,\]]/.test(s.key))
+    .map((s) => `  ${s.file}:${s.line}  →  ${s.key}`);
+
+  assert.deepEqual(
+    stray,
+    [],
+    'These patient queries are not rooted at [\'patients\', …] (or [\'patient\', id] '
+      + 'for a single chart), so invalidateQueries({ queryKey: [\'patients\'] }) after '
+      + 'a create/merge/delete does not reach them:\n'
+      + stray.join('\n'),
   );
 });
 

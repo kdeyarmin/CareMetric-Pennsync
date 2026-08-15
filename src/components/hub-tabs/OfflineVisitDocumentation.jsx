@@ -30,7 +30,7 @@ export default function OfflineVisitDocumentation() {
   });
 
   const { data: patients = [], isLoading } = useQuery({
-    queryKey: ['patients-offline', agencyQueryKey(currentUser)],
+    queryKey: ['patients', 'offline', agencyQueryKey(currentUser)],
     // 'always' runs the queryFn even while offline — the default 'online' mode
     // pauses it, which left this list empty exactly when the offline
     // documentation flow needs it. The fallback serves the IndexedDB roster.

@@ -20,10 +20,16 @@ import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster'
  * left the agency out of the key. A shared key also means the eight views that
  * want `('-updated_date', 2000)` now share one fetch instead of eight.
  *
+ * Pass `status` for the active-only roster (`Patient.filter({ status }, …)`);
+ * omit it for the full list. Both are cross-chart reads and both are scoped —
+ * the second population of unscoped views read the roster this way rather than
+ * via `.list`, which is why the shape lives here instead of at the call site.
+ *
  * `options` is passed through to useQuery, so a caller can still narrow with
  * `select`, defer with `enabled`, or override `staleTime`.
  */
 export function useScopedPatients({
+  status,
   sort = '-updated_date',
   limit = 2000,
   enabled = true,
@@ -35,9 +41,17 @@ export function useScopedPatients({
   });
 
   return useQuery({
-    queryKey: ['patients', 'scoped', sort, limit, agencyQueryKey(currentUser)],
+    // `status` and `sort` are part of the identity: an active-only read and a
+    // full read of the same limit are different result sets. `sort: null` means
+    // "whatever the API orders by", which is its own ordering, not '-updated_date'.
+    queryKey: [
+      'patients', 'scoped', status || 'all', sort || 'unsorted', limit,
+      agencyQueryKey(currentUser),
+    ],
     queryFn: async () => {
-      const rows = await base44.entities.Patient.list(sort, limit);
+      const rows = status
+        ? await base44.entities.Patient.filter({ status }, sort || undefined, limit)
+        : await base44.entities.Patient.list(sort, limit);
       return scopePatientsToCallerAgency(rows, currentUser);
     },
     enabled: enabled && !!currentUser,

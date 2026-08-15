@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { scopePatientsToCallerAgency, describeCallerPatientScope, agencyQueryKey } from '@/lib/agencyRoster';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { describeCallerPatientScope, agencyQueryKey } from '@/lib/agencyRoster';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -16,15 +17,7 @@ export default function DataQualityDashboard() {
   });
 
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['all-patients-quality', agencyQueryKey(currentUser)],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS);
-      return scopePatientsToCallerAgency(_rows, currentUser);
-    },
-    initialData: [],
-    enabled: !!currentUser,
-  });
+  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: null, limit: ALL_ROWS });
 
   const { data: users = [] } = useQuery({
     queryKey: ['all-users-quality', agencyQueryKey(currentUser)],
@@ -43,7 +36,7 @@ export default function DataQualityDashboard() {
   // than buried in the filter. Keyed on the roster size so it recomputes when
   // charts land; the staff roster behind it is memoized app-wide.
   const { data: agencyScope } = useQuery({
-    queryKey: ['patient-agency-attribution', agencyQueryKey(currentUser), patients.length],
+    queryKey: ['patients', 'attribution', agencyQueryKey(currentUser), patients.length],
     queryFn: () => describeCallerPatientScope(patients, currentUser),
     enabled: !!currentUser,
     initialData: null,

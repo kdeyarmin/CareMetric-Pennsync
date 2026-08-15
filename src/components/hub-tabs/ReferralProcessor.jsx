@@ -126,9 +126,6 @@ export default function ReferralProcessor() {
       const newPatient = await base44.entities.Patient.create(patientData);
       setCreatedPatientId(newPatient.id);
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
 
       toast.success('Patient created successfully!');
       // Return the new id so callers can use it immediately — setCreatedPatientId

@@ -1042,9 +1042,6 @@ Actions available:
       
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
     } catch (error) {
       console.error('Error updating referral:', error);
       toast.error('Failed to process referral. Please try again.');
@@ -1181,9 +1178,6 @@ Actions available:
       setVerificationReferral(null);
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
     } catch (error) {
       console.error('Error creating new patient:', error);
       toast.error('Failed to create new patient');

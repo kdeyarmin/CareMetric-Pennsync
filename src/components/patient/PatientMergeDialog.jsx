@@ -70,9 +70,6 @@ export default function PatientMergeDialog({
     },
     onSuccess: ({ primaryPatient, secondaryPatient }) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
       logActivity(ActivityActions.UPDATE, {
         entity_type: 'Patient',
         action: 'merge_patients',

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -35,10 +36,7 @@ export default function PredictiveAnalytics() {
   const [riskFilter, setRiskFilter] = useState("all");
 
   // Fetch patients
-  const { data: patients = [], isPending: patientsLoading } = useQuery({
-    queryKey: ['predictivePatients'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS),
-  });
+  const { data: patients = [], isPending: patientsLoading } = useScopedPatients({ status: 'active', sort: null, limit: ALL_ROWS });
 
   // Fetch OASIS data
   const { data: oasisData = [], isPending: oasisLoading } = useQuery({

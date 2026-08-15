@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -15,15 +16,7 @@ export default function QuickHealthOverview() {
   });
 
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients-health', agencyQueryKey(currentUser)],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS);
-      return scopePatientsToCallerAgency(_rows, currentUser);
-    },
-    initialData: [],
-    enabled: !!currentUser,
-  });
+  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: null, limit: ALL_ROWS });
 
   const { data: users = [] } = useQuery({
     queryKey: ['users-health', agencyQueryKey(currentUser)],

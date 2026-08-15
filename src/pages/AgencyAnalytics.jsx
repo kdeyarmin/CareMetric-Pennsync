@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
-import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { toLocalISODate } from "@/lib/dateLocal";
@@ -69,17 +70,7 @@ export default function AgencyAnalytics() {
     enabled: isAdmin,
   });
 
-  const { data: allPatients = [] } = useQuery({
-    // Agency-scoped and differently shaped from PatientRecordDashboard's
-    // unscoped 1000-row list — must not share its cache entry.
-    queryKey: ['all-patients', 'created', 5000, agencyQueryKey(currentUser)],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('-created_date', 5000);
-      return scopePatientsToCallerAgency(_rows, currentUser);
-    },
-    initialData: [],
-    enabled: (isAdmin) && !!currentUser,
-  });
+  const { data: allPatients = [] } = useScopedPatients({ sort: '-created_date', limit: 5000, enabled: (isAdmin) });
 
   const { data: incidents = [] } = useQuery({
     queryKey: ['all-incidents'],
