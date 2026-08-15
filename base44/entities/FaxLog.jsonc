@@ -115,6 +115,10 @@
       "type": "number",
       "description": "OCR confidence score 0-100"
     },
+    "ocr_failure_reason": {
+      "type": "string",
+      "description": "Why the last OCR attempt failed. Distinct from failure_reason (which records fax SEND/delivery failures) so a transient OCR error does not overwrite the real send-failure reason that retry/polling/UI read."
+    },
     "retry_claimed_by": {
       "type": "string",
       "description": "Per-run token claiming this fax for a retry send (concurrency guard)"

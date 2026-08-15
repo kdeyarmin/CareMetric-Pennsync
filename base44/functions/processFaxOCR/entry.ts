@@ -159,10 +159,12 @@ Return JSON: {"text": "extracted text", "confidence": 0-100}`;
       // "[OCR FAILED]" marker made the already-processed guard above return that
       // marker as the document's text on every future call — one outage
       // permanently poisoned the fax's OCR with no redrive path. Record the
-      // failure reason only, leaving the row un-processed so a later attempt can
-      // re-run OCR.
+      // reason in the DEDICATED ocr_failure_reason field, leaving the row
+      // un-processed so a later attempt can re-run OCR. Not failure_reason: that
+      // field records fax SEND/delivery failures (sendFax / autoRetryFailedFaxes)
+      // that retry/polling/UI read, and an OCR transient must not overwrite it.
       await base44.asServiceRole.entities.FaxLog.update(fax_log_id, {
-        failure_reason: 'OCR failed: ' + (error?.message || 'unknown error'),
+        ocr_failure_reason: 'OCR failed: ' + (error?.message || 'unknown error'),
       }).catch(() => {});
 
       return Response.json({
