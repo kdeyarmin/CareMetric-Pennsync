@@ -216,6 +216,31 @@ IndexedDB. That read must stay scoped: it is the roster every offline fallback
 in the app serves when the network is gone, and an unscoped mirror would persist
 another tenant's charts to disk past the end of the session.
 
+### Known gap: `Patient` is scoped, the other PHI entities are not
+
+The contract tests above cover `Patient` and staff-keyed rows. They do **not**
+yet cover the other entities that carry PHI, and those have the same problem:
+
+| Entity | Read RLS | Cross-record client reads |
+|---|---|---|
+| `Visit` | `created_by` ∨ **bare `role:admin`** ∨ `is_sample` | ~20 |
+| `Incident` | `created_by` ∨ **bare `role:admin`** ∨ `is_sample` | ~12 |
+| `PatientAlert` | `created_by` ∨ **bare `role:admin`** | ~5 |
+| `Message` | — | ~4 |
+| `Document` | `uploaded_by` ∨ `created_by` ∨ **bare `role:admin`** | ~3 |
+| `OASISAssessment` | — | ~3 |
+| `CarePlan` | — | ~1 |
+
+Every one of those `role:admin` arms is platform-wide per §5b, so a facility
+admin listing `Visit` gets other tenants' nurse notes, vitals and homebound
+justifications — the same exposure this section exists for, and the same latent
+status (inert only because no user carries an `agency_name` yet).
+
+These rows all carry `created_by`, so `filterRowsByStaffAgency()` applies
+directly; the work is mechanical rather than a design question. It is left to a
+follow-up so that the patient-scoping change stays reviewable, and is recorded
+here rather than tracked only in a PR description.
+
 ---
 
 ## 6. Sign-off
