@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from "@/hooks/useScopedPatients";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,13 +16,12 @@ export default function Incidents() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ["incident-patients"],
-    queryFn: async () => {
-      const allPatients = await base44.entities.Patient.list("-updated_date", 500);
-      return allPatients.filter((patient) => !patient.is_archived && patient.status === "active");
-    },
-    initialData: [],
+  // `select` rather than a filter inside the queryFn, so the shared cache entry
+  // keeps the full scoped roster and each consumer narrows its own view of it.
+  const { data: patients = [] } = useScopedPatients({
+    sort: "-updated_date",
+    limit: 500,
+    select: (rows) => rows.filter((patient) => !patient.is_archived && patient.status === "active"),
   });
 
   const { data: incidents = [] } = useQuery({

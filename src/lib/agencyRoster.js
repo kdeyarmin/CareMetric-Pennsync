@@ -21,6 +21,10 @@ let cachedRoster = [];
 let cachedAt = 0;
 let inFlight = null;
 
+let cachedCaller = null;
+let callerAt = 0;
+let callerInFlight = null;
+
 /**
  * Resolve the staff roster, reusing a recent fetch when one is available.
  * Never rejects: a roster we could not load resolves to the last known value so
@@ -43,11 +47,36 @@ export function loadAgencyRoster() {
   return inFlight;
 }
 
-/** Drop the memoized roster (sign-out, and tests). */
+/**
+ * Resolve the signed-in user for code paths that have no React component to
+ * read `useQuery(['currentUser'])` from — imperative loaders inside event
+ * handlers, mostly. Memoized on the same window as the roster.
+ * Resolves to null when auth is unavailable, which fails closed.
+ */
+export function loadCurrentCaller() {
+  if (callerAt && Date.now() - callerAt < ROSTER_TTL_MS) {
+    return Promise.resolve(cachedCaller);
+  }
+  if (callerInFlight) return callerInFlight;
+  callerInFlight = base44.auth.me()
+    .then((user) => {
+      cachedCaller = user || null;
+      callerAt = Date.now();
+      return cachedCaller;
+    })
+    .catch(() => cachedCaller)
+    .finally(() => { callerInFlight = null; });
+  return callerInFlight;
+}
+
+/** Drop the memoized roster and caller (sign-out, and tests). */
 export function resetAgencyRosterCache() {
   cachedRoster = [];
   cachedAt = 0;
   inFlight = null;
+  cachedCaller = null;
+  callerAt = 0;
+  callerInFlight = null;
 }
 
 /**
@@ -59,6 +88,16 @@ export function resetAgencyRosterCache() {
 export async function scopePatientsToCallerAgency(patients, caller) {
   const roster = await loadAgencyRoster();
   return filterPatientsByCallerAgency(patients, roster, caller);
+}
+
+/**
+ * scopePatientsToCallerAgency for imperative loaders that have no `currentUser`
+ * in hand. Kept as a separate export rather than a default argument so that
+ * passing an unresolved caller still fails closed instead of quietly
+ * self-resolving.
+ */
+export async function scopePatientsForCurrentCaller(patients) {
+  return scopePatientsToCallerAgency(patients, await loadCurrentCaller());
 }
 
 /** Counts behind the last scoping decision, for surfacing the scope in the UI. */

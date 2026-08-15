@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -34,10 +33,7 @@ export default function PatientEducation() {
   const [generatedMaterial, setGeneratedMaterial] = useState(null);
   const [teachBackRecords, setTeachBackRecords] = useState([]);
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'updated', 2000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
 

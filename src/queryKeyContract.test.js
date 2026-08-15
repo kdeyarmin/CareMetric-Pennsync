@@ -88,6 +88,20 @@ const normalizeKey = (s) => normalize(s)
   .replace(/"/g, "'")
   .replace(/\s*([[\],])\s*/g, '$1');
 
+/**
+ * Any helper that narrows a result set to the caller's agency. Built fresh per
+ * use rather than shared as one /g literal — a /g regex carries `lastIndex`
+ * across `.test()` calls and would skip every other match.
+ */
+const SCOPE_HELPERS = [
+  'scopePatientsToCallerAgency',
+  'scopePatientsForCurrentCaller',
+  'filterPatientsByCallerAgency',
+  'filterUsersByCallerAgency',
+];
+const scopeHelperRe = (flags = '') => new RegExp(`\\b(${SCOPE_HELPERS.join('|')})\\b`, flags);
+const usesScopeHelper = (source) => scopeHelperRe().test(source);
+
 /** Control flow and plumbing — present in a queryFn but not part of its result set. */
 const IGNORED_CALLS = new Set([
   'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'await', 'async',
@@ -134,7 +148,7 @@ function signature(fn) {
 
   for (const m of src.matchAll(/functions\.(?:invoke|fetch)\(\s*['"](\w+)['"]/g)) parts.add(`fn:${m[1]}`);
   for (const m of src.matchAll(/\bauth\.(me)\(/g)) parts.add(`auth:${m[1]}`);
-  for (const m of src.matchAll(/\b(filterPatientsByCallerAgency|filterUsersByCallerAgency)\b/g)) parts.add(`scope:${m[1]}`);
+  for (const m of src.matchAll(scopeHelperRe('g'))) parts.add(`scope:${m[1]}`);
   // A queryFn can also delegate to a helper module (`await import('@/lib/x')`,
   // `queryFn: fetchAllClinicalTemplates`). Record what it reaches for, not how
   // it was typed, so quote style and `await` placement don't read as different
@@ -162,8 +176,10 @@ function collectQueries() {
       sites.push({
         file: rel,
         line: text.slice(0, m.index).split('\n').length,
+        rawKey: key,
         key: normalizeKey(key),
         signature: signature(fn),
+        scoped: usesScopeHelper(fn),
       });
     }
   }
@@ -195,6 +211,49 @@ test('no two useQuery sites share a key while fetching different data', () => {
       + 'Give each distinct query its own key (append the sort/limit/scope that '
       + 'makes it different), or make the queryFns identical:\n'
       + collisions.join('\n'),
+  );
+});
+
+test('an agency-scoped query keys on the agency it was scoped to', () => {
+  // The result set depends on WHO asked, so the key has to say who asked.
+  // Without it, two admins in different agencies share one cache entry and each
+  // renders the roster the other one's filter produced — a silent PHI leak that
+  // the collision guard above cannot see, because there is only one call site.
+  const unkeyed = collectQueries()
+    .filter((s) => s.scoped && !/agencyQueryKey/.test(s.rawKey))
+    .map((s) => `  ${s.file}:${s.line}  →  ${s.key}`);
+
+  assert.deepEqual(
+    unkeyed,
+    [],
+    'These queryFns filter by the caller\'s agency but leave the agency out of '
+      + 'their cache key. Add agencyQueryKey(currentUser) to the key:\n'
+      + unkeyed.join('\n'),
+  );
+});
+
+test('every cross-chart Patient.list goes through an agency scope', () => {
+  // Reading the roster and handing it straight to the UI is how 24 views ended
+  // up rendering every tenant's charts. New views should use useScopedPatients;
+  // the direct callers below all narrow the rows before returning them.
+  const HOOK = 'src/hooks/useScopedPatients.js'; // the one place that may read raw
+  const unscoped = [];
+  for (const file of collectSources(ROOT)) {
+    const rel = file.slice(process.cwd().length + 1).replace(/\\/g, '/');
+    if (rel === HOOK) continue;
+    const text = readFileSync(file, 'utf8');
+    if (!/entities\.Patient\.list\(/.test(text)) continue;
+    if (usesScopeHelper(text)) continue;
+    unscoped.push(`  ${rel}`);
+  }
+
+  assert.deepEqual(
+    unscoped,
+    [],
+    'These files read a patient roster without applying an agency scope. Use '
+      + `useScopedPatients() (${HOOK}), or scopePatientsToCallerAgency() when `
+      + 'the read is imperative rather than a query:\n'
+      + unscoped.join('\n'),
   );
 });
 

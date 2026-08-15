@@ -1,6 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
-import { agencyQueryKey } from '@/lib/agencyRoster';
+import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -574,7 +574,13 @@ Actions available:
       // The auto-create path also assigns existingPatient, so the summary below
       // can't tell "created" from "matched" by inspecting it — track it here.
       let createdNewPatient = false;
-      const allPatients = await base44.entities.Patient.list('-created_date', 500);
+      // Match only against charts this agency may see. Matching a referral onto
+      // another tenant's chart would attach PHI to the wrong record; charts with
+      // no agency attribution stay in scope, so this cannot silently duplicate.
+      const allPatients = await scopePatientsToCallerAgency(
+        await base44.entities.Patient.list('-created_date', 500),
+        currentUser,
+      );
       
       if (fullName || dob || phone) {
         // Use the shared splitter so "Last, First" fax forms and placeholder

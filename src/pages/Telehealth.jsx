@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,12 +55,7 @@ export default function Telehealth() {
     refetchInterval: 30000
   });
 
-  const { data: patients = [] } = useQuery({
-    // Include sort+limit so this cache does not collide with other patients-list
-    // consumers (DocumentSignatures / OASIS / CarePlan) that use different params.
-    queryKey: ["patients-list", "-created_date", 100],
-    queryFn: () => base44.entities.Patient.list("-created_date", 100)
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 100 });
 
   const createSession = useMutation({
     mutationFn: (data) => {

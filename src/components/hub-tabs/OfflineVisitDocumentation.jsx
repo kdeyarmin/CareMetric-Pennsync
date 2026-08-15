@@ -17,20 +17,31 @@ import OfflineVisitNoteCapture from '@/components/offline/OfflineVisitNoteCaptur
 import OfflineSyncStatus from '@/components/offline/OfflineSyncStatus';
 import { useOfflineQueue } from '@/lib/offlineSync';
 import { withOfflineRosterFallback } from '@/lib/offlinePatients';
+import { agencyQueryKey, scopePatientsForCurrentCaller } from '@/lib/agencyRoster';
 
 export default function OfflineVisitDocumentation() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const { isOnline, pendingCount } = useOfflineQueue();
 
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
   const { data: patients = [], isLoading } = useQuery({
-    queryKey: ['patients-offline'],
+    queryKey: ['patients-offline', agencyQueryKey(currentUser)],
     // 'always' runs the queryFn even while offline — the default 'online' mode
     // pauses it, which left this list empty exactly when the offline
     // documentation flow needs it. The fallback serves the IndexedDB roster.
     networkMode: 'always',
+    // Scope the LIVE list only. The list() call is awaited first, so going
+    // offline throws before any scoping runs and the fallback still fires; the
+    // IndexedDB roster it serves was mirrored from an already-scoped read.
     queryFn: () => withOfflineRosterFallback(
-      () => base44.entities.Patient.list('-updated_date', 100)
+      async () => scopePatientsForCurrentCaller(
+        await base44.entities.Patient.list('-updated_date', 100),
+      ),
     ),
     initialData: [],
   });

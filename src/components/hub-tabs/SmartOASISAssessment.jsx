@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { toLocalISODate } from "@/lib/dateLocal";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -282,12 +282,7 @@ export default function SmartOASISAssessment() {
   const [guidanceOpen, setGuidanceOpen] = useState(false);
   const [currentGuidance, setCurrentGuidance] = useState({ questionId: null, questionLabel: "" });
 
-  const { data: patients = [], isLoading: patientsLoading } = useQuery({
-    // Distinct from created_date / larger-limit patients-list consumers.
-    queryKey: ["patients-list", "-updated_date", 100],
-    queryFn: () => base44.entities.Patient.list("-updated_date", 100),
-    initialData: [],
-  });
+  const { data: patients = [], isLoading: patientsLoading } = useScopedPatients({ sort: '-updated_date', limit: 100 });
 
   const handleAnswer = useCallback((questionId, value) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));

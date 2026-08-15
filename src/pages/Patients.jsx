@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from "@/hooks/useScopedPatients";
 import { calculateAge, parseLocalDate, toLocalISODate } from "@/lib/dateLocal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -78,13 +79,10 @@ export default function Patients() {
     }
   }, [currentUser?.email]);
 
-  const { data: patients, isLoading, error: patientsError } = useQuery({
-    queryKey: ['patients', 'roster', 'created', 2000],
-    queryFn: async () => {
-      const allPatients = await base44.entities.Patient.list('-created_date', 2000);
-      return allPatients.filter(patient => !patient.is_archived);
-    },
-    initialData: [],
+  const { data: patients, isLoading, error: patientsError } = useScopedPatients({
+    sort: '-created_date',
+    limit: 2000,
+    select: (rows) => rows.filter(patient => !patient.is_archived),
   });
 
   const { data: allVisits = [] } = useQuery({

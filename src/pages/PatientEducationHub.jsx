@@ -1,7 +1,7 @@
 import React, { useEffect, useState, Suspense, lazy } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -234,11 +234,7 @@ export default function PatientEducationHub() {
     }
   }, [requestedTab, activeTab, setSearchParams]);
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'updated', 2000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
-    initialData: [],
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
 
   const selectedPatient = patients.find(p => p.id === patientId);
 

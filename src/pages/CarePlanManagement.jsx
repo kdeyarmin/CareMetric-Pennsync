@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from "@/hooks/useScopedPatients";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AICarePlanSuggestionEngine from "../components/carePlan/AICarePlanSuggestionEngine";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -113,15 +114,15 @@ export default function CarePlanManagement() {
     [myPatientIds, carePlans]
   );
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['carePlanPatients', visiblePatientIds],
-    queryFn: async () => {
-      if (visiblePatientIds.length === 0) return [];
-      const allPatients = await base44.entities.Patient.list('-updated_date', 2000);
-      return allPatients.filter(p => visiblePatientIds.includes(p.id));
-    },
+  // Narrowing with `select` keeps the roster itself out of the key: the rows
+  // fetched are the same whatever `visiblePatientIds` happens to be, so this
+  // shares one cache entry with the other 2000-row consumers instead of
+  // refetching the whole roster every time the visible set changes.
+  const { data: patients = [] } = useScopedPatients({
+    sort: '-updated_date',
+    limit: 2000,
     enabled: visiblePatientIds.length > 0,
-    initialData: [],
+    select: (rows) => rows.filter(p => visiblePatientIds.includes(p.id)),
   });
 
   // Fetch visits for selected patient

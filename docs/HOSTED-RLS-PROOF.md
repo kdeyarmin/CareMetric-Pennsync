@@ -152,6 +152,42 @@ entity API, LR-01 fails regardless of function-layer gates.
 
 ---
 
+## 5c. What the client-side scope helpers do and do not guarantee
+
+`src/lib/agencyScope.js` narrows rosters in the SPA. It is **defense in depth,
+not the boundary** — the rows have already reached the browser by the time it
+runs. Everything in §5b about service-role + function gates still stands.
+
+`User` carries `agency_id` / `agency_name`, so staff scoping is a direct
+comparison. **`Patient` carries no agency field**, so a chart's tenancy is
+resolved in priority order: an explicit `agency_id` / `agency_name` on the
+chart, else the agency of a `created_by` / `assigned_nurses` address that
+resolves to a known user, else *unattributable*.
+
+**Unattributable charts remain visible.** Absence of attribution is not
+evidence of another tenant, and hiding a chart from the clinician who needs it
+is the worse failure in a clinical record system. Any rule that hides them is
+destructive on a deployment whose charts predate agency tagging: an importer or
+service account leaves every row unattributable, so a strict rule empties the
+roster the instant the first `agency_name` is assigned.
+
+Before enabling multi-tenancy, in this order:
+
+1. Add an agency attribute to `Patient` (prefer `agency_id`; it survives a
+   rename, and the helper compares ids ahead of names).
+2. Backfill it on existing charts. `describePatientAgencyScope` reports the
+   outstanding count, surfaced on the admin Data Quality dashboard.
+3. Only then populate `User.agency_name` / `agency_id`. Doing this before the
+   backfill is the outage.
+
+Client-side scoping is enforced by contract tests in
+`src/queryKeyContract.test.js`: every cross-chart `Patient.list` must go
+through a scope helper, and every agency-scoped query must carry
+`agencyQueryKey(currentUser)` in its cache key (a scoped result set keyed
+without the agency lets two admins share one cache entry).
+
+---
+
 ## 6. Sign-off
 
 1. Fill `tmp/live-readiness-evidence.json` from the template (LR-01 keys).

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -46,13 +47,7 @@ export default function PatientRecordDashboard() {
   };
 
   // Fetch all data in parallel
-  const { data: patients = [], isLoading: loadingPatients } = useQuery({
-    // Sort + limit belong in the key: AgencyAnalytics reads a different,
-    // agency-scoped 5000-row patient set under the ['all-patients'] root, and a
-    // shared cache entry served whichever query happened to run first.
-    queryKey: ['all-patients', 'updated', 1000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 1000)
-  });
+  const { data: patients = [], isLoading: loadingPatients } = useScopedPatients({ sort: '-updated_date', limit: 1000 });
 
   const { data: visits = [] } = useQuery({
     queryKey: ['all-visits', 'created', 500],

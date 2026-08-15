@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { toLocalISODate } from "@/lib/dateLocal";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -46,12 +47,7 @@ export default function DocumentUploader({ patientId, onUploadComplete, open, on
     queryFn: () => base44.auth.me()
   });
 
-  const { data: allPatients = [] } = useQuery({
-    queryKey: ['patients', 'updated', 2000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
-    initialData: [],
-    enabled: !patientId
-  });
+  const { data: allPatients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000, enabled: !patientId });
 
   const [selectedPatientId, setSelectedPatientId] = useState(patientId || "");
 

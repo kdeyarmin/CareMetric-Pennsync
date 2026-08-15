@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -182,11 +183,10 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
     initialData: []
   });
 
-  const { data: allPatients = [] } = useQuery({
-    queryKey: ['patients', 'updated', 2000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
-    initialData: [],
-    enabled: showPatientInfo && !patientId
+  const { data: allPatients = [] } = useScopedPatients({
+    sort: '-updated_date',
+    limit: 2000,
+    enabled: showPatientInfo && !patientId,
   });
 
   const deleteMutation = useMutation({

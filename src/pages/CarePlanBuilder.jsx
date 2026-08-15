@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { DragDropContext } from "@hello-pangea/dnd";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,12 +40,7 @@ export default function CarePlanBuilder() {
   const [showAIAnalyzer, setShowAIAnalyzer] = useState(false);
   const [assessmentData, _setAssessmentData] = useState(null);
 
-  const { data: patients = [] } = useQuery({
-    // Distinct from created_date / larger-limit patients-list consumers.
-    queryKey: ["patients-list", "-updated_date", 100],
-    queryFn: () => base44.entities.Patient.list("-updated_date", 100),
-    initialData: [],
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 100 });
 
   const { data: _currentUser } = useQuery({
     queryKey: ["currentUser"],

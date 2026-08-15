@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,12 +18,9 @@ export default function BulkDocumentPackageCreator() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: patients = [], isLoading: patientsLoading } = useQuery({
-    queryKey: ['patients', 'updated', 100],
-    queryFn: async () => {
-      const results = await base44.entities.Patient.list('-updated_date', 100);
-      return results;
-    },
+  const { data: patients = [], isLoading: patientsLoading } = useScopedPatients({
+    sort: '-updated_date',
+    limit: 100,
   });
 
   const { data: templates = [], isLoading: templatesLoading } = useQuery({

@@ -41,6 +41,7 @@ import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import AdrLetterAnalyzer from "../components/adr/AdrLetterAnalyzer";
 import AdrChecklistPanel from "../components/adr/AdrChecklistPanel";
 import AdrPacketVerifier from "../components/adr/AdrPacketVerifier";
@@ -93,12 +94,7 @@ export default function ADRCenter() {
   });
 
   // Patient roster for chart linking — loaded only once a case is open.
-  const { data: patients = [] } = useQuery({
-    queryKey: ["adrPatients"],
-    queryFn: () => base44.entities.Patient.list("-created_date", 500),
-    enabled: !!selectedCaseId,
-    initialData: [],
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 500, enabled: !!selectedCaseId });
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["adrCases"] });
   const selectedCase = useMemo(

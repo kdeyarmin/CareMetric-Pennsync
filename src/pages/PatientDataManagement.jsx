@@ -89,7 +89,7 @@ export default function PatientDataManagement() {
     queryFn: async () => {
       try {
         const _rawPatients = await base44.entities.Patient.list('-created_date', 2000);
-      const allPatients = await scopePatientsToCallerAgency(_rawPatients, currentUser);
+        const allPatients = await scopePatientsToCallerAgency(_rawPatients, currentUser);
         return allPatients.filter(patient => !patient.is_archived);
       } catch (err) {
         console.error('Failed to load patients:', err);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { toLocalISODate } from "@/lib/dateLocal";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { buildPdgmNavigatorCsv } from "./pdgmNavigatorExport";
@@ -240,10 +241,7 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
     enabled: !!pdgmData && (!!patientIdForHistory || !!pdgmData?.patient_info?.name)
   });
 
-  const { data: allPatients = [] } = useQuery({
-    queryKey: ['patientsForForecasting'],
-    queryFn: () => base44.entities.Patient.list('-created_date', 100),
-  });
+  const { data: allPatients = [] } = useScopedPatients({ sort: '-created_date', limit: 100 });
 
   const generatePatientForecasts = useCallback(async () => {
     if (!navigation || !pdgmData) return;

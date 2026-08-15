@@ -1,5 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { toLocalISODate } from "@/lib/dateLocal";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { calculatePatientMatchScore } from "@/components/oasis/patientMatchScore";
@@ -144,10 +145,7 @@ export default function OASISAnalyzer() {
   const queryClient = useQueryClient();
 
   // Fetch patients for linking
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'updated', 2000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
 
   // Update selected patient when selectedPatientId changes
   useEffect(() => {
