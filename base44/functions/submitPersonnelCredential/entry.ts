@@ -187,7 +187,27 @@ Deno.serve(async (req) => {
     }
 
     const svc = base44.asServiceRole.entities.PersonnelCredential;
-    const ownsRecord = (rec) => rec && (rec.user_id === user.email || isAdminLike(user));
+    // Ownership for a service-role-fetched credential. The record is read with
+    // RLS bypassed, so a bare isAdminLike() check would let an agency_admin of
+    // one tenant edit another tenant's credential (knocking an approved license
+    // back to pending, rewriting its expiration/file). Platform admins
+    // (super_admin, or role:admin with no agency_name) keep cross-agency reach;
+    // an agency-scoped admin may only touch a credential in their own agency,
+    // and fails closed without an agency_name.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !String(user.agency_name || '').trim());
+    const isAgencyScopedAdmin = !isPlatformAdmin
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    const ownsRecord = (rec) => {
+      if (!rec) return false;
+      if (rec.user_id === user.email) return true;
+      if (isPlatformAdmin) return true;
+      if (isAgencyScopedAdmin) {
+        const agency = String(user.agency_name || '').trim();
+        return !!agency && String(rec.agency_name || '').trim() === agency;
+      }
+      return false;
+    };
 
     // Every self-service write (re)enters the approval pipeline.
     const payload = {

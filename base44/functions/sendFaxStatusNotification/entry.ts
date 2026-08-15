@@ -230,11 +230,30 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Fax not found' }, { status: 404 });
     }
 
-    const isAdminLike = (u) => !!u && (
-      u.role === 'admin' || u.account_type === 'agency_admin' || u.account_type === 'super_admin'
-    );
-    if (fax.sent_by !== user.email && !isAdminLike(user)) {
+    // Only the sender or an admin may drive the sender's delivery/failure notice
+    // (and consume its one-shot idempotency markers). Agency-scoped admins are
+    // limited to their own agency's faxes — a bare isAdminLike() check let an
+    // agency_admin of another tenant read this fax's recipient/document/failure
+    // detail and suppress the real sender's notification.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isAgencyScopedAdmin =
+      user.account_type === 'agency_admin'
+      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isOwner = fax.sent_by === user.email;
+    if (!isOwner && !isPlatformAdmin && !isAgencyScopedAdmin) {
       return Response.json({ error: 'Forbidden: not the fax sender' }, { status: 403 });
+    }
+    if (isAgencyScopedAdmin && !isOwner) {
+      if (!user.agency_name || !fax.sent_by) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      const senders = await base44.asServiceRole.entities.User
+        .filter({ email: fax.sent_by }, undefined, 5)
+        .catch(() => []);
+      if (!senders?.[0] || senders[0].agency_name !== user.agency_name) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     const status = String(fax.status || '').toLowerCase();

@@ -131,10 +131,18 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
-async function resolvePatientId(base44, e164) {
+// Resolve an outbound number to a patient the CALLER may access. The read is
+// service-role (RLS bypassed), so every candidate must be re-authorized before
+// it is linked — otherwise a nurse texting a number that also appears on another
+// agency's chart (shared landline, family member, stale data) would write their
+// message body into that foreign chart. Mirrors scheduleSms, whose canAccessPatient
+// gate on phone-resolved patients is pinned by securityGuardrails.test.js.
+async function resolvePatientId(base44, e164, canAccessPatient) {
   for (const variant of phoneVariants(e164)) {
     const matches = await base44.asServiceRole.entities.Patient.filter({ phone: variant }, undefined, 5000).catch(() => []);
-    if (matches.length > 0) return matches[0].id;
+    for (const match of matches || []) {
+      if (match?.id && await canAccessPatient(match)) return match.id;
+    }
   }
   return null;
 }
@@ -633,10 +641,39 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Prefer phone→patient resolution. If the client supplied a patient_id,
-    // verify it matches the destination phone (or that the caller can access
-    // that chart) so SMS history cannot be linked to the wrong patient.
-    let resolvedPatientId = await resolvePatientId(base44, destination);
+    // Caller-access predicate for a service-role-fetched patient. Same tiers as
+    // scheduleSms: platform admin / creator / assigned nurse pass directly; an
+    // agency-scoped admin passes only when the chart belongs to their agency
+    // (fails closed without an agency_name).
+    const canAccessPatient = async (claimed) => {
+      if (!claimed) return false;
+      const isSuperAdmin = user.account_type === 'super_admin';
+      const isAgencyScopedAdmin =
+        user.account_type === 'agency_admin'
+        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
+      const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+      const isAssigned = Array.isArray(claimed.assigned_nurses)
+        && claimed.assigned_nurses.includes(user.email);
+      if (isPlatformAdmin || claimed.created_by === user.email || isAssigned) return true;
+      if (!isAgencyScopedAdmin) return false;
+      if (!user.agency_name) return false;
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .list('-created_date', 5000).catch(() => []);
+      const agencyEmails = new Set(
+        (agencyUsers || [])
+          .filter((u) => u.agency_name === user.agency_name && u.email)
+          .map((u) => u.email),
+      );
+      return (claimed.created_by && agencyEmails.has(claimed.created_by))
+        || (Array.isArray(claimed.assigned_nurses)
+          && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
+    };
+
+    // Prefer phone→patient resolution (only to a chart the caller can access).
+    // If the client supplied a patient_id, verify it matches the destination
+    // phone (or that the caller can access that chart) so SMS history cannot be
+    // linked to the wrong — or another tenant's — patient.
+    let resolvedPatientId = await resolvePatientId(base44, destination, canAccessPatient);
     if (patient_id) {
       if (resolvedPatientId && resolvedPatientId !== patient_id) {
         return Response.json({
@@ -650,33 +687,8 @@ Deno.serve(async (req) => {
         if (!claimed) {
           return Response.json({ error: 'Patient not found' }, { status: 404 });
         }
-        const isSuperAdmin = user.account_type === 'super_admin';
-        const isAgencyScopedAdmin =
-          user.account_type === 'agency_admin'
-          || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-        const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-        const isAssigned = Array.isArray(claimed.assigned_nurses)
-          && claimed.assigned_nurses.includes(user.email);
-        if (!isPlatformAdmin && !isAgencyScopedAdmin && claimed.created_by !== user.email && !isAssigned) {
+        if (!(await canAccessPatient(claimed))) {
           return Response.json({ error: 'Forbidden' }, { status: 403 });
-        }
-        if (isAgencyScopedAdmin) {
-          if (!user.agency_name) {
-            return Response.json({ error: 'Forbidden' }, { status: 403 });
-          }
-          const agencyUsers = await base44.asServiceRole.entities.User
-            .list('-created_date', 5000).catch(() => []);
-          const agencyEmails = new Set(
-            (agencyUsers || [])
-              .filter((u) => u.agency_name === user.agency_name && u.email)
-              .map((u) => u.email),
-          );
-          const inAgency = (claimed.created_by && agencyEmails.has(claimed.created_by))
-            || (Array.isArray(claimed.assigned_nurses)
-              && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
-          if (!inAgency) {
-            return Response.json({ error: 'Forbidden' }, { status: 403 });
-          }
         }
         // Phone didn't resolve but caller has access — keep the explicit link.
         resolvedPatientId = patient_id;

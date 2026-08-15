@@ -987,14 +987,19 @@ function isUnansweredHangup(cause) {
 }
 
 // Other on-duty nurses' cells (for the ringdown backup list), excluding the
-// primary nurse and anyone without a cell.
-async function otherOnDutyCells(base44, config, primaryEmail) {
-  const users = await base44.asServiceRole.entities.User.list('full_name', 500).catch(() => []);
+// primary nurse and anyone without a cell. Scoped to the primary nurse's agency:
+// without this filter a patient calling agency A's work number could be bridged
+// to agency B's nurse's personal cell (a cross-tenant PHI conversation) in any
+// multi-tenant deployment — every sibling read here filters by agency.
+async function otherOnDutyCells(base44, config, primaryEmail, primaryAgency) {
+  const users = await base44.asServiceRole.entities.User.list('full_name', 5000).catch(() => []);
   const now = new Date();
+  const agency = String(primaryAgency || '').trim();
   const cells = [];
   for (const u of Array.isArray(users) ? users : []) {
     if (!u || u.email === primaryEmail) continue;
     if (!u.personal_cell_e164) continue;
+    if (String(u.agency_name || '').trim() !== agency) continue; // same agency only
     if (isOffDutyNow(u, now, config.settings)) continue; // only currently on-duty
     cells.push(u.personal_cell_e164);
   }
@@ -1048,7 +1053,7 @@ async function decideInboundRouting(base44, config, workNum) {
   // On duty: find-me-follow-me ringdown — ring the nurse's cell first, then any
   // other on-duty nurse, then the office. Caller id = the work number on every
   // leg so the patient never sees a personal cell.
-  const others = await otherOnDutyCells(base44, config, nurse.email);
+  const others = await otherOnDutyCells(base44, config, nurse.email, nurse.agency_name);
   const maxTargets = Number.isFinite(Number(config.settings?.ringdown_max)) ? Number(config.settings.ringdown_max) : 4;
   const targets = buildRingdown({ primary: nurse.personal_cell_e164, others, office: config.mainOffice, maxTargets });
   if (targets.length > 0) {

@@ -180,6 +180,13 @@ Deno.serve(async (req) => {
       user.account_type === 'super_admin' ||
       user.account_type === 'agency_admin';
     if (!isAdmin) return Response.json({ error: 'Only administrators can manage numbers.' }, { status: 403 });
+    // Fail closed: an agency_admin without an agency_name would resolve to no
+    // agency, so a fax provision would overwrite a lone tenant's outbound fax
+    // line or create an unscoped AgencySettings row that no sender ever resolves
+    // (reporting success while every send stays "not configured").
+    if (user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
+      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    }
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || '');

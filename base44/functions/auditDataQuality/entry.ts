@@ -39,8 +39,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
     }
     if (user.account_type !== 'super_admin' && user.agency_name) {
+      // Scope strictly to the caller's agency. The old filter also kept every
+      // super_admin account, which then (a) surfaced platform-staff profiles in
+      // every agency's user_issues and (b) seeded agencyEmails, so any patient
+      // created by a super_admin (central intake / bulk import) counted as
+      // in-agency for EVERY tenant and their name + gaps leaked cross-agency.
       users = (Array.isArray(users) ? users : []).filter((u) =>
-        u.account_type === 'super_admin' || u.agency_name === user.agency_name
+        u.agency_name === user.agency_name
       );
       const agencyEmails = new Set(users.map((u) => u?.email).filter(Boolean));
       patients = (Array.isArray(patients) ? patients : []).filter((p) =>

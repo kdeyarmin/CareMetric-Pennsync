@@ -64,16 +64,23 @@ Deno.serve(async (req) => {
 
     const courseById = Object.fromEntries(courses.map((c) => [c.id, c]));
 
-    // Agency admins only see their own agency's staff. Fail closed when an
-    // agency_admin lacks agency_name — otherwise the unscoped list is returned
-    // and becomes a cross-tenant training readiness dump.
+    // Only platform admins (super_admin, or bare role:admin with no agency_name
+    // — platform-wide by design) see every tenant's staff. Everyone else,
+    // INCLUDING educator/supervisor training_roles who aren't admins, is scoped
+    // to their own agency. The old condition only scoped admin account types, so
+    // a plain educator/supervisor passed authorization and received the unscoped
+    // list — a cross-tenant staff roster + training-compliance dump. Fail closed
+    // when an agency-scoped caller lacks an agency_name.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !String(user.agency_name || '').trim());
     let scopedAssignments = assignments;
-    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
-      if (!user.agency_name) {
+    if (!isPlatformAdmin) {
+      const agency = String(user.agency_name || '').trim();
+      if (!agency) {
         return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
       }
       const agencyEmails = new Set(
-        users.filter((u) => u.agency_name === user.agency_name).map((u) => u.email)
+        users.filter((u) => u.agency_name === agency).map((u) => u.email)
       );
       scopedAssignments = assignments.filter((a) => agencyEmails.has(a.assigned_to_user_id));
     }
