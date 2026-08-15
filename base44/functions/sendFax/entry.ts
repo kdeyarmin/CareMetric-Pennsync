@@ -393,7 +393,8 @@ Deno.serve(async (req) => {
     try {
       await base44.entities.FaxLog.update(faxLog.id, { telnyx_fax_id: faxId, status: 'sending' });
     } catch (bookkeepErr) {
-      console.error('sendFax: fax accepted by Telnyx but FaxLog bookkeeping failed', { log_id: faxLog.id, error: bookkeepErr?.message });
+      // Status-only log (no ids) — keeps retained backend logs identifier-free.
+      console.error('sendFax: fax accepted by Telnyx but FaxLog bookkeeping failed:', bookkeepErr?.message);
     }
 
     await base44.entities.UserActivity.create({

@@ -191,7 +191,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false }, '-issued_at', 1000);
+    // Sort ASCENDING by expiration_date, not newest-issued-first: the certs this
+    // renewal sweep exists to warn about are the SOONEST-expiring, which are the
+    // oldest-issued. Under '-issued_at' they fell off the 1000-row tail once the
+    // catalog grew, so their renewal reminders never fired.
+    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter({ revoked: false }, 'expiration_date', 1000);
     for (const certificate of certificates) {
       if (!certificate.expiration_date) continue;
       const daysUntilExpiration = localDaysUntil(certificate.expiration_date, today);

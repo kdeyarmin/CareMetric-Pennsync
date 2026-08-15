@@ -218,7 +218,12 @@ Deno.serve(async (req) => {
         const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         const file = new File([blob], fileName, { type: 'application/pdf' });
 
-        const uploadResult = await base44.integrations.Core.UploadFile({ file });
+        // Service-role upload, like the other 10 PDF generators. issueCertificate
+        // invokes this on the internal path where auth.me() is null, so the plain
+        // RLS client had no identity to upload as and the eager PDF generation at
+        // issuance failed silently (certificate_pdf_url stayed unset until a user
+        // later clicked download).
+        const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file });
 
         // Update certificate with PDF URL
         await base44.asServiceRole.entities.TrainingCertificate.update(certificate.id, {

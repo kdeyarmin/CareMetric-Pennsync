@@ -265,7 +265,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Forbidden: certificate owner is outside your agency' }, { status: 403 });
       }
     }
-    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 300);
+    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
     // Only notify admins of the employee's OWN agency. If the employee can't be
     // resolved (deleted/renamed user) we have no agency to scope to, so notify
     // no one rather than broadcasting the certificate (PHI) to every tenant's

@@ -367,7 +367,12 @@ Deno.serve(async (req) => {
     }
 
     const score = computeAttemptScore(questions, earnedPoints);
-    const passingScore = assignment.passing_score_required || course?.passing_score || 80;
+    // Floor the pass mark at the admin-owned course value (see the competency-gate
+    // note above). The learner-writable assignment.passing_score_required may only
+    // RAISE the bar, never drop it below the course floor — otherwise a learner
+    // sets passing_score_required:1, answers one question, and mints a certificate.
+    const courseFloorScore = Number(course?.passing_score ?? courseRetake.passing_threshold) || 80;
+    const passingScore = Math.max(courseFloorScore, Number(assignment.passing_score_required) || 0);
     const passed = score >= passingScore;
     const attemptNumber = attempts.length + 1;
     const submittedAt = new Date().toISOString();

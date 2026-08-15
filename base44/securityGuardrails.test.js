@@ -465,7 +465,7 @@ test('submitDocumentSignatures uses the real admin role model', () => {
 //     through the SHARED isAllowedDestination helper (generated from the
 //     frontend costControls.js). Hand-maintained inline copies are exactly how
 //     the malformed-+1 bypass drifted in before.
-for (const fn of ['sendSms', 'sendFax', 'sendBatchFax', 'startMaskedCall', 'dispatchScheduledSms']) {
+for (const fn of ['sendSms', 'sendFax', 'sendBatchFax', 'startMaskedCall', 'dispatchScheduledSms', 'autoRetryFailedFaxes']) {
   test(`${fn} consumes the shared isAllowedDestination helper`, () => {
     const src = read(`base44/functions/${fn}/entry.ts`);
     assert.ok(
@@ -565,5 +565,125 @@ test('functions with agency_name scope gates refuse agency_admin without agency_
       + 'agency_name (fail-open to platform-wide). Inline requireAgencyAdminAgency '
       + 'or `if (user.account_type === \'agency_admin\' && !user.agency_name) return 403`:\n  '
       + offenders.join('\n  '),
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 19. Function-audit release pass (2026-08-15). Each assertion pins a specific
+//     fix from that audit so a regression fails the build instead of silently
+//     shipping. Same cheap-regex style as the guards above.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A direct provider Messages-API call must send a REAL model id, never the
+// Base44 InvokeLLM sentinel 'automatic' (which 404s on api.anthropic.com and
+// made every SOAP-note / fax-cover-sheet generation silently fail).
+for (const fn of ['transcribeAndGenerateSOAPNote', 'generateFaxCoverPage']) {
+  test(`${fn} does not send model:'automatic' to the direct Anthropic API`, () => {
+    const src = read(`base44/functions/${fn}/entry.ts`);
+    assert.ok(/api\.anthropic\.com/.test(src), `${fn} is expected to call the Anthropic Messages API directly.`);
+    assert.ok(
+      !/model:\s*['"]automatic['"]/.test(src),
+      `${fn} must use a real Anthropic model id — 'automatic' is a Base44 InvokeLLM convention and 404s on the direct API.`,
+    );
+  });
+}
+
+// gradeTrainingAttempt must derive the pass mark from the ADMIN-OWNED course,
+// not solely from the learner-writable TrainingAssignment row — otherwise a
+// learner sets passing_score_required:1 and mints a compliance certificate.
+test('gradeTrainingAttempt derives the pass mark from the course, not the learner-writable assignment', () => {
+  const src = read('base44/functions/gradeTrainingAttempt/entry.ts');
+  assert.ok(
+    /Number\(course\?\.passing_score/.test(src) && /Math\.max\(courseFloorScore/.test(src),
+    'gradeTrainingAttempt passing score must floor at the course passing_score (Math.max(courseFloor, assignment value)).',
+  );
+  assert.ok(
+    !/const passingScore = assignment\.passing_score_required \|\| course/.test(src),
+    'gradeTrainingAttempt must not take the pass mark straight off the learner-writable assignment.passing_score_required.',
+  );
+});
+
+// generateTrainingCertificate must refuse when ANY supplied identifier — record
+// id, course id, or module NAME — matches no owned certificate/completion, so a
+// caller cannot mint a certificate for a module they never completed.
+test('generateTrainingCertificate refuses an unmatched requested module (no body-only minting)', () => {
+  const src = read('base44/functions/generateTrainingCertificate/entry.ts');
+  assert.ok(
+    /else if \(recordId \|\| moduleId \|\| requestedModule\)/.test(src),
+    'generateTrainingCertificate must 403 when recordId || moduleId || requestedModule matches no owned record.',
+  );
+});
+
+// sendSms must authorize a phone-resolved patient before linking the message to
+// its chart (canAccessPatient), mirroring scheduleSms.
+test('sendSms access-gates the phone-resolved patient', () => {
+  const src = read('base44/functions/sendSms/entry.ts');
+  assert.ok(
+    /resolvePatientId\(base44, destination, canAccessPatient\)/.test(src),
+    'sendSms must pass canAccessPatient into resolvePatientId so a foreign-agency chart with the same number cannot be linked.',
+  );
+});
+
+// submitPersonnelCredential ownsRecord must scope agency admins to their own
+// agency, not accept a bare isAdminLike (cross-tenant credential tamper).
+test('submitPersonnelCredential scopes credential ownership by agency', () => {
+  const src = read('base44/functions/submitPersonnelCredential/entry.ts');
+  assert.ok(
+    !/const ownsRecord = \(rec\) => rec && \(rec\.user_id === user\.email \|\| isAdminLike\(user\)\)/.test(src),
+    'submitPersonnelCredential ownsRecord must not grant edit to any isAdminLike caller regardless of agency.',
+  );
+  assert.ok(
+    /String\(rec\.agency_name \|\| ''\)\.trim\(\) === agency/.test(src),
+    'submitPersonnelCredential must require an agency-scoped admin to match the credential agency.',
+  );
+});
+
+// getTeamTrainingReadiness must scope every non-platform-admin (educators and
+// supervisors included) to their own agency.
+test('getTeamTrainingReadiness scopes non-platform-admins to their agency', () => {
+  const src = read('base44/functions/getTeamTrainingReadiness/entry.ts');
+  assert.ok(
+    /if \(!isPlatformAdmin\) \{/.test(src),
+    'getTeamTrainingReadiness must scope every non-platform-admin caller, not only admin account types.',
+  );
+});
+
+// handleTelnyxStatusWebhook ringdown backup list must be agency-filtered so a
+// patient call is never bridged to another agency's nurse cell.
+test('handleTelnyxStatusWebhook ringdown is agency-scoped', () => {
+  const src = read('base44/functions/handleTelnyxStatusWebhook/entry.ts');
+  assert.ok(
+    /otherOnDutyCells\(base44, config, nurse\.email, nurse\.agency_name\)/.test(src),
+    'otherOnDutyCells must receive the primary nurse agency and filter cells to it.',
+  );
+});
+
+// dispatchScheduledSms must resolve agency config PER ROW (from the sending
+// nurse), never a single unhinted getAgencyConfig(base44) that reports
+// smsEnabled:false in multi-tenant and destroys the reminder queue each tick.
+test('dispatchScheduledSms resolves agency config per row', () => {
+  const src = read('base44/functions/dispatchScheduledSms/entry.ts');
+  assert.ok(
+    !/const \{ smsEnabled, settings \} = await getAgencyConfig\(base44\);/.test(src),
+    'dispatchScheduledSms must not resolve one unhinted agency config for the whole batch.',
+  );
+  assert.ok(
+    /resolveRowConfig\(row\.nurse_email\)/.test(src),
+    'dispatchScheduledSms must resolve config per row from the sending nurse.',
+  );
+});
+
+// autoRetryFailedFaxes must classify a non-OK Telnyx response instead of
+// terminal-failing every queued fax on the first provider error, and must
+// re-gate the stored destination through isAllowedDestination.
+test('autoRetryFailedFaxes classifies provider errors and re-gates the destination', () => {
+  const src = read('base44/functions/autoRetryFailedFaxes/entry.ts');
+  assert.ok(
+    /classifyFaxFailure\(String\(status\), errText\)/.test(src),
+    'autoRetryFailedFaxes must classify the non-OK Telnyx status (transient 401/403/429/5xx reschedule) rather than always exhausting.',
+  );
+  assert.ok(
+    /isAllowedDestination\(fax\.to_number, faxLine\.settings\)/.test(src),
+    'autoRetryFailedFaxes must re-validate the stored to_number against the cost-control allowlist before dispatch.',
   );
 });

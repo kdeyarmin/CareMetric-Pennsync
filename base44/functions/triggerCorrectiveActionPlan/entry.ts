@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
     }
 
     const [employee] = await base44.asServiceRole.entities.User.filter({ email: attempt.user_id }, '-created_date', 1);
-    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 300);
+    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
     const agencyAdmins = employee?.agency_name
       ? allUsers.filter((candidate) =>
           candidate.account_type === 'agency_admin' &&

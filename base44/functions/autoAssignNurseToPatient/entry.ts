@@ -85,8 +85,12 @@ Deno.serve(async (req) => {
         // (network, permissions, …) — don't mask it by writing placeholders.
         if (backfilled.length === 0) throw minimalErr;
 
+        // Do NOT interpolate patient_id into the log line — retained service-role
+        // logs must stay identifier-free (guardrail: backend console output is
+        // aggregate/status-only). Field names and the error message are enough to
+        // act on; the record is identified by the update call itself.
         console.warn(
-          `autoAssignNurseToPatient: minimal assigned_nurses update failed for patient ${patient_id} ` +
+          `autoAssignNurseToPatient: minimal assigned_nurses update failed ` +
           `(${minimalErr?.message}); backfilling missing required fields to complete the ` +
           `assignment: ${backfilled.join(', ')}. These are PLACEHOLDERS on an incomplete legacy record ` +
           `and should be corrected with the patient's real data.`
