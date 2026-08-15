@@ -181,6 +181,10 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
     fetch: () => patientId
       ? base44.entities.Document.filter({ patient_id: patientId }, '-created_date', 500)
       : base44.entities.Document.list('-created_date', 500),
+    // Only the unpinned branch reads across charts. The patient_id branch is
+    // already narrower than agency, and scoping it would hide a document on
+    // THIS chart uploaded by a co-treating clinician from another agency.
+    scoped: !patientId,
     authorOf: (d) => d.uploaded_by || d.created_by,
     initialData: []
   });

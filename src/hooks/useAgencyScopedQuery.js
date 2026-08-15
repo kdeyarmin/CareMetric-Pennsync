@@ -30,6 +30,7 @@ export function useAgencyScopedQuery({
   queryKey,
   fetch,
   authorOf,
+  scoped = true,
   enabled = true,
   ...options
 }) {
@@ -39,12 +40,19 @@ export function useAgencyScopedQuery({
   });
 
   return useQuery({
-    queryKey: [...queryKey, agencyQueryKey(currentUser)],
+    // `scoped: false` for a read that is ALREADY narrower than agency — pinned
+    // to one chart or one record. Filtering such a read again can only hide
+    // rows: a document on this chart uploaded by a co-treating clinician in
+    // another agency would disappear from the chart it belongs to. An unscoped
+    // read also keeps its key unchanged and does not wait on the caller,
+    // because neither is needed when nothing is being filtered.
+    queryKey: scoped ? [...queryKey, agencyQueryKey(currentUser)] : queryKey,
     queryFn: async () => {
       const rows = await fetch();
+      if (!scoped) return rows;
       return filterRecordsByAuthorAgency(rows, await loadAgencyRoster(), currentUser, authorOf);
     },
-    enabled: enabled && !!currentUser,
+    enabled: enabled && (!scoped || !!currentUser),
     // See useScopedPatients: `initialData` alone is seeded as fresh, so a
     // non-zero staleTime would suppress the fetch-on-mount entirely.
     initialDataUpdatedAt: 0,

@@ -241,6 +241,33 @@ Two mechanical hazards, both now covered by contract tests:
 - A read already pinned to one chart, one record, or the caller is narrower than
   agency and is exempt; scoping it again only risks hiding rows.
 
+#### Two limits of filtering on the client, which only server-side tenancy fixes
+
+**1. The row limit is applied before the filter.** `fetch()` asks the server for
+the newest N rows and the agency filter runs on what comes back, so a scoped
+caller can get a short page — or an empty one. `Incidents.jsx` reads 10 rows: if
+another tenant owns the newest 10, that caller sees no incidents even though
+their agency has older ones. The 50–1000 row reporting queries truncate the same
+way, just less visibly. There is no client-side fix; paginating until N scoped
+rows accumulate is unbounded work against an unknown foreign:local ratio. The
+fix is to put the tenant predicate in the query, which needs the agency
+attribute below.
+
+**2. Service-created records stay visible to every agency.** Backend functions
+create clinical rows through `asServiceRole` with a `patient_id` but no
+resolvable author — `generateCarePlansFromReferral` (CarePlan) and
+`predictPatientRisks` (PatientAlert) both do. Those land in *unattributable* and
+are therefore kept, by design, so they cannot vanish from the chart they belong
+to. The stronger rule is to derive tenancy from the record's chart
+(`patient_id` → patient → agency) rather than its author, since a care plan
+belongs to the chart it hangs off. That is worth doing **with** the schema work,
+not before it: today it would make every clinical query fetch the whole patient
+roster to resolve ids, and still resolve to *unattributable*, because no patient
+carries agency attribution either.
+
+Both are properties of filtering after the fact, which is why §5b's position
+stands: this layer is defense in depth, and the boundary is server-side.
+
 **`Message` is deliberately excluded.** A message belongs to its *participants*,
 not its author, so the author rule would hide a message addressed to this user
 by someone outside their agency. `Message` RLS is `created_by` ∨ `recipients

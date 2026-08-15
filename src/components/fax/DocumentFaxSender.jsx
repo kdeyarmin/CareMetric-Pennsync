@@ -38,6 +38,10 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
     fetch: () => patientId
       ? base44.entities.Document.filter({ patient_id: patientId }, '-created_date', 100)
       : base44.entities.Document.list('-created_date', 100),
+    // Only the unpinned branch reads across charts. Scoping the patient_id
+    // branch would drop a document from the fax picker on the very chart it
+    // belongs to, if a clinician outside this agency uploaded it.
+    scoped: !patientId,
     authorOf: (d) => d.uploaded_by || d.created_by,
     initialData: []
   });
