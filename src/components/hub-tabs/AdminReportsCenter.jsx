@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart3, Gauge, Brain, FileText } from "lucide-react";
 import ReportsCenter from "@/components/admin/ReportsCenter";
@@ -23,7 +25,7 @@ export default function AdminReportsCenterPage() {
   // ReportsCenter expects roster/clinical data as props (it filters them
   // directly), so fetch them here and pass arrays with safe defaults.
   const { data: users = [] } = useQuery({
-    queryKey: ["reports-users", currentUser?.agency_name || null],
+    queryKey: ["reports-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list("-created_date", 1000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
@@ -32,17 +34,7 @@ export default function AdminReportsCenterPage() {
     enabled: !!currentUser,
     initialData: [],
   });
-  const { data: patients = [] } = useQuery({
-    queryKey: ["reports-patients"],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list("-created_date", 1000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
-    },
-    initialData: [],
-    enabled: !!currentUser,
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 1000 });
   const { data: visits = [] } = useQuery({
     queryKey: ["reports-visits"],
     queryFn: () => base44.entities.Visit.list("-created_date", 1000),

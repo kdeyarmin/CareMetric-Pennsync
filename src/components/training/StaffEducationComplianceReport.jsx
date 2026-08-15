@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,7 @@ export default function StaffEducationComplianceReport() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['users', currentUser?.agency_name || null],
+    queryKey: ['users', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

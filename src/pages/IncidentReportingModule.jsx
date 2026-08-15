@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { isAdminView } from "@/lib/roles";
 import { submitIncidentReport } from "@/functions/submitIncidentReport";
 import { transitionIncident } from "@/functions/updateIncident";
@@ -99,19 +100,22 @@ export default function IncidentReportingModule() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: myPatients = [] } = useQuery({
-    // Key must include the email the queryFn filters by, otherwise a session
-    // user change keeps serving the previous nurse's cached patient list.
-    queryKey: ['myPatients', currentUser?.email],
-    queryFn: async () => {
-      const _rawPatients = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      const allPatients = filterPatientsByCallerAgency(_rawPatients, _userRows, currentUser);
-      return allPatients.filter(p => p.assigned_nurses?.includes(currentUser?.email));
-    },
-    enabled: !!currentUser,
-    initialData: [],
+  // Narrowing to the caller's own charts happens in `select`, so the fetched
+  // roster stays identical to every other 2000-row consumer and shares its
+  // cache entry. The email no longer needs to be in the key: `select` runs per
+  // render against whoever is signed in now, rather than being baked into a
+  // cached result that a session change would keep serving.
+  // useCallback, not an inline arrow: React Query memoizes `select` by
+  // reference, so a fresh arrow each render re-filters all 2000 rows every render.
+  const selectMine = useCallback(
+    (rows) => rows.filter(p => p.assigned_nurses?.includes(currentUser?.email)),
+    [currentUser?.email],
+  );
+
+  const { data: myPatients = [] } = useScopedPatients({
+    sort: '-updated_date',
+    limit: 2000,
+    select: selectMine,
   });
 
   const { data: incidents = [], _isLoading } = useQuery({
@@ -120,17 +124,7 @@ export default function IncidentReportingModule() {
     initialData: [],
   });
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['allPatients', '-updated_date', 2000],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
-    },
-    initialData: [],
-    enabled: !!currentUser,
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
 
   const createIncidentMutation = useMutation({
     mutationFn: async (incidentData) => {

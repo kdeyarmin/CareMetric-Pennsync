@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ export default function ReferralDocumentViewer({ patientId }) {
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['allUsers', ALL_ROWS, currentUser?.agency_name || null],
+    queryKey: ['allUsers', ALL_ROWS, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

@@ -152,6 +152,97 @@ entity API, LR-01 fails regardless of function-layer gates.
 
 ---
 
+## 5c. What the client-side scope helpers do and do not guarantee
+
+`src/lib/agencyScope.js` narrows rosters in the SPA. It is **defense in depth,
+not the boundary** — the rows have already reached the browser by the time it
+runs. Everything in §5b about service-role + function gates still stands.
+
+`User` carries `agency_id` / `agency_name`, so staff scoping is a direct
+comparison. **`Patient` carries no agency field**, so a chart's tenancy is
+resolved in priority order: an explicit `agency_id` / `agency_name` on the
+chart, else the agency of a `created_by` / `assigned_nurses` address that
+resolves to a known user, else *unattributable*.
+
+**Unattributable charts remain visible.** Absence of attribution is not
+evidence of another tenant, and hiding a chart from the clinician who needs it
+is the worse failure in a clinical record system. Any rule that hides them is
+destructive on a deployment whose charts predate agency tagging: an importer or
+service account leaves every row unattributable, so a strict rule empties the
+roster the instant the first `agency_name` is assigned.
+
+Before enabling multi-tenancy, in this order:
+
+1. Add an agency attribute to `Patient` (prefer `agency_id`; it survives a
+   rename, and the helper compares ids ahead of names).
+2. Backfill it on existing charts. `describePatientAgencyScope` reports the
+   outstanding count, surfaced on the admin Data Quality dashboard.
+3. Only then populate `User.agency_name` / `agency_id`. Doing this before the
+   backfill is the outage.
+
+Staff-keyed rows — timesheets, payroll profiles, anything carrying an employee
+email — go through `filterRowsByStaffAgency()`. It shares the fail-closed rules
+above by construction, which is why it exists: three payroll queries previously
+re-derived the scoped check inline and returned the **unfiltered** rows whenever
+it came out false. That is correct for a platform admin, but the same branch
+catches an `agency_admin` whose `agency_name` is blank — the one caller that has
+to fail closed. Those saw every agency's timesheets and pay rates.
+
+Read the roster through `useScopedPatients()` (`src/hooks/useScopedPatients.js`),
+or `scopePatientsToCallerAgency()` / `scopePatientsForCurrentCaller()` when the
+read is imperative. Contract tests in `src/queryKeyContract.test.js` enforce it:
+
+1. **Every cross-chart patient read is scoped.** Covers `Patient.list(…)` and
+   `Patient.filter({ … })` alike. A read pinned to specific ids, or to the
+   caller via `assigned_nurses`, is already narrow and exempt.
+2. **Every agency-scoped query carries `agencyQueryKey(currentUser)`** in its
+   cache key. React Query keys on the value, so a scoped result set keyed
+   without the agency lets two admins in different agencies share one entry.
+3. **Every patient roster query is rooted at `['patients', …]`**, the key that
+   patient create / merge / delete invalidate. Prefix matching is per array
+   element, so `['allPatients', …]` was never reached.
+4. **The agency-scoped check has exactly one implementation.** Any file
+   re-deriving `account_type !== 'super_admin' && agency && (agency_admin ||
+   role === 'admin')` inline fails the build; call `isCallerAgencyScoped()`.
+   Every copy has to remember the fail-closed case independently, and the ones
+   that forgot leaked payroll data.
+5. **Roster selectors are stable references.** React Query memoizes `select` by
+   identity, so an inline arrow re-filters the whole roster on every render
+   (up to 10,000 rows here). Use a shared selector from the hook module, or
+   `useCallback`/`useMemo` when it closes over props or state.
+
+Note that `src/components/offline/OfflineManager.jsx` mirrors the roster into
+IndexedDB. That read must stay scoped: it is the roster every offline fallback
+in the app serves when the network is gone, and an unscoped mirror would persist
+another tenant's charts to disk past the end of the session.
+
+### Known gap: `Patient` is scoped, the other PHI entities are not
+
+The contract tests above cover `Patient` and staff-keyed rows. They do **not**
+yet cover the other entities that carry PHI, and those have the same problem:
+
+| Entity | Read RLS | Cross-record client reads |
+|---|---|---|
+| `Visit` | `created_by` ∨ **bare `role:admin`** ∨ `is_sample` | ~20 |
+| `Incident` | `created_by` ∨ **bare `role:admin`** ∨ `is_sample` | ~12 |
+| `PatientAlert` | `created_by` ∨ **bare `role:admin`** | ~5 |
+| `Message` | — | ~4 |
+| `Document` | `uploaded_by` ∨ `created_by` ∨ **bare `role:admin`** | ~3 |
+| `OASISAssessment` | — | ~3 |
+| `CarePlan` | — | ~1 |
+
+Every one of those `role:admin` arms is platform-wide per §5b, so a facility
+admin listing `Visit` gets other tenants' nurse notes, vitals and homebound
+justifications — the same exposure this section exists for, and the same latent
+status (inert only because no user carries an `agency_name` yet).
+
+These rows all carry `created_by`, so `filterRowsByStaffAgency()` applies
+directly; the work is mechanical rather than a design question. It is left to a
+follow-up so that the patient-scoping change stays reviewable, and is recorded
+here rather than tracked only in a PR description.
+
+---
+
 ## 6. Sign-off
 
 1. Fill `tmp/live-readiness-evidence.json` from the template (LR-01 keys).

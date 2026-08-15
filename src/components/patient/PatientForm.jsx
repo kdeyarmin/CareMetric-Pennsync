@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -57,14 +57,12 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
   // Existing roster, used to catch duplicates at entry time. Reuses the same
   // ['patients'] cache the Patients page populates, so this is usually instant
   // and adds no extra round-trip. Only needed when adding a brand-new patient.
-  const { data: existingPatients = [] } = useQuery({
-    queryKey: ['patients', 'created', 2000],
-    queryFn: async () => {
-      const all = await base44.entities.Patient.list('-created_date', 2000);
-      return all.filter((p) => !p.is_archived);
-    },
+  const { data: existingPatients = [] } = useScopedPatients({
+    sort: '-created_date',
+    limit: 2000,
     enabled: !patient,
     staleTime: 60000,
+    select: excludeArchived,
   });
 
   const handleOCRDataExtracted = (extractedData) => {

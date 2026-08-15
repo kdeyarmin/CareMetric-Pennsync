@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import StatCard from "@/components/ui/stat-card";
@@ -52,7 +53,7 @@ export default function ComplianceMonitoringDashboard() {
   });
 
   const { data: allUsers = [], refetch: refetchUsers } = useQuery({
-    queryKey: ['allUsers', ALL_ROWS],
+    queryKey: ['allUsers', ALL_ROWS, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

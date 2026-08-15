@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from "@/hooks/useScopedPatients";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -46,14 +47,13 @@ export default function PatientAlerts() {
     setAnalysisResults(null);
   }, [selectedPatientId]);
 
-  const { data: patients = [] } = useQuery({
-    // Namespaced: this is the ACTIVE-only patient set. The bare ['patients'] key is
-    // also used by all-patients (Patient.list) queries elsewhere, so sharing it let
-    // React Query serve this active-only screen the full unfiltered roster (or vice
-    // versa) depending on mount order. A ['patients']-prefix invalidate still
-    // refreshes this key.
-    queryKey: ['patients', 'active'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS)
+  // ACTIVE-only patient set. `status` is part of the hook's cache key, so this
+  // can no longer be served the full unfiltered roster (or vice versa) depending
+  // on mount order, and a ['patients']-prefix invalidate still refreshes it.
+  const { data: patients = [] } = useScopedPatients({
+    status: 'active',
+    sort: null,
+    limit: ALL_ROWS,
   });
 
   const { data: _currentUser } = useQuery({

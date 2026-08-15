@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { submitStateReportableIncident } from "@/functions/submitStateReportableIncident";
 import { submitIncidentReport } from "@/functions/submitIncidentReport";
 import { Button } from "@/components/ui/button";
@@ -25,11 +26,7 @@ export default function EventReport() {
 
   // Load the roster so the reporter picks a patient by name/MRN instead of
   // typing an opaque UUID (which failed silently at submit if mistyped).
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients-for-select'],
-    queryFn: () => base44.entities.Patient.list('-created_date', 2000),
-    initialData: [],
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 2000 });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({

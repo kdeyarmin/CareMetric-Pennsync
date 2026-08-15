@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldAlert } from "lucide-react";
@@ -70,7 +72,7 @@ export default function RealTimeComplianceDashboard() {
   });
 
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers', ALL_ROWS],
+    queryKey: ['allUsers', ALL_ROWS, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
@@ -84,16 +86,7 @@ export default function RealTimeComplianceDashboard() {
     queryFn: () => base44.entities.Visit.list('-visit_date', 500),
   });
 
-  const { data: allPatients = [] } = useQuery({
-    queryKey: ['allPatients', '-updated_date', 2000],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
-    },
-    enabled: !!currentUser,
-  });
+  const { data: allPatients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
 
   // Calculate date filter
   const filterDate = useMemo(() => {

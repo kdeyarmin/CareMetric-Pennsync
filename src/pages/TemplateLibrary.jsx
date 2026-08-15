@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -23,11 +22,7 @@ export default function TemplateLibrary() {
   const [templateContent, setTemplateContent] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const { data: patients } = useQuery({
-    queryKey: ['templatePatients'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS),
-    initialData: [],
-  });
+  const { data: patients } = useScopedPatients({ status: 'active', sort: null, limit: ALL_ROWS });
 
   const handleSelectTemplate = (data) => {
     setSelectedTemplateData(data);

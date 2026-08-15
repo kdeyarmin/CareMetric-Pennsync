@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,11 +42,7 @@ export default function HighRiskPatientsWidget() {
     refetchInterval: 300000, // Refresh every 5 minutes
   });
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['allPatients', '-updated_date', 500],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 500),
-    initialData: []
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 500 });
 
   const getPatientName = (patientId) => {
     const patient = patients.find(p => p.id === patientId);

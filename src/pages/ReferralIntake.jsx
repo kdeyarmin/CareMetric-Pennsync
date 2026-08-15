@@ -1,5 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -173,7 +174,7 @@ export default function ReferralIntake() {
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['allUsers', ALL_ROWS, currentUser?.agency_name || null],
+    queryKey: ['allUsers', ALL_ROWS, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
@@ -573,7 +574,13 @@ Actions available:
       // The auto-create path also assigns existingPatient, so the summary below
       // can't tell "created" from "matched" by inspecting it — track it here.
       let createdNewPatient = false;
-      const allPatients = await base44.entities.Patient.list('-created_date', 500);
+      // Match only against charts this agency may see. Matching a referral onto
+      // another tenant's chart would attach PHI to the wrong record; charts with
+      // no agency attribution stay in scope, so this cannot silently duplicate.
+      const allPatients = await scopePatientsToCallerAgency(
+        await base44.entities.Patient.list('-created_date', 500),
+        currentUser,
+      );
       
       if (fullName || dob || phone) {
         // Use the shared splitter so "Last, First" fax forms and placeholder
@@ -1035,9 +1042,6 @@ Actions available:
       
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
     } catch (error) {
       console.error('Error updating referral:', error);
       toast.error('Failed to process referral. Please try again.');
@@ -1174,9 +1178,6 @@ Actions available:
       setVerificationReferral(null);
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
     } catch (error) {
       console.error('Error creating new patient:', error);
       toast.error('Failed to create new patient');

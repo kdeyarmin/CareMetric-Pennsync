@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -74,7 +75,7 @@ export default function OASISActionWorkflow({
 
   // Fetch users for assignment
   const { data: users = [] } = useQuery({
-    queryKey: ['users'],
+    queryKey: ['users', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,10 +22,7 @@ export default function PatientEducationPortal() {
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [expandedMaterialId, setExpandedMaterialId] = useState(null);
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ["patients", "active", "first_name", 100],
-    queryFn: () => base44.entities.Patient.filter({ status: "active" }, "first_name", 100),
-  });
+  const { data: patients = [] } = useScopedPatients({ status: "active", sort: "first_name", limit: 100 });
 
   const { data: materials = [] } = useQuery({
     queryKey: ["patient-education", selectedPatientId],

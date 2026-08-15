@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router";
-import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { createPageUrl } from "@/utils";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -63,12 +62,7 @@ export default function CommandPalette({ isAdmin, isSuperAdmin = false }) {
   // "jump to chart" bar. Fetch the roster only while the palette is open (not on
   // every page load) and surface name/MRN matches once the user has typed ≥2
   // chars — server RLS still scopes the list to the user's assigned patients.
-  const { data: patients = [] } = useQuery({
-    queryKey: ["patients-for-select"],
-    queryFn: () => base44.entities.Patient.list("-created_date", 2000),
-    enabled: open,
-    staleTime: 60000,
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 2000, enabled: open, staleTime: 60000 });
 
   const patientMatches = useMemo(() => {
     const q = search.trim().toLowerCase();

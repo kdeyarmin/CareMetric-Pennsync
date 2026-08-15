@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -110,22 +112,10 @@ export default function ComplianceCenter() {
     initialData: [],
   });
 
-  const { data: _patients = [] } = useQuery({
-    // Agency-scoped result set — keep it out of the shared unscoped
-    // ['patients','updated',2000] cache entry (see OASISReview.jsx).
-    queryKey: ['patients', 'updated', 2000, 'agency', currentUser?.agency_name ?? null],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
-    },
-    initialData: [],
-    enabled: !!currentUser,
-  });
+  const { data: _patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
 
   const { data: allUsers = [], refetch: _refetchUsers } = useQuery({
-    queryKey: ['allUsers', 5000],
+    queryKey: ['allUsers', 5000, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 5000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -14,20 +16,10 @@ export default function QuickHealthOverview() {
   });
 
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients-health'],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
-    },
-    initialData: [],
-    enabled: !!currentUser,
-  });
+  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: null, limit: ALL_ROWS });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['users-health', currentUser?.agency_name || null],
+    queryKey: ['users-health', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 200);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { Sparkles, BarChart3 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { isCallerAgencyScoped } from "@/lib/agencyScope";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
@@ -22,7 +24,7 @@ export default function ManagerSkillGapDashboard() {
   // intended audience out. isManager already includes the admin tiers.
   const canViewManagement = isManager(currentUser);
   const { data: users = [] } = useQuery({
-    queryKey: ["skill-gap-users", currentUser?.agency_name || null],
+    queryKey: ["skill-gap-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
@@ -40,9 +42,7 @@ export default function ManagerSkillGapDashboard() {
     if (currentUser.account_type === "super_admin") return users.filter((user) => user.email && user.role !== "admin");
     if (currentUser.account_type === "agency_admin" && !currentUser.agency_name) return [];
     const agency = String(currentUser.agency_name || "").trim();
-    const isAgencyScoped = currentUser.account_type !== "super_admin"
-      && agency
-      && (currentUser.account_type === "agency_admin" || currentUser.role === "admin");
+    const isAgencyScoped = isCallerAgencyScoped(currentUser);
     return users.filter((user) => {
       if (!user.email || user.role === "admin") return false;
       if (isAgencyScoped) return user.agency_name === agency;

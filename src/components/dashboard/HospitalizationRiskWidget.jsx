@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,11 +27,7 @@ export default function HospitalizationRiskWidget({ autoAnalyze = false }) {
   // !riskScores guard alone can't prevent re-entrant runs on query invalidation).
   const runningRef = useRef(false);
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['activePatients'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, '-updated_date', 100),
-    initialData: [],
-  });
+  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: '-updated_date', limit: 100 });
 
   const { data: recentVisits = [] } = useQuery({
     queryKey: ['allRecentVisits'],

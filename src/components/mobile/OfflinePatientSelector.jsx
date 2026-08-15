@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,10 +34,7 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
     },
   });
 
-  const { data: allPatients = [] } = useQuery({
-    queryKey: ['patients', 'updated', 2000],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
-  });
+  const { data: allPatients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
 
   // Get patients with upcoming visits
   const patientsWithVisits = React.useMemo(() => {

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { toLocalISODate } from "@/lib/dateLocal";
@@ -86,7 +87,7 @@ export default function UserActivityReport() {
   });
 
   const { data: _users = [] } = useQuery({
-    queryKey: ['all-users-report'],
+    queryKey: ['all-users-report', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

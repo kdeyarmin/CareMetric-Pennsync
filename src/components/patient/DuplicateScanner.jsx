@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -185,22 +186,9 @@ export default function DuplicateScanner() {
   });
   const queryClient = useQueryClient();
 
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
 
   // Fetch all patients for advanced scanning (agency-scoped for facility admins)
-  const { data: allPatients = [] } = useQuery({
-    queryKey: ['all-patients-scan', currentUser?.agency_name || null],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('-created_date', 10000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
-    },
-    enabled: scanMode === 'advanced' && !!currentUser,
-  });
+  const { data: allPatients = [] } = useScopedPatients({ sort: '-created_date', limit: 10000, enabled: scanMode === 'advanced' });
 
   const scanAndRemoveDuplicates = async () => {
     setIsScanning(true);
@@ -374,9 +362,6 @@ export default function DuplicateScanner() {
       }
       
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
     } catch (error) {
       // Keep backend/internal detail in logs only — this is an admin tool calling
       // privileged functions; show a generic message in the UI.
@@ -397,9 +382,6 @@ export default function DuplicateScanner() {
       const data = response.data || response;
       setResults(data);
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
       toast.success(`Merged ${data.patients_removed || 0} duplicate record(s).`);
     } catch (error) {
       console.error('Merge error:', error);

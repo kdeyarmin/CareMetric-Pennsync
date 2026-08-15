@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +52,7 @@ export default function CourseForm({ course, onSuccess }) {
   // Role options mirror AssignmentWizard's derivation so role_targets line up with
   // what role-based assignment later filters on (job_title || credential_type || role).
   const { data: users = [] } = useQuery({
-    queryKey: ["course-role-options"],
+    queryKey: ["course-role-options", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list("-created_date", 1000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

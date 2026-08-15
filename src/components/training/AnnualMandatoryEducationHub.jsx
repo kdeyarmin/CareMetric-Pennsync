@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, CheckCircle2, Copy, Send, Sparkles, Loader2, BarChart3, Shield } from "lucide-react";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { generateTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
 import { assignInService } from "@/functions/assignInService";
 import { assignAnnualLearningPlan } from "@/functions/assignAnnualLearningPlan";
@@ -75,7 +76,7 @@ export default function AnnualMandatoryEducationHub() {
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const isAdminUser = currentUser?.role === 'admin' || currentUser?.account_type === 'agency_admin' || currentUser?.account_type === 'super_admin';
-  const { data: users = [] } = useQuery({ queryKey: ["annual-users"], queryFn: async () => {
+  const { data: users = [] } = useQuery({ queryKey: ["annual-users", agencyQueryKey(currentUser)], queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);

@@ -48,9 +48,6 @@ export default function BulkPatientActions({ selectedPatients, onClearSelection 
     },
     onSuccess: ({ total, failed }) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
       logActivity(ActivityActions.UPDATE, {
         entity_type: 'Patient',
         action: 'bulk_status_update',
@@ -89,9 +86,6 @@ export default function BulkPatientActions({ selectedPatients, onClearSelection 
     },
     onSuccess: ({ total, failed }) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
       logActivity(ActivityActions.DELETE, {
         entity_type: 'Patient',
         action: 'bulk_delete',

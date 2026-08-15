@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { describeCallerPatientScope, agencyQueryKey } from '@/lib/agencyRoster';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -15,20 +17,10 @@ export default function DataQualityDashboard() {
   });
 
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['all-patients-quality'],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
-    },
-    initialData: [],
-    enabled: !!currentUser,
-  });
+  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: null, limit: ALL_ROWS });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['all-users-quality', currentUser?.agency_name || null],
+    queryKey: ['all-users-quality', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 200);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
@@ -36,6 +28,18 @@ export default function DataQualityDashboard() {
     },
     enabled: !!currentUser,
     initialData: [],
+  });
+
+  // How many charts carry no agency attribution at all. These stay visible on
+  // purpose (see src/lib/agencyScope.js), but they are the set a stricter rule
+  // would silently hide, so the backlog belongs on the data-quality board rather
+  // than buried in the filter. Keyed on the roster size so it recomputes when
+  // charts land; the staff roster behind it is memoized app-wide.
+  const { data: agencyScope } = useQuery({
+    queryKey: ['patients', 'attribution', agencyQueryKey(currentUser), patients.length],
+    queryFn: () => describeCallerPatientScope(patients, currentUser),
+    enabled: !!currentUser,
+    initialData: null,
   });
 
   const { data: visits = [] } = useQuery({
@@ -146,6 +150,22 @@ export default function DataQualityDashboard() {
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-800">
             Data quality is below recommended threshold. Review critical issues below.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {agencyScope?.scoped && agencyScope.unattributable > 0 && (
+        <Alert className="border-slate-300 bg-slate-50">
+          <AlertTriangle className="h-4 w-4 text-slate-600" />
+          <AlertDescription className="text-slate-800">
+            <span className="font-semibold">
+              {agencyScope.unattributable} of {agencyScope.total} charts have no agency attribution.
+            </span>{' '}
+            They were created by an importer or service account, or by a user who is
+            no longer on the roster, so nothing ties them to an agency. They stay
+            visible here — hiding them would remove active charts from clinical
+            views — but they are not covered by agency scoping until an agency is
+            recorded on the record itself.
           </AlertDescription>
         </Alert>
       )}

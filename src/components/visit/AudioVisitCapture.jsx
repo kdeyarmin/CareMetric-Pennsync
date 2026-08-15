@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from "@/hooks/useScopedPatients";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -50,16 +51,10 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   const boundPatientRef = useRef(null);
   const visitDate = todayEastern();
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ["patients", "active", "first_name", 200],
-    queryFn: async () => {
-      try {
-        return await base44.entities.Patient.filter({ status: "active" }, "first_name", 200);
-      } catch {
-        return [];
-      }
-    },
-    initialData: [],
+  const { data: patients = [] } = useScopedPatients({
+    status: "active",
+    sort: "first_name",
+    limit: 200,
   });
   const patient = patients.find(p => p.id === patientId);
   const { data: patientDetail } = useQuery({

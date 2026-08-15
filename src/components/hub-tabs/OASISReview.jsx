@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,20 +34,7 @@ export default function OASISReview() {
   const isAdmin = isAdminView(currentUser);
 
   // Fetch patients with pending OASIS reviews
-  const { data: patients = [] } = useQuery({
-    // Agency-scoped result set — it MUST NOT share the plain
-    // ['patients','updated',2000] cache entry that the unscoped rosters use, or
-    // whichever mounted first would decide whether this view shows other
-    // tenants' charts.
-    queryKey: ['patients', 'updated', 2000, 'agency', currentUser?.agency_name ?? null],
-    queryFn: async () => {
-      const _rows = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
-    },
-    enabled: !!currentUser,
-  });
+  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
 
   // Fetch all OASIS uploads with AI suggestions
   const { data: oasisRecords = [] } = useQuery({

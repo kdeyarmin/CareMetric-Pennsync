@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey, loadAgencyRoster } from '@/lib/agencyRoster';
+import { filterRowsByStaffAgency, filterUsersByCallerAgency } from '@/lib/agencyScope';
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -44,21 +46,12 @@ export default function Timesheets() {
   // Facility admins with an agency additionally filter client-side — Timesheet
   // RLS is bare role:admin and would otherwise show other tenants' rows.
   const { data: teamTimesheets = [] } = useQuery({
-    queryKey: ["timesheets", "team", currentUser?.email, currentUser?.agency_name || null],
+    queryKey: ["timesheets", "team", currentUser?.email, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const rows = await base44.entities.Timesheet.list("-pay_period_start", 2000);
-      const agency = String(currentUser?.agency_name || "").trim();
-      const isAgencyScoped = currentUser?.account_type !== "super_admin"
-        && agency
-        && (currentUser?.account_type === "agency_admin" || currentUser?.role === "admin");
-      if (!isAgencyScoped) return rows || [];
-      const users = await base44.entities.User.list("full_name", 2000).catch(() => []);
-      const emails = new Set(
-        (users || [])
-          .filter((u) => u.agency_name === agency && u.email)
-          .map((u) => u.email),
+      return filterRowsByStaffAgency(
+        rows, await loadAgencyRoster(), currentUser, (t) => t.employee_email,
       );
-      return (rows || []).filter((t) => emails.has(t.employee_email));
     },
     initialData: [],
     enabled: !!currentUser?.email && isApprover,
@@ -121,7 +114,7 @@ export default function Timesheets() {
 
   // Candidate approvers for the timesheet form (admins + flagged managers).
   const { data: approvers = [] } = useQuery({
-    queryKey: ["timesheets", "approvers", currentUser?.email, currentUser?.agency_name || null],
+    queryKey: ["timesheets", "approvers", currentUser?.email, agencyQueryKey(currentUser)],
     queryFn: async () => {
       try {
         const users = await base44.entities.User.list("full_name", 500);
@@ -146,17 +139,12 @@ export default function Timesheets() {
   // Clinical staff roster (admin) — expected submitters for coverage + the
   // phone-reimbursement setup list.
   const { data: employees = [] } = useQuery({
-    queryKey: ["timesheets", "employees", currentUser?.agency_name || null],
+    queryKey: ["timesheets", "employees", agencyQueryKey(currentUser)],
     queryFn: async () => {
       try {
         const users = await base44.entities.User.list("full_name", 500);
-        const agency = String(currentUser?.agency_name || "").trim();
-        const isAgencyScoped = currentUser?.account_type !== "super_admin"
-          && agency
-          && (currentUser?.account_type === "agency_admin" || currentUser?.role === "admin");
-        return users
+        return filterUsersByCallerAgency(users, currentUser)
           .filter((u) => u.email && u.role === "user" && u.is_active !== false)
-          .filter((u) => !isAgencyScoped || u.agency_name === agency)
           .map((u) => ({
             email: u.email,
             name: u.full_name || u.email,
@@ -173,21 +161,12 @@ export default function Timesheets() {
 
   // All standing payroll profiles (admin) — for the setup panel.
   const { data: payrollProfiles = [] } = useQuery({
-    queryKey: ["payroll-profiles", currentUser?.agency_name || null],
+    queryKey: ["payroll-profiles", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const rows = await base44.entities.EmployeePayrollProfile.list("-updated_date", 1000);
-      const agency = String(currentUser?.agency_name || "").trim();
-      const isAgencyScoped = currentUser?.account_type !== "super_admin"
-        && agency
-        && (currentUser?.account_type === "agency_admin" || currentUser?.role === "admin");
-      if (!isAgencyScoped) return rows || [];
-      const users = await base44.entities.User.list("full_name", 2000).catch(() => []);
-      const emails = new Set(
-        (users || [])
-          .filter((u) => u.agency_name === agency && u.email)
-          .map((u) => u.email),
+      return filterRowsByStaffAgency(
+        rows, await loadAgencyRoster(), currentUser, (p) => p.employee_email,
       );
-      return (rows || []).filter((p) => emails.has(p.employee_email));
     },
     initialData: [],
     enabled: !!currentUser?.email && isAdmin,

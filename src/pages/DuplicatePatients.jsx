@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -38,22 +39,16 @@ export default function DuplicatePatients() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: patients = [], isLoading } = useQuery({
-    queryKey: ['all-patients-duplicate-scan'],
-    queryFn: async () => {
-      const _rawPatients = await base44.entities.Patient.list('-created_date', 10000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      const all = filterPatientsByCallerAgency(_rawPatients, _userRows, currentUser);
-      // Don't surface already-archived/merged records as fresh duplicates.
-      return all.filter((p) => !p.is_archived);
-    },
+  const { data: patients = [], isLoading } = useScopedPatients({
+    sort: '-created_date',
+    limit: 10000,
+    // Don't surface already-archived/merged records as fresh duplicates.
+    select: excludeArchived,
     // Always pull a fresh roster when the page mounts. Caching let the page show
     // duplicate groups computed from a STALE roster (and from before matching-logic
     // fixes deployed), which looked like "the fix didn't work" when it actually had.
     staleTime: 0,
     refetchOnMount: 'always',
-    enabled: !!currentUser,
   });
 
   const { data: allVisits = [], isLoading: visitsLoading } = useQuery({
@@ -119,11 +114,7 @@ export default function DuplicatePatients() {
           (moved > 0 ? ` and moved ${moved} related record(s).` : '.')
       );
       setDuplicateGroups((prev) => prev.filter((_, i) => `group-${i}` !== groupKey));
-      queryClient.invalidateQueries({ queryKey: ['all-patients-duplicate-scan'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
     } catch (error) {
       console.error('Merge error:', error);
       toast.error('Failed to merge the duplicates. Please try again.');
@@ -179,11 +170,7 @@ export default function DuplicatePatients() {
 
     // Drop only the groups that merged; keep failures visible for retry.
     setDuplicateGroups((prev) => prev.filter((_, i) => failedKeys.has(`group-${i}`)));
-    queryClient.invalidateQueries({ queryKey: ['all-patients-duplicate-scan'] });
     queryClient.invalidateQueries({ queryKey: ['patients'] });
-    queryClient.invalidateQueries({ queryKey: ['patients-list'] });
-    queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
-    queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
 
     if (failedKeys.size === 0) {
       toast.success(`Merged ${mergedRecords} duplicate record(s) across ${mergedGroups} group(s).`);

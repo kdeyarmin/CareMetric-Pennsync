@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -22,11 +23,7 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
     queryFn: () => base44.auth.me()
   });
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients-active'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }, 'last_name', ALL_ROWS),
-    initialData: []
-  });
+  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: 'last_name', limit: ALL_ROWS });
 
   const { data: selectedPatient } = useQuery({
     queryKey: ['patient-detail', selectedPatientId],

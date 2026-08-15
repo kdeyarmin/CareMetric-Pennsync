@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,7 +72,7 @@ export default function OASISAuditDashboard() {
 
   // Fetch admins for assignment (agency-scoped for facility admins)
   const { data: admins = [] } = useQuery({
-    queryKey: ['adminUsers', currentUser?.agency_name || null],
+    queryKey: ['adminUsers', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const users = await base44.entities.User.list(undefined, ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

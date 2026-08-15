@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
+import { agencyQueryKey, scopePatientsForCurrentCaller } from '@/lib/agencyRoster';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import EmptyState from '@/components/ui/empty-state';
@@ -18,11 +19,21 @@ export default function OfflineDocumentation() {
   // networkMode/fallback governs the fetch; 'always' + the roster fallback keep
   // the patient picker usable while offline (the default networkMode pauses
   // the queryFn offline, leaving nothing to document against).
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'offline-roster'],
+    queryKey: ['patients', 'offline-roster', agencyQueryKey(currentUser)],
     networkMode: 'always',
+    // Scope the LIVE list only. The filter() call is awaited first, so going
+    // offline throws before any scoping runs and the fallback still fires; the
+    // IndexedDB roster it serves was mirrored from an already-scoped read.
     queryFn: () => withOfflineRosterFallback(
-      () => base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS)
+      async () => scopePatientsForCurrentCaller(
+        await base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS),
+      ),
     ),
   });
 

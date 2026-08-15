@@ -4,6 +4,7 @@ import { CheckCircle2, Circle, ListChecks, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { base44 } from '@/api/base44Client';
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { buildAdminOnboardingChecklist } from '@/components/admin/adminOnboardingChecklist';
 
 /**
@@ -25,7 +26,7 @@ export default function AdminOnboardingChecklistStrip() {
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['onboardingUserCount', currentUser?.agency_name || null],
+    queryKey: ['onboardingUserCount', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 50);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

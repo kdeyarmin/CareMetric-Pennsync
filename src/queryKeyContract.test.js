@@ -88,6 +88,20 @@ const normalizeKey = (s) => normalize(s)
   .replace(/"/g, "'")
   .replace(/\s*([[\],])\s*/g, '$1');
 
+/**
+ * Any helper that narrows a result set to the caller's agency. Built fresh per
+ * use rather than shared as one /g literal — a /g regex carries `lastIndex`
+ * across `.test()` calls and would skip every other match.
+ */
+const SCOPE_HELPERS = [
+  'scopePatientsToCallerAgency',
+  'scopePatientsForCurrentCaller',
+  'filterPatientsByCallerAgency',
+  'filterUsersByCallerAgency',
+];
+const scopeHelperRe = (flags = '') => new RegExp(`\\b(${SCOPE_HELPERS.join('|')})\\b`, flags);
+const usesScopeHelper = (source) => scopeHelperRe().test(source);
+
 /** Control flow and plumbing — present in a queryFn but not part of its result set. */
 const IGNORED_CALLS = new Set([
   'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'await', 'async',
@@ -134,7 +148,7 @@ function signature(fn) {
 
   for (const m of src.matchAll(/functions\.(?:invoke|fetch)\(\s*['"](\w+)['"]/g)) parts.add(`fn:${m[1]}`);
   for (const m of src.matchAll(/\bauth\.(me)\(/g)) parts.add(`auth:${m[1]}`);
-  for (const m of src.matchAll(/\b(filterPatientsByCallerAgency|filterUsersByCallerAgency)\b/g)) parts.add(`scope:${m[1]}`);
+  for (const m of src.matchAll(scopeHelperRe('g'))) parts.add(`scope:${m[1]}`);
   // A queryFn can also delegate to a helper module (`await import('@/lib/x')`,
   // `queryFn: fetchAllClinicalTemplates`). Record what it reaches for, not how
   // it was typed, so quote style and `await` placement don't read as different
@@ -162,8 +176,10 @@ function collectQueries() {
       sites.push({
         file: rel,
         line: text.slice(0, m.index).split('\n').length,
+        rawKey: key,
         key: normalizeKey(key),
         signature: signature(fn),
+        scoped: usesScopeHelper(fn),
       });
     }
   }
@@ -195,6 +211,165 @@ test('no two useQuery sites share a key while fetching different data', () => {
       + 'Give each distinct query its own key (append the sort/limit/scope that '
       + 'makes it different), or make the queryFns identical:\n'
       + collisions.join('\n'),
+  );
+});
+
+test('an agency-scoped query keys on the agency it was scoped to', () => {
+  // The result set depends on WHO asked, so the key has to say who asked.
+  // Without it, two admins in different agencies share one cache entry and each
+  // renders the roster the other one's filter produced — a silent PHI leak that
+  // the collision guard above cannot see, because there is only one call site.
+  const unkeyed = collectQueries()
+    .filter((s) => s.scoped && !/agencyQueryKey/.test(s.rawKey))
+    .map((s) => `  ${s.file}:${s.line}  →  ${s.key}`);
+
+  assert.deepEqual(
+    unkeyed,
+    [],
+    'These queryFns filter by the caller\'s agency but leave the agency out of '
+      + 'their cache key. Add agencyQueryKey(currentUser) to the key:\n'
+      + unkeyed.join('\n'),
+  );
+});
+
+/**
+ * Fields a `Patient.filter({ … })` predicate constrains on. A read is only
+ * exempt from agency scoping when the predicate already pins it to specific
+ * charts (`id`) or to the caller's own charts (`assigned_nurses`) — anything
+ * else (`status: 'active'`, `care_type`, …) returns other people's charts.
+ */
+function crossChartPatientReads(text) {
+  const reads = [];
+  if (/entities\.Patient\.list\(/.test(text)) reads.push('Patient.list');
+  for (const m of text.matchAll(/entities\.Patient\.filter\(\s*(?=\{)/g)) {
+    const objAt = text.indexOf('{', m.index + m[0].length - 1);
+    const fields = [...readBalanced(text, objAt).matchAll(/([A-Za-z_$][\w$]*)\s*:/g)]
+      .map((f) => f[1]);
+    if (fields.every((f) => f === 'id' || f === '$in' || f === 'assigned_nurses')) continue;
+    reads.push(`Patient.filter({ ${fields.join(', ')} })`);
+  }
+  return reads;
+}
+
+test('every cross-chart patient read goes through an agency scope', () => {
+  // Reading the roster and handing it straight to the UI is how two dozen views
+  // ended up rendering every tenant's charts. The second population read it via
+  // `filter({ status: 'active' })` rather than `list()`, which an earlier
+  // version of this guard did not cover. New views should use
+  // useScopedPatients; the direct callers all narrow rows before returning them.
+  const HOOK = 'src/hooks/useScopedPatients.js'; // the one place that may read raw
+  const unscoped = [];
+  for (const file of collectSources(ROOT)) {
+    const rel = file.slice(process.cwd().length + 1).replace(/\\/g, '/');
+    if (rel === HOOK) continue;
+    const text = readFileSync(file, 'utf8');
+    if (usesScopeHelper(text)) continue;
+    const reads = crossChartPatientReads(text);
+    if (reads.length) unscoped.push(`  ${rel}  →  ${[...new Set(reads)].join(', ')}`);
+  }
+
+  assert.deepEqual(
+    unscoped,
+    [],
+    'These files read across patient charts without applying an agency scope. '
+      + `Use useScopedPatients() (${HOOK}), or scopePatientsToCallerAgency() when `
+      + 'the read is imperative rather than a query. A read pinned to specific '
+      + 'ids, or to the caller via assigned_nurses, is already narrow and exempt:\n'
+      + unscoped.join('\n'),
+  );
+});
+
+test('every patient roster query is rooted at the key patient mutations invalidate', () => {
+  // Patient create / merge / delete fire invalidateQueries(['patients']). React
+  // Query prefix-matches on array elements, so ['allPatients', …] and
+  // ['patientsForKPI', …] were never reached and those views served stale rows
+  // for a full staleTime after a merge.
+  //
+  // Cross-chart patient reads only. Single-chart lookups (`where:id`), reads
+  // already pinned to the caller (`where:assigned_nurses`), and the user-roster
+  // queries that share the scoping helpers all key on their own subjects.
+  const isCrossChartRoster = (signature) => {
+    if (!/\bPatient\.(list|filter)\b/.test(signature)) return false;
+    const where = /where:([\w+$]+)/.exec(signature);
+    if (!where) return true; // Patient.list — always the whole roster
+    return !where[1].split('+').every((f) => f === 'id' || f === '$in' || f === 'assigned_nurses');
+  };
+
+  const stray = collectQueries()
+    .filter((s) => isCrossChartRoster(s.signature))
+    .filter((s) => !/^\['patients'[,\]]/.test(s.key))
+    .map((s) => `  ${s.file}:${s.line}  →  ${s.key}`);
+
+  assert.deepEqual(
+    stray,
+    [],
+    'These patient queries are not rooted at [\'patients\', …] (or [\'patient\', id] '
+      + 'for a single chart), so invalidateQueries({ queryKey: [\'patients\'] }) after '
+      + 'a create/merge/delete does not reach them:\n'
+      + stray.join('\n'),
+  );
+});
+
+test('roster selectors are stable references, not inline arrows', () => {
+  // React Query memoizes `select` by REFERENCE — queryObserver compares
+  // `options.select === selectFn`. An inline arrow is a fresh reference on every
+  // render, so the filter re-runs every render (plus a structural-sharing pass
+  // over its result) instead of once per fetch. Over the rosters here — up to
+  // 10,000 rows — that is real work on every keystroke and dialog toggle.
+  // Use a module-level selector, or useCallback/useMemo when it closes over
+  // props or state.
+  const inline = [];
+  for (const file of collectSources(ROOT)) {
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/useScopedPatients\s*\(\s*\{/g)) {
+      const body = readBalanced(text, text.indexOf('{', m.index + m[0].length - 1));
+      const select = optionValue(body, 'select');
+      if (!select || !/=>|\bfunction\b/.test(select)) continue;
+      inline.push(
+        `  ${file.slice(process.cwd().length + 1).replace(/\\/g, '/')}`
+          + `:${text.slice(0, m.index).split('\n').length}  →  select: ${normalize(select).slice(0, 60)}`,
+      );
+    }
+  }
+
+  assert.deepEqual(
+    inline,
+    [],
+    'These useScopedPatients call sites pass an inline `select`, which React '
+      + 'Query cannot memoize, so it re-filters the whole roster on every render. '
+      + 'Import a shared selector from @/hooks/useScopedPatients, or wrap it in '
+      + 'useCallback when it closes over props/state:\n'
+      + inline.join('\n'),
+  );
+});
+
+test('the agency-scoped check has exactly one implementation', () => {
+  // Four files hand-rolled `isCallerAgencyScoped` inline. Three of them — every
+  // payroll query in Timesheets.jsx — then returned the UNFILTERED rows when it
+  // came out false, which is right for a platform admin but also catches an
+  // agency_admin whose agency_name is blank. That caller saw every agency's
+  // timesheets, pay rates and payroll profiles. The two copies that got it right
+  // carried a separate fail-closed line; the ones that didn't, failed open.
+  //
+  // The rule lives in src/lib/agencyScope.js and nowhere else.
+  const copies = [];
+  for (const file of collectSources(ROOT)) {
+    const rel = file.slice(process.cwd().length + 1).replace(/\\/g, '/');
+    if (rel === 'src/lib/agencyScope.js') continue;
+    const text = normalize(readFileSync(file, 'utf8')).replace(/["']/g, "'");
+    if (!/account_type !== 'super_admin'/.test(text)) continue;
+    if (!/account_type === 'agency_admin' \|\| \w+\??\.?role === 'admin'/.test(text)) continue;
+    copies.push(`  ${rel}`);
+  }
+
+  assert.deepEqual(
+    copies,
+    [],
+    'These files re-derive "is this caller agency-scoped" inline instead of '
+      + 'calling isCallerAgencyScoped() from @/lib/agencyScope. Every copy has to '
+      + 'remember the agency_admin-without-agency case independently, and the ones '
+      + 'that forgot leaked other tenants\' payroll data:\n'
+      + copies.join('\n'),
   );
 });
 

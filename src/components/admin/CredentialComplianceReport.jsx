@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -28,7 +29,7 @@ export default function CredentialComplianceReport() {
   const [itemType, setItemType] = useState("all");
   const [windowFilter, setWindowFilter] = useState("90");
   const { data: users = [] } = useQuery({
-    queryKey: ['all-users', currentUser?.agency_name || null],
+    queryKey: ['all-users', 500, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
