@@ -58,6 +58,7 @@ const FILES = {
   "../functions/sendTestSms/entry.ts": ALL,
   "../functions/dispatchScheduledSms/entry.ts": ALL,
   "../functions/redriveFailedSms/entry.ts": ALL,
+  "../functions/discoverTelnyxResources/entry.ts": ALL,
   "../functions/createTelehealthToken/entry.ts": ["apiKey"],
 };
 
