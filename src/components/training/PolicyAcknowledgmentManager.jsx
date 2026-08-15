@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { distributePolicyAcknowledgment } from "@/functions/distributePolicyAcknowledgment";
@@ -27,7 +28,7 @@ export default function PolicyAcknowledgmentManager() {
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const isAdminUser = currentUser?.role === "admin" || currentUser?.account_type === "agency_admin" || currentUser?.account_type === "super_admin";
 
-  const { data: users = [] } = useQuery({ queryKey: ["policy-users"], queryFn: async () => {
+  const { data: users = [] } = useQuery({ queryKey: ["policy-users", agencyQueryKey(currentUser)], queryFn: async () => {
       const _rows = await base44.entities.User.list("-created_date", 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);

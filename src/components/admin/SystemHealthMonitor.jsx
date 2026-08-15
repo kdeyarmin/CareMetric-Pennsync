@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,7 +71,7 @@ export default function SystemHealthMonitor() {
     refetchInterval: autoRefresh ? 30000 : false,
   });
   const { data: users = [] } = useQuery({
-    queryKey: ["health-users", currentUser?.agency_name || null],
+    queryKey: ["health-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list("-created_date", 200);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

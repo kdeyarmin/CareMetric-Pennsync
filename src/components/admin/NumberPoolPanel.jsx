@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,7 @@ export default function NumberPoolPanel() {
     initialData: [],
   });
   const { data: users = [] } = useQuery({
-    queryKey: ["phone-users"],
+    queryKey: ["phone-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list("full_name", 200);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

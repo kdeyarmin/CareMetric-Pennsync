@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -61,7 +62,7 @@ export default function TimeOff() {
   // if it's not permitted for this user we fall back gracefully to "route to admins".
   // Agency-scoped callers only see same-agency approvers (backend enforces too).
   const { data: approvers = [] } = useQuery({
-    queryKey: ["timeoff", "approvers", currentUser?.email, currentUser?.agency_name || null],
+    queryKey: ["timeoff", "approvers", currentUser?.email, agencyQueryKey(currentUser)],
     queryFn: async () => {
       try {
         const users = await base44.entities.User.list("full_name", 500);

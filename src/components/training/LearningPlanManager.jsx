@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -95,7 +96,7 @@ export default function LearningPlanManager() {
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ["plan-assign-users", currentUser?.agency_name || null],
+    queryKey: ["plan-assign-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list("-created_date", 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

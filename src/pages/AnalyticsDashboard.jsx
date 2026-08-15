@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
@@ -60,7 +61,7 @@ export default function AnalyticsDashboard() {
 
   // Fetch all users for admin
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers', 10000],
+    queryKey: ['allUsers', 10000, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 10000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

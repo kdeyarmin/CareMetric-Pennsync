@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -16,19 +17,17 @@ export default function DataQualityDashboard() {
 
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['all-patients-quality'],
+    queryKey: ['all-patients-quality', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.filter({ status: 'active' }, undefined, ALL_ROWS);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+      return scopePatientsToCallerAgency(_rows, currentUser);
     },
     initialData: [],
     enabled: !!currentUser,
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ['all-users-quality', currentUser?.agency_name || null],
+    queryKey: ['all-users-quality', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 200);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

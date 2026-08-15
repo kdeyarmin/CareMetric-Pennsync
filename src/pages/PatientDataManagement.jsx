@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import DuplicateScanner from "../components/patient/DuplicateScanner";
 import PatientFileUpdateUploader from "../components/patient/PatientFileUpdateUploader";
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,13 +85,11 @@ export default function PatientDataManagement() {
   const { data: patients = [], isLoading } = useQuery({
     // Agency-scoped result set — Patients.jsx reads the unscoped variant under
     // the bare key, so they must not share one cache entry.
-    queryKey: ['patients', 'roster', 'created', 2000, 'agency', currentUser?.agency_name ?? null],
+    queryKey: ['patients', 'roster', 'created', 2000, agencyQueryKey(currentUser)],
     queryFn: async () => {
       try {
         const _rawPatients = await base44.entities.Patient.list('-created_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      const allPatients = filterPatientsByCallerAgency(_rawPatients, _userRows, currentUser);
+      const allPatients = await scopePatientsToCallerAgency(_rawPatients, currentUser);
         return allPatients.filter(patient => !patient.is_archived);
       } catch (err) {
         console.error('Failed to load patients:', err);

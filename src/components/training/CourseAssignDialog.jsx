@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,7 @@ export default function CourseAssignDialog({ course }) {
   const [error, setError] = useState("");
 
   const { data: users = [] } = useQuery({
-    queryKey: ["assign-users", currentUser?.agency_name || null],
+    queryKey: ["assign-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list("-created_date", 5000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

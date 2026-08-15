@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,12 +41,10 @@ export default function KPIDashboard({ dateRange }) {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['allPatients', '-created_date', 5000],
+    queryKey: ['allPatients', '-created_date', 5000, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.list('-created_date', 5000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+      return scopePatientsToCallerAgency(_rows, currentUser);
     },
     initialData: [],
     enabled: !!currentUser,

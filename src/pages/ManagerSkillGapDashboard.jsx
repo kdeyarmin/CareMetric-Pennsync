@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { Sparkles, BarChart3 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ export default function ManagerSkillGapDashboard() {
   // intended audience out. isManager already includes the admin tiers.
   const canViewManagement = isManager(currentUser);
   const { data: users = [] } = useQuery({
-    queryKey: ["skill-gap-users", currentUser?.agency_name || null],
+    queryKey: ["skill-gap-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

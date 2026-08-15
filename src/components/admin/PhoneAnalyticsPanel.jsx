@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -83,7 +84,7 @@ export default function PhoneAnalyticsPanel() {
     initialData: [],
   });
   const { data: users = [] } = useQuery({
-    queryKey: ["analytics-users"],
+    queryKey: ["analytics-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list("full_name", 1000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

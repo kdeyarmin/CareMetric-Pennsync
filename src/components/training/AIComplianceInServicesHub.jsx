@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Archive, BarChart3, CheckCircle2, Copy, PlusCircle, Send, Sparkles, Loader2, AlertCircle, Video } from "lucide-react";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { generateTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
 import { assignInService } from "@/functions/assignInService";
 import { duplicateInService } from "@/functions/duplicateInService";
@@ -67,7 +68,7 @@ export default function AIComplianceInServicesHub() {
   const [generateSuccess, setGenerateSuccess] = useState(null);
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const { data: users = [] } = useQuery({ queryKey: ["learning-users"], queryFn: async () => {
+  const { data: users = [] } = useQuery({ queryKey: ["learning-users", agencyQueryKey(currentUser)], queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);

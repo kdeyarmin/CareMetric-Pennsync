@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -21,7 +22,7 @@ export default function AdminDashboardOverview() {
 
   // Fetch user count
   const { data: users = [] } = useQuery({
-    queryKey: ['admin-users', currentUser?.agency_name || null],
+    queryKey: ['admin-users', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 1000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

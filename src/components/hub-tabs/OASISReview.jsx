@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,12 +39,10 @@ export default function OASISReview() {
     // ['patients','updated',2000] cache entry that the unscoped rosters use, or
     // whichever mounted first would decide whether this view shows other
     // tenants' charts.
-    queryKey: ['patients', 'updated', 2000, 'agency', currentUser?.agency_name ?? null],
+    queryKey: ['patients', 'updated', 2000, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+      return scopePatientsToCallerAgency(_rows, currentUser);
     },
     enabled: !!currentUser,
   });

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -39,12 +40,10 @@ export default function DuplicatePatients() {
   });
 
   const { data: patients = [], isLoading } = useQuery({
-    queryKey: ['all-patients-duplicate-scan'],
+    queryKey: ['all-patients-duplicate-scan', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rawPatients = await base44.entities.Patient.list('-created_date', 10000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      const all = filterPatientsByCallerAgency(_rawPatients, _userRows, currentUser);
+      const all = await scopePatientsToCallerAgency(_rawPatients, currentUser);
       // Don't surface already-archived/merged records as fresh duplicates.
       return all.filter((p) => !p.is_archived);
     },

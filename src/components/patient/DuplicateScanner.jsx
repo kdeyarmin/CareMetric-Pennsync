@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -192,12 +193,10 @@ export default function DuplicateScanner() {
 
   // Fetch all patients for advanced scanning (agency-scoped for facility admins)
   const { data: allPatients = [] } = useQuery({
-    queryKey: ['all-patients-scan', currentUser?.agency_name || null],
+    queryKey: ['all-patients-scan', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.list('-created_date', 10000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+      return scopePatientsToCallerAgency(_rows, currentUser);
     },
     enabled: scanMode === 'advanced' && !!currentUser,
   });

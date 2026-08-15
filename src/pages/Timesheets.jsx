@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -121,7 +122,7 @@ export default function Timesheets() {
 
   // Candidate approvers for the timesheet form (admins + flagged managers).
   const { data: approvers = [] } = useQuery({
-    queryKey: ["timesheets", "approvers", currentUser?.email, currentUser?.agency_name || null],
+    queryKey: ["timesheets", "approvers", currentUser?.email, agencyQueryKey(currentUser)],
     queryFn: async () => {
       try {
         const users = await base44.entities.User.list("full_name", 500);

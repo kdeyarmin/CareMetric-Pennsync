@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,7 +72,7 @@ export default function NursePerformanceDashboard() {
   });
 
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers', ALL_ROWS],
+    queryKey: ['allUsers', ALL_ROWS, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

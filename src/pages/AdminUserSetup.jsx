@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,7 +34,7 @@ export default function AdminUserSetup() {
   });
 
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers', 5000],
+    queryKey: ['allUsers', 5000, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 5000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

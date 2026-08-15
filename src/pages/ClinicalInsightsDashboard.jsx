@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, Users, TrendingUp, AlertTriangle, Brain } from "lucide-react";
@@ -14,12 +15,10 @@ export default function ClinicalInsightsDashboard() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['myPatients'],
+    queryKey: ['myPatients', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rawPatients = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      const allPatients = filterPatientsByCallerAgency(_rawPatients, _userRows, currentUser);
+      const allPatients = await scopePatientsToCallerAgency(_rawPatients, currentUser);
       // For nurses, filter to their assigned patients (simplification - all active for now)
       return allPatients.filter(p => p.status === "active");
     },

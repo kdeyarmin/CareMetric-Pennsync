@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import { submitIncidentReport } from "@/functions/submitIncidentReport";
 import { transitionIncident } from "@/functions/updateIncident";
@@ -102,12 +103,10 @@ export default function IncidentReportingModule() {
   const { data: myPatients = [] } = useQuery({
     // Key must include the email the queryFn filters by, otherwise a session
     // user change keeps serving the previous nurse's cached patient list.
-    queryKey: ['myPatients', currentUser?.email],
+    queryKey: ['myPatients', currentUser?.email, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rawPatients = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      const allPatients = filterPatientsByCallerAgency(_rawPatients, _userRows, currentUser);
+      const allPatients = await scopePatientsToCallerAgency(_rawPatients, currentUser);
       return allPatients.filter(p => p.assigned_nurses?.includes(currentUser?.email));
     },
     enabled: !!currentUser,
@@ -121,12 +120,10 @@ export default function IncidentReportingModule() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['allPatients', '-updated_date', 2000],
+    queryKey: ['allPatients', '-updated_date', 2000, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+      return scopePatientsToCallerAgency(_rows, currentUser);
     },
     initialData: [],
     enabled: !!currentUser,

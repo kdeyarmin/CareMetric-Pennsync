@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,12 +101,10 @@ export default function PatientAlertsDashboard({ patientId = null }) {
 
   // Fetch patients for lookup (agency-scoped for facility admins)
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients', 'lookup', 'alerts', currentUser?.agency_name || null],
+    queryKey: ['patients', 'lookup', 'alerts', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+      return scopePatientsToCallerAgency(_rows, currentUser);
     },
     enabled: !!currentUser,
   });

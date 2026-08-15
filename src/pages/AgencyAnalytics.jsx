@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { toLocalISODate } from "@/lib/dateLocal";
@@ -58,7 +59,7 @@ export default function AgencyAnalytics() {
   // Sibling Incident/ComplianceAudit/TrainingCompletion queries pass limits;
   // these two didn't, capping agency stats and top-performers at 50 rows.
   const { data: users = [] } = useQuery({
-    queryKey: ['all-users'],
+    queryKey: ['all-users', 5000, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 5000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
@@ -71,12 +72,10 @@ export default function AgencyAnalytics() {
   const { data: allPatients = [] } = useQuery({
     // Agency-scoped and differently shaped from PatientRecordDashboard's
     // unscoped 1000-row list — must not share its cache entry.
-    queryKey: ['all-patients', 'created', 5000, 'agency', currentUser?.agency_name ?? null],
+    queryKey: ['all-patients', 'created', 5000, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.list('-created_date', 5000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+      return scopePatientsToCallerAgency(_rows, currentUser);
     },
     initialData: [],
     enabled: (isAdmin) && !!currentUser,

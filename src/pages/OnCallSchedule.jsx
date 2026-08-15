@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, format } from "date-fns";
 import { toast } from "sonner";
@@ -43,7 +44,7 @@ export default function OnCallSchedule() {
 
   // Staff list for the assign dropdown (admins only — User list is admin-scoped).
   const { data: staff = [] } = useQuery({
-    queryKey: ["onCallStaff"],
+    queryKey: ["onCallStaff", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 5000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

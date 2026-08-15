@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { scopePatientsToCallerAgency, agencyQueryKey } from '@/lib/agencyRoster';
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
@@ -43,12 +44,10 @@ export default function AIKPIReportGenerator() {
   });
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['patientsForKPI'],
+    queryKey: ['patientsForKPI', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.Patient.list('-updated_date', 2000);
-      const _userRows = await base44.entities.User.list('-created_date', 2000).catch(() => []);
-      const { filterPatientsByCallerAgency } = await import('@/lib/agencyScope');
-      return filterPatientsByCallerAgency(_rows, _userRows, currentUser);
+      return scopePatientsToCallerAgency(_rows, currentUser);
     },
     initialData: [],
     enabled: !!currentUser,
