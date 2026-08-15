@@ -343,6 +343,80 @@ test('roster selectors are stable references, not inline arrows', () => {
   );
 });
 
+test('every cross-record clinical read goes through an agency scope', () => {
+  // Same exposure as the patient roster, one entity over: Visit, Incident,
+  // PatientAlert, Document, OASISAssessment and CarePlan all declare a bare
+  // `user_condition: { role: "admin" }` read arm, which HOSTED-RLS-PROOF §5b
+  // establishes is platform-wide. A facility admin listing Visit gets other
+  // tenants' nurse notes and vitals.
+  //
+  // Message is deliberately absent: it belongs to its PARTICIPANTS, not its
+  // author, so the author rule would hide a message addressed to this user by
+  // someone outside their agency. It needs participant narrowing instead.
+  const ENTITIES = ['Visit', 'Incident', 'PatientAlert', 'Document', 'OASISAssessment', 'CarePlan'];
+  // Reads already pinned to one chart, one record, or the caller themselves.
+  const NARROW = /\b(patient_id|client_request_id|created_by|nurse_email|user_email|uploaded_by|assigned_to|employee_email|id)\b\s*:/;
+
+  const unscoped = [];
+  for (const file of collectSources(ROOT)) {
+    const rel = file.slice(process.cwd().length + 1).replace(/\\/g, '/');
+    if (rel.startsWith('src/hooks/') || rel.startsWith('src/lib/')) continue;
+    const text = readFileSync(file, 'utf8');
+    if (/useAgencyScopedQuery|filterRecordsByAuthorAgency/.test(text)) continue;
+    const flat = normalize(text);
+    for (const ent of ENTITIES) {
+      for (const m of flat.matchAll(new RegExp(`entities\\.${ent}\\.(list|filter)\\(`, 'g'))) {
+        const args = flat.slice(m.index + m[0].length, m.index + m[0].length + 160);
+        if (NARROW.test(args)) continue;
+        unscoped.push(`  ${rel}  →  ${ent}.${m[1]}(`);
+      }
+    }
+  }
+
+  assert.deepEqual(
+    [...new Set(unscoped)].sort(),
+    [],
+    'These files read clinical records across patients without an agency scope. '
+      + 'Use useAgencyScopedQuery() (src/hooks/useAgencyScopedQuery.js). A read '
+      + 'pinned to one chart, one record, or the caller is already narrow and exempt:\n'
+      + [...new Set(unscoped)].sort().join('\n'),
+  );
+});
+
+test('a scoped query key is never used for a literal cache write', () => {
+  // useAgencyScopedQuery APPENDS agencyQueryKey to the key it is given, so an
+  // optimistic setQueryData(['messages'], …) written against the bare key lands
+  // on a different cache entry and silently does nothing. invalidateQueries is
+  // fine — it prefix-matches — but the exact-key operations are not.
+  const scopedKeys = new Set();
+  for (const file of collectSources(ROOT)) {
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/useAgencyScopedQuery\s*\(\s*\{/g)) {
+      const body = readBalanced(text, text.indexOf('{', m.index + m[0].length - 1));
+      const key = optionValue(body, 'queryKey');
+      if (key) scopedKeys.add(normalizeKey(key));
+    }
+  }
+
+  const broken = [];
+  for (const file of collectSources(ROOT)) {
+    const rel = file.slice(process.cwd().length + 1).replace(/\\/g, '/');
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/(setQueryData|getQueryData)\s*\(\s*(\[[^\]]*\])/g)) {
+      if (!scopedKeys.has(normalizeKey(m[2]))) continue;
+      broken.push(`  ${rel}:${text.slice(0, m.index).split('\n').length}  →  ${m[1]}(${normalizeKey(m[2])})`);
+    }
+  }
+
+  assert.deepEqual(
+    broken,
+    [],
+    'These exact-key cache writes target a key that useAgencyScopedQuery extends '
+      + 'with the agency, so they write to an entry nothing reads:\n'
+      + broken.join('\n'),
+  );
+});
+
 test('the agency-scoped check has exactly one implementation', () => {
   // Four files hand-rolled `isCallerAgencyScoped` inline. Three of them — every
   // payroll query in Timesheets.jsx — then returned the UNFILTERED rows when it

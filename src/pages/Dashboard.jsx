@@ -111,6 +111,8 @@ export default function Dashboard() {
     enabled: !!currentUser?.email,
   });
 
+  // NOT agency-scoped: messages addressed TO this user. Filtering by the
+  // SENDER's agency would hide a message someone outside it sent them.
   const { data: messages = [] } = useQuery({
     queryKey: ['unreadMessages', currentUser?.email],
     queryFn: () => base44.entities.Message.filter({ recipients: currentUser.email }, '-created_date', 50),

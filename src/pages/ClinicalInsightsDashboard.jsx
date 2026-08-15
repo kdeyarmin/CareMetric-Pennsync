@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients, onlyActive } from "@/hooks/useScopedPatients";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,22 +22,22 @@ export default function ClinicalInsightsDashboard() {
     select: onlyActive,
   });
 
-  const { data: visits = [] } = useQuery({
+  const { data: visits = [] } = useAgencyScopedQuery({
     // This is the agency-wide visit list, NOT the caller's own visits. It used
     // the ['myVisits'] key that CarePlanManagement uses for
     // `Visit.filter({ created_by: me })`, so whichever page mounted first
     // decided whether "patients I have charted on" meant everyone's charts.
     // ['allVisits'] is the existing key for exactly this query.
     queryKey: ['allVisits'],
-    queryFn: async () => {
+    fetch: async () => {
       return await base44.entities.Visit.list('-visit_date', 500);
     },
     initialData: [],
   });
 
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [] } = useAgencyScopedQuery({
     queryKey: ['recentIncidents'],
-    queryFn: () => base44.entities.Incident.list('-incident_date', 200),
+    fetch: () => base44.entities.Incident.list('-incident_date', 200),
     initialData: [],
   });
 

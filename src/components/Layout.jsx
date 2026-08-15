@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Outlet, useLocation } from "react-router";
 
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useQuery } from "@tanstack/react-query";
 import { queryClientInstance } from "@/lib/query-client";
 import { clearCachedPHI } from "@/lib/phiStorage";
@@ -136,6 +137,10 @@ export default function Layout() {
     sessionStorage.setItem(key, 'true');
   }, [currentUser?.email, currentUser?.full_name, currentUser?.role]);
 
+  // NOT agency-scoped: these are messages addressed TO this user. Filtering by
+  // the SENDER's agency would hide a message someone outside the agency sent
+  // them, which is the opposite of what the badge is for. Recipient-pinned is
+  // already narrower than agency.
   const { data: messages = [] } = useQuery({
     queryKey: ['unreadMessages', currentUser?.email],
     queryFn: () => base44.entities.Message.filter({ recipients: currentUser.email }, '-created_date', 50),
@@ -188,13 +193,13 @@ export default function Layout() {
     () => [...new Set(chartedVisits.map((v) => v.patient_id))].sort(),
     [chartedVisits]
   );
-  const { data: allActiveAlerts = [] } = useQuery({
+  const { data: allActiveAlerts = [] } = useAgencyScopedQuery({
     // The charted-patient set must be part of the key: the queryFn filters
     // alerts against it, so when the nurse charts a new patient the cache must
     // re-key and refetch (otherwise the new patient's alert stays hidden for
     // the whole stale window).
     queryKey: ['active-alerts', currentUser?.email, chartedPatientIdKey],
-    queryFn: async () => {
+    fetch: async () => {
       const alerts = await base44.entities.PatientAlert.filter({ status: 'active' }, '-created_date', 50);
       // Filter to only alerts for patients this clinician has charted on
       const chartedPatientIds = new Set(chartedPatientIdKey);

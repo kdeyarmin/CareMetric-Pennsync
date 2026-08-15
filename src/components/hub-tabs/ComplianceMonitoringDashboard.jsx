@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -78,9 +79,9 @@ export default function ComplianceMonitoringDashboard() {
     refetchInterval: 30000,
   });
 
-  const { data: visits = [], refetch: refetchVisits } = useQuery({
+  const { data: visits = [], refetch: refetchVisits } = useAgencyScopedQuery({
     queryKey: ['allVisits'],
-    queryFn: () => base44.entities.Visit.filter({}, '-visit_date', 500),
+    fetch: () => base44.entities.Visit.filter({}, '-visit_date', 500),
     initialData: [],
     refetchInterval: 30000,
   });

@@ -216,30 +216,64 @@ IndexedDB. That read must stay scoped: it is the roster every offline fallback
 in the app serves when the network is gone, and an unscoped mirror would persist
 another tenant's charts to disk past the end of the session.
 
-### Known gap: `Patient` is scoped, the other PHI entities are not
+### Clinical records: `filterRecordsByAuthorAgency`, not the staff rule
 
-The contract tests above cover `Patient` and staff-keyed rows. They do **not**
-yet cover the other entities that carry PHI, and those have the same problem:
+`Visit`, `Incident`, `PatientAlert`, `Document`, `OASISAssessment` and
+`CarePlan` all declare the same bare `user_condition: { role: "admin" }` read
+arm, platform-wide per §5b — so a facility admin listing `Visit` gets other
+tenants' nurse notes, vitals and homebound justifications. They are read through
+`useAgencyScopedQuery()` (`src/hooks/useAgencyScopedQuery.js`), which applies
+`filterRecordsByAuthorAgency()`.
 
-| Entity | Read RLS | Cross-record client reads |
-|---|---|---|
-| `Visit` | `created_by` ∨ **bare `role:admin`** ∨ `is_sample` | ~20 |
-| `Incident` | `created_by` ∨ **bare `role:admin`** ∨ `is_sample` | ~12 |
-| `PatientAlert` | `created_by` ∨ **bare `role:admin`** | ~5 |
-| `Message` | — | ~4 |
-| `Document` | `uploaded_by` ∨ `created_by` ∨ **bare `role:admin`** | ~3 |
-| `OASISAssessment` | — | ~3 |
-| `CarePlan` | — | ~1 |
+That is a **different rule from `filterRowsByStaffAgency()`**, and the
+difference matters. The staff rule drops any row whose owner is not a current
+staff member — right for a timesheet, which must belong to a current employee.
+Clinical records get the patient rule instead: only a record positively
+attributed to another agency is hidden, and one whose author has left stays
+visible. On live data 17 of 198 visits were authored by a nurse no longer on the
+roster; the strict rule would delete their charting from every clinical view.
 
-Every one of those `role:admin` arms is platform-wide per §5b, so a facility
-admin listing `Visit` gets other tenants' nurse notes, vitals and homebound
-justifications — the same exposure this section exists for, and the same latent
-status (inert only because no user carries an `agency_name` yet).
+Two mechanical hazards, both now covered by contract tests:
 
-These rows all carry `created_by`, so `filterRowsByStaffAgency()` applies
-directly; the work is mechanical rather than a design question. It is left to a
-follow-up so that the patient-scoping change stays reviewable, and is recorded
-here rather than tracked only in a PR description.
+- `useAgencyScopedQuery` **appends** the agency to the key it is given, so an
+  optimistic `setQueryData(['x'], …)` written against the bare key lands on an
+  entry nothing reads. `invalidateQueries` is fine — it prefix-matches.
+- A read already pinned to one chart, one record, or the caller is narrower than
+  agency and is exempt; scoping it again only risks hiding rows.
+
+#### Two limits of filtering on the client, which only server-side tenancy fixes
+
+**1. The row limit is applied before the filter.** `fetch()` asks the server for
+the newest N rows and the agency filter runs on what comes back, so a scoped
+caller can get a short page — or an empty one. `Incidents.jsx` reads 10 rows: if
+another tenant owns the newest 10, that caller sees no incidents even though
+their agency has older ones. The 50–1000 row reporting queries truncate the same
+way, just less visibly. There is no client-side fix; paginating until N scoped
+rows accumulate is unbounded work against an unknown foreign:local ratio. The
+fix is to put the tenant predicate in the query, which needs the agency
+attribute below.
+
+**2. Service-created records stay visible to every agency.** Backend functions
+create clinical rows through `asServiceRole` with a `patient_id` but no
+resolvable author — `generateCarePlansFromReferral` (CarePlan) and
+`predictPatientRisks` (PatientAlert) both do. Those land in *unattributable* and
+are therefore kept, by design, so they cannot vanish from the chart they belong
+to. The stronger rule is to derive tenancy from the record's chart
+(`patient_id` → patient → agency) rather than its author, since a care plan
+belongs to the chart it hangs off. That is worth doing **with** the schema work,
+not before it: today it would make every clinical query fetch the whole patient
+roster to resolve ids, and still resolve to *unattributable*, because no patient
+carries agency attribution either.
+
+Both are properties of filtering after the fact, which is why §5b's position
+stands: this layer is defense in depth, and the boundary is server-side.
+
+**`Message` is deliberately excluded.** A message belongs to its *participants*,
+not its author, so the author rule would hide a message addressed to this user
+by someone outside their agency. `Message` RLS is `created_by` ∨ `recipients
+$contains` ∨ bare `role:admin`, so non-admins are already narrowed correctly and
+only the admin arm over-reads. Closing that needs participant-based narrowing on
+`Message.list()` — a different filter, not this one.
 
 ---
 

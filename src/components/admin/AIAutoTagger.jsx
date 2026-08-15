@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { patchIncident } from "@/functions/updateIncident";
 import { invokeLLM } from "@/lib/invokeLLM";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -16,15 +17,15 @@ export default function AIAutoTagger() {
   const [results, setResults] = useState(null);
   const queryClient = useQueryClient();
 
-  const { data: visits = [] } = useQuery({
+  const { data: visits = [] } = useAgencyScopedQuery({
     queryKey: ['allVisitsForTagging'],
-    queryFn: () => base44.entities.Visit.list('-created_date', 100),
+    fetch: () => base44.entities.Visit.list('-created_date', 100),
     initialData: [],
   });
 
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [] } = useAgencyScopedQuery({
     queryKey: ['allIncidentsForTagging'],
-    queryFn: () => base44.entities.Incident.list('-created_date', 50),
+    fetch: () => base44.entities.Incident.list('-created_date', 50),
     initialData: [],
   });
 

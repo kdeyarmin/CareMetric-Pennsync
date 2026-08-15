@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from "@/hooks/useScopedPatients";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AICarePlanSuggestionEngine from "../components/carePlan/AICarePlanSuggestionEngine";
@@ -98,9 +99,9 @@ export default function CarePlanManagement() {
   );
 
   // Fetch all care plans
-  const { data: carePlans = [], isLoading } = useQuery({
+  const { data: carePlans = [], isLoading } = useAgencyScopedQuery({
     queryKey: ['allCarePlans'],
-    queryFn: () => base44.entities.CarePlan.list('-created_date', 500),
+    fetch: () => base44.entities.CarePlan.list('-created_date', 500),
     initialData: [],
   });
 

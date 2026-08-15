@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,9 +10,9 @@ import { format } from "date-fns";
 
 export default function OASISComplianceReport({ dateRange }) {
   // Without a limit Base44 caps at 50, truncating the compliance rates below.
-  const { data: oasisAssessments = [] } = useQuery({
+  const { data: oasisAssessments = [] } = useAgencyScopedQuery({
     queryKey: ['allOASISAssessments'],
-    queryFn: () => base44.entities.OASISAssessment.list('-created_date', 10000),
+    fetch: () => base44.entities.OASISAssessment.list('-created_date', 10000),
     initialData: [],
   });
 

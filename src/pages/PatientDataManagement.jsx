@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import DuplicateScanner from "../components/patient/DuplicateScanner";
 import PatientFileUpdateUploader from "../components/patient/PatientFileUpdateUploader";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
 import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
@@ -89,9 +90,9 @@ export default function PatientDataManagement() {
     enabled: isAdmin,
   });
 
-  const { data: allVisits = [] } = useQuery({
+  const { data: allVisits = [] } = useAgencyScopedQuery({
     queryKey: ['allVisits'],
-    queryFn: async () => {
+    fetch: async () => {
       try {
         return await base44.entities.Visit.list('-visit_date', 500);
       } catch (err) {
@@ -103,9 +104,9 @@ export default function PatientDataManagement() {
     enabled: isAdmin,
   });
 
-  const { data: allAlerts = [] } = useQuery({
+  const { data: allAlerts = [] } = useAgencyScopedQuery({
     queryKey: ['allAlerts'],
-    queryFn: async () => {
+    fetch: async () => {
       try {
         return await base44.entities.PatientAlert.list('-created_date', 200);
       } catch (err) {
@@ -117,9 +118,9 @@ export default function PatientDataManagement() {
     enabled: isAdmin,
   });
 
-  const { data: allIncidents = [] } = useQuery({
+  const { data: allIncidents = [] } = useAgencyScopedQuery({
     queryKey: ['allIncidents'],
-    queryFn: async () => {
+    fetch: async () => {
       try {
         return await base44.entities.Incident.list('-incident_date', 200);
       } catch (err) {

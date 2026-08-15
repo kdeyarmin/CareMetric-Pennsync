@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
@@ -81,9 +82,9 @@ export default function RealTimeComplianceDashboard() {
     enabled: !!currentUser,
   });
 
-  const { data: allVisits = [] } = useQuery({
+  const { data: allVisits = [] } = useAgencyScopedQuery({
     queryKey: ['allVisits'],
-    queryFn: () => base44.entities.Visit.list('-visit_date', 500),
+    fetch: () => base44.entities.Visit.list('-visit_date', 500),
   });
 
   const { data: allPatients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });

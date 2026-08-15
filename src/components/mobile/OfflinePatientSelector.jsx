@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,9 +25,9 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: allVisits = [] } = useQuery({
+  const { data: allVisits = [] } = useAgencyScopedQuery({
     queryKey: ['upcomingVisits'],
-    queryFn: async () => {
+    fetch: async () => {
       const _today = todayEastern();
       return base44.entities.Visit.filter({ 
         status: 'scheduled'

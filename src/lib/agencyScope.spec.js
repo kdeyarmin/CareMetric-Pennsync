@@ -5,6 +5,7 @@ import {
   filterPatientsByCallerAgency,
   describePatientAgencyScope,
   filterRowsByStaffAgency,
+  filterRecordsByAuthorAgency,
   agencyStaffEmails,
 } from './agencyScope.js';
 
@@ -215,6 +216,67 @@ describe('agencyScope', () => {
 
     it('handles non-array rows', () => {
       expect(filterRowsByStaffAgency(null, users, acmeAdmin, emailOf)).toEqual([]);
+    });
+  });
+
+  describe('filterRecordsByAuthorAgency', () => {
+    const visits = [
+      { id: 'ours', created_by: 'a@x.com' },
+      { id: 'theirs', created_by: 'b@x.com' },
+      { id: 'departed', created_by: 'blydic@x.com' }, // author no longer on the roster
+      { id: 'bare' },
+    ];
+
+    it('hides only records authored by another agency', () => {
+      const out = filterRecordsByAuthorAgency(visits, users, acmeAdmin);
+      expect(out.map((r) => r.id)).toEqual(['ours', 'departed', 'bare']);
+    });
+
+    // The reason this is not filterRowsByStaffAgency. On live data 17 of 198
+    // visits were authored by a nurse who has since left; the strict rule
+    // deletes their charting from every clinical view.
+    it('keeps records whose author has left the roster', () => {
+      const out = filterRecordsByAuthorAgency(visits, users, acmeAdmin);
+      expect(out.map((r) => r.id)).toContain('departed');
+      // Contrast with the payroll rule, which correctly drops them.
+      const strict = filterRowsByStaffAgency(visits, users, acmeAdmin, (r) => r.created_by);
+      expect(strict.map((r) => r.id)).not.toContain('departed');
+    });
+
+    it('honours an explicit agency tag on the record', () => {
+      const tagged = [
+        { id: 'ours', agency_name: 'Acme', created_by: 'b@x.com' },
+        { id: 'theirs', agency_name: 'Other', created_by: 'a@x.com' },
+      ];
+      expect(filterRecordsByAuthorAgency(tagged, users, acmeAdmin).map((r) => r.id))
+        .toEqual(['ours']);
+    });
+
+    it('accepts a custom author field', () => {
+      const docs = [
+        { id: 'ours', uploaded_by: 'a@x.com' },
+        { id: 'theirs', uploaded_by: 'b@x.com' },
+      ];
+      const out = filterRecordsByAuthorAgency(docs, users, acmeAdmin, (d) => d.uploaded_by);
+      expect(out.map((r) => r.id)).toEqual(['ours']);
+    });
+
+    it('fails closed for a missing caller and for agency_admin with no agency', () => {
+      expect(filterRecordsByAuthorAgency(visits, users, null)).toEqual([]);
+      expect(filterRecordsByAuthorAgency(visits, users, { account_type: 'agency_admin' })).toEqual([]);
+    });
+
+    it('leaves super_admin and platform admins unfiltered', () => {
+      expect(filterRecordsByAuthorAgency(visits, users, { account_type: 'super_admin' })).toHaveLength(4);
+      expect(filterRecordsByAuthorAgency(visits, users, { role: 'admin' })).toHaveLength(4);
+    });
+
+    it('does not empty the list when the roster fails to load', () => {
+      expect(filterRecordsByAuthorAgency(visits, [], acmeAdmin)).toHaveLength(4);
+    });
+
+    it('handles non-array rows', () => {
+      expect(filterRecordsByAuthorAgency(null, users, acmeAdmin)).toEqual([]);
     });
   });
 

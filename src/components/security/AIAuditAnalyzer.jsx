@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { base44 } from '@/api/base44Client';
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -31,9 +32,9 @@ export default function AIAuditAnalyzer() {
     enabled: isAdminView(user),
   });
 
-  const { data: visits = [] } = useQuery({
+  const { data: visits = [] } = useAgencyScopedQuery({
     queryKey: ['visits-audit'],
-    queryFn: () => base44.entities.Visit.list('-created_date', 200),
+    fetch: () => base44.entities.Visit.list('-created_date', 200),
     enabled: isAdminView(user),
   });
 

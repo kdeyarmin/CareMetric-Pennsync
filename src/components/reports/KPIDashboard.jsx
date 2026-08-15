@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -44,9 +45,9 @@ export default function KPIDashboard({ dateRange }) {
     initialData: [],
   });
 
-  const { data: oasisAssessments = [] } = useQuery({
+  const { data: oasisAssessments = [] } = useAgencyScopedQuery({
     queryKey: ['allOASISAssessments', dateRange],
-    queryFn: () => base44.entities.OASISAssessment.list('-created_date', 5000),
+    fetch: () => base44.entities.OASISAssessment.list('-created_date', 5000),
     initialData: [],
   });
 
@@ -56,9 +57,9 @@ export default function KPIDashboard({ dateRange }) {
     initialData: [],
   });
 
-  const { data: patientAlerts = [] } = useQuery({
+  const { data: patientAlerts = [] } = useAgencyScopedQuery({
     queryKey: ['allPatientAlerts'],
-    queryFn: () => base44.entities.PatientAlert.list('-created_date', 5000),
+    fetch: () => base44.entities.PatientAlert.list('-created_date', 5000),
     initialData: [],
   });
 

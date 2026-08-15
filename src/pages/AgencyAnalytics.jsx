@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
@@ -40,12 +41,12 @@ export default function AgencyAnalytics() {
   const isAdmin = isAdminView(currentUser);
 
   // Fetch all necessary data
-  const { data: visits = [] } = useQuery({
+  const { data: visits = [] } = useAgencyScopedQuery({
     // Limit is part of the identity: PatientRecordDashboard reads only 500 rows
     // under the same root, and sharing one entry silently truncated whichever
     // page mounted second.
     queryKey: ['all-visits', 'created', 1000],
-    queryFn: () => base44.entities.Visit.list('-created_date', 1000),
+    fetch: () => base44.entities.Visit.list('-created_date', 1000),
     initialData: [],
     enabled: isAdmin,
   });
@@ -72,9 +73,9 @@ export default function AgencyAnalytics() {
 
   const { data: allPatients = [] } = useScopedPatients({ sort: '-created_date', limit: 5000, enabled: (isAdmin) });
 
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [] } = useAgencyScopedQuery({
     queryKey: ['all-incidents'],
-    queryFn: () => base44.entities.Incident.list('-created_date', 1000),
+    fetch: () => base44.entities.Incident.list('-created_date', 1000),
     initialData: [],
     enabled: isAdmin,
   });

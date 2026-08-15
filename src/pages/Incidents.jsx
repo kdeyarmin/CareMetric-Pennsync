@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients, activeAndNotArchived } from "@/hooks/useScopedPatients";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
@@ -24,9 +25,9 @@ export default function Incidents() {
     select: activeAndNotArchived,
   });
 
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [] } = useAgencyScopedQuery({
     queryKey: ["my-incidents"],
-    queryFn: () => base44.entities.Incident.list("-created_date", 10),
+    fetch: () => base44.entities.Incident.list("-created_date", 10),
     initialData: [],
   });
 

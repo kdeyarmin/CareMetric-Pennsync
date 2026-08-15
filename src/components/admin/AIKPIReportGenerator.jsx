@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
@@ -33,9 +34,9 @@ export default function AIKPIReportGenerator() {
   const [report, setReport] = useState(null);
   const ai = useAICall();
 
-  const { data: visits = [] } = useQuery({
+  const { data: visits = [] } = useAgencyScopedQuery({
     queryKey: ['visitsForKPI'],
-    queryFn: () => base44.entities.Visit.list('-created_date', 500),
+    fetch: () => base44.entities.Visit.list('-created_date', 500),
     initialData: [],
   });
 
@@ -47,9 +48,9 @@ export default function AIKPIReportGenerator() {
     initialData: [],
   });
 
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [] } = useAgencyScopedQuery({
     queryKey: ['incidentsForKPI'],
-    queryFn: () => base44.entities.Incident.list('-created_date', 200),
+    fetch: () => base44.entities.Incident.list('-created_date', 200),
     initialData: [],
   });
 

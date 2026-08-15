@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -173,13 +174,18 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
 
   const queryClient = useQueryClient();
 
-  const { data: documents = [], isLoading } = useQuery({
+  const { data: documents = [], isLoading } = useAgencyScopedQuery({
     // Row limit is part of the identity — DocumentFaxSender reads 100 rows
     // under the same roots (see its comment).
     queryKey: patientId ? ['patient-documents', patientId, 500] : ['documents', 500],
-    queryFn: () => patientId
+    fetch: () => patientId
       ? base44.entities.Document.filter({ patient_id: patientId }, '-created_date', 500)
       : base44.entities.Document.list('-created_date', 500),
+    // Only the unpinned branch reads across charts. The patient_id branch is
+    // already narrower than agency, and scoping it would hide a document on
+    // THIS chart uploaded by a co-treating clinician from another agency.
+    scoped: !patientId,
+    authorOf: (d) => d.uploaded_by || d.created_by,
     initialData: []
   });
 

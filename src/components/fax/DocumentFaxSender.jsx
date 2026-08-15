@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,14 +30,19 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
   const [showAnnotator, setShowAnnotator] = useState(false);
   const [annotatedUrl, setAnnotatedUrl] = useState(null);
 
-  const { data: documents = [] } = useQuery({
+  const { data: documents = [] } = useAgencyScopedQuery({
     // DocumentList reads 500 rows under these same keys; without the limit in
     // the key the larger list was silently truncated to 100 (or this picker
     // over-fetched) depending on mount order. Prefix invalidation still works.
     queryKey: patientId ? ['patient-documents', patientId, 100] : ['documents', 100],
-    queryFn: () => patientId
+    fetch: () => patientId
       ? base44.entities.Document.filter({ patient_id: patientId }, '-created_date', 100)
       : base44.entities.Document.list('-created_date', 100),
+    // Only the unpinned branch reads across charts. Scoping the patient_id
+    // branch would drop a document from the fax picker on the very chart it
+    // belongs to, if a clinician outside this agency uploaded it.
+    scoped: !patientId,
+    authorOf: (d) => d.uploaded_by || d.created_by,
     initialData: []
   });
 

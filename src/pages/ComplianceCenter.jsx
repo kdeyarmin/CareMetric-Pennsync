@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useAICall } from "@/hooks/useAICall";
@@ -140,9 +141,9 @@ export default function ComplianceCenter() {
     refetchInterval: 30000,
   });
 
-  const { data: _visits = [], refetch: _refetchVisits } = useQuery({
+  const { data: _visits = [], refetch: _refetchVisits } = useAgencyScopedQuery({
     queryKey: ['allVisits'],
-    queryFn: () => base44.entities.Visit.filter({}, '-visit_date', 500),
+    fetch: () => base44.entities.Visit.filter({}, '-visit_date', 500),
     initialData: [],
     refetchInterval: 30000,
   });
