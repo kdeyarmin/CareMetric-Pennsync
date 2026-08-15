@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
+import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const { patientList, patientFilter, userList, authMe } = vi.hoisted(() => ({
@@ -19,7 +20,9 @@ vi.mock('@/api/base44Client', () => ({
   },
 }));
 
-const { useScopedPatients } = await import('./useScopedPatients.js');
+const {
+  useScopedPatients, excludeArchived, onlyActive, activeAndNotArchived,
+} = await import('./useScopedPatients.js');
 const { resetAgencyRosterCache } = await import('@/lib/agencyRoster.js');
 
 const ROWS = [
@@ -123,6 +126,65 @@ describe('useScopedPatients', () => {
     renderHook(() => useScopedPatients({ limit: 100 }), { wrapper: shared });
     renderHook(() => useScopedPatients({ limit: 2000 }), { wrapper: shared });
     await waitFor(() => expect(patientList).toHaveBeenCalledTimes(2));
+  });
+
+  describe('shared selectors', () => {
+    const rows = [
+      { id: 'live', status: 'active', is_archived: false },
+      { id: 'archived', status: 'active', is_archived: true },
+      { id: 'discharged', status: 'discharged', is_archived: false },
+    ];
+
+    it('excludeArchived drops merged/archived charts', () => {
+      expect(excludeArchived(rows).map((p) => p.id)).toEqual(['live', 'discharged']);
+    });
+
+    it('onlyActive keeps active charts regardless of archive flag', () => {
+      expect(onlyActive(rows).map((p) => p.id)).toEqual(['live', 'archived']);
+    });
+
+    it('activeAndNotArchived requires both', () => {
+      expect(activeAndNotArchived(rows).map((p) => p.id)).toEqual(['live']);
+    });
+
+    // The reason the selectors are module-level at all, and the reason
+    // queryKeyContract rejects inline arrows: React Query memoizes `select` by
+    // reference (queryObserver: `options.select === selectFn`). A fresh arrow
+    // per render re-filters the entire roster on every render.
+    it('runs once per fetch, not once per render', async () => {
+      const spy = vi.fn(excludeArchived);
+      const { result } = renderHook(() => {
+        const [, force] = useState(0);
+        const query = useScopedPatients({ select: spy });
+        return { query, force };
+      }, { wrapper });
+
+      // Wait for the FETCHED rows, not merely for `data` to exist — initialData
+      // makes it defined on the first render, well before the roster lands.
+      await waitFor(() => expect(result.current.query.data).toHaveLength(2));
+      const afterLoad = spy.mock.calls.length;
+      act(() => result.current.force((n) => n + 1));
+      act(() => result.current.force((n) => n + 1));
+      expect(spy.mock.calls.length).toBe(afterLoad);
+    });
+
+    // The other half of the contract: this is what the stable reference buys.
+    // If React Query ever memoizes `select` by something other than identity,
+    // this test starts failing and the queryKeyContract guard can be dropped.
+    it('re-runs on every render when the reference is NOT stable', async () => {
+      const spy = vi.fn(excludeArchived);
+      const { result } = renderHook(() => {
+        const [, force] = useState(0);
+        const query = useScopedPatients({ select: (r) => spy(r) });
+        return { query, force };
+      }, { wrapper });
+
+      await waitFor(() => expect(result.current.query.data).toHaveLength(2));
+      const afterLoad = spy.mock.calls.length;
+      act(() => result.current.force((n) => n + 1));
+      act(() => result.current.force((n) => n + 1));
+      expect(spy.mock.calls.length).toBeGreaterThan(afterLoad);
+    });
   });
 
   it('does not share a cache entry between the full and active-only rosters', async () => {

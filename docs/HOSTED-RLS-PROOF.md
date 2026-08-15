@@ -180,10 +180,17 @@ Before enabling multi-tenancy, in this order:
 3. Only then populate `User.agency_name` / `agency_id`. Doing this before the
    backfill is the outage.
 
+Staff-keyed rows — timesheets, payroll profiles, anything carrying an employee
+email — go through `filterRowsByStaffAgency()`. It shares the fail-closed rules
+above by construction, which is why it exists: three payroll queries previously
+re-derived the scoped check inline and returned the **unfiltered** rows whenever
+it came out false. That is correct for a platform admin, but the same branch
+catches an `agency_admin` whose `agency_name` is blank — the one caller that has
+to fail closed. Those saw every agency's timesheets and pay rates.
+
 Read the roster through `useScopedPatients()` (`src/hooks/useScopedPatients.js`),
 or `scopePatientsToCallerAgency()` / `scopePatientsForCurrentCaller()` when the
-read is imperative. Three contract tests in `src/queryKeyContract.test.js`
-enforce it:
+read is imperative. Contract tests in `src/queryKeyContract.test.js` enforce it:
 
 1. **Every cross-chart patient read is scoped.** Covers `Patient.list(…)` and
    `Patient.filter({ … })` alike. A read pinned to specific ids, or to the
@@ -194,6 +201,15 @@ enforce it:
 3. **Every patient roster query is rooted at `['patients', …]`**, the key that
    patient create / merge / delete invalidate. Prefix matching is per array
    element, so `['allPatients', …]` was never reached.
+4. **The agency-scoped check has exactly one implementation.** Any file
+   re-deriving `account_type !== 'super_admin' && agency && (agency_admin ||
+   role === 'admin')` inline fails the build; call `isCallerAgencyScoped()`.
+   Every copy has to remember the fail-closed case independently, and the ones
+   that forgot leaked payroll data.
+5. **Roster selectors are stable references.** React Query memoizes `select` by
+   identity, so an inline arrow re-filters the whole roster on every render
+   (up to 10,000 rows here). Use a shared selector from the hook module, or
+   `useCallback`/`useMemo` when it closes over props or state.
 
 Note that `src/components/offline/OfflineManager.jsx` mirrors the roster into
 IndexedDB. That read must stay scoped: it is the roster every offline fallback

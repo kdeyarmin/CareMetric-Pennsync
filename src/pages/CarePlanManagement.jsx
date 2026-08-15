@@ -118,11 +118,19 @@ export default function CarePlanManagement() {
   // fetched are the same whatever `visiblePatientIds` happens to be, so this
   // shares one cache entry with the other 2000-row consumers instead of
   // refetching the whole roster every time the visible set changes.
+  // useCallback, not an inline arrow: React Query memoizes `select` by
+  // reference, so a fresh arrow each render re-filters all 2000 rows every
+  // render. A Set drops the per-row includes() scan while we are here.
+  const selectVisible = useCallback((rows) => {
+    const visible = new Set(visiblePatientIds);
+    return rows.filter(p => visible.has(p.id));
+  }, [visiblePatientIds]);
+
   const { data: patients = [] } = useScopedPatients({
     sort: '-updated_date',
     limit: 2000,
     enabled: visiblePatientIds.length > 0,
-    select: (rows) => rows.filter(p => visiblePatientIds.includes(p.id)),
+    select: selectVisible,
   });
 
   // Fetch visits for selected patient

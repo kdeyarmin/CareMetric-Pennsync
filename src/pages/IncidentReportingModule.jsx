@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { isAdminView } from "@/lib/roles";
@@ -105,10 +105,17 @@ export default function IncidentReportingModule() {
   // cache entry. The email no longer needs to be in the key: `select` runs per
   // render against whoever is signed in now, rather than being baked into a
   // cached result that a session change would keep serving.
+  // useCallback, not an inline arrow: React Query memoizes `select` by
+  // reference, so a fresh arrow each render re-filters all 2000 rows every render.
+  const selectMine = useCallback(
+    (rows) => rows.filter(p => p.assigned_nurses?.includes(currentUser?.email)),
+    [currentUser?.email],
+  );
+
   const { data: myPatients = [] } = useScopedPatients({
     sort: '-updated_date',
     limit: 2000,
-    select: (rows) => rows.filter(p => p.assigned_nurses?.includes(currentUser?.email)),
+    select: selectMine,
   });
 
   const { data: incidents = [], _isLoading } = useQuery({

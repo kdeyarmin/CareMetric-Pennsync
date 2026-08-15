@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import DuplicateScanner from "../components/patient/DuplicateScanner";
 import PatientFileUpdateUploader from "../components/patient/PatientFileUpdateUploader";
 import { base44 } from "@/api/base44Client";
-import { useScopedPatients } from "@/hooks/useScopedPatients";
+import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
 import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -85,7 +85,7 @@ export default function PatientDataManagement() {
   const { data: patients = [], isLoading } = useScopedPatients({
     sort: '-created_date',
     limit: 2000,
-    select: (rows) => rows.filter(patient => !patient.is_archived),
+    select: excludeArchived,
     enabled: isAdmin,
   });
 

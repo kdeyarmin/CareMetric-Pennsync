@@ -310,6 +310,69 @@ test('every patient roster query is rooted at the key patient mutations invalida
   );
 });
 
+test('roster selectors are stable references, not inline arrows', () => {
+  // React Query memoizes `select` by REFERENCE — queryObserver compares
+  // `options.select === selectFn`. An inline arrow is a fresh reference on every
+  // render, so the filter re-runs every render (plus a structural-sharing pass
+  // over its result) instead of once per fetch. Over the rosters here — up to
+  // 10,000 rows — that is real work on every keystroke and dialog toggle.
+  // Use a module-level selector, or useCallback/useMemo when it closes over
+  // props or state.
+  const inline = [];
+  for (const file of collectSources(ROOT)) {
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/useScopedPatients\s*\(\s*\{/g)) {
+      const body = readBalanced(text, text.indexOf('{', m.index + m[0].length - 1));
+      const select = optionValue(body, 'select');
+      if (!select || !/=>|\bfunction\b/.test(select)) continue;
+      inline.push(
+        `  ${file.slice(process.cwd().length + 1).replace(/\\/g, '/')}`
+          + `:${text.slice(0, m.index).split('\n').length}  →  select: ${normalize(select).slice(0, 60)}`,
+      );
+    }
+  }
+
+  assert.deepEqual(
+    inline,
+    [],
+    'These useScopedPatients call sites pass an inline `select`, which React '
+      + 'Query cannot memoize, so it re-filters the whole roster on every render. '
+      + 'Import a shared selector from @/hooks/useScopedPatients, or wrap it in '
+      + 'useCallback when it closes over props/state:\n'
+      + inline.join('\n'),
+  );
+});
+
+test('the agency-scoped check has exactly one implementation', () => {
+  // Four files hand-rolled `isCallerAgencyScoped` inline. Three of them — every
+  // payroll query in Timesheets.jsx — then returned the UNFILTERED rows when it
+  // came out false, which is right for a platform admin but also catches an
+  // agency_admin whose agency_name is blank. That caller saw every agency's
+  // timesheets, pay rates and payroll profiles. The two copies that got it right
+  // carried a separate fail-closed line; the ones that didn't, failed open.
+  //
+  // The rule lives in src/lib/agencyScope.js and nowhere else.
+  const copies = [];
+  for (const file of collectSources(ROOT)) {
+    const rel = file.slice(process.cwd().length + 1).replace(/\\/g, '/');
+    if (rel === 'src/lib/agencyScope.js') continue;
+    const text = normalize(readFileSync(file, 'utf8')).replace(/["']/g, "'");
+    if (!/account_type !== 'super_admin'/.test(text)) continue;
+    if (!/account_type === 'agency_admin' \|\| \w+\??\.?role === 'admin'/.test(text)) continue;
+    copies.push(`  ${rel}`);
+  }
+
+  assert.deepEqual(
+    copies,
+    [],
+    'These files re-derive "is this caller agency-scoped" inline instead of '
+      + 'calling isCallerAgencyScoped() from @/lib/agencyScope. Every copy has to '
+      + 'remember the agency_admin-without-agency case independently, and the ones '
+      + 'that forgot leaked other tenants\' payroll data:\n'
+      + copies.join('\n'),
+  );
+});
+
 test('the signature reducer distinguishes the shapes that matter', () => {
   // Scoped vs unscoped over the same entity is the PHI-leaking case.
   assert.notEqual(

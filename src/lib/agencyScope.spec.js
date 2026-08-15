@@ -4,6 +4,7 @@ import {
   filterUsersByCallerAgency,
   filterPatientsByCallerAgency,
   describePatientAgencyScope,
+  filterRowsByStaffAgency,
   agencyStaffEmails,
 } from './agencyScope.js';
 
@@ -166,6 +167,54 @@ describe('agencyScope', () => {
       const summary = describePatientAgencyScope(patients, users, acmeAdmin);
       const filtered = filterPatientsByCallerAgency(patients, users, acmeAdmin);
       expect(filtered).toHaveLength(summary.visible);
+    });
+  });
+
+  describe('filterRowsByStaffAgency', () => {
+    const timesheets = [
+      { id: 'ours', employee_email: 'a@x.com' },
+      { id: 'theirs', employee_email: 'b@x.com' },
+      { id: 'ours2', employee_email: 'c@x.com' },
+      { id: 'orphan', employee_email: 'gone@x.com' },
+    ];
+    const emailOf = (row) => row.employee_email;
+
+    it('keeps only rows owned by same-agency staff', () => {
+      const out = filterRowsByStaffAgency(timesheets, users, acmeAdmin, emailOf);
+      expect(out.map((r) => r.id)).toEqual(['ours', 'ours2']);
+    });
+
+    // The bug this replaced: three payroll queries recomputed the scoped check
+    // inline and returned the UNFILTERED rows whenever it came out false. For an
+    // agency_admin with a blank agency_name that is false, so they saw every
+    // agency's timesheets, pay rates and payroll profiles.
+    it('fails CLOSED for an agency_admin with no agency, not open', () => {
+      const out = filterRowsByStaffAgency(
+        timesheets, users, { account_type: 'agency_admin' }, emailOf,
+      );
+      expect(out).toEqual([]);
+    });
+
+    it('leaves super_admin and platform admins unfiltered', () => {
+      expect(filterRowsByStaffAgency(
+        timesheets, users, { account_type: 'super_admin', agency_name: 'Acme' }, emailOf,
+      )).toHaveLength(4);
+      expect(filterRowsByStaffAgency(
+        timesheets, users, { role: 'admin' }, emailOf,
+      )).toHaveLength(4);
+    });
+
+    it('fails closed while the caller is loading', () => {
+      expect(filterRowsByStaffAgency(timesheets, users, null, emailOf)).toEqual([]);
+    });
+
+    it('drops rows whose owner is not a known user', () => {
+      const out = filterRowsByStaffAgency(timesheets, users, acmeAdmin, emailOf);
+      expect(out.map((r) => r.id)).not.toContain('orphan');
+    });
+
+    it('handles non-array rows', () => {
+      expect(filterRowsByStaffAgency(null, users, acmeAdmin, emailOf)).toEqual([]);
     });
   });
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useScopedPatients } from "@/hooks/useScopedPatients";
+import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -43,7 +43,7 @@ export default function DuplicatePatients() {
     sort: '-created_date',
     limit: 10000,
     // Don't surface already-archived/merged records as fresh duplicates.
-    select: (rows) => rows.filter((p) => !p.is_archived),
+    select: excludeArchived,
     // Always pull a fresh roster when the page mounts. Caching let the page show
     // duplicate groups computed from a STALE roster (and from before matching-logic
     // fixes deployed), which looked like "the fix didn't work" when it actually had.

@@ -76,6 +76,30 @@ export function agencyStaffEmails(users, caller) {
 }
 
 /**
+ * Filter rows that carry a staff email — timesheets, payroll profiles, anything
+ * keyed to an employee — to the caller's agency. `emailOf` pulls the staff email
+ * off a row.
+ *
+ * Same fail-closed / platform-admin rules as filterUsersByCallerAgency, which is
+ * the whole point of it existing: hand-rolled copies of this shape recomputed
+ * `isCallerAgencyScoped` inline and then returned the UNFILTERED rows whenever
+ * it came out false. That reads as "this caller is not agency-scoped, so show
+ * everything", but it also catches an agency_admin whose agency_name is blank —
+ * the one case that has to fail closed rather than open.
+ */
+export function filterRowsByStaffAgency(rows, users, caller, emailOf) {
+  if (!Array.isArray(rows)) return [];
+  if (!caller) return [];
+  if (caller.account_type === 'agency_admin' && !norm(caller.agency_name)) {
+    return [];
+  }
+  if (caller.account_type === 'super_admin') return rows;
+  if (!norm(caller.agency_name)) return rows;
+  const emails = agencyStaffEmails(users, caller);
+  return rows.filter((row) => emails.has(emailOf(row)));
+}
+
+/**
  * Reduce (users, caller) to what patient filtering actually needs.
  * mode 'none' → caller sees nothing (fail closed); 'all' → caller sees
  * everything (platform admin / super_admin); 'agency' → compare per chart.

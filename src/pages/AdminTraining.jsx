@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { isCallerAgencyScoped } from "@/lib/agencyScope";
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
@@ -110,9 +111,7 @@ export default function AdminTraining() {
     // in-agency — do not fall through to department/location across tenants.
     if (currentUser.account_type === "agency_admin" && !currentUser.agency_name) return [];
     const agency = String(currentUser.agency_name || "").trim();
-    const isAgencyScoped = currentUser.account_type !== "super_admin"
-      && agency
-      && (currentUser.account_type === "agency_admin" || currentUser.role === "admin");
+    const isAgencyScoped = isCallerAgencyScoped(currentUser);
     return users.filter((user) => {
       if (!user.email || user.role === "admin") return false;
       if (isAgencyScoped) return user.agency_name === agency;

@@ -46,6 +46,25 @@ import { format, subDays } from "date-fns";
 import PerformanceMetricsCard from "../components/analytics/PerformanceMetricsCard";
 import UserPerformanceTable from "../components/analytics/UserPerformanceTable";
 
+/**
+ * Build a "rows within [startDate, endDate] for this user" filter.
+ *
+ * The bounds are computed ONCE per selector rather than inside the per-row
+ * predicate, where `new Date(startDate + 'T00:00:00')` and its endDate twin were
+ * rebuilt for every row — 20,000 throwaway Dates per 10,000-row pass, on each of
+ * three queries. Local-midnight parsing is preserved, so a date-only bound is
+ * still compared on the local calendar day rather than in UTC.
+ */
+function rangeSelector(startDate, endDate, selectedUser, dateOf, emailOf) {
+  const from = new Date(`${startDate}T00:00:00`);
+  const to = new Date(`${endDate}T23:59:59.999`);
+  return (data) => data.filter((row) => {
+    const at = new Date(dateOf(row));
+    if (!(at >= from && at <= to)) return false;
+    return selectedUser === 'all' || emailOf(row) === selectedUser;
+  });
+}
+
 export default function AnalyticsDashboard() {
   const [dateRange, setDateRange] = useState("30");
   const [selectedUser, setSelectedUser] = useState("all");
@@ -70,42 +89,43 @@ export default function AnalyticsDashboard() {
     enabled: isAdmin,
   });
 
+  // Memoized so the reference is stable between renders: React Query compares
+  // `select` by identity, so an inline arrow re-filters all 10,000 rows on every
+  // render. Three of these ran per render before.
+  const selectNoteConversions = useMemo(
+    () => rangeSelector(startDate, endDate, selectedUser, (nc) => nc.created_date, (nc) => nc.nurse_email),
+    [startDate, endDate, selectedUser],
+  );
+  const selectComplianceAudits = useMemo(
+    () => rangeSelector(startDate, endDate, selectedUser, (ca) => ca.audit_date || ca.created_date, (ca) => ca.nurse_email),
+    [startDate, endDate, selectedUser],
+  );
+  const selectUserActivities = useMemo(
+    () => rangeSelector(startDate, endDate, selectedUser, (ua) => ua.created_date, (ua) => ua.user_email),
+    [startDate, endDate, selectedUser],
+  );
+
   // Fetch note conversions
   const { data: noteConversions = [] } = useQuery({
     queryKey: ['noteConversions', selectedUser, startDate, endDate],
     // Without a limit Base44 returns only the 50 newest rows, so any selected date
     // range older than those 50 showed zero/partial data and skewed the averages.
     queryFn: () => base44.entities.NoteConversion.list('-created_date', 10000),
-    select: (data) => data.filter(nc => {
-      const ncDate = new Date(nc.created_date);
-      const inDateRange = ncDate >= new Date(startDate + 'T00:00:00') && ncDate <= new Date(endDate + 'T23:59:59.999');
-      const userMatch = selectedUser === 'all' || nc.nurse_email === selectedUser;
-      return inDateRange && userMatch;
-    }),
+    select: selectNoteConversions,
   });
 
   // Fetch compliance audits
   const { data: complianceAudits = [] } = useQuery({
     queryKey: ['complianceAudits', selectedUser, startDate, endDate],
     queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 10000),
-    select: (data) => data.filter(ca => {
-      const caDate = new Date(ca.audit_date || ca.created_date);
-      const inDateRange = caDate >= new Date(startDate + 'T00:00:00') && caDate <= new Date(endDate + 'T23:59:59.999');
-      const userMatch = selectedUser === 'all' || ca.nurse_email === selectedUser;
-      return inDateRange && userMatch;
-    }),
+    select: selectComplianceAudits,
   });
 
   // Fetch user activities
   const { data: userActivities = [] } = useQuery({
     queryKey: ['userActivities', selectedUser, startDate, endDate],
     queryFn: () => base44.entities.UserActivity.list('-created_date', 10000),
-    select: (data) => data.filter(ua => {
-      const uaDate = new Date(ua.created_date);
-      const inDateRange = uaDate >= new Date(startDate + 'T00:00:00') && uaDate <= new Date(endDate + 'T23:59:59.999');
-      const userMatch = selectedUser === 'all' || ua.user_email === selectedUser;
-      return inDateRange && userMatch;
-    }),
+    select: selectUserActivities,
   });
 
   // Average only rows that actually carry the metric — treating a missing

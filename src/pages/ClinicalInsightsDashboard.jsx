@@ -1,5 +1,5 @@
 import { base44 } from "@/api/base44Client";
-import { useScopedPatients } from "@/hooks/useScopedPatients";
+import { useScopedPatients, onlyActive } from "@/hooks/useScopedPatients";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, Users, TrendingUp, AlertTriangle, Brain } from "lucide-react";
@@ -18,7 +18,7 @@ export default function ClinicalInsightsDashboard() {
     sort: '-updated_date',
     limit: 2000,
     // For nurses, filter to their assigned patients (simplification - all active for now)
-    select: (rows) => rows.filter(p => p.status === "active"),
+    select: onlyActive,
   });
 
   const { data: visits = [] } = useQuery({

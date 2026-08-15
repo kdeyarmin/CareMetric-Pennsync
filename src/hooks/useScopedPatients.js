@@ -66,4 +66,24 @@ export function useScopedPatients({
   });
 }
 
+/**
+ * Shared roster selectors.
+ *
+ * React Query memoizes `select` by REFERENCE (`options.select === selectFn` in
+ * queryObserver), so an inline arrow is a fresh reference on every render and
+ * the filter re-runs every time — over rosters up to 10,000 rows here, plus the
+ * structural-sharing pass over its result. Module-level selectors are stable for
+ * the life of the module, so the filter runs once per fetch instead.
+ *
+ * A selector that closes over props or state cannot live here; wrap those in
+ * `useCallback` at the call site so they are stable between renders.
+ */
+export const excludeArchived = (rows) => rows.filter((p) => !p.is_archived);
+
+export const onlyActive = (rows) => rows.filter((p) => p.status === 'active');
+
+export const activeAndNotArchived = (rows) => rows.filter(
+  (p) => !p.is_archived && p.status === 'active',
+);
+
 export default useScopedPatients;

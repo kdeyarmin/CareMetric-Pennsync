@@ -1,5 +1,5 @@
 import { base44 } from "@/api/base44Client";
-import { useScopedPatients } from "@/hooks/useScopedPatients";
+import { useScopedPatients, activeAndNotArchived } from "@/hooks/useScopedPatients";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,7 +21,7 @@ export default function Incidents() {
   const { data: patients = [] } = useScopedPatients({
     sort: "-updated_date",
     limit: 500,
-    select: (rows) => rows.filter((patient) => !patient.is_archived && patient.status === "active"),
+    select: activeAndNotArchived,
   });
 
   const { data: incidents = [] } = useQuery({

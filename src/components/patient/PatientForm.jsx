@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { useScopedPatients } from "@/hooks/useScopedPatients";
+import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,7 +62,7 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
     limit: 2000,
     enabled: !patient,
     staleTime: 60000,
-    select: (rows) => rows.filter((p) => !p.is_archived),
+    select: excludeArchived,
   });
 
   const handleOCRDataExtracted = (extractedData) => {
