@@ -30,8 +30,31 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Assignment not found' }, { status: 404 });
     }
 
-    if (!isAdminUser(user) && assignment.assigned_to_user_id !== user.email) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    // The assignee may start their own assignment; admins may start others' —
+    // but an agency-scoped admin only within their own agency. A bare
+    // isAdminUser() check let an agency_admin of one tenant flip another
+    // tenant's assignment to in_progress and stamp a TrainingAuditLog for it.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    // A user who is BOTH account_type agency_admin AND role admin with no
+    // agency_name must NOT be promoted to platform-wide via the bare-role:admin
+    // path — an agency_admin without an agency_name fails closed by design.
+    const isPlatformAdmin = isSuperAdmin
+      || (user.role === 'admin' && user.account_type !== 'agency_admin' && !String(user.agency_name || '').trim());
+    const isAgencyScopedAdmin = !isPlatformAdmin
+      && (user.account_type === 'agency_admin' || user.role === 'admin');
+    const isAssignee = assignment.assigned_to_user_id === user.email;
+    if (!isAssignee && !isPlatformAdmin) {
+      if (!isAgencyScopedAdmin) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      const agency = String(user.agency_name || '').trim();
+      const [assignee] = agency
+        ? await base44.asServiceRole.entities.User
+            .filter({ email: assignment.assigned_to_user_id }, undefined, 5).catch(() => [])
+        : [];
+      if (!agency || !assignee || assignee.agency_name !== agency) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     const now = new Date().toISOString();

@@ -200,7 +200,12 @@ Deno.serve(async (req) => {
       user.account_type === 'agency_admin'
       || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
     const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    if (originalFax.sent_by && originalFax.sent_by !== user.email && !isPlatformAdmin && !isAgencyScopedAdmin) {
+    // Fail closed: a non-admin caller must be the KNOWN sender. FaxLog has no
+    // RLS and sent_by is not required, so a legacy/empty sent_by row must not be
+    // retryable by any authenticated user — the old `sent_by && …` guard
+    // short-circuited to "allowed" whenever sent_by was blank.
+    const isOwner = !!originalFax.sent_by && originalFax.sent_by === user.email;
+    if (!isOwner && !isPlatformAdmin && !isAgencyScopedAdmin) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     // Agency-scoped admins may only retry faxes sent by staff in their agency.

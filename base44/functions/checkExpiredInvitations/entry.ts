@@ -253,8 +253,8 @@ Deno.serve(async (req) => {
     );
 
     // Send notifications if there are expired or expiring invitations
+    let emailsSent = 0;
     if (expired.length > 0 || expiringSoon.length > 0) {
-      let emailsSent = 0;
       for (const admin of admins) {
         const scopedExpired = admin.account_type === 'super_admin'
           ? expired
@@ -312,7 +312,10 @@ Deno.serve(async (req) => {
       success: true,
       expired: expired.length,
       expiring_soon: expiringSoon.length,
-      notifications_sent: (expired.length > 0 || expiringSoon.length > 0) ? admins.length : 0
+      // Report emails ACTUALLY sent, not the admin count — during a SendEmail
+      // outage (emailsSent stays 0, stamps cleared for retry) or when admins are
+      // skipped for empty scoped lists, admins.length overstated delivery.
+      notifications_sent: emailsSent
     });
 
   } catch (error) {

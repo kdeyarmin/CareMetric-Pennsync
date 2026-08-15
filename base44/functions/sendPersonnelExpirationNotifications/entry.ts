@@ -198,7 +198,10 @@ Deno.serve(async (req) => {
       'expiration_date',
       1000
     );
-    const users = await base44.asServiceRole.entities.User.list('-created_date', 400);
+    // 5000, not 400: a smaller cap drops the OLDEST accounts (typically the
+    // agency owners/admins) off the newest-first page, so their staff's
+    // credential reminders silently reach no admin. Matches submitIncidentReport.
+    const users = await base44.asServiceRole.entities.User.list('-created_date', 5000);
     let notificationsSent = 0;
     const notificationsToCreate = [];
     const updates = [];

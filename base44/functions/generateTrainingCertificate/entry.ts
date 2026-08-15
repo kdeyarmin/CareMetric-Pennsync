@@ -62,16 +62,23 @@ Deno.serve(async (req) => {
         completionDate = comp.completion_date || null;
         score = typeof comp.score_percentage === 'number' ? comp.score_percentage : null;
         moduleName = comp.course_title || requestedModule;
-      } else if (recordId) {
-        // A specific record was requested but none of the caller's records match
-        // it — refuse rather than mint against an id they don't own.
+      } else if (recordId || moduleId || requestedModule) {
+        // An identifier was requested (record/certificate id, course id, or
+        // module NAME) but none of the caller's owned certificates or completed
+        // assignments match it — refuse rather than mint a certificate for
+        // training this account never completed. Owning *some* record (the gate
+        // above) is not the same as completing the *requested* module: without
+        // this, a nurse who finished "Handwashing Basics" could POST
+        // moduleName:"Advanced Wound Care" with any completion date/score and
+        // print an official completion certificate for it.
         return Response.json({ error: 'Training record not found for this account.' }, { status: 403 });
       }
     }
 
-    // Fall back to the request only for display fields we could not derive (the
-    // legacy caller that passes just moduleName); ownership is already established
-    // by the non-empty owned-record check above.
+    // Fill in only display fields we could not derive from the matched record
+    // (e.g. a matched certificate row missing course_title). Ownership of the
+    // requested module is established above — an unmatched identifier already
+    // returned 403, so the body can no longer name an unearned module here.
     moduleName = moduleName || requestedModule;
     completionDate = completionDate || body.completionDate || body.completion_date || null;
     if (score === null && typeof body.score === 'number') score = body.score;

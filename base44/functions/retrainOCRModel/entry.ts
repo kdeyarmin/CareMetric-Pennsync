@@ -30,10 +30,35 @@ Deno.serve(async (req) => {
 
     const { min_feedback_count = 10 } = await req.json();
 
-    // Get unapplied feedback
-    const allFeedback = await base44.asServiceRole.entities.OCRFeedback.filter({
+    // Scope the feedback cohort to the caller's agency unless they are a platform
+    // admin. Without this an agency_admin trained on — and consumed the
+    // applied_to_training flag of — EVERY tenant's OCRFeedback, sending other
+    // agencies' OCR'd fax content (PHI) to the LLM and starving their own
+    // training runs. Fail closed for an agency-scoped admin with no agency_name.
+    const isSuperAdmin = user.account_type === 'super_admin';
+    // A user who is BOTH account_type agency_admin AND role admin with no
+    // agency_name must NOT be promoted to platform-wide via the bare-role:admin
+    // path — an agency_admin without an agency_name fails closed by design.
+    const isPlatformAdmin = isSuperAdmin
+      || (user.role === 'admin' && user.account_type !== 'agency_admin' && !String(user.agency_name || '').trim());
+    let agencyEmails = null;
+    if (!isPlatformAdmin) {
+      const agency = String(user.agency_name || '').trim();
+      if (!agency) {
+        return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
+      }
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .filter({ agency_name: agency }, '-created_date', 5000).catch(() => []);
+      agencyEmails = new Set((agencyUsers || []).map((u) => u?.email).filter(Boolean));
+    }
+
+    // Get unapplied feedback (agency-scoped for non-platform admins).
+    const rawFeedback = await base44.asServiceRole.entities.OCRFeedback.filter({
       applied_to_training: false
     }, '-created_date', 500);
+    const allFeedback = agencyEmails
+      ? rawFeedback.filter((f) => f && f.user_email && agencyEmails.has(f.user_email))
+      : rawFeedback;
 
     if (allFeedback.length < min_feedback_count) {
       return Response.json({

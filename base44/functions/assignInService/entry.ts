@@ -168,7 +168,9 @@ Deno.serve(async (req) => {
           }
           created.push(assignment);
         } catch (err) {
-          console.error('assignInService create failed', assignment.assigned_to_user_id, err?.message || err);
+          // Don't log the assignee email — retained backend logs stay identifier-
+          // free (aggregate/status-only). The error message alone is actionable.
+          console.error('assignInService create failed', err?.message || err);
         }
       }
       await Promise.all(created.map((assignment) =>

@@ -314,6 +314,19 @@ const handoutTemplates = {
 // Strip non-ASCII so jsPDF's core fonts render cleanly.
 const clean = (s) => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x00-\x7F]/g, '');
 
+// HTML-escape user-supplied text before interpolating it into the emailed
+// handout body. clean() alone strips non-ASCII but leaves < > & " ' intact, so
+// caller-controlled agency name / phone / patient name could otherwise inject
+// arbitrary HTML into a platform-sent email (phishing primitive). Mirrors the
+// repo standard escapeHtml in createUserWithTempPassword.
+const escapeHtml = (s) => String(s ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+const cleanHtml = (s) => escapeHtml(clean(s));
+
 Deno.serve(async (req) => {
   let doc;
   let base44, user;
@@ -713,12 +726,12 @@ Deno.serve(async (req) => {
           body: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
               <div style="background:#213a76; padding:24px; text-align:center;">
-                <h1 style="color:#fff; margin:0; font-size:20px; letter-spacing:0.3px;">${clean(style.agencyName)}</h1>
+                <h1 style="color:#fff; margin:0; font-size:20px; letter-spacing:0.3px;">${cleanHtml(style.agencyName)}</h1>
                 <div style="height:3px; width:60px; background:#c8911e; margin:10px auto 0;"></div>
               </div>
               <div style="padding:28px; background:#ffffff; color:#1e293b;">
-                <p>Dear ${clean(patientName) || 'Patient'},</p>
-                <p>Please find attached your personalized education guide on <strong>${clean(template.title)}</strong>, prepared by your care team.</p>
+                <p>Dear ${cleanHtml(patientName) || 'Patient'},</p>
+                <p>Please find attached your personalized education guide on <strong>${cleanHtml(template.title)}</strong>, prepared by your care team.</p>
                 <p style="font-weight:bold; margin-bottom:6px;">What to do next:</p>
                 <ul style="margin-top:0; color:#334155;">
                   <li>Read through the entire guide</li>
@@ -726,11 +739,11 @@ Deno.serve(async (req) => {
                   <li>Share it with family members who help with your care</li>
                   <li>Call your nurse with any questions</li>
                 </ul>
-                <p>If you have any questions, please contact us at <strong>${clean(style.agencyPhone)}</strong>.</p>
-                <p style="margin-bottom:0;">Warm regards,<br><strong>${clean(style.agencyName)}</strong></p>
+                <p>If you have any questions, please contact us at <strong>${cleanHtml(style.agencyPhone)}</strong>.</p>
+                <p style="margin-bottom:0;">Warm regards,<br><strong>${cleanHtml(style.agencyName)}</strong></p>
               </div>
               <div style="background:#f1f5f9; padding:14px; text-align:center; color:#64748b; font-size:12px;">
-                ${clean(style.agencyName)}${style.agencyPhone ? ` &nbsp;|&nbsp; ${clean(style.agencyPhone)}` : ''} &nbsp;|&nbsp; caremetric.ai
+                ${cleanHtml(style.agencyName)}${style.agencyPhone ? ` &nbsp;|&nbsp; ${cleanHtml(style.agencyPhone)}` : ''} &nbsp;|&nbsp; caremetric.ai
               </div>
             </div>`
         });
@@ -769,6 +782,15 @@ Deno.serve(async (req) => {
         });
       }
     } catch (_logError) { /* best effort */ }
+
+    // The fallback-PDF-on-error path is for the DOWNLOAD flow: a render failure
+    // still hands the nurse a usable (if generic) document. It must NOT mask an
+    // email-send failure as success — the nurse asked to educate the patient by
+    // email, and a silent no-op reads as "the patient was emailed" on a
+    // documentation-relevant action. Surface the failure so it can be retried.
+    if (diagnostics.stage === 'sending_email' || diagnostics.stage === 'email_complete') {
+      return Response.json({ error: 'Failed to email the handout — nothing was sent. Please retry.', stage: diagnostics.stage }, { status: 502 });
+    }
 
     // Minimal branded fallback PDF.
     try {

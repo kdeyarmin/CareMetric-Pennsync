@@ -577,7 +577,46 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error: reason, processed: 0, sent: 0, failed: 0, skipped: 0 }, { status: 500 });
     }
 
-    const { smsEnabled, settings } = await getAgencyConfig(base44);
+    // Resolve agency config PER ROW from the sending nurse. A single unhinted
+    // getAgencyConfig() returns smsEnabled:false whenever more than one tenant's
+    // AgencySettings row exists (the normal multi-tenant state), which used to
+    // fail() every due reminder on every tick — the same queue-destruction hazard
+    // the credential guard above fixed. Cache the nurse->agency and agency->config
+    // lookups so the loop stays cheap.
+    const nurseAgencyCache = new Map();
+    const agencyConfigCache = new Map();
+    const resolveRowConfig = async (nurseEmail) => {
+      const key = String(nurseEmail || '');
+      let agencyName = nurseAgencyCache.get(key);
+      if (agencyName === undefined) {
+        const [u] = key
+          ? await base44.asServiceRole.entities.User.filter({ email: key }, undefined, 1).catch(() => [])
+          : [];
+        agencyName = String(u?.agency_name || '').trim();
+        nurseAgencyCache.set(key, agencyName);
+      }
+      if (!agencyConfigCache.has(agencyName)) {
+        agencyConfigCache.set(agencyName, await getAgencyConfig(base44, agencyName));
+      }
+      return agencyConfigCache.get(agencyName);
+    };
+    // Agency email cohort for scoping the monthly SMS cap (mirrors sendSms).
+    // Cached per agency; null when the row's nurse has no agency (legacy
+    // single-tenant → count unscoped, as sendSms does for an agency-less caller).
+    const agencyCohortCache = new Map();
+    const resolveAgencyCohort = async (agencyName) => {
+      const key = String(agencyName || '').trim();
+      if (!key) return null;
+      if (agencyCohortCache.has(key)) return agencyCohortCache.get(key);
+      const agencyUsers = await base44.asServiceRole.entities.User
+        .filter({ agency_name: key }, '-created_date', 5000)
+        .catch(() => []);
+      const cohort = new Set(
+        (Array.isArray(agencyUsers) ? agencyUsers : []).map((u) => u?.email).filter(Boolean)
+      );
+      agencyCohortCache.set(key, cohort);
+      return cohort;
+    };
     // A unique id for THIS cron run, used to claim rows (see the claim below).
     const runId = crypto.randomUUID();
 
@@ -653,25 +692,52 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      if (!smsEnabled) { await fail('SMS messaging disabled for the agency'); continue; }
+      // Resolve THIS row's agency config from the nurse who scheduled it.
+      const cfg = await resolveRowConfig(row.nurse_email);
+      if (cfg.missingAgencySettings) {
+        // Could not resolve this row's agency among multiple tenant rows — an
+        // agency-resolution problem, not a per-message one. Release the claim to
+        // pending so a later run (or a corrected agency mapping) can send it,
+        // instead of destroying the reminder. Staleness is still bounded by the
+        // MAX_SCHEDULE_AGE_MS expiry above.
+        await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
+          status: 'pending', claimed_by: '', claimed_at: null,
+        }).catch(() => {});
+        result.skipped++;
+        continue;
+      }
+      const settings = cfg.settings;
+      if (!cfg.smsEnabled) { await fail('SMS messaging disabled for the agency'); continue; }
 
       // Cost control: block premium/blocked/international destinations by default
       // (mirrors sendSms). A blocked destination is terminal — fail the row.
       const destAllowed = isAllowedDestination(row.to_number, settings);
       if (!destAllowed.allowed) { await fail(`Destination blocked at send time: ${destAllowed.reason}`); continue; }
 
-      // Cost control: enforce the optional monthly outbound-SMS cap (mirrors
-      // sendSms). When the cap is already reached, leave the row pending so a
-      // later run (next month / after the cap is raised) can pick it up rather
-      // than failing a scheduled reminder outright.
+      // Cost control: enforce the optional monthly outbound-SMS cap, scoped to
+      // THIS row's agency cohort (mirrors sendSms). Counting every tenant's
+      // outbound rows made one busy agency trip every other agency's cap. When
+      // the cap is already reached, leave the row pending so a later run (next
+      // month / after the cap is raised) can pick it up rather than failing a
+      // scheduled reminder outright.
       const monthlyCap = Number(settings?.monthly_sms_cap);
       if (Number.isFinite(monthlyCap) && monthlyCap > 0) {
         const since = monthStartISO();
+        // nurseAgencyCache was populated by resolveRowConfig() above for this row.
+        const rowAgency = nurseAgencyCache.get(String(row.nurse_email || '')) || '';
+        const agencyNurseEmails = await resolveAgencyCohort(rowAgency);
+        const fetchLimit = agencyNurseEmails
+          ? Math.min(Math.max(monthlyCap * 20, monthlyCap), 5000)
+          : monthlyCap;
         const recentOutbound = await base44.asServiceRole.entities.SmsMessage
-          .filter({ direction: 'outbound' }, '-created_date', monthlyCap)
+          .filter({ direction: 'outbound' }, '-created_date', fetchLimit)
           .catch(() => []);
         const sentThisMonth = (Array.isArray(recentOutbound) ? recentOutbound : [])
-          .filter((m) => m.created_date && m.created_date >= since).length;
+          .filter((m) => m.created_date && m.created_date >= since)
+          .filter((m) => !agencyNurseEmails
+            || (m.nurse_email && agencyNurseEmails.has(m.nurse_email))
+            || m.sent_by === row.nurse_email)
+          .length;
         if (sentThisMonth >= monthlyCap) {
           await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
             status: 'pending', claimed_by: '', claimed_at: null,

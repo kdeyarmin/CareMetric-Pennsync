@@ -234,6 +234,13 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // Skip signatures with no patient_id: an empty id can be dropped from the
+        // filter object, which would then match ALL patients and email an
+        // arbitrary patients[0] a reminder every run (scheduleSignatureReminders
+        // guards this the same way).
+        if (!sig.patient_id) {
+          continue;
+        }
         // Get patient details
         const patients = await base44.asServiceRole.entities.Patient.filter({ id: sig.patient_id }, undefined, 5000);
         const patient = patients[0];

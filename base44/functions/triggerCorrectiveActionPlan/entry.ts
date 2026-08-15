@@ -122,6 +122,12 @@ Rules:
 };
 
 Deno.serve(async (req) => {
+  // Set once the idempotency claim is confirmed; lets the 404 path and the outer
+  // catch RELEASE the claim so a transient failure during the long build (LLM
+  // generation, course/module/question/assignment creates) doesn't strand the
+  // attempt forever — every re-fire otherwise returned "already claimed" and the
+  // failed employee never received their mandatory remediation.
+  let clearClaim = null;
   try {
     const base44 = createClientFromRequest(req);
 
@@ -179,6 +185,9 @@ Deno.serve(async (req) => {
     if (!claimCheck[0] || claimCheck[0].corrective_plan_claimed_by !== claimToken) {
       return Response.json({ success: true, skipped: true, reason: 'Corrective plan claimed by concurrent run' });
     }
+    // We own the claim now — enable release on any downstream failure.
+    clearClaim = () => base44.asServiceRole.entities.TrainingAttempt
+      .update(attempt.id, { corrective_plan_claimed_by: null }).catch(() => {});
     const existingPlansAfterClaim = await base44.asServiceRole.entities.CorrectiveActionPlan
       .filter({ training_attempt_id: attempt.id }, '-created_date', 1).catch(() => []);
     if (existingPlansAfterClaim.length > 0) {
@@ -188,11 +197,12 @@ Deno.serve(async (req) => {
     const [assignment] = await base44.asServiceRole.entities.TrainingAssignment.filter({ id: attempt.assignment_id }, '-created_date', 1);
     const [sourceCourse] = await base44.asServiceRole.entities.TrainingCourse.filter({ id: attempt.course_id }, '-created_date', 1);
     if (!assignment || !sourceCourse) {
+      await clearClaim();
       return Response.json({ success: false, error: 'Source assignment or course not found' }, { status: 404 });
     }
 
     const [employee] = await base44.asServiceRole.entities.User.filter({ email: attempt.user_id }, '-created_date', 1);
-    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 300);
+    const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
     const agencyAdmins = employee?.agency_name
       ? allUsers.filter((candidate) =>
           candidate.account_type === 'agency_admin' &&
@@ -232,7 +242,7 @@ Deno.serve(async (req) => {
           businessLine: sourceCourse.business_line_scope || 'all'
         });
 
-        microCourse = await base44.asServiceRole.entities.TrainingCourse.create({
+        const createdCourse = await base44.asServiceRole.entities.TrainingCourse.create({
           title: microContent.title,
           short_description: microContent.short_description,
           description: microContent.description,
@@ -261,40 +271,63 @@ Deno.serve(async (req) => {
             show_correct_answers_after_completion: true
           }
         });
+        microCourse = createdCourse;
 
-        await base44.asServiceRole.entities.TrainingModule.create({
-          course_id: microCourse.id,
-          title: microContent.module?.title || topicLabel,
-          // category and module_type are both in TrainingModule's `required`
-          // list and category has no schema default, so omitting them made
-          // Base44 reject the create and abort the whole corrective-action
-          // build. A CAP module is compliance remediation.
-          category: 'compliance',
-          module_type: 'ongoing',
-          type: 'lesson',
-          content_json: microContent.module?.content || {},
-          order_index: 0,
-          estimated_minutes: 10,
-          is_required: true
-        });
-
-        const ALLOWED_Q_TYPES = new Set(['mcq', 'multi_select', 'true_false', 'short_answer', 'matching', 'scenario_based']);
-        for (const [index, question] of microContent.questions.entries()) {
-          await base44.asServiceRole.entities.TrainingQuestion.create({
+        // The course is created 'published' + tagged so it can be reused, but its
+        // module and questions are created AFTER it. If one of those creates fails,
+        // a re-fire's publishedCourses.find() below would match this empty course,
+        // SKIP this whole block, and assign the employee an uncompletable
+        // remediation (no module, no questions). Roll back everything this run
+        // created on failure, then rethrow so the outer catch releases the
+        // idempotency claim and the next fire rebuilds cleanly. Mirrors the
+        // create-then-rollback guard in rebuildExistingInServices.
+        const createdModuleIds = [];
+        const createdQuestionIds = [];
+        try {
+          const createdModule = await base44.asServiceRole.entities.TrainingModule.create({
             course_id: microCourse.id,
-            // Coerce the AI-supplied type to the TrainingQuestion enum; an out-of-enum
-            // value would be rejected and abort the whole corrective-action build.
-            type: ALLOWED_Q_TYPES.has(question.type) ? question.type : 'mcq',
-            prompt: question.prompt || `Micro-learning question ${index + 1}`,
-            options_json: question.options || [],
-            correct_answer_json: { answer: question.correct_answer },
-            rationale: question.rationale || '',
-            difficulty: 'easy',
-            order_index: index,
-            points: 1,
-            active: true,
-            question_bank_tag: topicTag
+            title: microContent.module?.title || topicLabel,
+            // category and module_type are both in TrainingModule's `required`
+            // list and category has no schema default, so omitting them made
+            // Base44 reject the create and abort the whole corrective-action
+            // build. A CAP module is compliance remediation.
+            category: 'compliance',
+            module_type: 'ongoing',
+            type: 'lesson',
+            content_json: microContent.module?.content || {},
+            order_index: 0,
+            estimated_minutes: 10,
+            is_required: true
           });
+          createdModuleIds.push(createdModule.id);
+
+          const ALLOWED_Q_TYPES = new Set(['mcq', 'multi_select', 'true_false', 'short_answer', 'matching', 'scenario_based']);
+          for (const [index, question] of microContent.questions.entries()) {
+            const createdQuestion = await base44.asServiceRole.entities.TrainingQuestion.create({
+              course_id: microCourse.id,
+              // Coerce the AI-supplied type to the TrainingQuestion enum; an out-of-enum
+              // value would be rejected and abort the whole corrective-action build.
+              type: ALLOWED_Q_TYPES.has(question.type) ? question.type : 'mcq',
+              prompt: question.prompt || `Micro-learning question ${index + 1}`,
+              options_json: question.options || [],
+              correct_answer_json: { answer: question.correct_answer },
+              rationale: question.rationale || '',
+              difficulty: 'easy',
+              order_index: index,
+              points: 1,
+              active: true,
+              question_bank_tag: topicTag
+            });
+            createdQuestionIds.push(createdQuestion.id);
+          }
+        } catch (buildErr) {
+          // Roll back the partial micro course so no published-but-empty course
+          // survives to be reused by the next re-fire.
+          await Promise.all(createdQuestionIds.map((id) => base44.asServiceRole.entities.TrainingQuestion.delete(id).catch(() => {})));
+          await Promise.all(createdModuleIds.map((id) => base44.asServiceRole.entities.TrainingModule.delete(id).catch(() => {})));
+          await base44.asServiceRole.entities.TrainingCourse.delete(microCourse.id).catch(() => {});
+          microCourse = null;
+          throw buildErr;
         }
       }
 
@@ -396,6 +429,9 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('triggerCorrectiveActionPlan failed:', error);
+    // Release the idempotency claim so a later re-fire can retry the build
+    // rather than short-circuiting on "already claimed" forever.
+    if (clearClaim) await clearClaim();
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

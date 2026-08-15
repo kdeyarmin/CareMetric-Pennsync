@@ -525,7 +525,7 @@ Deno.serve(async (req) => {
         if (resolvedManagerEmail) {
           recipients = [{ email: resolvedManagerEmail }];
         } else {
-          const users = await base44.asServiceRole.entities.User.list('-created_date', 500);
+          const users = await base44.asServiceRole.entities.User.list('-created_date', 5000);
           // Scope admin fallback to the submitter's agency — unscoped list
           // notified every tenant's agency_admins of timesheet submissions.
           recipients = users.filter(

@@ -64,19 +64,23 @@ MUST be set or all inbound webhooks are rejected 401.**
 
 ## 3. Backend security secrets
 
-Set in the dashboard env (function secrets). There is only one — the file-fetch
-SSRF allowlist is hardcoded in code (always-on, fail-closed on the app's own
-storage hosts), the `onUserSignup` re-fetch/email-match guard is always active
-(`SIGNUP_WEBHOOK_SECRET` retired), debug logging is compiled out
-(`FUNCTIONS_DEBUG` retired), and certificate issuance is protected structurally
-(`INTERNAL_FN_SECRET` retired): `issueCertificate` only trusts a passing
+Set in the dashboard env (function secrets). There are two. The rest of the old
+secret surface is structural now: the file-fetch SSRF allowlist is hardcoded in
+code (always-on, fail-closed on the app's own storage hosts), the `onUserSignup`
+re-fetch/email-match guard is always active (`SIGNUP_WEBHOOK_SECRET` retired),
+debug logging is compiled out (`FUNCTIONS_DEBUG` retired), and certificate
+issuance is protected structurally: `issueCertificate` only trusts a passing
 `TrainingAttempt` row, which is written exclusively server-side by
-`gradeTrainingAttempt` (entity RLS allows admin writes only), and the scheduled
-functions always reject authenticated non-admin callers.
+`gradeTrainingAttempt` (entity RLS allows admin writes only).
 
 | Secret | Set at launch? | Effect if unset |
 |---|---|---|
 | `SIGNATURE_HMAC_SECRET` | **Yes** | Signature integrity MAC falls back to **unkeyed sha256** — detects corruption, **not** forgery. Set it so e-signature tamper-evidence is forgery-resistant. |
+| `INTERNAL_FN_SECRET` | **Yes** | Every scheduled/internal function (the ~30-function cron family: fax queues, SMS dispatch, renewal reminders, outcome measures, …) authorizes with `x-internal-secret: <INTERNAL_FN_SECRET>` OR an admin session, and **fails closed with a 500 when the secret is unset** and the caller isn't an admin — so unattended cron firings all fail until it is set. See `docs/LEARNING_CENTER_SCHEDULED_JOBS.md` for the registration steps (the platform trigger must send the header). |
+
+**Verify scheduled-function auth:** an unauthenticated POST to a cron function
+(e.g. `processScheduledFaxes`) without the header → `401/500`; with
+`x-internal-secret` set correctly → `200`.
 
 **Verify certificate issuance:** a direct `issueCertificate` call from a non-admin
 with no passing attempt is rejected; a legitimate completion via

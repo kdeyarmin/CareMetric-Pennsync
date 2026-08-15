@@ -54,13 +54,16 @@ Deno.serve(async (req) => {
 
         const transcript = transcriptionResponse;
 
-        // 2. Generate the SOAP note using Claude (claude-opus-4-8) — the most
-        // capable model, the best fit for clinical reasoning over the transcript.
-        // Transcription stays on OpenAI's gpt-4o-transcribe above; only this
-        // reasoning step uses Anthropic (same direct-API pattern as
-        // generateFaxCoverPage). claude-opus-4-8 rejects temperature/top_p and
-        // does not take an OpenAI-style response_format, so the JSON contract is
-        // expressed in the prompt and extracted from the response text.
+        // 2. Generate the SOAP note using Claude — the reasoning step over the
+        // transcript. Transcription stays on OpenAI's gpt-4o-transcribe above;
+        // only this step uses Anthropic (same direct-API pattern as
+        // generateFaxCoverPage). The model id MUST be a real Anthropic id:
+        // 'automatic' is a Base44 InvokeLLM convention that 404s on the direct
+        // Messages API, so every SOAP draft was silently failing to the
+        // degrade path below. claude-opus-4-8 runs without thinking when the
+        // thinking field is omitted, so the whole max_tokens budget goes to the
+        // JSON answer; it does not take an OpenAI-style response_format, so the
+        // JSON contract is expressed in the prompt and extracted from the text.
         const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
         if (!anthropicKey) {
             return Response.json({ error: 'Anthropic API key not configured' }, { status: 500 });
@@ -74,7 +77,7 @@ Deno.serve(async (req) => {
                 'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
-                model: 'automatic',
+                model: 'claude-opus-4-8',
                 max_tokens: 2048,
                 system: "You are an expert clinical documentation assistant. Re-organize ONLY the information in the provided transcript into a structured SOAP note (Subjective, Objective, Assessment, Plan). This is a DRAFT for a nurse to verify — it is NOT the final record. Do NOT add, infer, or invent any clinical fact, vital sign, measurement, medication, diagnosis, or finding that is not explicitly stated in the transcript. If something was not said, leave it out. Return ONLY a JSON object with keys: subjective, objective, assessment, plan.",
                 messages: [

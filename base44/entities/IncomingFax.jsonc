@@ -43,6 +43,10 @@
       "type": "string",
       "format": "date-time"
     },
+    "ocr_attempts": {
+      "type": "number",
+      "description": "Count of OCR attempts. A transient OCR failure returns the row to 'pending' (bounded retry) instead of terminally 'failed'; only after the cap is a fax marked failed."
+    },
     "ocr_text": {
       "type": "string",
       "description": "Extracted text from OCR"

@@ -117,7 +117,12 @@ Generate a professional cover sheet with a HIPAA confidentiality disclaimer. Ret
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'automatic',
+        // Real Anthropic model id. 'automatic' is a Base44 InvokeLLM
+        // convention that 404s on the direct Messages API, so this call always
+        // failed and the cover-sheet fields silently came back empty.
+        // claude-opus-4-8 runs without thinking when the field is omitted, so
+        // the whole max_tokens budget goes to the JSON answer.
+        model: 'claude-opus-4-8',
         max_tokens: 1024,
         messages: [{
           role: 'user',
