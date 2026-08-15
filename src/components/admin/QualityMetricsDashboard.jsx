@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
@@ -66,9 +67,9 @@ export default function QualityMetricsDashboard() {
   const dateRange = getDateRange();
 
   // Fetch data
-  const { data: allVisits, isLoading: visitsLoading } = useQuery({
+  const { data: allVisits, isLoading: visitsLoading } = useAgencyScopedQuery({
     queryKey: ['allVisitsMetrics', timeRange],
-    queryFn: async () => {
+    fetch: async () => {
       const visits = await base44.entities.Visit.list('-visit_date', 1000);
       return visits.filter(v => v.visit_date >= dateRange.start && v.visit_date <= dateRange.end);
     },
@@ -77,9 +78,9 @@ export default function QualityMetricsDashboard() {
 
   const { data: allPatients } = useScopedPatients({ sort: '-updated_date', limit: 5000 });
 
-  const { data: allIncidents } = useQuery({
+  const { data: allIncidents } = useAgencyScopedQuery({
     queryKey: ['allIncidentsMetrics', timeRange],
-    queryFn: async () => {
+    fetch: async () => {
       const incidents = await base44.entities.Incident.list('-incident_date', 500);
       return incidents.filter(i => i.incident_date >= dateRange.start && i.incident_date <= dateRange.end);
     },

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -45,15 +46,15 @@ export default function PredictiveAnalytics() {
   });
 
   // Fetch visits
-  const { data: visits = [], isPending: visitsLoading } = useQuery({
+  const { data: visits = [], isPending: visitsLoading } = useAgencyScopedQuery({
     queryKey: ['predictiveVisits'],
-    queryFn: () => base44.entities.Visit.list('-created_date', 500),
+    fetch: () => base44.entities.Visit.list('-created_date', 500),
   });
 
   // Fetch alerts
-  const { data: alerts = [], isPending: alertsLoading } = useQuery({
+  const { data: alerts = [], isPending: alertsLoading } = useAgencyScopedQuery({
     queryKey: ['predictiveAlerts'],
-    queryFn: () => base44.entities.PatientAlert.filter({ status: 'active' }, undefined, PATIENT_HISTORY_ROWS),
+    fetch: () => base44.entities.PatientAlert.filter({ status: 'active' }, undefined, PATIENT_HISTORY_ROWS),
   });
 
   const isLoading = patientsLoading || oasisLoading || visitsLoading || alertsLoading;

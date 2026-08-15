@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -49,14 +50,14 @@ export default function PatientRecordDashboard() {
   // Fetch all data in parallel
   const { data: patients = [], isLoading: loadingPatients } = useScopedPatients({ sort: '-updated_date', limit: 1000 });
 
-  const { data: visits = [] } = useQuery({
+  const { data: visits = [] } = useAgencyScopedQuery({
     queryKey: ['all-visits', 'created', 500],
-    queryFn: () => base44.entities.Visit.list('-created_date', 500)
+    fetch: () => base44.entities.Visit.list('-created_date', 500)
   });
 
-  const { data: alerts = [] } = useQuery({
+  const { data: alerts = [] } = useAgencyScopedQuery({
     queryKey: ['active-alerts'],
-    queryFn: () => base44.entities.PatientAlert.filter({ status: 'active' }, '-created_date', 100)
+    fetch: () => base44.entities.PatientAlert.filter({ status: 'active' }, '-created_date', 100)
   });
 
   // Filter patients based on search and filters

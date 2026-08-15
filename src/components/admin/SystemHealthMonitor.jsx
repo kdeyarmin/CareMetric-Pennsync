@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -64,9 +65,9 @@ export default function SystemHealthMonitor() {
   const metricsRef = useRef({});
 
   // Fetch real entity counts for actual system data
-  const { data: visits = [] } = useQuery({
+  const { data: visits = [] } = useAgencyScopedQuery({
     queryKey: ["health-visits"],
-    queryFn: () => base44.entities.Visit.list("-created_date", 50),
+    fetch: () => base44.entities.Visit.list("-created_date", 50),
     initialData: [],
     refetchInterval: autoRefresh ? 30000 : false,
   });
@@ -81,9 +82,9 @@ export default function SystemHealthMonitor() {
     initialData: [],
     refetchInterval: autoRefresh ? 30000 : false,
   });
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [] } = useAgencyScopedQuery({
     queryKey: ["health-incidents"],
-    queryFn: () => base44.entities.Incident.filter({ status: "reported" }, "-created_date", 50),
+    fetch: () => base44.entities.Incident.filter({ status: "reported" }, "-created_date", 50),
     initialData: [],
     refetchInterval: autoRefresh ? 30000 : false,
   });

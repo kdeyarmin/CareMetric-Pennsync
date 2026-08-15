@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,14 +36,14 @@ export default function AdminReportsCenterPage() {
     initialData: [],
   });
   const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 1000 });
-  const { data: visits = [] } = useQuery({
+  const { data: visits = [] } = useAgencyScopedQuery({
     queryKey: ["reports-visits"],
-    queryFn: () => base44.entities.Visit.list("-created_date", 1000),
+    fetch: () => base44.entities.Visit.list("-created_date", 1000),
     initialData: [],
   });
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [] } = useAgencyScopedQuery({
     queryKey: ["reports-incidents"],
-    queryFn: () => base44.entities.Incident.list("-created_date", 1000),
+    fetch: () => base44.entities.Incident.list("-created_date", 1000),
     initialData: [],
   });
 

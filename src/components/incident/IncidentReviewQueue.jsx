@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -250,9 +251,9 @@ export default function IncidentReviewQueue() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: incidents = [], isLoading } = useQuery({
+  const { data: incidents = [], isLoading } = useAgencyScopedQuery({
     queryKey: ["admin-incidents"],
-    queryFn: () => base44.entities.Incident.list("-created_date", 500),
+    fetch: () => base44.entities.Incident.list("-created_date", 500),
     initialData: [],
     refetchInterval: 60000,
   });

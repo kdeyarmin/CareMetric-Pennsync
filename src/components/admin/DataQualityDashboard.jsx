@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { describeCallerPatientScope, agencyQueryKey } from '@/lib/agencyRoster';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,9 +43,9 @@ export default function DataQualityDashboard() {
     initialData: null,
   });
 
-  const { data: visits = [] } = useQuery({
+  const { data: visits = [] } = useAgencyScopedQuery({
     queryKey: ['recent-visits-quality'],
-    queryFn: () => base44.entities.Visit.filter({ status: 'completed' }, '-visit_date', 100),
+    fetch: () => base44.entities.Visit.filter({ status: 'completed' }, '-visit_date', 100),
     initialData: [],
   });
 

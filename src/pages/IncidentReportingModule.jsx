@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { isAdminView } from "@/lib/roles";
 import { submitIncidentReport } from "@/functions/submitIncidentReport";
@@ -118,9 +119,9 @@ export default function IncidentReportingModule() {
     select: selectMine,
   });
 
-  const { data: incidents = [], _isLoading } = useQuery({
+  const { data: incidents = [], _isLoading } = useAgencyScopedQuery({
     queryKey: ['incidents'],
-    queryFn: () => base44.entities.Incident.list('-created_date', 200),
+    fetch: () => base44.entities.Incident.list('-created_date', 200),
     initialData: [],
   });
 

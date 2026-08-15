@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,12 @@ export default function DocumentManagement() {
   const [isUploaderOpen, setIsUploaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
 
-  const { data: documents = [] } = useQuery({
+  const { data: documents = [] } = useAgencyScopedQuery({
     queryKey: ['documents', 500],
-    queryFn: () => base44.entities.Document.list('-created_date', 500),
-    initialData: []
+    fetch: () => base44.entities.Document.list('-created_date', 500),
+    initialData: [],
+    // Document records its author under uploaded_by, falling back to created_by.
+    authorOf: (d) => d.uploaded_by || d.created_by,
   });
 
   const { data: _patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });

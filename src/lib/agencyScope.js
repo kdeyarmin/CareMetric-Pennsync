@@ -123,29 +123,35 @@ function resolveCallerScope(users, caller) {
 }
 
 /**
- * 'match' | 'foreign' | 'unattributable' for one chart under an 'agency' scope.
- * Only 'foreign' is ever hidden.
+ * 'match' | 'foreign' | 'unattributable' for one row under an 'agency' scope.
+ * `linked` is every staff email the row is attributed to. Only 'foreign' is ever
+ * hidden — see the module header for why absence of attribution is not evidence
+ * of another tenant.
  */
-function classifyPatient(patient, scope) {
-  const chartAgencyId = norm(patient?.agency_id);
-  const chartAgencyName = norm(patient?.agency_name);
-  // An explicit tenancy on the chart wins, but only when it is expressed in a
-  // dimension the caller also carries. A chart tagged by id against a caller
+function classifyRow(row, scope, linked) {
+  const rowAgencyId = norm(row?.agency_id);
+  const rowAgencyName = norm(row?.agency_name);
+  // An explicit tenancy on the row wins, but only when it is expressed in a
+  // dimension the caller also carries. A row tagged by id against a caller
   // known only by name is not comparable, so fall through rather than guess.
-  if (chartAgencyId && scope.agencyId) {
-    return chartAgencyId === scope.agencyId ? 'match' : 'foreign';
+  if (rowAgencyId && scope.agencyId) {
+    return rowAgencyId === scope.agencyId ? 'match' : 'foreign';
   }
-  if (chartAgencyName && scope.agencyName) {
-    return chartAgencyName === scope.agencyName ? 'match' : 'foreign';
+  if (rowAgencyName && scope.agencyName) {
+    return rowAgencyName === scope.agencyName ? 'match' : 'foreign';
   }
 
-  const linked = [
+  const emails = linked.filter(Boolean);
+  if (emails.some((email) => scope.staff.has(email))) return 'match';
+  if (emails.some((email) => scope.known.has(email))) return 'foreign';
+  return 'unattributable';
+}
+
+function classifyPatient(patient, scope) {
+  return classifyRow(patient, scope, [
     patient?.created_by,
     ...(Array.isArray(patient?.assigned_nurses) ? patient.assigned_nurses : []),
-  ].filter(Boolean);
-  if (linked.some((email) => scope.staff.has(email))) return 'match';
-  if (linked.some((email) => scope.known.has(email))) return 'foreign';
-  return 'unattributable';
+  ]);
 }
 
 /**
@@ -160,6 +166,28 @@ export function filterPatientsByCallerAgency(patients, users, caller) {
   if (scope.mode === 'none') return [];
   if (scope.mode === 'all') return patients;
   return patients.filter((p) => classifyPatient(p, scope) !== 'foreign');
+}
+
+/**
+ * Filter clinical records — Visit, Incident, OASISAssessment, CarePlan,
+ * PatientAlert, Document — by the agency of whoever authored them. `authorOf`
+ * pulls the authoring staff email off a row; it defaults to `created_by`, which
+ * every one of those entities carries.
+ *
+ * Deliberately NOT filterRowsByStaffAgency. That one drops any row whose owner
+ * is not a CURRENT staff member, which is right for a timesheet — it has to
+ * belong to a current employee — and wrong for a clinical record. On live data
+ * 17 of 198 visits were authored by a nurse who has since left the roster; the
+ * strict rule deletes their charting from every view. Clinical records get the
+ * same three-way rule as patients: only a record positively attributed to
+ * ANOTHER agency's staff is hidden.
+ */
+export function filterRecordsByAuthorAgency(rows, users, caller, authorOf = (row) => row?.created_by) {
+  if (!Array.isArray(rows)) return [];
+  const scope = resolveCallerScope(users, caller);
+  if (scope.mode === 'none') return [];
+  if (scope.mode === 'all') return rows;
+  return rows.filter((row) => classifyRow(row, scope, [authorOf(row)]) !== 'foreign');
 }
 
 /**

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -51,9 +52,9 @@ export default function DuplicatePatients() {
     refetchOnMount: 'always',
   });
 
-  const { data: allVisits = [], isLoading: visitsLoading } = useQuery({
+  const { data: allVisits = [], isLoading: visitsLoading } = useAgencyScopedQuery({
     queryKey: ['all-visits-duplicate-analysis'],
-    queryFn: () => base44.entities.Visit.list('-created_date', 5000),
+    fetch: () => base44.entities.Visit.list('-created_date', 5000),
     enabled: patients.length > 0
   });
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
 import { calculateAge, parseLocalDate, toLocalISODate } from "@/lib/dateLocal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -85,9 +86,9 @@ export default function Patients() {
     select: excludeArchived,
   });
 
-  const { data: allVisits = [] } = useQuery({
+  const { data: allVisits = [] } = useAgencyScopedQuery({
     queryKey: ['allVisits'],
-    queryFn: () => base44.entities.Visit.list('-visit_date', 500),
+    fetch: () => base44.entities.Visit.list('-visit_date', 500),
     initialData: [],
     staleTime: 300000,
   });

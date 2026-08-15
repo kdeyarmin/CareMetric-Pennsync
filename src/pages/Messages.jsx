@@ -68,6 +68,13 @@ export default function Messages() {
     queryFn: () => base44.auth.me(),
   });
 
+  // Deliberately NOT routed through useAgencyScopedQuery. A Message belongs to
+  // its PARTICIPANTS, not its author: scoping by the sender's agency would hide
+  // a message someone outside the agency addressed to this user, and the four
+  // optimistic setQueryData/getQueryData calls below key on ['messages']
+  // exactly, so appending an agency segment would silently send them to a
+  // different cache entry. Message needs participant-based narrowing instead —
+  // see docs/HOSTED-RLS-PROOF.md §5c.
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ['messages'],
     queryFn: () => base44.entities.Message.list('-created_date', 200),

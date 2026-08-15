@@ -58,6 +58,9 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
     queryFn: () => base44.auth.me()
   });
 
+  // NOT agency-scoped: this is one patient's care-team thread. Filtering by the
+  // sender's agency would drop messages from co-treating staff outside it, and
+  // the patient_id pin is already narrower than agency.
   const { data: messages = [], _isLoading } = useQuery({
     queryKey: ['messages', patientId],
     queryFn: async () => {

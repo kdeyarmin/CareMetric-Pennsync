@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,9 +30,9 @@ export default function HospitalizationRiskWidget({ autoAnalyze = false }) {
 
   const { data: patients = [] } = useScopedPatients({ status: 'active', sort: '-updated_date', limit: 100 });
 
-  const { data: recentVisits = [] } = useQuery({
+  const { data: recentVisits = [] } = useAgencyScopedQuery({
     queryKey: ['allRecentVisits'],
-    queryFn: () => base44.entities.Visit.filter({ status: 'completed' }, '-visit_date', 500),
+    fetch: () => base44.entities.Visit.filter({ status: 'completed' }, '-visit_date', 500),
     initialData: [],
   });
 
