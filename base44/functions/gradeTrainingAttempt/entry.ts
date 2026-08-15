@@ -206,16 +206,36 @@ Deno.serve(async (req) => {
     const attempts = await base44.asServiceRole.entities.TrainingAttempt.filter({ assignment_id: assignmentId, user_id: assignment.assigned_to_user_id }, '-created_date', 100);
     const assignmentNotes = parseAssignmentNotes(assignment.notes);
 
-    if (assignment.max_attempts && attempts.length >= assignment.max_attempts) {
+    // Competency gates must come from the ADMIN-OWNED course, not solely from
+    // the TrainingAssignment row. TrainingAssignment write RLS grants the
+    // assignee (the learner) full row write, so trusting the assignment's
+    // passing_score_required / max_attempts / waiting_period_hours for gating
+    // let a learner POST { passing_score_required: 1 } to their own assignment,
+    // answer one question, and have the passing TrainingAttempt drive
+    // issueCertificate into minting a compliance/CEU certificate. A
+    // learner-writable value may only make a gate STRICTER than the course
+    // baseline (raise the pass mark, lower the attempt cap, lengthen the
+    // cooldown), never weaker.
+    const courseRetake = (course && typeof course.retake_settings_json === 'object' && course.retake_settings_json) || {};
+
+    const attemptCaps = [assignment.max_attempts, courseRetake.max_attempts]
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const effectiveMaxAttempts = attemptCaps.length ? Math.min(...attemptCaps) : null;
+    if (effectiveMaxAttempts && attempts.length >= effectiveMaxAttempts) {
       return Response.json({ error: 'Maximum attempts reached for this in-service' }, { status: 400 });
     }
 
-    if (assignment.waiting_period_hours && attempts.length > 0) {
+    const effectiveWaitHours = Math.max(
+      Number(assignment.waiting_period_hours) || 0,
+      Number(courseRetake.waiting_period_hours) || 0,
+    );
+    if (effectiveWaitHours && attempts.length > 0) {
       const lastAttempt = attempts[0];
       const submittedAt = lastAttempt.submitted_at ? new Date(lastAttempt.submitted_at).getTime() : 0;
       const hoursSince = (Date.now() - submittedAt) / (1000 * 60 * 60);
-      if (lastAttempt.passed === false && hoursSince < assignment.waiting_period_hours) {
-        return Response.json({ error: `Retake available in ${Math.ceil(assignment.waiting_period_hours - hoursSince)} hour(s)` }, { status: 400 });
+      if (lastAttempt.passed === false && hoursSince < effectiveWaitHours) {
+        return Response.json({ error: `Retake available in ${Math.ceil(effectiveWaitHours - hoursSince)} hour(s)` }, { status: 400 });
       }
     }
 
