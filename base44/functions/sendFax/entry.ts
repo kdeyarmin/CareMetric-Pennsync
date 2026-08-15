@@ -385,7 +385,16 @@ Deno.serve(async (req) => {
     }
 
     const faxId = telnyxData?.data?.id || null;
-    await base44.entities.FaxLog.update(faxLog.id, { telnyx_fax_id: faxId, status: 'sending' });
+    // Telnyx has ACCEPTED the fax (2xx) and charged for it. A throw while writing
+    // the telnyx id / status must not surface as "send failed" (the outer catch
+    // returns 500) — that both misreports a transmitted PHI fax and strands the
+    // row 'queued' with no telnyx_fax_id, which the DLR webhook and pollers can't
+    // reconcile. Log and continue to the success response (mirrors sendBatchFax).
+    try {
+      await base44.entities.FaxLog.update(faxLog.id, { telnyx_fax_id: faxId, status: 'sending' });
+    } catch (bookkeepErr) {
+      console.error('sendFax: fax accepted by Telnyx but FaxLog bookkeeping failed', { log_id: faxLog.id, error: bookkeepErr?.message });
+    }
 
     await base44.entities.UserActivity.create({
       user_email: user.email,

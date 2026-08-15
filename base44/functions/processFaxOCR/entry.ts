@@ -153,13 +153,17 @@ Return JSON: {"text": "extracted text", "confidence": 0-100}`;
       });
     } catch (error) {
       console.error('OCR processing failed:', error);
-      
-      // Mark as processed but failed
+
+      // Do NOT set ocr_processed:true here. The LLM call can fail transiently
+      // (provider 5xx/timeout), and marking the row processed with a
+      // "[OCR FAILED]" marker made the already-processed guard above return that
+      // marker as the document's text on every future call — one outage
+      // permanently poisoned the fax's OCR with no redrive path. Record the
+      // failure reason only, leaving the row un-processed so a later attempt can
+      // re-run OCR.
       await base44.asServiceRole.entities.FaxLog.update(fax_log_id, {
-        ocr_processed: true,
-        ocr_text: '[OCR FAILED: ' + error.message + ']',
-        ocr_confidence: 0
-      });
+        failure_reason: 'OCR failed: ' + (error?.message || 'unknown error'),
+      }).catch(() => {});
 
       return Response.json({
         success: false,

@@ -122,6 +122,12 @@ Rules:
 };
 
 Deno.serve(async (req) => {
+  // Set once the idempotency claim is confirmed; lets the 404 path and the outer
+  // catch RELEASE the claim so a transient failure during the long build (LLM
+  // generation, course/module/question/assignment creates) doesn't strand the
+  // attempt forever — every re-fire otherwise returned "already claimed" and the
+  // failed employee never received their mandatory remediation.
+  let clearClaim = null;
   try {
     const base44 = createClientFromRequest(req);
 
@@ -179,6 +185,9 @@ Deno.serve(async (req) => {
     if (!claimCheck[0] || claimCheck[0].corrective_plan_claimed_by !== claimToken) {
       return Response.json({ success: true, skipped: true, reason: 'Corrective plan claimed by concurrent run' });
     }
+    // We own the claim now — enable release on any downstream failure.
+    clearClaim = () => base44.asServiceRole.entities.TrainingAttempt
+      .update(attempt.id, { corrective_plan_claimed_by: null }).catch(() => {});
     const existingPlansAfterClaim = await base44.asServiceRole.entities.CorrectiveActionPlan
       .filter({ training_attempt_id: attempt.id }, '-created_date', 1).catch(() => []);
     if (existingPlansAfterClaim.length > 0) {
@@ -188,6 +197,7 @@ Deno.serve(async (req) => {
     const [assignment] = await base44.asServiceRole.entities.TrainingAssignment.filter({ id: attempt.assignment_id }, '-created_date', 1);
     const [sourceCourse] = await base44.asServiceRole.entities.TrainingCourse.filter({ id: attempt.course_id }, '-created_date', 1);
     if (!assignment || !sourceCourse) {
+      await clearClaim();
       return Response.json({ success: false, error: 'Source assignment or course not found' }, { status: 404 });
     }
 
@@ -396,6 +406,9 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('triggerCorrectiveActionPlan failed:', error);
+    // Release the idempotency claim so a later re-fire can retry the build
+    // rather than short-circuiting on "already claimed" forever.
+    if (clearClaim) await clearClaim();
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

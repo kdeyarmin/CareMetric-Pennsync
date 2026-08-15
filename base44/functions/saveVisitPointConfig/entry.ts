@@ -78,14 +78,13 @@ Deno.serve(async (req) => {
       const newest = await base44.asServiceRole.entities.VisitPointConfig
         .list('-updated_date', 50).catch(() => []);
       const legacy = (newest || []).filter((r) => !String(r?.agency_name || '').trim());
+      // Adopt a single UNSCOPED legacy row only. The removed `length <= 1` arm
+      // also adopted a lone TENANT-scoped row, so a platform admin (no agency)
+      // saving config silently overwrote that agency's point math. Fall through
+      // to create a new unscoped row instead, matching saveFollowUpRuleConfig /
+      // savePDGMRateConfig.
       if (legacy.length === 1) existing = legacy;
-      else if ((newest || []).length === 1 && !String(newest[0]?.agency_name || '').trim()) {
-        existing = newest;
-      } else if ((newest || []).length <= 1) {
-        existing = newest || [];
-      } else {
-        existing = [];
-      }
+      else existing = [];
     }
     const target = (existing || []).find((c) => c && c.active !== false) || (existing || [])[0];
 

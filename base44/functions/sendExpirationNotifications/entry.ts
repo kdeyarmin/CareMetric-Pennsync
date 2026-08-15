@@ -93,6 +93,18 @@ Deno.serve(async (req) => {
       ? crypto.randomUUID()
       : `exp-${Date.now()}`;
 
+    // Resolve each staff member's agency once so training-expiration items can be
+    // attributed. TrainingAssignment carries no agency_name, so these items used
+    // to be built unscoped and — because the admin summary treats a null agency
+    // as "visible to every admin" — every tenant's admins received every other
+    // agency's staff names + course titles. Credentials already carry agency_name.
+    const allStaff = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
+    const agencyByEmail = new Map(
+      (Array.isArray(allStaff) ? allStaff : [])
+        .filter((u) => u && u.email)
+        .map((u) => [u.email, String(u.agency_name || '').trim() || null]),
+    );
+
     // Reminder tiers (days before expiration). Fire when the count is AT or
     // BELOW a tier that hasn't been sent yet, rather than on an exact-day match.
     // A missed cron run no longer skips the tier permanently; per-record
@@ -149,7 +161,8 @@ Deno.serve(async (req) => {
           user_id: assignment.assigned_to_user_id,
           course_title: assignment.course_title,
           days_until_expiration: daysUntilExpiration,
-          renewal_due_date: assignment.renewal_due_date
+          renewal_due_date: assignment.renewal_due_date,
+          agency_name: agencyByEmail.get(assignment.assigned_to_user_id) || null,
         });
       } catch (err) {
         console.error('sendExpirationNotifications: assignment notify failed', err?.message || err);
@@ -224,10 +237,10 @@ Deno.serve(async (req) => {
     }
 
     if (adminNotifications.length > 0) {
-      // Scope each admin to expirations from their own agency (super_admins see all).
-      // Unscoped fan-out leaked staff names/credential titles across tenants.
-      const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
-      const adminUsers = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
+      // Scope each admin to expirations from their own agency (super_admins see
+      // all). Unscoped fan-out leaked staff names/credential titles across
+      // tenants. Reuse the staff roster fetched above.
+      const adminUsers = (Array.isArray(allStaff) ? allStaff : []).filter((u) =>
         u && u.email && (
           u.role === 'admin' ||
           u.account_type === 'agency_admin' ||
@@ -236,10 +249,13 @@ Deno.serve(async (req) => {
       );
 
       for (const admin of adminUsers) {
+        // Agency-scoped admins receive ONLY items positively attributed to their
+        // agency; unattributable items (no agency_name) go to super_admins only,
+        // never fanned out to every agency admin.
         const scoped = admin.account_type === 'super_admin'
           ? adminNotifications
           : adminNotifications.filter((n) =>
-            !n.agency_name || n.agency_name === admin.agency_name
+            n.agency_name && n.agency_name === admin.agency_name
           );
         if (scoped.length === 0) continue;
         await base44.asServiceRole.entities.Notification.create({

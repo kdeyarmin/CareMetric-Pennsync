@@ -66,6 +66,9 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // keep the two in sync) ----
 
 const FORM_MARKER = 'additional information request';
+// Bounded OCR retries for an inbound fax before it is marked terminally failed
+// (a transient provider error otherwise dropped the fax on its first attempt).
+const MAX_OCR_ATTEMPTS = 5;
 
 function normalizeFaxNumber(num: unknown) {
   const digits = String(num || '').replace(/\D/g, '');
@@ -207,8 +210,17 @@ Deno.serve(async (req) => {
         });
       } catch (error) {
         console.error('Inbound fax OCR failed:', error?.message);
+        // A transient OCR failure (provider 5xx/timeout, platform blip) must not
+        // terminally drop the fax: the cron only ever re-scans 'pending', so a
+        // 'failed' inbound fax — e.g. a provider fax-back answering an open
+        // referral follow-up — was never re-processed and silently vanished from
+        // auto-matching. Return the row to 'pending' for a bounded number of
+        // retries, only marking it terminally failed after the cap.
+        const nextAttempts = (Number(fax.ocr_attempts) || 0) + 1;
+        const exhausted = nextAttempts >= MAX_OCR_ATTEMPTS;
         await base44.asServiceRole.entities.IncomingFax.update(fax.id, {
-          processing_status: 'failed',
+          processing_status: exhausted ? 'failed' : 'pending',
+          ocr_attempts: nextAttempts,
           claimed_by: null,
           claimed_at: null,
         }).catch(() => {});

@@ -296,6 +296,34 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: isAllowedDestination — generated, edit base44/_shared/backendHelpers.mjs>>>
+// Cost-control destination gate. Single source of truth is the frontend
+// src/components/voice/costControls.js — this copy is generated from it verbatim.
+const PREMIUM_AREA_CODES = new Set(["900", "976"]);
+function isAllowedDestination(e164, settings = {}) {
+  const s = settings || {};
+  const e = String(e164 || "").trim();
+  const isNanp = /^\+1\d{10}$/.test(e);
+
+  if (isNanp) {
+    const areaCode = e.slice(2, 5);
+    if (PREMIUM_AREA_CODES.has(areaCode)) return { allowed: false, reason: "premium_number_blocked" };
+    const blocked = Array.isArray(s.blocked_area_codes) ? s.blocked_area_codes.map((a) => String(a).replace(/[^\d]/g, "")) : [];
+    if (blocked.includes(areaCode)) return { allowed: false, reason: "blocked_area_code" };
+    return { allowed: true, reason: "allowed" };
+  }
+
+  // A +1-prefixed number that isn't exactly 10 NANP digits is malformed, not
+  // international — never let the international toggle dial/text a broken US number.
+  if (/^\+1/.test(e)) return { allowed: false, reason: "invalid_destination" };
+
+  // Not a +1 NANP number → treat as international.
+  if (!/^\+\d{8,15}$/.test(e)) return { allowed: false, reason: "invalid_destination" };
+  if (s.allow_international === true) return { allowed: true, reason: "international_allowed" };
+  return { allowed: false, reason: "international_blocked" };
+}
+// <<<END SHARED HELPER: isAllowedDestination>>>
+
 
 /**
  * Re-dispatches failed faxes whose config-aware backoff window (set by the
@@ -474,7 +502,11 @@ Deno.serve(async (req) => {
     const webhookUrl = functionsBaseUrl ? `${functionsBaseUrl}/handleTelnyxStatusWebhook` : undefined;
 
     if (!apiKey || !faxConnectionId) {
-      return Response.json({ error: 'Telnyx API key or fax connection ID not configured. Store them in the Telnyx secret panel.' }, { status: 500 });
+      // Use the shared credential message so a failed READ ("could not read the
+      // stored credential") is not reported as "not configured" — telling an
+      // operator to re-enter a key they already stored is what caused two
+      // reverted env-fallback regressions.
+      return Response.json({ error: telnyxCredsMessage(telnyxCreds, 'API key / fax connection ID') }, { status: 500 });
     }
 
     // Per-sender agency fax lines (cached). Newest-row-wins would transmit
@@ -500,6 +532,7 @@ Deno.serve(async (req) => {
         officeFaxRaw,
         outboundFaxRaw,
         outboundFax,
+        settings,
       };
       agencyFaxCache.set(cacheKey, resolved);
       return resolved;
@@ -559,6 +592,24 @@ Deno.serve(async (req) => {
           skippedCount++;
           continue;
         }
+        // Re-gate the STORED destination through the same cost-control allowlist
+        // sendFax applies. FaxLog write RLS is owner + service-role, so a sender
+        // could edit their row's to_number to a premium/international number
+        // (and set status:failed, next_retry_at:now) and have this cron dispatch
+        // the PHI document anywhere on the agency's Telnyx account; a policy
+        // change made after the original send (e.g. international disabled) is
+        // likewise re-applied here. A blocked destination is terminal.
+        const destAllowed = isAllowedDestination(fax.to_number, faxLine.settings);
+        if (!destAllowed.allowed) {
+          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+            status: 'failed',
+            next_retry_at: null,
+            failure_reason: `Destination blocked at retry time: ${destAllowed.reason}`,
+            retry_claimed_by: null,
+          }).catch(() => {});
+          skippedCount++;
+          continue;
+        }
         const retryPayload = {
           connection_id: faxConnectionId,
           from: faxLine.fromNumber,
@@ -593,9 +644,34 @@ Deno.serve(async (req) => {
         } else {
           const errText = await telnyxResp.text();
           console.error('Telnyx error on fax retry:', errText);
-          // Telnyx rejected the re-send — a permanent rejection, so stop now.
-          await base44.asServiceRole.entities.FaxLog.update(fax.id, { status: 'failed', retry_claimed_by: null }).catch(() => {});
-          await handleRetryExhausted(base44, fax, `Telnyx rejected retry: ${errText}`, c.maxRetries, c.notifyOnFinalFailure);
+          // Classify the provider rejection instead of treating every non-OK
+          // response as permanent. A 401/403/429/5xx (or a transient-pattern
+          // body) is infrastructure — an outage, a rate limit, a temporarily bad
+          // key — that clears on its own; terminal-failing here destroyed up to a
+          // full batch of queued PHI faxes on their FIRST retry during any Telnyx
+          // blip and emailed every sender a false "could not be delivered" notice.
+          // Reschedule within budget, consuming one attempt (same accounting as
+          // the network-error catch below), and reserve handleRetryExhausted for
+          // a genuinely permanent 4xx rejection or an exhausted budget.
+          const status = telnyxResp.status;
+          const transient = classifyFaxFailure(String(status), errText) === 'transient'
+            || status === 401 || status === 403 || status === 429 || status >= 500;
+          if (transient) {
+            const attempts = Number(fax.retry_count) || 0;
+            const nextCount = attempts + 1;
+            const within = nextCount < c.maxRetries;
+            const delayMin = nextRetryDelayMinutes(attempts, cfg, fax.priority || 'normal');
+            await base44.asServiceRole.entities.FaxLog.update(fax.id, {
+              status: 'failed',
+              retry_claimed_by: null,
+              retry_count: nextCount,
+              next_retry_at: within ? new Date(now.getTime() + delayMin * 60000).toISOString() : null,
+            }).catch(() => {});
+            if (!within) await handleRetryExhausted(base44, { ...fax, retry_count: nextCount }, `Telnyx rejected retry: ${errText}`, c.maxRetries, c.notifyOnFinalFailure);
+          } else {
+            await base44.asServiceRole.entities.FaxLog.update(fax.id, { status: 'failed', retry_claimed_by: null }).catch(() => {});
+            await handleRetryExhausted(base44, fax, `Telnyx rejected retry: ${errText}`, c.maxRetries, c.notifyOnFinalFailure);
+          }
         }
       } catch (err) {
         console.error('Network error retrying fax:', err.message);

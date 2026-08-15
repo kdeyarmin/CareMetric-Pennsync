@@ -577,7 +577,29 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error: reason, processed: 0, sent: 0, failed: 0, skipped: 0 }, { status: 500 });
     }
 
-    const { smsEnabled, settings } = await getAgencyConfig(base44);
+    // Resolve agency config PER ROW from the sending nurse. A single unhinted
+    // getAgencyConfig() returns smsEnabled:false whenever more than one tenant's
+    // AgencySettings row exists (the normal multi-tenant state), which used to
+    // fail() every due reminder on every tick — the same queue-destruction hazard
+    // the credential guard above fixed. Cache the nurse->agency and agency->config
+    // lookups so the loop stays cheap.
+    const nurseAgencyCache = new Map();
+    const agencyConfigCache = new Map();
+    const resolveRowConfig = async (nurseEmail) => {
+      const key = String(nurseEmail || '');
+      let agencyName = nurseAgencyCache.get(key);
+      if (agencyName === undefined) {
+        const [u] = key
+          ? await base44.asServiceRole.entities.User.filter({ email: key }, undefined, 1).catch(() => [])
+          : [];
+        agencyName = String(u?.agency_name || '').trim();
+        nurseAgencyCache.set(key, agencyName);
+      }
+      if (!agencyConfigCache.has(agencyName)) {
+        agencyConfigCache.set(agencyName, await getAgencyConfig(base44, agencyName));
+      }
+      return agencyConfigCache.get(agencyName);
+    };
     // A unique id for THIS cron run, used to claim rows (see the claim below).
     const runId = crypto.randomUUID();
 
@@ -653,7 +675,22 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      if (!smsEnabled) { await fail('SMS messaging disabled for the agency'); continue; }
+      // Resolve THIS row's agency config from the nurse who scheduled it.
+      const cfg = await resolveRowConfig(row.nurse_email);
+      if (cfg.missingAgencySettings) {
+        // Could not resolve this row's agency among multiple tenant rows — an
+        // agency-resolution problem, not a per-message one. Release the claim to
+        // pending so a later run (or a corrected agency mapping) can send it,
+        // instead of destroying the reminder. Staleness is still bounded by the
+        // MAX_SCHEDULE_AGE_MS expiry above.
+        await base44.asServiceRole.entities.ScheduledSms.update(row.id, {
+          status: 'pending', claimed_by: '', claimed_at: null,
+        }).catch(() => {});
+        result.skipped++;
+        continue;
+      }
+      const settings = cfg.settings;
+      if (!cfg.smsEnabled) { await fail('SMS messaging disabled for the agency'); continue; }
 
       // Cost control: block premium/blocked/international destinations by default
       // (mirrors sendSms). A blocked destination is terminal — fail the row.

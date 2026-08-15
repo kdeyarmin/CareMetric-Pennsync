@@ -65,6 +65,9 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
  */
 
 const BATCH_LIMIT = 100;
+// Bounded retries before a reminder whose notifications keep failing to create
+// (infrastructure failure) is marked terminally failed.
+const MAX_REMINDER_ATTEMPTS = 5;
 
 Deno.serve(async (req) => {
   try {
@@ -184,7 +187,21 @@ Deno.serve(async (req) => {
       }
 
       if (created === 0) {
-        await fail('Failed to create any signer notifications');
+        // Recipients existed (the empty case was canceled above) but every
+        // Notification.create threw — an infrastructure failure (platform blip,
+        // rate limit), not a permanent condition. Terminal 'failed' is never
+        // re-scanned by this cron, so a valid reminder would be lost to a
+        // one-tick outage. Return the claim to 'pending' for a bounded number of
+        // retries, only failing after the cap.
+        const nextAttempts = (Number(row.attempts) || 0) + 1;
+        if (nextAttempts >= MAX_REMINDER_ATTEMPTS) {
+          await fail('Failed to create signer notifications after repeated attempts');
+        } else {
+          await base44.asServiceRole.entities.ScheduledSignatureReminder.update(row.id, {
+            status: 'pending', claimed_by: '', claimed_at: null, attempts: nextAttempts,
+          }).catch(() => {});
+          result.skipped++;
+        }
         continue;
       }
 
