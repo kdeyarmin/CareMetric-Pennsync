@@ -96,8 +96,11 @@ export default function AIComplianceInServicesHub() {
   const reportStats = {
     totalAssigned: assignments.length,
     dueSoon: dueSoonCount,
-    overdue: assignments.filter((assignment) => assignment.status === 'overdue').length,
-    completed: assignments.filter((assignment) => assignment.status === 'completed').length,
+    overdue: assignments.filter((assignment) => {
+      if (assignment.status === 'completed' || assignment.pass_fail_result === 'passed') return false;
+      return assignment.status === 'overdue' || isPastLocalDueDate(assignment.due_date);
+    }).length,
+    completed: assignments.filter((assignment) => assignment.status === 'completed' || assignment.pass_fail_result === 'passed').length,
     passed: assignments.filter((assignment) => assignment.pass_fail_result === 'passed').length,
     failed: assignments.filter((assignment) => assignment.pass_fail_result === 'failed').length,
     averageScore,

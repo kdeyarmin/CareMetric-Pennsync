@@ -253,7 +253,7 @@ export default function IncidentReviewQueue() {
 
   const { data: incidents = [], isLoading } = useAgencyScopedQuery({
     queryKey: ["admin-incidents"],
-    fetch: () => base44.entities.Incident.list("-created_date", 500),
+    fetch: () => base44.entities.Incident.list("-created_date", 5000),
     initialData: [],
     refetchInterval: 60000,
   });

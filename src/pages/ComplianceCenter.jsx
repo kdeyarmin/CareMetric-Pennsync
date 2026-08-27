@@ -129,21 +129,21 @@ export default function ComplianceCenter() {
 
   const { data: trainingAssignments = [], refetch: _refetchAssignments } = useQuery({
     queryKey: ['allTrainingAssignments', '-updated_date', 500],
-    queryFn: () => base44.entities.TrainingAssignment.list('-updated_date', 500),
+    queryFn: () => base44.entities.TrainingAssignment.list('-updated_date', 5000),
     initialData: [],
     refetchInterval: 30000,
   });
 
   const { data: personnelCredentials = [], refetch: _refetchCredentials } = useQuery({
     queryKey: ['allPersonnelCredentials'],
-    queryFn: () => base44.entities.PersonnelCredential.list('-updated_date', 500),
+    queryFn: () => base44.entities.PersonnelCredential.list('-updated_date', 5000),
     initialData: [],
     refetchInterval: 30000,
   });
 
   const { data: _visits = [], refetch: _refetchVisits } = useAgencyScopedQuery({
     queryKey: ['allVisits'],
-    fetch: () => base44.entities.Visit.filter({}, '-visit_date', 500),
+    fetch: () => base44.entities.Visit.filter({}, '-visit_date', 5000),
     initialData: [],
     refetchInterval: 30000,
   });

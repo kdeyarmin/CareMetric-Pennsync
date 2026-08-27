@@ -25,7 +25,7 @@ import AnnualLearningPlanPanel from "@/components/training/AnnualLearningPlanPan
 import TrainingAttachmentManager from "@/components/training/TrainingAttachmentManager";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
-import { parseLocalDate, startOfLocalDay, formatLocalDate } from "@/lib/dateLocal";
+import { parseLocalDate, startOfLocalDay, formatLocalDate, isPastLocalDueDate } from "@/lib/dateLocal";
 
 const formatDate = (value) => formatLocalDate(value) || "—";
 
@@ -97,7 +97,8 @@ export default function AnnualMandatoryEducationHub() {
   const annualAssignments = useMemo(() => assignments.filter((assignment) => assignment.annual_cycle_year === year), [assignments, year]);
   const _annualCertificates = useMemo(() => certificates.filter((certificate) => certificate.annual_cycle_year === year), [certificates, year]);
   const dueSoon = annualAssignments.filter((assignment) => {
-    if (!assignment.due_date || assignment.status === 'completed' || assignment.status === 'overdue') return false;
+    if (!assignment.due_date || assignment.status === 'completed' || assignment.pass_fail_result === 'passed') return false;
+    if (assignment.status === 'overdue' || isPastLocalDueDate(assignment.due_date)) return false;
     const dueDay = startOfLocalDay(parseLocalDate(assignment.due_date));
     const today = startOfLocalDay(new Date());
     if (!dueDay || !today) return false;
@@ -108,8 +109,11 @@ export default function AnnualMandatoryEducationHub() {
   const stats = {
     totalAssigned: annualAssignments.length,
     dueSoon,
-    overdue: annualAssignments.filter((assignment) => assignment.status === 'overdue').length,
-    completed: annualAssignments.filter((assignment) => assignment.status === 'completed').length,
+    overdue: annualAssignments.filter((assignment) => {
+      if (assignment.status === 'completed' || assignment.pass_fail_result === 'passed') return false;
+      return assignment.status === 'overdue' || isPastLocalDueDate(assignment.due_date);
+    }).length,
+    completed: annualAssignments.filter((assignment) => assignment.status === 'completed' || assignment.pass_fail_result === 'passed').length,
     passed: annualAssignments.filter((assignment) => assignment.pass_fail_result === 'passed').length,
     failed: annualAssignments.filter((assignment) => assignment.pass_fail_result === 'failed').length,
     averageScore,
@@ -493,10 +497,14 @@ export default function AnnualMandatoryEducationHub() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge className={
-                        assignment.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
-                        assignment.status === 'overdue' ? 'bg-red-100 text-red-800' :
+                        (assignment.status === 'completed' || assignment.pass_fail_result === 'passed') ? 'bg-emerald-100 text-emerald-800' :
+                        (assignment.status === 'overdue' || isPastLocalDueDate(assignment.due_date)) ? 'bg-red-100 text-red-800' :
                         'bg-blue-100 text-blue-800'
-                      }>{assignment.status}</Badge>
+                      }>{
+                        (assignment.status === 'completed' || assignment.pass_fail_result === 'passed') ? 'completed' :
+                        (assignment.status === 'overdue' || isPastLocalDueDate(assignment.due_date)) ? 'overdue' :
+                        assignment.status
+                      }</Badge>
                       <Badge variant="outline">{assignment.score_percentage != null ? `${assignment.score_percentage}%` : '—'}</Badge>
                     </div>
                   </div>

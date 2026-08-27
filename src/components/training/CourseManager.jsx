@@ -18,6 +18,7 @@ import AICourseGenerator from "./AICourseGenerator";
 import TrainingVideoStudio from "./TrainingVideoStudio";
 import { getCourseReadiness } from "./courseReadiness";
 import { createPageUrl } from "@/utils";
+import { isPastLocalDueDate } from "@/lib/dateLocal";
 import {
   Dialog,
   DialogContent,
@@ -91,7 +92,7 @@ export default function CourseManager() {
       s.enrolled += 1;
       const isCompleted = a.status === 'completed' || a.pass_fail_result === 'passed';
       if (isCompleted) s.completed += 1;
-      if (a.status === 'overdue') s.overdue += 1;
+      if (!isCompleted && (a.status === 'overdue' || isPastLocalDueDate(a.due_date))) s.overdue += 1;
       if (a.pass_fail_result === 'passed' || a.pass_fail_result === 'failed') {
         s.graded += 1;
         if (a.pass_fail_result === 'passed') s.passed += 1;

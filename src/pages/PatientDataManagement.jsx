@@ -94,7 +94,7 @@ export default function PatientDataManagement() {
     queryKey: ['allVisits'],
     fetch: async () => {
       try {
-        return await base44.entities.Visit.list('-visit_date', 500);
+        return await base44.entities.Visit.list('-visit_date', 5000);
       } catch (err) {
         console.error('Failed to load visits:', err);
         return [];
