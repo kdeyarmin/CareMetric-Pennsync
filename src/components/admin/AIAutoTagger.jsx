@@ -17,15 +17,17 @@ export default function AIAutoTagger() {
   const [results, setResults] = useState(null);
   const queryClient = useQueryClient();
 
+  // High limits before agency post-filter so foreign-tenant rows cannot crowd
+  // this agency's untagged visits/incidents out of the tagging sample.
   const { data: visits = [] } = useAgencyScopedQuery({
     queryKey: ['allVisitsForTagging'],
-    fetch: () => base44.entities.Visit.list('-created_date', 100),
+    fetch: () => base44.entities.Visit.list('-created_date', 500),
     initialData: [],
   });
 
   const { data: incidents = [] } = useAgencyScopedQuery({
     queryKey: ['allIncidentsForTagging'],
-    fetch: () => base44.entities.Incident.list('-created_date', 50),
+    fetch: () => base44.entities.Incident.list('-created_date', 500),
     initialData: [],
   });
 

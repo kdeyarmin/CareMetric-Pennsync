@@ -121,7 +121,7 @@ export default function IncidentReportingModule() {
 
   const { data: incidents = [], _isLoading } = useAgencyScopedQuery({
     queryKey: ['incidents'],
-    fetch: () => base44.entities.Incident.list('-created_date', 200),
+    fetch: () => base44.entities.Incident.list('-created_date', 500),
     initialData: [],
   });
 

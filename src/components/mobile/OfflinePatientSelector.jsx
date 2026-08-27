@@ -31,7 +31,7 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
       const _today = todayEastern();
       return base44.entities.Visit.filter({ 
         status: 'scheduled'
-      }, 'visit_date', 100);
+      }, 'visit_date', 500);
     },
   });
 

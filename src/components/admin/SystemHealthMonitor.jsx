@@ -67,7 +67,7 @@ export default function SystemHealthMonitor() {
   // Fetch real entity counts for actual system data
   const { data: visits = [] } = useAgencyScopedQuery({
     queryKey: ["health-visits"],
-    fetch: () => base44.entities.Visit.list("-created_date", 50),
+    fetch: () => base44.entities.Visit.list("-created_date", 500),
     initialData: [],
     refetchInterval: autoRefresh ? 30000 : false,
   });
@@ -84,7 +84,7 @@ export default function SystemHealthMonitor() {
   });
   const { data: incidents = [] } = useAgencyScopedQuery({
     queryKey: ["health-incidents"],
-    fetch: () => base44.entities.Incident.filter({ status: "reported" }, "-created_date", 50),
+    fetch: () => base44.entities.Incident.filter({ status: "reported" }, "-created_date", 500),
     initialData: [],
     refetchInterval: autoRefresh ? 30000 : false,
   });
