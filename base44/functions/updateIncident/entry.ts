@@ -190,7 +190,40 @@ async function patchIncident(base44, currentUser, incident, body, isAdmin) {
   }
 
   await base44.asServiceRole.entities.Incident.update(incident.id, patch);
-  return Response.json({ success: true, updated_fields: Object.keys(patch) });
+
+  // Mirror transitionIncident: persist an append-only trail for compliance review.
+  // Before/after only for keys that actually change so the audit stays readable.
+  const changed = {};
+  for (const key of Object.keys(patch)) {
+    changed[key] = { before: incident[key] ?? null, after: patch[key] };
+  }
+  let auditRecorded = true;
+  await base44.asServiceRole.entities.UserActivity.create({
+    user_email: currentUser.email,
+    user_name: currentUser.full_name,
+    action: 'incident_patched',
+    details: {
+      incident_id: incident.id,
+      updated_fields: Object.keys(patch),
+      changes: changed,
+    },
+    page: 'IncidentReview',
+    entity_type: 'Incident',
+    entity_id: incident.id,
+  }).catch((err) => {
+    auditRecorded = false;
+    console.error('incident patch audit failed:', err?.message || err);
+  });
+
+  return Response.json({
+    success: true,
+    updated_fields: Object.keys(patch),
+    audit_recorded: auditRecorded,
+    ...(auditRecorded ? {} : {
+      warning: 'Incident updated, but the audit record could not be written. '
+        + 'Record this patch manually.',
+    }),
+  });
 }
 
 async function assertAgencyIncidentAccess(base44, currentUser, incident) {
