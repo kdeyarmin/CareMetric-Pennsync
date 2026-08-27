@@ -108,7 +108,7 @@ export default function PatientDataManagement() {
     queryKey: ['allAlerts'],
     fetch: async () => {
       try {
-        return await base44.entities.PatientAlert.list('-created_date', 200);
+        return await base44.entities.PatientAlert.list('-created_date', 5000);
       } catch (err) {
         console.error('Failed to load alerts:', err);
         return [];
@@ -122,7 +122,7 @@ export default function PatientDataManagement() {
     queryKey: ['allIncidents'],
     fetch: async () => {
       try {
-        return await base44.entities.Incident.list('-incident_date', 200);
+        return await base44.entities.Incident.list('-incident_date', 5000);
       } catch (err) {
         console.error('Failed to load incidents:', err);
         return [];

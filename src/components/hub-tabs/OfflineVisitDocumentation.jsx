@@ -18,6 +18,7 @@ import OfflineSyncStatus from '@/components/offline/OfflineSyncStatus';
 import { useOfflineQueue } from '@/lib/offlineSync';
 import { withOfflineRosterFallback } from '@/lib/offlinePatients';
 import { agencyQueryKey, scopePatientsForCurrentCaller } from '@/lib/agencyRoster';
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function OfflineVisitDocumentation() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,7 +41,7 @@ export default function OfflineVisitDocumentation() {
     // IndexedDB roster it serves was mirrored from an already-scoped read.
     queryFn: () => withOfflineRosterFallback(
       async () => scopePatientsForCurrentCaller(
-        await base44.entities.Patient.list('-updated_date', 100),
+        await base44.entities.Patient.list('-updated_date', ALL_ROWS),
       ),
     ),
     initialData: [],
