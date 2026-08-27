@@ -101,7 +101,7 @@ export default function CarePlanManagement() {
   // Fetch all care plans
   const { data: carePlans = [], isLoading } = useAgencyScopedQuery({
     queryKey: ['allCarePlans'],
-    fetch: () => base44.entities.CarePlan.list('-created_date', 500),
+    fetch: () => base44.entities.CarePlan.list('-created_date', 5000),
     initialData: [],
   });
 

@@ -88,7 +88,7 @@ export default function Patients() {
 
   const { data: allVisits = [] } = useAgencyScopedQuery({
     queryKey: ['allVisits'],
-    fetch: () => base44.entities.Visit.list('-visit_date', 500),
+    fetch: () => base44.entities.Visit.list('-visit_date', 5000),
     initialData: [],
     staleTime: 300000,
   });

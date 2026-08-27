@@ -84,7 +84,7 @@ export default function RealTimeComplianceDashboard() {
 
   const { data: allVisits = [] } = useAgencyScopedQuery({
     queryKey: ['allVisits'],
-    fetch: () => base44.entities.Visit.list('-visit_date', 500),
+    fetch: () => base44.entities.Visit.list('-visit_date', 5000),
   });
 
   const { data: allPatients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });

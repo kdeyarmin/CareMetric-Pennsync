@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -55,9 +55,17 @@ export default function PatientRecordDashboard() {
     fetch: () => base44.entities.Visit.list('-created_date', 500)
   });
 
-  const { data: alerts = [] } = useAgencyScopedQuery({
-    queryKey: ['active-alerts'],
-    fetch: () => base44.entities.PatientAlert.filter({ status: 'active' }, '-created_date', 100)
+  // Server-scoped alerts — avoid entity list(N) + agency post-filter truncation.
+  const { data: alerts = [] } = useQuery({
+    queryKey: ['active-alerts', 'patient-record-dashboard'],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getScopedPatientAlerts', {
+        limit: 500,
+        status: 'active',
+      });
+      return res?.data?.alerts || [];
+    },
+    initialData: [],
   });
 
   // Filter patients based on search and filters

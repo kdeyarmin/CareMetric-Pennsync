@@ -30,8 +30,8 @@ Deno.serve(async (req) => {
     // agency_admin cannot audit (and see names/ids for) every tenant.
     let [patients, users, visits, credentials] = await Promise.all([
       base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000),
-      base44.asServiceRole.entities.User.list('-created_date', 500),
-      base44.asServiceRole.entities.Visit.filter({ status: 'completed' }, '-visit_date', 200),
+      base44.asServiceRole.entities.User.list('-created_date', 5000),
+      base44.asServiceRole.entities.Visit.filter({ status: 'completed' }, '-visit_date', 5000),
       base44.asServiceRole.entities.PersonnelCredential.list('-expiration_date', 500),
     ]);
 

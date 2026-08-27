@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { scopePatientsForCurrentCaller } from '@/lib/agencyRoster';
+import { ALL_ROWS } from '@/lib/queryLimits';
 import { useAuth } from '@/lib/AuthContext';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 import { savePatients } from '@/lib/indexedDB';
@@ -102,7 +103,7 @@ export default function OfflineManager() {
       // app leans on ("the IndexedDB roster was mirrored from an already-scoped
       // read"), so an unscoped mirror would persist another tenant's charts to
       // disk and keep serving them offline long after the session ended.
-      base44.entities.Patient.filter({ status: "active" }, "first_name", 200)
+      base44.entities.Patient.filter({ status: "active" }, "first_name", ALL_ROWS)
         .then(scopePatientsForCurrentCaller)
         .then(patients => {
           savePatients(patients);

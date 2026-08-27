@@ -30,7 +30,7 @@ export default function ClinicalInsightsDashboard() {
     // ['allVisits'] is the existing key for exactly this query.
     queryKey: ['allVisits'],
     fetch: async () => {
-      return await base44.entities.Visit.list('-visit_date', 500);
+      return await base44.entities.Visit.list('-visit_date', 5000);
     },
     initialData: [],
   });

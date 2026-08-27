@@ -65,7 +65,7 @@ describe('OfflineManager agreement gating', () => {
     authState = { isAuthenticated: true, user: acceptedUser };
     render(<OfflineManager />);
     await waitFor(() => expect(migrateLegacyOfflineQueues).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(patientFilter).toHaveBeenCalledWith({ status: 'active' }, 'first_name', 200));
+    await waitFor(() => expect(patientFilter).toHaveBeenCalledWith({ status: 'active' }, 'first_name', 5000));
     await waitFor(() => expect(drainSyncQueue).toHaveBeenCalled());
   });
 });

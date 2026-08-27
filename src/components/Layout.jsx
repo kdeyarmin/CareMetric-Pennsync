@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Outlet, useLocation } from "react-router";
 
 import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useQuery } from "@tanstack/react-query";
 import { queryClientInstance } from "@/lib/query-client";
 import { clearCachedPHI } from "@/lib/phiStorage";
@@ -193,20 +192,22 @@ export default function Layout() {
     () => [...new Set(chartedVisits.map((v) => v.patient_id))].sort(),
     [chartedVisits]
   );
-  const { data: allActiveAlerts = [] } = useAgencyScopedQuery({
-    // The charted-patient set must be part of the key: the queryFn filters
-    // alerts against it, so when the nurse charts a new patient the cache must
-    // re-key and refetch (otherwise the new patient's alert stays hidden for
-    // the whole stale window).
+  // Server-scoped alerts (assignment/agency), then UX-narrow to charted patients.
+  // A bare PatientAlert.filter(..., 50) + agency post-filter truncated the nav
+  // badge whenever foreign-agency or uncharted rows filled the page.
+  const { data: allActiveAlerts = [] } = useQuery({
     queryKey: ['active-alerts', currentUser?.email, chartedPatientIdKey],
-    fetch: async () => {
-      const alerts = await base44.entities.PatientAlert.filter({ status: 'active' }, '-created_date', 50);
-      // Filter to only alerts for patients this clinician has charted on
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getScopedPatientAlerts', {
+        limit: 500,
+        status: 'active',
+      });
+      const alerts = res?.data?.alerts || [];
       const chartedPatientIds = new Set(chartedPatientIdKey);
-      return alerts.filter(a => chartedPatientIds.has(a.patient_id));
+      return alerts.filter((a) => chartedPatientIds.has(a.patient_id));
     },
-    initialData: [], 
-    refetchInterval: 60000, 
+    initialData: [],
+    refetchInterval: 60000,
     enabled: !!currentUser?.email && currentUser?.role !== 'admin' && chartedVisits.length > 0,
   });
 
@@ -419,7 +420,7 @@ export default function Layout() {
             <OfflineIndicator />
             <Breadcrumbs currentPageName={currentPageName} />
             <PageTransition>
-              <Outlet />
+              <Outlet key={location.pathname} />
             </PageTransition>
           </div>
         </main>

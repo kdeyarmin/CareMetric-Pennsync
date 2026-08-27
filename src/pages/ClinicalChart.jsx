@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey, scopePatientsToCallerAgency } from "@/lib/agencyRoster";
+import { ALL_ROWS } from "@/lib/queryLimits";
 import { isAdminLike } from "@/lib/superAdmin";
 import { Users, Activity } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
@@ -30,8 +31,8 @@ export default function ClinicalChart() {
     // definition inside their own agency.
     queryFn: async () => scopePatientsToCallerAgency(
       isAdminLike(currentUser)
-        ? await base44.entities.Patient.filter({ status: "active" }, "-updated_date", 100)
-        : await base44.entities.Patient.filter({ assigned_nurses: currentUser?.email, status: "active" }, "-updated_date", 100),
+        ? await base44.entities.Patient.filter({ status: "active" }, "-updated_date", ALL_ROWS)
+        : await base44.entities.Patient.filter({ assigned_nurses: currentUser?.email, status: "active" }, "-updated_date", ALL_ROWS),
       currentUser,
     ),
     enabled: !!currentUser,

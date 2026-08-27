@@ -687,3 +687,108 @@ test('autoRetryFailedFaxes classifies provider errors and re-gates the destinati
     'autoRetryFailedFaxes must re-validate the stored to_number against the cost-control allowlist before dispatch.',
   );
 });
+
+// AI report generators must assertPatientAccess after the patient load so a
+// facility admin (bare role:admin RLS is platform-wide) cannot pull another
+// agency's chart into an LLM prompt.
+for (const file of [
+  'base44/functions/generateDischargeSummary/entry.ts',
+  'base44/functions/generateMessageSuggestions/entry.ts',
+  'base44/functions/generatePatientEducation/entry.ts',
+  'base44/functions/summarizeMessageThread/entry.ts',
+  'base44/functions/generateFaxCoverPage/entry.ts',
+  'base44/functions/messagingAssistant/entry.ts',
+  'base44/functions/getPatientContext/entry.ts',
+  'base44/functions/processCompletedVisit/entry.ts',
+]) {
+  test(`${file} gates patient PHI with assertPatientAccess`, () => {
+    const src = read(file);
+    assert.ok(
+      /async function assertPatientAccess\(/.test(src),
+      `${file} must define assertPatientAccess (HOSTED-RLS-PROOF §5b residual).`,
+    );
+    assert.ok(
+      /assertPatientAccess\(base44,\s*user,\s*patient\)/.test(src),
+      `${file} must call assertPatientAccess after loading the patient.`,
+    );
+  });
+}
+
+// getDashboardData must ship recent completed visits (and care plans) so
+// RealTimePatientAlerts can compute overdue / high-risk / goal alerts — today's
+// visits alone make "No visit in N days" impossible.
+test('getDashboardData returns recentCompletedVisits and carePlans for alerts', () => {
+  const src = read('base44/functions/getDashboardData/entry.ts');
+  assert.ok(
+    /recentCompletedVisits/.test(src) && /fetchAlertContext/.test(src),
+    'getDashboardData must fetch recentCompletedVisits via fetchAlertContext.',
+  );
+  assert.ok(
+    /CarePlan\.filter/.test(src),
+    'getDashboardData must include active care plans for goal-deadline alerts.',
+  );
+});
+
+// autoEndDutyDay must honor per-agency auto_off_duty_hour / duty_timezone and
+// not flip every on_duty user the moment the cron fires.
+test('autoEndDutyDay respects per-agency auto-off hour', () => {
+  const src = read('base44/functions/autoEndDutyDay/entry.ts');
+  assert.ok(
+    /isPastAutoOffHour\(settings,\s*now\)/.test(src),
+    'autoEndDutyDay must gate flips on isPastAutoOffHour per agency settings.',
+  );
+  assert.ok(
+    /isStaleDutyDay\(/.test(src),
+    'autoEndDutyDay must also flip overnight-stale duty_on_since toggles.',
+  );
+  assert.ok(
+    /auto_off_duty_enabled === false/.test(src),
+    'autoEndDutyDay must skip agencies that disabled auto-off.',
+  );
+});
+
+// updateIncident patch path must write a UserActivity audit trail (parity with
+// transitionIncident) so compliance review sees field edits.
+test('updateIncident patchIncident records a UserActivity audit', () => {
+  const src = read('base44/functions/updateIncident/entry.ts');
+  assert.ok(
+    /action:\s*'incident_patched'/.test(src),
+    'patchIncident must create UserActivity with action incident_patched.',
+  );
+  assert.ok(
+    /audit_recorded/.test(src),
+    'patchIncident must surface audit_recorded like transitionIncident.',
+  );
+});
+
+// assignAnnualLearningPlan must prefetch enrollments/assignments into Sets
+// (parity with autoEnrollAnnualPlans) — O(users×courses) live filters time out.
+test('assignAnnualLearningPlan prefetches enrollment and assignment Sets', () => {
+  const src = read('base44/functions/assignAnnualLearningPlan/entry.ts');
+  assert.ok(
+    /enrolledSet\.add\(/.test(src) && /assignedSet\.add\(/.test(src),
+    'assignAnnualLearningPlan must prefetch into enrolledSet/assignedSet.',
+  );
+  assert.ok(
+    /PlanEnrollment\.filter\(\{\s*plan_id:\s*planId\s*\}/.test(src),
+    'assignAnnualLearningPlan must prefetch PlanEnrollment once per plan.',
+  );
+});
+
+// HighRiskPatientsWidget must read scoped PatientAlert rows — PatientRiskAssessment
+// was never written and used non-existent overall_* fields.
+test('HighRiskPatientsWidget uses getScopedPatientAlerts', () => {
+  const src = read('src/components/dashboard/HighRiskPatientsWidget.jsx');
+  assert.ok(
+    /getScopedPatientAlerts/.test(src),
+    'HighRiskPatientsWidget must fetch via getScopedPatientAlerts.',
+  );
+  assert.ok(
+    !/PatientRiskAssessment\.list/.test(src),
+    'HighRiskPatientsWidget must not read the unused PatientRiskAssessment entity.',
+  );
+  assert.ok(
+    !/overall_risk_level/.test(src),
+    'HighRiskPatientsWidget must not filter on non-schema overall_risk_level.',
+  );
+});

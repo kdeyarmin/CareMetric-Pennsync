@@ -43,7 +43,7 @@ import {
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { isAdminView } from '@/lib/roles';
-import { parseLocalDate, formatLocalDate, toLocalISODate } from '@/lib/dateLocal';
+import { parseLocalDate, formatLocalDate, toLocalISODate, isPastLocalDueDate } from '@/lib/dateLocal';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import EmbeddedPage from '@/components/ui/embeddedPage';
@@ -261,13 +261,18 @@ export default function LearningCenter() {
     [assignments]
   );
   const overdueAssignments = useMemo(() =>
-    assignments.filter(a => a.status === 'overdue'),
+    assignments.filter(a => {
+      if (a.status === 'completed' || a.pass_fail_result === 'passed') return false;
+      // Status may lag until cron flips to 'overdue' — also count past due dates.
+      return a.status === 'overdue' || isPastLocalDueDate(a.due_date);
+    }),
     [assignments]
   );
   const dueSoonAssignments = useMemo(() =>
     activeAssignments.filter(a => {
+      if (a.status === 'overdue' || isPastLocalDueDate(a.due_date)) return false;
       const days = daysUntil(a.due_date);
-      return days >= 0 && days <= 7 && a.status !== 'overdue';
+      return days >= 0 && days <= 7;
     }),
     [activeAssignments]
   );
@@ -634,7 +639,7 @@ export default function LearningCenter() {
             {requiredOutstanding.length > 0 && (
               <div className="mt-3 space-y-2">
                 {requiredOutstanding.slice(0, 3).map(a => {
-                  const overdue = a.status === 'overdue';
+                  const overdue = a.status === 'overdue' || isPastLocalDueDate(a.due_date);
                   return (
                     <div key={a.id} className="flex items-center justify-between gap-3 p-2.5 bg-white rounded-lg border border-slate-200">
                       <div className="min-w-0 flex-1">
@@ -858,7 +863,10 @@ export default function LearningCenter() {
             </Card>
           ) : (
             sortedActive.map(assignment => {
-              const isOverdue = assignment.status === 'overdue';
+              const isOverdue = assignment.status === 'overdue'
+                || (isPastLocalDueDate(assignment.due_date)
+                  && assignment.status !== 'completed'
+                  && assignment.pass_fail_result !== 'passed');
               const isInProgress = assignment.status === 'in_progress';
               const days = daysUntil(assignment.due_date);
               const isDueSoon = days >= 0 && days <= 7 && !isOverdue;

@@ -99,6 +99,21 @@ export default function Dashboard() {
   const visits = useMemo(() => dashboardData.visits || [], [dashboardData.visits]);
   const patients = dashboardData.patients || [];
   const incidents = dashboardData.incidents || [];
+  // Alert widgets need historical completed visits + care plans — today's visits
+  // alone make "No visit in N days" / goal-deadline alerts impossible.
+  const alertVisits = useMemo(() => {
+    const today = dashboardData.visits || [];
+    const recent = dashboardData.recentCompletedVisits || [];
+    const byId = new Map();
+    for (const v of [...today, ...recent]) {
+      if (v?.id) byId.set(v.id, v);
+    }
+    return [...byId.values()];
+  }, [dashboardData.visits, dashboardData.recentCompletedVisits]);
+  const carePlans = useMemo(
+    () => dashboardData.carePlans || [],
+    [dashboardData.carePlans],
+  );
   const visitsError = dashboardError;
   const patientsError = dashboardError;
 
@@ -372,7 +387,8 @@ export default function Dashboard() {
         <div>
           <RealTimePatientAlerts
             patients={patients}
-            visits={visits}
+            visits={alertVisits}
+            carePlans={carePlans}
             incidents={incidents}
             currentUser={currentUser}
           />

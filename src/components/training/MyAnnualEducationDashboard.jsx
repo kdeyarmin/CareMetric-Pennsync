@@ -14,7 +14,16 @@ import { Progress } from "@/components/ui/progress";
 import LoadingState from "@/components/ui/LoadingState";
 import LearningPathProgress from "./LearningPathProgress";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
-import { formatLocalDate } from "@/lib/dateLocal";
+import { formatLocalDate, isPastLocalDueDate } from "@/lib/dateLocal";
+
+function isAssignmentOverdue(a) {
+  if (!a || a.status === 'completed' || a.pass_fail_result === 'passed') return false;
+  return a.status === 'overdue' || isPastLocalDueDate(a.due_date);
+}
+
+function isAssignmentCompleted(a) {
+  return a?.status === 'completed' || a?.pass_fail_result === 'passed';
+}
 
 const formatDate = (value) => formatLocalDate(value) || "—";
 
@@ -64,8 +73,8 @@ export default function MyAnnualEducationDashboard() {
   const courseMap = useMemo(() => Object.fromEntries(courses.map((course) => [course.id, course])), [courses]);
   const stats = {
     assigned: assignments.length,
-    completed: assignments.filter((a) => a.status === 'completed').length,
-    overdue: assignments.filter((a) => a.status === 'overdue').length,
+    completed: assignments.filter((a) => isAssignmentCompleted(a)).length,
+    overdue: assignments.filter((a) => isAssignmentOverdue(a)).length,
     failed: assignments.filter((a) => a.pass_fail_result === 'failed').length,
   };
 
@@ -157,7 +166,7 @@ export default function MyAnnualEducationDashboard() {
           ) : (
             assignments.map((assignment) => {
               const course = courseMap[assignment.course_id] || {};
-              const isOverdue = assignment.status === 'overdue';
+              const isOverdue = isAssignmentOverdue(assignment);
               const isCompleted = assignment.status === 'completed';
               const isFailed = assignment.pass_fail_result === 'failed';
               return (

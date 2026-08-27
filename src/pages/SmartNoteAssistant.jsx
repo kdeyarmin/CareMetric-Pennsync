@@ -148,14 +148,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const careScope = currentUser?.care_scope || "home_health";
   const { data: patients = [] } = useQuery({
-    queryKey: ["patients", "active-200", agencyQueryKey(currentUser)],
+    queryKey: ["patients", "active-all", agencyQueryKey(currentUser)],
     networkMode: 'always',
     // Scope the LIVE list only — the offline branch below serves the IndexedDB
-    // roster, which was mirrored from an already-scoped read.
+    // roster, which was mirrored from an already-scoped read. ALL_ROWS before
+    // agency post-filter so foreign-tenant charts cannot crowd the picker.
     queryFn: async () => {
         try {
             return await scopePatientsForCurrentCaller(
-              await base44.entities.Patient.filter({ status: "active" }, "first_name", 200),
+              await base44.entities.Patient.filter({ status: "active" }, "first_name", ALL_ROWS),
             );
         } catch (e) {
             if (!navigator.onLine) {

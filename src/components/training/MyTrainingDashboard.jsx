@@ -18,6 +18,11 @@ import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 
 const formatDate = (value) => formatLocalDate(value) || "—";
 
+function isAssignmentOverdue(a) {
+  if (!a || a.status === 'completed' || a.pass_fail_result === 'passed') return false;
+  return a.status === 'overdue' || isPastLocalDueDate(a.due_date);
+}
+
 export default function MyTrainingDashboard({ filterByType }) {
   const embedded = useIsEmbedded();
   const [searchQuery, setSearchQuery] = useState("");
@@ -65,7 +70,7 @@ export default function MyTrainingDashboard({ filterByType }) {
       } else if (statusFilter === "completed") {
         filtered = filtered.filter(a => a.status === 'completed' || a.pass_fail_result === 'passed');
       } else if (statusFilter === "overdue") {
-        filtered = filtered.filter(a => a.status === 'overdue');
+        filtered = filtered.filter(a => isAssignmentOverdue(a));
       } else if (statusFilter === "failed") {
         filtered = filtered.filter(a => a.pass_fail_result === 'failed');
       }
@@ -81,7 +86,7 @@ export default function MyTrainingDashboard({ filterByType }) {
 
   const stats = {
     assigned: typeFilteredAssignments.length,
-    overdue: typeFilteredAssignments.filter((a) => a.status === 'overdue').length,
+    overdue: typeFilteredAssignments.filter((a) => isAssignmentOverdue(a)).length,
     passed: typeFilteredAssignments.filter((a) => a.pass_fail_result === 'passed').length,
     failed: typeFilteredAssignments.filter((a) => a.pass_fail_result === 'failed').length,
   };
@@ -191,7 +196,7 @@ export default function MyTrainingDashboard({ filterByType }) {
               {sortedAssignments.map((assignment) => {
                 const course = courseMap[assignment.course_id] || {};
                 const attemptsForAssignment = latestAttempts[assignment.id] || [];
-                const isOverdue = assignment.status === 'overdue';
+                const isOverdue = isAssignmentOverdue(assignment);
                 const isPassed = assignment.pass_fail_result === 'passed';
                 const isFailed = assignment.pass_fail_result === 'failed';
                 const isInProgress = assignment.status === 'in_progress';

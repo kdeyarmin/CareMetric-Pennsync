@@ -5,8 +5,14 @@ import { TrendingUp, Users, CheckCircle, AlertCircle, Loader2 } from 'lucide-rea
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import ReportFilters from './ReportFilters';
+import { isPastLocalDueDate } from '@/lib/dateLocal';
 
 const _COLORS = ['#0b407f', '#fbbf24', '#10b981', '#ef4444'];
+
+function isAssignmentOverdue(a) {
+  if (!a || a.status === 'completed' || a.pass_fail_result === 'passed') return false;
+  return a.status === 'overdue' || isPastLocalDueDate(a.due_date);
+}
 
 export default function EnrollmentSummaryDashboard() {
   const [filters, setFilters] = useState({
@@ -42,7 +48,7 @@ export default function EnrollmentSummaryDashboard() {
   // key and refetched 1000 rows for nothing.
   const stats = useMemo(() => {
     const completed = assignments.filter(a => a.status === 'completed').length;
-    const overdue = assignments.filter(a => a.status === 'overdue').length;
+    const overdue = assignments.filter(a => isAssignmentOverdue(a)).length;
 
     return {
       totalEnrolled: assignments.length,
@@ -70,7 +76,9 @@ export default function EnrollmentSummaryDashboard() {
   const statusData = useMemo(() => {
     const statuses = { assigned: 0, in_progress: 0, completed: 0, overdue: 0 };
     assignments.forEach(a => {
-      if (Object.prototype.hasOwnProperty.call(statuses, a.status)) {
+      if (isAssignmentOverdue(a)) {
+        statuses.overdue++;
+      } else if (Object.prototype.hasOwnProperty.call(statuses, a.status)) {
         statuses[a.status]++;
       }
     });

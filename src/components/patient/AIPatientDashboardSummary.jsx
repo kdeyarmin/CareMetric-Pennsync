@@ -164,11 +164,9 @@ Provide a comprehensive yet concise dashboard summary in JSON:
     // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [patient, visits, tasks, incidents]);
 
-  useEffect(() => {
-    if (patient) {
-      generateSummary();
-    }
-  }, [patient, patient?.id, generateSummary]);
+  // Manual generate only — auto-firing on chart open (and again whenever visits/
+  // tasks/incidents settle) burned paid AI calls and sent PHI to the LLM without
+  // an explicit clinician action. The Generate / Regenerate buttons remain.
 
   const getStatusColor = (status) => {
     const colors = {
