@@ -697,6 +697,9 @@ for (const file of [
   'base44/functions/generatePatientEducation/entry.ts',
   'base44/functions/summarizeMessageThread/entry.ts',
   'base44/functions/generateFaxCoverPage/entry.ts',
+  'base44/functions/messagingAssistant/entry.ts',
+  'base44/functions/getPatientContext/entry.ts',
+  'base44/functions/processCompletedVisit/entry.ts',
 ]) {
   test(`${file} gates patient PHI with assertPatientAccess`, () => {
     const src = read(file);
@@ -755,5 +758,37 @@ test('updateIncident patchIncident records a UserActivity audit', () => {
   assert.ok(
     /audit_recorded/.test(src),
     'patchIncident must surface audit_recorded like transitionIncident.',
+  );
+});
+
+// assignAnnualLearningPlan must prefetch enrollments/assignments into Sets
+// (parity with autoEnrollAnnualPlans) — O(users×courses) live filters time out.
+test('assignAnnualLearningPlan prefetches enrollment and assignment Sets', () => {
+  const src = read('base44/functions/assignAnnualLearningPlan/entry.ts');
+  assert.ok(
+    /enrolledSet\.add\(/.test(src) && /assignedSet\.add\(/.test(src),
+    'assignAnnualLearningPlan must prefetch into enrolledSet/assignedSet.',
+  );
+  assert.ok(
+    /PlanEnrollment\.filter\(\{\s*plan_id:\s*planId\s*\}/.test(src),
+    'assignAnnualLearningPlan must prefetch PlanEnrollment once per plan.',
+  );
+});
+
+// HighRiskPatientsWidget must read scoped PatientAlert rows — PatientRiskAssessment
+// was never written and used non-existent overall_* fields.
+test('HighRiskPatientsWidget uses getScopedPatientAlerts', () => {
+  const src = read('src/components/dashboard/HighRiskPatientsWidget.jsx');
+  assert.ok(
+    /getScopedPatientAlerts/.test(src),
+    'HighRiskPatientsWidget must fetch via getScopedPatientAlerts.',
+  );
+  assert.ok(
+    !/PatientRiskAssessment\.list/.test(src),
+    'HighRiskPatientsWidget must not read the unused PatientRiskAssessment entity.',
+  );
+  assert.ok(
+    !/overall_risk_level/.test(src),
+    'HighRiskPatientsWidget must not filter on non-schema overall_risk_level.',
   );
 });

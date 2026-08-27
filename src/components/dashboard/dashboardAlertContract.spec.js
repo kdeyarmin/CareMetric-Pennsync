@@ -34,8 +34,9 @@ describe('dashboard alert data contract', () => {
   });
 
   it('Incidents list uses a high limit before agency post-filter', () => {
-    expect(incidentsPage).toMatch(/Incident\.list\("-created_date",\s*500\)/);
+    expect(incidentsPage).toMatch(/Incident\.list\("-created_date",\s*5000\)/);
     expect(incidentsPage).not.toMatch(/Incident\.list\("-created_date",\s*10\)/);
+    expect(incidentsPage).not.toMatch(/Incident\.list\("-created_date",\s*500\)/);
   });
 
   it('Layout active alerts use getScopedPatientAlerts (not truncated entity filter)', () => {
