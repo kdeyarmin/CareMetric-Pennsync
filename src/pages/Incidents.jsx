@@ -25,11 +25,11 @@ export default function Incidents() {
     select: activeAndNotArchived,
   });
 
-  // Fetch a full page before agency post-filter — a limit of 10 let foreign-
+  // Fetch a full page before agency post-filter — a small limit let foreign-
   // agency rows fill the window and hide this agency's recent reports.
   const { data: incidents = [] } = useAgencyScopedQuery({
     queryKey: ["my-incidents"],
-    fetch: () => base44.entities.Incident.list("-created_date", 500),
+    fetch: () => base44.entities.Incident.list("-created_date", 5000),
     initialData: [],
   });
 

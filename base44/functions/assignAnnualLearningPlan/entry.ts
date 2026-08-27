@@ -75,15 +75,24 @@ Deno.serve(async (req) => {
       severity: 'info'
     });
 
+    // Prefetch existing enrollments + assignments once so the loops below are
+    // in-memory Set lookups rather than O(users × courses) filter() calls
+    // (parity with autoEnrollAnnualPlans — timeouts / rate limits on large orgs).
+    const enrolledSet = new Set(); // `${plan_id}|${user_email}`
+    const assignedSet = new Set(); // `${plan_id}|${course_id}|${user_email}`
+    const [existingEnrollments, existingAssignments] = await Promise.all([
+      base44.asServiceRole.entities.PlanEnrollment.filter({ plan_id: planId }, '-created_date', 10000),
+      base44.asServiceRole.entities.TrainingAssignment.filter({ plan_id: planId }, '-created_date', 10000),
+    ]);
+    (existingEnrollments || []).forEach((e) => enrolledSet.add(`${planId}|${e.user_id}`));
+    (existingAssignments || []).forEach((a) => assignedSet.add(`${planId}|${a.course_id}|${a.assigned_to_user_id}`));
+
     // Serial create + post-create re-check shrinks duplicate enrollments /
-    // assignments when concurrent admin clicks race the filter→create gap.
+    // assignments when concurrent admin clicks race the prefetch→create gap.
     for (const candidate of candidates) {
-      const existingEnrollments = await base44.asServiceRole.entities.PlanEnrollment.filter(
-        { plan_id: planId, user_id: candidate.email },
-        undefined,
-        10,
-      );
-      if (existingEnrollments.length === 0) {
+      const enrollKey = `${planId}|${candidate.email}`;
+      if (!enrolledSet.has(enrollKey)) {
+        enrolledSet.add(enrollKey);
         const createdEnrollment = await base44.asServiceRole.entities.PlanEnrollment.create({
           plan_id: plan.id,
           plan_name: plan.name,
@@ -117,12 +126,9 @@ Deno.serve(async (req) => {
       }
 
       for (const item of planItems) {
-        const existingAssignment = await base44.asServiceRole.entities.TrainingAssignment.filter(
-          { plan_id: planId, course_id: item.course_id, assigned_to_user_id: candidate.email },
-          '-created_date',
-          5,
-        );
-        if (existingAssignment.length > 0) continue;
+        const assignKey = `${planId}|${item.course_id}|${candidate.email}`;
+        if (assignedSet.has(assignKey)) continue;
+        assignedSet.add(assignKey);
 
         // Honor the per-course configuration set in the plan builder: a course's
         // own "Due by" date (specific_due_date) overrides the plan-level due

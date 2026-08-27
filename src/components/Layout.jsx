@@ -420,7 +420,7 @@ export default function Layout() {
             <OfflineIndicator />
             <Breadcrumbs currentPageName={currentPageName} />
             <PageTransition>
-              <Outlet />
+              <Outlet key={location.pathname} />
             </PageTransition>
           </div>
         </main>

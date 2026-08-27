@@ -23,7 +23,7 @@ export default function DataQualityDashboard() {
   const { data: users = [] } = useQuery({
     queryKey: ['all-users-quality', agencyQueryKey(currentUser)],
     queryFn: async () => {
-      const _rows = await base44.entities.User.list('-created_date', 200);
+      const _rows = await base44.entities.User.list('-created_date', ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
@@ -45,13 +45,13 @@ export default function DataQualityDashboard() {
 
   const { data: visits = [] } = useAgencyScopedQuery({
     queryKey: ['recent-visits-quality'],
-    fetch: () => base44.entities.Visit.filter({ status: 'completed' }, '-visit_date', 100),
+    fetch: () => base44.entities.Visit.filter({ status: 'completed' }, '-visit_date', ALL_ROWS),
     initialData: [],
   });
 
   const { data: credentials = [] } = useQuery({
     queryKey: ['credentials-quality'],
-    queryFn: () => base44.entities.PersonnelCredential.list('-expiration_date', 500),
+    queryFn: () => base44.entities.PersonnelCredential.list('-expiration_date', ALL_ROWS),
     initialData: [],
   });
 
