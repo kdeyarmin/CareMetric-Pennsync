@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -156,7 +157,53 @@ describe('ReferralAnalyzer', () => {
     expect(screen.getByText('42 CFR 424.22')).toBeInTheDocument();
     expect(screen.getByText('Compliant')).toBeInTheDocument();
 
+    // The deterministic result is also handed to the model so its
+    // missing-information analysis can't contradict it.
+    const prompt = invokeLLM.mock.calls[0][0].prompt;
+    expect(prompt).toContain('DETERMINISTIC PRE-CHECK');
+    expect(prompt).toContain('status: valid');
+
     await act(async () => { d.resolve(analysisFor('REASONING-A')); });
     expect(screen.getByText(/Face-to-Face Encounter/i)).toBeInTheDocument();
+  });
+
+  it('does not include the F2F pre-check block when the referral carries no F2F', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+
+    render(<ReferralAnalyzer referralData={referralA} />);
+    expect(invokeLLM.mock.calls[0][0].prompt).not.toContain('DETERMINISTIC PRE-CHECK');
+    await act(async () => { d.resolve(analysisFor('REASONING-A')); });
+  });
+
+  it('fires a single billed call under StrictMode double-mounted effects', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValue(d.promise);
+
+    render(
+      <StrictMode>
+        <ReferralAnalyzer referralData={referralA} />
+      </StrictMode>
+    );
+
+    // StrictMode runs the mount effect twice; the in-flight dedupe must keep
+    // the identical second call from double-billing the LLM.
+    expect(invokeLLM).toHaveBeenCalledTimes(1);
+    await act(async () => { d.resolve(analysisFor('REASONING-A')); });
+    expect(screen.getByText('REASONING-A')).toBeInTheDocument();
+  });
+
+  it('renders without the urgency sections when the model omits urgency_analysis', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+
+    render(<ReferralAnalyzer referralData={referralA} />);
+    const partial = analysisFor('unused');
+    delete partial.urgency_analysis;
+    await act(async () => { d.resolve(partial); });
+
+    expect(screen.queryByText(/Referral Priority/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/AI Urgency Analysis/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Nurse Requirements/i)).toBeInTheDocument();
   });
 });

@@ -20,18 +20,76 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react";
-import { isSafeExternalUrl } from "@/components/utils/security";
+import { resolveCmsGuidelineLink, HH_QUALITY_REPORTING_URL } from "./cmsGuidelineLinks.js";
+import { computeAge } from "@/lib/age";
+
+// Only the clinically relevant slice of the patient record goes to the LLM —
+// contact info and direct identifiers (name, DOB, address, phone, email,
+// emergency contacts) add nothing to compliance reasoning and don't belong in
+// the prompt. Age is derived so the DOB itself never leaves the app.
+function clinicalPatientContext(patient) {
+  if (!patient) return {};
+  const age = computeAge(patient.date_of_birth);
+  return {
+    ...(Number.isFinite(age) ? { age } : {}),
+    ...(patient.gender ? { gender: patient.gender } : {}),
+    ...(patient.primary_diagnosis ? { primary_diagnosis: patient.primary_diagnosis } : {}),
+    ...(patient.secondary_diagnoses?.length ? { secondary_diagnoses: patient.secondary_diagnoses } : {}),
+    ...(patient.allergies ? { allergies: patient.allergies } : {}),
+    ...(patient.current_medications?.length ? { current_medications: patient.current_medications } : {}),
+    ...(patient.care_type ? { care_type: patient.care_type } : {}),
+    ...(patient.status ? { status: patient.status } : {}),
+    ...(patient.admission_date ? { admission_date: patient.admission_date } : {}),
+    ...(patient.admission_source ? { admission_source: patient.admission_source } : {}),
+  };
+}
+
+// Findings render most-severe first regardless of the order the model emitted.
+const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
+const bySeverity = (key) => (a, b) =>
+  (SEVERITY_RANK[a?.[key]] ?? 4) - (SEVERITY_RANK[b?.[key]] ?? 4);
+
+// Reference link for a finding: official eCFR link derived from the citation,
+// else the AI link when safe, else a curated topic page (see cmsGuidelineLinks).
+function CmsGuidelineLink({ regulation, aiLink, fallback, children }) {
+  const href = resolveCmsGuidelineLink(regulation, aiLink) || fallback || null;
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
+    >
+      <ExternalLink className="w-3 h-3" />
+      {children}
+    </a>
+  );
+}
 
 export default function ComprehensiveOASISReviewer({
   oasisData,
   analysisResults,
   patientData,
-  autoReview = true
+  autoReview = true,
+  savedReview = null,
+  onReviewComplete
 }) {
   const ai = useAICall();
   const [reviewResults, setReviewResults] = useState(null);
   const [reviewError, setReviewError] = useState(false);
+  // When the current results were produced, and against WHICH oasisData object —
+  // a later in-place correction changes that identity, flagging the review stale.
+  const [reviewedAt, setReviewedAt] = useState(null);
+  const [reviewedOasisData, setReviewedOasisData] = useState(null);
   const [expandedSections, setExpandedSections] = useState(['compliance', 'quality', 'inconsistencies']);
+
+  // Hold the completion callback in a ref so an inline parent callback doesn't
+  // change performComprehensiveReview's identity every render.
+  const onReviewCompleteRef = useRef(onReviewComplete);
+  useEffect(() => {
+    onReviewCompleteRef.current = onReviewComplete;
+  }, [onReviewComplete]);
 
   // Monotonic run id: a re-run (or a new assessment) supersedes any in-flight
   // review, so a slower earlier response can never overwrite newer findings.
@@ -54,8 +112,8 @@ ${JSON.stringify(oasisData, null, 2)}
 ANALYSIS RESULTS:
 ${JSON.stringify(analysisResults, null, 2)}
 
-PATIENT CONTEXT:
-${JSON.stringify(patientData || {}, null, 2)}
+PATIENT CONTEXT (clinical fields only):
+${JSON.stringify(clinicalPatientContext(patientData), null, 2)}
 
 PERFORM COMPREHENSIVE REVIEW IN 3 AREAS:
 
@@ -212,7 +270,13 @@ Return detailed JSON with all findings.`;
       });
 
       if (runId !== runIdRef.current) return; // superseded by a newer review
+      const reviewedAtIso = new Date().toISOString();
       setReviewResults(result);
+      setReviewedAt(reviewedAtIso);
+      setReviewedOasisData(oasisData);
+      // Report upward so the caller can persist the review on the OASISUpload
+      // record and restore it (instead of re-billing) when the upload reopens.
+      onReviewCompleteRef.current?.({ results: result, reviewed_at: reviewedAtIso });
     } catch (error) {
       if (runId !== runIdRef.current) return; // superseded by a newer review
       console.error('Comprehensive review error:', error);
@@ -222,7 +286,8 @@ Return detailed JSON with all findings.`;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [analysisResults, oasisData, patientData]);
 
-  // Auto-run ONCE per loaded assessment. `analysisResults` gets a fresh object
+  // ONCE per loaded assessment: restore the persisted review when the caller
+  // supplies one, otherwise auto-run. `analysisResults` gets a fresh object
   // only when a new document is analyzed, whereas `oasisData` (pdgmData) is
   // replaced in place on every applied correction / Smart Note import — keying
   // on it re-fired a full billed LLM review per correction, with overlapping
@@ -230,11 +295,19 @@ Return detailed JSON with all findings.`;
   // explicitly via the "Re-run Comprehensive Review" button.
   const lastAutoReviewedRef = useRef(null);
   useEffect(() => {
-    if (!autoReview || !oasisData || !analysisResults) return;
+    if (!oasisData || !analysisResults) return;
     if (lastAutoReviewedRef.current === analysisResults) return;
     lastAutoReviewedRef.current = analysisResults;
-    performComprehensiveReview();
-  }, [autoReview, oasisData, analysisResults, performComprehensiveReview]);
+    if (savedReview?.results) {
+      runIdRef.current += 1; // supersede any in-flight run
+      setReviewResults(savedReview.results);
+      setReviewedAt(savedReview.reviewed_at || null);
+      setReviewedOasisData(oasisData);
+      setReviewError(false);
+      return;
+    }
+    if (autoReview) performComprehensiveReview();
+  }, [autoReview, oasisData, analysisResults, savedReview, performComprehensiveReview]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -273,6 +346,14 @@ Return detailed JSON with all findings.`;
     ? ['compliance', 'quality', 'inconsistencies', 'strengths']
     : ['compliance', 'quality', 'inconsistencies'];
   const allExpanded = allSections.every((s) => expandedSections.includes(s));
+
+  const complianceRisks = [...(reviewResults?.compliance_risks || [])].sort(bySeverity('severity'));
+  const qualityMeasures = [...(reviewResults?.quality_measure_opportunities || [])].sort(bySeverity('implementation_priority'));
+  const inconsistencies = [...(reviewResults?.documentation_inconsistencies || [])].sort(bySeverity('severity'));
+
+  // In-place corrections replace the oasisData object; findings computed against
+  // the previous data may no longer hold.
+  const dataChangedSinceReview = !!(reviewResults && reviewedOasisData && oasisData !== reviewedOasisData);
 
   return (
     <Card className="border-2 border-indigo-400 bg-gradient-to-br from-indigo-50 to-blue-50 shadow-lg">
@@ -322,6 +403,28 @@ Return detailed JSON with all findings.`;
 
         {reviewResults && (
           <div className="space-y-4">
+            {/* Stale-data notice — assessment edited since this review ran */}
+            {dataChangedSinceReview && (
+              <Alert className="bg-amber-50 border-amber-400">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                <AlertDescription>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm text-amber-900 font-medium">
+                      Assessment data has changed since this review — the findings below may be outdated.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={performComprehensiveReview}
+                      disabled={ai.loading}
+                    >
+                      Re-run review
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Review Summary */}
             <Alert className={
               reviewResults.overall_risk_level === 'critical' || reviewResults.overall_risk_level === 'high'
@@ -331,9 +434,16 @@ Return detailed JSON with all findings.`;
                 : 'bg-green-100 border-green-400'
             }>
               <AlertDescription>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                   <p className="font-semibold text-slate-900">Review Summary</p>
-                  <Badge variant="outline">{reviewResults.total_findings} findings</Badge>
+                  <div className="flex items-center gap-2">
+                    {reviewedAt && (
+                      <span className="text-xs text-slate-600">
+                        Reviewed {new Date(reviewedAt).toLocaleString()}
+                      </span>
+                    )}
+                    <Badge variant="outline">{reviewResults.total_findings} findings</Badge>
+                  </div>
                 </div>
                 <p className="text-sm text-slate-800">{reviewResults.review_summary}</p>
               </AlertDescription>
@@ -370,12 +480,12 @@ Return detailed JSON with all findings.`;
                   <div className="flex items-center gap-2">
                     <Shield className="w-5 h-5 text-red-600" />
                     <span className="font-semibold text-red-900">
-                      Compliance Risks ({reviewResults.compliance_risks?.length || 0})
+                      Compliance Risks ({complianceRisks.length})
                     </span>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pt-2">
-                  {reviewResults.compliance_risks?.length === 0 ? (
+                  {complianceRisks.length === 0 ? (
                     <div className="bg-green-50 p-4 rounded-lg border border-green-300 text-center">
                       <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
                       <p className="text-green-800 font-medium">No compliance risks detected</p>
@@ -386,7 +496,7 @@ Return detailed JSON with all findings.`;
                     // silently CLIPPED findings past 600px with no scrollbar.
                     <div className="max-h-[600px] overflow-y-auto pr-1">
                       <div className="space-y-4">
-                        {reviewResults.compliance_risks?.map((risk, idx) => (
+                        {complianceRisks.map((risk, idx) => (
                           <div key={idx} className="bg-white rounded-lg border-2 border-red-300 p-4">
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex-1">
@@ -430,19 +540,9 @@ Return detailed JSON with all findings.`;
                                 <p className="font-semibold text-xs text-indigo-900">CMS Regulation</p>
                               </div>
                               <p className="text-sm text-indigo-800 mb-2">{risk.cms_regulation}</p>
-                              {/* Only render the link when the AI-supplied URL is safe —
-                                  an href-less anchor is a dead, misleading control. */}
-                              {isSafeExternalUrl(risk.cms_guideline_link) && (
-                                <a
-                                  href={risk.cms_guideline_link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  View Official CMS Guideline
-                                </a>
-                              )}
+                              <CmsGuidelineLink regulation={risk.cms_regulation} aiLink={risk.cms_guideline_link}>
+                                View Official CMS Guideline
+                              </CmsGuidelineLink>
                             </div>
 
                             {/* Impact Analysis */}
@@ -488,19 +588,19 @@ Return detailed JSON with all findings.`;
                   <div className="flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-navy-600" />
                     <span className="font-semibold text-navy-900">
-                      Quality Measure Opportunities ({reviewResults.quality_measure_opportunities?.length || 0})
+                      Quality Measure Opportunities ({qualityMeasures.length})
                     </span>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pt-2">
-                  {reviewResults.quality_measure_opportunities?.length === 0 ? (
+                  {qualityMeasures.length === 0 ? (
                     <div className="bg-green-50 p-4 rounded-lg border border-green-300 text-center">
                       <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
                       <p className="text-green-800 font-medium">All quality measures well-documented</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {reviewResults.quality_measure_opportunities?.map((measure, idx) => (
+                      {qualityMeasures.map((measure, idx) => (
                         <div key={idx} className="bg-white rounded-lg border-2 border-navy-300 p-4">
                           <div className="flex items-start justify-between mb-3">
                             <div>
@@ -547,24 +647,21 @@ Return detailed JSON with all findings.`;
                             <p className="text-sm text-yellow-800">{measure.star_rating_impact}</p>
                           </div>
 
-                          {/* CMS Quality Reporting Link */}
-                          {isSafeExternalUrl(measure.cms_quality_reporting_link) && (
-                            <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-300 mb-3">
-                              <div className="flex items-center gap-2 mb-2">
-                                <BookOpen className="w-4 h-4 text-indigo-600" />
-                                <p className="font-semibold text-xs text-indigo-900">CMS Quality Reporting</p>
-                              </div>
-                              <a
-                                href={measure.cms_quality_reporting_link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                                View Quality Measure Specifications
-                              </a>
+                          {/* CMS Quality Reporting Link — always resolvable: the
+                              official HH QRP page backs any missing/unsafe AI link */}
+                          <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-300 mb-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <BookOpen className="w-4 h-4 text-indigo-600" />
+                              <p className="font-semibold text-xs text-indigo-900">CMS Quality Reporting</p>
                             </div>
-                          )}
+                            <CmsGuidelineLink
+                              regulation={measure.measure_name}
+                              aiLink={measure.cms_quality_reporting_link}
+                              fallback={HH_QUALITY_REPORTING_URL}
+                            >
+                              View Quality Measure Specifications
+                            </CmsGuidelineLink>
+                          </div>
 
                           {/* Specific Documentation Needed */}
                           <div className="bg-green-50 p-3 rounded-lg border border-green-300 mb-3">
@@ -607,12 +704,12 @@ Return detailed JSON with all findings.`;
                   <div className="flex items-center gap-2">
                     <XCircle className="w-5 h-5 text-orange-600" />
                     <span className="font-semibold text-orange-900">
-                      Documentation Inconsistencies ({reviewResults.documentation_inconsistencies?.length || 0})
+                      Documentation Inconsistencies ({inconsistencies.length})
                     </span>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pt-2">
-                  {reviewResults.documentation_inconsistencies?.length === 0 ? (
+                  {inconsistencies.length === 0 ? (
                     <div className="bg-green-50 p-4 rounded-lg border border-green-300 text-center">
                       <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
                       <p className="text-green-800 font-medium">No documentation inconsistencies found</p>
@@ -620,7 +717,7 @@ Return detailed JSON with all findings.`;
                   ) : (
                     <div className="max-h-[600px] overflow-y-auto pr-1">
                       <div className="space-y-4">
-                        {reviewResults.documentation_inconsistencies?.map((inconsistency, idx) => (
+                        {inconsistencies.map((inconsistency, idx) => (
                           <div key={idx} className="bg-white rounded-lg border-2 border-orange-300 p-4">
                             <div className="flex items-start justify-between mb-3">
                               <h4 className="font-semibold text-orange-900 flex-1">{inconsistency.inconsistency_title}</h4>
@@ -704,17 +801,12 @@ Return detailed JSON with all findings.`;
                                   <p className="font-semibold text-xs text-indigo-900">CMS Guidance</p>
                                 </div>
                                 <p className="text-sm text-indigo-800 mb-2">{inconsistency.cms_guidance}</p>
-                                {isSafeExternalUrl(inconsistency.cms_guidance_link) && (
-                                  <a
-                                    href={inconsistency.cms_guidance_link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
-                                  >
-                                    <ExternalLink className="w-3 h-3" />
-                                    View CMS Documentation Guidance
-                                  </a>
-                                )}
+                                <CmsGuidelineLink
+                                  regulation={inconsistency.cms_guidance}
+                                  aiLink={inconsistency.cms_guidance_link}
+                                >
+                                  View CMS Documentation Guidance
+                                </CmsGuidelineLink>
                               </div>
                             )}
                           </div>

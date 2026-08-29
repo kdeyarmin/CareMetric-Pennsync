@@ -139,6 +139,13 @@ export default function OASISAnalyzer() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [useDataEntryAssistant, setUseDataEntryAssistant] = useState(false);
   const [predictions, setPredictions] = useState(null);
+  // Comprehensive OASIS Review for the currently loaded assessment:
+  // { results, reviewed_at }. Restored from a saved OASISUpload record on load
+  // (so reopening never re-bills the LLM) and persisted back on completion.
+  const [comprehensiveReview, setComprehensiveReview] = useState(null);
+  // The OASISUpload record id backing the loaded assessment, when one exists —
+  // set on load of a saved upload and after "Save to Patient Record".
+  const [oasisUploadRecordId, setOasisUploadRecordId] = useState(null);
   const [patientHistoricalData, setPatientHistoricalData] = useState(null);
   const [extractedData, setExtractedData] = useState(null);
 
@@ -280,6 +287,9 @@ export default function OASISAnalyzer() {
   // Handle viewing batch result in single analysis view
   const handleViewBatchResult = (result) => {
     setRevenueData(null); // drop the prior result's revenue figures (see handleFileChange)
+    // Batch results carry no persisted comprehensive review / backing record.
+    setComprehensiveReview(null);
+    setOasisUploadRecordId(null);
     setAnalysisResults(result);
     if (result?.pdgm_data) {
       setPdgmData(result.pdgm_data);
@@ -307,6 +317,10 @@ export default function OASISAnalyzer() {
       // PDGM revenue comparison recomputes.
       setRevenueData(null);
       setOriginalPayment(null);
+      // Drop the prior assessment's comprehensive review + backing record so it
+      // can't hydrate (or be persisted) against this new document's analysis.
+      setComprehensiveReview(null);
+      setOasisUploadRecordId(null);
     } else {
       setError("Please select a valid PDF file.");
       setFile(null);
@@ -458,8 +472,13 @@ export default function OASISAnalyzer() {
                 : Math.round((revenueData.corrected.totalPayment - (originalPayment || 0)) * 100) / 100,
             }
           : {}),
+        // Persist the comprehensive AI review with the record so reopening this
+        // upload restores it instead of re-running the billed LLM call.
+        ...(comprehensiveReview ? { comprehensive_review: sanitizeData(comprehensiveReview) } : {}),
         status: 'analyzed'
       });
+      // The assessment now has a backing record — later review re-runs persist to it.
+      setOasisUploadRecordId(savedOASIS.id);
 
       // Log save activity
       logActivity(ActivityActions.OASIS_SAVE, {
@@ -494,6 +513,11 @@ export default function OASISAnalyzer() {
   // Load saved OASIS for viewing
   const handleLoadSavedOASIS = (oasisUpload) => {
     setRevenueData(null); // drop the prior result's revenue figures (see handleFileChange)
+    // Restore the persisted comprehensive review (if any) so the reviewer
+    // hydrates from it instead of re-running the billed LLM call, and keep the
+    // record id so a manual re-run can persist its refreshed findings.
+    setComprehensiveReview(oasisUpload.comprehensive_review || null);
+    setOasisUploadRecordId(oasisUpload.id);
     setAnalysisResults(oasisUpload.analysis_results);
     setPdgmData(oasisUpload.pdgm_data);
     setAnalysisId(oasisUpload.analysis_id);
@@ -1609,6 +1633,17 @@ Return scores (0-100) and top 3-5 issues in each category.`,
           analysisResults={analysisResults}
           patientData={selectedPatient}
           autoReview={true}
+          savedReview={comprehensiveReview}
+          onReviewComplete={(review) => {
+            setComprehensiveReview(review);
+            // Persist onto the backing record (when one exists) so reopening
+            // the saved upload restores this review instead of re-billing.
+            if (oasisUploadRecordId) {
+              base44.entities.OASISUpload.update(oasisUploadRecordId, { comprehensive_review: review })
+                .then(() => queryClient.invalidateQueries({ queryKey: ['oasisUploads'] }))
+                .catch((err) => console.error('Failed to persist comprehensive review:', err));
+            }
+          }}
         />
       )}
 

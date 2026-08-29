@@ -46,15 +46,33 @@ export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
   // onAnalysisComplete — the PREVIOUS referral's urgency/risk analysis as if it
   // belonged to the current one.
   const runIdRef = useRef(0);
+  // The referralData object currently being analyzed. StrictMode's double-run
+  // of the mount effect (and any future duplicate trigger) would otherwise fire
+  // two identical billed LLM calls for the same referral.
+  const inFlightDataRef = useRef(null);
 
   const analyzeReferral = useCallback(async () => {
     if (!referralData) return;
+    if (inFlightDataRef.current === referralData) return; // identical call already in flight
+    inFlightDataRef.current = referralData;
 
     const runId = (runIdRef.current += 1);
     // Clear any prior referral's analysis immediately: the loading card must
     // show while this referral is analyzed, never stale results for the old one.
     setAnalysis(null);
     setAnalysisError(false);
+
+    // Deterministic F2F validation is authoritative — hand it to the model so
+    // the AI's missing-information analysis can't contradict it (e.g. flagging
+    // a face-to-face encounter as missing when the referral carries a valid one).
+    const f2fInput = referralToF2FInput(referralData);
+    const f2f = f2fInput ? validateFaceToFace(f2fInput) : null;
+    const f2fContext = f2f
+      ? `\n\nDETERMINISTIC PRE-CHECK (system-validated, do not contradict it): Face-to-Face encounter validation per 42 CFR 424.22 — status: ${f2f.status}. ${f2f.reasons.join(" ")}${
+          f2f.status === "valid" ? " Do NOT list the face-to-face encounter as missing information." : ""
+        }`
+      : "";
+
     try {
       const result = await ai.run({
         model: "automatic",
@@ -87,7 +105,7 @@ export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
    - Experience level needed
    - Special skills (e.g., PICC line care, ventilator management)
 
-Referral Data: ${JSON.stringify(referralData)}`,
+Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
         response_json_schema: {
           type: "object",
           properties: {
@@ -160,16 +178,6 @@ Referral Data: ${JSON.stringify(referralData)}`,
                 special_skills: { type: "array", items: { type: "string" } },
                 language_requirements: { type: "array", items: { type: "string" } }
               }
-            },
-            suggested_nurses: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  reasoning: { type: "string" },
-                  availability_notes: { type: "string" }
-                }
-              }
             }
           }
         }
@@ -185,6 +193,10 @@ Referral Data: ${JSON.stringify(referralData)}`,
       console.error('Error analyzing referral:', error);
       setAnalysisError(true);
       toast.error('Failed to analyze referral. Please try again.');
+    } finally {
+      // Only the run that still owns the in-flight marker may clear it — a
+      // superseded run must not erase the newer run's dedupe marker.
+      if (runId === runIdRef.current) inFlightDataRef.current = null;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [referralData]);
@@ -305,26 +317,29 @@ Referral Data: ${JSON.stringify(referralData)}`,
           deterministic, never AI-generated */}
       <DiagnosisCodeGenerator referralData={referralData} />
 
-      {/* Urgency Header */}
-      <Alert className={`border-2 ${analysis.urgency_analysis?.priority_level === 'STAT' || analysis.urgency_analysis?.priority_level === 'High' ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'}`}>
-        <TrendingUp className="w-5 h-5" />
-        <AlertDescription>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-lg mb-1">
-                Referral Priority: <Badge className={getPriorityColor(analysis.urgency_analysis?.priority_level)}>
-                  {analysis.urgency_analysis?.priority_level}
-                </Badge>
-              </p>
-              <p className="text-sm">Urgency Score: {analysis.urgency_analysis?.overall_urgency_score}/100</p>
+      {/* Urgency Header — only when the model actually returned an urgency
+          analysis, so a partial response can't render "Priority: undefined" */}
+      {analysis.urgency_analysis && (
+        <Alert className={`border-2 ${analysis.urgency_analysis?.priority_level === 'STAT' || analysis.urgency_analysis?.priority_level === 'High' ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'}`}>
+          <TrendingUp className="w-5 h-5" />
+          <AlertDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-lg mb-1">
+                  Referral Priority: <Badge className={getPriorityColor(analysis.urgency_analysis?.priority_level)}>
+                    {analysis.urgency_analysis?.priority_level}
+                  </Badge>
+                </p>
+                <p className="text-sm">Urgency Score: {analysis.urgency_analysis?.overall_urgency_score}/100</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-600">Clinical: {analysis.urgency_analysis?.clinical_urgency_score}</p>
+                <p className="text-xs text-slate-600">Administrative: {analysis.urgency_analysis?.administrative_urgency_score}</p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-slate-600">Clinical: {analysis.urgency_analysis?.clinical_urgency_score}</p>
-              <p className="text-xs text-slate-600">Administrative: {analysis.urgency_analysis?.administrative_urgency_score}</p>
-            </div>
-          </div>
-        </AlertDescription>
-      </Alert>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Face-to-Face (F2F) validation — deterministic, referral-only */}
       {f2fAlert}
@@ -511,6 +526,7 @@ Referral Data: ${JSON.stringify(referralData)}`,
       </Card>
 
       {/* Urgency Reasoning */}
+      {analysis.urgency_analysis && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -538,6 +554,7 @@ Referral Data: ${JSON.stringify(referralData)}`,
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
