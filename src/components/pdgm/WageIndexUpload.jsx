@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, UploadCloud, Download, Trash2, Save, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { MapPin, UploadCloud, Download, Trash2, Save, AlertTriangle, CheckCircle2, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { parseWageIndexCsv, wageIndexCsvTemplate } from "./wageIndex.js";
+import { PA_WAGE_INDEX_CY2026 } from "./paWageIndexCy2026.js";
 
 /**
  * CBSA wage-index table import — the agency's own rows from the year's CMS HH
@@ -30,6 +31,14 @@ export default function WageIndexUpload({ storedTable, onPersist, uploadedBy, di
     const result = parseWageIndexCsv(await file.text());
     setParseResult(result);
     if (!result.ok) toast.error("The wage-index CSV could not be imported — see the errors below.");
+  };
+
+  // Bundled official dataset (values verbatim from the CMS CY2026 final HH PPS
+  // wage index file — see paWageIndexCy2026.js for provenance): loads into the
+  // same preview → Store flow as a CSV import, never straight into storage.
+  const loadBundledPa = () => {
+    setFileName(PA_WAGE_INDEX_CY2026.source_file);
+    setParseResult({ ok: true, rows: PA_WAGE_INDEX_CY2026.rows, errors: [], warnings: [] });
   };
 
   const downloadTemplate = () => {
@@ -75,9 +84,10 @@ export default function WageIndexUpload({ storedTable, onPersist, uploadedBy, di
         </CardTitle>
         <p className="text-xs text-slate-500 mt-1">
           Import your service area's CBSA rows (from the year's CMS HH PPS wage index file) with the
-          counties/ZIP prefixes you serve. The referral revenue brief matches each patient's address to a
-          row and wage-adjusts the PDGM estimate for THAT location; unmatched addresses keep the single
-          agency-wide wage index. Nothing is shipped or guessed.
+          counties/ZIP prefixes you serve, or load the bundled Pennsylvania table — all 67 PA counties,
+          values verbatim from the CMS CY2026 final HH PPS wage index file. The referral revenue brief
+          matches each patient's address to a row and wage-adjusts the PDGM estimate for THAT location;
+          unmatched addresses keep the single agency-wide wage index. No value is ever guessed.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -103,6 +113,9 @@ export default function WageIndexUpload({ storedTable, onPersist, uploadedBy, di
           />
           <Button type="button" size="sm" onClick={() => fileInputRef.current?.click()} disabled={disabled || busy}>
             <UploadCloud className="w-4 h-4 mr-1" /> Choose CSV to import
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={loadBundledPa} disabled={disabled || busy}>
+            <Landmark className="w-4 h-4 mr-1" /> Load PA counties (CMS CY2026)
           </Button>
         </div>
 

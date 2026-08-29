@@ -8,9 +8,12 @@
 // the referral's address to a row and hands that wage index to calculatePDGM
 // explicitly (the engine's own agency-default fallback is unchanged).
 //
-// NOTHING here is shipped or guessed: no CBSA data, no wage indexes, no
-// county↔CBSA mapping — rows the agency didn't import simply don't match, and
-// an unmatched address falls back to the agency default with a note.
+// NOTHING in this module is shipped or guessed: no CBSA data, no wage
+// indexes, no county↔CBSA mapping — rows the agency didn't import simply
+// don't match, and an unmatched address falls back to the agency default with
+// a note. (The one bundled dataset, paWageIndexCy2026.js, is Pennsylvania's
+// rows extracted VERBATIM from the official CMS CY2026 file with full
+// provenance — it loads through the same preview → store flow as a CSV.)
 //
 // Pure + offline (unit-tested with `node --test`); no React, no Base44 SDK.
 
