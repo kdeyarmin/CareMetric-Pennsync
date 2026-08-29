@@ -124,6 +124,7 @@ function applyFaxAnswersToItems(
   items: Array<Record<string, unknown>>,
   answers: Array<Record<string, unknown>>,
   answeredAt?: string,
+  source = 'fax',
 ) {
   const byId = new Map<string, string>();
   for (const a of answers || []) {
@@ -138,7 +139,7 @@ function applyFaxAnswersToItems(
     return {
       ...it,
       item_status: 'answered',
-      response: { text: text.slice(0, 4000), source: 'fax' },
+      response: { text: text.slice(0, 4000), source },
       answered_at: answeredAt || new Date().toISOString(),
     };
   });

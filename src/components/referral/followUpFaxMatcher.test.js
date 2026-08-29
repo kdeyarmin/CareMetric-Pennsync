@@ -168,3 +168,13 @@ test("applyFaxAnswersToItems handles empty inputs", () => {
   assert.deepEqual(applyFaxAnswersToItems([], []), { items: [], answeredCount: 0 });
   assert.equal(applyFaxAnswersToItems(null, null).answeredCount, 0);
 });
+
+test("applyFaxAnswersToItems stamps the given source (scan path)", () => {
+  const { items: out } = applyFaxAnswersToItems(
+    [{ id: "a", item_status: "open" }],
+    [{ id: "a", answered: true, response_text: "from the scanner" }],
+    undefined,
+    "scan"
+  );
+  assert.deepEqual(out[0].response, { text: "from the scanner", source: "scan" });
+});

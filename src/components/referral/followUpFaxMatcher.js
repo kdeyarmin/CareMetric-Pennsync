@@ -91,9 +91,11 @@ export function scoreSignals(signals) {
  * @param {Array<{id:string, item_status?:string}>} items persisted follow-up items
  * @param {Array<{id:string, answered?:boolean, response_text?:string}>} answers
  * @param {string} [answeredAt] ISO timestamp to stamp (defaults to now)
+ * @param {string} [source] where the response came from: "fax" (inbound-fax
+ *   auto-ingestion, the default) or "scan" (staff-uploaded scanned response)
  * @returns {{items:Array, answeredCount:number}}
  */
-export function applyFaxAnswersToItems(items, answers, answeredAt) {
+export function applyFaxAnswersToItems(items, answers, answeredAt, source = "fax") {
   const byId = new Map();
   for (const a of answers || []) {
     const text = String(a?.response_text ?? "").trim();
@@ -107,7 +109,7 @@ export function applyFaxAnswersToItems(items, answers, answeredAt) {
     return {
       ...it,
       item_status: "answered",
-      response: { text: text.slice(0, 4000), source: "fax" },
+      response: { text: text.slice(0, 4000), source },
       answered_at: answeredAt || new Date().toISOString(),
     };
   });
