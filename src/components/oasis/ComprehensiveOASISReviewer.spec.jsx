@@ -4,13 +4,22 @@ import userEvent from '@testing-library/user-event';
 
 // Controllable LLM stub — each test decides when/what each call resolves, so we
 // can exercise auto-run gating, loading, error, and raced completions.
-const { invokeLLM } = vi.hoisted(() => ({ invokeLLM: vi.fn() }));
+const { invokeLLM, actionItemFilter, actionItemBulkCreate } = vi.hoisted(() => ({
+  invokeLLM: vi.fn(),
+  actionItemFilter: vi.fn(),
+  actionItemBulkCreate: vi.fn(),
+}));
 vi.mock('@/api/base44Client', () => ({
-  base44: { integrations: { Core: { InvokeLLM: invokeLLM } } },
+  base44: {
+    integrations: { Core: { InvokeLLM: invokeLLM } },
+    entities: {
+      OASISActionItem: { filter: actionItemFilter, bulkCreate: actionItemBulkCreate },
+    },
+  },
 }));
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
 import ComprehensiveOASISReviewer from '@/components/oasis/ComprehensiveOASISReviewer';
@@ -39,7 +48,13 @@ const results1 = { summary: 'assessment one' };
 
 beforeEach(() => {
   invokeLLM.mockReset();
+  actionItemFilter.mockReset();
+  actionItemBulkCreate.mockReset();
+  actionItemFilter.mockResolvedValue([]);
+  actionItemBulkCreate.mockResolvedValue([]);
   toast.error.mockReset?.();
+  toast.success.mockReset?.();
+  toast.info.mockReset?.();
 });
 
 describe('ComprehensiveOASISReviewer', () => {
@@ -322,5 +337,107 @@ describe('ComprehensiveOASISReviewer', () => {
     expect(prompt).not.toContain('Cousin Contact');
 
     await act(async () => { d.resolve(reviewFor('SUMMARY-PHI')); });
+  });
+
+  it('surfaces deterministic check failures instantly — before the AI review completes — and hands them to the model', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+
+    const badOasis = {
+      patient_info: { assessment_date: '2026-08-25', assessment_type: 'SOC' },
+      primary_diagnosis_code: 'I50.9',
+      functional_scores: {
+        m1800_grooming: 1, m1810_dress_upper: 9, m1820_dress_lower: 2,
+        m1830_bathing: 3, m1840_toilet_transfer: 2, m1850_transferring: 2, m1860_ambulation: 3,
+      },
+    };
+    render(
+      <ComprehensiveOASISReviewer oasisData={badOasis} analysisResults={results1} autoReview={true} />
+    );
+
+    // AI call still pending — the rule-based finding is already on screen.
+    expect(screen.getByText(/AI performing comprehensive OASIS review/i)).toBeInTheDocument();
+    expect(screen.getByText(/Deterministic Checks/i)).toBeInTheDocument();
+    expect(screen.getByText(/outside the valid range 0–3/)).toBeInTheDocument();
+
+    // …and is part of the model's context as an authoritative pre-check.
+    const prompt = invokeLLM.mock.calls[0][0].prompt;
+    expect(prompt).toContain('DETERMINISTIC PRE-CHECKS');
+    expect(prompt).toContain('FAIL [high] M1810');
+
+    await act(async () => { d.resolve(reviewFor('SUMMARY-DET')); });
+    expect(screen.getByText(/Deterministic Checks/i)).toBeInTheDocument();
+  });
+
+  it('creates action items from the findings and reports the count upward', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+    const onActionItemsCreated = vi.fn();
+
+    render(
+      <ComprehensiveOASISReviewer
+        oasisData={oasis1}
+        analysisResults={results1}
+        autoReview={true}
+        analysisId="analysis_test_1"
+        patientName="Testy McPatient"
+        onActionItemsCreated={onActionItemsCreated}
+      />
+    );
+    await act(async () => {
+      d.resolve(reviewFor('SUMMARY-ACTIONS', {
+        compliance_risks: [{
+          risk_title: 'Homebound status unsupported',
+          description: 'Narrative does not establish homebound criteria.',
+          corrective_action: 'Document taxing effort.',
+          severity: 'critical',
+          affected_m_items: ['M1033'],
+        }],
+      }));
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Create action items/i }));
+
+    await waitFor(() => expect(actionItemBulkCreate).toHaveBeenCalledTimes(1));
+    const payloads = actionItemBulkCreate.mock.calls[0][0];
+    expect(payloads).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        analysis_id: 'analysis_test_1',
+        patient_name: 'Testy McPatient',
+        category: 'compliance',
+        severity: 'critical',
+        source: 'ai_recommendation',
+      }),
+    ]));
+    expect(onActionItemsCreated).toHaveBeenCalledWith(payloads.length);
+    expect(await screen.findByRole('button', { name: /Action items created/i })).toBeDisabled();
+  });
+
+  it('does not duplicate action items when the analysis already has some', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+    actionItemFilter.mockResolvedValue([{ id: 'existing-item' }]);
+
+    render(
+      <ComprehensiveOASISReviewer
+        oasisData={oasis1}
+        analysisResults={results1}
+        autoReview={true}
+        analysisId="analysis_test_2"
+      />
+    );
+    await act(async () => {
+      d.resolve(reviewFor('SUMMARY-DUP', {
+        compliance_risks: [{ description: 'A risk.', severity: 'high' }],
+      }));
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Create action items/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Action items created/i })).toBeInTheDocument()
+    );
+    expect(actionItemBulkCreate).not.toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalled();
   });
 });

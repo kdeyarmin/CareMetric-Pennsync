@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAICall } from "@/hooks/useAICall";
+import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,9 +19,13 @@ import {
   Shield,
   Info,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  ClipboardList,
+  ListChecks
 } from "lucide-react";
 import { resolveCmsGuidelineLink, HH_QUALITY_REPORTING_URL } from "./cmsGuidelineLinks.js";
+import { runOasisDeterministicChecks, deterministicChecksPromptBlock } from "./oasisDeterministicChecks.js";
+import { buildActionItemsFromReview } from "./reviewActionItems.js";
 import { computeAge } from "@/lib/age";
 
 // Only the clinically relevant slice of the patient record goes to the LLM —
@@ -73,11 +78,16 @@ export default function ComprehensiveOASISReviewer({
   patientData,
   autoReview = true,
   savedReview = null,
-  onReviewComplete
+  onReviewComplete,
+  analysisId = null,
+  patientName = "",
+  onActionItemsCreated
 }) {
   const ai = useAICall();
   const [reviewResults, setReviewResults] = useState(null);
   const [reviewError, setReviewError] = useState(false);
+  const [actionItemsCreated, setActionItemsCreated] = useState(false);
+  const [isCreatingActions, setIsCreatingActions] = useState(false);
   // When the current results were produced, and against WHICH oasisData object —
   // a later in-place correction changes that identity, flagging the review stale.
   const [reviewedAt, setReviewedAt] = useState(null);
@@ -91,6 +101,14 @@ export default function ComprehensiveOASISReviewer({
     onReviewCompleteRef.current = onReviewComplete;
   }, [onReviewComplete]);
 
+  // Rule-based checks are pure and instant, so they always reflect the CURRENT
+  // oasisData — including in-place corrections — with no billed call and no
+  // waiting on (or trusting) the LLM for rule-checkable problems.
+  const deterministicChecks = useMemo(
+    () => (oasisData ? runOasisDeterministicChecks(oasisData) : null),
+    [oasisData]
+  );
+
   // Monotonic run id: a re-run (or a new assessment) supersedes any in-flight
   // review, so a slower earlier response can never overwrite newer findings.
   const runIdRef = useRef(0);
@@ -103,6 +121,7 @@ export default function ComprehensiveOASISReviewer({
     // the loading state, never the PREVIOUS assessment's compliance findings.
     setReviewResults(null);
     setReviewError(false);
+    setActionItemsCreated(false);
     try {
       const prompt = `You are a Medicare OASIS compliance expert. Perform a COMPREHENSIVE review of this OASIS assessment.
 
@@ -111,6 +130,8 @@ ${JSON.stringify(oasisData, null, 2)}
 
 ANALYSIS RESULTS:
 ${JSON.stringify(analysisResults, null, 2)}
+
+${deterministicChecksPromptBlock(runOasisDeterministicChecks(oasisData))}
 
 PATIENT CONTEXT (clinical fields only):
 ${JSON.stringify(clinicalPatientContext(patientData), null, 2)}
@@ -304,6 +325,7 @@ Return detailed JSON with all findings.`;
       setReviewedAt(savedReview.reviewed_at || null);
       setReviewedOasisData(oasisData);
       setReviewError(false);
+      setActionItemsCreated(false);
       return;
     }
     if (autoReview) performComprehensiveReview();
@@ -351,6 +373,48 @@ Return detailed JSON with all findings.`;
   const qualityMeasures = [...(reviewResults?.quality_measure_opportunities || [])].sort(bySeverity('implementation_priority'));
   const inconsistencies = [...(reviewResults?.documentation_inconsistencies || [])].sort(bySeverity('severity'));
 
+  // Correctable findings → OASISActionItem payloads (built pure; created on demand).
+  const actionItemPayloads = useMemo(
+    () =>
+      buildActionItemsFromReview({
+        reviewResults,
+        deterministicFindings: deterministicChecks?.findings || [],
+        analysisId,
+        patientName,
+      }),
+    [reviewResults, deterministicChecks, analysisId, patientName]
+  );
+
+  const createActionItems = async () => {
+    if (!actionItemPayloads.length || isCreatingActions) return;
+    setIsCreatingActions(true);
+    try {
+      // Duplicate guard: this analysis may already have items (e.g. the review
+      // was created in an earlier session, or another surface generated them).
+      const existing = await base44.entities.OASISActionItem.filter(
+        { analysis_id: analysisId },
+        undefined,
+        1
+      );
+      if (existing?.length) {
+        setActionItemsCreated(true);
+        toast.info("Action items already exist for this analysis — see the action workflow.");
+        return;
+      }
+      await base44.entities.OASISActionItem.bulkCreate(actionItemPayloads);
+      setActionItemsCreated(true);
+      toast.success(
+        `${actionItemPayloads.length} action item${actionItemPayloads.length === 1 ? "" : "s"} created for the action workflow.`
+      );
+      onActionItemsCreated?.(actionItemPayloads.length);
+    } catch (error) {
+      console.error("Failed to create action items:", error);
+      toast.error("Couldn't create action items. Please try again.");
+    } finally {
+      setIsCreatingActions(false);
+    }
+  };
+
   // In-place corrections replace the oasisData object; findings computed against
   // the previous data may no longer hold.
   const dataChangedSinceReview = !!(reviewResults && reviewedOasisData && oasisData !== reviewedOasisData);
@@ -373,6 +437,46 @@ Return detailed JSON with all findings.`;
       </CardHeader>
 
       <CardContent>
+        {/* Deterministic checks — instant, free, and always current (they track
+            every in-place data correction live, unlike the AI review) */}
+        {deterministicChecks && (
+          <div
+            className={`mb-4 rounded-lg border-2 p-3 ${
+              deterministicChecks.failed > 0
+                ? 'bg-amber-50 border-amber-300'
+                : 'bg-green-50 border-green-300'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="font-semibold text-sm text-slate-900 flex items-center gap-2">
+                <ListChecks className="w-4 h-4" />
+                Deterministic Checks
+              </p>
+              <Badge variant="outline" className="bg-white">
+                {deterministicChecks.passed}/{deterministicChecks.total} passed
+              </Badge>
+            </div>
+            {deterministicChecks.failed === 0 ? (
+              <p className="text-sm text-green-800 flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4" />
+                All rule-based checks passed — item ranges, required PDGM items, internal consistency, diagnosis code format, and assessment dates.
+              </p>
+            ) : (
+              <ul className="space-y-1.5 mt-1">
+                {deterministicChecks.findings.map((finding) => (
+                  <li key={finding.check} className="flex items-start gap-2 text-sm">
+                    <Badge className={getSeverityColor(finding.severity)}>{finding.severity}</Badge>
+                    <span className="text-slate-800">
+                      <span className="font-mono text-xs mr-1">{finding.m_items.join('/')}</span>
+                      {finding.message}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {ai.loading && (
           <div className="text-center py-12">
             <Loader2 className="w-16 h-16 animate-spin text-indigo-600 mx-auto mb-4" />
@@ -845,7 +949,22 @@ Return detailed JSON with all findings.`;
             </Accordion>
 
             {/* Action Buttons */}
-            <div className="flex gap-2 pt-4 border-t">
+            <div className="flex gap-2 pt-4 border-t flex-wrap">
+              {analysisId && actionItemPayloads.length > 0 && (
+                <Button
+                  onClick={createActionItems}
+                  disabled={isCreatingActions || actionItemsCreated}
+                  className="bg-indigo-600 hover:bg-indigo-700"
+                >
+                  {actionItemsCreated ? (
+                    <><CheckCircle2 className="w-4 h-4 mr-2" /> Action items created</>
+                  ) : isCreatingActions ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating action items...</>
+                  ) : (
+                    <><ClipboardList className="w-4 h-4 mr-2" /> Create action items ({actionItemPayloads.length})</>
+                  )}
+                </Button>
+              )}
               <Button
                 onClick={performComprehensiveReview}
                 variant="outline"

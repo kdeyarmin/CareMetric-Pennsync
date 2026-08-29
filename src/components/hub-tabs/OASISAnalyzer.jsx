@@ -1633,6 +1633,12 @@ Return scores (0-100) and top 3-5 issues in each category.`,
           analysisResults={analysisResults}
           patientData={selectedPatient}
           autoReview={true}
+          analysisId={analysisId}
+          patientName={patientName}
+          onActionItemsCreated={() => {
+            // Surface the new items in the action workflow list immediately.
+            queryClient.invalidateQueries({ queryKey: ['oasis-actions', analysisId] });
+          }}
           savedReview={comprehensiveReview}
           onReviewComplete={(review) => {
             setComprehensiveReview(review);
