@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, Loader2, Trash2, CheckCircle2, AlertTriangle, FileText } from "lucide-react";
+import { Upload, Loader2, Trash2, CheckCircle2, AlertTriangle, FileText, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { validateFileUpload } from "@/components/utils/security";
 import { parseCaseMixWeightsCsv, EXPECTED_GROUP_COUNT } from "./caseMixWeightsLoader.js";
 import { buildStoredWeightTable } from "./caseMixReconciliation.js";
+import { HH_CASE_MIX_WEIGHTS_CY2026 } from "./hhCaseMixWeightsCy2026.js";
 
 /**
  * Admin upload of the official CMS 432-group case-mix weight CSV.
@@ -75,6 +76,21 @@ export default function CaseMixWeightsUpload({
     }
   };
 
+  // Bundled official dataset (all 432 groups verbatim from the CMS CY2026
+  // final case-mix weights file — see hhCaseMixWeightsCy2026.js for
+  // provenance). Runs through the SAME strict parser + preview → Store flow
+  // as a hand-imported CSV, never straight into storage.
+  const loadBundledCy2026 = () => {
+    setYear(HH_CASE_MIX_WEIGHTS_CY2026.payment_year);
+    setParsed({
+      fileName: HH_CASE_MIX_WEIGHTS_CY2026.source_file,
+      result: parseCaseMixWeightsCsv(HH_CASE_MIX_WEIGHTS_CY2026.csv, {
+        year: HH_CASE_MIX_WEIGHTS_CY2026.payment_year,
+        source: HH_CASE_MIX_WEIGHTS_CY2026.source_file,
+      }),
+    });
+  };
+
   const persist = async (tableOrNull) => {
     setIsPersisting(true);
     try {
@@ -107,10 +123,12 @@ export default function CaseMixWeightsUpload({
         <CardTitle className="text-base">CMS case-mix weight table (reference)</CardTitle>
         <p className="text-xs text-slate-500">
           Upload the official CMS {EXPECTED_GROUP_COUNT}-group case-mix weights CSV for your payment
-          year (see docs/PDGM_CASE_MIX_WEIGHTS.md for the expected columns). <strong>Reference table
-          for analysis — payment estimates remain from the PDGM engine.</strong> It powers the
-          admin-only HIPPS/weight reconciliation preview; LUPA thresholds are informational display
-          only. Unmappable rows are reported below, never guessed.
+          year (see docs/PDGM_CASE_MIX_WEIGHTS.md for the expected columns), or load the bundled
+          CY 2026 table — all {EXPECTED_GROUP_COUNT} groups verbatim from the CMS final-rule file.
+          <strong> Reference table for analysis — payment estimates remain from the PDGM
+          engine.</strong> It powers the admin-only HIPPS/weight reconciliation preview; LUPA
+          thresholds are informational display only. Unmappable rows are reported below, never
+          guessed.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -160,6 +178,14 @@ export default function CaseMixWeightsUpload({
             disabled={isPersisting}
           >
             <Upload className="w-4 h-4 mr-2" /> Choose CMS weights CSV…
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={loadBundledCy2026}
+            disabled={isPersisting}
+          >
+            <Landmark className="w-4 h-4 mr-2" /> Load CMS CY 2026 table (bundled)
           </Button>
         </div>
 

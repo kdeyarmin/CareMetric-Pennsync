@@ -24,12 +24,14 @@ test("derives the HIPPS code positionally from the five grouping variables", () 
     }).hipps,
     "1AA11"
   );
+  // Verified against the official CMS CY2026 file: late/institutional Wound,
+  // medium functional, interaction comorbidity is HIPPS 4CB31 (weight 1.7520).
   assert.equal(
     deriveHippsCode({
       episodeTiming: "late", admissionSource: "institutional",
       clinicalGroup: "MMTA_Wounds", functionalLevel: "medium", comorbidityLevel: "high",
     }).hipps,
-    "4FB31"
+    "4CB31"
   );
 });
 

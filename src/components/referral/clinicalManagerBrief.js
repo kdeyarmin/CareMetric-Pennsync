@@ -43,17 +43,21 @@ const HIPPS_TIMING_SOURCE = {
 };
 
 // HIPPS position 2: clinical-group letter, keyed by the app's pdgmRates group
-// keys. MMTA_Medication_Management has no CMS counterpart (see
-// caseMixReconciliation.RATES_KEY_TO_CMS_GROUP); MMTA_Skin_Non_Surgical maps to
-// the Wound group like the reconciliation module does.
+// keys. Letters verified against ALL 432 rows of the official CMS CY2026
+// case-mix weights file (see hhCaseMixWeightsCy2026.js: A=MMTA Other,
+// B=Neuro Rehab, C=Wound, D=Complex Nursing, E=MS Rehab, F=Behavioral
+// Health, G–L=the remaining MMTA subgroups). MMTA_Medication_Management has
+// no CMS counterpart (see caseMixReconciliation.RATES_KEY_TO_CMS_GROUP);
+// MMTA_Skin_Non_Surgical maps to the Wound group like the reconciliation
+// module does.
 const HIPPS_GROUP_LETTER = {
   MMTA_Other: "A",
-  MMTA_Behavioral_Health: "B",
-  MMTA_Complex_Nursing: "C",
-  MMTA_Musculoskeletal: "D",
-  MMTA_Neuro_Rehab: "E",
-  MMTA_Wounds: "F",
-  MMTA_Skin_Non_Surgical: "F",
+  MMTA_Neuro_Rehab: "B",
+  MMTA_Wounds: "C",
+  MMTA_Skin_Non_Surgical: "C",
+  MMTA_Complex_Nursing: "D",
+  MMTA_Musculoskeletal: "E",
+  MMTA_Behavioral_Health: "F",
   MMTA_Surgical_Aftercare: "G",
   MMTA_Cardiac_Circulatory: "H",
   MMTA_Endocrine: "I",
