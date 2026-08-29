@@ -62,6 +62,10 @@
         }
       }
     },
+    "visit_costs": {
+      "type": "object",
+      "description": "The AGENCY's own fully-loaded cost per visit by discipline: { SN, PT, OT, ST, MSW, HHA } in dollars. Agency-wide (not per-payer). Entered by admins on the payer table manager; the clinical-manager referral brief multiplies these by the planned visits to show the estimated episode margin (revenue − visit cost). Disciplines without a cost are reported uncosted, never guessed."
+    },
     "notes": {
       "type": "string",
       "description": "Optional notes about the source of these numbers (contract dates, who verified them)."

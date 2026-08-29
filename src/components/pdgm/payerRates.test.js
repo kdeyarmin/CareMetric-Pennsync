@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  estimateEpisodeMargin,
   parsePayerRatesCsv,
   payerRatesCsvTemplate,
   resolveHeader,
@@ -156,4 +157,44 @@ test("plannedVisitsByDiscipline prefers ordered periods and falls back to AI est
   });
   assert.deepEqual(ai, { SN: 8, PT: 4, HHA: 2 });
   assert.deepEqual(plannedVisitsByDiscipline(null), {});
+});
+
+// ── episode margin ──
+
+test("estimateEpisodeMargin prices planned visits at the agency's costs", () => {
+  const m = estimateEpisodeMargin({
+    revenue: 4000,
+    plannedVisits: { SN: 15, PT: 8 },
+    visitCosts: { SN: 95, PT: 110 },
+  });
+  assert.equal(m.estimable, true);
+  assert.equal(m.totalCost, 15 * 95 + 8 * 110);
+  assert.equal(m.margin, 4000 - m.totalCost);
+  assert.equal(m.marginPct, Math.round(((4000 - m.totalCost) / 4000) * 1000) / 10);
+  assert.deepEqual(m.uncosted, []);
+});
+
+test("uncosted disciplines are reported and mark the cost a floor", () => {
+  const m = estimateEpisodeMargin({
+    revenue: 3000,
+    plannedVisits: { SN: 10, HHA: 6 },
+    visitCosts: { SN: 90 },
+  });
+  assert.equal(m.totalCost, 900);
+  assert.deepEqual(m.uncosted, ["HHA"]);
+  assert.ok(m.notes.some((n) => n.includes("cost total is a floor")));
+});
+
+test("no costs entered or no revenue degrade gracefully", () => {
+  const none = estimateEpisodeMargin({ revenue: 3000, plannedVisits: { SN: 10 }, visitCosts: {} });
+  assert.equal(none.estimable, false);
+  assert.ok(none.notes[0].includes("No per-visit costs entered"));
+
+  const noRevenue = estimateEpisodeMargin({ revenue: null, plannedVisits: { SN: 10 }, visitCosts: { SN: 90 } });
+  assert.equal(noRevenue.margin, null);
+  assert.equal(noRevenue.totalCost, 900);
+  assert.ok(noRevenue.notes.some((n) => n.includes("No revenue estimate")));
+
+  const noVisits = estimateEpisodeMargin({ revenue: 3000, plannedVisits: {}, visitCosts: { SN: 90 } });
+  assert.equal(noVisits.estimable, false);
 });

@@ -152,6 +152,17 @@ Assess each ADL:
 - M1860: Ambulation/locomotion
 - M1870: Feeding/eating
 
+**Section GG (OASIS-E) — Self-Care GG0130 and Mobility GG0170:**
+Score each supported item on the 6-point scale:
+- 06 = Independent
+- 05 = Setup or clean-up assistance
+- 04 = Supervision or touching assistance
+- 03 = Partial/moderate assistance
+- 02 = Substantial/maximal assistance
+- 01 = Dependent
+If the activity was not attempted: 07 = patient refused, 09 = not applicable, 10 = not attempted (environmental limitation), 88 = not attempted (medical condition or safety).
+Score GG0130 self-care (eating, oral hygiene, toileting hygiene, shower/bathe, upper-body dressing, lower-body dressing, footwear) and GG0170 mobility (roll left/right, sit to lying, lying to sitting, sit to stand, chair/bed transfer, toilet transfer, walk 10 ft, walk 50 ft with two turns, walk 150 ft) from the documented functional status. Format each as "<code> - <short basis>", and OMIT items the referral gives no basis for — never guess a GG code.
+
 **Cognitive Function (M1700):**
 - 0 = Alert/oriented, processes info
 - 1 = Memory deficit, decisions okay
@@ -578,6 +589,34 @@ export const REFERRAL_EXTRACTION_SCHEMA = {
         m2010_high_risk_drugs: { type: "array", items: { type: "string" } },
         m2020_management_oral_meds: { type: "string" },
         m2030_management_injectable_meds: { type: "string" },
+        gg0130_self_care: {
+          type: "object",
+          description: "OASIS-E Section GG self-care (GG0130): '<code> - <short basis>' per item on the 06-01 scale (07/09/10/88 when not attempted). Omit items the referral gives no basis for — never guess.",
+          properties: {
+            a_eating: { type: "string" },
+            b_oral_hygiene: { type: "string" },
+            c_toileting_hygiene: { type: "string" },
+            e_shower_bathe_self: { type: "string" },
+            f_upper_body_dressing: { type: "string" },
+            g_lower_body_dressing: { type: "string" },
+            h_putting_on_taking_off_footwear: { type: "string" }
+          }
+        },
+        gg0170_mobility: {
+          type: "object",
+          description: "OASIS-E Section GG mobility (GG0170): same scale and format as GG0130; omit unsupported items.",
+          properties: {
+            a_roll_left_and_right: { type: "string" },
+            b_sit_to_lying: { type: "string" },
+            c_lying_to_sitting_on_side_of_bed: { type: "string" },
+            d_sit_to_stand: { type: "string" },
+            e_chair_bed_to_chair_transfer: { type: "string" },
+            f_toilet_transfer: { type: "string" },
+            i_walk_10_feet: { type: "string" },
+            j_walk_50_feet_with_two_turns: { type: "string" },
+            k_walk_150_feet: { type: "string" }
+          }
+        },
         confidence_notes: { type: "string" },
         items_needing_verification: { type: "array", items: { type: "string" } }
       }

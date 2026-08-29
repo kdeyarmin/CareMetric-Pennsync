@@ -8,6 +8,7 @@ import { ALL_ROWS } from "@/lib/queryLimits";
 import { fetchCallerPdgmRateConfig, fetchCallerPayerRateConfig } from "@/lib/agencySettings";
 import { sendInAppNotification } from "@/lib/notify";
 import { exportToPDF } from "@/components/utils/pdfExporter";
+import { matchWageIndex } from "../pdgm/wageIndex.js";
 import { buildClinicalManagerBrief, buildPdgmRequestFromReferral, isPdgmPricedPayer } from "./clinicalManagerBrief.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -69,27 +70,39 @@ export default function ClinicalManagerBriefCard({
     [referralData, payers]
   );
 
-  // Canonical PDGM estimate (server-gated). Keyed on the request payload so a
-  // new referral/coding recomputes and an identical one is cached.
+  // Agency PDGM rate config (official CMS case-mix table → HIPPS; imported
+  // CBSA wage-index table → per-address wage adjustment).
+  const { data: rateConfig } = useQuery({
+    queryKey: ["pdgmRateConfigRow", currentUser?.agency_name || "platform"],
+    queryFn: () => fetchCallerPdgmRateConfig(currentUser?.agency_name),
+    enabled: financial && !!currentUser && pdgmPriced,
+  });
+
+  // Patient-address CBSA match — sharpens the wage adjustment for
+  // multi-county service areas. No match → calculatePDGM falls back to the
+  // single agency-wide wage index exactly as before.
+  const wageMatch = useMemo(() => {
+    const ex = referralData?.extracted_data || referralData || {};
+    return matchWageIndex(ex?.demographics?.address, rateConfig?.wage_index_table || null);
+  }, [referralData, rateConfig]);
+
+  // Canonical PDGM estimate (server-gated). Keyed on the request payload AND
+  // the matched wage index so a late-loading CBSA table recomputes the figure.
   const pdgmRequest = useMemo(
     () => (referralData && pdgmPriced ? buildPdgmRequestFromReferral(referralData) : null),
     [referralData, pdgmPriced]
   );
   const { data: pdgmResponse, isError: pdgmError } = useQuery({
-    queryKey: ["referral-pdgm-estimate", JSON.stringify(pdgmRequest)],
+    queryKey: ["referral-pdgm-estimate", JSON.stringify(pdgmRequest), wageMatch?.wage_index ?? null],
     queryFn: async () => {
-      const { data } = await base44.functions.invoke("calculatePDGM", { pdgmData: pdgmRequest });
+      const { data } = await base44.functions.invoke("calculatePDGM", {
+        pdgmData: pdgmRequest,
+        ...(wageMatch ? { wageIndex: wageMatch.wage_index } : {}),
+      });
       return data;
     },
     enabled: financial && !!pdgmRequest,
     retry: 1,
-  });
-
-  // Agency PDGM rate config (for the official CMS case-mix table → HIPPS).
-  const { data: rateConfig } = useQuery({
-    queryKey: ["pdgmRateConfigRow", currentUser?.agency_name || "platform"],
-    queryFn: () => fetchCallerPdgmRateConfig(currentUser?.agency_name),
-    enabled: financial && !!currentUser && pdgmPriced,
   });
 
   // Agency roster (shared key/signature), narrowed to ADMIN-tier recipients.
@@ -119,13 +132,15 @@ export default function ClinicalManagerBriefCard({
             analysis,
             pdgm: pdgmResponse?.financialsRestricted ? null : pdgmResponse || null,
             storedWeightTable: rateConfig?.case_mix_weight_table || null,
+            wageIndexMatch: wageMatch,
             payers,
+            visitCosts: payerConfig?.visit_costs || null,
             preparedBy: currentUser?.full_name || currentUser?.email || "",
             sourceFileUrl,
             packetUrl,
           })
         : null,
-    [referralData, financial, analysis, pdgmResponse, rateConfig, payers, currentUser, sourceFileUrl, packetUrl]
+    [referralData, financial, analysis, pdgmResponse, rateConfig, wageMatch, payers, payerConfig, currentUser, sourceFileUrl, packetUrl]
   );
 
   // Fail closed: no financial visibility → no card at all.

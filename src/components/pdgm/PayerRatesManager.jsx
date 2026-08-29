@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { fetchCallerPayerRateConfig } from "@/lib/agencySettings";
@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Landmark, UploadCloud, Download, Trash2, Save, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Landmark, UploadCloud, Download, Trash2, Save, AlertTriangle, CheckCircle2, Calculator } from "lucide-react";
 import { toast } from "sonner";
 
 const money = (n) => (Number.isFinite(n) ? `$${n.toFixed(2)}` : "—");
@@ -35,6 +36,27 @@ export default function PayerRatesManager({ currentUser }) {
     enabled: !!currentUser,
   });
   const savedPayers = Array.isArray(config?.payers) ? config.payers : [];
+
+  // Agency-wide per-visit COSTS (string form for editing) — seeded from the
+  // saved config once it loads; the margin section of the referral revenue
+  // brief multiplies these by the planned visits.
+  const [costs, setCosts] = useState(() => Object.fromEntries(PAYER_DISCIPLINES.map((d) => [d, ""])));
+  const [costsSeeded, setCostsSeeded] = useState(false);
+  useEffect(() => {
+    if (config && !costsSeeded) {
+      setCosts(
+        Object.fromEntries(
+          PAYER_DISCIPLINES.map((d) => [d, config.visit_costs?.[d] != null ? String(config.visit_costs[d]) : ""])
+        )
+      );
+      setCostsSeeded(true);
+    }
+  }, [config, costsSeeded]);
+  const costsObject = () =>
+    Object.fromEntries(
+      PAYER_DISCIPLINES.map((d) => [d, costs[d]]).filter(([, v]) => String(v).trim() !== "" && Number.isFinite(Number(v)))
+        .map(([d, v]) => [d, Number(v)])
+    );
 
   const saveMutation = useMutation({
     mutationFn: (payload) => base44.functions.invoke("savePayerRateConfig", payload),
@@ -86,6 +108,17 @@ export default function PayerRatesManager({ currentUser }) {
     const remaining = savedPayers.filter((p) => p.payer_name !== name);
     saveMutation.mutate({
       payers: remaining,
+      source_file: config?.source_file || "",
+      label: config?.label || "",
+      effective_year: config?.effective_year || "",
+      notes: config?.notes || "",
+    });
+  };
+
+  const saveCosts = () => {
+    saveMutation.mutate({
+      payers: savedPayers,
+      visit_costs: costsObject(),
       source_file: config?.source_file || "",
       label: config?.label || "",
       effective_year: config?.effective_year || "",
@@ -228,6 +261,38 @@ export default function PayerRatesManager({ currentUser }) {
             )}
           </div>
         )}
+
+        {/* Agency-wide per-visit costs — feeds the episode-margin estimate on
+            the referral revenue brief (revenue − planned visits × cost). */}
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <p className="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-2">
+            <Calculator className="w-4 h-4 text-slate-600" />
+            Your per-visit costs (agency-wide, for the margin estimate)
+          </p>
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+            {PAYER_DISCIPLINES.map((d) => (
+              <div key={d}>
+                <label htmlFor={`cost-${d}`} className="text-xs font-medium mb-1 block">{d} cost $</label>
+                <Input
+                  id={`cost-${d}`}
+                  inputMode="decimal"
+                  value={costs[d]}
+                  onChange={(e) => setCosts((prev) => ({ ...prev, [d]: e.target.value }))}
+                  placeholder="—"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-2 mt-2 flex-wrap">
+            <p className="text-[11px] text-slate-500">
+              Fully-loaded cost per completed visit (wages, mileage, supplies, overhead). Blank = uncosted;
+              the margin then shows a cost floor. Never shown to clinical staff.
+            </p>
+            <Button type="button" size="sm" variant="outline" onClick={saveCosts} disabled={saveMutation.isPending}>
+              <Save className="w-4 h-4 mr-1" /> Save costs
+            </Button>
+          </div>
+        </div>
 
         <div>
           <p className="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-2">

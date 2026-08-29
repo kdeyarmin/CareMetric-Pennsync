@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { label, effective_year, is_official, notes, rates, icd10_clinical_groups, case_mix_weight_table } = body || {};
+    const { label, effective_year, is_official, notes, rates, icd10_clinical_groups, case_mix_weight_table, wage_index_table } = body || {};
 
     // Guard against empty payloads: an accidental invocation with no body
     // would overwrite the agency's existing rate config with empty defaults.
@@ -109,6 +109,13 @@ Deno.serve(async (req) => {
       case_mix_weight_table: case_mix_weight_table === undefined
         ? (isPlainObject(current?.case_mix_weight_table) ? current.case_mix_weight_table : null)
         : (isPlainObject(case_mix_weight_table) ? case_mix_weight_table : null),
+      // Agency-imported CBSA wage-index table (see the entity schema): matched
+      // by the referral brief and passed explicitly to calculatePDGM. Same
+      // preserve-unless-sent semantics as case_mix_weight_table, so a
+      // rates-only save can't silently wipe it and an explicit null clears it.
+      wage_index_table: wage_index_table === undefined
+        ? (isPlainObject(current?.wage_index_table) ? current.wage_index_table : null)
+        : (isPlainObject(wage_index_table) ? wage_index_table : null),
       updated_by_email: user.email || null,
       ...(agencyName ? { agency_name: agencyName } : {}),
     };

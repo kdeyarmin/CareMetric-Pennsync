@@ -29,9 +29,9 @@ import { buildVisitPlan, formatOrder, DISCIPLINE_NAMES } from "./visitPlanEstima
 import { generateDiagnosisCodes, codeLabel, resolveScenario } from "./diagnosisCodeGenerator.js";
 import { assessMedicareEligibility } from "./medicareEligibility.js";
 import { referralToF2FInput, validateFaceToFace } from "./faceToFaceValidator.js";
-import { patientInitials, oasisItemLabel } from "./admissionBriefEmail.js";
+import { patientInitials, oasisItemLabel, formatOasisValue } from "./admissionBriefEmail.js";
 import { collectComorbidityCapture } from "./comorbidityCapture.js";
-import { matchPayerRow, estimatePayerEpisode } from "../pdgm/payerRates.js";
+import { matchPayerRow, estimatePayerEpisode, estimateEpisodeMargin, plannedVisitsByDiscipline } from "../pdgm/payerRates.js";
 import { reconcileScenario } from "../pdgm/caseMixReconciliation.js";
 
 // HIPPS position 1: timing × admission source.
@@ -199,7 +199,9 @@ export function collectRevenueClarifications({ coding, pdgm, eligibility, f2f, a
  * @param {object} [params.analysis]   ReferralAnalyzer AI result
  * @param {object} [params.pdgm]       calculatePDGM response ({ original, rateBasis, dataValidation, … })
  * @param {object} [params.storedWeightTable] PDGMRateConfig.case_mix_weight_table (official CMS table)
+ * @param {object} [params.wageIndexMatch] matchWageIndex() result for the patient's address, or null
  * @param {Array}  [params.payers]     PayerRateConfig.payers (imported payer table)
+ * @param {object} [params.visitCosts] PayerRateConfig.visit_costs (per-discipline cost per visit)
  * @param {string} [params.preparedBy]
  * @param {string} [params.sourceFileUrl]
  * @param {string} [params.packetUrl]
@@ -210,7 +212,9 @@ export function buildClinicalManagerBrief({
   analysis = null,
   pdgm = null,
   storedWeightTable = null,
+  wageIndexMatch = null,
   payers = [],
+  visitCosts = null,
   preparedBy = "",
   sourceFileUrl = "",
   packetUrl = "",
@@ -331,9 +335,9 @@ export function buildClinicalManagerBrief({
   visitLines.push(...plan.strategy);
 
   const oasisEntries = Object.entries(ex.oasis_assessment || {})
-    .filter(([key]) => /^m\d{4}/i.test(key))
+    .filter(([key]) => /^(?:m|gg)\d{4}/i.test(key))
     .map(([key, value]) => {
-      const v = typeof value === "string" ? clean(value) : Array.isArray(value) ? value.join("; ") : value && typeof value === "object" ? JSON.stringify(value) : "";
+      const v = formatOasisValue(value);
       return v ? [oasisItemLabel(key), v] : null;
     })
     .filter(Boolean);
@@ -341,6 +345,30 @@ export function buildClinicalManagerBrief({
   const rateBasisNote = pdgm?.rateBasis?.isOfficial
     ? "Rates: agency's official CMS numbers (marked official in PDGM Rate Settings)."
     : "DRAFT ESTIMATE — based on approximate case-mix weights, not confirmed official CMS rates. Load official numbers in Admin → PDGM Rate Settings.";
+
+  // ── episode margin: revenue − the agency's own per-visit costs ──
+  const marginRevenue = isPdgmPriced
+    ? (original ? Math.round(original.totalPayment * 2 * 100) / 100 : null)
+    : payerEstimate?.estimable
+    ? payerEstimate.amount
+    : null;
+  const margin = visitCosts
+    ? estimateEpisodeMargin({ revenue: marginRevenue, plannedVisits: plannedVisitsByDiscipline(plan), visitCosts })
+    : null;
+  const marginLines = !margin
+    ? []
+    : margin.estimable
+    ? [
+        `Estimated episode visit cost: ${money(margin.totalCost)} (${margin.byDiscipline
+          .filter((b) => b.subtotal != null)
+          .map((b) => `${b.discipline} ${b.visits} × ${money(b.costPerVisit)}`)
+          .join("; ")})`,
+        margin.margin !== null
+          ? `Estimated episode margin: ${money(margin.margin)}${margin.marginPct !== null ? ` (${margin.marginPct}%)` : ""} — revenue ${money(marginRevenue)} − visit cost ${money(margin.totalCost)}${isPdgmPriced ? " (revenue ≈ two 30-day periods before late-period reweighting)" : ""}`
+          : "",
+        ...margin.notes,
+      ].filter(Boolean)
+    : margin.notes;
 
   const pdgmLines = original
     ? [
@@ -350,7 +378,11 @@ export function buildClinicalManagerBrief({
         hipps.mismatch ? `NOTE: derived HIPPS ${hipps.derived} disagrees with the official table's ${hipps.official} — verify grouping inputs.` : "",
         hipps.lupaThreshold != null ? `Official LUPA threshold for this group: ${hipps.lupaThreshold} visits (informational).` : "",
         `Case-mix weight: ${original.caseMixWeight} · Base payment: ${money(original.basePayment)}${original.wageIndex !== 1 ? ` · wage index ${original.wageIndex}` : ""}`,
+        wageIndexMatch
+          ? `Wage index ${wageIndexMatch.wage_index} applied for ${wageIndexMatch.label || `CBSA ${wageIndexMatch.cbsa}`} (matched by ${wageIndexMatch.matchedBy} from the patient's address).`
+          : "",
         `Draft 30-day period reimbursement: ${money(original.totalPayment)} (two-period 60-day episode if both bill: ≈ ${money(original.totalPayment * 2)} before late-period reweighting)`,
+        ...marginLines,
         rateBasisNote,
       ].filter(Boolean)
     : ["PDGM estimate unavailable (calculation did not run)."];
@@ -375,6 +407,7 @@ export function buildClinicalManagerBrief({
       }
     }
     payerLines.push(...payerEstimate.notes);
+    payerLines.push(...marginLines);
   }
 
   const docLines = [

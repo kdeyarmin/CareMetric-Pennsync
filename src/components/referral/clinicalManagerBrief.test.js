@@ -230,6 +230,56 @@ test("documented-but-uncoded comorbidity signals land in the clarification list"
   assert.match(brief.emailBody, /medications: "Metformin 500 mg"|medications: "Metformin"/);
 });
 
+test("a matched CBSA wage index renders its provenance line", () => {
+  const brief = buildClinicalManagerBrief({
+    referralData: referral,
+    pdgm: pdgmResponse,
+    wageIndexMatch: { wage_index: 0.8412, cbsa: "42540", label: "Scranton PA", matchedBy: "zip" },
+  });
+  assert.match(brief.emailBody, /Wage index 0\.8412 applied for Scranton PA \(matched by zip from the patient's address\)/);
+});
+
+test("visit costs produce the episode margin in the PDGM section", () => {
+  // SN 3w2,2w2,1w5 = 15 visits; revenue ≈ 3021.24 × 2 = 6042.48.
+  const brief = buildClinicalManagerBrief({
+    referralData: referral,
+    pdgm: pdgmResponse,
+    visitCosts: { SN: 95 },
+  });
+  assert.match(brief.emailBody, /Estimated episode visit cost: \$1425\.00 \(SN 15 × \$95\.00\)/);
+  assert.match(brief.emailBody, /Estimated episode margin: \$4617\.48 \(76\.4%\) — revenue \$6042\.48 − visit cost \$1425\.00/);
+});
+
+test("contract payers get the margin against the contract revenue; no costs degrades to a note", () => {
+  const maReferral = {
+    ...referral,
+    demographics: { ...referral.demographics, insurance_primary: "Aetna Medicare Advantage" },
+  };
+  const payers = [
+    { payer_name: "Aetna MA", payer_type: "medicare_advantage", payment_model: "per_visit", per_visit_rates: { SN: 160 }, approved_visits: {}, match_terms: ["aetna"] },
+  ];
+  const withCosts = buildClinicalManagerBrief({ referralData: maReferral, pdgm: null, payers, visitCosts: { SN: 95 } });
+  // Revenue $2400 (15 × $160) − cost $1425 = $975.
+  assert.match(withCosts.emailBody, /Estimated episode margin: \$975\.00/);
+
+  const noCosts = buildClinicalManagerBrief({ referralData: maReferral, pdgm: null, payers, visitCosts: {} });
+  assert.match(noCosts.emailBody, /No per-visit costs entered/);
+});
+
+test("GG draft items render with humanized labels in the OASIS table", () => {
+  const withGg = {
+    ...referral,
+    oasis_assessment: {
+      ...referral.oasis_assessment,
+      gg0170_mobility: { d_sit_to_stand: "03 - needs partial assist", i_walk_10_feet: "04 - supervision" },
+    },
+  };
+  const brief = buildClinicalManagerBrief({ referralData: withGg, pdgm: pdgmResponse });
+  assert.match(brief.emailBody, /GG0170 Mobility: D\. sit to stand: 03 - needs partial assist · I\. walk 10 feet: 04 - supervision/);
+  const oasisTable = brief.pdfContent.find((c) => c.type === "table");
+  assert.ok(oasisTable.rows.some(([label]) => label === "GG0170 Mobility"));
+});
+
 test("an unconfigured payer points the manager at the import page", () => {
   const brief = buildClinicalManagerBrief({
     referralData: { demographics: { insurance_primary: "Mystery Plan LLC" } },

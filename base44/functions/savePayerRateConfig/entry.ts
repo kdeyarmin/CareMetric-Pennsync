@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { label, effective_year, notes, payers, source_file } = body || {};
+    const { label, effective_year, notes, payers, source_file, visit_costs } = body || {};
 
     // Guard against empty payloads: an accidental invocation with no body
     // would overwrite the agency's existing payer table with an empty one.
@@ -142,6 +142,13 @@ Deno.serve(async (req) => {
       effective_year: typeof effective_year === 'string' ? effective_year : '',
       notes: typeof notes === 'string' ? notes : '',
       payers: sanitized,
+      // Agency-wide per-visit costs (see the entity schema): preserve-unless-
+      // sent so a payers-only import can't silently wipe entered costs; an
+      // explicit null (or non-object) clears them; an object is sanitized to
+      // the known disciplines' non-negative numbers.
+      visit_costs: visit_costs === undefined
+        ? (isPlainObject(current?.visit_costs) ? current.visit_costs : {})
+        : disciplineMap(visit_costs),
       source_file: typeof source_file === 'string' ? source_file.slice(0, 300) : '',
       updated_by_email: user.email || null,
       ...(agencyName ? { agency_name: agencyName } : {}),

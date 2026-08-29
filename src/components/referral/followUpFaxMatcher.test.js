@@ -5,6 +5,7 @@ import {
   extractSignals,
   scoreSignals,
   bestFaxBackMatch,
+  applyFaxAnswersToItems,
   FORM_MARKER,
 } from "./followUpFaxMatcher.js";
 
@@ -117,4 +118,53 @@ test("OCR-spaced date separators still match the DOB", () => {
   const fax = { ocrText: "patient jane doe dob 01 / 05 / 1950 additional information request", senderNumber: "" };
   const signals = extractSignals(fax, { patientName: "Jane Doe", patientDob: "1950-01-05" });
   assert.equal(signals.patient_dob, true);
+});
+
+// ── fax answer ingestion ──
+
+test("applyFaxAnswersToItems marks only open, clearly-answered items", () => {
+  const items = [
+    { id: "f2f_missing", item_status: "open", title: "F2F" },
+    { id: "orders_missing", item_status: "answered", response: { text: "portal answer" } },
+    { id: "homebound_undocumented", item_status: "resolved" },
+    { id: "frequency_missing" }, // no status = open
+  ];
+  const { items: out, answeredCount } = applyFaxAnswersToItems(
+    items,
+    [
+      { id: "f2f_missing", answered: true, response_text: "Encounter note attached, seen 8/20" },
+      { id: "orders_missing", answered: true, response_text: "must NOT overwrite portal answer" },
+      { id: "homebound_undocumented", answered: true, response_text: "must NOT reopen resolved" },
+      { id: "frequency_missing", answered: true, response_text: "  " }, // blank → unanswered
+      { id: "unknown_item", answered: true, response_text: "ignored" },
+    ],
+    "2026-08-29T21:00:00.000Z"
+  );
+  assert.equal(answeredCount, 1);
+  assert.equal(out[0].item_status, "answered");
+  assert.deepEqual(out[0].response, { text: "Encounter note attached, seen 8/20", source: "fax" });
+  assert.equal(out[0].answered_at, "2026-08-29T21:00:00.000Z");
+  // Portal answer and resolved state untouched; blank answer stays open.
+  assert.equal(out[1].response.text, "portal answer");
+  assert.equal(out[2].item_status, "resolved");
+  assert.equal(out[3].item_status, undefined);
+});
+
+test("applyFaxAnswersToItems ignores answered:false and caps response length", () => {
+  const long = "x".repeat(5000);
+  const { items: out, answeredCount } = applyFaxAnswersToItems(
+    [{ id: "a", item_status: "open" }, { id: "b", item_status: "open" }],
+    [
+      { id: "a", answered: false, response_text: "provider left it blank" },
+      { id: "b", answered: true, response_text: long },
+    ]
+  );
+  assert.equal(answeredCount, 1);
+  assert.equal(out[0].item_status, "open");
+  assert.equal(out[1].response.text.length, 4000);
+});
+
+test("applyFaxAnswersToItems handles empty inputs", () => {
+  assert.deepEqual(applyFaxAnswersToItems([], []), { items: [], answeredCount: 0 });
+  assert.equal(applyFaxAnswersToItems(null, null).answeredCount, 0);
 });

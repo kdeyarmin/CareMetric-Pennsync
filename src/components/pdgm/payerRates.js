@@ -282,6 +282,58 @@ export function plannedVisitsByDiscipline(visitPlan) {
 }
 
 /**
+ * Estimate the episode MARGIN: revenue minus the agency's own per-discipline
+ * visit costs (PayerRateConfig.visit_costs) × the planned visits. Costs the
+ * agency hasn't entered are reported as uncosted, never guessed — and a
+ * margin with uncosted disciplines is labeled a floor on cost (so a ceiling
+ * on margin).
+ *
+ * @param {object} params
+ * @param {number|null} params.revenue episode revenue estimate in dollars
+ * @param {Record<string, number>} params.plannedVisits per-discipline planned visits
+ * @param {Record<string, number>} params.visitCosts per-discipline cost per visit
+ * @returns {{ estimable:boolean, totalCost:number|null, margin:number|null,
+ *   marginPct:number|null, byDiscipline:Array, uncosted:string[], notes:string[] }}
+ */
+export function estimateEpisodeMargin({ revenue = null, plannedVisits = {}, visitCosts = {} } = {}) {
+  const notes = [];
+  const byDiscipline = [];
+  const uncosted = [];
+  let totalCost = 0;
+  let costedAny = false;
+  for (const d of PAYER_DISCIPLINES) {
+    const visits = Number(plannedVisits?.[d]);
+    if (!Number.isFinite(visits) || visits <= 0) continue;
+    const cost = Number(visitCosts?.[d]);
+    if (Number.isFinite(cost) && cost >= 0) {
+      const subtotal = Math.round(cost * visits * 100) / 100;
+      byDiscipline.push({ discipline: d, visits, costPerVisit: cost, subtotal });
+      totalCost += subtotal;
+      costedAny = true;
+    } else {
+      byDiscipline.push({ discipline: d, visits, costPerVisit: null, subtotal: null });
+      uncosted.push(d);
+    }
+  }
+  if (!costedAny) {
+    return {
+      estimable: false, totalCost: null, margin: null, marginPct: null, byDiscipline, uncosted,
+      notes: [byDiscipline.length === 0
+        ? "No planned visits to cost yet."
+        : "No per-visit costs entered — add them in Admin → PDGM Rate Settings → Payer Reimbursement Table to see episode margin."],
+    };
+  }
+  if (uncosted.length > 0) {
+    notes.push(`No cost entered for ${uncosted.join(", ")} — the cost total is a floor (margin shown is a ceiling).`);
+  }
+  totalCost = Math.round(totalCost * 100) / 100;
+  const margin = Number.isFinite(revenue) ? Math.round((revenue - totalCost) * 100) / 100 : null;
+  const marginPct = margin !== null && revenue > 0 ? Math.round((margin / revenue) * 1000) / 10 : null;
+  if (margin === null) notes.push("No revenue estimate available — showing visit cost only.");
+  return { estimable: true, totalCost, margin, marginPct, byDiscipline, uncosted, notes };
+}
+
+/**
  * Estimate the episode reimbursement for a CONTRACT payer row (episodic or
  * per-visit). PDGM-model payers return estimable:false — calculatePDGM is the
  * only pricing source for those (see the module header).

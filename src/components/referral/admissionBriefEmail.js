@@ -45,12 +45,35 @@ export function patientInitials(fullName) {
   return `${initials.join(".")}.`;
 }
 
-/** "m1800_grooming" → "M1800 Grooming"; non-M keys humanize plainly. */
+/** "m1800_grooming" → "M1800 Grooming"; "gg0170_mobility" → "GG0170 Mobility";
+ *  other keys humanize plainly. */
 export function oasisItemLabel(key) {
-  const m = /^m(\d{4}[a-z]?)_(.+)$/i.exec(String(key || ""));
-  const rest = (m ? m[2] : String(key || "")).replace(/_/g, " ");
+  const m = /^(m|gg)(\d{4}[a-z]?)_(.+)$/i.exec(String(key || ""));
+  const rest = (m ? m[3] : String(key || "")).replace(/_/g, " ");
   const title = rest.replace(/\b\w/g, (c) => c.toUpperCase());
-  return m ? `M${m[1].toUpperCase()} ${title}` : title;
+  return m ? `${m[1].toUpperCase()}${m[2].toUpperCase()} ${title}` : title;
+}
+
+/** Render one OASIS draft value as briefing text. Objects (the GG item groups,
+ *  M1311 wound counts) render as "A. Eating: 04 …" entries instead of JSON. */
+export function formatOasisValue(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return clean(value);
+  if (Array.isArray(value)) return value.join("; ");
+  if (typeof value === "object") {
+    return Object.entries(value)
+      .map(([k, v]) => {
+        const s = typeof v === "string" ? clean(v) : v == null ? "" : String(v);
+        if (!s) return "";
+        const label = k
+          .replace(/^([a-z]{1,2})_/i, (_, p) => `${p.toUpperCase()}. `)
+          .replace(/_/g, " ");
+        return `${label}: ${s}`;
+      })
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return String(value);
 }
 
 function section(title, lines) {
@@ -297,16 +320,9 @@ export function buildAdmissionBriefEmail({
   // ── draft OASIS responses ──
   const oasis = ex.oasis_assessment || {};
   const oasisLines = Object.entries(oasis)
-    .filter(([key]) => /^m\d{4}/i.test(key))
+    .filter(([key]) => /^(?:m|gg)\d{4}/i.test(key))
     .map(([key, value]) => {
-      const v =
-        typeof value === "string"
-          ? clean(value)
-          : Array.isArray(value)
-          ? value.join("; ")
-          : value && typeof value === "object"
-          ? JSON.stringify(value)
-          : "";
+      const v = formatOasisValue(value);
       return v ? `- ${oasisItemLabel(key)}: ${v}` : "";
     });
   const verification = Array.isArray(oasis.items_needing_verification) ? oasis.items_needing_verification : [];
