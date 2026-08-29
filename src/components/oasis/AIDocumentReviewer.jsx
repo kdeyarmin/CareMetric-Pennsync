@@ -17,7 +17,11 @@ import {
 import { severityBadgeClass } from "@/lib/severityStyles";
 
 export default function AIDocumentReviewer({ oasisData, autoReview = true }) {
-  const ai = useAICall();
+  // This card's analysis fires automatically on mount/data change, so it goes
+  // through the app-wide AI budget as background work: it can't crowd out a
+  // call a user is waiting on, and several such cards on one page queue
+  // instead of hitting the provider all at once.
+  const ai = useAICall({ priority: 'background' });
   const [reviewResults, setReviewResults] = useState(null);
   const [error, setError] = useState(null);
 

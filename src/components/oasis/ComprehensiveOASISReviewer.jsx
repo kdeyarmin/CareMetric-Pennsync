@@ -26,6 +26,7 @@ import {
 import { resolveCmsGuidelineLink, HH_QUALITY_REPORTING_URL } from "./cmsGuidelineLinks.js";
 import { runOasisDeterministicChecks, deterministicChecksPromptBlock } from "./oasisDeterministicChecks.js";
 import { buildActionItemsFromReview } from "./reviewActionItems.js";
+import { isAICancellation } from "@/lib/aiScheduler";
 import { computeAge } from "@/lib/age";
 
 // Only the clinically relevant slice of the patient record goes to the LLM —
@@ -113,7 +114,9 @@ export default function ComprehensiveOASISReviewer({
   // review, so a slower earlier response can never overwrite newer findings.
   const runIdRef = useRef(0);
 
-  const performComprehensiveReview = useCallback(async () => {
+  // `interactive: true` for a review the user asked for by clicking — it jumps
+  // ahead of the page's other auto-fired analyses in the app-wide AI budget.
+  const performComprehensiveReview = useCallback(async ({ interactive = false } = {}) => {
     if (!oasisData || !analysisResults) return;
 
     const runId = (runIdRef.current += 1);
@@ -288,6 +291,12 @@ Return detailed JSON with all findings.`;
             strengths: { type: "array", items: { type: "string" } }
           }
         }
+      }, {
+        // An auto-fired review is background work and is dropped if it is still
+        // queued when this card unmounts; a review the user clicked for jumps
+        // the queue and always runs.
+        priority: interactive ? "interactive" : "background",
+        cancelOnUnmount: !interactive,
       });
 
       if (runId !== runIdRef.current) return; // superseded by a newer review
@@ -300,6 +309,9 @@ Return detailed JSON with all findings.`;
       onReviewCompleteRef.current?.({ results: result, reviewed_at: reviewedAtIso });
     } catch (error) {
       if (runId !== runIdRef.current) return; // superseded by a newer review
+      // A queued review dropped because this card unmounted was never sent —
+      // there is no failure to report, and nobody left to read a toast.
+      if (isAICancellation(error)) return;
       console.error('Comprehensive review error:', error);
       setReviewError(true);
       toast.error("The AI request didn't complete. Please try again.");
@@ -498,7 +510,7 @@ Return detailed JSON with all findings.`;
                 <p className="text-slate-600 mb-4">Click below to perform a comprehensive AI review</p>
               </>
             )}
-            <Button onClick={performComprehensiveReview} className="bg-indigo-600 hover:bg-indigo-700">
+            <Button onClick={() => performComprehensiveReview({ interactive: true })} className="bg-indigo-600 hover:bg-indigo-700">
               <FileSearch className="w-4 h-4 mr-2" />
               {reviewError ? 'Retry Comprehensive Review' : 'Start Comprehensive Review'}
             </Button>
@@ -519,7 +531,7 @@ Return detailed JSON with all findings.`;
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={performComprehensiveReview}
+                      onClick={() => performComprehensiveReview({ interactive: true })}
                       disabled={ai.loading}
                     >
                       Re-run review
@@ -966,7 +978,7 @@ Return detailed JSON with all findings.`;
                 </Button>
               )}
               <Button
-                onClick={performComprehensiveReview}
+                onClick={() => performComprehensiveReview({ interactive: true })}
                 variant="outline"
                 disabled={ai.loading}
                 className="flex-1"
