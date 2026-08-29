@@ -112,6 +112,10 @@
       "type": "string",
       "format": "date-time",
       "description": "When the supervisor review was recorded"
+    },
+    "comprehensive_review": {
+      "type": "object",
+      "description": "Persisted Comprehensive OASIS Review (AI): { results, reviewed_at }. Stored so reopening a saved upload restores the review instead of re-running the billed LLM call. Nested revenue/payment keys inside results are financial — stripped for non-financial users by listOASISUploads."
     }
   },
   "required": [

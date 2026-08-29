@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAICall } from "@/hooks/useAICall";
+import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   FileSearch,
@@ -19,23 +19,142 @@ import {
   Shield,
   Info,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  ClipboardList,
+  ListChecks
 } from "lucide-react";
-import { isSafeExternalUrl } from "@/components/utils/security";
+import { resolveCmsGuidelineLink, HH_QUALITY_REPORTING_URL } from "./cmsGuidelineLinks.js";
+import { runOasisDeterministicChecks, deterministicChecksPromptBlock } from "./oasisDeterministicChecks.js";
+import { buildActionItemsFromReview, actionItemKey } from "./reviewActionItems.js";
+import { reviewFingerprint } from "./reviewFreshness.js";
+import { isAICancellation } from "@/lib/aiScheduler";
+import { computeAge } from "@/lib/age";
+
+// Only the clinically relevant slice of the patient record goes to the LLM —
+// contact info and direct identifiers (name, DOB, address, phone, email,
+// emergency contacts) add nothing to compliance reasoning and don't belong in
+// the prompt. Age is derived so the DOB itself never leaves the app.
+function clinicalPatientContext(patient) {
+  if (!patient) return {};
+  const age = computeAge(patient.date_of_birth);
+  return {
+    ...(Number.isFinite(age) ? { age } : {}),
+    ...(patient.gender ? { gender: patient.gender } : {}),
+    ...(patient.primary_diagnosis ? { primary_diagnosis: patient.primary_diagnosis } : {}),
+    ...(patient.secondary_diagnoses?.length ? { secondary_diagnoses: patient.secondary_diagnoses } : {}),
+    ...(patient.allergies ? { allergies: patient.allergies } : {}),
+    ...(patient.current_medications?.length ? { current_medications: patient.current_medications } : {}),
+    ...(patient.care_type ? { care_type: patient.care_type } : {}),
+    ...(patient.status ? { status: patient.status } : {}),
+    ...(patient.admission_date ? { admission_date: patient.admission_date } : {}),
+    ...(patient.admission_source ? { admission_source: patient.admission_source } : {}),
+  };
+}
+
+// How many existing action items to scan when de-duplicating. An analysis
+// accumulates a bounded number of findings; this is generous headroom.
+const ACTION_ITEM_SCAN_LIMIT = 200;
+
+// Findings render most-severe first regardless of the order the model emitted.
+const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
+const bySeverity = (key) => (a, b) =>
+  (SEVERITY_RANK[a?.[key]] ?? 4) - (SEVERITY_RANK[b?.[key]] ?? 4);
+
+// Reference link for a finding: official eCFR link derived from the citation,
+// else the AI link when safe, else a curated topic page (see cmsGuidelineLinks).
+function CmsGuidelineLink({ regulation, aiLink, fallback, children }) {
+  const href = resolveCmsGuidelineLink(regulation, aiLink) || fallback || null;
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
+    >
+      <ExternalLink className="w-3 h-3" />
+      {children}
+    </a>
+  );
+}
 
 export default function ComprehensiveOASISReviewer({
   oasisData,
   analysisResults,
   patientData,
-  autoReview = true
+  autoReview = true,
+  savedReview = null,
+  onReviewComplete,
+  analysisId = null,
+  patientName = "",
+  onActionItemsCreated,
+  // Fail-closed: the only place these records can be read, assigned or
+  // rejected is OASISActionWorkflow, which renders revenue impact and so is
+  // admin-gated. Offering creation to a user who cannot open that workflow
+  // would file records they can never see or correct.
+  canManageActionItems = false
 }) {
   const ai = useAICall();
   const [reviewResults, setReviewResults] = useState(null);
+  const [reviewError, setReviewError] = useState(false);
+  const [actionItemsCreated, setActionItemsCreated] = useState(false);
+  const [isCreatingActions, setIsCreatingActions] = useState(false);
+  // When the current results were produced, and a fingerprint of the inputs they
+  // ran against. A later correction — or a patient match landing after the fact —
+  // changes the fingerprint, flagging the review stale. Unlike object identity
+  // this survives persistence, so a rehydrated review is judged on its real
+  // inputs rather than being assumed current.
+  const [reviewedAt, setReviewedAt] = useState(null);
+  const [reviewedFingerprint, setReviewedFingerprint] = useState(null);
   const [expandedSections, setExpandedSections] = useState(['compliance', 'quality', 'inconsistencies']);
 
-  const performComprehensiveReview = useCallback(async () => {
+  // Hold the completion callback in a ref so an inline parent callback doesn't
+  // change performComprehensiveReview's identity every render.
+  const onReviewCompleteRef = useRef(onReviewComplete);
+  useEffect(() => {
+    onReviewCompleteRef.current = onReviewComplete;
+  }, [onReviewComplete]);
+
+  // Rule-based checks are pure and instant, so they always reflect the CURRENT
+  // oasisData — including in-place corrections — with no billed call and no
+  // waiting on (or trusting) the LLM for rule-checkable problems.
+  const deterministicChecks = useMemo(
+    () => (oasisData ? runOasisDeterministicChecks(oasisData) : null),
+    [oasisData]
+  );
+
+  // The exact inputs a review would run against right now.
+  const patientContext = useMemo(() => clinicalPatientContext(patientData), [patientData]);
+  const currentFingerprint = useMemo(
+    () => reviewFingerprint(oasisData, patientContext),
+    [oasisData, patientContext]
+  );
+
+  // Monotonic run id: a re-run (or a new assessment) supersedes any in-flight
+  // review, so a slower earlier response can never overwrite newer findings.
+  const runIdRef = useRef(0);
+  // A review already in flight is allowed to finish (the scheduler only drops
+  // QUEUED work), but once this card is gone its result must not be reported:
+  // the parent clears its review state when a new document is selected, and a
+  // late completion would be rehydrated as the NEXT assessment's saved review.
+  // Set on (re)mount so StrictMode's dev remount cannot wedge it false.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
+  // `interactive: true` for a review the user asked for by clicking — it jumps
+  // ahead of the page's other auto-fired analyses in the app-wide AI budget.
+  const performComprehensiveReview = useCallback(async ({ interactive = false } = {}) => {
     if (!oasisData || !analysisResults) return;
 
+    const runId = (runIdRef.current += 1);
+    // Clear prior findings immediately: while this review runs the UI must show
+    // the loading state, never the PREVIOUS assessment's compliance findings.
+    setReviewResults(null);
+    setReviewError(false);
+    setActionItemsCreated(false);
     try {
       const prompt = `You are a Medicare OASIS compliance expert. Perform a COMPREHENSIVE review of this OASIS assessment.
 
@@ -45,8 +164,10 @@ ${JSON.stringify(oasisData, null, 2)}
 ANALYSIS RESULTS:
 ${JSON.stringify(analysisResults, null, 2)}
 
-PATIENT CONTEXT:
-${JSON.stringify(patientData || {}, null, 2)}
+${deterministicChecksPromptBlock(runOasisDeterministicChecks(oasisData))}
+
+PATIENT CONTEXT (clinical fields only):
+${JSON.stringify(patientContext, null, 2)}
 
 PERFORM COMPREHENSIVE REVIEW IN 3 AREAS:
 
@@ -200,21 +321,65 @@ Return detailed JSON with all findings.`;
             strengths: { type: "array", items: { type: "string" } }
           }
         }
+      }, {
+        // An auto-fired review is background work and is dropped if it is still
+        // queued when this card unmounts; a review the user clicked for jumps
+        // the queue and always runs.
+        priority: interactive ? "interactive" : "background",
+        cancelOnUnmount: !interactive,
       });
 
+      if (runId !== runIdRef.current) return; // superseded by a newer review
+      if (!isMountedRef.current) return; // card is gone — see isMountedRef
+      const reviewedAtIso = new Date().toISOString();
+      const fingerprint = reviewFingerprint(oasisData, patientContext);
       setReviewResults(result);
+      setReviewedAt(reviewedAtIso);
+      setReviewedFingerprint(fingerprint);
+      // Report upward so the caller can persist the review on the OASISUpload
+      // record and restore it (instead of re-billing) when the upload reopens.
+      // The fingerprint travels with it so a rehydrated review is judged
+      // against the data it actually ran on.
+      onReviewCompleteRef.current?.({ results: result, reviewed_at: reviewedAtIso, fingerprint });
     } catch (error) {
+      if (runId !== runIdRef.current) return; // superseded by a newer review
+      if (!isMountedRef.current) return; // card is gone — nobody to show it to
+      // A queued review dropped because this card unmounted was never sent —
+      // there is no failure to report, and nobody left to read a toast.
+      if (isAICancellation(error)) return;
       console.error('Comprehensive review error:', error);
+      setReviewError(true);
       toast.error("The AI request didn't complete. Please try again.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [analysisResults, oasisData, patientData]);
 
+  // ONCE per loaded assessment: restore the persisted review when the caller
+  // supplies one, otherwise auto-run. `analysisResults` gets a fresh object
+  // only when a new document is analyzed, whereas `oasisData` (pdgmData) is
+  // replaced in place on every applied correction / Smart Note import — keying
+  // on it re-fired a full billed LLM review per correction, with overlapping
+  // runs racing each other. After in-place data edits the user re-runs
+  // explicitly via the "Re-run Comprehensive Review" button.
+  const lastAutoReviewedRef = useRef(null);
   useEffect(() => {
-    if (autoReview && oasisData && analysisResults) {
-      performComprehensiveReview();
+    if (!oasisData || !analysisResults) return;
+    if (lastAutoReviewedRef.current === analysisResults) return;
+    lastAutoReviewedRef.current = analysisResults;
+    if (savedReview?.results) {
+      runIdRef.current += 1; // supersede any in-flight run
+      setReviewResults(savedReview.results);
+      setReviewedAt(savedReview.reviewed_at || null);
+      // Trust the fingerprint stored WITH the review, not the data in front of
+      // us: a review saved before a correction must rehydrate as stale, not be
+      // silently re-blessed as current.
+      setReviewedFingerprint(savedReview.fingerprint || null);
+      setReviewError(false);
+      setActionItemsCreated(false);
+      return;
     }
-  }, [oasisData?.id, autoReview, analysisResults, oasisData, performComprehensiveReview]);
+    if (autoReview) performComprehensiveReview();
+  }, [autoReview, oasisData, analysisResults, savedReview, performComprehensiveReview]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -247,6 +412,73 @@ Return detailed JSON with all findings.`;
     }
   };
 
+  // The Strengths accordion only renders when the review reported strengths, so
+  // "Expand/Collapse All" must count the sections actually on screen.
+  const allSections = reviewResults?.strengths?.length > 0
+    ? ['compliance', 'quality', 'inconsistencies', 'strengths']
+    : ['compliance', 'quality', 'inconsistencies'];
+  const allExpanded = allSections.every((s) => expandedSections.includes(s));
+
+  const complianceRisks = [...(reviewResults?.compliance_risks || [])].sort(bySeverity('severity'));
+  const qualityMeasures = [...(reviewResults?.quality_measure_opportunities || [])].sort(bySeverity('implementation_priority'));
+  const inconsistencies = [...(reviewResults?.documentation_inconsistencies || [])].sort(bySeverity('severity'));
+
+  // Correctable findings → OASISActionItem payloads (built pure; created on demand).
+  const actionItemPayloads = useMemo(
+    () =>
+      buildActionItemsFromReview({
+        reviewResults,
+        deterministicFindings: deterministicChecks?.findings || [],
+        analysisId,
+        patientName,
+      }),
+    [reviewResults, deterministicChecks, analysisId, patientName]
+  );
+
+  const createActionItems = async () => {
+    if (!actionItemPayloads.length || isCreatingActions) return;
+    setIsCreatingActions(true);
+    try {
+      // Duplicate guard, per finding. This analysis may already carry items from
+      // an earlier run of this button or from the action workflow's own
+      // "Generate Actions" — but those are usually DIFFERENT findings, so an
+      // all-or-nothing check would silently file none of ours.
+      const existing = await base44.entities.OASISActionItem.filter(
+        { analysis_id: analysisId },
+        undefined,
+        ACTION_ITEM_SCAN_LIMIT
+      );
+      const seen = new Set((existing || []).map(actionItemKey));
+      const fresh = actionItemPayloads.filter((item) => !seen.has(actionItemKey(item)));
+      if (fresh.length === 0) {
+        setActionItemsCreated(true);
+        toast.info("These findings are already filed as action items — see the action workflow.");
+        return;
+      }
+      await base44.entities.OASISActionItem.bulkCreate(fresh);
+      setActionItemsCreated(true);
+      const skipped = actionItemPayloads.length - fresh.length;
+      toast.success(
+        `${fresh.length} action item${fresh.length === 1 ? "" : "s"} created for the action workflow.`
+        + (skipped > 0 ? ` ${skipped} already filed.` : "")
+      );
+      onActionItemsCreated?.(fresh.length);
+    } catch (error) {
+      console.error("Failed to create action items:", error);
+      toast.error("Couldn't create action items. Please try again.");
+    } finally {
+      setIsCreatingActions(false);
+    }
+  };
+
+  // Findings computed against different inputs — corrected M-items, or a patient
+  // match that resolved after the review ran — may no longer hold. A review with
+  // no recorded fingerprint (persisted before this was tracked) is left alone
+  // rather than being labelled stale on no evidence.
+  const dataChangedSinceReview = !!(
+    reviewResults && reviewedFingerprint && currentFingerprint && currentFingerprint !== reviewedFingerprint
+  );
+
   return (
     <Card className="border-2 border-indigo-400 bg-gradient-to-br from-indigo-50 to-blue-50 shadow-lg">
       <CardHeader>
@@ -257,7 +489,7 @@ Return detailed JSON with all findings.`;
             {ai.loading && <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />}
           </CardTitle>
           {reviewResults && (
-            <Badge className={getRiskLevelColor(reviewResults.overall_risk_level)} size="lg">
+            <Badge className={getRiskLevelColor(reviewResults.overall_risk_level)}>
               {reviewResults.overall_risk_level?.toUpperCase()} RISK
             </Badge>
           )}
@@ -265,6 +497,46 @@ Return detailed JSON with all findings.`;
       </CardHeader>
 
       <CardContent>
+        {/* Deterministic checks — instant, free, and always current (they track
+            every in-place data correction live, unlike the AI review) */}
+        {deterministicChecks && (
+          <div
+            className={`mb-4 rounded-lg border-2 p-3 ${
+              deterministicChecks.failed > 0
+                ? 'bg-amber-50 border-amber-300'
+                : 'bg-green-50 border-green-300'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="font-semibold text-sm text-slate-900 flex items-center gap-2">
+                <ListChecks className="w-4 h-4" />
+                Deterministic Checks
+              </p>
+              <Badge variant="outline" className="bg-white">
+                {deterministicChecks.passed}/{deterministicChecks.total} passed
+              </Badge>
+            </div>
+            {deterministicChecks.failed === 0 ? (
+              <p className="text-sm text-green-800 flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4" />
+                All rule-based checks passed — item ranges, required PDGM items, internal consistency, diagnosis code format, and assessment dates.
+              </p>
+            ) : (
+              <ul className="space-y-1.5 mt-1">
+                {deterministicChecks.findings.map((finding) => (
+                  <li key={finding.check} className="flex items-start gap-2 text-sm">
+                    <Badge className={getSeverityColor(finding.severity)}>{finding.severity}</Badge>
+                    <span className="text-slate-800">
+                      <span className="font-mono text-xs mr-1">{finding.m_items.join('/')}</span>
+                      {finding.message}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {ai.loading && (
           <div className="text-center py-12">
             <Loader2 className="w-16 h-16 animate-spin text-indigo-600 mx-auto mb-4" />
@@ -275,17 +547,48 @@ Return detailed JSON with all findings.`;
 
         {!ai.loading && !reviewResults && (
           <div className="text-center py-8">
-            <FileSearch className="w-16 h-16 text-indigo-300 mx-auto mb-4" />
-            <p className="text-slate-600 mb-4">Click below to perform a comprehensive AI review</p>
-            <Button onClick={performComprehensiveReview} className="bg-indigo-600 hover:bg-indigo-700">
+            {reviewError ? (
+              <>
+                <XCircle className="w-16 h-16 text-red-300 mx-auto mb-4" />
+                <p className="text-slate-600 mb-4">The comprehensive review didn't complete. Run it again below.</p>
+              </>
+            ) : (
+              <>
+                <FileSearch className="w-16 h-16 text-indigo-300 mx-auto mb-4" />
+                <p className="text-slate-600 mb-4">Click below to perform a comprehensive AI review</p>
+              </>
+            )}
+            <Button onClick={() => performComprehensiveReview({ interactive: true })} className="bg-indigo-600 hover:bg-indigo-700">
               <FileSearch className="w-4 h-4 mr-2" />
-              Start Comprehensive Review
+              {reviewError ? 'Retry Comprehensive Review' : 'Start Comprehensive Review'}
             </Button>
           </div>
         )}
 
         {reviewResults && (
           <div className="space-y-4">
+            {/* Stale-data notice — assessment edited since this review ran */}
+            {dataChangedSinceReview && (
+              <Alert className="bg-amber-50 border-amber-400">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                <AlertDescription>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm text-amber-900 font-medium">
+                      Assessment data has changed since this review — the findings below may be outdated.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => performComprehensiveReview({ interactive: true })}
+                      disabled={ai.loading}
+                    >
+                      Re-run review
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Review Summary */}
             <Alert className={
               reviewResults.overall_risk_level === 'critical' || reviewResults.overall_risk_level === 'high'
@@ -295,9 +598,16 @@ Return detailed JSON with all findings.`;
                 : 'bg-green-100 border-green-400'
             }>
               <AlertDescription>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                   <p className="font-semibold text-slate-900">Review Summary</p>
-                  <Badge variant="outline">{reviewResults.total_findings} findings</Badge>
+                  <div className="flex items-center gap-2">
+                    {reviewedAt && (
+                      <span className="text-xs text-slate-600">
+                        Reviewed {new Date(reviewedAt).toLocaleString()}
+                      </span>
+                    )}
+                    <Badge variant="outline">{reviewResults.total_findings} findings</Badge>
+                  </div>
                 </div>
                 <p className="text-sm text-slate-800">{reviewResults.review_summary}</p>
               </AlertDescription>
@@ -334,20 +644,23 @@ Return detailed JSON with all findings.`;
                   <div className="flex items-center gap-2">
                     <Shield className="w-5 h-5 text-red-600" />
                     <span className="font-semibold text-red-900">
-                      Compliance Risks ({reviewResults.compliance_risks?.length || 0})
+                      Compliance Risks ({complianceRisks.length})
                     </span>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pt-2">
-                  {reviewResults.compliance_risks?.length === 0 ? (
+                  {complianceRisks.length === 0 ? (
                     <div className="bg-green-50 p-4 rounded-lg border border-green-300 text-center">
                       <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
                       <p className="text-green-800 font-medium">No compliance risks detected</p>
                     </div>
                   ) : (
-                    <ScrollArea className="max-h-[600px]">
+                    // Native overflow scrolling: Radix ScrollArea's h-full viewport
+                    // cannot resolve against a max-h (auto-height) root, which
+                    // silently CLIPPED findings past 600px with no scrollbar.
+                    <div className="max-h-[600px] overflow-y-auto pr-1">
                       <div className="space-y-4">
-                        {reviewResults.compliance_risks?.map((risk, idx) => (
+                        {complianceRisks.map((risk, idx) => (
                           <div key={idx} className="bg-white rounded-lg border-2 border-red-300 p-4">
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex-1">
@@ -391,17 +704,9 @@ Return detailed JSON with all findings.`;
                                 <p className="font-semibold text-xs text-indigo-900">CMS Regulation</p>
                               </div>
                               <p className="text-sm text-indigo-800 mb-2">{risk.cms_regulation}</p>
-                              {risk.cms_guideline_link && (
-                                <a
-                                  href={isSafeExternalUrl(risk.cms_guideline_link) ? risk.cms_guideline_link : undefined}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  View Official CMS Guideline
-                                </a>
-                              )}
+                              <CmsGuidelineLink regulation={risk.cms_regulation} aiLink={risk.cms_guideline_link}>
+                                View Official CMS Guideline
+                              </CmsGuidelineLink>
                             </div>
 
                             {/* Impact Analysis */}
@@ -436,7 +741,7 @@ Return detailed JSON with all findings.`;
                           </div>
                         ))}
                       </div>
-                    </ScrollArea>
+                    </div>
                   )}
                 </AccordionContent>
               </AccordionItem>
@@ -447,19 +752,19 @@ Return detailed JSON with all findings.`;
                   <div className="flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-navy-600" />
                     <span className="font-semibold text-navy-900">
-                      Quality Measure Opportunities ({reviewResults.quality_measure_opportunities?.length || 0})
+                      Quality Measure Opportunities ({qualityMeasures.length})
                     </span>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pt-2">
-                  {reviewResults.quality_measure_opportunities?.length === 0 ? (
+                  {qualityMeasures.length === 0 ? (
                     <div className="bg-green-50 p-4 rounded-lg border border-green-300 text-center">
                       <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
                       <p className="text-green-800 font-medium">All quality measures well-documented</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {reviewResults.quality_measure_opportunities?.map((measure, idx) => (
+                      {qualityMeasures.map((measure, idx) => (
                         <div key={idx} className="bg-white rounded-lg border-2 border-navy-300 p-4">
                           <div className="flex items-start justify-between mb-3">
                             <div>
@@ -479,7 +784,7 @@ Return detailed JSON with all findings.`;
                               }>
                                 {measure.current_status?.replace('_', ' ')}
                               </Badge>
-                              <Badge className={getSeverityColor(measure.implementation_priority)} size="sm">
+                              <Badge className={getSeverityColor(measure.implementation_priority)}>
                                 {measure.implementation_priority} priority
                               </Badge>
                             </div>
@@ -506,24 +811,21 @@ Return detailed JSON with all findings.`;
                             <p className="text-sm text-yellow-800">{measure.star_rating_impact}</p>
                           </div>
 
-                          {/* CMS Quality Reporting Link */}
-                          {measure.cms_quality_reporting_link && (
-                            <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-300 mb-3">
-                              <div className="flex items-center gap-2 mb-2">
-                                <BookOpen className="w-4 h-4 text-indigo-600" />
-                                <p className="font-semibold text-xs text-indigo-900">CMS Quality Reporting</p>
-                              </div>
-                              <a
-                                href={isSafeExternalUrl(measure.cms_quality_reporting_link) ? measure.cms_quality_reporting_link : undefined}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                                View Quality Measure Specifications
-                              </a>
+                          {/* CMS Quality Reporting Link — always resolvable: the
+                              official HH QRP page backs any missing/unsafe AI link */}
+                          <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-300 mb-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <BookOpen className="w-4 h-4 text-indigo-600" />
+                              <p className="font-semibold text-xs text-indigo-900">CMS Quality Reporting</p>
                             </div>
-                          )}
+                            <CmsGuidelineLink
+                              regulation={measure.measure_name}
+                              aiLink={measure.cms_quality_reporting_link}
+                              fallback={HH_QUALITY_REPORTING_URL}
+                            >
+                              View Quality Measure Specifications
+                            </CmsGuidelineLink>
+                          </div>
 
                           {/* Specific Documentation Needed */}
                           <div className="bg-green-50 p-3 rounded-lg border border-green-300 mb-3">
@@ -566,20 +868,20 @@ Return detailed JSON with all findings.`;
                   <div className="flex items-center gap-2">
                     <XCircle className="w-5 h-5 text-orange-600" />
                     <span className="font-semibold text-orange-900">
-                      Documentation Inconsistencies ({reviewResults.documentation_inconsistencies?.length || 0})
+                      Documentation Inconsistencies ({inconsistencies.length})
                     </span>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pt-2">
-                  {reviewResults.documentation_inconsistencies?.length === 0 ? (
+                  {inconsistencies.length === 0 ? (
                     <div className="bg-green-50 p-4 rounded-lg border border-green-300 text-center">
                       <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
                       <p className="text-green-800 font-medium">No documentation inconsistencies found</p>
                     </div>
                   ) : (
-                    <ScrollArea className="max-h-[600px]">
+                    <div className="max-h-[600px] overflow-y-auto pr-1">
                       <div className="space-y-4">
-                        {reviewResults.documentation_inconsistencies?.map((inconsistency, idx) => (
+                        {inconsistencies.map((inconsistency, idx) => (
                           <div key={idx} className="bg-white rounded-lg border-2 border-orange-300 p-4">
                             <div className="flex items-start justify-between mb-3">
                               <h4 className="font-semibold text-orange-900 flex-1">{inconsistency.inconsistency_title}</h4>
@@ -663,23 +965,18 @@ Return detailed JSON with all findings.`;
                                   <p className="font-semibold text-xs text-indigo-900">CMS Guidance</p>
                                 </div>
                                 <p className="text-sm text-indigo-800 mb-2">{inconsistency.cms_guidance}</p>
-                                {inconsistency.cms_guidance_link && (
-                                  <a
-                                    href={isSafeExternalUrl(inconsistency.cms_guidance_link) ? inconsistency.cms_guidance_link : undefined}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
-                                  >
-                                    <ExternalLink className="w-3 h-3" />
-                                    View CMS Documentation Guidance
-                                  </a>
-                                )}
+                                <CmsGuidelineLink
+                                  regulation={inconsistency.cms_guidance}
+                                  aiLink={inconsistency.cms_guidance_link}
+                                >
+                                  View CMS Documentation Guidance
+                                </CmsGuidelineLink>
                               </div>
                             )}
                           </div>
                         ))}
                       </div>
-                    </ScrollArea>
+                    </div>
                   )}
                 </AccordionContent>
               </AccordionItem>
@@ -712,9 +1009,24 @@ Return detailed JSON with all findings.`;
             </Accordion>
 
             {/* Action Buttons */}
-            <div className="flex gap-2 pt-4 border-t">
+            <div className="flex gap-2 pt-4 border-t flex-wrap">
+              {canManageActionItems && analysisId && actionItemPayloads.length > 0 && (
+                <Button
+                  onClick={createActionItems}
+                  disabled={isCreatingActions || actionItemsCreated}
+                  className="bg-indigo-600 hover:bg-indigo-700"
+                >
+                  {actionItemsCreated ? (
+                    <><CheckCircle2 className="w-4 h-4 mr-2" /> Action items created</>
+                  ) : isCreatingActions ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating action items...</>
+                  ) : (
+                    <><ClipboardList className="w-4 h-4 mr-2" /> Create action items ({actionItemPayloads.length})</>
+                  )}
+                </Button>
+              )}
               <Button
-                onClick={performComprehensiveReview}
+                onClick={() => performComprehensiveReview({ interactive: true })}
                 variant="outline"
                 disabled={ai.loading}
                 className="flex-1"
@@ -727,12 +1039,11 @@ Return detailed JSON with all findings.`;
               </Button>
               <Button
                 onClick={() => {
-                  const expanded = expandedSections.length === 3 ? [] : ['compliance', 'quality', 'inconsistencies'];
-                  setExpandedSections(expanded);
+                  setExpandedSections(allExpanded ? [] : allSections);
                 }}
                 variant="outline"
               >
-                {expandedSections.length === 3 ? (
+                {allExpanded ? (
                   <><ChevronUp className="w-4 h-4 mr-2" /> Collapse All</>
                 ) : (
                   <><ChevronDown className="w-4 h-4 mr-2" /> Expand All</>

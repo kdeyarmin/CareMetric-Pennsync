@@ -30,13 +30,17 @@ export default function ProactiveDocumentationAssistant({
   autoAnalyze = true,
   onApplySuggestion
 }) {
-  const ai = useAICall();
+  // Auto-fired analyses are background work in the app-wide AI budget, so
+  // several such cards on one page queue instead of hitting the provider at
+  // once. A run the user CLICKED passes interactive priority per call and
+  // takes the reserved slot instead of queueing behind that background work.
+  const ai = useAICall({ priority: 'background' });
   const [gaps, setGaps] = useState(null);
   const [expandedGap, setExpandedGap] = useState(null);
   const [editingNarrative, setEditingNarrative] = useState({});
   const [appliedSuggestions, setAppliedSuggestions] = useState(new Set());
 
-  const analyzeDocumentation = useCallback(async () => {
+  const analyzeDocumentation = useCallback(async ({ interactive = false } = {}) => {
     if (!oasisData) return;
 
     try {
@@ -147,7 +151,7 @@ For EACH gap found, provide:
             }
           }
         }
-      });
+      }, { priority: interactive ? 'interactive' : 'background' });
 
       setGaps(result);
     } catch (error) {
@@ -217,7 +221,7 @@ For EACH gap found, provide:
             {ai.loading && <Loader2 className="w-4 h-4 animate-spin text-navy-500" />}
           </CardTitle>
           {!gaps && !ai.loading && (
-            <Button onClick={analyzeDocumentation} className="bg-navy-600 hover:bg-navy-700">
+            <Button onClick={() => analyzeDocumentation({ interactive: true })} className="bg-navy-600 hover:bg-navy-700">
               <Sparkles className="w-4 h-4 mr-2" />
               Analyze Documentation
             </Button>
@@ -479,7 +483,7 @@ For EACH gap found, provide:
 
             {/* Re-analyze Button */}
             <Button
-              onClick={analyzeDocumentation}
+              onClick={() => analyzeDocumentation({ interactive: true })}
               variant="outline"
               size="sm"
               disabled={ai.loading}
