@@ -152,8 +152,10 @@ describe('ReferralAnalyzer', () => {
     render(<ReferralAnalyzer referralData={referralWithF2F} />);
 
     // AI call still pending — the 42 CFR 424.22 result must already be on screen.
+    // (The colon form targets the F2F alert specifically; the Medicare-criteria
+    // card renders its own "Face-to-Face encounter" row label.)
     expect(screen.getByText(/Analyzing referral with AI/i)).toBeInTheDocument();
-    expect(screen.getByText(/Face-to-Face Encounter/i)).toBeInTheDocument();
+    expect(screen.getByText(/Face-to-Face Encounter:/i)).toBeInTheDocument();
     expect(screen.getByText('42 CFR 424.22')).toBeInTheDocument();
     expect(screen.getByText('Compliant')).toBeInTheDocument();
 
@@ -164,16 +166,80 @@ describe('ReferralAnalyzer', () => {
     expect(prompt).toContain('status: valid');
 
     await act(async () => { d.resolve(analysisFor('REASONING-A')); });
-    expect(screen.getByText(/Face-to-Face Encounter/i)).toBeInTheDocument();
+    expect(screen.getByText(/Face-to-Face Encounter:/i)).toBeInTheDocument();
   });
 
-  it('does not include the F2F pre-check block when the referral carries no F2F', async () => {
+  it('flags a referral with NO documented F2F: warning alert renders and the prompt instructs critical_missing', async () => {
     const d = deferred();
     invokeLLM.mockReturnValueOnce(d.promise);
 
     render(<ReferralAnalyzer referralData={referralA} />);
-    expect(invokeLLM.mock.calls[0][0].prompt).not.toContain('DETERMINISTIC PRE-CHECK');
+
+    // The missing condition-of-payment document is visible immediately —
+    // deterministic, before/without the AI analysis.
+    expect(screen.getByText('Not documented')).toBeInTheDocument();
+    expect(screen.getByText(/No Face-to-Face encounter is documented/i)).toBeInTheDocument();
+
+    const prompt = invokeLLM.mock.calls[0][0].prompt;
+    expect(prompt).toContain('No Face-to-Face encounter is documented');
+    expect(prompt).toContain('critical_missing');
     await act(async () => { d.resolve(analysisFor('REASONING-A')); });
+  });
+
+  it('renders the deterministic Medicare-criteria and visit-plan panels in every state', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+
+    const referralWithOrders = {
+      demographics: { insurance_primary: 'Medicare', referring_physician: 'Dr. A. Wong, MD' },
+      skilled_needs: { frequency_duration: 'SN 3w2, 2w2, 1w5', services_ordered: ['SN 3w2, 2w2, 1w5'] },
+    };
+    render(<ReferralAnalyzer referralData={referralWithOrders} />);
+
+    // Still loading — both deterministic panels are already on screen.
+    expect(screen.getByText(/Analyzing referral with AI/i)).toBeInTheDocument();
+    expect(screen.getByText(/Medicare Home Health Criteria/i)).toBeInTheDocument();
+    expect(screen.getByText(/Visit Plan & Episode Structure/i)).toBeInTheDocument();
+    // Ordered frequencies parsed verbatim (3/wk × 2 wks → 2/wk × 2 wks → 1/wk × 5 wks).
+    expect(screen.getByText(/3\/wk × 2 wks/)).toBeInTheDocument();
+    // Medicare FFS: both 30-day periods get LUPA banding (10 and 4 visits).
+    expect(screen.getByText('10 visits')).toBeInTheDocument();
+    expect(screen.getByText('4 visits')).toBeInTheDocument();
+
+    await act(async () => { d.resolve(analysisFor('REASONING-A')); });
+    expect(screen.getByText(/Medicare Home Health Criteria/i)).toBeInTheDocument();
+    expect(screen.getByText(/Visit Plan & Episode Structure/i)).toBeInTheDocument();
+  });
+
+  it('renders the AI patient summary and AI visit estimates when nothing is ordered', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+
+    render(<ReferralAnalyzer referralData={referralA} />);
+    const result = {
+      ...analysisFor('REASONING-A'),
+      patient_summary: {
+        narrative: 'SUMMARY-NARRATIVE for Alpha Patient.',
+        key_conditions: ['CHF', 'Hypertension'],
+        functional_snapshot: 'Ambulates with walker.',
+        support_and_home: 'Lives with spouse.',
+      },
+      visit_estimates: {
+        nursing_visits_first_30_days: 5,
+        nursing_visits_days_31_60: 3,
+        pt_visits: 4,
+        suggested_frequency: 'SN 2w2, 1w6; PT 1w4',
+        rationale: 'CHF teaching and monitoring.',
+        confidence: 'medium',
+      },
+    };
+    await act(async () => { d.resolve(result); });
+
+    expect(screen.getByText(/Patient Summary/i)).toBeInTheDocument();
+    expect(screen.getByText('SUMMARY-NARRATIVE for Alpha Patient.')).toBeInTheDocument();
+    expect(screen.getByText(/AI visit estimates \(planning only/i)).toBeInTheDocument();
+    expect(screen.getByText('Nursing — days 1–30')).toBeInTheDocument();
+    expect(screen.getByText('SN 2w2, 1w6; PT 1w4')).toBeInTheDocument();
   });
 
   it('fires a single billed call under StrictMode double-mounted effects', async () => {
