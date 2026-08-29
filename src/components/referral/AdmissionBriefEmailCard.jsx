@@ -167,7 +167,20 @@ export default function AdmissionBriefEmailCard({
           <label htmlFor="brief-recipient" className="text-sm font-medium mb-1 block">
             Admitting nurse
           </label>
-          <Select value={recipientEmail} onValueChange={setRecipientEmail}>
+          <Select
+            value={recipientEmail}
+            onValueChange={(email) => {
+              // A hand-edited body carries the previous recipient's "To:" line
+              // and personalization — switching nurses regenerates the briefing
+              // for the new recipient instead of sending the stale edit.
+              const discardEdit = email !== recipientEmail && editedBody !== null;
+              setRecipientEmail(email);
+              if (discardEdit) {
+                setEditedBody(null);
+                toast.info("Recipient changed — the briefing was regenerated for the new recipient (your edits were discarded).");
+              }
+            }}
+          >
             <SelectTrigger id="brief-recipient">
               <SelectValue placeholder={recipients.length === 0 ? "No agency staff available…" : "Select the admitting nurse…"} />
             </SelectTrigger>

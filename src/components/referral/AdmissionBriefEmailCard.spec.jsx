@@ -21,7 +21,7 @@ vi.mock('@/api/base44Client', () => ({
   },
 }));
 
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
 // Radix Select needs real pointer events; shim it with plain buttons so this
 // spec exercises the CARD's logic (roster scoping, brief construction, send
@@ -59,6 +59,7 @@ const roster = [
   { id: 'u1', email: 'kelly@a.example', full_name: 'Kelly Nurse', credential_type: 'RN', agency_name: 'Agency A', is_active: true },
   { id: 'u2', email: 'sam@a.example', full_name: 'Sam Inactive', agency_name: 'Agency A', is_active: false },
   { id: 'u3', email: 'other@b.example', full_name: 'Other Tenant', agency_name: 'Agency B', is_active: true },
+  { id: 'u4', email: 'jordan@a.example', full_name: 'Jordan Nurse', credential_type: 'RN', agency_name: 'Agency A', is_active: true },
 ];
 
 const renderCard = (props = {}) =>
@@ -141,6 +142,27 @@ describe('AdmissionBriefEmailCard', () => {
     await userEvent.click(screen.getByRole('button', { name: /Email briefing/i }));
     await waitFor(() => expect(sendEmail).toHaveBeenCalledTimes(1));
     expect(sendEmail.mock.calls[0][0].body).toBe('EDITED BODY ONLY');
+  });
+
+  it('switching recipients discards a hand-edited body so the old nurse\'s personalization never sends', async () => {
+    renderCard();
+    await userEvent.click(await screen.findByText(/Kelly Nurse, RN — kelly@a\.example/));
+    await userEvent.click(screen.getByRole('button', { name: /Preview & edit/i }));
+    const textarea = screen.getByLabelText(/Briefing email body/i);
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, 'EDITED FOR KELLY');
+
+    // Intake realizes the wrong nurse is selected and switches to Jordan.
+    await userEvent.click(screen.getByText(/Jordan Nurse, RN — jordan@a\.example/));
+    await userEvent.click(screen.getByRole('button', { name: /Email briefing/i }));
+
+    await waitFor(() => expect(sendEmail).toHaveBeenCalledTimes(1));
+    const sent = sendEmail.mock.calls[0][0];
+    expect(sent.to).toBe('jordan@a.example');
+    // The regenerated body is personalized to Jordan — the stale edit (with
+    // Kelly's "To:" line baked in) is gone.
+    expect(sent.body).not.toContain('EDITED FOR KELLY');
+    expect(sent.body).toContain('To: Jordan Nurse');
   });
 
   it('switching to a different referral discards the edited body and recipient (PHI guard)', async () => {
