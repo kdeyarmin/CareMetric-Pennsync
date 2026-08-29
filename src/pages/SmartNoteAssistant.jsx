@@ -98,7 +98,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [saved, setSaved] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState(null);
   const [savedAuditId, setSavedAuditId] = useState(null);
-  const [offlineClientRequestId, setOfflineClientRequestId] = useState(null);
   const [existingVisitId, setExistingVisitId] = useState(null);
   const boundPatientRef = useRef(null);
   // Facility override captured at save-click time so persistVisitNote can stamp
@@ -126,7 +125,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const autosavePrevNoteRef = useRef("");
 
   const tryRestoreDurableDraft = (pid) => {
-    import('@/lib/indexedDB')
+    import('@/lib/draftNotes')
       .then(({ getDraftNoteLocally }) => getDraftNoteLocally(`draft_${pid || 'unassigned'}`))
       .then((d) => {
         if (patientIdRef.current !== pid || noteRef.current?.trim()) return;
@@ -140,7 +139,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
   const clearDraft = (pid) => {
     sessionStorage.removeItem(draftKeyFor(pid));
-    import('@/lib/indexedDB')
+    import('@/lib/draftNotes')
       .then(({ deleteDraftNoteLocally }) => deleteDraftNoteLocally(`draft_${pid || 'unassigned'}`))
       .catch(() => {});
   };
@@ -150,23 +149,11 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const { data: patients = [] } = useQuery({
     queryKey: ["patients", "active-all", agencyQueryKey(currentUser)],
     networkMode: 'always',
-    // Scope the LIVE list only — the offline branch below serves the IndexedDB
-    // roster, which was mirrored from an already-scoped read. ALL_ROWS before
-    // agency post-filter so foreign-tenant charts cannot crowd the picker.
-    queryFn: async () => {
-        try {
-            return await scopePatientsForCurrentCaller(
-              await base44.entities.Patient.filter({ status: "active" }, "first_name", ALL_ROWS),
-            );
-        } catch (e) {
-            if (!navigator.onLine) {
-                const { getPatientsLocally } = await import('@/lib/indexedDB');
-                const local = await getPatientsLocally();
-                return local || [];
-            }
-            throw e;
-        }
-    }
+    // ALL_ROWS before the agency post-filter so foreign-tenant charts cannot
+    // crowd the picker.
+    queryFn: async () => scopePatientsForCurrentCaller(
+      await base44.entities.Patient.filter({ status: "active" }, "first_name", ALL_ROWS),
+    )
   });
   const patient = patients.find(p => p.id === patientId);
   const { data: complianceRules = [] } = useQuery({
@@ -250,7 +237,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
     if (prev === patientId) return;
     prevPatientRef.current = patientId;
     setVitals({});
-    setOfflineClientRequestId(null);
     // Clear saved visit/audit ids so a re-save cannot update the prior
     // patient's Visit while history appends to the new patient (parity with
     // AudioVisitCapture).
@@ -287,7 +273,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
       return;
     }
     sessionStorage.setItem(draftKeyFor(pid), JSON.stringify({ note, visitType, patientId: pid }));
-    import('@/lib/indexedDB').then(({ saveDraftNoteLocally }) => {
+    import('@/lib/draftNotes').then(({ saveDraftNoteLocally }) => {
         saveDraftNoteLocally({ id: `draft_${pid || 'unassigned'}`, note, visitType, patientId: pid });
     }).catch(console.error);
   }, [note, visitType]);
@@ -344,7 +330,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
     setSaved(false);
     setSavedVisitId(null);
     setSavedAuditId(null);
-    setOfflineClientRequestId(null);
     setFacilityAck(false);
     facilityOverrideRef.current = null;
     setStep(2);
@@ -392,24 +377,18 @@ export default function SmartNoteAssistant({ visitId = null }) {
       result, patientId, visitDate, visitType, roughNote: note, vitals,
       currentUser, patientDiagnosis: patientDetail?.primary_diagnosis || patient?.primary_diagnosis || "",
       savedVisitId, savedAuditId, existingVisitId,
-      offlineClientRequestId,
       facilityAcknowledgment: facilityOverrideRef.current,
     });
     if (!out) return null;
     if (out.mode === 'create') {
       setSavedVisitId(out.visitId);
       setExistingVisitId(null);
-      setOfflineClientRequestId(null);
       if (out.auditId) setSavedAuditId(out.auditId);
       generateTasksFromNote(out.finalText, out.visitId);
       analyzeSupplyUsage(out.finalText, out.visitId);
     } else if (out.mode === 'update') {
-      // Includes online rebind after offline CREATE drained (resolved by client_request_id).
       setSavedVisitId(out.visitId);
-      setOfflineClientRequestId(null);
       if (out.auditId) setSavedAuditId(out.auditId);
-    } else if (out.mode === 'offline' && out.offlineClientRequestId) {
-      setOfflineClientRequestId(out.offlineClientRequestId);
     }
     return out;
   };
@@ -446,7 +425,6 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
   const reset = () => {
     setNote(""); setSaved(false); setSavedVisitId(null); setSavedAuditId(null);
-    setOfflineClientRequestId(null);
     setStep(1); setDraftRestored(false); setSignatureImage(null); setFollowUpTasks([]);
     setVitals({}); setExistingVisitId(null); setFacilityAck(false);
     facilityOverrideRef.current = null;
@@ -472,20 +450,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
       ai_reason: it.reason || "",
       related_visit_id: savedVisitId || undefined,
     }));
-    const queueForSync = async (toQueue) => {
-      const { addToSyncQueue } = await import('@/lib/indexedDB');
-      await Promise.all(toQueue.map((p) => addToSyncQueue('CREATE_TASK', p)));
-    };
-
-    if (!navigator.onLine) {
-      try {
-        await queueForSync(payloads);
-        setFollowUpTasks((prev) => [...payloads, ...prev]);
-        toast.success(`Saved ${payloads.length} follow-up task${payloads.length !== 1 ? "s" : ""} offline — will sync when reconnected.`);
-      } catch (err) {
-        console.error("Failed to queue escalation task(s):", err);
-        toast.error("Couldn't save the follow-up task offline.");
-      }
+    // No local queue any more: a follow-up task is either created on the server
+    // or reported as not created. Never claim it was saved when it wasn't.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      toast.error("You're offline — reconnect to create the provider follow-up task.");
       return;
     }
 
@@ -498,16 +466,8 @@ export default function SmartNoteAssistant({ visitId = null }) {
       toast.success(`Created ${created.length} provider follow-up task${created.length !== 1 ? "s" : ""}.`);
       return;
     }
-    console.error("Some escalation task creates failed; queuing for retry:", results.find((r) => r.status === "rejected")?.reason);
-    try {
-      await queueForSync(failed);
-      setFollowUpTasks((prev) => [...failed, ...prev]);
-      window.dispatchEvent(new Event('online'));
-      toast.message(`Couldn't reach the server for ${failed.length} follow-up task${failed.length !== 1 ? "s" : ""} — saved and retrying.`);
-    } catch (err) {
-      console.error("Failed to queue failed escalation task(s):", err);
-      toast.error("Couldn't save the follow-up task. Try again.");
-    }
+    console.error("Some escalation task creates failed:", results.find((r) => r.status === "rejected")?.reason);
+    toast.error(`Couldn't create ${failed.length} follow-up task${failed.length !== 1 ? "s" : ""}. Try again.`);
   };
 
   const ready = note.trim().length >= 20;
@@ -798,7 +758,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     }}
                     saving={saving}
                     saved={saved && !api.dirty}
-                    saveDisabled={saving || !!(api.fixRequired && !api.fixRequired.offlinePending) || !patientId || api.chartRisk?.hasUnacknowledgedCritical || api.denialRisk?.hasUnacknowledgedCritical || facilityBlocked}
+                    saveDisabled={saving || !!api.fixRequired || !patientId || api.chartRisk?.hasUnacknowledgedCritical || api.denialRisk?.hasUnacknowledgedCritical || facilityBlocked}
                   />
                 </>
                 );

@@ -53,7 +53,7 @@ export default function EncryptionStatusIndicator() {
     },
     {
       name: 'Secure Local Storage',
-      description: 'Browser storage is available for offline PHI handling.',
+      description: 'Browser storage is available for local draft handling.',
       status: hasLocalStorage,
       kind: 'verified',
       icon: FileText,

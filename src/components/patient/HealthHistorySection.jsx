@@ -16,9 +16,47 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+
+// `Patient.family_medical_history` is an OBJECT in the entity schema (a boolean
+// per condition, an `other_conditions` list, and free-text `notes`) — not the
+// free-text string this section used to assume. Rendering the object straight
+// into JSX threw "Objects are not valid as a React child", blanking the whole
+// Health History card for any chart whose family history had actually been
+// filled in; and the editor wrote a bare string back into an object-typed field,
+// which the platform drops, so the nurse's edit silently vanished.
+const FAMILY_HISTORY_CONDITIONS = [
+  { key: 'heart_disease', label: 'Heart disease' },
+  { key: 'diabetes', label: 'Diabetes' },
+  { key: 'cancer', label: 'Cancer' },
+  { key: 'hypertension', label: 'Hypertension' },
+  { key: 'stroke', label: 'Stroke' },
+  { key: 'alzheimers_dementia', label: 'Alzheimer’s / dementia' },
+  { key: 'mental_illness', label: 'Mental illness' },
+];
+
+/** Coerce any stored shape (incl. a legacy free-text string) to the schema object. */
+function normalizeFamilyHistory(value) {
+  if (typeof value === 'string') return value.trim() ? { notes: value } : {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value;
+}
+
+/** The condition badges + free-text a family history resolves to, if any. */
+function summarizeFamilyHistory(value) {
+  const history = normalizeFamilyHistory(value);
+  const conditions = FAMILY_HISTORY_CONDITIONS.filter((c) => history[c.key]).map((c) => c.label);
+  const others = (Array.isArray(history.other_conditions) ? history.other_conditions : [])
+    .map((entry) => (typeof entry === 'string'
+      ? entry
+      : [entry?.condition, entry?.relation].filter(Boolean).join(' — ')))
+    .filter(Boolean);
+  const notes = typeof history.notes === 'string' ? history.notes : '';
+  return { badges: [...conditions, ...others], notes, isEmpty: conditions.length + others.length === 0 && !notes.trim() };
+}
 
 export default function HealthHistorySection({ patient }) {
   const [editDialog, setEditDialog] = useState(null);
@@ -118,7 +156,7 @@ export default function HealthHistorySection({ patient }) {
       setFormData({ past_hospitalizations: arr });
       setRowKeys(makeRowKeys(arr.length));
     } else if (section === 'family_history') {
-      setFormData({ family_medical_history: patient.family_medical_history || '' });
+      setFormData({ family_medical_history: normalizeFamilyHistory(patient.family_medical_history) });
     }
   };
 
@@ -127,6 +165,8 @@ export default function HealthHistorySection({ patient }) {
     newArray[index] = { ...newArray[index], [key]: value };
     setFormData({ ...formData, [field]: newArray });
   };
+
+  const familyHistory = summarizeFamilyHistory(patient.family_medical_history);
 
   const handleSave = () => {
     updatePatientMutation.mutate(formData);
@@ -175,7 +215,7 @@ export default function HealthHistorySection({ patient }) {
               <AlertCircle className="w-5 h-5 text-red-600" />
               Allergies & Adverse Reactions
             </div>
-            <Button variant="ghost" size="sm" onClick={() => openEditDialog('allergies')}>
+            <Button variant="ghost" size="sm" aria-label="Edit allergies" onClick={() => openEditDialog('allergies')}>
               <Edit className="w-4 h-4" />
             </Button>
           </CardTitle>
@@ -199,7 +239,7 @@ export default function HealthHistorySection({ patient }) {
               <Heart className="w-5 h-5 text-blue-600" />
               Past Medical History
             </div>
-            <Button variant="ghost" size="sm" onClick={() => openEditDialog('past_medical')}>
+            <Button variant="ghost" size="sm" aria-label="Edit past medical history" onClick={() => openEditDialog('past_medical')}>
               <Edit className="w-4 h-4" />
             </Button>
           </CardTitle>
@@ -228,7 +268,7 @@ export default function HealthHistorySection({ patient }) {
               <Activity className="w-5 h-5 text-navy-600" />
               Surgeries & Hospitalizations
             </div>
-            <Button variant="ghost" size="sm" onClick={() => openEditDialog('surgeries')}>
+            <Button variant="ghost" size="sm" aria-label="Edit surgeries and hospitalizations" onClick={() => openEditDialog('surgeries')}>
               <Edit className="w-4 h-4" />
             </Button>
           </CardTitle>
@@ -274,18 +314,27 @@ export default function HealthHistorySection({ patient }) {
               <Users className="w-5 h-5 text-green-600" />
               Family Medical History
             </div>
-            <Button variant="ghost" size="sm" onClick={() => openEditDialog('family_history')}>
+            <Button variant="ghost" size="sm" aria-label="Edit family medical history" onClick={() => openEditDialog('family_history')}>
               <Edit className="w-4 h-4" />
             </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-4">
-          {patient.family_medical_history ? (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <p className="text-sm text-slate-900 whitespace-pre-wrap">{patient.family_medical_history}</p>
-            </div>
-          ) : (
+          {familyHistory.isEmpty ? (
             <p className="text-sm text-slate-500 italic">No family medical history recorded</p>
+          ) : (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
+              {familyHistory.badges.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {familyHistory.badges.map((badge) => (
+                    <Badge key={badge} variant="outline" className="bg-white">{badge}</Badge>
+                  ))}
+                </div>
+              )}
+              {familyHistory.notes && (
+                <p className="text-sm text-slate-900 whitespace-pre-wrap">{familyHistory.notes}</p>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -401,15 +450,47 @@ export default function HealthHistorySection({ patient }) {
             )}
 
             {editDialog === 'family_history' && (
-              <div>
-                <Label>Family Medical History</Label>
-                <Textarea
-                  value={formData.family_medical_history || ''}
-                  onChange={(e) => setFormData({ ...formData, family_medical_history: e.target.value })}
-                  placeholder="Document family medical history, hereditary conditions, etc..."
-                  rows={6}
-                  className="mt-2"
-                />
+              <div className="space-y-4">
+                <div>
+                  <Label>Conditions in the family</Label>
+                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {FAMILY_HISTORY_CONDITIONS.map(({ key, label }) => (
+                      <div key={key} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`family-history-${key}`}
+                          checked={!!formData.family_medical_history?.[key]}
+                          onCheckedChange={(checked) => setFormData({
+                            ...formData,
+                            family_medical_history: {
+                              ...formData.family_medical_history,
+                              [key]: checked === true,
+                            },
+                          })}
+                        />
+                        <label htmlFor={`family-history-${key}`} className="text-sm text-slate-700">
+                          {label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="family-history-notes">Notes</Label>
+                  <Textarea
+                    id="family-history-notes"
+                    value={formData.family_medical_history?.notes || ''}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      family_medical_history: {
+                        ...formData.family_medical_history,
+                        notes: e.target.value,
+                      },
+                    })}
+                    placeholder="Hereditary conditions, affected relatives, age of onset..."
+                    rows={5}
+                    className="mt-2"
+                  />
+                </div>
               </div>
             )}
           </div>

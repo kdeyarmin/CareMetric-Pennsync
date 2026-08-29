@@ -137,3 +137,32 @@ test("faxRetryConfig coerces numeric-string config values", () => {
   assert.equal(c.maxRetries, 5);
   assert.equal(c.baseDelayMinutes, 10);
 });
+
+test("faxRetryConfig treats an UNSET numeric field as the default, not zero", () => {
+  // Number(null) and Number("") are both 0, so a FaxRetryConfig row saved
+  // without touching max_retries used to resolve to maxRetries: 0 — silently
+  // turning auto-retry off with no setting anywhere reflecting it.
+  for (const unset of [null, undefined, "", "   "]) {
+    const c = faxRetryConfig({ max_retries: unset, retry_delay_minutes: unset });
+    assert.equal(c.maxRetries, 3, `max_retries: ${JSON.stringify(unset)}`);
+    assert.equal(c.baseDelayMinutes, 15, `retry_delay_minutes: ${JSON.stringify(unset)}`);
+    assert.equal(c.enabled, true);
+  }
+
+  // A fax that failed once still retries under an unset budget.
+  const plan = planFaxRetry({ retryCount: 0, errorMessage: "line busy", config: { max_retries: null } });
+  assert.equal(plan.willRetry, true);
+  assert.equal(plan.exhausted, false);
+});
+
+test("faxRetryConfig still honors an EXPLICIT zero retry budget", () => {
+  const c = faxRetryConfig({ max_retries: 0 });
+  assert.equal(c.maxRetries, 0);
+  assert.equal(planFaxRetry({ retryCount: 0, errorMessage: "line busy", config: { max_retries: 0 } }).willRetry, false);
+});
+
+test("faxRetryConfig falls back to defaults for non-numeric junk", () => {
+  const c = faxRetryConfig({ max_retries: "many", retry_delay_minutes: "soon" });
+  assert.equal(c.maxRetries, 3);
+  assert.equal(c.baseDelayMinutes, 15);
+});

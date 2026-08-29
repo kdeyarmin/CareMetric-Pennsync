@@ -242,7 +242,16 @@ Deno.serve(async (req) => {
       if (sender?.agency_name) senderAgency = sender.agency_name;
     }
     const retryCfg = (await resolveFaxRetryConfig(base44, senderAgency)) || {};
-    const cfgMax = Number(retryCfg.max_retries);
+    // An UNSET max_retries must mean "use the default", not zero: Number(null)
+    // and Number('') are both 0, so a config row saved without touching the
+    // field would have rejected every manual retry with "Maximum retries (0)
+    // exceeded". Only an explicit 0 blocks. Matches faxRetryConfig in
+    // src/components/fax/faxRetry.js.
+    const rawMax = retryCfg.max_retries;
+    const cfgMax = rawMax === null || rawMax === undefined
+      || (typeof rawMax === 'string' && rawMax.trim() === '')
+      ? NaN
+      : Number(rawMax);
     const maxRetries = Number.isFinite(cfgMax) && cfgMax >= 0 ? cfgMax : 3;
 
     // Check retry limit — coerce undefined retry_count to 0 so max_retries: 0

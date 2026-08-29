@@ -79,14 +79,6 @@ export const AUTHENTICATED_ACCESSIBILITY_SMOKE_ROUTES = Object.freeze([
     expectedState: 'admin_reports',
     requiredChecks: ['document-title', 'main-landmark', 'heading-order', 'color-contrast'],
   },
-  {
-    route: '/OfflineMode',
-    page: 'OfflineMode',
-    requiresAuth: true,
-    role: 'nurse',
-    expectedState: 'offline_tools',
-    requiredChecks: ['document-title', 'main-landmark', 'status-announcement', 'color-contrast'],
-  },
 ]);
 
 export const ALL_ACCESSIBILITY_SMOKE_ROUTES = Object.freeze([

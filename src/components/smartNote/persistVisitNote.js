@@ -3,7 +3,19 @@ import { logActivity, ActivityActions } from "@/components/utils/activityLogger"
 import { toNoteConversionFields, deriveStructuredVisitFields } from "@/components/smartNote/compliance/coverageScore";
 import { buildVisitReportingFields, buildAuditFields } from "@/components/smartNote/compliance/reportingFields";
 import { toast } from "sonner";
-import { ALL_ROWS } from "@/lib/queryLimits";
+
+/**
+ * Thrown when a save is attempted with no network. Its own type (rather than a
+ * bare Error) so callers can tell "you are offline" apart from a server refusal
+ * and keep the composed note on screen instead of reporting it as failed.
+ */
+export class OfflineSaveError extends Error {
+  constructor(message = "You're offline. Reconnect to save this note to the chart — your text is still here.") {
+    super(message);
+    this.name = "OfflineSaveError";
+    this.code = "OFFLINE_SAVE_BLOCKED";
+  }
+}
 
 /**
  * persistVisitNote — create-or-update the chart records from a ConstrainedNoteReviewer
@@ -11,21 +23,24 @@ import { ALL_ROWS } from "@/lib/queryLimits";
  *
  * Extracted from SmartNoteAssistant so both visit-documentation methods — the
  * Smart Note flow and the Visit Scribe (audio) flow — share one identical chart
- * write path (Visit + Patient history + NoteConversion + ComplianceAudit, with an
- * offline-queue fallback). Keeping it in one place means the two flows can't drift
- * on compliance fields, audit creation, or the offline payload shape.
+ * write path (Visit + Patient history + NoteConversion + ComplianceAudit).
+ * Keeping it in one place means the two flows can't drift on compliance fields
+ * or audit creation.
  *
  * Side effects are limited to base44 writes + a success toast + an activity log.
  * Host-specific follow-up (state updates, follow-up-task / supply analysis) is
  * driven by the returned value so each caller keeps its own UI concerns.
  *
+ * Requires a connection: the app no longer queues clinical writes locally, so a
+ * save attempted with no network throws `OfflineSaveError` and the caller keeps
+ * the nurse's text on screen to retry. Never silently discards a note.
+ *
  * @returns {Promise<null | {
- *   mode: 'offline' | 'update' | 'create',
+ *   mode: 'update' | 'create',
  *   visitId: string | null,
  *   auditId: string | null,
  *   finalText: string,
  *   coverageScore: number,
- *   offlineClientRequestId?: string | null,
  * }>} null when the inputs are insufficient to save.
  */
 export async function persistVisitNote({
@@ -41,12 +56,6 @@ export async function persistVisitNote({
   savedAuditId = null,
   existingVisitId = null,
   source = "smart_note",
-  // Stable idempotency key from a prior offline save in this same session. When
-  // present, a still-offline re-save upserts the queued CREATE_VISIT instead of
-  // enqueuing a second one (which would create a duplicate visit on drain).
-  // When the session has come back online, the same key resolves the drained
-  // Visit by client_request_id so an online re-save updates it instead of creating.
-  offlineClientRequestId = null,
   // Optional facility-doc override trail (critical unmet FacilityDocumentationRule
   // acknowledged by the nurse). Merged into ComplianceAudit.acknowledgment with
   // namespaced facility:<rule> finding ids, same shape as chart/denial acks.
@@ -99,77 +108,11 @@ export async function persistVisitNote({
     nurseEmail: currentUser.email, patientId,
   });
 
-  if (!navigator.onLine) {
-    const { addToSyncQueue, upsertCreateVisitInSyncQueue } = await import('@/lib/indexedDB');
-    // Offline save → the AI grounding pass was deferred. Mark the queued visit so
-    // the record shows live grounding hadn't run yet, and surface the audit as
-    // "pending_review" (rather than the coverage-derived passed/flagged) so a
-    // deferred-grounding note isn't read as fully verified in compliance reporting.
-    const visitFields = {
-      patient_id: patientId, visit_date: visitDate, visit_type: visitType,
-      status: "completed", nurse_notes: finalText, raw_transcription: roughNote,
-      compliance_score: coverageScore, vital_signs: vitals, documentation_source: source,
-      grounding_pending: true, ...structured, ...reportingFields,
-    };
-    const audit = { nurse_email: currentUser.email, ...auditFields, status: "pending_review" };
-    // Stable history entry_id so a retried drain cannot double-append (the backend
-    // is idempotent on entry_id). NoteConversion payload mirrors the online create.
-    const historyEntryId = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `hist-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const historyMeta = {
-      patient_id: patientId,
-      clinical_notes: finalText,
-      entry: {
-        entry_id: historyEntryId,
-        date: visitDate,
-        visit_type: visitType,
-        note: finalText,
-        compliance_score: coverageScore,
-      },
-    };
-
-    // A visit that already exists server-side (a same-session online save, or a
-    // deep-linked scheduled visit) must be UPDATED on reconnect, not re-created —
-    // otherwise the drain creates a duplicate and (for a scheduled visit) leaves
-    // the original open/overdue.
-    const targetVisitId = savedVisitId || existingVisitId;
-    if (targetVisitId) {
-      await addToSyncQueue('UPDATE_VISIT', {
-        visit_id: targetVisitId, ...visitFields, __audit: audit,
-        // Update-mode history targets this visit_id; entry_id is unused for update.
-        __history: { ...historyMeta, mode: 'update', entry: { ...historyMeta.entry, visit_id: targetVisitId } },
-      });
-      toast.success("Saved offline. Will sync when reconnected.");
-      logActivity(ActivityActions.NOTE_ENHANCED, { patient_id: patientId, visit_type: visitType, overall_score: coverageScore });
-      return { mode: 'offline', visitId: targetVisitId, auditId: savedAuditId || null, finalText, coverageScore };
-    }
-
-    // First save (or still-offline re-save) of a brand-new visit. Reuse the
-    // caller's offlineClientRequestId when present so a re-save upserts the
-    // same queue item — otherwise a new key would create a second visit on drain.
-    // Distinct same-day visits are still separate: each session starts without
-    // an offlineClientRequestId and gets its own key. crypto.randomUUID is only
-    // defined in secure contexts; fall back so the offline save never throws.
-    const clientRequestId = offlineClientRequestId
-      || ((typeof crypto !== 'undefined' && crypto.randomUUID)
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    await upsertCreateVisitInSyncQueue({
-      client_request_id: clientRequestId, ...visitFields, __audit: audit,
-      __history: { ...historyMeta, mode: 'append' },
-      __noteConversion: noteConversionFields,
-    });
-    toast.success("Saved offline. Will sync when reconnected.");
-    logActivity(ActivityActions.NOTE_ENHANCED, { patient_id: patientId, visit_type: visitType, overall_score: coverageScore });
-    return {
-      mode: 'offline',
-      visitId: null,
-      auditId: null,
-      finalText,
-      coverageScore,
-      offlineClientRequestId: clientRequestId,
-    };
+  // Offline mode was removed: there is no local queue to fall back on. Refuse
+  // BEFORE any write so a half-saved chart can't result, and let the caller keep
+  // the composed note on screen for the nurse to retry once reconnected.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    throw new OfflineSaveError();
   }
 
   // Re-save after an edit → update the same visit, never duplicate. Also keep the
@@ -195,54 +138,17 @@ export async function persistVisitNote({
     return { mode: 'update', visitId: savedVisitId, auditId: savedAuditId, finalText, coverageScore };
   }
 
-  // Same-session online re-save after an offline CREATE that already drained:
-  // the UI still holds offlineClientRequestId but not savedVisitId. Resolve the
-  // Visit by that key and UPDATE it — never create a second chart row.
-  if (offlineClientRequestId) {
-    const matched = await base44.entities.Visit.filter({ client_request_id: offlineClientRequestId });
-    if (matched?.length) {
-      const vid = matched[0].id;
-      let auditId = savedAuditId || null;
-      if (!auditId) {
-        const audits = await base44.entities.ComplianceAudit.filter({ visit_id: vid }, undefined, ALL_ROWS);
-        auditId = audits?.[0]?.id || null;
-      }
-      await Promise.all([
-        base44.entities.Visit.update(vid, {
-          nurse_notes: finalText, compliance_score: coverageScore, vital_signs: vitals,
-          grounding_pending: false, status: "completed", ...structured, ...reportingFields,
-        }),
-        base44.functions.invoke('appendPatientNoteHistory', {
-          patient_id: patientId, mode: 'update', clinical_notes: finalText,
-          entry: { visit_id: vid, note: finalText, compliance_score: coverageScore },
-        }),
-        auditId
-          ? base44.entities.ComplianceAudit.update(auditId, auditFields)
-          : base44.entities.ComplianceAudit.create({
-              visit_id: vid, nurse_email: currentUser.email, patient_id: patientId,
-              audit_date: new Date().toISOString(), audit_type: "automated",
-              ...auditFields,
-            }).then((a) => { auditId = a?.id || null; }),
-      ]);
-      toast.success("Chart updated.");
-      return { mode: 'update', visitId: vid, auditId, finalText, coverageScore };
-    }
-  }
-
   // First documentation of this visit. When an existingVisitId was provided (e.g.
   // documenting a scheduled/overdue visit deep-linked from a compliance alert or
   // the patient's visit list), COMPLETE that visit in place instead of creating a
   // duplicate — so the original visit closes and stops triggering overdue alerts.
   // A brand-new visit is created only when no existing one was given.
-  // If offlineClientRequestId is still set but no Visit matched yet (drain in
-  // flight / failed), stamp the same key on create so a concurrent drain dedupes.
   const visitFields = {
     patient_id: patientId, visit_date: visitDate, visit_type: visitType,
     status: "completed", nurse_notes: finalText, raw_transcription: roughNote,
     compliance_score: coverageScore, vital_signs: vitals, documentation_source: source,
-    // Online save → grounding ran and passed (save is gated on a passing recheck).
+    // Grounding ran and passed (save is gated on a passing recheck).
     grounding_pending: false,
-    ...(offlineClientRequestId ? { client_request_id: offlineClientRequestId } : {}),
     ...structured, ...reportingFields,
   };
   const visit = existingVisitId

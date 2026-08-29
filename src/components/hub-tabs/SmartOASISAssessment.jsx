@@ -29,7 +29,7 @@ import { OASIS_SECTIONS } from "@/components/oasis/oasisQuestions";
 import { VISIT_TYPES, completeReferralSocForPatient } from "@/components/clinical/OASISQuickUpdate";
 import { AssessmentSkeleton } from "@/components/ui/PageSkeleton";
 import { debounce } from "@/lib/debounce";
-import { OFFLINE_KEYS } from "@/lib/offlineKeys";
+import { LOCAL_PHI_KEYS } from "@/lib/localPhiKeys";
 
 // ─── Answer + draft helpers ───────────────────────────────────────────────────
 const toNum = (v) => (typeof v === "number" ? v : parseInt(v, 10));
@@ -51,15 +51,15 @@ function isAnswered(question, answers) {
 
 // In-progress answers autosave to localStorage so a refresh/crash can't wipe a
 // 25-item assessment. Keyed per patient + visit type under the registered
-// OFFLINE_KEYS.VISIT_DRAFT_PREFIX, so the logout/idle PHI purge classifies the
+// LOCAL_PHI_KEYS.VISIT_DRAFT_PREFIX, so the logout/idle PHI purge classifies the
 // draft with the other unsynced field documentation (PRESERVE — wiping it on an
 // idle timeout mid-assessment would be silent loss of documented care; see
-// src/lib/offlineKeys.js).
+// src/lib/localPhiKeys.js).
 const DRAFT_AUTOSAVE_DEBOUNCE_MS = 1000;
 
 function draftStorageKey(patientId, visitType) {
   const typeSlug = String(visitType).toLowerCase().replace(/[^a-z0-9]+/g, "_");
-  return `${OFFLINE_KEYS.VISIT_DRAFT_PREFIX}oasis_${patientId}_${typeSlug}`;
+  return `${LOCAL_PHI_KEYS.VISIT_DRAFT_PREFIX}oasis_${patientId}_${typeSlug}`;
 }
 
 function readDraft(key) {

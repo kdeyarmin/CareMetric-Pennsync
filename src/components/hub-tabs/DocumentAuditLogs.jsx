@@ -1,13 +1,11 @@
 import { useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { trackEvent } from '@/lib/trackEvent';
 import DocumentAuditLogViewer from '@/components/documents/DocumentAuditLogViewer';
 
 export default function DocumentAuditLogs() {
   useEffect(() => {
-    base44.analytics.track({
-      eventName: 'document_audit_logs_page_viewed',
-      properties: { page: 'DocumentAuditLogs' },
-    });
+    // Non-fatal: a page-view ping must never be able to blank this tab.
+    trackEvent('document_audit_logs_page_viewed', { page: 'DocumentAuditLogs' });
   }, []);
 
   return (

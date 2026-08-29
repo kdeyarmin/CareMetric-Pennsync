@@ -4,14 +4,13 @@
 // (already-uploaded) copies of offline work, and (3) PRESERVE work still pending
 // sync — wiping unsynced field documentation on a 15-min idle timeout would be
 // silent loss of care. These cases lock that contract in.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+//
+// clearCachedPHI also clears the retired IndexedDB patient roster. jsdom has no
+// IndexedDB, so that branch is inert here and these cases cover the localStorage
+// half plus the retirement gate.
+import { describe, it, expect, beforeEach } from 'vitest';
 
-// clearCachedPHI also clears the IndexedDB patient cache; that path is covered
-// elsewhere and needs a real IndexedDB, so stub it here to a no-op resolve.
-vi.mock('./indexedDB', () => ({
-  clearCachedPatients: vi.fn().mockResolvedValue(undefined),
-}));
-
+import { OFFLINE_RETIRED_FLAG } from './localPhiKeys';
 import { clearCachedPHI } from './phiStorage';
 
 describe('clearCachedPHI', () => {
@@ -46,18 +45,58 @@ describe('clearCachedPHI', () => {
     expect(localStorage.getItem('penn_sync_offline_sync_status')).toBeNull();
   });
 
-  it('preserves work still pending sync', async () => {
-    localStorage.setItem('offline_pending', '[{"id":"c1"}]');
-    localStorage.setItem('offline_visit_drafts', '{"v1":"draft"}');
-    localStorage.setItem('offline_sync_queue', '[{"id":"q1"}]');
-    localStorage.setItem('visit_draft_42', '{"notes":"unsynced"}');
+  it('preserves an in-progress local draft', async () => {
+    // The OASIS assessment autosave. Wiping it on a 15-minute idle timeout
+    // mid-assessment would be silent loss of documented care.
+    localStorage.setItem('visit_draft_42', '{"notes":"still being written"}');
 
     await clearCachedPHI();
 
-    expect(localStorage.getItem('offline_pending')).not.toBeNull();
-    expect(localStorage.getItem('offline_visit_drafts')).not.toBeNull();
-    expect(localStorage.getItem('offline_sync_queue')).not.toBeNull();
     expect(localStorage.getItem('visit_draft_42')).not.toBeNull();
+  });
+
+  const seedRetiredQueues = () => {
+    localStorage.setItem('offline_pending', '[{"id":"c1"}]');
+    localStorage.setItem('offline_visit_drafts', '{"v1":"draft"}');
+    localStorage.setItem('offline_sync_queue', '[{"id":"q1"}]');
+    localStorage.setItem('offline_conflicts', '[{"id":"x1"}]');
+  };
+  const retiredQueueValues = () => [
+    localStorage.getItem('offline_pending'),
+    localStorage.getItem('offline_visit_drafts'),
+    localStorage.getItem('offline_sync_queue'),
+    localStorage.getItem('offline_conflicts'),
+  ];
+
+  it('purges the retired offline queues ONCE their contents reached the server', async () => {
+    // retiredOfflineQueue.js sets this flag only after a complete flush. After
+    // that these are duplicates of server state, and leaving them on a shared
+    // device is pure exposure.
+    seedRetiredQueues();
+    localStorage.setItem(OFFLINE_RETIRED_FLAG, '1');
+
+    await clearCachedPHI();
+
+    expect(retiredQueueValues()).toEqual([null, null, null, null]);
+  });
+
+  it('KEEPS the retired offline queues until retirement has completed', async () => {
+    // Regression: these were purged unconditionally. The recovery flush needs a
+    // connection, so a nurse who documented a visit offline and then logged out
+    // (or idled out) had that documentation destroyed before it was ever sent —
+    // including the stores the migration deliberately preserved because an item
+    // could not be safely mapped.
+    seedRetiredQueues();
+    // no retirement flag: the flush has not confirmed anything reached the server
+
+    await clearCachedPHI();
+
+    expect(retiredQueueValues()).toEqual([
+      '[{"id":"c1"}]',
+      '{"v1":"draft"}',
+      '[{"id":"q1"}]',
+      '[{"id":"x1"}]',
+    ]);
   });
 
   it('drops synced offline visits but keeps unsynced ones', async () => {

@@ -9,8 +9,6 @@ const auditCreate = vi.fn(async () => ({ id: "audit-1" }));
 const auditUpdate = vi.fn(async () => ({}));
 const auditFilter = vi.fn(async () => []);
 const functionsInvoke = vi.fn(async () => ({ data: { success: true } }));
-const addToSyncQueue = vi.fn(async () => {});
-const upsertCreateVisitInSyncQueue = vi.fn(async () => {});
 
 vi.mock("@/api/base44Client", () => ({
   base44: {
@@ -41,12 +39,8 @@ vi.mock("@/components/smartNote/compliance/reportingFields", () => ({
   buildVisitReportingFields: () => ({}),
   buildAuditFields: ({ acknowledgment }) => ({ status: "ok", acknowledgment: acknowledgment || undefined }),
 }));
-vi.mock("@/lib/indexedDB", () => ({
-  addToSyncQueue: (...a) => addToSyncQueue(...a),
-  upsertCreateVisitInSyncQueue: (...a) => upsertCreateVisitInSyncQueue(...a),
-}));
 
-import { persistVisitNote } from "./persistVisitNote";
+import { persistVisitNote, OfflineSaveError } from "./persistVisitNote";
 
 const baseResult = {
   finalNote: "Final note text", coverageScore: 88, draftScore: 50,
@@ -112,92 +106,30 @@ describe("persistVisitNote", () => {
     }));
   });
 
-  it("queues an offline visit (with vitals + audit + history + noteConversion meta) when offline", async () => {
+  it("refuses to save with no connection, writing nothing", async () => {
+    // Offline mode was removed: there is no local queue, so the only safe answer
+    // is to refuse BEFORE any write and let the caller keep the note on screen.
     setOnline(false);
-    const out = await persistVisitNote({ ...baseArgs, vitals: { pain_level: 3 } });
-    expect(out).toMatchObject({ mode: "offline", visitId: null });
-    expect(out.offlineClientRequestId).toBeTruthy();
-    expect(upsertCreateVisitInSyncQueue).toHaveBeenCalledTimes(1);
-    expect(addToSyncQueue).not.toHaveBeenCalled();
-    const payload = upsertCreateVisitInSyncQueue.mock.calls[0][0];
-    expect(payload.client_request_id).toBe(out.offlineClientRequestId);
-    expect(payload.vital_signs).toEqual({ pain_level: 3 });
-    expect(payload.__audit).toBeTruthy();
-    expect(payload.grounding_pending).toBe(true);
-    expect(payload.__audit.status).toBe("pending_review");
-    expect(payload.__history).toMatchObject({ mode: "append", patient_id: "p1" });
-    expect(payload.__history.entry.entry_id).toBeTruthy();
-    expect(payload.__noteConversion).toBeTruthy();
+    await expect(persistVisitNote({ ...baseArgs, vitals: { bp: "120/80" } })).rejects.toThrow(OfflineSaveError);
     expect(visitCreate).not.toHaveBeenCalled();
+    expect(visitUpdate).not.toHaveBeenCalled();
+    expect(auditCreate).not.toHaveBeenCalled();
+    expect(noteConvCreate).not.toHaveBeenCalled();
     expect(functionsInvoke).not.toHaveBeenCalled();
   });
 
-  it("reuses offlineClientRequestId on still-offline re-save so the queue collapses", async () => {
+  it("refuses an offline re-save of an existing visit without touching the chart", async () => {
     setOnline(false);
-    const first = await persistVisitNote({ ...baseArgs, vitals: { pain_level: 2 } });
-    expect(first.offlineClientRequestId).toBeTruthy();
-    const key = first.offlineClientRequestId;
-
-    const second = await persistVisitNote({
-      ...baseArgs,
-      vitals: { pain_level: 5 },
-      offlineClientRequestId: key,
-      result: { ...baseResult, finalNote: "Edited final note" },
-    });
-    expect(second.offlineClientRequestId).toBe(key);
-    expect(upsertCreateVisitInSyncQueue).toHaveBeenCalledTimes(2);
-    expect(upsertCreateVisitInSyncQueue.mock.calls[0][0].client_request_id).toBe(key);
-    expect(upsertCreateVisitInSyncQueue.mock.calls[1][0].client_request_id).toBe(key);
-    expect(upsertCreateVisitInSyncQueue.mock.calls[1][0].nurse_notes).toBe("Edited final note");
-    expect(upsertCreateVisitInSyncQueue.mock.calls[1][0].vital_signs).toEqual({ pain_level: 5 });
-    expect(addToSyncQueue).not.toHaveBeenCalled();
+    await expect(
+      persistVisitNote({ ...baseArgs, savedVisitId: "visit-9", savedAuditId: "audit-9" }),
+    ).rejects.toThrow(OfflineSaveError);
+    expect(visitUpdate).not.toHaveBeenCalled();
+    expect(auditUpdate).not.toHaveBeenCalled();
   });
 
-  it("queues UPDATE_VISIT (not a duplicate CREATE) when offline re-saving an existing visit", async () => {
+  it("carries a recognizable code so callers can report it as a connection problem", async () => {
     setOnline(false);
-    const out = await persistVisitNote({ ...baseArgs, savedVisitId: "visit-9", savedAuditId: "audit-9", vitals: { temperature: 99 } });
-    expect(out).toMatchObject({ mode: "offline", visitId: "visit-9", auditId: "audit-9" });
-    expect(addToSyncQueue).toHaveBeenCalledTimes(1);
-    expect(upsertCreateVisitInSyncQueue).not.toHaveBeenCalled();
-    const [action, payload] = addToSyncQueue.mock.calls[0];
-    expect(action).toBe("UPDATE_VISIT");
-    expect(payload.visit_id).toBe("visit-9");
-    expect(payload.vital_signs).toEqual({ temperature: 99 });
-    expect(payload.__audit).toBeTruthy();
-    expect(payload.__history).toMatchObject({ mode: "update" });
-    expect(payload.__history.entry.visit_id).toBe("visit-9");
-    expect(visitCreate).not.toHaveBeenCalled();
-  });
-
-  it("queues UPDATE_VISIT (status completed) when offline documenting a deep-linked scheduled visit", async () => {
-    setOnline(false);
-    const out = await persistVisitNote({ ...baseArgs, existingVisitId: "visit-sched" });
-    expect(out).toMatchObject({ mode: "offline", visitId: "visit-sched" });
-    const [action, payload] = addToSyncQueue.mock.calls[0];
-    expect(action).toBe("UPDATE_VISIT");
-    expect(payload.visit_id).toBe("visit-sched");
-    expect(payload.status).toBe("completed");
-    expect(visitCreate).not.toHaveBeenCalled();
-  });
-
-  it("online re-save with offlineClientRequestId updates the drained visit instead of creating", async () => {
-    visitFilter.mockResolvedValueOnce([{ id: "visit-drained" }]);
-    auditFilter.mockResolvedValueOnce([{ id: "audit-drained" }]);
-    const out = await persistVisitNote({
-      ...baseArgs,
-      offlineClientRequestId: "rq-offline-1",
-      vitals: { pain_level: 4 },
-    });
-    expect(out).toMatchObject({ mode: "update", visitId: "visit-drained", auditId: "audit-drained" });
-    expect(visitFilter).toHaveBeenCalledWith({ client_request_id: "rq-offline-1" });
-    expect(visitUpdate).toHaveBeenCalledWith("visit-drained", expect.objectContaining({
-      nurse_notes: "Final note text", vital_signs: { pain_level: 4 }, grounding_pending: false,
-    }));
-    expect(auditUpdate).toHaveBeenCalledWith("audit-drained", expect.anything());
-    expect(visitCreate).not.toHaveBeenCalled();
-    expect(functionsInvoke).toHaveBeenCalledWith("appendPatientNoteHistory", expect.objectContaining({
-      mode: "update", entry: expect.objectContaining({ visit_id: "visit-drained" }),
-    }));
+    await expect(persistVisitNote(baseArgs)).rejects.toMatchObject({ code: "OFFLINE_SAVE_BLOCKED" });
   });
 
   it("stamps facility acknowledgment onto the compliance audit fields", async () => {

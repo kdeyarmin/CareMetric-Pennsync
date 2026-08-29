@@ -9,6 +9,7 @@ import { Plus, User, ArrowUpDown, Users, UserCheck, CalendarPlus } from "lucide-
 import { secureDelete, handleSecureError } from "../components/utils/security";
 
 import PatientForm from "../components/patient/PatientForm";
+import { getPatientDisplayParts } from "../components/patient/patientDisplay";
 import { patientMatchesSearch } from "../components/patient/AdvancedPatientFilters";
 import AdvancedPatientFilters from "../components/patient/AdvancedPatientFilters";
 import BulkPatientActions from "../components/patient/BulkPatientActions";
@@ -40,6 +41,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+// Sort on the SAME name the roster renders. Interpolating the raw fields put the
+// literal string "undefined" in the key whenever one was missing (so a
+// partially-entered chart sorted under "u"), and it ignored the comma-form and
+// payer-noise normalization getPatientDisplayParts applies to the visible name —
+// so the order could disagree with what the user was reading. Module scope keeps
+// it out of the roster memo's dependency list.
+const patientSortKey = (patient) => {
+  const { first, last } = getPatientDisplayParts(patient);
+  return `${last} ${first}`.trim().toLowerCase();
+};
 
 export default function Patients() {
   const queryClient = useQueryClient();
@@ -204,9 +216,9 @@ export default function Patients() {
   }).sort((a, b) => {
     switch (sortBy) {
       case 'name-asc':
-        return (`${a.last_name} ${a.first_name}`).localeCompare(`${b.last_name} ${b.first_name}`);
+        return patientSortKey(a).localeCompare(patientSortKey(b));
       case 'name-desc':
-        return (`${b.last_name} ${b.first_name}`).localeCompare(`${a.last_name} ${a.first_name}`);
+        return patientSortKey(b).localeCompare(patientSortKey(a));
       case 'newest':
         return new Date(b.created_date || 0) - new Date(a.created_date || 0);
       case 'oldest':
@@ -221,6 +233,10 @@ export default function Patients() {
         const bCount = visitCountByPatientId[b.id] || 0;
         return bCount - aCount;
       }
+      // Carried over from PaginatedPatientList's own sort control, which this
+      // page now suppresses (it owns the ordering); same comparison as before.
+      case 'status':
+        return (a.status || '').localeCompare(b.status || '');
       default:
         return 0;
     }
@@ -334,6 +350,7 @@ export default function Patients() {
               <SelectItem value="name-desc">Name Z-A</SelectItem>
               <SelectItem value="last-visit">Last Visit</SelectItem>
               <SelectItem value="most-visits">Most Visits</SelectItem>
+              <SelectItem value="status">Status</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -432,6 +449,9 @@ export default function Patients() {
               patients={filteredPatients}
               showCheckboxes={true}
               showSearch={false}
+              // This page owns filtering and sorting (see the sort control above);
+              // letting the list re-sort would discard that order.
+              sortable={false}
               selectedPatients={selectedPatients.map(p => p.id)}
               onSelectionChange={(ids) => {
                 const selected = filteredPatients.filter(p => ids.includes(p.id));

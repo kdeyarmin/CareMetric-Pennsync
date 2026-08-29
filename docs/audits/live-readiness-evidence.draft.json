@@ -75,17 +75,16 @@
         "references": []
       },
       "test_evidence": {
-        "summary": "FILL_ME: S1-S9 authenticated smoke results. Attach external evidence links (no PHI).",
+        "summary": "FILL_ME: S1-S8 authenticated smoke results. Attach external evidence links (no PHI).",
         "references": [
           "S1: Login — admin and nurse can sign in; wrong password fails cleanly",
           "S2: Patient list / chart — nurse sees only assigned patients; chart opens",
           "S3: Referral intake (or triage) — create/accept path completes; record visible",
           "S4: Smart Note or Visit Scribe — save online creates Visit + compliance artifacts",
-          "S5: Offline note (recommended) — save offline, reconnect, single visit (no duplicate CREATE)",
-          "S6: OASIS path (if in scope) — assessment open/save does not crash",
-          "S7: Training (if in scope) — complete attempt via intended path; certificate only after grade",
-          "S8: Signature / document (if in scope) — package request or portal open does not 500",
-          "S9: Communications mock/sandbox — SMS/fax sandbox send does not expose real PHI to production carriers"
+          "S5: OASIS path (if in scope) — assessment open/save does not crash",
+          "S6: Training (if in scope) — complete attempt via intended path; certificate only after grade",
+          "S7: Signature / document (if in scope) — package request or portal open does not 500",
+          "S8: Communications mock/sandbox — SMS/fax sandbox send does not expose real PHI to production carriers"
         ]
       },
       "rollback_plan": {

@@ -13,9 +13,18 @@ import {
 import { Search } from "lucide-react";
 import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
-import { getPatientDisplayName, getPatientInitials } from "@/components/patient/patientDisplay";
+import { getPatientDisplayName, getPatientInitials, getPatientDisplayParts } from "@/components/patient/patientDisplay";
 import { clampPageSize, paginateRows } from "@/lib/pagination";
 import ListPaginationControls from "@/components/ui/ListPaginationControls";
+
+// Sort on the normalized name the rows render (getPatientDisplayName), not the
+// raw fields: `${first_name} ${last_name}` put the literal "undefined" in the key
+// for a chart missing either half, so it sorted under "u" instead of with its
+// neighbours — and the visible order disagreed with the visible names.
+const nameSortKey = (patient) => {
+  const { first, last } = getPatientDisplayParts(patient);
+  return `${first} ${last}`.trim().toLowerCase();
+};
 
 export default function PaginatedPatientList({ 
   patients = [], 
@@ -23,7 +32,12 @@ export default function PaginatedPatientList({
   showCheckboxes = false,
   selectedPatients = [],
   onSelectionChange,
-  showSearch = true
+  showSearch = true,
+  // When the caller owns ordering (it has its own sort control), this list must
+  // NOT re-sort: it used to always apply its own "name" sort to the prop, which
+  // silently discarded the caller's order — a page-level "Newest"/"Most visits"
+  // choice was reordered back to name and the control looked dead.
+  sortable = true
 }) {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -39,19 +53,21 @@ export default function PaginatedPatientList({
       return fullName.includes(searchLower) || mrn.includes(searchLower);
     });
 
-    filtered.sort((a, b) => {
-      if (sortBy === 'name') {
-        return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
-      } else if (sortBy === 'status') {
-        return (a.status || '').localeCompare(b.status || '');
-      } else if (sortBy === 'created') {
-        return (new Date(b.created_date).getTime() || 0) - (new Date(a.created_date).getTime() || 0);
-      }
-      return 0;
-    });
+    if (sortable) {
+      filtered.sort((a, b) => {
+        if (sortBy === 'name') {
+          return nameSortKey(a).localeCompare(nameSortKey(b));
+        } else if (sortBy === 'status') {
+          return (a.status || '').localeCompare(b.status || '');
+        } else if (sortBy === 'created') {
+          return (new Date(b.created_date).getTime() || 0) - (new Date(a.created_date).getTime() || 0);
+        }
+        return 0;
+      });
+    }
 
     return filtered;
-  }, [patients, search, sortBy]);
+  }, [patients, search, sortBy, sortable]);
 
   const pageSize = clampPageSize(itemsPerPage, { max: 100, fallback: 20 });
 
@@ -97,16 +113,18 @@ export default function PaginatedPatientList({
           </div>
         ) : <div className="flex-1" />}
         <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
-          <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="w-full sm:w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name">Name (A-Z)</SelectItem>
-              <SelectItem value="status">Status</SelectItem>
-              <SelectItem value="created">Recently Added</SelectItem>
-            </SelectContent>
-          </Select>
+          {sortable && (
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-full sm:w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Name (A-Z)</SelectItem>
+                <SelectItem value="status">Status</SelectItem>
+                <SelectItem value="created">Recently Added</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <Select value={String(pageSize)} onValueChange={(v) => {
             setItemsPerPage(clampPageSize(v, { max: 100, fallback: 20 }));
             setCurrentPage(1);

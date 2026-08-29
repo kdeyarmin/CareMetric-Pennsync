@@ -61,6 +61,7 @@ vi.mock("@/api/base44Client", () => {
       entities,
       functions,
       integrations,
+      analytics: { track: () => {}, cleanup: () => {} },
       auth: {
         me: async () => ({ id: "u1", email: "test@example.com", role: "admin", is_approved: true, is_manager: true, full_name: "Test User" }),
         list: arr,

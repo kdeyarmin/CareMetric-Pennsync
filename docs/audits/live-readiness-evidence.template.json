@@ -68,7 +68,7 @@
         "references": []
       },
       "test_evidence": {
-        "summary": "S1–S9 authenticated smoke results (login, patient, referral, note, offline, OASIS, training, signature, comms sandbox)",
+        "summary": "S1–S8 authenticated smoke results (login, patient, referral, note, OASIS, training, signature, comms sandbox)",
         "references": []
       },
       "rollback_plan": {

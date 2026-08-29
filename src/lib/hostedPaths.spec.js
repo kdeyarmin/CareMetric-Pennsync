@@ -10,24 +10,19 @@ describe('hosted deployment path guards', () => {
     expect(viteConfig).toContain("base: command === 'build' ? './' : '/',");
   });
 
-  it('registers the service worker from the Vite base URL', () => {
-    expect(readRepoFile('src/main.jsx')).toContain('navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`)');
+  it('registers no service worker', () => {
+    // Offline mode was removed along with public/sw.js. A worker registered here
+    // would control the page and serve a cached shell with nothing to update it;
+    // retiredOfflineQueue.js unregisters the one previous versions installed.
+    expect(readRepoFile('src/main.jsx')).not.toContain('serviceWorker.register');
+    expect(() => readRepoFile('public/sw.js')).toThrow();
+    expect(() => readRepoFile('public/offline.html')).toThrow();
   });
 
-  it('keeps service-worker offline shell paths scoped to its registration path', () => {
-    const sw = readRepoFile('public/sw.js');
-    expect(sw).toContain("const OFFLINE_URL = scopedPath('offline.html')");
-    expect(sw).toContain("const SHELL_KEY = scopedPath('index.html')");
-    expect(sw).toContain("pathname.startsWith(scopedPath('assets/'))");
-    expect(sw).not.toContain("const OFFLINE_URL = '/offline.html'");
-    expect(sw).not.toContain("const SHELL_KEY = '/index.html'");
-    expect(sw).not.toContain("pathname.startsWith('/assets/')");
-  });
-
-  it('does not hard-code root reloads in the static offline page', () => {
-    const offline = readRepoFile('public/offline.html');
-    expect(offline).toContain("window.location.replace('./')");
-    expect(offline).not.toContain("window.location.replace('/')");
+  it('unregisters the retired service worker and drops its caches', () => {
+    const retire = readRepoFile('src/lib/retiredOfflineQueue.js');
+    expect(retire).toContain('registration.unregister()');
+    expect(retire).toContain('caches.delete(key)');
   });
 
   it('passes router paths when building static manual links from hosted pages', () => {

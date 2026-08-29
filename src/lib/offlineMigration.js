@@ -1,23 +1,28 @@
-import { addToSyncQueue } from '@/lib/indexedDB';
-import { OFFLINE_KEYS } from '@/lib/offlineKeys';
+import { LOCAL_PHI_KEYS } from '@/lib/localPhiKeys';
 
 /**
- * offlineMigration — one-time replay of pending offline writes left in the RETIRED
- * localStorage queues into the canonical IndexedDB sync_queue.
+ * offlineMigration — recovery of pending offline writes left in the RETIRED
+ * localStorage queues. DELETE ALONGSIDE retiredOfflineQueue.js.
  *
- * The offline subsystems that used these localStorage stores were deleted when the
- * queue was unified on IndexedDB. Their *keys* are still preserved by the PHI purge
- * (a returning nurse's stale PHI must still be wiped on logout), but nothing
- * replays them anymore — so a nurse who documented a visit/incident offline right
- * before upgrading would have that clinical work stranded on the device forever.
- * This moves it into the canonical queue so the single global drainer uploads it.
+ * Offline mode is gone. Several older localStorage queues predate even the
+ * IndexedDB queue it used, and a nurse who documented a visit or incident right
+ * before one of those upgrades can still have that clinical work stranded on the
+ * device. This maps whatever is left into canonical write actions, which
+ * `flushAndRetireOfflineQueue` sends to the server once, before the local
+ * storage is deleted for good. `enqueue` is now supplied by that caller — there
+ * is no longer a queue to write into.
  *
- * Safety principle: a store is cleared ONLY when every item in it was confidently
- * mapped to a canonical action. If a store holds anything we can't faithfully
- * migrate (an unknown item type, or a note/vitals/update that references an
- * offline_ visit id we can't resolve), the whole store is left untouched — nothing
- * is enqueued from it and nothing is deleted, so no clinical data is ever lost to a
- * partial migration. Interdependent items are handled the way the old workers did:
+ * Safety principle, in two phases. A store is only ever a candidate for deletion
+ * when every item in it was confidently mapped to a canonical action: if it holds
+ * anything we can't faithfully migrate (an unknown item type, or a note/vitals/
+ * update that references an offline_ visit id we can't resolve), the whole store is
+ * left untouched — nothing is enqueued from it and nothing is deleted, so no
+ * clinical data is lost to a partial migration. Mapping cleanly is NOT enough to
+ * delete, though: `enqueue` only stages a write in memory. So this function never
+ * deletes anything itself — it returns `clearMigratedStores`, which the caller
+ * invokes only once those writes have reached the server. Deleting at map time
+ * destroyed the queue whenever the send that followed was skipped (offline) or
+ * failed part-way. Interdependent items are handled the way the old workers did:
  * a queued note/vitals is folded into its visit's create (or applied as an update
  * once the visit's real id is known via the persisted offline_->real id map), and a
  * visit carrying a real server id is replayed as an edit, not a duplicate create.
@@ -164,7 +169,7 @@ function mapDrafts(items) {
 
 function readIdMap(storage) {
   try {
-    const raw = storage.getItem(OFFLINE_KEYS.ID_MAP);
+    const raw = storage.getItem(LOCAL_PHI_KEYS.ID_MAP);
     const map = raw ? JSON.parse(raw) : {};
     return map && typeof map === 'object' && !Array.isArray(map) ? map : {};
   } catch {
@@ -180,49 +185,65 @@ function readIdMap(storage) {
  * Returns the number of items enqueued.
  */
 async function migrateStore(storage, key, mapper, enqueue, idMap) {
+  const preserved = { count: 0, clearKey: null };
   let raw;
-  try { raw = storage.getItem(key); } catch { return 0; }
-  if (!raw) return 0;
+  try { raw = storage.getItem(key); } catch { return preserved; }
+  if (!raw) return preserved;
 
   let items;
-  try { items = JSON.parse(raw); } catch { return 0; /* malformed — leave for the purge */ }
-  if (!Array.isArray(items)) return 0; // unexpected shape — leave untouched
+  try { items = JSON.parse(raw); } catch { return preserved; /* malformed — leave for the purge */ }
+  if (!Array.isArray(items)) return preserved; // unexpected shape — leave untouched
 
   const { ok, actions } = mapper(items, idMap);
   if (!ok) {
     console.warn(`Offline migration: leaving ${key} in place (holds items that can't be safely migrated).`);
-    return 0;
+    return preserved;
   }
 
   for (const [action, payload] of actions) {
     await enqueue(action, payload);
   }
-  // Reached only once every item was enqueued (a throw aborts and leaves the store
-  // for the next startup). Clearing here moves the stranded PHI off the device.
-  try { storage.removeItem(key); } catch { /* ignore */ }
-  return actions.length;
+  // Every item mapped and was handed to `enqueue` — but enqueue only STAGES the
+  // write, it does not send it. Deleting the store here would destroy stranded
+  // field documentation any time the send later failed, so the key is only
+  // reported; the caller commits it once the work has reached the server.
+  return { count: actions.length, clearKey: key };
 }
 
 /**
  * Migrate every retired localStorage offline queue into the canonical IndexedDB
  * queue. Deps are injectable for tests. Returns `{ migrated }`.
  */
-export async function migrateLegacyOfflineQueues({ enqueue = addToSyncQueue, storage } = {}) {
+export async function migrateLegacyOfflineQueues({ enqueue, storage } = {}) {
+  const nothingToDo = { migrated: 0, clearMigratedStores: () => {} };
+  if (typeof enqueue !== 'function') return nothingToDo;
   const store = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
-  if (!store) return { migrated: 0 };
+  if (!store) return nothingToDo;
 
   const idMap = readIdMap(store);
   const jobs = [
-    [OFFLINE_KEYS.SYNC_QUEUE, mapSyncQueue],
-    [OFFLINE_KEYS.PENDING, mapPending],
-    [OFFLINE_KEYS.PENN_PENDING_VISITS, mapPennVisits],
-    [OFFLINE_KEYS.PENN_PENDING_UPDATES, mapPennUpdates],
-    [OFFLINE_KEYS.VISIT_DRAFTS, mapDrafts],
+    [LOCAL_PHI_KEYS.SYNC_QUEUE, mapSyncQueue],
+    [LOCAL_PHI_KEYS.PENDING, mapPending],
+    [LOCAL_PHI_KEYS.PENN_PENDING_VISITS, mapPennVisits],
+    [LOCAL_PHI_KEYS.PENN_PENDING_UPDATES, mapPennUpdates],
+    [LOCAL_PHI_KEYS.VISIT_DRAFTS, mapDrafts],
   ];
 
   let migrated = 0;
+  const clearKeys = [];
   for (const [key, mapper] of jobs) {
-    migrated += await migrateStore(store, key, mapper, enqueue, idMap);
+    const { count, clearKey } = await migrateStore(store, key, mapper, enqueue, idMap);
+    migrated += count;
+    if (clearKey) clearKeys.push(clearKey);
   }
-  return { migrated };
+
+  return {
+    migrated,
+    // Call ONLY after the migrated actions have actually reached the server.
+    clearMigratedStores: () => {
+      for (const key of clearKeys) {
+        try { store.removeItem(key); } catch { /* ignore */ }
+      }
+    },
+  };
 }

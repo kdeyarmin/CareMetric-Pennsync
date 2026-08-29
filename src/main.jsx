@@ -3,8 +3,8 @@ import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 // Self-host the Inter variable font (weight axis 100–900) instead of fetching it
 // from the Google Fonts CDN. Vite bundles the woff2, so the app keeps its
-// typography with no third-party request — better for offline mode and HIPAA
-// posture. The @font-face family it declares is 'Inter Variable' (see
+// typography with no third-party request — better for HIPAA posture and for
+// slow connections. The @font-face family it declares is 'Inter Variable' (see
 // tailwind.config.js fontFamily.sans).
 import '@fontsource-variable/inter'
 import '@/index.css'
@@ -84,10 +84,10 @@ const handleStaleChunk = (err, fallbackMessage = '') => {
     (name === 'SyntaxError' &&
     /invalid or unexpected token|unexpected token/i.test(msg));
   if (!isStaleChunk) return false;
-  // Offline is NOT a stale module graph: the chunk failed because the network
-  // is gone, and a hard reload while offline just tears down the running app
+  // A dead network is NOT a stale module graph: the chunk failed because the
+  // connection is gone, and a hard reload would just tear down the running app
   // (losing SPA state) for the same failure. Let the ErrorBoundary show its
-  // offline message instead; the user retries after reconnecting.
+  // connection message instead; the user retries once they are back on.
   if (navigator.onLine === false) return false;
   const key = `${VITE_CHUNK_KEY}:${window.location.pathname}`;
   const attempts = parseInt(safeSessionStorage.getItem(key) || '0', 10);
@@ -115,19 +115,11 @@ window.addEventListener('vite:preloadError', (e) => {
   if (handleStaleChunk(e.payload, '')) e.preventDefault();
 });
 
-// Register the offline service worker (public/sw.js): network-first app shell
-// with an offline fallback, cache-first scoped hashed asset chunks, and the
-// font/image cache with PHI-exclusion rules. Production only — the dev server
-// serves unhashed source modules the worker's caching policy doesn't apply to,
-// and a worker left controlling localhost masks dev-server restarts.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
-      // Registration failure (private mode, unsupported embedder) just means
-      // no offline cache — the app itself still runs normally.
-    });
-  });
-}
+// NOTE: there is no service worker any more. Offline mode was removed, and with
+// it the caching worker that backed it. A browser that registered the old one
+// keeps it until something unregisters it, so that (plus dropping its caches) is
+// handled by lib/retiredOfflineQueue.js — deleting public/sw.js alone would have
+// left existing installs serving a cached shell forever.
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
