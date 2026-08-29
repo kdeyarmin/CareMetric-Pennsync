@@ -398,6 +398,7 @@ describe('ComprehensiveOASISReviewer', () => {
         analysisResults={results1}
         autoReview={true}
         analysisId="analysis_test_1"
+        canManageActionItems={true}
         patientName="Testy McPatient"
         onActionItemsCreated={onActionItemsCreated}
       />
@@ -446,6 +447,7 @@ describe('ComprehensiveOASISReviewer', () => {
         analysisResults={results1}
         autoReview={true}
         analysisId="analysis_test_2"
+        canManageActionItems={true}
       />
     );
     await act(async () => {
@@ -470,6 +472,7 @@ describe('ComprehensiveOASISReviewer', () => {
         analysisResults={results1}
         autoReview={true}
         analysisId="analysis_test_3"
+        canManageActionItems={true}
       />
     );
     await act(async () => {

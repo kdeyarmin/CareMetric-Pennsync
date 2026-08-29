@@ -49,6 +49,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 const BatchOASISAnalyzer = lazy(() => import("@/components/oasis/BatchOASISAnalyzer"));
 const PDGMRevenueComparison = lazy(() => import("@/components/oasis/PDGMRevenueComparison"));
 import FinancialGate from "@/components/ui/FinancialGate";
+import { canViewFinancials } from "@/lib/permissions";
 const EnhancedMultiReportComparison = lazy(() => import("@/components/oasis/EnhancedMultiReportComparison"));
 import KeyTakeawaysSummary from "@/components/oasis/KeyTakeawaysSummary";
 import AuditRiskPredictor from "@/components/oasis/AuditRiskPredictor";
@@ -146,6 +147,13 @@ export default function OASISAnalyzer() {
   // Mirror of the above for async code that must read the LATEST review after an
   // await, not the value captured when the handler started.
   const comprehensiveReviewRef = useRef(null);
+  // Action items are managed only in OASISActionWorkflow, which is admin-gated
+  // (it shows revenue impact), so the reviewer offers creation to those users
+  // only. Reuses the app-wide cached ['currentUser'] query.
+  const { data: currentUserForActions } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
   // The OASISUpload record id backing the loaded assessment, when one exists —
   // set on load of a saved upload and after "Save to Patient Record".
   const [oasisUploadRecordId, setOasisUploadRecordId] = useState(null);
@@ -1661,6 +1669,7 @@ Return scores (0-100) and top 3-5 issues in each category.`,
             // Surface the new items in the action workflow list immediately.
             queryClient.invalidateQueries({ queryKey: ['oasis-actions', analysisId] });
           }}
+          canManageActionItems={canViewFinancials(currentUserForActions)}
           savedReview={comprehensiveReview}
           onReviewComplete={(review) => {
             setComprehensiveReview(review);

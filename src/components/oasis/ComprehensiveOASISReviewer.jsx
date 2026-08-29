@@ -87,7 +87,12 @@ export default function ComprehensiveOASISReviewer({
   onReviewComplete,
   analysisId = null,
   patientName = "",
-  onActionItemsCreated
+  onActionItemsCreated,
+  // Fail-closed: the only place these records can be read, assigned or
+  // rejected is OASISActionWorkflow, which renders revenue impact and so is
+  // admin-gated. Offering creation to a user who cannot open that workflow
+  // would file records they can never see or correct.
+  canManageActionItems = false
 }) {
   const ai = useAICall();
   const [reviewResults, setReviewResults] = useState(null);
@@ -1005,7 +1010,7 @@ Return detailed JSON with all findings.`;
 
             {/* Action Buttons */}
             <div className="flex gap-2 pt-4 border-t flex-wrap">
-              {analysisId && actionItemPayloads.length > 0 && (
+              {canManageActionItems && analysisId && actionItemPayloads.length > 0 && (
                 <Button
                   onClick={createActionItems}
                   disabled={isCreatingActions || actionItemsCreated}
