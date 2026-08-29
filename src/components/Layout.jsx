@@ -5,6 +5,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { queryClientInstance } from "@/lib/query-client";
 import { clearCachedPHI } from "@/lib/phiStorage";
+import { flushAndRetireOfflineQueue } from "@/lib/retiredOfflineQueue";
 import { Bell, LogOut, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,8 +21,6 @@ import MobileHeader from "@/components/layout/MobileHeader";
 import MobileMenu from "@/components/layout/MobileMenu";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import PageTransition from "@/components/layout/PageTransition";
-import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
-import OfflineIndicator from "@/components/offline/OfflineIndicator";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import SessionTimeoutManager from "@/components/security/SessionTimeoutManager";
 import Breadcrumbs from "@/components/navigation/Breadcrumbs";
@@ -120,6 +119,15 @@ export default function Layout() {
   // agent is exempt (its account is never approved and must stay usable).
   const isDeactivated = currentUser?.is_active === false && !isTestAgent;
   const isTimeOffApprover = isAdmin || currentUser?.is_manager === true;
+
+  // One-time cleanup for the REMOVED offline feature: recover anything a device
+  // still holds from the old queues, then delete that storage and unregister the
+  // retired service worker. Runs after sign-in because the recovery writes to the
+  // server. Delete this (and lib/retiredOfflineQueue.js) after one release.
+  useEffect(() => {
+    if (!currentUser?.email) return;
+    flushAndRetireOfflineQueue().catch(() => { /* best-effort; retried next load */ });
+  }, [currentUser?.email]);
 
   useEffect(() => {
     if (!currentUser?.email) return;
@@ -417,7 +425,6 @@ export default function Layout() {
           style={{ background: "var(--app-shell-background)" }}
         >
           <div className="p-4 sm:p-6 md:p-8 lg:p-10 min-w-0 max-w-[1600px] mx-auto">
-            <OfflineIndicator />
             <Breadcrumbs currentPageName={currentPageName} />
             <PageTransition>
               <Outlet key={location.pathname} />
@@ -427,13 +434,6 @@ export default function Layout() {
 
         <MobileBottomNav isActive={isActive} unreadMessageCount={unreadMessageCount} isAdmin={isAdmin} />
 
-        {/* Floating Sync Status — only appears when there are pending items to
-            sync. Bottom offset includes the safe-area inset because the mobile
-            bottom nav grows by env(safe-area-inset-bottom) on notched phones —
-            a fixed 5rem would sit under the nav there. */}
-        <div className="fixed bottom-[calc(5rem_+_env(safe-area-inset-bottom))] md:bottom-4 right-4 z-40 max-w-sm">
-          <OfflineSyncStatus />
-        </div>
         <SessionTimeoutManager timeoutMinutes={15} warningMinutes={2} />
 
         <Dialog open={notificationCenterOpen} onOpenChange={setNotificationCenterOpen}>

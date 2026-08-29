@@ -11,7 +11,6 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import VisualEditAgent from '@/lib/VisualEditAgent'
 import NavigationTracker from '@/lib/NavigationTracker'
-import OfflineManager from '@/components/offline/OfflineManager'
 import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router';
 import PageNotFound from './lib/PageNotFound';
 import PageLoader from '@/components/ui/PageLoader';
@@ -263,7 +262,7 @@ function App() {
             </Router>
             <Toaster />
             {/* The whole app toasts through sonner (query-client,
-                useMutationWithToast, OfflineManager, alert-shim). Mounted HERE —
+                useMutationWithToast, alert-shim). Mounted HERE —
                 not inside Layout — so toasts fired while Layout isn't rendered
                 (sign-in screen, AI-agreement gate, pending-approval screen)
                 still appear instead of being silently dropped. */}
@@ -280,7 +279,6 @@ function App() {
                 },
               }}
             />
-            <OfflineManager />
             <VisualEditAgent />
           </ConfirmDialogProvider>
         </QueryClientProvider>

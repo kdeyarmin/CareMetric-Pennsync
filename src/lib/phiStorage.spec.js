@@ -46,18 +46,31 @@ describe('clearCachedPHI', () => {
     expect(localStorage.getItem('penn_sync_offline_sync_status')).toBeNull();
   });
 
-  it('preserves work still pending sync', async () => {
-    localStorage.setItem('offline_pending', '[{"id":"c1"}]');
-    localStorage.setItem('offline_visit_drafts', '{"v1":"draft"}');
-    localStorage.setItem('offline_sync_queue', '[{"id":"q1"}]');
-    localStorage.setItem('visit_draft_42', '{"notes":"unsynced"}');
+  it('preserves an in-progress local draft', async () => {
+    // The OASIS assessment autosave. Wiping it on a 15-minute idle timeout
+    // mid-assessment would be silent loss of documented care.
+    localStorage.setItem('visit_draft_42', '{"notes":"still being written"}');
 
     await clearCachedPHI();
 
-    expect(localStorage.getItem('offline_pending')).not.toBeNull();
-    expect(localStorage.getItem('offline_visit_drafts')).not.toBeNull();
-    expect(localStorage.getItem('offline_sync_queue')).not.toBeNull();
     expect(localStorage.getItem('visit_draft_42')).not.toBeNull();
+  });
+
+  it('purges the RETIRED offline queues instead of leaving PHI on the device', async () => {
+    // These were preserved while an offline sync worker existed to upload them.
+    // Offline mode is gone: retiredOfflineQueue.js recovers their contents once,
+    // after which leaving them on a shared device is pure exposure.
+    localStorage.setItem('offline_pending', '[{"id":"c1"}]');
+    localStorage.setItem('offline_visit_drafts', '{"v1":"draft"}');
+    localStorage.setItem('offline_sync_queue', '[{"id":"q1"}]');
+    localStorage.setItem('offline_conflicts', '[{"id":"x1"}]');
+
+    await clearCachedPHI();
+
+    expect(localStorage.getItem('offline_pending')).toBeNull();
+    expect(localStorage.getItem('offline_visit_drafts')).toBeNull();
+    expect(localStorage.getItem('offline_sync_queue')).toBeNull();
+    expect(localStorage.getItem('offline_conflicts')).toBeNull();
   });
 
   it('drops synced offline visits but keeps unsynced ones', async () => {

@@ -28,7 +28,7 @@ export const userBlocks = [
         { h: 'AI-assisted documentation', p: 'Turn a few observations — typed or spoken — into a complete, skilled, Medicare-compliant note.' },
         { h: 'One connected record', p: 'Patients, visits, vitals, documents, OASIS, and messages all live on a single Patient 360 record.' },
         { h: 'Built-in compliance', p: 'Real-time checks flag documentation gaps before they become audit findings.' },
-        { h: 'Work anywhere', p: 'Mobile-friendly screens and an Offline Mode let you document a visit even without a signal.' },
+        { h: 'Work anywhere', p: 'Mobile-friendly screens let you document a visit from a phone or tablet at the point of care.' },
       ])}
 
       <h3 id="welcome-who"><span class="h3-eyebrow">Audience</span>Who this manual is for</h3>
@@ -84,7 +84,6 @@ export const userBlocks = [
         ['<strong>Visit Scribe</strong>', 'Document by voice — record or upload audio, or dictate live. AI transcribes and runs the same compliance review and polishing as a typed note.', 'Clinical Notes ▸ Visit Scribe'],
         ['<strong>Quick Phrases</strong>', 'Type <strong>/</strong> (or a saved <strong>.shortcut</strong>) in a note to expand a stored phrase — including phrases bound to a specific patient — into full, compliant text.', 'Clinical Notes ▸ Smart Note'],
         ['<strong>Facility Requirements</strong>', 'A live checklist of your agency’s documentation rules (e.g. SpO₂ for oxygen patients) that checks off as you type.', 'Clinical Notes ▸ Smart Note'],
-        ['<strong>Offline Mode</strong>', 'Document a visit with no signal — notes and audio are saved on your device and sync automatically when you reconnect.', 'Tools ▸ Offline Mode'],
       ])}
 
       <h3 id="feat-comm"><span class="h3-eyebrow">Communication</span>Reaching your team &amp; patients</h3>
@@ -137,7 +136,7 @@ export const userBlocks = [
         ['Accept the AI responsibility agreement (first sign-in)', 'Before first use, PennSync asks you to acknowledge that AI-generated content is a starting point that you must review, edit, and approve before it is used or submitted. Check all three statements and choose <strong>I Agree &amp; Continue</strong> — your name, the date, and the agreement version are recorded. You’ll only be asked again if the agreement wording changes.'],
         ['Land on your Dashboard', 'After sign-in you arrive on your Dashboard — your personalized home base for the day. Sign-in returns you to the exact page you were headed to, so links from emails and messages land where they should.'],
       ])}
-      ${callout('tip', 'Add PennSync to your home screen', '<p>On a phone or tablet, use your browser’s <strong>Add to Home Screen</strong> option. PennSync installs like an app, opens full-screen, keeps you signed in — and can now open offline, showing your cached work even with no signal.</p>')}
+      ${callout('tip', 'Add PennSync to your home screen', '<p>On a phone or tablet, use your browser’s <strong>Add to Home Screen</strong> option. PennSync installs like an app, opens full-screen and keeps you signed in.</p>')}
       ${callout('important', 'Forgot your password?', '<p>Choose <strong>Forgot password?</strong> next to the password field — enter your email and PennSync sends you a reset link. You can also ask your facility administrator to trigger a reset. Never share your password — every action in PennSync is recorded under your name for HIPAA accountability.</p>')}
 
       <h3 id="gs-workspace"><span class="h3-eyebrow">Navigation</span>Finding your way around</h3>
@@ -358,7 +357,6 @@ export const userBlocks = [
       { id: 'doc-phrases', title: 'Quick phrases (type “/”)' },
       { id: 'doc-facility', title: 'Facility documentation requirements' },
       { id: 'doc-visit', title: 'Vitals & closing a scheduled visit' },
-      { id: 'doc-offline', title: 'Documenting offline' },
     ],
     html: `
       <p class="sec-intro">Documentation is where PennSync saves you the most time. Everything lives in the Clinical Notes hub, where you choose the approach that fits the moment.</p>
@@ -415,7 +413,7 @@ export const userBlocks = [
         ['Review the inserted text', 'The full expansion is inserted at your cursor. It’s treated as your own draft — it still flows through the same compliance review before you save.'],
       ])}
       <p>Create and manage your phrases in the <strong>Clinical Library</strong> (Learning &amp; Resources ▸ Library). When creating a phrase you can <strong>bind it to a specific patient</strong> — for example, that patient’s exact wound-care orders. A patient-bound phrase appears and expands only while you’re charting that patient, so it can never land in another patient’s note.</p>
-      ${callout('tip', 'Quick phrases work offline', '<p>The built-in starter phrases expand instantly with no connection, so “/” keeps working in a dead zone.</p>')}
+      ${callout('tip', 'Quick phrases need no round-trip', '<p>The built-in starter phrases expand instantly on the device, so “/” stays fast even on a weak connection.</p>')}
 
       <h3 id="doc-facility"><span class="h3-eyebrow">Your agency’s rules, checked live</span>Facility documentation requirements</h3>
       <p>Your administrator can define agency documentation rules — for example, <em>oxygen patients need an SpO₂ reading</em>, <em>diabetic patients need a blood sugar</em>, <em>any wound needs measurements</em>. When the selected patient matches a rule, a <strong>Facility Documentation Requirements</strong> panel appears in Smart Note showing what this note must include.</p>
@@ -429,10 +427,6 @@ export const userBlocks = [
       <h3 id="doc-visit"><span class="h3-eyebrow">Close the loop</span>Vitals & closing a scheduled visit</h3>
       <p>When you document from a scheduled or overdue visit (for example, via a “Document this visit” link on the patient record or a compliance alert), PennSync loads that visit, pre-selects the patient and visit type, and <strong>completes the existing visit on save</strong> — so you’re not left with a duplicate and any related alert clears.</p>
       ${callout('note', 'Vitals travel with the note', '<p>Vitals you enter on a note are saved to the visit, so they appear on the chart, in the vitals trend, and in critical-vitals escalation. They reset when you switch patients, so one patient’s readings never land on another’s chart.</p>')}
-
-      <h3 id="doc-offline"><span class="h3-eyebrow">No signal, no problem</span>Documenting offline</h3>
-      ${navpath(['Sidebar', 'Tools', 'Offline Mode'])}
-      <p>In a basement or a rural home with no connection, switch to Offline Mode to keep documenting. Your notes and recordings are saved on the device and sync automatically the moment you’re back online. See <em>Personal Tools & Settings → Offline Mode</em> for details.</p>
     `,
   },
 
@@ -542,10 +536,9 @@ export const userBlocks = [
       { id: 'tool-settings', title: 'Settings & notifications' },
       { id: 'tool-timeoff', title: 'Time Off' },
       { id: 'tool-oncall', title: 'On-Call Schedule' },
-      { id: 'tool-offline', title: 'Offline Mode' },
     ],
     html: `
-      <p class="sec-intro">Tune PennSync to you: control notifications, request time off, check on-call coverage, and prepare for working offline.</p>
+      <p class="sec-intro">Tune PennSync to you: control notifications, request time off, and check on-call coverage.</p>
       ${roleLine('Nurse', 'Facility Admin')}
 
       <h3 id="tool-settings"><span class="h3-eyebrow">Make it yours</span>Settings & notifications</h3>
@@ -564,16 +557,6 @@ export const userBlocks = [
       ${navpath(['Sidebar', 'Tools', 'On-Call'])}
       <p>View the on-call calendar for holiday and overnight coverage so you always know who’s on. Editing the schedule is reserved for administrators.</p>
 
-      <h3 id="tool-offline"><span class="h3-eyebrow">Work anywhere</span>Offline Mode</h3>
-      ${navpath(['Sidebar', 'Tools', 'Offline Mode'])}
-      ${table(['Tab', 'What it does'], [
-        ['<strong>Status & Sync</strong>', 'Shows online/offline status and pending changes; sync manually any time.'],
-        ['<strong>Document Visit</strong>', 'Write a Smart Note or capture audio offline, saved on your device.'],
-        ['<strong>Pending Changes</strong>', 'Lists items queued to sync; retry any that failed once you’re back online.'],
-      ])}
-      <p>You’ll always know when you’re working offline: a banner appears at the top of every page — <em>“You’re offline — viewing cached data; changes sync on reconnect”</em> — and disappears the moment your connection returns. Your patient roster is cached on the device, so the patient picker keeps working with no signal.</p>
-      <p>Offline visit notes get an instant, on-device <strong>compliance scan</strong> showing a coverage percentage and any missing required elements. If something required is missing, you can still save — review the gaps, tap <strong>Queue for review anyway</strong>, and the note is held as pending review; the full AI compliance check runs automatically when you reconnect.</p>
-      ${callout('best', 'Best practice: prep before rural visits', '<p>Before heading somewhere with poor signal, open Offline Mode so your patients are cached. Document as usual; PennSync syncs everything automatically when you reconnect.</p>')}
     `,
   },
 

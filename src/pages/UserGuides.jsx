@@ -70,7 +70,6 @@ export default function UserGuides() {
         'Quality & compliance',
         'Communication & messaging',
         'Training & personalized learning',
-        'Offline documentation mode',
         'Admin features & analytics'
       ],
       featured: true
@@ -139,8 +138,7 @@ export default function UserGuides() {
         'Voice dictation',
         'AI enhancement',
         'Compliance checking',
-        'Clinical event extraction',
-        'Offline documentation'
+        'Clinical event extraction'
       ]
     },
     {
@@ -253,22 +251,6 @@ export default function UserGuides() {
         'Priority alerts',
         'Daily schedule',
         'Quick actions'
-      ]
-    },
-    {
-      type: 'offline_mode',
-      title: 'Offline Documentation Guide',
-      description: 'Document patient visits without internet and sync when back online',
-      icon: FileText,
-      color: 'purple',
-      audience: 'Clinical Nurses',
-      topics: [
-        'Enabling offline mode',
-        'Patient data caching',
-        'Offline documentation',
-        'Auto-sync process',
-        'Conflict resolution',
-        'Troubleshooting'
       ]
     },
     {

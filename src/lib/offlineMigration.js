@@ -1,16 +1,16 @@
-import { addToSyncQueue } from '@/lib/indexedDB';
-import { OFFLINE_KEYS } from '@/lib/offlineKeys';
+import { LOCAL_PHI_KEYS } from '@/lib/localPhiKeys';
 
 /**
- * offlineMigration — one-time replay of pending offline writes left in the RETIRED
- * localStorage queues into the canonical IndexedDB sync_queue.
+ * offlineMigration — recovery of pending offline writes left in the RETIRED
+ * localStorage queues. DELETE ALONGSIDE retiredOfflineQueue.js.
  *
- * The offline subsystems that used these localStorage stores were deleted when the
- * queue was unified on IndexedDB. Their *keys* are still preserved by the PHI purge
- * (a returning nurse's stale PHI must still be wiped on logout), but nothing
- * replays them anymore — so a nurse who documented a visit/incident offline right
- * before upgrading would have that clinical work stranded on the device forever.
- * This moves it into the canonical queue so the single global drainer uploads it.
+ * Offline mode is gone. Several older localStorage queues predate even the
+ * IndexedDB queue it used, and a nurse who documented a visit or incident right
+ * before one of those upgrades can still have that clinical work stranded on the
+ * device. This maps whatever is left into canonical write actions, which
+ * `flushAndRetireOfflineQueue` sends to the server once, before the local
+ * storage is deleted for good. `enqueue` is now supplied by that caller — there
+ * is no longer a queue to write into.
  *
  * Safety principle: a store is cleared ONLY when every item in it was confidently
  * mapped to a canonical action. If a store holds anything we can't faithfully
@@ -164,7 +164,7 @@ function mapDrafts(items) {
 
 function readIdMap(storage) {
   try {
-    const raw = storage.getItem(OFFLINE_KEYS.ID_MAP);
+    const raw = storage.getItem(LOCAL_PHI_KEYS.ID_MAP);
     const map = raw ? JSON.parse(raw) : {};
     return map && typeof map === 'object' && !Array.isArray(map) ? map : {};
   } catch {
@@ -207,17 +207,18 @@ async function migrateStore(storage, key, mapper, enqueue, idMap) {
  * Migrate every retired localStorage offline queue into the canonical IndexedDB
  * queue. Deps are injectable for tests. Returns `{ migrated }`.
  */
-export async function migrateLegacyOfflineQueues({ enqueue = addToSyncQueue, storage } = {}) {
+export async function migrateLegacyOfflineQueues({ enqueue, storage } = {}) {
+  if (typeof enqueue !== 'function') return { migrated: 0 };
   const store = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
   if (!store) return { migrated: 0 };
 
   const idMap = readIdMap(store);
   const jobs = [
-    [OFFLINE_KEYS.SYNC_QUEUE, mapSyncQueue],
-    [OFFLINE_KEYS.PENDING, mapPending],
-    [OFFLINE_KEYS.PENN_PENDING_VISITS, mapPennVisits],
-    [OFFLINE_KEYS.PENN_PENDING_UPDATES, mapPennUpdates],
-    [OFFLINE_KEYS.VISIT_DRAFTS, mapDrafts],
+    [LOCAL_PHI_KEYS.SYNC_QUEUE, mapSyncQueue],
+    [LOCAL_PHI_KEYS.PENDING, mapPending],
+    [LOCAL_PHI_KEYS.PENN_PENDING_VISITS, mapPennVisits],
+    [LOCAL_PHI_KEYS.PENN_PENDING_UPDATES, mapPennUpdates],
+    [LOCAL_PHI_KEYS.VISIT_DRAFTS, mapDrafts],
   ];
 
   let migrated = 0;

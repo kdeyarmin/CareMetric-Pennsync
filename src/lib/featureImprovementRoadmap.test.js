@@ -12,12 +12,13 @@ import {
 test('feature improvement roadmap covers robust enhancement inventory', () => {
   const summary = summarizeImprovementRoadmap();
   assert.equal(summary.totalInitiatives, FEATURE_IMPROVEMENT_ROADMAP.length);
-  assert.equal(summary.totalInitiatives, 25);
-  assert.equal(summary.totalEnhancements, 25);
+  // 24 since the offline-readiness initiative retired with the offline feature.
+  assert.equal(summary.totalInitiatives, 24);
+  assert.equal(summary.totalEnhancements, 24);
   assert.equal(summary.byTier.critical, 5);
   assert.ok(summary.uniqueFeatureTargets.size >= 25);
-  assert.equal(summary.totalAcceptanceCriteria, 75);
-  assert.equal(summary.totalLaunchSignals, 50);
+  assert.equal(summary.totalAcceptanceCriteria, 24 * 3);
+  assert.equal(summary.totalLaunchSignals, 24 * 2);
   assert.ok(Object.keys(summary.byPhase).length >= 10);
   assert.ok(summary.uniquePrimaryUsers.size >= 10);
 });
@@ -36,9 +37,9 @@ test('roadmap entries include actionable fields', () => {
 
 
 
-test('all 25 roadmap suggestions have implementation metadata', () => {
-  assert.equal(IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP.length, 25);
-  assert.equal(Object.keys(ROADMAP_IMPLEMENTATION_DETAILS).length, 25);
+test('every roadmap suggestion has implementation metadata', () => {
+  assert.equal(IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP.length, 24);
+  assert.equal(Object.keys(ROADMAP_IMPLEMENTATION_DETAILS).length, 24);
 
   for (const item of IMPLEMENTED_FEATURE_IMPROVEMENT_ROADMAP) {
     assert.ok(item.phase.startsWith('Phase '));
@@ -55,7 +56,6 @@ test('can find roadmap items for app feature names', () => {
   assert.ok(getRoadmapForFeature('OASIS Analyzer').some((item) => item.id === 'oasis-readiness-checklist'));
   assert.ok(getRoadmapForFeature('Dashboard').some((item) => item.id === 'visit-command-center'));
   assert.ok(getRoadmapForFeature('Features').some((item) => item.id === 'release-notes-center'));
-  assert.ok(getRoadmapForFeature('Offline Mode').some((item) => item.id === 'offline-readiness-expiry'));
 });
 
 
@@ -66,10 +66,9 @@ test('roadmap lookup supports broad category and feature-context matching', () =
 });
 
 test('feature enhancement suggestions are flattened and priority sorted', () => {
-  const suggestions = getFeatureEnhancementSuggestions('Offline Documentation Mode', 'Smart Note Assistant');
+  const suggestions = getFeatureEnhancementSuggestions('Smart Note Assistant', 'ClinicalDocumentation');
   assert.ok(suggestions.length >= 3);
   assert.equal(suggestions[0].tier, 'critical');
-  assert.ok(suggestions.some((suggestion) => suggestion.initiativeId === 'offline-readiness-expiry'));
   assert.ok(suggestions.some((suggestion) => suggestion.initiativeId === 'universal-draft-recovery'));
   assert.ok(suggestions.every((suggestion) => suggestion.enhancement.length > 20));
   assert.ok(suggestions.every((suggestion) => suggestion.phase.startsWith('Phase ')));

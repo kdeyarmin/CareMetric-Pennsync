@@ -7,7 +7,7 @@ import { logger } from "@/lib/logger";
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, isStaleChunk: false, isOfflineChunk: false };
+    this.state = { hasError: false, error: null, isStaleChunk: false, isDisconnectedChunk: false };
     this.handleBackOnline = this.handleBackOnline.bind(this);
   }
 
@@ -28,13 +28,13 @@ class ErrorBoundary extends React.Component {
       (name === 'SyntaxError' &&
       /invalid or unexpected token|unexpected token/i.test(msg)) ||
       /failed to fetch dynamically imported module/i.test(msg);
-    // Same TypeError while OFFLINE is not a stale module graph — the network is
+    // Same TypeError with no connection is not a stale module graph — the network is
     // gone and this route's chunk was never downloaded. Reloading can't fix
-    // that (it would only tear the app down), so show the offline card and
+    // that (it would only tear the app down), so show the connection card and
     // auto-retry when connectivity returns.
-    const isOfflineChunk = isChunkError &&
+    const isDisconnectedChunk = isChunkError &&
       typeof navigator !== 'undefined' && navigator.onLine === false;
-    return { hasError: true, error, isStaleChunk: isChunkError && !isOfflineChunk, isOfflineChunk };
+    return { hasError: true, error, isStaleChunk: isChunkError && !isDisconnectedChunk, isDisconnectedChunk };
   }
 
   handleBackOnline() {
@@ -48,9 +48,9 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    if (this.state.isOfflineChunk) {
+    if (this.state.isDisconnectedChunk) {
       window.addEventListener('online', this.handleBackOnline);
-      logger.error('Route chunk unavailable offline:', error, errorInfo);
+      logger.error('Route chunk unreachable — no connection:', error, errorInfo);
       return;
     }
     if (this.state.isStaleChunk) {
@@ -78,17 +78,17 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
-      if (this.state.isOfflineChunk) {
+      if (this.state.isDisconnectedChunk) {
         return (
           <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
             <Card className="max-w-md border-amber-300">
               <CardContent className="p-8 text-center">
                 <WifiOff className="h-12 w-12 text-amber-500 mx-auto mb-4" />
-                <h2 className="text-xl font-bold text-slate-900 mb-2">This page isn&rsquo;t available offline</h2>
+                <h2 className="text-xl font-bold text-slate-900 mb-2">You&rsquo;re not connected</h2>
                 <p className="text-sm text-slate-600 mb-4">
-                  You&rsquo;re offline and this page hasn&rsquo;t been downloaded to this
-                  device yet. It will open automatically when your connection
-                  returns. Anything you documented offline is saved and will sync.
+                  This page couldn&rsquo;t load because there&rsquo;s no connection.
+                  Reconnect and try again — anything you&rsquo;ve typed but not yet
+                  saved to a chart is still on screen.
                 </p>
                 <Button onClick={() => window.location.reload()} className="gap-2">
                   <RefreshCw className="h-4 w-4" />

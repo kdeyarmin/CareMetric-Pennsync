@@ -25,7 +25,7 @@
 
 import {
   Home, Users, FileText, ClipboardList, Shield, GraduationCap,
-  BarChart3, Settings, Brain, Bell, BookOpen, WifiOff,
+  BarChart3, Settings, Brain, Bell, BookOpen,
   Mail, BookUser, Video, HelpCircle, AlertTriangle,
   Phone, Send, Heart, Database, Lock, Award,
   Clipboard, ClipboardCheck, FileSearch, Filter, Globe,
@@ -828,15 +828,6 @@ export const NAV_MANIFEST = [
     adminOnly: false,
     breadcrumbParent: null,
     keywords: ["on call", "on-call", "call schedule", "coverage", "holiday", "overnight", "rotation"],
-  },
-  {
-    page: "OfflineMode",
-    label: "Offline Mode",
-    icon: WifiOff,
-    category: "Tools",
-    adminOnly: false,
-    breadcrumbParent: null,
-    keywords: ["offline", "sync", "cache"],
   },
   {
     page: "Help",

@@ -35,7 +35,7 @@ const ALLOWED_UNLIMITED_READS = new Map([
   ['src/components/training/GamificationDashboard.jsx', 'one Leaderboard row per user'],
   ['src/pages/LearningCenter.jsx', 'one Leaderboard row per user'],
   ['src/pages/Timesheets.jsx', 'one EmployeePayrollProfile row per user'],
-  ['src/lib/offlineSync.js', 'idempotency probes keyed on a unique request id / visit id'],
+  ['src/lib/retiredOfflineQueue.js', 'idempotency probes keyed on a unique request id / visit id'],
 ]);
 
 function collectSourceFiles(dir, extensions = /\.(js|jsx)$/) {

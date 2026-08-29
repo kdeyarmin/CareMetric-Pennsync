@@ -42,7 +42,6 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   const [vitals, setVitals] = useState({});
   const [savedVisitId, setSavedVisitId] = useState(null);
   const [savedAuditId, setSavedAuditId] = useState(null);
-  const [offlineClientRequestId, setOfflineClientRequestId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -79,7 +78,6 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   useEffect(() => {
     setSavedVisitId(null);
     setSavedAuditId(null);
-    setOfflineClientRequestId(null);
     setSaved(false);
     setVitals({});
     setSignatureImage(null);
@@ -112,8 +110,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       setRoughNote(transcription || payload.generatedNote || "");
       setSavedVisitId(null);
       setSavedAuditId(null);
-      setOfflineClientRequestId(null);
-      setSaved(false);
+        setSaved(false);
       setNoteSeq(n => n + 1);
       logActivity(ActivityActions.NOTE_AI_GENERATED, { page: 'ClinicalDocumentation', source: 'audio_recording' });
     },
@@ -160,28 +157,22 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
         result, patientId, visitDate, visitType, roughNote, vitals,
         currentUser, patientDiagnosis: patientDetail?.primary_diagnosis || patient?.primary_diagnosis || "",
         savedVisitId, savedAuditId, existingVisitId,
-        offlineClientRequestId,
         source: "audio",
       });
       if (out) {
         if (out.mode === 'create') {
           setSavedVisitId(out.visitId);
           setExistingVisitId(null);
-          setOfflineClientRequestId(null);
           if (out.auditId) setSavedAuditId(out.auditId);
         } else if (out.mode === 'update') {
-          // Online rebind after offline CREATE drained (resolved by client_request_id).
           setSavedVisitId(out.visitId);
-          setOfflineClientRequestId(null);
           if (out.auditId) setSavedAuditId(out.auditId);
-        } else if (out.mode === 'offline' && out.offlineClientRequestId) {
-          setOfflineClientRequestId(out.offlineClientRequestId);
         }
         setSaved(true);
       }
     } catch (err) {
       console.error("Save to chart error:", err);
-      toast.error("Saving to the chart failed.");
+      toast.error(err?.code === "OFFLINE_SAVE_BLOCKED" ? err.message : "Saving to the chart failed.");
     } finally {
       setSaving(false);
     }
@@ -195,7 +186,6 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     setVitals({});
     setSavedVisitId(null);
     setSavedAuditId(null);
-    setOfflineClientRequestId(null);
     setSaved(false);
     setSignatureImage(null);
     setExistingVisitId(null);
@@ -365,7 +355,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
               onSave={() => handleSave(api)}
               saving={saving}
               saved={saved && !api.dirty}
-              saveDisabled={saving || !!(api.fixRequired && !api.fixRequired.offlinePending) || !patientId || api.chartRisk?.hasUnacknowledgedCritical}
+              saveDisabled={saving || !!api.fixRequired || !patientId || api.chartRisk?.hasUnacknowledgedCritical}
             />
           )}
         />

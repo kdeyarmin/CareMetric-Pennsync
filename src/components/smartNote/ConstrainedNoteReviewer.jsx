@@ -271,7 +271,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     setConfirmedNegatives(new Set());
   }, [analysis]);
 
-  // Run the LLM completeness critic ONCE per scan (not per keystroke), online only.
+  // Run the LLM completeness critic ONCE per scan (not per keystroke).
   // It re-reads the draft to catch elements the keyword scan over-counted as
   // "documented" (e.g. a negated mention) and flags vague ones — surfaced as extra
   // questions / nudges. Best-effort: any failure leaves the deterministic result
@@ -394,27 +394,30 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const verifyNote = useCallback(async (text, groundingText = text) => {
     const allowed = buildAllowedInput();
     const vg = valueGuard(text, allowed);
-    if (!vg.ok) return { ok: false, fix: { values: vg.unverified, sentences: [], offlinePending: false } };
-    if (navigator.onLine) {
-      if (!groundingText.trim()) return { ok: true, offline: false };
-      let g;
-      try {
-        // Bound the grounding call so a hung request can't leave the note stuck
-        // mid-verification — surface it as a re-checkable error instead.
-        g = await withTimeout(groundNote(groundingText, allowed, { userKey: currentUser?.email || "anon" }), 30000, "Verification timed out — check your connection and re-check.");
-      } catch (timeoutErr) {
-        return { ok: false, fix: { values: [], sentences: [], groundingError: timeoutErr.message, offlinePending: false } };
-      }
-      if (!g.ok) return { ok: false, fix: { values: [], sentences: g.unsupported || [], groundingError: g.error, offlinePending: false } };
-      return { ok: true, offline: false };
+    if (!vg.ok) return { ok: false, fix: { values: vg.unverified, sentences: [] } };
+    // Offline mode was removed, so grounding is no longer deferrable: a note that
+    // could not be verified stays blocked until the nurse reconnects and
+    // re-checks. Better an explicit block than a note finalized on an unrun check.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return { ok: false, fix: { values: [], sentences: [], groundingError: "You're offline. Reconnect and re-check to verify this note." } };
     }
-    return { ok: true, offline: true };
+    if (!groundingText.trim()) return { ok: true };
+    let g;
+    try {
+      // Bound the grounding call so a hung request can't leave the note stuck
+      // mid-verification — surface it as a re-checkable error instead.
+      g = await withTimeout(groundNote(groundingText, allowed, { userKey: currentUser?.email || "anon" }), 30000, "Verification timed out — check your connection and re-check.");
+    } catch (timeoutErr) {
+      return { ok: false, fix: { values: [], sentences: [], groundingError: timeoutErr.message } };
+    }
+    if (!g.ok) return { ok: false, fix: { values: [], sentences: g.unsupported || [], groundingError: g.error } };
+    return { ok: true };
   }, [buildAllowedInput, currentUser?.email]);
 
   const applyVerification = useCallback((text, v) => {
     if (!v.ok) { setVerifiedNote(""); setFixRequired(v.fix); return; }
     setVerifiedNote(text);
-    setFixRequired(v.offline ? { offlinePending: true } : null);
+    setFixRequired(null);
     onFinalNote?.(text);
   }, [onFinalNote]);
 
@@ -488,28 +491,6 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
       setBuilding(false);
     }
   };
-
-  // If the note was built offline, its LLM grounding pass was deferred. When the
-  // browser reconnects, run grounding automatically (fulfilling the "will run
-  // when you reconnect" promise shown in the pending banner) and surface the
-  // result. This never blocks the offline save — it upgrades a pending note to
-  // fully verified, or flags any sentences to review before finalizing.
-  useEffect(() => {
-    if (!finalNote || !fixRequired?.offlinePending) return;
-    const onReconnect = async () => {
-      try {
-        const v = await verifyNote(finalNote);
-        applyVerification(finalNote, v);
-        if (v.ok) toast.success("Reconnected — every value re-verified against your input.");
-        else toast.error("Reconnected — grounding flagged items to review before finalizing.");
-      } catch (err) {
-        console.error("Reconnect grounding failed:", err);
-        toast.error("Reconnected, but verification couldn't run. Use Re-check before finalizing.");
-      }
-    };
-    window.addEventListener("online", onReconnect);
-    return () => window.removeEventListener("online", onReconnect);
-  }, [finalNote, fixRequired, applyVerification, verifyNote]);
 
   const copy = async () => {
     try {
@@ -767,12 +748,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
 
       {finalNote && (
         <>
-          {fixRequired && fixRequired.offlinePending ? (
-            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 space-y-1">
-              <h3 className="font-semibold text-amber-800 flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Verification pending</h3>
-              <p className="text-sm text-amber-800">Every value was checked against your input. The AI grounding pass will run when you reconnect. Review carefully before pasting into the EMR.</p>
-            </div>
-          ) : fixRequired ? (
+          {fixRequired ? (
             <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4 space-y-2">
               <h3 className="font-semibold text-red-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Fix required before finalizing</h3>
               {fixRequired.values?.length > 0 && <p className="text-sm text-red-800">Values not found in your input: <strong>{fixRequired.values.map(v => v.value).join(", ")}</strong></p>}
@@ -797,7 +773,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
             </div>
           )}
 
-          {(!fixRequired || fixRequired.offlinePending) && (
+          {!fixRequired && (
             <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
               <button type="button" onClick={() => setShowProvenance((s) => !s)}
                 className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-sm font-semibold text-slate-700">

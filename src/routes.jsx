@@ -187,7 +187,7 @@ export const REDIRECTS = [
   // DocumentVisit (the separate visit-bound page with its own manual/AI-workflow
   // tabs) retired in favor of the unified Clinical Notes hub's Smart Note / Visit
   // Scribe choice. The hub selects the patient/visit itself, so the old ?visitId
-  // binding and DocumentVisit's vitals/template/offline extras are not carried over.
+  // binding and DocumentVisit's vitals/template extras are not carried over.
   // The dead page file and its ~40 single-use components were removed once the
   // consolidation proved stable; the redirect below is kept so old links resolve.
   { from: '/DocumentVisit', to: '/ClinicalDocumentation' },
@@ -196,8 +196,12 @@ export const REDIRECTS = [
   { from: '/DocumentationTraining', to: '/NurseTrainingHub?tab=documentation' },
   { from: '/NurseEducationVideos', to: '/NurseTrainingHub' },
 
-  { from: '/OfflineVisitDocumentation', to: '/OfflineMode?tab=visit' },
-  { from: '/OfflineDocumentation', to: '/OfflineMode?tab=pending' },
+  // Offline mode was removed. Its retired paths, and the two even older ones
+  // that used to forward into it, land on Clinical Notes — the documentation
+  // home that replaces them.
+  { from: '/OfflineMode', to: '/ClinicalDocumentation' },
+  { from: '/OfflineVisitDocumentation', to: '/ClinicalDocumentation' },
+  { from: '/OfflineDocumentation', to: '/ClinicalDocumentation' },
   { from: '/UserActivityLog', to: '/UserActivityReport?tab=log' },
   { from: '/PDFTemplateLibrary', to: '/TemplateManagement?tab=pdf' },
 

@@ -46,8 +46,8 @@ export default function SessionTimeoutManager({
     // Clear sensitive data from memory (incl. cached PHI in the query cache)
     sessionStorage.clear();
     try { queryClientInstance.clear(); } catch { /* no-op */ }
-    // Purge re-fetchable PHI persisted to localStorage/IndexedDB (preserves
-    // unsynced offline work — see clearCachedPHI). Await so the IndexedDB clear
+    // Purge re-fetchable PHI persisted to localStorage (preserves
+    // in-progress local drafts — see clearCachedPHI). Await so the purge
     // completes before the logout redirect navigates away.
     try { await clearCachedPHI(); } catch { /* no-op */ }
 

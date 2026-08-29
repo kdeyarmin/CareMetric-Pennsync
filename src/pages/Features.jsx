@@ -32,7 +32,6 @@ import {
   BookOpen,
   CheckCircle2,
   Lightbulb,
-  WifiOff,
   Edit,
   Grid3x3
 } from "lucide-react";
@@ -134,15 +133,6 @@ export default function FeaturesPage() {
           impact: "critical",
           details: "Combines compliance checking and quality analysis into one streamlined interface. Identifies missing Medicare elements, vague language, weak flow, and generic descriptions all in one place",
           howToUse: "Type your rough note and watch AI suggestions appear automatically. Review compliance gaps and quality improvements in tabs, then click 'Fix All' to apply everything at once."
-        },
-        {
-          name: "Offline Documentation Mode",
-          icon: WifiOff,
-          description: "Document visits without internet connection and auto-sync when back online",
-          timeSaved: "Eliminates connectivity delays",
-          impact: "high",
-          details: "Works completely offline for patient visits, stores data locally, automatic sync when connection restored",
-          howToUse: "Navigate to Offline Mode, select patient, document visit offline. Data syncs automatically when you're back online."
         },
         {
           name: "AI-Powered Voice Dictation",
@@ -1380,7 +1370,7 @@ export default function FeaturesPage() {
               <Badge variant="info" className="mb-2">Research-backed roadmap</Badge>
               <CardTitle className="text-xl sm:text-2xl text-slate-900">Top 25 end-user improvement implementation plan</CardTitle>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                This implementation plan turns the comprehensive app audit into 25 tracked, user-facing enhancement initiatives with owners, target workflows, acceptance criteria, and launch signals across clinician workflow, OASIS/PDGM quality, AI trust, mobile/offline reliability, patient self-service, analytics, and administration.
+                This implementation plan turns the comprehensive app audit into 25 tracked, user-facing enhancement initiatives with owners, target workflows, acceptance criteria, and launch signals across clinician workflow, OASIS/PDGM quality, AI trust, mobile reliability, patient self-service, analytics, and administration.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center lg:min-w-[320px]">

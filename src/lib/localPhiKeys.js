@@ -1,35 +1,29 @@
 /**
- * offlineKeys — the SINGLE registry of every offline localStorage key the app has
- * used, plus how each is treated by the logout/idle PHI purge (clearCachedPHI).
+ * localPhiKeys — the SINGLE registry of every local-storage key the app has ever
+ * used to hold PHI, plus how each is treated by the logout/idle purge
+ * (clearCachedPHI).
  *
- * The offline mutation queue is now unified on the IndexedDB `sync_queue`
- * (src/lib/indexedDB.js + src/lib/offlineSync.js) — every offline write goes
- * through addToSyncQueue and one worker drains it. Several older localStorage
- * subsystems that each kept their own queue were removed in that consolidation:
- *   - src/components/mobile/OfflineStorage.jsx     (penn_sync_offline_*)  [deleted]
- *   - src/components/offline/OfflineSyncService.jsx (offline_sync_queue …) [deleted]
- *   - src/components/mobile/OfflineSyncManager.jsx  (offline_visit_drafts) [deleted]
- *
- * Their KEYS are deliberately retained here (and in the purge lists below): a
- * returning nurse may still have PHI left in localStorage under these keys by a
- * prior app version, and the logout/idle purge must keep cleaning that up. Live
- * code no longer writes them; the classification exists so the purge is DERIVED
- * from one list and a test can assert nothing is missed.
+ * OFFLINE MODE HAS BEEN REMOVED. Nothing in the app writes an offline queue or
+ * patient cache any more. The keys below are kept for one reason: a returning
+ * nurse's device may still hold PHI written under them by an earlier version,
+ * and the logout/idle purge has to keep cleaning that up. The classification
+ * lives here so the purge is DERIVED from one list and a test can assert no key
+ * is missed.
  *
  * Classification (HIPAA — shared/kiosk devices):
- *   PURGE_FULL    re-fetchable PHI or diagnostic logs → remove entirely on logout.
- *   PURGE_SYNCED  offline-work queues that retain already-synced copies → drop the
- *                 synced entries, KEEP anything still pending sync.
- *   PRESERVE      unsynced field documentation → NEVER wiped (wiping on a 15-min
+ *   PURGE_FULL    PHI or diagnostic logs → remove entirely on logout.
+ *   PURGE_SYNCED  legacy work queues that tag already-synced items → drop those,
+ *                 keep anything still marked pending until it is recovered.
+ *   PRESERVE      LIVE unsynced local drafts → never wiped (wiping on a 15-minute
  *                 idle timeout mid-visit would be silent loss of documented care).
  *   NON_PHI       bookkeeping/metadata (timestamps, id maps) — no purge needed.
  *
- * Note: the canonical IndexedDB sync_queue is PHI but is preserved across logout
- * by clearCachedPatients() (which clears only the patient cache store), matching
- * the PRESERVE treatment of the retired localStorage queues.
+ * Anything a retired offline queue still holds is recovered once, on the next
+ * online load, by lib/retiredOfflineQueue.js — which then deletes it. That
+ * recovery is what allows these to be purge-on-logout rather than kept forever.
  */
 
-export const OFFLINE_KEYS = {
+export const LOCAL_PHI_KEYS = {
   // ── retired mobile/OfflineStorage.jsx (prefix 'penn_sync_offline_') ────────────
   // Subsystem removed; keys kept so the purge still cleans stale data from prior
   // app versions on a returning nurse's device.
@@ -71,7 +65,7 @@ export const OFFLINE_KEYS = {
   APP_PARAM_FROM_URL: 'base44_from_url',
 };
 
-const K = OFFLINE_KEYS;
+const K = LOCAL_PHI_KEYS;
 
 /** Re-fetchable PHI / diagnostic logs — removed entirely (exact key or prefix). */
 export const PURGE_FULL_PREFIXES = [
@@ -79,15 +73,25 @@ export const PURGE_FULL_PREFIXES = [
   K.RECENT_PATIENTS_PREFIX, K.FAVORITE_PATIENTS_PREFIX, K.OASIS_DATA_PREFIX,
   K.PENN_CACHE_PREFIX, K.PENN_SYNC_ERRORS, K.PENN_SYNC_STATUS,
   K.APP_PARAM_FROM_URL,
+  // Retired offline queues. These used to be PRESERVEd because the sync worker
+  // would eventually upload them; with offline mode gone nothing ever will, so
+  // retiredOfflineQueue.js recovers their contents once and the purge then stops
+  // them outliving the session on a shared device.
+  K.PENDING, K.VISIT_DRAFTS, K.CONFLICTS, K.SYNC_QUEUE,
 ];
 
 /** Offline-work queues: drop the synced entries, keep what's still pending. */
 export const PURGE_SYNCED_KEYS = [K.PENN_PENDING_VISITS, K.PENN_PENDING_UPDATES];
 
-/** Unsynced field documentation — intentionally preserved across logout/idle. */
-export const PRESERVE_KEYS = [
-  K.PENDING, K.VISIT_DRAFTS, K.CONFLICTS, K.SYNC_QUEUE, K.VISIT_DRAFT_PREFIX,
-];
+/**
+ * LIVE unsynced local drafts — intentionally preserved across logout/idle.
+ *
+ * Only the visit-draft autosave remains (the OASIS assessment editor writes
+ * `visit_draft_oasis_<patient>_<type>`). It is a refresh-recovery draft, not an
+ * offline queue, so it survives the removal of offline mode — and wiping it on
+ * an idle timeout mid-assessment would discard work the nurse is still typing.
+ */
+export const PRESERVE_KEYS = [K.VISIT_DRAFT_PREFIX];
 
 /** Bookkeeping/metadata (no PHI) — no purge needed. */
 export const NON_PHI_KEYS = [
