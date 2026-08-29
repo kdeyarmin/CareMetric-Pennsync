@@ -7,6 +7,7 @@ import { isAdminLike } from "@/lib/superAdmin";
 import { DEFAULT_PDGM_RATES, mergePdgmRates, DEFAULT_ICD10_CLINICAL_GROUPS, effectiveIcdGroups } from "@/components/pdgm/pdgmRates";
 import { validateRateNumbers, validateIcdMappings } from "@/components/pdgm/rateSettingsValidation";
 import CaseMixWeightsUpload from "@/components/pdgm/CaseMixWeightsUpload";
+import PayerRatesManager from "@/components/pdgm/PayerRatesManager";
 import PDGMCalculationPreview from "@/components/pdgm/PDGMCalculationPreview";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -455,6 +456,12 @@ export default function PDGMRateSettings() {
                   : "You have unsaved rate edits — save or reset them first (storing the table reloads the saved rate set)."
             }
           />
+
+          {/* Payer reimbursement table — imported contracted rates + typical
+              authorized visits, consumed by the referral revenue brief. Saves go
+              through savePayerRateConfig (its own entity/row, so it is
+              independent of the PDGM rate Save/dirty state above). */}
+          <PayerRatesManager currentUser={user} />
 
           {/* Safety rails: implausible cells / broken ICD mappings block Save. */}
           {(blockingErrors.length > 0 || icdIssues.warnings.length > 0) && (

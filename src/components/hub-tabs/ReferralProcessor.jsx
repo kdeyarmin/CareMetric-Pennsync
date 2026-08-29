@@ -7,6 +7,8 @@ import { createPageUrl } from "@/utils";
 import ReferralPDFSummarizer from "@/components/referral/ReferralPDFSummarizer";
 import ReferralAnalyzer from "@/components/referral/ReferralAnalyzer";
 import AdmissionBriefEmailCard from "@/components/referral/AdmissionBriefEmailCard";
+import ClinicalManagerBriefCard from "@/components/referral/ClinicalManagerBriefCard";
+import FinancialGate from "@/components/ui/FinancialGate";
 import { generateDiagnosisCodes, codeLabel } from "@/components/referral/diagnosisCodeGenerator";
 import { referralPatientReadiness } from "@/components/referral/referralPatientReadiness";
 import AIAdmissionDocumentationAssistant from "@/components/clinical/AIAdmissionDocumentationAssistant";
@@ -320,6 +322,18 @@ export default function ReferralProcessor() {
               sourceFileUrl={sourceFile?.url || ""}
               packetUrl={packetUrl || ""}
             />
+
+            {/* Revenue brief PDF for the clinical manager — financial data, so
+                admin-gated (the card also fails closed internally and the PDGM
+                dollars are stripped server-side for non-admin callers). */}
+            <FinancialGate>
+              <ClinicalManagerBriefCard
+                referralData={extractedData}
+                analysis={referralAnalysis}
+                sourceFileUrl={sourceFile?.url || ""}
+                packetUrl={packetUrl || ""}
+              />
+            </FinancialGate>
 
             <Card className="border-2 border-green-300 bg-green-50">
               <CardContent className="p-3 sm:p-4 md:p-6">
