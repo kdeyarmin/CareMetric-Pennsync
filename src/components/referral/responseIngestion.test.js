@@ -31,6 +31,16 @@ test("the prompt lists every open item with its id and forbids invented answers"
   assert.ok(!prompt.includes("insurance_missing"), "answered items must not be requested");
 });
 
+test("an item missing title/question never renders 'undefined' or an empty Question line", () => {
+  const bare = [{ id: "certifier_missing", item_status: "open" }]; // no title, no question, no needed
+  const prompt = buildResponseExtractionPrompt(openItemsForExtraction(bare));
+  assert.match(prompt, /id: certifier_missing/);
+  assert.ok(!prompt.includes("undefined"), "no field may render as 'undefined'");
+  assert.ok(!/Question:\s*$/m.test(prompt), "no empty Question line");
+  // The id doubles as the display title when none is documented.
+  assert.match(prompt, /1\. id: certifier_missing\n {3}certifier_missing/);
+});
+
 test("the schema carries per-item answers", () => {
   const props = RESPONSE_EXTRACTION_SCHEMA.properties.answers.items.properties;
   assert.deepEqual(Object.keys(props).sort(), ["answered", "id", "response_text"]);

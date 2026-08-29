@@ -29,7 +29,7 @@
     },
     "wage_index_table": {
       "type": "object",
-      "description": "Agency-imported CBSA wage-index rows for the counties/ZIPs the agency serves, parsed from the year's CMS HH PPS wage index file by wageIndex.js (which validates plausibility and never guesses). Shape: { payment_year, source, uploaded_at, uploaded_by_email, rows: [{ cbsa, label, wage_index, counties[], zip_prefixes[] }] }. The clinical-manager referral brief matches the patient's address to a row and passes that wage index EXPLICITLY to calculatePDGM; an unmatched address falls back to the single AgencySettings.wage_index exactly as before."
+      "description": "Agency-imported CBSA wage-index rows for the counties/ZIPs the agency serves, parsed from the year's CMS HH PPS wage index file by wageIndex.js (which validates plausibility and never guesses). Shape: { source, uploaded_at, uploaded_by_email, rows: [{ cbsa, label, wage_index, counties[], zip_prefixes[] }] } — the rate year lives in this config's effective_year, not in the table. The clinical-manager referral brief matches the patient's address to a row and passes that wage index EXPLICITLY to calculatePDGM; an unmatched address falls back to the single AgencySettings.wage_index exactly as before."
     },
     "notes": {
       "type": "string",

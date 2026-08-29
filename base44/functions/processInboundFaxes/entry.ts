@@ -302,18 +302,23 @@ Deno.serve(async (req) => {
           let mergedItems = fu.items as Array<Record<string, unknown>> | undefined;
           let autoAnswered = 0;
           const openItems = (Array.isArray(fu.items) ? (fu.items as Array<Record<string, unknown>>) : [])
-            .filter((it) => !it.item_status || it.item_status === 'open')
-            .map((it) => ({
-              id: it.id,
-              title: it.title,
-              question: (it.provider_request as Record<string, unknown> | undefined)?.question || it.needed,
-            }));
+            .filter((it) => it && it.id && (!it.item_status || it.item_status === 'open'))
+            .map((it) => {
+              // Coerce to strings so the prompt can never render
+              // "Question: undefined" for an item missing either field.
+              const q = (it.provider_request as Record<string, unknown> | undefined)?.question ?? it.needed;
+              return {
+                id: it.id,
+                title: typeof it.title === 'string' ? it.title : '',
+                question: typeof q === 'string' ? q : '',
+              };
+            });
           if (openItems.length > 0) {
             try {
               const extraction = await base44.asServiceRole.integrations.Core.InvokeLLM({
                 model: 'automatic',
                 prompt: `This is the transcribed text of a provider's completed "Additional Information Request" fax-back form. For each requested item below, determine whether the provider ANSWERED it on this form, and transcribe their response verbatim (typed or handwritten; include "document attached" checkbox marks as the response when checked). Do NOT invent answers: if an item's response area is blank or illegible, mark it unanswered.\n\nREQUESTED ITEMS:\n${openItems
-                  .map((it, i) => `${i + 1}. id: ${it.id}\n   ${it.title}\n   Question: ${it.question}`)
+                  .map((it, i) => `${i + 1}. id: ${it.id}\n   ${it.title || String(it.id)}${it.question ? `\n   Question: ${it.question}` : ''}`)
                   .join('\n')}\n\nFAX TEXT:\n${ocrText.slice(0, 30000)}`,
                 response_json_schema: {
                   type: 'object',

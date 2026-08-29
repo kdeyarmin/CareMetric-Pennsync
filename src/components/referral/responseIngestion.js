@@ -38,7 +38,7 @@ For each requested item below, determine whether the provider ANSWERED it in thi
 
 REQUESTED ITEMS:
 ${(openItems || [])
-  .map((it, i) => `${i + 1}. id: ${it.id}\n   ${it.title}\n   Question: ${it.question}`)
+  .map((it, i) => `${i + 1}. id: ${it.id}\n   ${it.title || String(it.id)}${it.question ? `\n   Question: ${it.question}` : ""}`)
   .join("\n")}`;
 }
 
