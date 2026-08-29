@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   FileSearch,
@@ -31,11 +30,21 @@ export default function ComprehensiveOASISReviewer({
 }) {
   const ai = useAICall();
   const [reviewResults, setReviewResults] = useState(null);
+  const [reviewError, setReviewError] = useState(false);
   const [expandedSections, setExpandedSections] = useState(['compliance', 'quality', 'inconsistencies']);
+
+  // Monotonic run id: a re-run (or a new assessment) supersedes any in-flight
+  // review, so a slower earlier response can never overwrite newer findings.
+  const runIdRef = useRef(0);
 
   const performComprehensiveReview = useCallback(async () => {
     if (!oasisData || !analysisResults) return;
 
+    const runId = (runIdRef.current += 1);
+    // Clear prior findings immediately: while this review runs the UI must show
+    // the loading state, never the PREVIOUS assessment's compliance findings.
+    setReviewResults(null);
+    setReviewError(false);
     try {
       const prompt = `You are a Medicare OASIS compliance expert. Perform a COMPREHENSIVE review of this OASIS assessment.
 
@@ -202,19 +211,30 @@ Return detailed JSON with all findings.`;
         }
       });
 
+      if (runId !== runIdRef.current) return; // superseded by a newer review
       setReviewResults(result);
     } catch (error) {
+      if (runId !== runIdRef.current) return; // superseded by a newer review
       console.error('Comprehensive review error:', error);
+      setReviewError(true);
       toast.error("The AI request didn't complete. Please try again.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [analysisResults, oasisData, patientData]);
 
+  // Auto-run ONCE per loaded assessment. `analysisResults` gets a fresh object
+  // only when a new document is analyzed, whereas `oasisData` (pdgmData) is
+  // replaced in place on every applied correction / Smart Note import — keying
+  // on it re-fired a full billed LLM review per correction, with overlapping
+  // runs racing each other. After in-place data edits the user re-runs
+  // explicitly via the "Re-run Comprehensive Review" button.
+  const lastAutoReviewedRef = useRef(null);
   useEffect(() => {
-    if (autoReview && oasisData && analysisResults) {
-      performComprehensiveReview();
-    }
-  }, [oasisData?.id, autoReview, analysisResults, oasisData, performComprehensiveReview]);
+    if (!autoReview || !oasisData || !analysisResults) return;
+    if (lastAutoReviewedRef.current === analysisResults) return;
+    lastAutoReviewedRef.current = analysisResults;
+    performComprehensiveReview();
+  }, [autoReview, oasisData, analysisResults, performComprehensiveReview]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -247,6 +267,13 @@ Return detailed JSON with all findings.`;
     }
   };
 
+  // The Strengths accordion only renders when the review reported strengths, so
+  // "Expand/Collapse All" must count the sections actually on screen.
+  const allSections = reviewResults?.strengths?.length > 0
+    ? ['compliance', 'quality', 'inconsistencies', 'strengths']
+    : ['compliance', 'quality', 'inconsistencies'];
+  const allExpanded = allSections.every((s) => expandedSections.includes(s));
+
   return (
     <Card className="border-2 border-indigo-400 bg-gradient-to-br from-indigo-50 to-blue-50 shadow-lg">
       <CardHeader>
@@ -257,7 +284,7 @@ Return detailed JSON with all findings.`;
             {ai.loading && <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />}
           </CardTitle>
           {reviewResults && (
-            <Badge className={getRiskLevelColor(reviewResults.overall_risk_level)} size="lg">
+            <Badge className={getRiskLevelColor(reviewResults.overall_risk_level)}>
               {reviewResults.overall_risk_level?.toUpperCase()} RISK
             </Badge>
           )}
@@ -275,11 +302,20 @@ Return detailed JSON with all findings.`;
 
         {!ai.loading && !reviewResults && (
           <div className="text-center py-8">
-            <FileSearch className="w-16 h-16 text-indigo-300 mx-auto mb-4" />
-            <p className="text-slate-600 mb-4">Click below to perform a comprehensive AI review</p>
+            {reviewError ? (
+              <>
+                <XCircle className="w-16 h-16 text-red-300 mx-auto mb-4" />
+                <p className="text-slate-600 mb-4">The comprehensive review didn't complete. Run it again below.</p>
+              </>
+            ) : (
+              <>
+                <FileSearch className="w-16 h-16 text-indigo-300 mx-auto mb-4" />
+                <p className="text-slate-600 mb-4">Click below to perform a comprehensive AI review</p>
+              </>
+            )}
             <Button onClick={performComprehensiveReview} className="bg-indigo-600 hover:bg-indigo-700">
               <FileSearch className="w-4 h-4 mr-2" />
-              Start Comprehensive Review
+              {reviewError ? 'Retry Comprehensive Review' : 'Start Comprehensive Review'}
             </Button>
           </div>
         )}
@@ -345,7 +381,10 @@ Return detailed JSON with all findings.`;
                       <p className="text-green-800 font-medium">No compliance risks detected</p>
                     </div>
                   ) : (
-                    <ScrollArea className="max-h-[600px]">
+                    // Native overflow scrolling: Radix ScrollArea's h-full viewport
+                    // cannot resolve against a max-h (auto-height) root, which
+                    // silently CLIPPED findings past 600px with no scrollbar.
+                    <div className="max-h-[600px] overflow-y-auto pr-1">
                       <div className="space-y-4">
                         {reviewResults.compliance_risks?.map((risk, idx) => (
                           <div key={idx} className="bg-white rounded-lg border-2 border-red-300 p-4">
@@ -391,9 +430,11 @@ Return detailed JSON with all findings.`;
                                 <p className="font-semibold text-xs text-indigo-900">CMS Regulation</p>
                               </div>
                               <p className="text-sm text-indigo-800 mb-2">{risk.cms_regulation}</p>
-                              {risk.cms_guideline_link && (
+                              {/* Only render the link when the AI-supplied URL is safe —
+                                  an href-less anchor is a dead, misleading control. */}
+                              {isSafeExternalUrl(risk.cms_guideline_link) && (
                                 <a
-                                  href={isSafeExternalUrl(risk.cms_guideline_link) ? risk.cms_guideline_link : undefined}
+                                  href={risk.cms_guideline_link}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
@@ -436,7 +477,7 @@ Return detailed JSON with all findings.`;
                           </div>
                         ))}
                       </div>
-                    </ScrollArea>
+                    </div>
                   )}
                 </AccordionContent>
               </AccordionItem>
@@ -479,7 +520,7 @@ Return detailed JSON with all findings.`;
                               }>
                                 {measure.current_status?.replace('_', ' ')}
                               </Badge>
-                              <Badge className={getSeverityColor(measure.implementation_priority)} size="sm">
+                              <Badge className={getSeverityColor(measure.implementation_priority)}>
                                 {measure.implementation_priority} priority
                               </Badge>
                             </div>
@@ -507,14 +548,14 @@ Return detailed JSON with all findings.`;
                           </div>
 
                           {/* CMS Quality Reporting Link */}
-                          {measure.cms_quality_reporting_link && (
+                          {isSafeExternalUrl(measure.cms_quality_reporting_link) && (
                             <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-300 mb-3">
                               <div className="flex items-center gap-2 mb-2">
                                 <BookOpen className="w-4 h-4 text-indigo-600" />
                                 <p className="font-semibold text-xs text-indigo-900">CMS Quality Reporting</p>
                               </div>
                               <a
-                                href={isSafeExternalUrl(measure.cms_quality_reporting_link) ? measure.cms_quality_reporting_link : undefined}
+                                href={measure.cms_quality_reporting_link}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
@@ -577,7 +618,7 @@ Return detailed JSON with all findings.`;
                       <p className="text-green-800 font-medium">No documentation inconsistencies found</p>
                     </div>
                   ) : (
-                    <ScrollArea className="max-h-[600px]">
+                    <div className="max-h-[600px] overflow-y-auto pr-1">
                       <div className="space-y-4">
                         {reviewResults.documentation_inconsistencies?.map((inconsistency, idx) => (
                           <div key={idx} className="bg-white rounded-lg border-2 border-orange-300 p-4">
@@ -663,9 +704,9 @@ Return detailed JSON with all findings.`;
                                   <p className="font-semibold text-xs text-indigo-900">CMS Guidance</p>
                                 </div>
                                 <p className="text-sm text-indigo-800 mb-2">{inconsistency.cms_guidance}</p>
-                                {inconsistency.cms_guidance_link && (
+                                {isSafeExternalUrl(inconsistency.cms_guidance_link) && (
                                   <a
-                                    href={isSafeExternalUrl(inconsistency.cms_guidance_link) ? inconsistency.cms_guidance_link : undefined}
+                                    href={inconsistency.cms_guidance_link}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
@@ -679,7 +720,7 @@ Return detailed JSON with all findings.`;
                           </div>
                         ))}
                       </div>
-                    </ScrollArea>
+                    </div>
                   )}
                 </AccordionContent>
               </AccordionItem>
@@ -727,12 +768,11 @@ Return detailed JSON with all findings.`;
               </Button>
               <Button
                 onClick={() => {
-                  const expanded = expandedSections.length === 3 ? [] : ['compliance', 'quality', 'inconsistencies'];
-                  setExpandedSections(expanded);
+                  setExpandedSections(allExpanded ? [] : allSections);
                 }}
                 variant="outline"
               >
-                {expandedSections.length === 3 ? (
+                {allExpanded ? (
                   <><ChevronUp className="w-4 h-4 mr-2" /> Collapse All</>
                 ) : (
                   <><ChevronDown className="w-4 h-4 mr-2" /> Expand All</>

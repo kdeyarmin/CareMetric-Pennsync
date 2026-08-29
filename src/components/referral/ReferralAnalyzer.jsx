@@ -41,9 +41,19 @@ export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
     onAnalysisCompleteRef.current = onAnalysisComplete;
   }, [onAnalysisComplete]);
 
+  // Monotonic run id: a new referral (or retry) supersedes any in-flight call,
+  // so a slower earlier response can never display — or report via
+  // onAnalysisComplete — the PREVIOUS referral's urgency/risk analysis as if it
+  // belonged to the current one.
+  const runIdRef = useRef(0);
+
   const analyzeReferral = useCallback(async () => {
     if (!referralData) return;
 
+    const runId = (runIdRef.current += 1);
+    // Clear any prior referral's analysis immediately: the loading card must
+    // show while this referral is analyzed, never stale results for the old one.
+    setAnalysis(null);
     setAnalysisError(false);
     try {
       const result = await ai.run({
@@ -165,11 +175,13 @@ Referral Data: ${JSON.stringify(referralData)}`,
         }
       });
 
+      if (runId !== runIdRef.current) return; // superseded by a newer referral
       setAnalysis(result);
       if (onAnalysisCompleteRef.current) {
         onAnalysisCompleteRef.current(result);
       }
     } catch (error) {
+      if (runId !== runIdRef.current) return; // superseded by a newer referral
       console.error('Error analyzing referral:', error);
       setAnalysisError(true);
       toast.error('Failed to analyze referral. Please try again.');
@@ -183,6 +195,57 @@ Referral Data: ${JSON.stringify(referralData)}`,
     }
   }, [referralData, analyzeReferral]);
 
+  // Face-to-Face (F2F) validation — deterministic and referral-only, so like
+  // the diagnosis-code generator it renders in EVERY state (loading, failed,
+  // loaded): an AI outage must never hide a 42 CFR 424.22 compliance result.
+  const f2fAlert = f2fValidation && (
+    <Alert
+      className={`border-2 ${
+        f2fValidation.status === "valid"
+          ? "bg-green-50 border-green-300"
+          : f2fValidation.status === "invalid"
+          ? "bg-red-50 border-red-300"
+          : "bg-yellow-50 border-yellow-300"
+      }`}
+    >
+      {f2fValidation.status === "valid" ? (
+        <ShieldCheck className="w-5 h-5 text-green-600" />
+      ) : (
+        <ShieldAlert
+          className={`w-5 h-5 ${f2fValidation.status === "invalid" ? "text-red-600" : "text-yellow-600"}`}
+        />
+      )}
+      <AlertDescription>
+        <div className="flex items-center justify-between mb-1">
+          <p className="font-semibold">
+            Face-to-Face Encounter:{" "}
+            <Badge
+              className={
+                f2fValidation.status === "valid"
+                  ? "bg-green-600"
+                  : f2fValidation.status === "invalid"
+                  ? "bg-red-600"
+                  : "bg-yellow-600"
+              }
+            >
+              {f2fValidation.status === "valid"
+                ? "Compliant"
+                : f2fValidation.status === "invalid"
+                ? "Non-compliant"
+                : "Needs review"}
+            </Badge>
+          </p>
+          <span className="text-xs text-slate-600">42 CFR 424.22</span>
+        </div>
+        <ul className="text-sm list-disc pl-5 space-y-0.5">
+          {f2fValidation.reasons.map((r, i) => (
+            <li key={i}>{r}</li>
+          ))}
+        </ul>
+      </AlertDescription>
+    </Alert>
+  );
+
   if (!analysis) {
     // The diagnosis-code generator is deterministic (no LLM), so it renders
     // immediately — even while the AI analysis is still running or has failed.
@@ -190,6 +253,7 @@ Referral Data: ${JSON.stringify(referralData)}`,
       return (
         <div className="space-y-4">
           <DiagnosisCodeGenerator referralData={referralData} />
+          {f2fAlert}
           <Card className="border-2 border-red-300">
             <CardContent className="p-8 text-center">
               <XCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
@@ -205,6 +269,7 @@ Referral Data: ${JSON.stringify(referralData)}`,
     return (
       <div className="space-y-4">
         <DiagnosisCodeGenerator referralData={referralData} />
+        {f2fAlert}
         <Card className="border-2 border-blue-300">
           <CardContent className="p-8 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
@@ -262,53 +327,7 @@ Referral Data: ${JSON.stringify(referralData)}`,
       </Alert>
 
       {/* Face-to-Face (F2F) validation — deterministic, referral-only */}
-      {f2fValidation && (
-        <Alert
-          className={`border-2 ${
-            f2fValidation.status === "valid"
-              ? "bg-green-50 border-green-300"
-              : f2fValidation.status === "invalid"
-              ? "bg-red-50 border-red-300"
-              : "bg-yellow-50 border-yellow-300"
-          }`}
-        >
-          {f2fValidation.status === "valid" ? (
-            <ShieldCheck className="w-5 h-5 text-green-600" />
-          ) : (
-            <ShieldAlert
-              className={`w-5 h-5 ${f2fValidation.status === "invalid" ? "text-red-600" : "text-yellow-600"}`}
-            />
-          )}
-          <AlertDescription>
-            <div className="flex items-center justify-between mb-1">
-              <p className="font-semibold">
-                Face-to-Face Encounter:{" "}
-                <Badge
-                  className={
-                    f2fValidation.status === "valid"
-                      ? "bg-green-600"
-                      : f2fValidation.status === "invalid"
-                      ? "bg-red-600"
-                      : "bg-yellow-600"
-                  }
-                >
-                  {f2fValidation.status === "valid"
-                    ? "Compliant"
-                    : f2fValidation.status === "invalid"
-                    ? "Non-compliant"
-                    : "Needs review"}
-                </Badge>
-              </p>
-              <span className="text-xs text-slate-600">42 CFR 424.22</span>
-            </div>
-            <ul className="text-sm list-disc pl-5 space-y-0.5">
-              {f2fValidation.reasons.map((r, i) => (
-                <li key={i}>{r}</li>
-              ))}
-            </ul>
-          </AlertDescription>
-        </Alert>
-      )}
+      {f2fAlert}
 
       <div className="grid md:grid-cols-2 gap-4">
         {/* Missing Information */}
