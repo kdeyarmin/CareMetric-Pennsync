@@ -12,10 +12,10 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { formatAge } from "@/lib/age";
 
 export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, patientId, onPredictionsComplete }) {
-  // This card's analysis fires automatically on mount/data change, so it goes
-  // through the app-wide AI budget as background work: it can't crowd out a
-  // call a user is waiting on, and several such cards on one page queue
-  // instead of hitting the provider all at once.
+  // Auto-fired analyses are background work in the app-wide AI budget, so
+  // several such cards on one page queue instead of hitting the provider at
+  // once. A run the user CLICKED passes interactive priority per call and
+  // takes the reserved slot instead of queueing behind that background work.
   const ai = useAICall({ priority: 'background' });
   const [predictions, setPredictions] = useState(null);
   const [autoPredict, setAutoPredict] = useState(false);
@@ -111,7 +111,7 @@ export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, 
     };
   }, []);
 
-  const generatePredictions = useCallback(async () => {
+  const generatePredictions = useCallback(async ({ interactive = false } = {}) => {
     if (!analysisResults || !pdgmData) return;
 
     try {
@@ -366,7 +366,7 @@ Provide SPECIFIC, ACTIONABLE predictions with clinical reasoning.`,
             }
           }
         }
-      });
+      }, { priority: interactive ? 'interactive' : 'background' });
 
       setPredictions(result);
       if (onPredictionsComplete) {
@@ -408,7 +408,7 @@ Provide SPECIFIC, ACTIONABLE predictions with clinical reasoning.`,
             AI Predictive Outcomes Analysis
           </CardTitle>
           <Button
-            onClick={generatePredictions}
+            onClick={() => generatePredictions({ interactive: true })}
             disabled={ai.loading}
             className="bg-indigo-600 hover:bg-indigo-700"
           >

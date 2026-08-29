@@ -23,6 +23,7 @@ vi.mock('sonner', () => ({
 }));
 
 import ComprehensiveOASISReviewer from '@/components/oasis/ComprehensiveOASISReviewer';
+import { reviewFingerprint } from '@/components/oasis/reviewFreshness';
 import { toast } from 'sonner';
 
 function deferred() {
@@ -44,6 +45,18 @@ const reviewFor = (marker, extra = {}) => ({
 });
 
 const oasis1 = { functional_scores: { m1860_ambulation: 2 } };
+// An assessment that passes every deterministic check, so action-item tests see
+// only the AI findings rather than a pile of legitimate rule failures too.
+const cleanOasis = {
+  patient_info: { assessment_date: '2026-01-15', assessment_type: 'SOC' },
+  primary_diagnosis_code: 'I50.9',
+  episode_timing: 'early',
+  clinical_items: { dyspnea: 2 },
+  functional_scores: {
+    m1800_grooming: 1, m1810_dress_upper: 2, m1820_dress_lower: 2, m1830_bathing: 3,
+    m1840_toilet_transfer: 2, m1850_transferring: 2, m1860_ambulation: 3,
+  },
+};
 const results1 = { summary: 'assessment one' };
 
 beforeEach(() => {
@@ -217,7 +230,11 @@ describe('ComprehensiveOASISReviewer', () => {
   });
 
   it('restores a persisted review without a billed LLM call and shows when it ran', async () => {
-    const saved = { results: reviewFor('SUMMARY-SAVED'), reviewed_at: '2026-08-28T12:00:00Z' };
+    const saved = {
+      results: reviewFor('SUMMARY-SAVED'),
+      reviewed_at: '2026-08-28T12:00:00Z',
+      fingerprint: reviewFingerprint(oasis1, {}),
+    };
 
     render(
       <ComprehensiveOASISReviewer
@@ -252,6 +269,7 @@ describe('ComprehensiveOASISReviewer', () => {
     expect(onReviewComplete).toHaveBeenCalledWith({
       results: expect.objectContaining({ review_summary: 'SUMMARY-1' }),
       reviewed_at: expect.any(String),
+      fingerprint: expect.any(String),
     });
   });
 
@@ -413,14 +431,18 @@ describe('ComprehensiveOASISReviewer', () => {
     expect(await screen.findByRole('button', { name: /Action items created/i })).toBeDisabled();
   });
 
-  it('does not duplicate action items when the analysis already has some', async () => {
+  it('skips only findings already filed, still creating the new ones', async () => {
     const d = deferred();
     invokeLLM.mockReturnValueOnce(d.promise);
-    actionItemFilter.mockResolvedValue([{ id: 'existing-item' }]);
+    // An unrelated item already exists for this analysis (e.g. the action
+    // workflow's own "Generate Actions"). It must not suppress our findings.
+    actionItemFilter.mockResolvedValue([
+      { category: 'compliance', oasis_item: '', rationale: 'Something else entirely.' },
+    ]);
 
     render(
       <ComprehensiveOASISReviewer
-        oasisData={oasis1}
+        oasisData={cleanOasis}
         analysisResults={results1}
         autoReview={true}
         analysisId="analysis_test_2"
@@ -434,10 +456,113 @@ describe('ComprehensiveOASISReviewer', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Create action items/i }));
 
+    await waitFor(() => expect(actionItemBulkCreate).toHaveBeenCalledTimes(1));
+    expect(actionItemBulkCreate.mock.calls[0][0]).toHaveLength(1);
+  });
+
+  it('creates nothing when every finding is already filed', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+
+    render(
+      <ComprehensiveOASISReviewer
+        oasisData={cleanOasis}
+        analysisResults={results1}
+        autoReview={true}
+        analysisId="analysis_test_3"
+      />
+    );
+    await act(async () => {
+      d.resolve(reviewFor('SUMMARY-DUP2', {
+        compliance_risks: [{ description: 'A risk.', severity: 'high' }],
+      }));
+    });
+
+    // Echo back exactly what the button would create.
+    actionItemFilter.mockResolvedValue([
+      { category: 'compliance', oasis_item: '', rationale: 'A risk.' },
+    ]);
+
+    await userEvent.click(screen.getByRole('button', { name: /Create action items/i }));
+
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Action items created/i })).toBeInTheDocument()
     );
     expect(actionItemBulkCreate).not.toHaveBeenCalled();
     expect(toast.info).toHaveBeenCalled();
+  });
+
+  it('does not report a completed review once the card has unmounted', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+    const onReviewComplete = vi.fn();
+
+    const { unmount } = render(
+      <ComprehensiveOASISReviewer
+        oasisData={oasis1}
+        analysisResults={results1}
+        autoReview={true}
+        onReviewComplete={onReviewComplete}
+      />
+    );
+
+    // The clinician selects another document while this review is in flight.
+    unmount();
+    await act(async () => { d.resolve(reviewFor('SUMMARY-ORPHAN')); });
+
+    // Reporting it would land in the parent's state and rehydrate as the NEXT
+    // assessment's saved review.
+    expect(onReviewComplete).not.toHaveBeenCalled();
+  });
+
+  it('rehydrates a review saved against different data as stale', async () => {
+    const corrected = { ...oasis1, functional_scores: { m1860_ambulation: 3 } };
+    const saved = {
+      results: reviewFor('SUMMARY-SAVED-STALE'),
+      reviewed_at: '2026-08-28T12:00:00Z',
+      fingerprint: 'fingerprint-from-before-the-correction',
+    };
+
+    render(
+      <ComprehensiveOASISReviewer
+        oasisData={corrected}
+        analysisResults={results1}
+        autoReview={true}
+        savedReview={saved}
+      />
+    );
+
+    expect(invokeLLM).not.toHaveBeenCalled();
+    expect(screen.getByText('SUMMARY-SAVED-STALE')).toBeInTheDocument();
+    expect(screen.getByText(/data has changed since this review/i)).toBeInTheDocument();
+  });
+
+  it('marks the review stale when the patient match resolves after it ran', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+
+    const { rerender } = render(
+      <ComprehensiveOASISReviewer
+        oasisData={oasis1}
+        analysisResults={results1}
+        autoReview={true}
+        patientData={null}
+      />
+    );
+    await act(async () => { d.resolve(reviewFor('SUMMARY-NOPATIENT')); });
+    expect(screen.queryByText(/data has changed since this review/i)).not.toBeInTheDocument();
+
+    // Patient matching completes later and supplies medications/allergies the
+    // review never saw.
+    rerender(
+      <ComprehensiveOASISReviewer
+        oasisData={oasis1}
+        analysisResults={results1}
+        autoReview={true}
+        patientData={{ primary_diagnosis: 'CHF', allergies: 'penicillin' }}
+      />
+    );
+
+    expect(await screen.findByText(/data has changed since this review/i)).toBeInTheDocument();
   });
 });

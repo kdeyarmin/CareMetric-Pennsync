@@ -28,15 +28,15 @@ export default function AIDataValidationEngine({
   autoValidate = false,
   onCorrection
 }) {
-  // This card's analysis fires automatically on mount/data change, so it goes
-  // through the app-wide AI budget as background work: it can't crowd out a
-  // call a user is waiting on, and several such cards on one page queue
-  // instead of hitting the provider all at once.
+  // Auto-fired analyses are background work in the app-wide AI budget, so
+  // several such cards on one page queue instead of hitting the provider at
+  // once. A run the user CLICKED passes interactive priority per call and
+  // takes the reserved slot instead of queueing behind that background work.
   const ai = useAICall({ priority: 'background' });
   const [validationResults, setValidationResults] = useState(null);
   const [appliedCorrections, setAppliedCorrections] = useState(new Set());
 
-  const performValidation = useCallback(async () => {
+  const performValidation = useCallback(async ({ interactive = false } = {}) => {
     if (!oasisData || !patientData) return;
 
     try {
@@ -193,7 +193,7 @@ For each issue found, provide:
             }
           }
         }
-      });
+      }, { priority: interactive ? 'interactive' : 'background' });
 
       setValidationResults(result);
     } catch (error) {
@@ -253,7 +253,7 @@ For each issue found, provide:
             {ai.loading && <Loader2 className="w-4 h-4 animate-spin text-navy-500" />}
           </CardTitle>
           {!validationResults && !ai.loading && (
-            <Button onClick={performValidation} className="bg-navy-600 hover:bg-navy-700">
+            <Button onClick={() => performValidation({ interactive: true })} className="bg-navy-600 hover:bg-navy-700">
               <Brain className="w-4 h-4 mr-2" />
               Validate Data
             </Button>
@@ -714,7 +714,7 @@ For each issue found, provide:
               </div>
             )}
 
-            <Button onClick={performValidation} variant="outline" className="w-full">
+            <Button onClick={() => performValidation({ interactive: true })} variant="outline" className="w-full">
               Re-run Validation
             </Button>
           </div>

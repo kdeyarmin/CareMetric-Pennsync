@@ -46,10 +46,10 @@ export default function AutomaticDocumentReviewer({
   onApplySuggestion
 }) {
   const noteContent = noteContentProp ?? documentContent;
-  // This card's analysis fires automatically on mount/data change, so it goes
-  // through the app-wide AI budget as background work: it can't crowd out a
-  // call a user is waiting on, and several such cards on one page queue
-  // instead of hitting the provider all at once.
+  // Auto-fired analyses are background work in the app-wide AI budget, so
+  // several such cards on one page queue instead of hitting the provider at
+  // once. A run the user CLICKED passes interactive priority per call and
+  // takes the reserved slot instead of queueing behind that background work.
   const ai = useAICall({ priority: 'background' });
   const [reviewResults, setReviewResults] = useState(null);
   const queryClient = useQueryClient();
@@ -65,7 +65,7 @@ export default function AutomaticDocumentReviewer({
     queryFn: () => base44.auth.me(),
   });
 
-  const performReview = useCallback(async () => {
+  const performReview = useCallback(async ({ interactive = false } = {}) => {
     if (!noteContent || noteContent.length < 50) {
       toast.error('Note is too short for comprehensive review');
       return;
@@ -228,7 +228,7 @@ Return detailed JSON analysis.`,
             recommended_training: { type: "array", items: { type: "string" } }
           }
         }
-      });
+      }, { priority: interactive ? 'interactive' : 'background' });
 
       setReviewResults(result);
 
@@ -349,7 +349,7 @@ Return detailed JSON analysis.`,
           <p className="text-sm text-slate-600 mb-4">
             Comprehensive AI review of clinical documentation for Medicare compliance, accuracy, and quality.
           </p>
-          <Button onClick={performReview} className="w-full bg-navy-600 hover:bg-navy-700">
+          <Button onClick={() => performReview({ interactive: true })} className="w-full bg-navy-600 hover:bg-navy-700">
             <Sparkles className="w-4 h-4 mr-2" />
             Start Comprehensive Review
           </Button>
@@ -608,7 +608,7 @@ Return detailed JSON analysis.`,
         size="sm"
         onClick={() => {
           setReviewResults(null);
-          performReview();
+          performReview({ interactive: true });
         }}
         className="w-full"
       >

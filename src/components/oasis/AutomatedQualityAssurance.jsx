@@ -28,15 +28,15 @@ export default function AutomatedQualityAssurance({
   autoRun = false,
   onQAComplete
 }) {
-  // This card's analysis fires automatically on mount/data change, so it goes
-  // through the app-wide AI budget as background work: it can't crowd out a
-  // call a user is waiting on, and several such cards on one page queue
-  // instead of hitting the provider all at once.
+  // Auto-fired analyses are background work in the app-wide AI budget, so
+  // several such cards on one page queue instead of hitting the provider at
+  // once. A run the user CLICKED passes interactive priority per call and
+  // takes the reserved slot instead of queueing behind that background work.
   const ai = useAICall({ priority: 'background' });
   const [qaResults, setQaResults] = useState(null);
   const autoRanRef = useRef(false);
 
-  const runQualityAssurance = useCallback(async () => {
+  const runQualityAssurance = useCallback(async ({ interactive = false } = {}) => {
     if (!oasisData) return;
 
     try {
@@ -198,7 +198,7 @@ For each failure, provide:
             qa_summary: { type: "string" }
           }
         }
-      });
+      }, { priority: interactive ? 'interactive' : 'background' });
 
       setQaResults(result);
       if (onQAComplete) {
@@ -233,7 +233,7 @@ For each failure, provide:
             {ai.loading && <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />}
           </CardTitle>
           {!qaResults && !ai.loading && (
-            <Button onClick={runQualityAssurance} className="bg-indigo-600 hover:bg-indigo-700">
+            <Button onClick={() => runQualityAssurance({ interactive: true })} className="bg-indigo-600 hover:bg-indigo-700">
               <Shield className="w-4 h-4 mr-2" />
               Run QA Checks
             </Button>
@@ -697,7 +697,7 @@ For each failure, provide:
               )}
             </Accordion>
 
-            <Button onClick={runQualityAssurance} variant="outline" className="w-full">
+            <Button onClick={() => runQualityAssurance({ interactive: true })} variant="outline" className="w-full">
               Re-run QA Checks
             </Button>
           </div>

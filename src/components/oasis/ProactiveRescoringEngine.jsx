@@ -22,10 +22,10 @@ export default function ProactiveRescoringEngine({
   autoAnalyze = false,
   onOpportunitiesFound
 }) {
-  // This card's analysis fires automatically on mount/data change, so it goes
-  // through the app-wide AI budget as background work: it can't crowd out a
-  // call a user is waiting on, and several such cards on one page queue
-  // instead of hitting the provider all at once.
+  // Auto-fired analyses are background work in the app-wide AI budget, so
+  // several such cards on one page queue instead of hitting the provider at
+  // once. A run the user CLICKED passes interactive priority per call and
+  // takes the reserved slot instead of queueing behind that background work.
   const ai = useAICall({ priority: 'background' });
   const [opportunities, setOpportunities] = useState(null);
   // Keep the parent callback out of analyze's identity so an inline
@@ -37,7 +37,7 @@ export default function ProactiveRescoringEngine({
   // per OASIS document rather than on every re-render.
   const autoRanForRef = useRef(null);
 
-  const analyzeRescoringOpportunities = useCallback(async () => {
+  const analyzeRescoringOpportunities = useCallback(async ({ interactive = false } = {}) => {
     if (!oasisData) return;
 
     try {
@@ -125,7 +125,7 @@ For each opportunity, calculate:
             }
           }
         }
-      });
+      }, { priority: interactive ? 'interactive' : 'background' });
 
       setOpportunities(result);
       if (onFoundRef.current) {
@@ -179,7 +179,7 @@ For each opportunity, calculate:
           </CardTitle>
           {!opportunities && !ai.loading && (
             <Button
-              onClick={analyzeRescoringOpportunities}
+              onClick={() => analyzeRescoringOpportunities({ interactive: true })}
             >
               <TrendingUp className="w-4 h-4 mr-2" />
               Analyze Opportunities
@@ -373,7 +373,7 @@ For each opportunity, calculate:
             {/* This button stays mounted while the spinner shows, so without the guard a
                 second click fires another expensive model call over the same input. */}
             <Button
-              onClick={analyzeRescoringOpportunities}
+              onClick={() => analyzeRescoringOpportunities({ interactive: true })}
               disabled={ai.loading}
               variant="outline"
               className="w-full"

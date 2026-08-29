@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import { resolveCmsGuidelineLink, HH_QUALITY_REPORTING_URL } from "./cmsGuidelineLinks.js";
 import { runOasisDeterministicChecks, deterministicChecksPromptBlock } from "./oasisDeterministicChecks.js";
-import { buildActionItemsFromReview } from "./reviewActionItems.js";
+import { buildActionItemsFromReview, actionItemKey } from "./reviewActionItems.js";
+import { reviewFingerprint } from "./reviewFreshness.js";
 import { isAICancellation } from "@/lib/aiScheduler";
 import { computeAge } from "@/lib/age";
 
@@ -49,6 +50,10 @@ function clinicalPatientContext(patient) {
     ...(patient.admission_source ? { admission_source: patient.admission_source } : {}),
   };
 }
+
+// How many existing action items to scan when de-duplicating. An analysis
+// accumulates a bounded number of findings; this is generous headroom.
+const ACTION_ITEM_SCAN_LIMIT = 200;
 
 // Findings render most-severe first regardless of the order the model emitted.
 const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -89,10 +94,13 @@ export default function ComprehensiveOASISReviewer({
   const [reviewError, setReviewError] = useState(false);
   const [actionItemsCreated, setActionItemsCreated] = useState(false);
   const [isCreatingActions, setIsCreatingActions] = useState(false);
-  // When the current results were produced, and against WHICH oasisData object —
-  // a later in-place correction changes that identity, flagging the review stale.
+  // When the current results were produced, and a fingerprint of the inputs they
+  // ran against. A later correction — or a patient match landing after the fact —
+  // changes the fingerprint, flagging the review stale. Unlike object identity
+  // this survives persistence, so a rehydrated review is judged on its real
+  // inputs rather than being assumed current.
   const [reviewedAt, setReviewedAt] = useState(null);
-  const [reviewedOasisData, setReviewedOasisData] = useState(null);
+  const [reviewedFingerprint, setReviewedFingerprint] = useState(null);
   const [expandedSections, setExpandedSections] = useState(['compliance', 'quality', 'inconsistencies']);
 
   // Hold the completion callback in a ref so an inline parent callback doesn't
@@ -110,9 +118,26 @@ export default function ComprehensiveOASISReviewer({
     [oasisData]
   );
 
+  // The exact inputs a review would run against right now.
+  const patientContext = useMemo(() => clinicalPatientContext(patientData), [patientData]);
+  const currentFingerprint = useMemo(
+    () => reviewFingerprint(oasisData, patientContext),
+    [oasisData, patientContext]
+  );
+
   // Monotonic run id: a re-run (or a new assessment) supersedes any in-flight
   // review, so a slower earlier response can never overwrite newer findings.
   const runIdRef = useRef(0);
+  // A review already in flight is allowed to finish (the scheduler only drops
+  // QUEUED work), but once this card is gone its result must not be reported:
+  // the parent clears its review state when a new document is selected, and a
+  // late completion would be rehydrated as the NEXT assessment's saved review.
+  // Set on (re)mount so StrictMode's dev remount cannot wedge it false.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   // `interactive: true` for a review the user asked for by clicking — it jumps
   // ahead of the page's other auto-fired analyses in the app-wide AI budget.
@@ -137,7 +162,7 @@ ${JSON.stringify(analysisResults, null, 2)}
 ${deterministicChecksPromptBlock(runOasisDeterministicChecks(oasisData))}
 
 PATIENT CONTEXT (clinical fields only):
-${JSON.stringify(clinicalPatientContext(patientData), null, 2)}
+${JSON.stringify(patientContext, null, 2)}
 
 PERFORM COMPREHENSIVE REVIEW IN 3 AREAS:
 
@@ -300,15 +325,20 @@ Return detailed JSON with all findings.`;
       });
 
       if (runId !== runIdRef.current) return; // superseded by a newer review
+      if (!isMountedRef.current) return; // card is gone — see isMountedRef
       const reviewedAtIso = new Date().toISOString();
+      const fingerprint = reviewFingerprint(oasisData, patientContext);
       setReviewResults(result);
       setReviewedAt(reviewedAtIso);
-      setReviewedOasisData(oasisData);
+      setReviewedFingerprint(fingerprint);
       // Report upward so the caller can persist the review on the OASISUpload
       // record and restore it (instead of re-billing) when the upload reopens.
-      onReviewCompleteRef.current?.({ results: result, reviewed_at: reviewedAtIso });
+      // The fingerprint travels with it so a rehydrated review is judged
+      // against the data it actually ran on.
+      onReviewCompleteRef.current?.({ results: result, reviewed_at: reviewedAtIso, fingerprint });
     } catch (error) {
       if (runId !== runIdRef.current) return; // superseded by a newer review
+      if (!isMountedRef.current) return; // card is gone — nobody to show it to
       // A queued review dropped because this card unmounted was never sent —
       // there is no failure to report, and nobody left to read a toast.
       if (isAICancellation(error)) return;
@@ -335,7 +365,10 @@ Return detailed JSON with all findings.`;
       runIdRef.current += 1; // supersede any in-flight run
       setReviewResults(savedReview.results);
       setReviewedAt(savedReview.reviewed_at || null);
-      setReviewedOasisData(oasisData);
+      // Trust the fingerprint stored WITH the review, not the data in front of
+      // us: a review saved before a correction must rehydrate as stale, not be
+      // silently re-blessed as current.
+      setReviewedFingerprint(savedReview.fingerprint || null);
       setReviewError(false);
       setActionItemsCreated(false);
       return;
@@ -401,24 +434,30 @@ Return detailed JSON with all findings.`;
     if (!actionItemPayloads.length || isCreatingActions) return;
     setIsCreatingActions(true);
     try {
-      // Duplicate guard: this analysis may already have items (e.g. the review
-      // was created in an earlier session, or another surface generated them).
+      // Duplicate guard, per finding. This analysis may already carry items from
+      // an earlier run of this button or from the action workflow's own
+      // "Generate Actions" — but those are usually DIFFERENT findings, so an
+      // all-or-nothing check would silently file none of ours.
       const existing = await base44.entities.OASISActionItem.filter(
         { analysis_id: analysisId },
         undefined,
-        1
+        ACTION_ITEM_SCAN_LIMIT
       );
-      if (existing?.length) {
+      const seen = new Set((existing || []).map(actionItemKey));
+      const fresh = actionItemPayloads.filter((item) => !seen.has(actionItemKey(item)));
+      if (fresh.length === 0) {
         setActionItemsCreated(true);
-        toast.info("Action items already exist for this analysis — see the action workflow.");
+        toast.info("These findings are already filed as action items — see the action workflow.");
         return;
       }
-      await base44.entities.OASISActionItem.bulkCreate(actionItemPayloads);
+      await base44.entities.OASISActionItem.bulkCreate(fresh);
       setActionItemsCreated(true);
+      const skipped = actionItemPayloads.length - fresh.length;
       toast.success(
-        `${actionItemPayloads.length} action item${actionItemPayloads.length === 1 ? "" : "s"} created for the action workflow.`
+        `${fresh.length} action item${fresh.length === 1 ? "" : "s"} created for the action workflow.`
+        + (skipped > 0 ? ` ${skipped} already filed.` : "")
       );
-      onActionItemsCreated?.(actionItemPayloads.length);
+      onActionItemsCreated?.(fresh.length);
     } catch (error) {
       console.error("Failed to create action items:", error);
       toast.error("Couldn't create action items. Please try again.");
@@ -427,9 +466,13 @@ Return detailed JSON with all findings.`;
     }
   };
 
-  // In-place corrections replace the oasisData object; findings computed against
-  // the previous data may no longer hold.
-  const dataChangedSinceReview = !!(reviewResults && reviewedOasisData && oasisData !== reviewedOasisData);
+  // Findings computed against different inputs — corrected M-items, or a patient
+  // match that resolved after the review ran — may no longer hold. A review with
+  // no recorded fingerprint (persisted before this was tracked) is left alone
+  // rather than being labelled stale on no evidence.
+  const dataChangedSinceReview = !!(
+    reviewResults && reviewedFingerprint && currentFingerprint && currentFingerprint !== reviewedFingerprint
+  );
 
   return (
     <Card className="border-2 border-indigo-400 bg-gradient-to-br from-indigo-50 to-blue-50 shadow-lg">

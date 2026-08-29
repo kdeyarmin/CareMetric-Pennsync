@@ -6,6 +6,20 @@
 // (OASISActionWorkflow lists items by analysis_id) instead of dying with the
 // review card. Pure — no React, no SDK; the caller creates the records.
 
+/**
+ * Stable identity for an action item, used to skip findings that are already
+ * filed for this analysis. Category + M-item + the rationale text is what makes
+ * two items "the same finding"; severity and status deliberately are not, so a
+ * re-run that re-scores a finding doesn't create a duplicate.
+ */
+export function actionItemKey(item) {
+  return [
+    item?.category || "",
+    (item?.oasis_item || "").trim().toLowerCase(),
+    (item?.rationale || "").trim().toLowerCase().slice(0, 200),
+  ].join("|");
+}
+
 const VALID_SEVERITIES = new Set(["critical", "high", "medium", "low"]);
 const severityOf = (s) => (VALID_SEVERITIES.has(s) ? s : "medium");
 

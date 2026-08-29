@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { toLocalISODate } from "@/lib/dateLocal";
@@ -143,6 +143,9 @@ export default function OASISAnalyzer() {
   // { results, reviewed_at }. Restored from a saved OASISUpload record on load
   // (so reopening never re-bills the LLM) and persisted back on completion.
   const [comprehensiveReview, setComprehensiveReview] = useState(null);
+  // Mirror of the above for async code that must read the LATEST review after an
+  // await, not the value captured when the handler started.
+  const comprehensiveReviewRef = useRef(null);
   // The OASISUpload record id backing the loaded assessment, when one exists —
   // set on load of a saved upload and after "Save to Patient Record".
   const [oasisUploadRecordId, setOasisUploadRecordId] = useState(null);
@@ -289,7 +292,15 @@ export default function OASISAnalyzer() {
     setRevenueData(null); // drop the prior result's revenue figures (see handleFileChange)
     // Batch results carry no persisted comprehensive review / backing record.
     setComprehensiveReview(null);
+    comprehensiveReviewRef.current = null;
     setOasisUploadRecordId(null);
+    // Clear the analysis IDENTITY too. The effect that mints a fresh
+    // analysis_id only runs when analysisId is falsy, so leaving the previous
+    // one here filed this assessment's action items under the previous
+    // assessment's workflow and patient name.
+    setAnalysisId(null);
+    setPatientName("");
+    setSavedToPatient(false);
     setAnalysisResults(result);
     if (result?.pdgm_data) {
       setPdgmData(result.pdgm_data);
@@ -320,6 +331,7 @@ export default function OASISAnalyzer() {
       // Drop the prior assessment's comprehensive review + backing record so it
       // can't hydrate (or be persisted) against this new document's analysis.
       setComprehensiveReview(null);
+      comprehensiveReviewRef.current = null;
       setOasisUploadRecordId(null);
     } else {
       setError("Please select a valid PDF file.");
@@ -479,6 +491,15 @@ export default function OASISAnalyzer() {
       });
       // The assessment now has a backing record — later review re-runs persist to it.
       setOasisUploadRecordId(savedOASIS.id);
+      // A review that completed WHILE the create was in flight was not in the
+      // payload above and had no record id to update — without this it would be
+      // lost, and reopening the record would re-run (and re-bill) the review.
+      const latestReview = comprehensiveReviewRef.current;
+      if (latestReview && latestReview !== comprehensiveReview) {
+        base44.entities.OASISUpload
+          .update(savedOASIS.id, { comprehensive_review: sanitizeData(latestReview) })
+          .catch((err) => console.error('Failed to persist comprehensive review after save:', err));
+      }
 
       // Log save activity
       logActivity(ActivityActions.OASIS_SAVE, {
@@ -517,6 +538,7 @@ export default function OASISAnalyzer() {
     // hydrates from it instead of re-running the billed LLM call, and keep the
     // record id so a manual re-run can persist its refreshed findings.
     setComprehensiveReview(oasisUpload.comprehensive_review || null);
+    comprehensiveReviewRef.current = oasisUpload.comprehensive_review || null;
     setOasisUploadRecordId(oasisUpload.id);
     setAnalysisResults(oasisUpload.analysis_results);
     setPdgmData(oasisUpload.pdgm_data);
@@ -1642,6 +1664,7 @@ Return scores (0-100) and top 3-5 issues in each category.`,
           savedReview={comprehensiveReview}
           onReviewComplete={(review) => {
             setComprehensiveReview(review);
+            comprehensiveReviewRef.current = review;
             // Persist onto the backing record (when one exists) so reopening
             // the saved upload restores this review instead of re-billing.
             if (oasisUploadRecordId) {
