@@ -33,7 +33,7 @@ export async function fetchCallerAgencySettings(agencyName) {
  * caller has no agency key (or exactly one unscoped row when keyed miss is
  * handled by returning null — no foreign-row fallback).
  *
- * @param {'PDGMRateConfig' | 'FollowUpRuleConfig' | 'FaxRetryConfig'} entityName
+ * @param {'PDGMRateConfig' | 'FollowUpRuleConfig' | 'FaxRetryConfig' | 'PayerRateConfig'} entityName
  * @param {string | null | undefined} agencyName
  * @returns {Promise<object | null>}
  */
@@ -64,6 +64,11 @@ export function fetchCallerPdgmRateConfig(agencyName) {
 /** @param {string | null | undefined} agencyName */
 export function fetchCallerFollowUpRuleConfig(agencyName) {
   return fetchCallerScopedConfig('FollowUpRuleConfig', agencyName);
+}
+
+/** @param {string | null | undefined} agencyName */
+export function fetchCallerPayerRateConfig(agencyName) {
+  return fetchCallerScopedConfig('PayerRateConfig', agencyName);
 }
 
 /** @param {string | null | undefined} agencyName */

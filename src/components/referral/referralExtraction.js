@@ -47,39 +47,29 @@ When you encounter handwritten text:
 2. Include context about WHERE it appeared (e.g., "handwritten in margins", "noted in physician section")
 3. If uncertain about legibility, include "[possibly X or Y]" notation
 
+NON-NEGOTIABLE GROUNDING RULES (apply to every field):
+- Extract ONLY what this document states. Never invent, infer, or "complete" identifiers, dates, ICD-10 codes, medication names/doses, vital signs, lab values, wound measurements, or scores.
+- ICD-10 codes: record a code ONLY when it appears in the document. If a diagnosis is documented without a code, record the diagnosis text and leave the code field empty — the agency's coder assigns codes; you never do.
+- If a value is absent, use "Not documented in referral" (or omit the array item) instead of a plausible guess.
+- OASIS/GG drafts: score an item only when the document gives an explicit basis, and cite that basis; otherwise omit the item and add it to items_needing_verification.
+- Uncertain handwriting stays flagged ("[unclear handwriting]", "[possibly X or Y]") — never silently resolved into a definite value.
+
 Analyze this patient referral document and extract ALL relevant information needed for:
-1. **Complete OASIS-E assessment** (generate as many OASIS items as possible with confidence scores)
+1. **OASIS-E assessment drafting** (draft every OASIS item the document gives a basis for, with confidence scores — skip items with no documented basis)
 2. Admission nursing assessment
 3. Care planning
-4. **PDGM reimbursement optimization**
+4. **PDGM-complete diagnosis capture**
 
-**YOUR PRIMARY GOAL: Generate a complete, Medicare-compliant OASIS assessment from the referral data. For each OASIS item, use the exact scoring scales and provide your confidence level (high/medium/low) and reasoning.**
+**YOUR PRIMARY GOAL: Draft a Medicare-compliant OASIS assessment from what the referral actually documents. For each OASIS item you draft, use the exact scoring scales and provide your confidence level (high/medium/low) and reasoning. Never fill an item just to complete the form.**
 
-**CRITICAL - PDGM DIAGNOSIS SELECTION:**
-When determining primary and secondary diagnoses, you MUST optimize for maximum PDGM reimbursement by:
-- Identifying the PDGM Clinical Group (MS-Rehab, Neuro/Rehab, Complex Nursing, etc.)
-- Selecting the primary diagnosis that provides the highest case-mix weight
-- Ensuring comorbidities are properly captured to increase case-mix adjustment
-- Considering how functional impairment scores (OASIS M1800-M1860) interact with diagnosis selection
-- If multiple diagnoses are present, prioritize those in higher-paying clinical groups
-- Flag if additional clinical information is needed to optimize the PDGM group assignment
+**CRITICAL - PDGM DIAGNOSIS CAPTURE (documentation, not selection):**
+The app sequences the documented diagnosis codes deterministically against the agency's own PDGM tables — you do NOT pick codes or re-rank diagnoses for reimbursement, and you NEVER invent an ICD-10 code. Your job:
+- Capture the primary diagnosis EXACTLY as the referral states it (the condition driving the home health referral), with its ICD-10 code only if printed in the document.
+- Capture EVERY documented secondary diagnosis and comorbidity — complete capture of what is documented is what supports the case-mix adjustment.
+- In pdgm_optimization_notes, flag documentation gaps a physician/coder query could close: documented conditions carrying no code, unspecified laterality/stage/type, symptom codes where the document names a definitive diagnosis, and any ambiguity about which documented condition is primary.
+- If the document itself names a PDGM clinical group, record it; otherwise you may note the most likely group for the documented primary as advisory context — the app derives the authoritative group from the coded diagnosis.
 
-**PDGM Clinical Groups (highest to lowest reimbursement generally):**
-1. MS-Rehab (Multiple Sclerosis, ALS, Parkinson's with rehab needs)
-2. Neuro/Rehab (CVA, traumatic brain injury, spinal cord disorders)
-3. Wounds/Surgical Aftercare (pressure ulcers, post-surgical wounds)
-4. MMTA-NT-Surgical Rehab (joint replacement, fractures)
-5. Behavioral Health (depression, anxiety as primary with ADL impact)
-6. Complex Nursing (cancer care, diabetes with complications, heart failure)
-7. MMTA - Cardiac/Circulatory (cardiac conditions, COPD)
-
-**For each diagnosis extraction:**
-- Note the ICD-10 code AND its PDGM clinical group
-- If diagnosis could qualify for multiple groups, specify which is optimal
-- Identify missing clinical details that could upgrade the PDGM group
-- Flag if additional documentation is needed to support higher reimbursement
-
-Extract comprehensive details organized by category. Be thorough and specific.
+Extract comprehensive details organized by category. Be thorough and specific about what IS documented; be explicit about what is not.
 
 CRITICAL EXTRACTION REQUIREMENTS:
 
@@ -151,6 +141,17 @@ Assess each ADL:
 - M1850: Transferring (bed, chair, wheelchair)
 - M1860: Ambulation/locomotion
 - M1870: Feeding/eating
+
+**Section GG (OASIS-E) — Self-Care GG0130 and Mobility GG0170:**
+Score each supported item on the 6-point scale:
+- 06 = Independent
+- 05 = Setup or clean-up assistance
+- 04 = Supervision or touching assistance
+- 03 = Partial/moderate assistance
+- 02 = Substantial/maximal assistance
+- 01 = Dependent
+If the activity was not attempted: 07 = patient refused, 09 = not applicable, 10 = not attempted (environmental limitation), 88 = not attempted (medical condition or safety).
+Score GG0130 self-care (eating, oral hygiene, toileting hygiene, shower/bathe, upper-body dressing, lower-body dressing, footwear) and GG0170 mobility (roll left/right, sit to lying, lying to sitting, sit to stand, chair/bed transfer, toilet transfer, walk 10 ft, walk 50 ft with two turns, walk 150 ft) from the documented functional status. Format each as "<code> - <short basis>", and OMIT items the referral gives no basis for — never guess a GG code.
 
 **Cognitive Function (M1700):**
 - 0 = Alert/oriented, processes info
@@ -311,26 +312,29 @@ export const REFERRAL_EXTRACTION_SCHEMA = {
       properties: {
         primary_diagnosis: {
           type: "string",
-          description: "Primary diagnosis selected for OPTIMAL PDGM reimbursement"
+          description: "Primary diagnosis EXACTLY as documented in the referral (the condition driving the home health referral) — never re-selected for reimbursement"
         },
-        primary_icd10: { type: "string" },
+        primary_icd10: {
+          type: "string",
+          description: "ICD-10 code ONLY as printed in the document; empty when the referral does not code the diagnosis"
+        },
         pdgm_clinical_group: {
           type: "string",
-          description: "PDGM Clinical Group (e.g., MS-Rehab, Neuro/Rehab, Complex Nursing)"
+          description: "PDGM clinical group if stated in the document, else the most likely group for the documented primary (advisory only — the app derives the authoritative group from the coded diagnosis)"
         },
         pdgm_optimization_notes: {
           type: "string",
-          description: "Why this primary diagnosis was selected for PDGM optimization, alternatives considered, missing info needed"
+          description: "Documentation gaps a physician/coder query could close (uncoded documented conditions, unspecified laterality/stage, primary-diagnosis ambiguity) — never invented codes or diagnoses"
         },
         secondary_diagnoses: {
           type: "array",
           items: { type: "string" },
-          description: "Secondary diagnoses that increase case-mix through comorbidity adjustments"
+          description: "Every secondary diagnosis documented in the referral, exactly as stated"
         },
         comorbidity_adjustments: {
           type: "array",
           items: { type: "string" },
-          description: "Specific comorbidities that will increase PDGM case-mix weight"
+          description: "Documented comorbidities relevant to the PDGM comorbidity adjustment — from the document only, never inferred"
         },
         past_medical_history: {
           type: "array",
@@ -539,7 +543,9 @@ export const REFERRAL_EXTRACTION_SCHEMA = {
         practitioner_name: { type: "string", description: "Name of the practitioner who performed the F2F encounter" },
         practitioner_type: { type: "string", description: "Practitioner credential/type (e.g. MD, DO, NP, PA, CNS)" },
         clinical_reason: { type: "string", description: "Documented clinical reason for the encounter" },
-        documented_conditions: { type: "array", items: { type: "string" }, description: "Conditions documented at the encounter" }
+        documented_conditions: { type: "array", items: { type: "string" }, description: "Conditions documented at the encounter" },
+        practitioner_signature_present: { type: "boolean", description: "True ONLY when the F2F documentation visibly carries the practitioner's signature (wet, electronic attestation, or signature stamp with date). False when the note is clearly unsigned. Omit when signature presence cannot be determined from the document." },
+        signed_date: { type: "string", description: "Date next to the practitioner's signature on the F2F note, if visible (YYYY-MM-DD if determinable)" }
       }
     },
     oasis_assessment: {
@@ -576,6 +582,34 @@ export const REFERRAL_EXTRACTION_SCHEMA = {
         m2010_high_risk_drugs: { type: "array", items: { type: "string" } },
         m2020_management_oral_meds: { type: "string" },
         m2030_management_injectable_meds: { type: "string" },
+        gg0130_self_care: {
+          type: "object",
+          description: "OASIS-E Section GG self-care (GG0130): '<code> - <short basis>' per item on the 06-01 scale (07/09/10/88 when not attempted). Omit items the referral gives no basis for — never guess.",
+          properties: {
+            a_eating: { type: "string" },
+            b_oral_hygiene: { type: "string" },
+            c_toileting_hygiene: { type: "string" },
+            e_shower_bathe_self: { type: "string" },
+            f_upper_body_dressing: { type: "string" },
+            g_lower_body_dressing: { type: "string" },
+            h_putting_on_taking_off_footwear: { type: "string" }
+          }
+        },
+        gg0170_mobility: {
+          type: "object",
+          description: "OASIS-E Section GG mobility (GG0170): same scale and format as GG0130; omit unsupported items.",
+          properties: {
+            a_roll_left_and_right: { type: "string" },
+            b_sit_to_lying: { type: "string" },
+            c_lying_to_sitting_on_side_of_bed: { type: "string" },
+            d_sit_to_stand: { type: "string" },
+            e_chair_bed_to_chair_transfer: { type: "string" },
+            f_toilet_transfer: { type: "string" },
+            i_walk_10_feet: { type: "string" },
+            j_walk_50_feet_with_two_turns: { type: "string" },
+            k_walk_150_feet: { type: "string" }
+          }
+        },
         confidence_notes: { type: "string" },
         items_needing_verification: { type: "array", items: { type: "string" } }
       }
@@ -657,6 +691,8 @@ export function runReferralExtraction(invoke, { fileUrl, fileType = "application
 /** Lightweight prompt for fast form pre-population + urgency triage at upload. */
 export function buildReferralQuickScanPrompt() {
   return `Analyze this referral document and extract key information with automatic categorization.
+
+GROUNDING: Extract only what this document states — leave any field empty/omitted when it is not documented. ICD-10 codes only as printed in the document, never inferred from a diagnosis name. Urgency ratings and suggested tasks must be justified by documented findings, not assumptions.
 
 Extract and categorize:
 

@@ -79,6 +79,44 @@ export function scoreSignals(signals) {
 }
 
 /**
+ * Merge AI-extracted fax answers onto a follow-up request's items.
+ *
+ * Conservative by design: only items currently OPEN can move to 'answered'
+ * (a provider's fax must never downgrade an item a human already marked
+ * answered/resolved, or overwrite a portal response), only answers with
+ * non-empty response text count, and unknown item ids are ignored. Answered
+ * items carry the response with source 'fax' so staff can see where it came
+ * from; RESOLVING remains a human action.
+ *
+ * @param {Array<{id:string, item_status?:string}>} items persisted follow-up items
+ * @param {Array<{id:string, answered?:boolean, response_text?:string}>} answers
+ * @param {string} [answeredAt] ISO timestamp to stamp (defaults to now)
+ * @param {string} [source] where the response came from: "fax" (inbound-fax
+ *   auto-ingestion, the default) or "scan" (staff-uploaded scanned response)
+ * @returns {{items:Array, answeredCount:number}}
+ */
+export function applyFaxAnswersToItems(items, answers, answeredAt, source = "fax") {
+  const byId = new Map();
+  for (const a of answers || []) {
+    const text = String(a?.response_text ?? "").trim();
+    if (a?.id && a?.answered === true && text) byId.set(a.id, text);
+  }
+  let answeredCount = 0;
+  const out = (items || []).map((it) => {
+    const text = byId.get(it?.id);
+    if (!text || (it.item_status && it.item_status !== "open")) return it;
+    answeredCount += 1;
+    return {
+      ...it,
+      item_status: "answered",
+      response: { text: text.slice(0, 4000), source },
+      answered_at: answeredAt || new Date().toISOString(),
+    };
+  });
+  return { items: out, answeredCount };
+}
+
+/**
  * Pick the best candidate for an inbound fax.
  *
  * @param {{ocrText:string, senderNumber:string}} fax

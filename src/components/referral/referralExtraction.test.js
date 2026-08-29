@@ -45,6 +45,34 @@ test("rich extraction schema exposes the key clinical sections", () => {
   assert.ok(REFERRAL_EXTRACTION_SCHEMA.properties.extraction_confidence.properties.overall);
 });
 
+test("extraction prompts forbid invented data (anti-hallucination contract)", () => {
+  const prompt = buildReferralExtractionPrompt("application/pdf");
+  assert.match(prompt, /NON-NEGOTIABLE GROUNDING RULES/);
+  assert.match(prompt, /Never invent, infer, or "complete"/);
+  assert.match(prompt, /record a code ONLY when it appears in the document/);
+  assert.match(prompt, /you do NOT pick codes or re-rank diagnoses for reimbursement/);
+  assert.match(prompt, /Never fill an item just to complete the form/);
+  // The invented "highest to lowest reimbursement" clinical-group ranking and
+  // the revenue-driven primary re-selection instruction must be gone.
+  assert.ok(!/highest to lowest reimbursement/.test(prompt), "no fabricated reimbursement ranking");
+  assert.ok(
+    !/Selecting the primary diagnosis that provides the highest case-mix weight/.test(prompt),
+    "the model never re-selects the primary for revenue"
+  );
+
+  const quick = buildReferralQuickScanPrompt();
+  assert.match(quick, /GROUNDING: Extract only what this document states/);
+  assert.match(quick, /never inferred from a diagnosis name/);
+});
+
+test("diagnosis schema descriptions demand verbatim capture, never invention", () => {
+  const dx = REFERRAL_EXTRACTION_SCHEMA.properties.diagnoses.properties;
+  assert.match(dx.primary_diagnosis.description, /EXACTLY as documented/);
+  assert.match(dx.primary_icd10.description, /ONLY as printed in the document/);
+  assert.match(dx.pdgm_optimization_notes.description, /never invented codes/);
+  assert.match(dx.secondary_diagnoses.description, /documented in the referral, exactly as stated/);
+});
+
 test("quick scan prompt + schema drive form pre-fill and triage", () => {
   const prompt = buildReferralQuickScanPrompt();
   assert.match(prompt, /URGENCY ASSESSMENT/);

@@ -115,6 +115,37 @@ function extractSignals(fax: { ocrText: string; senderNumber: string }, candidat
 
 const scoreSignals = (signals: Record<string, boolean>) => Object.values(signals).filter(Boolean).length;
 
+// Merge AI-extracted fax answers onto follow-up items — mirrors
+// applyFaxAnswersToItems in src/components/referral/followUpFaxMatcher.js
+// (keep the two in sync). Only OPEN items can move to 'answered' (never
+// downgrade a human-marked or portal-answered item), only non-empty response
+// text counts, unknown ids are ignored; resolving stays a human action.
+function applyFaxAnswersToItems(
+  items: Array<Record<string, unknown>>,
+  answers: Array<Record<string, unknown>>,
+  answeredAt?: string,
+  source = 'fax',
+) {
+  const byId = new Map<string, string>();
+  for (const a of answers || []) {
+    const text = String(a?.response_text ?? '').trim();
+    if (a?.id && a?.answered === true && text) byId.set(a.id as string, text);
+  }
+  let answeredCount = 0;
+  const out = (items || []).map((it) => {
+    const text = byId.get(it?.id as string);
+    if (!text || (it.item_status && it.item_status !== 'open')) return it;
+    answeredCount += 1;
+    return {
+      ...it,
+      item_status: 'answered',
+      response: { text: text.slice(0, 4000), source },
+      answered_at: answeredAt || new Date().toISOString(),
+    };
+  });
+  return { items: out, answeredCount };
+}
+
 function bestFaxBackMatch(fax: { ocrText: string; senderNumber: string }, candidates: Array<Record<string, unknown>>) {
   let best: Record<string, unknown> | null = null;
   for (const candidate of candidates) {
@@ -262,18 +293,71 @@ Deno.serve(async (req) => {
           .map(([k]) => k);
 
         if (match.confident) {
-          // Auto-attach: the request is answered by fax; staff review the
-          // document and mark items resolved (per-item mapping from OCR is
-          // deliberately left to a human).
+          // Auto-attach AND auto-ingest: extract the provider's per-item
+          // answers from the completed form against the request's OPEN items.
+          // Conservative: only clearly-answered items flip open → 'answered'
+          // (with the response text and source 'fax'); RESOLVING each item —
+          // verifying the answer suffices — remains a human action, and a
+          // failed extraction still attaches the fax exactly as before.
+          let mergedItems = fu.items as Array<Record<string, unknown>> | undefined;
+          let autoAnswered = 0;
+          const openItems = (Array.isArray(fu.items) ? (fu.items as Array<Record<string, unknown>>) : [])
+            .filter((it) => it && it.id && (!it.item_status || it.item_status === 'open'))
+            .map((it) => {
+              // Coerce to strings so the prompt can never render
+              // "Question: undefined" for an item missing either field.
+              const q = (it.provider_request as Record<string, unknown> | undefined)?.question ?? it.needed;
+              return {
+                id: it.id,
+                title: typeof it.title === 'string' ? it.title : '',
+                question: typeof q === 'string' ? q : '',
+              };
+            });
+          if (openItems.length > 0) {
+            try {
+              const extraction = await base44.asServiceRole.integrations.Core.InvokeLLM({
+                model: 'automatic',
+                prompt: `This is the transcribed text of a provider's completed "Additional Information Request" fax-back form. For each requested item below, determine whether the provider ANSWERED it on this form, and transcribe their response verbatim (typed or handwritten; include "document attached" checkbox marks as the response when checked). Do NOT invent answers: if an item's response area is blank or illegible, mark it unanswered.\n\nREQUESTED ITEMS:\n${openItems
+                  .map((it, i) => `${i + 1}. id: ${it.id}\n   ${it.title || String(it.id)}${it.question ? `\n   Question: ${it.question}` : ''}`)
+                  .join('\n')}\n\nFAX TEXT:\n${ocrText.slice(0, 30000)}`,
+                response_json_schema: {
+                  type: 'object',
+                  properties: {
+                    answers: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string' },
+                          answered: { type: 'boolean' },
+                          response_text: { type: 'string' },
+                        },
+                      },
+                    },
+                  },
+                },
+              });
+              const merged = applyFaxAnswersToItems(
+                fu.items as Array<Record<string, unknown>>,
+                (extraction?.answers as Array<Record<string, unknown>>) || [],
+              );
+              mergedItems = merged.items;
+              autoAnswered = merged.answeredCount;
+            } catch (extractErr) {
+              console.error('Fax-back item extraction failed (attaching without answers):', extractErr?.message);
+            }
+          }
           await base44.asServiceRole.entities.Referral.update(referral.id as string, {
             follow_up_requests: {
               ...fu,
+              ...(mergedItems ? { items: mergedItems } : {}),
               status: 'received',
               received_at: new Date().toISOString(),
               fax_back: {
                 incoming_fax_id: fax.id,
                 document_url: fax.document_url,
                 matched_signals: signalNames,
+                auto_answered_count: autoAnswered,
               },
             },
           }).catch((err) => console.error('Fax-back attach failed:', err?.message));
@@ -292,7 +376,7 @@ Deno.serve(async (req) => {
             await base44.asServiceRole.entities.Notification.create({
               user_email: referral.created_by,
               title: '📠 Provider faxed back a follow-up response',
-              message: `An inbound fax was matched to the information request for ${cand.patientName || 'a referral'} (signals: ${signalNames.join(', ')}). Review the document and mark items resolved.`,
+              message: `An inbound fax was matched to the information request for ${cand.patientName || 'a referral'} (signals: ${signalNames.join(', ')}). ${autoAnswered > 0 ? `${autoAnswered} item(s) were auto-marked answered from the form — verify the responses and resolve them.` : 'Review the document and mark items resolved.'}`,
               type: 'info',
               priority: 'medium',
               metadata: { related_entity: 'Referral', related_entity_id: referral.id },

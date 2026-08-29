@@ -6,6 +6,10 @@ import { useNavigate } from "react-router";
 import { createPageUrl } from "@/utils";
 import ReferralPDFSummarizer from "@/components/referral/ReferralPDFSummarizer";
 import ReferralAnalyzer from "@/components/referral/ReferralAnalyzer";
+import AdmissionBriefEmailCard from "@/components/referral/AdmissionBriefEmailCard";
+import ClinicalManagerBriefCard from "@/components/referral/ClinicalManagerBriefCard";
+import ProviderFaxRequestCard from "@/components/referral/ProviderFaxRequestCard";
+import FinancialGate from "@/components/ui/FinancialGate";
 import { generateDiagnosisCodes, codeLabel } from "@/components/referral/diagnosisCodeGenerator";
 import { referralPatientReadiness } from "@/components/referral/referralPatientReadiness";
 import AIAdmissionDocumentationAssistant from "@/components/clinical/AIAdmissionDocumentationAssistant";
@@ -21,7 +25,13 @@ export default function ReferralProcessor() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [extractedData, setExtractedData] = useState(null);
-  const [_referralAnalysis, setReferralAnalysis] = useState(null);
+  const [referralAnalysis, setReferralAnalysis] = useState(null);
+  // Source referral file + generated admission packet, for the nurse briefing email.
+  const [sourceFile, setSourceFile] = useState(null);
+  const [packetUrl, setPacketUrl] = useState(null);
+  // The AI-generated admission narrative (from the note generator inside the
+  // summarizer), embedded into the nurse briefing email when available.
+  const [admissionNote, setAdmissionNote] = useState("");
   const [isCreatingPatient, setIsCreatingPatient] = useState(false);
   const [diagnosisRanking, setDiagnosisRanking] = useState(null);
   const [isRankingDiagnoses, setIsRankingDiagnoses] = useState(false);
@@ -156,7 +166,16 @@ export default function ReferralProcessor() {
         </Alert>
 
         <ReferralPDFSummarizer
-          onDataExtracted={(data) => setExtractedData(data)}
+          onDataExtracted={(data) => {
+            setExtractedData(data);
+            // A new document supersedes the previous one's analysis/links/note.
+            setReferralAnalysis(null);
+            setPacketUrl(null);
+            setAdmissionNote("");
+          }}
+          onNoteGenerated={(result) => setAdmissionNote(result?.note || "")}
+          onSourceFile={(file) => setSourceFile(file)}
+          onExtractionComplete={(_data, _raw, pdfUrl) => setPacketUrl(pdfUrl || null)}
           onUseForAdmission={(_data) => {
             navigate(createPageUrl('SmartNoteAssistant'));
           }}
@@ -301,6 +320,31 @@ export default function ReferralProcessor() {
               onSaveSection={() => {
               }}
             />
+
+            {/* Fax the provider one itemized request for everything still
+                missing or needing clarification (F2F, orders, coding, …) */}
+            <ProviderFaxRequestCard referralData={extractedData} analysis={referralAnalysis} />
+
+            {/* Email the admitting nurse the full briefing + referral documents */}
+            <AdmissionBriefEmailCard
+              referralData={extractedData}
+              analysis={referralAnalysis}
+              admissionNote={admissionNote}
+              sourceFileUrl={sourceFile?.url || ""}
+              packetUrl={packetUrl || ""}
+            />
+
+            {/* Revenue brief PDF for the clinical manager — financial data, so
+                admin-gated (the card also fails closed internally and the PDGM
+                dollars are stripped server-side for non-admin callers). */}
+            <FinancialGate>
+              <ClinicalManagerBriefCard
+                referralData={extractedData}
+                analysis={referralAnalysis}
+                sourceFileUrl={sourceFile?.url || ""}
+                packetUrl={packetUrl || ""}
+              />
+            </FinancialGate>
 
             <Card className="border-2 border-green-300 bg-green-50">
               <CardContent className="p-3 sm:p-4 md:p-6">

@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ListOrdered, ShieldAlert, ClipboardCopy, FileSearch, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ListOrdered, ShieldAlert, ClipboardCopy, FileSearch, AlertTriangle, CheckCircle2, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 import { generateDiagnosisCodes } from "./diagnosisCodeGenerator.js";
+import { collectComorbidityCapture } from "./comorbidityCapture.js";
 
 /**
  * Deterministic diagnosis-code generator for the referral analyzer.
@@ -58,6 +59,13 @@ export default function DiagnosisCodeGenerator({ referralData }) {
           })
         : null,
     [referralData, rateConfig]
+  );
+
+  // Documented-but-uncoded condition signals (meds/prose/wounds) — coder/
+  // physician queries, deterministic and code-free (see comorbidityCapture.js).
+  const capture = useMemo(
+    () => (referralData ? collectComorbidityCapture(referralData) : null),
+    [referralData]
   );
 
   if (!result) return null;
@@ -152,6 +160,32 @@ export default function DiagnosisCodeGenerator({ referralData }) {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {capture?.opportunities?.length > 0 && (
+          <div className="bg-sky-50 border border-sky-300 rounded-lg p-3">
+            <p className="text-xs font-semibold text-sky-900 flex items-center gap-1 mb-2">
+              <Stethoscope className="w-4 h-4" />
+              Documented but not coded — confirm & query ({capture.opportunities.length})
+            </p>
+            <ul className="space-y-2">
+              {capture.opportunities.map((o) => (
+                <li key={o.key} className="text-xs text-slate-700">
+                  <span className="font-semibold text-sky-900">{o.label}</span>{" "}
+                  <Badge variant="outline" className="text-[10px] align-middle">
+                    {o.value === "high" ? "high-value" : "medium-value"}
+                  </Badge>
+                  <p className="mt-0.5">{o.suggestion}</p>
+                  <p className="text-slate-500 mt-0.5">
+                    Evidence: {o.evidence.map((e) => `${e.source}: “${e.text}”`).join("; ")}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[10px] text-slate-500 mt-2">
+              Signals only — codes are never assigned here. Confirm with the physician/coder before adding a diagnosis.
+            </p>
           </div>
         )}
 

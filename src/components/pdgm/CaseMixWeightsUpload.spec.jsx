@@ -118,4 +118,24 @@ describe("CaseMixWeightsUpload", () => {
     expect(screen.getByText(/unsaved rate edits/i)).toBeInTheDocument();
     expect(onPersist).not.toHaveBeenCalled();
   });
+
+  it("loads the bundled CMS CY 2026 table through the same strict preview flow and stores it", async () => {
+    const user = userEvent.setup();
+    const onPersist = vi.fn().mockResolvedValue();
+    render(<CaseMixWeightsUpload storedTable={null} onPersist={onPersist} uploadedBy="admin@agency.test" />);
+
+    await user.click(screen.getByRole("button", { name: /load cms cy 2026 table \(bundled\)/i }));
+    // Full official table previews clean: all 432 payment groups mapped.
+    expect(await screen.findByText(new RegExp(`${EXPECTED_GROUP_COUNT} of ${EXPECTED_GROUP_COUNT} payment groups`))).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /store reference table \(CY2026\)/i }));
+    expect(onPersist).toHaveBeenCalledTimes(1);
+    const stored = onPersist.mock.calls[0][0];
+    expect(stored.payment_year).toBe("2026");
+    expect(stored.groups).toBe(EXPECTED_GROUP_COUNT);
+    expect(stored.source).toMatch(/CY 2026 Final HH PDGM Case Mix Weights/);
+    // Spot value verbatim from the CMS file.
+    const bh = Object.entries(stored.rows).find(([, v]) => v.hipps === "1FC11");
+    expect(bh[1]).toMatchObject({ weight: 1.0804, lupaThreshold: 4 });
+  });
 });

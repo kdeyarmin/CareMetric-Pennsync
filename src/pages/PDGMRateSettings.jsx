@@ -7,6 +7,8 @@ import { isAdminLike } from "@/lib/superAdmin";
 import { DEFAULT_PDGM_RATES, mergePdgmRates, DEFAULT_ICD10_CLINICAL_GROUPS, effectiveIcdGroups } from "@/components/pdgm/pdgmRates";
 import { validateRateNumbers, validateIcdMappings } from "@/components/pdgm/rateSettingsValidation";
 import CaseMixWeightsUpload from "@/components/pdgm/CaseMixWeightsUpload";
+import WageIndexUpload from "@/components/pdgm/WageIndexUpload";
+import PayerRatesManager from "@/components/pdgm/PayerRatesManager";
 import PDGMCalculationPreview from "@/components/pdgm/PDGMCalculationPreview";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -271,6 +273,34 @@ export default function PDGMRateSettings() {
   // (never the in-progress form) so an upload can't silently commit unsaved rate
   // edits. The upload card is disabled while the editor is dirty for the same
   // reason (a save here refetches + reseeds the editor from the saved config).
+  // Persist ONLY the CBSA wage-index table, re-sending the SAVED config fields
+  // (same rationale as weightTableMutation; savePDGMRateConfig preserves the
+  // case-mix table when the field is omitted).
+  const wageIndexTableMutation = useMutation({
+    mutationFn: async (tableOrNull) => {
+      const payload = {
+        label: config?.label ?? "",
+        effective_year: config?.effective_year ?? "",
+        is_official: config?.is_official === true,
+        notes: config?.notes ?? "",
+        rates: config?.rates ?? {},
+        icd10_clinical_groups: config?.icd10_clinical_groups ?? {},
+        wage_index_table: tableOrNull,
+      };
+      return base44.functions.invoke("savePDGMRateConfig", payload);
+    },
+    onSuccess: (_res, tableOrNull) => {
+      queryClient.invalidateQueries({ queryKey: ["pdgm-rate-config"] });
+      toast.success(tableOrNull
+        ? "CBSA wage-index table stored — referral estimates now wage-adjust by the patient's address."
+        : "Stored CBSA wage-index table removed.");
+    },
+    onError: (err) => {
+      console.error("Failed to store the wage-index table:", err);
+      toast.error("Could not store the wage-index table. Please try again.");
+    },
+  });
+
   const weightTableMutation = useMutation({
     mutationFn: async (tableOrNull) => {
       const payload = {
@@ -446,7 +476,10 @@ export default function PDGMRateSettings() {
             onPersist={(tableOrNull) => weightTableMutation.mutateAsync(tableOrNull)}
             uploadedBy={user?.email || null}
             defaultYear={meta.effective_year}
-            disabled={configFetching || configError || isDirty || saveMutation.isPending || weightTableMutation.isPending}
+            // Cross-disabled on the wage-index mutation too: both tables live on the
+            // same config row via preserve-unless-sent, so concurrent saves could
+            // each preserve the other's PRE-save value and silently erase it.
+            disabled={configFetching || configError || isDirty || saveMutation.isPending || weightTableMutation.isPending || wageIndexTableMutation.isPending}
             disabledReason={
               configError
                 ? "The saved rate set could not be loaded — reload the page before storing a table (persisting now would overwrite it with blanks)."
@@ -455,6 +488,32 @@ export default function PDGMRateSettings() {
                   : "You have unsaved rate edits — save or reset them first (storing the table reloads the saved rate set)."
             }
           />
+
+          {/* CBSA wage-index table — the patient-location wage adjustment the
+              referral revenue brief applies (unmatched addresses keep the
+              single agency-wide wage index). Same disabled guards as the
+              case-mix upload: never persist against an unloaded config. */}
+          <WageIndexUpload
+            storedTable={config?.wage_index_table || null}
+            onPersist={(tableOrNull) => wageIndexTableMutation.mutateAsync(tableOrNull)}
+            uploadedBy={user?.email || null}
+            disabled={configFetching || configError || isDirty || saveMutation.isPending || wageIndexTableMutation.isPending || weightTableMutation.isPending}
+            disabledReason={
+              configError
+                ? "The saved rate set could not be loaded — reload the page before storing a table."
+                : configFetching
+                  ? "Loading the saved rate set…"
+                  : isDirty
+                    ? "You have unsaved rate edits — save or reset them first."
+                    : null
+            }
+          />
+
+          {/* Payer reimbursement table — imported contracted rates + typical
+              authorized visits, consumed by the referral revenue brief. Saves go
+              through savePayerRateConfig (its own entity/row, so it is
+              independent of the PDGM rate Save/dirty state above). */}
+          <PayerRatesManager currentUser={user} />
 
           {/* Safety rails: implausible cells / broken ICD mappings block Save. */}
           {(blockingErrors.length > 0 || icdIssues.warnings.length > 0) && (

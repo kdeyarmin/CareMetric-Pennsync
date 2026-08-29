@@ -14,11 +14,15 @@ import {
   TrendingUp,
   Brain,
   ShieldCheck,
-  ShieldAlert
+  ShieldAlert,
+  FileText
 } from "lucide-react";
 import { toast } from 'sonner';
 import { referralToF2FInput, validateFaceToFace } from "./faceToFaceValidator.js";
+import { classifyPayer } from "./visitPlanEstimator.js";
 import DiagnosisCodeGenerator from "./DiagnosisCodeGenerator.jsx";
+import VisitPlanCard from "./VisitPlanCard.jsx";
+import MedicareEligibilityCard from "./MedicareEligibilityCard.jsx";
 
 export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
   const [analysis, setAnalysis] = useState(null);
@@ -67,16 +71,33 @@ export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
     // a face-to-face encounter as missing when the referral carries a valid one).
     const f2fInput = referralToF2FInput(referralData);
     const f2f = f2fInput ? validateFaceToFace(f2fInput) : null;
+    // A referral with NO F2F block is itself a critical finding (condition of
+    // payment) — tell the model so, instead of leaving it to chance.
+    // The strength of the no-F2F directive depends on the payer: an F2F
+    // encounter is a federal condition of payment for Medicare (42 CFR
+    // 424.22) AND Medicaid home health (42 CFR 440.70(f)(1)); commercial /
+    // unidentified payers get plan-verification language instead so a
+    // Medicare-only framing isn't forced onto every payer.
+    const payer = classifyPayer(referralData).payer;
+    const f2fRequired = ["medicare_ffs", "medicare_advantage", "medicaid"].includes(payer);
     const f2fContext = f2f
       ? `\n\nDETERMINISTIC PRE-CHECK (system-validated, do not contradict it): Face-to-Face encounter validation per 42 CFR 424.22 — status: ${f2f.status}. ${f2f.reasons.join(" ")}${
           f2f.status === "valid" ? " Do NOT list the face-to-face encounter as missing information." : ""
         }`
-      : "";
+      : f2fRequired
+      ? `\n\nDETERMINISTIC PRE-CHECK (system-validated, do not contradict it): No Face-to-Face encounter is documented in this referral. An F2F encounter within 90 days before or 30 days after the start of care is a federal condition of payment for this payer (Medicare: 42 CFR 424.22; Medicaid home health: 42 CFR 440.70(f)) — include the Face-to-Face encounter documentation in critical_missing.`
+      : `\n\nDETERMINISTIC PRE-CHECK (system-validated, do not contradict it): No Face-to-Face encounter is documented in this referral. This payer is not identified as Medicare or Medicaid, so the federal F2F condition of payment does not directly apply — list the Face-to-Face encounter under recommended_missing with a note to verify this plan's own documentation requirements (many plans mirror Medicare's F2F rule).`;
 
     try {
       const result = await ai.run({
         model: "automatic",
         prompt: `You are an expert home health intake coordinator. Analyze this patient referral and provide:
+
+NON-NEGOTIABLE GROUNDING RULES:
+- Base EVERY statement only on the Referral Data below (plus the deterministic pre-check). Never invent demographics, diagnoses, codes, medications, dates, findings, or history.
+- Information that is absent is MISSING — report it in missing_information instead of assuming a typical value. Before listing a field as missing, confirm it is actually absent from the Referral Data.
+- Risk flags, urgency factors, and the patient summary may only reference documented findings — no textbook-typical risks the referral doesn't support.
+- Visit estimates are planning estimates: when the referral documents too little for a discipline, omit that estimate rather than guessing, and set confidence accordingly.
 
 1. MISSING INFORMATION ANALYSIS:
    - Identify all required fields that are missing or incomplete
@@ -104,6 +125,16 @@ export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
    - Required certifications or specializations
    - Experience level needed
    - Special skills (e.g., PICC line care, ventilator management)
+
+6. PATIENT SUMMARY:
+   - A concise clinical snapshot (3-5 sentences) an intake nurse could read in report: who the patient is, why they were referred, key active conditions, functional status, and home support
+   - Key active conditions as a short list
+
+7. VISIT UTILIZATION ESTIMATE (planning-grade — a clinician confirms at SOC):
+   - If the referral ORDERS explicit visit frequencies, restate them exactly in suggested_frequency (ordered frequencies are authoritative — never change them)
+   - Otherwise estimate: skilled nursing visits for days 1-30 and days 31-60, and PT/OT/ST/MSW/aide visits for the 60-day episode, based on diagnosis acuity, wound care burden, medication teaching needs, and rehab potential
+   - Give a week-by-week frequency in standard home-health notation (e.g. "SN 3w2, 2w2, 1w5; PT 2w4") with the clinical rationale
+   - Set confidence (high/medium/low) honestly from how much the referral actually documents
 
 Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
         response_json_schema: {
@@ -178,6 +209,30 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
                 special_skills: { type: "array", items: { type: "string" } },
                 language_requirements: { type: "array", items: { type: "string" } }
               }
+            },
+            patient_summary: {
+              type: "object",
+              properties: {
+                narrative: { type: "string" },
+                key_conditions: { type: "array", items: { type: "string" } },
+                functional_snapshot: { type: "string" },
+                support_and_home: { type: "string" }
+              }
+            },
+            visit_estimates: {
+              type: "object",
+              properties: {
+                nursing_visits_first_30_days: { type: "number" },
+                nursing_visits_days_31_60: { type: "number" },
+                pt_visits: { type: "number" },
+                ot_visits: { type: "number" },
+                st_visits: { type: "number" },
+                msw_visits: { type: "number" },
+                aide_visits: { type: "number" },
+                suggested_frequency: { type: "string" },
+                rationale: { type: "string" },
+                confidence: { type: "string", enum: ["high", "medium", "low"] }
+              }
             }
           }
         }
@@ -210,7 +265,32 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
   // Face-to-Face (F2F) validation — deterministic and referral-only, so like
   // the diagnosis-code generator it renders in EVERY state (loading, failed,
   // loaded): an AI outage must never hide a 42 CFR 424.22 compliance result.
-  const f2fAlert = f2fValidation && (
+  // A referral with NO F2F documented at all gets an explicit warning — a
+  // missing condition-of-payment document must never be silently absent. The
+  // wording is payer-aware: the federal F2F requirement binds Medicare
+  // (42 CFR 424.22) and Medicaid home health (42 CFR 440.70(f)); other payers
+  // get verify-the-plan language.
+  const payerClass = classifyPayer(referralData).payer;
+  const f2fFederallyRequired = ["medicare_ffs", "medicare_advantage", "medicaid"].includes(payerClass);
+  const f2fAlert = !f2fValidation ? (
+    <Alert className="border-2 bg-yellow-50 border-yellow-300">
+      <ShieldAlert className="w-5 h-5 text-yellow-600" />
+      <AlertDescription>
+        <div className="flex items-center justify-between mb-1">
+          <p className="font-semibold">
+            Face-to-Face Encounter: <Badge className="bg-yellow-600">Not documented</Badge>
+          </p>
+          <span className="text-xs text-slate-600">42 CFR 424.22</span>
+        </div>
+        <p className="text-sm">
+          No Face-to-Face encounter is documented in this referral.{" "}
+          {f2fFederallyRequired
+            ? "An encounter by the certifying physician/allowed practitioner within 90 days before or 30 days after the start of care is a federal condition of payment for this payer (Medicare: 42 CFR 424.22; Medicaid home health: 42 CFR 440.70(f)) — request the F2F note from the referring provider before admission."
+            : "This payer is not identified as Medicare or Medicaid, so the federal F2F condition of payment does not directly apply — verify this plan's own documentation requirements (many plans mirror Medicare's F2F rule) and request the note if required."}
+        </p>
+      </AlertDescription>
+    </Alert>
+  ) : (
     <Alert
       className={`border-2 ${
         f2fValidation.status === "valid"
@@ -258,6 +338,17 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
     </Alert>
   );
 
+  // Deterministic panels (no LLM) — like the diagnosis-code generator they
+  // render in EVERY state: an AI outage must never hide the Medicare-criteria
+  // snapshot or the ordered visit plan. AI visit estimates slot in once (and
+  // only if) the analysis lands.
+  const deterministicPanels = (
+    <>
+      <MedicareEligibilityCard referralData={referralData} f2fValidation={f2fValidation} />
+      <VisitPlanCard referralData={referralData} aiEstimates={analysis?.visit_estimates} />
+    </>
+  );
+
   if (!analysis) {
     // The diagnosis-code generator is deterministic (no LLM), so it renders
     // immediately — even while the AI analysis is still running or has failed.
@@ -266,6 +357,7 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
         <div className="space-y-4">
           <DiagnosisCodeGenerator referralData={referralData} />
           {f2fAlert}
+          {deterministicPanels}
           <Card className="border-2 border-red-300">
             <CardContent className="p-8 text-center">
               <XCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
@@ -282,6 +374,7 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
       <div className="space-y-4">
         <DiagnosisCodeGenerator referralData={referralData} />
         {f2fAlert}
+        {deterministicPanels}
         <Card className="border-2 border-blue-300">
           <CardContent className="p-8 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
@@ -313,6 +406,43 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
 
   return (
     <div className="space-y-4">
+      {/* Patient Summary — the AI's report-ready snapshot of who this patient is */}
+      {analysis.patient_summary?.narrative && (
+        <Card className="border-2 border-blue-300">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FileText className="w-5 h-5 text-blue-600" />
+              Patient Summary
+              <Badge variant="outline" className="text-[10px]">AI-generated — verify against source</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-slate-900">{analysis.patient_summary.narrative}</p>
+            {analysis.patient_summary?.key_conditions?.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {analysis.patient_summary.key_conditions.map((c, idx) => (
+                  <Badge key={idx} className="bg-blue-100 text-blue-800">{c}</Badge>
+                ))}
+              </div>
+            )}
+            <div className="grid md:grid-cols-2 gap-2">
+              {analysis.patient_summary?.functional_snapshot && (
+                <div className="bg-slate-50 p-2 rounded border border-slate-200 text-xs">
+                  <p className="font-semibold text-slate-900">Functional status</p>
+                  <p className="text-slate-700">{analysis.patient_summary.functional_snapshot}</p>
+                </div>
+              )}
+              {analysis.patient_summary?.support_and_home && (
+                <div className="bg-slate-50 p-2 rounded border border-slate-200 text-xs">
+                  <p className="font-semibold text-slate-900">Home & support</p>
+                  <p className="text-slate-700">{analysis.patient_summary.support_and_home}</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Diagnosis codes found in the referral, sequenced per the PDGM model —
           deterministic, never AI-generated */}
       <DiagnosisCodeGenerator referralData={referralData} />
@@ -344,6 +474,9 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
       {/* Face-to-Face (F2F) validation — deterministic, referral-only */}
       {f2fAlert}
 
+      {/* Medicare criteria snapshot + payer-aware visit plan — deterministic */}
+      {deterministicPanels}
+
       <div className="grid md:grid-cols-2 gap-4">
         {/* Missing Information */}
         <Card className="border-2 border-orange-300">
@@ -351,6 +484,7 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
             <CardTitle className="flex items-center gap-2 text-base">
               <AlertTriangle className="w-5 h-5 text-orange-600" />
               Missing Information
+              <Badge variant="outline" className="text-[10px]">AI-checked — confirm against document</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -450,6 +584,7 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
             <CardTitle className="flex items-center gap-2 text-base">
               <AlertTriangle className="w-5 h-5 text-red-600" />
               Risk Flags ({analysis.risk_flags?.length})
+              <Badge variant="outline" className="text-[10px]">AI-identified from referral</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>

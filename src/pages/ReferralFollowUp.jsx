@@ -31,6 +31,7 @@ import {
   SEVERITIES,
 } from "../components/referral/referralFollowUpEngine";
 import ProviderFollowUpForm, { followUpFormPdfContent } from "../components/referral/ProviderFollowUpForm";
+import ScannedResponseUpload from "../components/referral/ScannedResponseUpload";
 import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import { estimateFollowUpRevenueImpact, fmtUsd } from "../components/referral/followUpRevenueImpact";
 import { exportToPDF } from "@/components/utils/pdfExporter";
@@ -643,6 +644,35 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                           )}
                         </div>
                       )}
+                      {tracking.response_scan && (
+                        <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-sm">
+                          <p className="font-semibold text-teal-900 flex items-center gap-1">
+                            Provider response scanned in
+                            {typeof tracking.response_scan.auto_answered_count === "number" && (
+                              <span className="text-xs font-normal text-teal-700">
+                                ({tracking.response_scan.auto_answered_count} item(s) auto-answered — verify and resolve)
+                              </span>
+                            )}
+                          </p>
+                          {tracking.response_scan.document_url && isSafeExternalUrl(tracking.response_scan.document_url) && (
+                            <a
+                              href={tracking.response_scan.document_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-teal-700 underline"
+                            >
+                              Open scanned response document
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      {/* Manual counterpart to the fax auto-ingestion: scan the
+                          returned paper form, preview the extracted answers, apply. */}
+                      <ScannedResponseUpload
+                        referral={selected}
+                        tracking={tracking}
+                        onApplied={() => queryClient.invalidateQueries({ queryKey: ["referrals"] })}
+                      />
                       {(tracking.items || []).map((it) => (
                         <div key={it.id} className={`border rounded-lg p-3 ${it.item_status === "resolved" ? "bg-green-50 border-green-200" : it.item_status === "answered" ? "bg-blue-50 border-blue-200" : ""}`}>
                           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -656,7 +686,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                             {/* Portal answers arrive per-item ("answered"); fax-backs
                                 arrive per-document, so any unresolved item is resolvable
                                 once the staff has the faxed response in hand. */}
-                            {it.item_status !== "resolved" && (tracking.fax_back || it.item_status === "answered") && (
+                            {it.item_status !== "resolved" && (tracking.fax_back || tracking.response_scan || it.item_status === "answered") && (
                               <Button type="button" size="sm" variant="outline" onClick={() => markItemResolved(it.id)}>
                                 <CheckCircle2 className="w-4 h-4 mr-1" /> Mark resolved
                               </Button>

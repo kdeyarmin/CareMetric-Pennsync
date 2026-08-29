@@ -256,3 +256,57 @@ test("a generic shared token alone does not link (weak-necessity false pass)", (
   assert.equal(out.checks.linkage.linked, false, "'failure' alone must not link CHF to renal failure");
   assert.equal(out.status, "invalid");
 });
+
+// ── signature check ──
+
+test("an explicitly UNSIGNED F2F routes to needs_review, never valid", () => {
+  const out = validateFaceToFace({
+    encounter: { ...goodEncounter, practitioner_type: "MD", practitioner_signature_present: false },
+    socDate: "2026-06-20",
+    primaryDiagnosis: "Congestive heart failure",
+  });
+  assert.equal(out.status, "needs_review");
+  assert.equal(out.checks.signature.present, false);
+  assert.ok(out.reasons.some((r) => r.includes("UNSIGNED")));
+});
+
+test("a signed F2F stays valid and records the signed date", () => {
+  const out = validateFaceToFace({
+    encounter: {
+      ...goodEncounter,
+      practitioner_type: "MD",
+      practitioner_signature_present: true,
+      signed_date: "2026-06-15",
+    },
+    socDate: "2026-06-20",
+    primaryDiagnosis: "Congestive heart failure",
+  });
+  assert.equal(out.status, "valid");
+  assert.equal(out.checks.signature.present, true);
+  assert.ok(out.reasons.some((r) => r.includes("signed 2026-06-15")));
+});
+
+test("unknown signature presence is informational only (legacy extractions keep their status)", () => {
+  const out = validateFaceToFace({
+    encounter: { ...goodEncounter, practitioner_type: "MD" },
+    socDate: "2026-06-20",
+    primaryDiagnosis: "Congestive heart failure",
+  });
+  assert.equal(out.status, "valid");
+  assert.equal(out.checks.signature.present, null);
+  assert.ok(out.reasons.some((r) => r.includes("verify the F2F note is signed")));
+});
+
+test("referralToF2FInput passes the signature fields through", () => {
+  const input = referralToF2FInput({
+    face_to_face: {
+      encounter_date: "2026-06-15",
+      practitioner_name: "Dr. A",
+      practitioner_signature_present: false,
+      signed_date: "",
+    },
+    estimated_start_date: "2026-06-20",
+    diagnosis: "CHF",
+  });
+  assert.equal(input.encounter.practitioner_signature_present, false);
+});

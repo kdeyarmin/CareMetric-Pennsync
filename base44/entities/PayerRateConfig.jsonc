@@ -1,0 +1,120 @@
+{
+  "name": "PayerRateConfig",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "description": "Human label for this payer rate set, e.g. 'CY2026 contracted rates'."
+    },
+    "effective_year": {
+      "type": "string",
+      "description": "Rate/contract year these numbers apply to, e.g. '2026'."
+    },
+    "payers": {
+      "type": "array",
+      "description": "The agency's payer reimbursement table, one entry per payer plan. Imported/edited by admins on the PDGM Rate Settings page (via savePayerRateConfig — the entity is service-role-write only) and read by the clinical-manager referral brief to estimate the episode reimbursement and typically-authorized visits for the referral's payer. All dollar figures are the agency's own contracted numbers; nothing here is shipped or guessed.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "payer_name": {
+            "type": "string",
+            "description": "Display name of the payer/plan, e.g. 'Aetna Medicare Advantage PPO'."
+          },
+          "payer_type": {
+            "type": "string",
+            "enum": ["medicare_ffs", "medicare_advantage", "medicaid", "commercial", "other"],
+            "description": "Coverage family — matches the referral analyzer's payer classification."
+          },
+          "payment_model": {
+            "type": "string",
+            "enum": ["episodic", "per_visit", "pdgm"],
+            "description": "How this payer pays: a flat episodic rate, per-visit rates by discipline, or PDGM-style (estimate comes from calculatePDGM, not from this row)."
+          },
+          "episode_rate": {
+            "type": "number",
+            "description": "Contracted episodic payment in dollars (payment_model: episodic)."
+          },
+          "episode_length_days": {
+            "type": "number",
+            "description": "Days the episodic rate covers (typically 30 or 60)."
+          },
+          "per_visit_rates": {
+            "type": "object",
+            "description": "Contracted per-visit dollar rates by discipline: { SN, PT, OT, ST, MSW, HHA }."
+          },
+          "approved_visits": {
+            "type": "object",
+            "description": "Visits this payer TYPICALLY authorizes per episode by discipline: { SN, PT, OT, ST, MSW, HHA }. Used to compare the planned visit frequency against the expected authorization."
+          },
+          "auth_required": {
+            "type": "boolean",
+            "description": "Whether prior authorization is required before start of care."
+          },
+          "match_terms": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Insurance-text keywords that identify this payer on a referral (e.g. ['aetna', 'aetna medicare']). Matched case-insensitively against the referral's insurance field."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Free-form contract notes (billing contacts, auth portal, quirks)."
+          }
+        }
+      }
+    },
+    "visit_costs": {
+      "type": "object",
+      "description": "The AGENCY's own fully-loaded cost per visit by discipline: { SN, PT, OT, ST, MSW, HHA } in dollars. Agency-wide (not per-payer). Entered by admins on the payer table manager; the clinical-manager referral brief multiplies these by the planned visits to show the estimated episode margin (revenue − visit cost). Disciplines without a cost are reported uncosted, never guessed."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional notes about the source of these numbers (contract dates, who verified them)."
+    },
+    "source_file": {
+      "type": "string",
+      "description": "Name of the CSV file the table was last imported from, if any."
+    },
+    "updated_by_email": {
+      "type": "string",
+      "description": "Email of the admin who last saved this table (stamped server-side)."
+    },
+    "agency_name": {
+      "type": "string",
+      "description": "Tenant agency this payer table belongs to. savePayerRateConfig filters/updates by this so multi-tenant admins cannot clobber another agency's rates."
+    }
+  },
+  "rls": {
+    // Contracted rates, authorized-visit counts, and the agency's own visit
+    // costs are financial data: reads are ADMIN-LIKE ONLY (the same $or the
+    // app's isAdminLike helper checks, mirroring DocumentPackageToken), so
+    // the client-side FinancialGate is backed server-side and non-admin
+    // users cannot fetch this entity directly through the API — while
+    // agency_admin/super_admin account types keep the access the admin UI
+    // already grants them.
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "agency_admin"
+          }
+        },
+        {
+          "user_condition": {
+            "account_type": "super_admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
+    }
+  },
+  "required": []
+}

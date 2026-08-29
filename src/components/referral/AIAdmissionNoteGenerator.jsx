@@ -7,6 +7,7 @@ import { Sparkles, Copy, CheckCircle2, Edit3, Save, Eye } from "lucide-react";
 import AIFieldIndicator from "@/components/ui/ai-field-indicator";
 import ProgressFeedback from "@/components/ui/progress-feedback";
 import RealTimeDocumentationReviewer from "../documentation/RealTimeDocumentationReviewer";
+import { buildAdmissionNotePrompt, ADMISSION_NOTE_SCHEMA } from "./admissionNotePrompt.js";
 import { toast } from 'sonner';
 
 export default function AIAdmissionNoteGenerator({ referralData, onNoteGenerated, autoGenerate = false }) {
@@ -54,182 +55,13 @@ export default function AIAdmissionNoteGenerator({ referralData, onNoteGenerated
     progressIntervalRef.current = progressInterval;
 
     try {
+      // Grounded pre-visit draft: the prompt (admissionNotePrompt.js) forbids
+      // invented vitals/findings/quotes — undocumented items come back as
+      // bracketed blanks the nurse completes during the actual visit.
       const result = await ai.run({
         model: "automatic",
-        prompt: `You are an expert home health nurse with 20+ years of experience writing comprehensive, Medicare-compliant admission notes.
-
-Using the extracted referral data below, generate a complete, professional admission nursing assessment note that is ready for clinical documentation.
-
-REFERRAL DATA:
-${JSON.stringify(referralData, null, 2)}
-
-CRITICAL REQUIREMENTS FOR ADMISSION NOTE:
-
-**STRUCTURE:**
-Use standard SOAP format with the following sections:
-1. SUBJECTIVE
-2. OBJECTIVE (with subsections)
-3. ASSESSMENT
-4. PLAN
-
-**SUBJECTIVE:**
-- Patient's chief complaint and reason for referral
-- Patient's stated goals and concerns
-- Relevant history from patient/caregiver perspective
-- Include quotes when impactful
-- Note caregiver presence and engagement
-
-**OBJECTIVE - Organize into clear subsections:**
-
-**Demographics:**
-- Age, gender, admission source
-- Living situation and support system
-
-**Vital Signs:**
-- BP, HR, RR, Temp, SpO2, Weight
-- Note if any abnormal values
-
-**Cardiovascular:**
-- Heart rate and rhythm
-- Peripheral pulses
-- Edema assessment
-- Relevant cardiac history
-
-**Respiratory:**
-- Lung sounds
-- Respiratory effort
-- Oxygen needs
-- Relevant respiratory history
-
-**Integumentary:**
-- Skin condition and integrity
-- Wounds (location, size, stage, treatment)
-- Pressure areas
-- Turgor
-
-**Musculoskeletal:**
-- Range of motion
-- Strength assessment
-- Gait and mobility
-- Assistive devices
-
-**Neurological:**
-- Alert and orientation (x4)
-- Speech and comprehension
-- Sensation
-- Cognitive status
-
-**Gastrointestinal:**
-- Bowel function
-- Diet
-- Nutrition status
-- Abdomen assessment
-
-**Genitourinary:**
-- Urinary continence
-- Catheter if present
-- Fluid balance
-
-**Pain Assessment:**
-- Location, intensity (0-10 scale), quality
-- Aggravating/relieving factors
-- Current pain management
-
-**Functional Status (ADLs):**
-- Ambulation (distance, assistive device, assistance level)
-- Transfers (bed, chair, toilet - assistance level)
-- Bathing (independence level)
-- Dressing (upper/lower body)
-- Toileting
-- Grooming
-- Feeding
-Use OASIS scoring language: independent, requires assistive device, minimal/moderate/maximal assistance, dependent
-
-**Medications:**
-- Review medication reconciliation completed
-- High-risk medications noted
-- Patient/caregiver understanding assessed
-- Medication management ability
-
-**Mental/Emotional Status:**
-- Depression screening result (if done)
-- Anxiety level
-- Coping mechanisms
-- Support system strength
-
-**Safety Assessment:**
-- Fall risk level (low/medium/high) with specific factors
-- Home environment hazards
-- Emergency preparedness
-- Safety equipment in place
-
-**ASSESSMENT:**
-This should be a comprehensive clinical summary that:
-- Summarizes primary diagnosis and relevant comorbidities
-- Identifies why patient requires skilled nursing
-- States patient is HOMEBOUND with specific justification:
-  * Why patient cannot leave home safely (physical limitations, medical condition)
-  * What makes leaving home require considerable and taxing effort
-  * Note that absences from home are infrequent/short duration (medical appointments only)
-- Acknowledges rehabilitation potential
-- Notes family support and engagement
-- Identifies barriers to care or learning needs
-
-**PLAN:**
-- Skilled nursing services: specific interventions, frequency, goals
-- Therapy services if ordered (PT/OT/ST): goals and frequency
-- Physician orders to be followed
-- Medication management plan
-- Patient/caregiver education topics
-- Safety interventions
-- Monitoring parameters
-- Coordination needs
-- Short-term and long-term goals
-- Expected outcomes
-
-**STYLE GUIDELINES:**
-- Professional, clinical, objective tone
-- Medicare-compliant language throughout
-- Specific and measurable descriptions
-- Avoid vague terms ("appears to be", "seems")
-- Use medical terminology appropriately
-- Include specific measurements, distances, assistance levels
-- Document what YOU observed during admission visit
-- Note patient/caregiver verbalized understanding of plan
-
-**HOMEBOUND JUSTIFICATION - CRITICAL:**
-Must clearly document why patient meets homebound criteria:
-- Physical limitations (mobility impairment, assistive device needs)
-- Medical condition requiring bed rest or restricted activity
-- Leaving home requires considerable and taxing effort
-- Absences from home rare and short duration
-- Use specific examples (e.g., "patient ambulates 10 feet with FWW and moderate assistance, becomes SOB and requires rest")
-
-Generate a complete, detailed admission note that a skilled nurse would write after a thorough admission visit. Make it comprehensive, specific, and Medicare-compliant.`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            admission_note: {
-              type: "string",
-              description: "Complete SOAP-formatted admission nursing note"
-            },
-            key_findings: {
-              type: "array",
-              items: { type: "string" },
-              description: "Top 5-7 critical findings that require immediate attention"
-            },
-            homebound_justification_strength: {
-              type: "string",
-              enum: ["strong", "moderate", "needs_clarification"],
-              description: "Assessment of homebound documentation strength"
-            },
-            suggested_care_priorities: {
-              type: "array",
-              items: { type: "string" },
-              description: "Top 3-5 care priorities based on assessment"
-            }
-          }
-        }
+        prompt: buildAdmissionNotePrompt(referralData),
+        response_json_schema: ADMISSION_NOTE_SCHEMA
       });
 
       clearInterval(progressInterval);
@@ -309,7 +141,9 @@ Generate a complete, detailed admission note that a skilled nurse would write af
         </CardHeader>
         <CardContent>
           <p className="text-sm text-slate-600 mb-4">
-            Generate a comprehensive, Medicare-compliant admission nursing note from the extracted referral data.
+            Draft a pre-visit admission note template from the extracted referral data. Only documented
+            facts are used — anything the referral doesn't document is left as a bracketed blank to
+            complete during the actual admission visit.
           </p>
           <Button 
             onClick={generateAdmissionNote}
@@ -330,9 +164,12 @@ Generate a complete, detailed admission note that a skilled nurse would write af
           <div className="flex items-center gap-2">
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-navy-600" />
-              AI-Generated Admission Note
+              Admission Note Draft (pre-visit)
             </CardTitle>
-            <AIFieldIndicator confidence={95} source="AI Generated" />
+            <AIFieldIndicator
+              needsVerification
+              tooltip="AI pre-visit draft from the referral only — complete every bracketed blank and verify all values during the admission visit"
+            />
           </div>
           <div className="flex gap-2">
             {isEditing ? (
@@ -400,10 +237,11 @@ Generate a complete, detailed admission note that a skilled nurse would write af
           <div className="flex items-start gap-2">
             <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-semibold text-blue-900 mb-1">Ready for Clinical Review</p>
+              <p className="text-sm font-semibold text-blue-900 mb-1">Pre-visit draft — not a record of care</p>
               <p className="text-xs text-blue-800">
-                This AI-generated note is structured and comprehensive. Review, edit as needed based on actual patient interaction, 
-                and add any additional observations from your admission visit.
+                Built only from the referral document; items the referral doesn't document appear as
+                bracketed blanks. Complete, correct, and verify everything during the actual admission
+                visit before any of this becomes part of the clinical record.
               </p>
             </div>
           </div>

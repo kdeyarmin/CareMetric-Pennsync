@@ -6,10 +6,15 @@
 // scoped to referral intake — F2F is NOT part of the nurse's Smart Note or the
 // patient chart (see the task spec / FaceToFaceEncounter entity comment).
 //
-// Three deterministic checks:
+// Four deterministic checks:
 //   1. Eligible certifying practitioner (physician or allowed NPP).
 //   2. Timing window — within 90 days BEFORE or 30 days AFTER the start of care.
 //   3. Substantive linkage to the primary (home-health-qualifying) diagnosis.
+//   4. Signature — an F2F note the extractor saw as UNSIGNED routes to
+//      needs_review (an unsigned note fails medical review); when signature
+//      presence wasn't determinable the result is untouched and an
+//      informational verify-it reason is appended (older extractions predate
+//      the field, and "unknown" must not flip every historical valid result).
 //
 // Pure + offline (unit-tested with `node --test`).
 
@@ -218,9 +223,24 @@ export function validateFaceToFace({ encounter = {}, socDate, primaryDiagnosis }
   }
   checks.linkage = { linked, diagnosis_tokens: dxTokens };
 
+  // ── 4. Signature ──
+  // true = signed; false = extractor saw an UNSIGNED note (needs_review — get
+  // it signed before billing); undefined/null = not determinable (informational
+  // only, so legacy extractions without the field keep their status).
+  const sig = encounter.practitioner_signature_present;
+  const signature = sig === true ? true : sig === false ? false : null;
+  if (signature === true) {
+    reasons.push(`Practitioner signature documented${encounter.signed_date ? ` (signed ${encounter.signed_date})` : ""}.`);
+  } else if (signature === false) {
+    reasons.push("The F2F note appears UNSIGNED — obtain the practitioner's signature and date before billing (an unsigned note fails medical review).");
+  } else {
+    reasons.push("Signature presence not determinable from the extraction — verify the F2F note is signed and dated.");
+  }
+  checks.signature = { present: signature };
+
   // ── Overall status ──
   const hardFail = eligible === false || withinWindow === false || linked === false;
-  const anyUnknown = eligible === null || withinWindow === null || linked === null;
+  const anyUnknown = eligible === null || withinWindow === null || linked === null || signature === false;
   let status;
   if (hardFail) status = "invalid";
   else if (anyUnknown) status = "needs_review";
@@ -260,6 +280,8 @@ export function referralToF2FInput(referral) {
       practitioner_type: f2f.practitioner_type,
       clinical_reason: f2f.clinical_reason,
       documented_conditions: f2f.documented_conditions,
+      practitioner_signature_present: f2f.practitioner_signature_present,
+      signed_date: f2f.signed_date,
     },
     socDate: referral.estimated_start_date || ex?.admission_details?.admission_date,
     primaryDiagnosis,
