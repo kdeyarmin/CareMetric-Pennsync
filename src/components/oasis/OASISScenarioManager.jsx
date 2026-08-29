@@ -37,6 +37,7 @@ import {
 import { calculatePDGM } from "@/functions/calculatePDGM";
 import { debounce } from "@/lib/debounce";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const FUNCTIONAL_ITEMS = [
   { key: 'm1800_grooming', label: 'M1800 Grooming', max: 3 },
@@ -56,6 +57,7 @@ export default function OASISScenarioManager({
   _onScenarioSelect,
   onCreateActions
 }) {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [scenarioName, setScenarioName] = useState("");
@@ -454,7 +456,18 @@ export default function OASISScenarioManager({
                       size="sm" 
                       variant="ghost" 
                       className="text-red-500 hover:text-red-700"
-                      onClick={() => deleteMutation.mutate(scenario.id)}
+                      onClick={async () => {
+                        // Saved scenarios are hand-built models — never delete on
+                        // a single stray tap.
+                        if (await confirm({
+                          title: "Delete scenario?",
+                          description: `Delete "${scenario.scenario_name || "this scenario"}"? This can't be undone.`,
+                          confirmText: "Delete",
+                          destructive: true,
+                        })) {
+                          deleteMutation.mutate(scenario.id);
+                        }
+                      }}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>

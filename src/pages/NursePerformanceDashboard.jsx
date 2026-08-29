@@ -4,6 +4,7 @@ import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
+import { safePercent } from "@/lib/safePercent";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -767,7 +768,7 @@ export default function NursePerformanceDashboard() {
                     <p className="text-sm text-slate-600 mb-2">Voice Commands</p>
                     <div className="flex items-center gap-3">
                       <Progress 
-                        value={Math.min((metrics?.voice_command_usage / 20) * 100, 100)} 
+                        value={safePercent(metrics?.voice_command_usage, 20)} 
                         className="flex-1"
                       />
                       <span className="text-lg font-semibold">{metrics?.voice_command_usage || 0}</span>

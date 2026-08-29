@@ -3,12 +3,24 @@ import { parseLocalDate } from '../../lib/dateLocal.js';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_LIMIT = 5;
 
+// Whole calendar days from `now` to `value` (negative in the past).
+//
+// parseLocalDate returns the SAME Date instance when it is handed one, so
+// calling setHours on its result mutated the caller's object: `now` (and any
+// Date stored on a record) was silently rewound to local midnight. Normalize on
+// copies so this stays a pure read.
+function startOfDay(value) {
+  const d = parseLocalDate(value);
+  if (!d) return null;
+  const copy = new Date(d.getTime());
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
 function daysUntil(value, now = new Date()) {
-  const due = parseLocalDate(value);
-  const today = parseLocalDate(now);
+  const due = startOfDay(value);
+  const today = startOfDay(now);
   if (!due || !today) return null;
-  today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
   return Math.round((due.getTime() - today.getTime()) / MS_PER_DAY);
 }
 

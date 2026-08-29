@@ -43,3 +43,33 @@ test('buildTodayPriorities returns an all-clear action when no urgent data exist
   assert.deepEqual(priorities.map((priority) => priority.id), ['all-clear']);
   assert.equal(priorities[0].to, '/Patients');
 });
+
+test('buildTodayPriorities does not mutate the `now` it is given', () => {
+  // parseLocalDate hands back the SAME Date instance it is passed, so the
+  // normalization inside daysUntil used to rewind the caller's clock to local
+  // midnight — a silent side effect on an argument a caller may reuse.
+  const now = new Date('2026-07-22T12:34:56Z');
+  const before = now.getTime();
+
+  buildTodayPriorities({
+    now,
+    currentUser: { email: 'nurse@example.com', role: 'user' },
+    visits: [{ id: 'v1', patient_id: 'p1', status: 'scheduled', visit_date: '2026-07-22' }],
+    noteConversions: [{ id: 'n1', created_date: '2026-07-20' }],
+  });
+
+  assert.equal(now.getTime(), before);
+});
+
+test('buildTodayPriorities does not mutate Date values carried on records', () => {
+  const visitDate = new Date(2026, 6, 22, 9, 30, 0);
+  const before = visitDate.getTime();
+
+  buildTodayPriorities({
+    now: new Date(2026, 6, 22, 12, 0, 0),
+    currentUser: { email: 'nurse@example.com', role: 'user' },
+    visits: [{ id: 'v1', patient_id: 'p1', status: 'scheduled', visit_date: visitDate }],
+  });
+
+  assert.equal(visitDate.getTime(), before);
+});

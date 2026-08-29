@@ -178,17 +178,27 @@ function classifyFaxFailure(errorCode, errorMessage) {
   if (TRANSIENT_FAILURE_PATTERNS.some((re) => re.test(s))) return 'transient';
   return PERMANENT_FAILURE_PATTERNS.some((re) => re.test(s)) ? 'permanent' : 'transient';
 }
+function numberOrNull(value) {
+  // Number(null)/Number("") are both 0, which makes an unset entity field
+  // indistinguishable from an explicit zero. Mirrors src/components/fax/faxRetry.js.
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 function faxRetryConfig(config) {
   const c = config || {};
   // Coerce first: entity fields can arrive as numeric strings ("5") from a JSON/form
   // round-trip, and Number.isFinite("5") is false — which would silently drop the
   // admin's configured value in favor of the default. Mirrors src/components/fax/faxRetry.js.
-  const maxRetriesNum = Number(c.max_retries);
-  const baseDelayNum = Number(c.retry_delay_minutes);
+  // An unset max_retries must mean "use the default", not 0 retries — see
+  // numberOrNull above and src/components/fax/faxRetry.js.
+  const maxRetriesNum = numberOrNull(c.max_retries);
+  const baseDelayNum = numberOrNull(c.retry_delay_minutes);
   return {
     enabled: c.auto_retry_enabled !== false,
-    maxRetries: Number.isFinite(maxRetriesNum) ? Math.max(0, maxRetriesNum) : 3,
-    baseDelayMinutes: Number.isFinite(baseDelayNum) && baseDelayNum > 0 ? baseDelayNum : 15,
+    maxRetries: maxRetriesNum === null ? 3 : Math.max(0, maxRetriesNum),
+    baseDelayMinutes: baseDelayNum !== null && baseDelayNum > 0 ? baseDelayNum : 15,
     notifyOnFinalFailure: c.notify_on_final_failure !== false,
     priorityMultiplier: c.priority_multiplier && typeof c.priority_multiplier === 'object' ? c.priority_multiplier : {},
   };

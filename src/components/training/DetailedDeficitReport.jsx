@@ -19,25 +19,56 @@ import {
 import { format } from "date-fns";
 import { analyzeNurseDeficits as analyzeNurseDeficitsBackend } from "@/functions/analyzeNurseDeficits";
 
+// Normalize the backend payload so a partial response can't crash the report.
+// The collections are read unguarded all over the render (`.length`, `.map`,
+// `Object.entries`), and the empty-data branch of analyzeNurseDeficits
+// legitimately omits `analytics` — one missing key blanked the whole tab.
+// Module scope keeps it out of loadAnalysis's dependency list.
+const normalizeAnalysis = (data) => ({
+  ...data,
+  totalSuggestions: Number(data?.totalSuggestions) || 0,
+  deficits: Array.isArray(data?.deficits) ? data.deficits : [],
+  patterns: Array.isArray(data?.patterns) ? data.patterns : [],
+  recommendations: Array.isArray(data?.recommendations) ? data.recommendations : [],
+  strengths: Array.isArray(data?.strengths) ? data.strengths : [],
+  analytics: {
+    patientSpecificCount: 0,
+    ...(data?.analytics || {}),
+    categoryBreakdown: data?.analytics?.categoryBreakdown || {},
+    sourceBreakdown: data?.analytics?.sourceBreakdown || {},
+    severityDistribution: {
+      critical: 0, high: 0, medium: 0, low: 0,
+      ...(data?.analytics?.severityDistribution || {}),
+    },
+  },
+});
+
 export default function DetailedDeficitReport({ 
   nurseEmail, 
   onStartScenario, 
   onStartQuiz 
 }) {
   const [analysis, setAnalysis] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [daysPeriod, setDaysPeriod] = useState(30);
 
   const loadAnalysis = useCallback(async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
       const response = await analyzeNurseDeficitsBackend({
         nurseEmail,
         daysPeriod
       });
-      setAnalysis(response.data);
+      setAnalysis(normalizeAnalysis(response?.data));
     } catch (error) {
       console.error("Error loading deficit analysis:", error);
+      // A failed analysis is NOT a clean bill of health. Without this the catch
+      // left `analysis` null and the component congratulated the nurse on
+      // "Excellent Documentation!" for an analysis that never ran.
+      setAnalysis(null);
+      setLoadError(error);
     }
     setIsLoading(false);
   }, [nurseEmail, daysPeriod]);
@@ -54,6 +85,21 @@ export default function DetailedDeficitReport({
         <CardContent className="p-12 text-center">
           <Loader2 className="w-12 h-12 animate-spin text-indigo-600 mx-auto mb-4" />
           <p className="text-slate-600">Analyzing your documentation patterns...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="p-8 text-center">
+          <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-amber-900 mb-2">Couldn’t analyze your documentation</h3>
+          <p className="text-amber-800 mb-4">
+            The deficit analysis didn’t complete, so this report is not showing your results.
+          </p>
+          <Button variant="outline" onClick={loadAnalysis}>Try again</Button>
         </CardContent>
       </Card>
     );

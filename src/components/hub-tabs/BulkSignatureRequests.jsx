@@ -1,13 +1,11 @@
 import { useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { trackEvent } from '@/lib/trackEvent';
 import BulkDocumentPackageCreator from '@/components/documents/BulkDocumentPackageCreator';
 
 export default function BulkSignatureRequests() {
   useEffect(() => {
-    base44.analytics.track({
-      eventName: 'bulk_signature_requests_page_viewed',
-      properties: { page: 'BulkSignatureRequests' },
-    });
+    // Non-fatal: a page-view ping must never be able to blank this tab.
+    trackEvent('bulk_signature_requests_page_viewed', { page: 'BulkSignatureRequests' });
   }, []);
 
   return (

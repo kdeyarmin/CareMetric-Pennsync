@@ -34,6 +34,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * Read a number input, falling back to the field's default when it is cleared.
@@ -50,6 +51,7 @@ const numOrDefault = (raw, fallback) => {
 };
 
 export default function OASISAutomationSettings() {
+  const confirm = useConfirm();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const queryClient = useQueryClient();
@@ -410,7 +412,18 @@ export default function OASISAutomationSettings() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => deleteMutation.mutate(rule.id)}
+                      onClick={async () => {
+                        // Destructive and unrecoverable — confirm first, matching
+                        // every other delete in the app.
+                        if (await confirm({
+                          title: "Delete automation rule?",
+                          description: `Delete "${rule.rule_name || "this rule"}"? This can't be undone.`,
+                          confirmText: "Delete",
+                          destructive: true,
+                        })) {
+                          deleteMutation.mutate(rule.id);
+                        }
+                      }}
                       className="text-red-600 hover:text-red-700"
                     >
                       <Trash2 className="w-4 h-4" />

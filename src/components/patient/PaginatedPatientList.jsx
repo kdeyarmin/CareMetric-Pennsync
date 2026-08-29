@@ -13,9 +13,18 @@ import {
 import { Search } from "lucide-react";
 import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
-import { getPatientDisplayName, getPatientInitials } from "@/components/patient/patientDisplay";
+import { getPatientDisplayName, getPatientInitials, getPatientDisplayParts } from "@/components/patient/patientDisplay";
 import { clampPageSize, paginateRows } from "@/lib/pagination";
 import ListPaginationControls from "@/components/ui/ListPaginationControls";
+
+// Sort on the same normalized name the rows render (getPatientDisplayName), not
+// the raw fields: `${first_name} ${last_name}` put the literal "undefined" in
+// the key for a chart missing either half, so it sorted under "u" instead of
+// with its neighbours — and the visible order disagreed with the visible names.
+const nameSortKey = (patient) => {
+  const { first, last } = getPatientDisplayParts(patient);
+  return `${first} ${last}`.trim().toLowerCase();
+};
 
 export default function PaginatedPatientList({ 
   patients = [], 
@@ -41,7 +50,7 @@ export default function PaginatedPatientList({
 
     filtered.sort((a, b) => {
       if (sortBy === 'name') {
-        return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
+        return nameSortKey(a).localeCompare(nameSortKey(b));
       } else if (sortBy === 'status') {
         return (a.status || '').localeCompare(b.status || '');
       } else if (sortBy === 'created') {

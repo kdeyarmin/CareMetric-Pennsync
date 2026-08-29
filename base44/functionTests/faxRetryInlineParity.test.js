@@ -35,6 +35,11 @@ const CONFIGS = [
   { auto_retry_enabled: false },
   { max_retries: 5, retry_delay_minutes: 10 },
   { max_retries: "5", retry_delay_minutes: "10" },
+  // Unset numeric fields: Number(null)/Number("") are 0, so these must resolve
+  // to the DEFAULT retry budget, not "no retries".
+  { max_retries: null, retry_delay_minutes: null },
+  { max_retries: "", retry_delay_minutes: "" },
+  { max_retries: 0, retry_delay_minutes: 0 },
   { priority_multiplier: { urgent: 0.5, low: 2 } },
 ];
 const FAILURES = [["7211", "not a fax machine"], [null, "busy"], ["", ""], [null, "Invalid To number"], ["x", "temporary network error"], [null, "rejected - line busy"], [null, "rejected - no answer"]];

@@ -397,9 +397,16 @@ export default function EducationLibrary({ patient, onSelectMaterial }) {
                 )}
               </div>
               
-              <Button variant="ghost" size="sm" className="w-full mt-3 gap-2">
-                Generate Material <ChevronRight className="w-4 h-4" />
-              </Button>
+              {/* The card itself carries the click (a click here bubbles to it,
+                  including the one a keyboard Enter/Space synthesizes). Only
+                  render the call to action when there IS one: standalone in the
+                  Resource Library there is no selection handler, so an inert
+                  "Generate Material" button invited a click that did nothing. */}
+              {interactive && (
+                <Button variant="ghost" size="sm" className="w-full mt-3 gap-2">
+                  Generate Material <ChevronRight className="w-4 h-4" />
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}

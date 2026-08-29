@@ -40,18 +40,36 @@ export function classifyFaxFailure(errorCode, errorMessage) {
   return PERMANENT_FAILURE_PATTERNS.some((re) => re.test(s)) ? "permanent" : "transient";
 }
 
+/**
+ * Number(value) for a value that is actually SET, else null.
+ *
+ * `Number(null)`, `Number("")` and `Number("  ")` are all 0, which makes an
+ * unset entity field indistinguishable from an explicit zero.
+ */
+function numberOrNull(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** Normalize the FaxRetryConfig entity (or undefined) to safe defaults. */
 export function faxRetryConfig(config) {
   const c = config || {};
   // Coerce first: entity fields can arrive as numeric strings ("5") from a JSON/form
   // round-trip, and Number.isFinite("5") is false — which would silently drop the
-  // admin's configured value in favor of the default.
-  const maxRetriesNum = Number(c.max_retries);
-  const baseDelayNum = Number(c.retry_delay_minutes);
+  // admin's configured value in favor of the default. `numberOrNull` keeps
+  // Number()'s empty-value coercion out of it: Number(null) and Number("") are
+  // both 0, so an admin who saved a config row without touching max_retries got
+  // maxRetries: 0 — every fax failure marked exhausted on the first try, with
+  // auto-retry silently dead and no setting anywhere showing it off. Unset must
+  // mean "use the default"; only an explicit 0 disables retries.
+  const maxRetriesNum = numberOrNull(c.max_retries);
+  const baseDelayNum = numberOrNull(c.retry_delay_minutes);
   return {
     enabled: c.auto_retry_enabled !== false,
-    maxRetries: Number.isFinite(maxRetriesNum) ? Math.max(0, maxRetriesNum) : 3,
-    baseDelayMinutes: Number.isFinite(baseDelayNum) && baseDelayNum > 0 ? baseDelayNum : 15,
+    maxRetries: maxRetriesNum === null ? 3 : Math.max(0, maxRetriesNum),
+    baseDelayMinutes: baseDelayNum !== null && baseDelayNum > 0 ? baseDelayNum : 15,
     notifyOnFinalFailure: c.notify_on_final_failure !== false,
     priorityMultiplier: c.priority_multiplier && typeof c.priority_multiplier === "object" ? c.priority_multiplier : {},
   };
