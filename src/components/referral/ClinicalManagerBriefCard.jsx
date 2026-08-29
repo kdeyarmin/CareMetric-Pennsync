@@ -8,7 +8,7 @@ import { ALL_ROWS } from "@/lib/queryLimits";
 import { fetchCallerPdgmRateConfig, fetchCallerPayerRateConfig } from "@/lib/agencySettings";
 import { sendInAppNotification } from "@/lib/notify";
 import { exportToPDF } from "@/components/utils/pdfExporter";
-import { buildClinicalManagerBrief, buildPdgmRequestFromReferral } from "./clinicalManagerBrief.js";
+import { buildClinicalManagerBrief, buildPdgmRequestFromReferral, isPdgmPricedPayer } from "./clinicalManagerBrief.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,11 +50,30 @@ export default function ClinicalManagerBriefCard({
   });
   const financial = canViewFinancials(currentUser);
 
+  // Imported payer reimbursement table (same key + signature as PayerRatesManager).
+  const { data: payerConfig } = useQuery({
+    queryKey: ["payerRateConfig", currentUser?.agency_name || "platform"],
+    queryFn: () => fetchCallerPayerRateConfig(currentUser?.agency_name),
+    enabled: financial && !!currentUser,
+  });
+  const payers = useMemo(
+    () => (Array.isArray(payerConfig?.payers) ? payerConfig.payers : []),
+    [payerConfig]
+  );
+
+  // PDGM applies to Medicare FFS (and payer rows configured as pdgm-model)
+  // ONLY — every other payer is priced from the imported payer table, so the
+  // calculatePDGM call is skipped entirely for them.
+  const pdgmPriced = useMemo(
+    () => (referralData ? isPdgmPricedPayer(referralData, payers) : false),
+    [referralData, payers]
+  );
+
   // Canonical PDGM estimate (server-gated). Keyed on the request payload so a
   // new referral/coding recomputes and an identical one is cached.
   const pdgmRequest = useMemo(
-    () => (referralData ? buildPdgmRequestFromReferral(referralData) : null),
-    [referralData]
+    () => (referralData && pdgmPriced ? buildPdgmRequestFromReferral(referralData) : null),
+    [referralData, pdgmPriced]
   );
   const { data: pdgmResponse, isError: pdgmError } = useQuery({
     queryKey: ["referral-pdgm-estimate", JSON.stringify(pdgmRequest)],
@@ -70,14 +89,7 @@ export default function ClinicalManagerBriefCard({
   const { data: rateConfig } = useQuery({
     queryKey: ["pdgmRateConfigRow", currentUser?.agency_name || "platform"],
     queryFn: () => fetchCallerPdgmRateConfig(currentUser?.agency_name),
-    enabled: financial && !!currentUser,
-  });
-
-  // Imported payer reimbursement table (same key + signature as PayerRatesManager).
-  const { data: payerConfig } = useQuery({
-    queryKey: ["payerRateConfig", currentUser?.agency_name || "platform"],
-    queryFn: () => fetchCallerPayerRateConfig(currentUser?.agency_name),
-    enabled: financial && !!currentUser,
+    enabled: financial && !!currentUser && pdgmPriced,
   });
 
   // Agency roster (shared key/signature), narrowed to ADMIN-tier recipients.
@@ -107,13 +119,13 @@ export default function ClinicalManagerBriefCard({
             analysis,
             pdgm: pdgmResponse?.financialsRestricted ? null : pdgmResponse || null,
             storedWeightTable: rateConfig?.case_mix_weight_table || null,
-            payers: Array.isArray(payerConfig?.payers) ? payerConfig.payers : [],
+            payers,
             preparedBy: currentUser?.full_name || currentUser?.email || "",
             sourceFileUrl,
             packetUrl,
           })
         : null,
-    [referralData, financial, analysis, pdgmResponse, rateConfig, payerConfig, currentUser, sourceFileUrl, packetUrl]
+    [referralData, financial, analysis, pdgmResponse, rateConfig, payers, currentUser, sourceFileUrl, packetUrl]
   );
 
   // Fail closed: no financial visibility → no card at all.
@@ -193,17 +205,25 @@ export default function ClinicalManagerBriefCard({
             {brief.hipps?.code && (
               <Badge className="bg-violet-600 text-white font-mono">HIPPS {brief.hipps.code}</Badge>
             )}
-            {original && (
+            {pdgmPriced && original && (
               <Badge className="bg-green-100 text-green-800">
                 ≈ ${original.totalPayment.toFixed(2)} / 30-day period{pdgmResponse?.rateBasis?.isOfficial ? "" : " (draft)"}
               </Badge>
             )}
+            {!pdgmPriced && brief.payerEstimate?.estimable && (
+              <Badge className="bg-green-100 text-green-800">
+                ≈ ${brief.payerEstimate.amount.toFixed(2)} / episode (contract est.)
+              </Badge>
+            )}
+            {!pdgmPriced && <Badge variant="outline">non-PDGM payer</Badge>}
           </div>
         </div>
         <p className="text-xs text-slate-500 mt-1">
           PDF summary for the clinical manager: patient summary, best coding for maximum reimbursement,
-          items to clarify, payer-optimized visit frequency, draft OASIS responses, and the PDGM HIPPS
-          code with the draft reimbursement estimate{original ? "" : " (PDGM estimate pending)"}.
+          items to clarify, payer-optimized visit frequency, draft OASIS responses, and the revenue
+          estimate — {pdgmPriced
+            ? `PDGM HIPPS + draft rate${original ? "" : " (PDGM estimate pending)"}`
+            : "from the imported payer reimbursement table (no HIPPS for non-Medicare payers)"}.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">

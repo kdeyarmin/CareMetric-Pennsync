@@ -158,6 +158,35 @@ describe('ClinicalManagerBriefCard', () => {
     expect(screen.queryByText(/HIPPS \w{5}/)).not.toBeInTheDocument();
   });
 
+  it('a non-Medicare payer skips calculatePDGM entirely and shows the contract estimate', async () => {
+    payerFilter.mockResolvedValue([
+      {
+        agency_name: 'Agency A',
+        payers: [
+          {
+            payer_name: 'Aetna MA',
+            payer_type: 'medicare_advantage',
+            payment_model: 'per_visit',
+            per_visit_rates: { SN: 160 },
+            approved_visits: {},
+            match_terms: ['aetna'],
+          },
+        ],
+      },
+    ]);
+    renderCard({
+      referralData: {
+        ...referralData,
+        demographics: { ...referralData.demographics, insurance_primary: 'Aetna Medicare Advantage' },
+      },
+    });
+    expect(await screen.findByText('non-PDGM payer')).toBeInTheDocument();
+    // SN 3w2,2w2,1w5 = 15 visits × $160 → contract estimate badge, no PDGM call.
+    expect(await screen.findByText(/\$2400\.00 \/ episode \(contract est\.\)/)).toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalled();
+    expect(screen.queryByText(/HIPPS \w{5}/)).not.toBeInTheDocument();
+  });
+
   it('downloads the PDF via the exporter', async () => {
     renderCard();
     await userEvent.click(await screen.findByRole('button', { name: /Download PDF/i }));

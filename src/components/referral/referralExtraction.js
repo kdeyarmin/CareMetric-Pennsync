@@ -539,7 +539,9 @@ export const REFERRAL_EXTRACTION_SCHEMA = {
         practitioner_name: { type: "string", description: "Name of the practitioner who performed the F2F encounter" },
         practitioner_type: { type: "string", description: "Practitioner credential/type (e.g. MD, DO, NP, PA, CNS)" },
         clinical_reason: { type: "string", description: "Documented clinical reason for the encounter" },
-        documented_conditions: { type: "array", items: { type: "string" }, description: "Conditions documented at the encounter" }
+        documented_conditions: { type: "array", items: { type: "string" }, description: "Conditions documented at the encounter" },
+        practitioner_signature_present: { type: "boolean", description: "True ONLY when the F2F documentation visibly carries the practitioner's signature (wet, electronic attestation, or signature stamp with date). False when the note is clearly unsigned. Omit when signature presence cannot be determined from the document." },
+        signed_date: { type: "string", description: "Date next to the practitioner's signature on the F2F note, if visible (YYYY-MM-DD if determinable)" }
       }
     },
     oasis_assessment: {

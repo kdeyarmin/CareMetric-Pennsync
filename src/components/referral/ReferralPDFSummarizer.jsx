@@ -65,7 +65,10 @@ export default function ReferralPDFSummarizer({
   onExtractionComplete = null,
   // Called with { url, mime } once a document EXTRACTS successfully, so hosts
   // (e.g. the admission-briefing email) can reference the source referral file.
-  onSourceFile = null
+  onSourceFile = null,
+  // Pass-through to the embedded AIAdmissionNoteGenerator, so hosts can reuse
+  // the generated admission narrative (e.g. in the nurse briefing email).
+  onNoteGenerated = null
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1291,7 +1294,7 @@ export default function ReferralPDFSummarizer({
           <AIAdmissionNoteGenerator
             referralData={extractedData}
             autoGenerate={true}
-            onNoteGenerated={() => {}}
+            onNoteGenerated={onNoteGenerated || (() => {})}
           />
 
           {/* AI OASIS Assistant */}

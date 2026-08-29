@@ -125,6 +125,18 @@ export function buildPdgmRequestFromReferral(referralData, coding = null) {
 }
 
 const money = (n) => (Number.isFinite(n) ? `$${n.toFixed(2)}` : "—");
+
+/**
+ * True when this referral's payer is priced by the PDGM engine (Medicare FFS,
+ * or a configured payer row whose payment_model is "pdgm"). Every other payer
+ * is priced from the imported payer table and gets no HIPPS/PDGM figures —
+ * callers use this to skip the calculatePDGM call entirely for those payers.
+ */
+export function isPdgmPricedPayer(referralData, payers = []) {
+  const plan = buildVisitPlan(referralData || {});
+  const match = matchPayerRow(plan.payer.evidence, plan.payer.payer, payers);
+  return plan.payer.payer === "medicare_ffs" || match.row?.payment_model === "pdgm";
+}
 const clean = (v) => {
   const s = String(v ?? "").trim();
   return /^not documented( in referral)?\.?$/i.test(s) ? "" : s;
@@ -212,10 +224,24 @@ export function buildClinicalManagerBrief({
   const eligibility = assessMedicareEligibility(referralData || {}, f2f);
   const original = pdgm?.original || null;
 
-  // ── HIPPS: derived from the grouping variables; official table preferred ──
-  const derived = original ? deriveHippsCode(original) : { hipps: null, reason: "PDGM calculation unavailable." };
+  // ── payer pricing mode ──
+  // The analyzer works for ALL payers: Medicare FFS (and any payer whose
+  // configured payment model is "pdgm") is priced by calculatePDGM and gets a
+  // HIPPS code; every other payer is priced from the imported payer
+  // reimbursement table and gets NO HIPPS/PDGM figures.
+  const payerMatch = matchPayerRow(plan.payer.evidence, plan.payer.payer, payers);
+  const isPdgmPriced =
+    plan.payer.payer === "medicare_ffs" || payerMatch.row?.payment_model === "pdgm";
+  const payerEstimate = isPdgmPriced ? null : estimatePayerEpisode(payerMatch.row, plan);
+
+  // ── HIPPS: PDGM-priced payers only; official table preferred over derivation ──
+  const derived = !isPdgmPriced
+    ? { hipps: null, reason: "Non-Medicare payer — PDGM/HIPPS does not apply; revenue comes from the payer contract table." }
+    : original
+    ? deriveHippsCode(original)
+    : { hipps: null, reason: "PDGM calculation unavailable." };
   let officialRecon = null;
-  if (original && storedWeightTable) {
+  if (isPdgmPriced && original && storedWeightTable) {
     officialRecon = reconcileScenario(
       {
         clinicalGroup: original.clinicalGroup,
@@ -237,12 +263,6 @@ export function buildClinicalManagerBrief({
     reason: derived.reason,
     lupaThreshold: officialRecon?.available ? officialRecon.lupaThreshold : null,
   };
-
-  // ── payer estimate ──
-  const payerMatch = matchPayerRow(plan.payer.evidence, plan.payer.payer, payers);
-  const isPdgmPriced =
-    plan.payer.payer === "medicare_ffs" || payerMatch.row?.payment_model === "pdgm";
-  const payerEstimate = isPdgmPriced ? null : estimatePayerEpisode(payerMatch.row, plan);
 
   const comorbidityCapture = collectComorbidityCapture(referralData);
   const clarifications = collectRevenueClarifications({ coding, pdgm, eligibility, f2f, analysis, comorbidityCapture });
@@ -336,9 +356,7 @@ export function buildClinicalManagerBrief({
     : ["PDGM estimate unavailable (calculation did not run)."];
 
   const payerLines = [];
-  if (isPdgmPriced) {
-    payerLines.push("Medicare FFS / PDGM-model payer — the PDGM estimate above is the reimbursement figure.");
-  } else if (payerEstimate) {
+  if (!isPdgmPriced && payerEstimate) {
     payerLines.push(
       payerEstimate.estimable
         ? `Estimated episode reimbursement (${payerMatch.row.payer_name}): ${money(payerEstimate.amount)} — ${payerEstimate.basis}`
@@ -365,14 +383,20 @@ export function buildClinicalManagerBrief({
   ].filter(Boolean);
 
   // ── assemble email body ──
+  // PDGM/HIPPS section only for PDGM-priced payers; every other payer gets its
+  // revenue section from the imported payer reimbursement table instead.
+  const revenueSections = isPdgmPriced
+    ? [["PDGM GROUPING, HIPPS & DRAFT REIMBURSEMENT", pdgmLines]]
+    : [[`REVENUE ESTIMATE — ${(payerMatch.row?.payer_name || plan.payer.label).toUpperCase()}`,
+        payerLines.length ? payerLines : ["No payer rate row configured for this payer — import the payer table in Admin → PDGM Rate Settings."]]];
+
   const sections = [
     ["PATIENT SUMMARY", summaryLines],
     ["BEST CODING FOR MAXIMUM REIMBURSEMENT", codingLines],
     ["CLARIFY TO PROTECT/INCREASE REIMBURSEMENT", clarificationLines],
     [`SUGGESTED VISIT FREQUENCY — ${plan.payer.label.toUpperCase()}`, visitLines],
     ["DRAFT OASIS RESPONSES (AI pre-fill — verify at SOC)", oasisEntries.length ? oasisEntries.map(([k, v]) => `${k}: ${v}`) : ["No OASIS items pre-filled from this referral."]],
-    ["PDGM GROUPING, HIPPS & DRAFT REIMBURSEMENT", pdgmLines],
-    ...(payerLines.length ? [["PAYER CONTRACT ESTIMATE", payerLines]] : []),
+    ...revenueSections,
     ...(docLines.length ? [["DOCUMENTS", docLines]] : []),
   ];
   const emailBody = [
@@ -409,6 +433,7 @@ export function buildClinicalManagerBrief({
     pdfSubtitle: `${plan.payer.label}${preparedBy ? ` · Prepared by ${preparedBy}` : ""}`,
     pdfContent,
     hipps,
+    isPdgmPriced,
     payerEstimate,
     coding,
     plan,

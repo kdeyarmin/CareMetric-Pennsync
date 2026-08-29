@@ -197,11 +197,16 @@ test("a contract payer gets the imported-table estimate and auth comparison inst
     },
   ];
   const brief = buildClinicalManagerBrief({ referralData: maReferral, pdgm: null, payers });
-  assert.match(brief.emailBody, /PAYER CONTRACT ESTIMATE/);
+  // Non-PDGM payer: the revenue section comes from the payer table, and the
+  // PDGM/HIPPS section is absent entirely.
+  assert.match(brief.emailBody, /REVENUE ESTIMATE — AETNA MEDICARE ADVANTAGE/);
+  assert.ok(!brief.emailBody.includes("PDGM GROUPING, HIPPS"));
+  assert.equal(brief.isPdgmPriced, false);
+  assert.equal(brief.hipps.code, null);
+  assert.match(brief.hipps.reason, /Non-Medicare payer/);
   // SN 3w2,2w2,1w5 = 15 visits × $160 = $2400.
   assert.match(brief.emailBody, /\$2400\.00/);
   assert.match(brief.emailBody, /planned 15 vs typically approved 10 — OVER/);
-  assert.match(brief.emailBody, /PDGM estimate unavailable/);
 });
 
 test("a LUPA-risk period quantifies the revenue at risk against the known period payment", () => {
