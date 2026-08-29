@@ -23,6 +23,8 @@ import { buildVisitPlan, formatOrder, DISCIPLINE_NAMES } from "./visitPlanEstima
 import { generateDiagnosisCodes, codeLabel } from "./diagnosisCodeGenerator.js";
 import { assessMedicareEligibility } from "./medicareEligibility.js";
 import { referralToF2FInput, validateFaceToFace } from "./faceToFaceValidator.js";
+import { buildSocVisitPrep, socVisitPrepLines } from "./socVisitPrep.js";
+import { collectComorbidityCapture } from "./comorbidityCapture.js";
 
 const MAX_MEDICATIONS = 15;
 
@@ -315,6 +317,24 @@ export function buildAdmissionBriefEmail({
       clean(oasis.confidence_notes) ? `AI confidence notes: ${clean(oasis.confidence_notes)}` : "",
     ])
   );
+
+  // ── first-visit prep checklist ──
+  const prep = buildSocVisitPrep(referralData, analysis);
+  sections.push(section("FIRST-VISIT PREP CHECKLIST", socVisitPrepLines(prep)));
+
+  // ── documented-but-uncoded conditions to confirm at SOC ──
+  // Clinical framing for the nurse: confirming these completes the diagnosis
+  // picture (the coder handles the codes; no payment mechanics here).
+  const capture = collectComorbidityCapture(referralData);
+  if (capture.opportunities.length > 0) {
+    sections.push(
+      section("CONFIRM & REPORT AT SOC — documented but not yet a coded diagnosis", [
+        ...capture.opportunities.map(
+          (o) => `- ${o.label}: suggested by ${o.evidence.map((e) => `${e.source} ("${e.text}")`).join("; ")} — confirm with the patient/physician so it can be coded.`
+        ),
+      ])
+    );
+  }
 
   // ── sample admission narrative ──
   const note = clean(admissionNote) || clean(ex.admission_note_template);

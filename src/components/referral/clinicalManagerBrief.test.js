@@ -204,6 +204,27 @@ test("a contract payer gets the imported-table estimate and auth comparison inst
   assert.match(brief.emailBody, /PDGM estimate unavailable/);
 });
 
+test("a LUPA-risk period quantifies the revenue at risk against the known period payment", () => {
+  // SN 3w2, 2w2, 1w5 → period 2 lands at 4 visits (inside the 2–6 LUPA band).
+  const brief = buildClinicalManagerBrief({ referralData: referral, pdgm: pdgmResponse });
+  assert.match(
+    brief.emailBody,
+    /Revenue at risk: a LUPA in period 2 forfeits the full \$3021\.24 period payment/
+  );
+  assert.match(brief.emailBody, /One added medically necessary visit may clear the threshold/);
+});
+
+test("documented-but-uncoded comorbidity signals land in the clarification list", () => {
+  const withSignals = {
+    ...referral,
+    diagnoses: { primary_diagnosis: "Hip fracture", primary_icd10: "S72.001A", secondary_diagnoses: [] },
+    medications: [{ name: "Metformin", dosage: "500 mg" }],
+  };
+  const brief = buildClinicalManagerBrief({ referralData: withSignals, pdgm: null });
+  assert.match(brief.emailBody, /\[Comorbidity capture\] Diabetes \(medium-value signal\)/);
+  assert.match(brief.emailBody, /medications: "Metformin 500 mg"|medications: "Metformin"/);
+});
+
 test("an unconfigured payer points the manager at the import page", () => {
   const brief = buildClinicalManagerBrief({
     referralData: { demographics: { insurance_primary: "Mystery Plan LLC" } },

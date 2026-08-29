@@ -22,6 +22,7 @@
 // `@/` imports so the colocated Node test resolves without Vite.
 
 import { classifyPayer, collectOrderedFrequencies } from "./visitPlanEstimator.js";
+import { findMbiCandidates, validateMbi } from "./mbiValidator.js";
 
 export const CRITERION_STATUS = {
   MET: "met",
@@ -258,6 +259,54 @@ export function assessMedicareEligibility(referralData, f2fValidation = null) {
           : "Ordered/expected nursing is intermittent (less than daily, or no nursing frequency ordered yet).",
       citation: "SSA §1861(m)",
     });
+  }
+
+  // ── 6. Billable Medicare ID (MBI) — Medicare payers only ──
+  // A malformed MBI rejects every claim at the front end; catching it at
+  // referral time is the cheapest denial prevention there is. Format-only
+  // validation (CMS defines no checksum) via the shared mbiValidator.
+  if (applicable) {
+    const idText = [
+      ex?.demographics?.policy_numbers,
+      ex?.demographics?.insurance_primary,
+      referralData?.policy_numbers,
+      referralData?.insurance_id,
+      referralData?.mbi,
+    ]
+      .map((v) => String(v ?? ""))
+      .join(" ");
+    const candidates = findMbiCandidates(idText);
+    if (candidates.length === 0) {
+      criteria.push({
+        key: "mbi",
+        label: "Billable Medicare ID (MBI)",
+        status: CRITERION_STATUS.NEEDS_REVIEW,
+        detail: "No MBI found on the referral. Obtain the 11-character MBI from the Medicare card before billing — claims without it reject at submission.",
+        citation: "CMS MBI format",
+      });
+      missingForAdmission.push("The patient's MBI (from the Medicare card)");
+    } else {
+      const valid = candidates.find((c) => validateMbi(c).valid);
+      if (valid) {
+        criteria.push({
+          key: "mbi",
+          label: "Billable Medicare ID (MBI)",
+          status: CRITERION_STATUS.MET,
+          detail: `An MBI-formatted identifier is documented (${valid}). Format-only check — eligibility is verified at intake.`,
+          citation: "CMS MBI format",
+        });
+      } else {
+        const problems = validateMbi(candidates[0]).errors.join(" ");
+        criteria.push({
+          key: "mbi",
+          label: "Billable Medicare ID (MBI)",
+          status: CRITERION_STATUS.NOT_MET,
+          detail: `The documented Medicare ID "${candidates[0]}" is not a valid MBI format (${problems}) — likely a transcription error; claims will reject. Re-verify against the Medicare card.`,
+          citation: "CMS MBI format",
+        });
+        missingForAdmission.push("A correctly-transcribed MBI (current value fails format validation)");
+      }
+    }
   }
 
   const statuses = criteria.map((c) => c.status);

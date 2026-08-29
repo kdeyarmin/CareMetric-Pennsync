@@ -30,6 +30,7 @@ import { generateDiagnosisCodes, codeLabel, resolveScenario } from "./diagnosisC
 import { assessMedicareEligibility } from "./medicareEligibility.js";
 import { referralToF2FInput, validateFaceToFace } from "./faceToFaceValidator.js";
 import { patientInitials, oasisItemLabel } from "./admissionBriefEmail.js";
+import { collectComorbidityCapture } from "./comorbidityCapture.js";
 import { matchPayerRow, estimatePayerEpisode } from "../pdgm/payerRates.js";
 import { reconcileScenario } from "../pdgm/caseMixReconciliation.js";
 
@@ -134,11 +135,17 @@ const clean = (v) => {
  * reimbursement — deterministic, assembled from the coding result, the PDGM
  * validation discrepancies, eligibility gaps, and the AI's missing-info list.
  */
-export function collectRevenueClarifications({ coding, pdgm, eligibility, f2f, analysis }) {
+export function collectRevenueClarifications({ coding, pdgm, eligibility, f2f, analysis, comorbidityCapture = null }) {
   const items = [];
   for (const w of coding?.warnings || []) items.push({ area: "Coding", detail: w });
   for (const u of coding?.uncoded || []) {
     items.push({ area: "Coding", detail: `"${u.description}" is documented without an ICD-10 code — coder assignment could add a comorbidity adjustment or a better principal.` });
+  }
+  for (const o of comorbidityCapture?.opportunities || []) {
+    items.push({
+      area: "Comorbidity capture",
+      detail: `${o.label} (${o.value}-value signal) — ${o.suggestion} Evidence: ${o.evidence.map((e) => `${e.source}: "${e.text}"`).join("; ")}`,
+    });
   }
   for (const d of pdgm?.dataValidation?.discrepancies || []) {
     items.push({
@@ -237,7 +244,8 @@ export function buildClinicalManagerBrief({
     plan.payer.payer === "medicare_ffs" || payerMatch.row?.payment_model === "pdgm";
   const payerEstimate = isPdgmPriced ? null : estimatePayerEpisode(payerMatch.row, plan);
 
-  const clarifications = collectRevenueClarifications({ coding, pdgm, eligibility, f2f, analysis });
+  const comorbidityCapture = collectComorbidityCapture(referralData);
+  const clarifications = collectRevenueClarifications({ coding, pdgm, eligibility, f2f, analysis, comorbidityCapture });
 
   const fullName = clean(demo.full_name) || "the patient";
   const subject = `Referral revenue brief: ${patientInitials(demo.full_name)} — coding, visit plan & reimbursement estimate`;
@@ -287,6 +295,18 @@ export function buildClinicalManagerBrief({
   }
   for (const l of plan.lupa || []) {
     visitLines.push(`Period ${l.period}${l.estimate ? " (estimate)" : ""}: ${l.message}`);
+    // Revenue at risk: a LUPA replaces the FULL period payment with per-visit
+    // payments. The full-period figure is known (calculatePDGM); the per-visit
+    // rates are not configured, so the delta is framed against the known amount.
+    if (l.band !== "clears_all" && original?.totalPayment) {
+      visitLines.push(
+        `  → Revenue at risk: a LUPA in period ${l.period} forfeits the full ${money(original.totalPayment)} period payment (replaced by per-visit payments). ${
+          l.band === "below_all"
+            ? "Add medically necessary visits to reach the threshold, or plan the discharge before the period opens."
+            : "One added medically necessary visit may clear the threshold — verify against the HIPPS-specific value after coding."
+        }`
+      );
+    }
   }
   visitLines.push(...plan.strategy);
 

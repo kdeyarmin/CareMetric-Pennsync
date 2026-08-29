@@ -128,6 +128,16 @@ test("body carries every briefing section for a rich referral", () => {
   // OASIS draft with humanized labels + verification flags.
   assert.match(body, /M1800 Grooming: 1 - With use of assistive device/);
   assert.match(body, /Items flagged for verification: M1860 — confirm device use/);
+  // First-visit prep checklist (deterministic from orders/meds/risks).
+  assert.match(body, /FIRST-VISIT PREP CHECKLIST/);
+  assert.match(body, /Wound care supplies/);
+  assert.match(body, /Loop diuretic — daily weights/);
+  assert.match(body, /homebound narrative with BOTH elements/);
+  // Documented-but-uncoded conditions to confirm (pressure ulcer is in the
+  // wound record but not coded; CHF/diabetes ARE coded so they don't appear).
+  assert.match(body, /CONFIRM & REPORT AT SOC/);
+  assert.match(body, /Pressure ulcer: suggested by wound_details/);
+  assert.ok(!/CONFIRM & REPORT AT SOC[\s\S]*Heart failure:/.test(body));
   // Sample note + missing items + document links.
   assert.match(body, /SAMPLE-NOTE: 78yo female/);
   assert.match(body, /Missing \(critical\): Insurance policy number — Call the hospital case manager/);

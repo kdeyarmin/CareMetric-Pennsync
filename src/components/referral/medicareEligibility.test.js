@@ -8,6 +8,7 @@ const byKey = (result, key) => result.criteria.find((c) => c.key === key);
 const solidReferral = {
   demographics: {
     insurance_primary: "Medicare",
+    policy_numbers: "MBI 1EG4-TE5-MK73",
     referring_physician: "Dr. Alice Wong, MD",
   },
   admission_details: { referral_reason: "CHF exacerbation, homebound due to dyspnea, taxing effort to leave home" },
@@ -125,13 +126,41 @@ test("daily nursing beyond 21 days trips the bound; bounded daily passes", () =>
   assert.equal(byKey(bounded, "intermittent").status, CRITERION_STATUS.MET);
 });
 
-test("non-Medicare payers are marked not applicable but still assessed", () => {
+test("non-Medicare payers are marked not applicable but still assessed (no MBI row)", () => {
   const r = assessMedicareEligibility(
     { ...solidReferral, demographics: { ...solidReferral.demographics, insurance_primary: "Highmark BCBS" } },
     validF2F
   );
   assert.equal(r.applicable, false);
   assert.equal(r.criteria.length, 5);
+  assert.equal(byKey(r, "mbi"), undefined);
+});
+
+// ── MBI (billable Medicare ID) ──
+
+test("a valid MBI on a Medicare referral is met; a missing one routes to review with an action item", () => {
+  const withMbi = assessMedicareEligibility(solidReferral, validF2F);
+  assert.equal(byKey(withMbi, "mbi").status, CRITERION_STATUS.MET);
+
+  const noMbi = assessMedicareEligibility(
+    { ...solidReferral, demographics: { ...solidReferral.demographics, policy_numbers: "" } },
+    validF2F
+  );
+  assert.equal(byKey(noMbi, "mbi").status, CRITERION_STATUS.NEEDS_REVIEW);
+  assert.ok(noMbi.missingForAdmission.some((m) => m.includes("MBI")));
+});
+
+test("an MBI-shaped but INVALID identifier is a hard gap (claims will reject)", () => {
+  // Position 2 must be a letter and may not be S/L/O/I/B/Z — "1SG4TE5MK73" is
+  // a classic transcription error shape.
+  const r = assessMedicareEligibility(
+    { ...solidReferral, demographics: { ...solidReferral.demographics, policy_numbers: "1SG4-TE5-MK73" } },
+    validF2F
+  );
+  const c = byKey(r, "mbi");
+  assert.equal(c.status, CRITERION_STATUS.NOT_MET);
+  assert.match(c.detail, /not a valid MBI format/);
+  assert.equal(r.overall, "gaps");
 });
 
 test("Medicare Advantage applies the criteria (applicable)", () => {
