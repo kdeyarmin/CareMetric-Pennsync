@@ -280,6 +280,21 @@ test("GG draft items render with humanized labels in the OASIS table", () => {
   assert.ok(oasisTable.rows.some(([label]) => label === "GG0170 Mobility"));
 });
 
+test("an out-of-scale GG draft code is flagged VERIFY in the email body and the PDF", () => {
+  const withBadGg = {
+    ...referral,
+    oasis_assessment: {
+      ...referral.oasis_assessment,
+      gg0130_self_care: { a_eating: "77 - not a GG code" },
+    },
+  };
+  const brief = buildClinicalManagerBrief({ referralData: withBadGg, pdgm: pdgmResponse });
+  assert.match(brief.emailBody, /VERIFY: GG0130 Self Care — A\. eating: "77 - not a GG code" is not on the GG scale/);
+  const tableIdx = brief.pdfContent.findIndex((c) => c.type === "table");
+  assert.ok(tableIdx >= 0);
+  assert.match(brief.pdfContent[tableIdx + 1].text, /VERIFY: GG0130 Self Care/);
+});
+
 test("an unconfigured payer points the manager at the import page", () => {
   const brief = buildClinicalManagerBrief({
     referralData: { demographics: { insurance_primary: "Mystery Plan LLC" } },

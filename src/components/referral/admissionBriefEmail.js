@@ -76,6 +76,41 @@ export function formatOasisValue(value) {
   return String(value);
 }
 
+// The full documented GG scale: 06–01 performance codes plus the
+// activity-not-attempted codes (07 refused, 09 not applicable, 10 environmental
+// limitation, 88 medical condition/safety) — exactly the scale the extraction
+// prompt specifies.
+const GG_VALID_CODES = new Set(["01", "02", "03", "04", "05", "06", "07", "09", "10", "88"]);
+
+/**
+ * Deterministic audit of the AI-drafted Section GG items: flags any code
+ * outside the documented GG scale, and any code drafted without the quoted
+ * referral basis the extraction prompt requires — so a fabricated or malformed
+ * draft can never read as a clean pre-fill in the briefs.
+ */
+export function auditGgDraft(oasis = {}) {
+  const issues = [];
+  for (const groupKey of ["gg0130_self_care", "gg0170_mobility"]) {
+    const group = oasis?.[groupKey];
+    if (!group || typeof group !== "object" || Array.isArray(group)) continue;
+    for (const [itemKey, raw] of Object.entries(group)) {
+      const s = clean(raw);
+      if (!s) continue;
+      const label = `${oasisItemLabel(groupKey)} — ${itemKey
+        .replace(/^([a-z]{1,2})_/i, (_, p) => `${p.toUpperCase()}. `)
+        .replace(/_/g, " ")}`;
+      const m = /^(\d{1,2})\s*(?:-\s*(.*))?$/.exec(s);
+      const code = m ? m[1].padStart(2, "0") : null;
+      if (!code || !GG_VALID_CODES.has(code)) {
+        issues.push(`${label}: "${s}" is not on the GG scale (01–06, 07, 09, 10, 88) — ignore this draft and score at SOC.`);
+      } else if (!m[2] || !m[2].trim()) {
+        issues.push(`${label}: code ${code} was drafted without a quoted basis from the referral — verify before use.`);
+      }
+    }
+  }
+  return issues;
+}
+
 function section(title, lines) {
   const body = (Array.isArray(lines) ? lines : [lines]).map((l) => String(l ?? "")).filter((l) => l.trim());
   if (body.length === 0) return null;
@@ -326,9 +361,11 @@ export function buildAdmissionBriefEmail({
       return v ? `- ${oasisItemLabel(key)}: ${v}` : "";
     });
   const verification = Array.isArray(oasis.items_needing_verification) ? oasis.items_needing_verification : [];
+  const ggIssues = auditGgDraft(oasis);
   sections.push(
     section("DRAFT OASIS RESPONSES (AI pre-fill — verify every item at SOC)", [
       ...oasisLines,
+      ...ggIssues.map((i) => `- VERIFY: ${i}`),
       verification.length > 0 ? `Items flagged for verification: ${verification.join("; ")}` : "",
       clean(oasis.confidence_notes) ? `AI confidence notes: ${clean(oasis.confidence_notes)}` : "",
     ])

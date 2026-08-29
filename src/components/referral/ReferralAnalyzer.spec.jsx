@@ -183,6 +183,10 @@ describe('ReferralAnalyzer', () => {
     const prompt = invokeLLM.mock.calls[0][0].prompt;
     expect(prompt).toContain('No Face-to-Face encounter is documented');
     expect(prompt).toContain('critical_missing');
+    // Anti-hallucination contract: every analysis is grounded in the referral.
+    expect(prompt).toContain('NON-NEGOTIABLE GROUNDING RULES');
+    expect(prompt).toContain('Never invent demographics, diagnoses, codes, medications, dates, findings, or history');
+    expect(prompt).toContain('omit that estimate rather than guessing');
     await act(async () => { d.resolve(analysisFor('REASONING-A')); });
   });
 

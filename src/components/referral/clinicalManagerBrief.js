@@ -29,7 +29,7 @@ import { buildVisitPlan, formatOrder, DISCIPLINE_NAMES } from "./visitPlanEstima
 import { generateDiagnosisCodes, codeLabel, resolveScenario } from "./diagnosisCodeGenerator.js";
 import { assessMedicareEligibility } from "./medicareEligibility.js";
 import { referralToF2FInput, validateFaceToFace } from "./faceToFaceValidator.js";
-import { patientInitials, oasisItemLabel, formatOasisValue } from "./admissionBriefEmail.js";
+import { patientInitials, oasisItemLabel, formatOasisValue, auditGgDraft } from "./admissionBriefEmail.js";
 import { collectComorbidityCapture } from "./comorbidityCapture.js";
 import { matchPayerRow, estimatePayerEpisode, estimateEpisodeMargin, plannedVisitsByDiscipline } from "../pdgm/payerRates.js";
 import { reconcileScenario } from "../pdgm/caseMixReconciliation.js";
@@ -341,6 +341,9 @@ export function buildClinicalManagerBrief({
       return v ? [oasisItemLabel(key), v] : null;
     })
     .filter(Boolean);
+  // Deterministic GG draft audit — an out-of-scale or basis-free AI code is
+  // flagged inline rather than presented as a clean pre-fill.
+  const ggIssues = auditGgDraft(ex.oasis_assessment || {});
 
   const rateBasisNote = pdgm?.rateBasis?.isOfficial
     ? "Rates: agency's official CMS numbers (marked official in PDGM Rate Settings)."
@@ -428,7 +431,10 @@ export function buildClinicalManagerBrief({
     ["BEST CODING FOR MAXIMUM REIMBURSEMENT", codingLines],
     ["CLARIFY TO PROTECT/INCREASE REIMBURSEMENT", clarificationLines],
     [`SUGGESTED VISIT FREQUENCY — ${plan.payer.label.toUpperCase()}`, visitLines],
-    ["DRAFT OASIS RESPONSES (AI pre-fill — verify at SOC)", oasisEntries.length ? oasisEntries.map(([k, v]) => `${k}: ${v}`) : ["No OASIS items pre-filled from this referral."]],
+    ["DRAFT OASIS RESPONSES (AI pre-fill — verify at SOC)", [
+      ...(oasisEntries.length ? oasisEntries.map(([k, v]) => `${k}: ${v}`) : ["No OASIS items pre-filled from this referral."]),
+      ...ggIssues.map((i) => `VERIFY: ${i}`),
+    ]],
     ...revenueSections,
     ...(docLines.length ? [["DOCUMENTS", docLines]] : []),
   ];
@@ -450,6 +456,9 @@ export function buildClinicalManagerBrief({
     pdfContent.push({ type: "heading", text: title });
     if (title.startsWith("DRAFT OASIS") && oasisEntries.length) {
       pdfContent.push({ type: "table", headers: ["OASIS item", "Draft response"], rows: oasisEntries });
+      if (ggIssues.length) {
+        pdfContent.push({ type: "text", text: ggIssues.map((i) => `VERIFY: ${i}`).join("\n") });
+      }
     } else {
       pdfContent.push({ type: "text", text: lines.join("\n") });
     }

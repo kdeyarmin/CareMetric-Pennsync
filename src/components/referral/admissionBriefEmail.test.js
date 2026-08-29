@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAdmissionBriefEmail, patientInitials, oasisItemLabel } from "./admissionBriefEmail.js";
+import { buildAdmissionBriefEmail, patientInitials, oasisItemLabel, auditGgDraft } from "./admissionBriefEmail.js";
 
 const richReferral = {
   demographics: {
@@ -198,4 +198,51 @@ test("the admissionNote parameter overrides the extraction's template", () => {
   const { body } = buildAdmissionBriefEmail({ referralData: richReferral, admissionNote: "OVERRIDE-NOTE text" });
   assert.match(body, /OVERRIDE-NOTE text/);
   assert.ok(!body.includes("SAMPLE-NOTE"));
+});
+
+// ── deterministic GG draft audit (anti-hallucination guard) ──
+
+test("auditGgDraft flags out-of-scale codes and codes drafted without a basis", () => {
+  const issues = auditGgDraft({
+    gg0130_self_care: {
+      a_eating: "04 - supervision documented in PT note", // valid, has basis
+      b_oral_hygiene: "99 - not a real GG code",          // out of scale
+      c_toileting_hygiene: "03",                          // valid code, no basis
+    },
+    gg0170_mobility: {
+      d_sit_to_stand: "not attempted",                    // prose, not a code — would display as-is
+    },
+  });
+  // ("unknown"/"N/A"/"Not documented" are stripped by clean() and never display,
+  // so they need no VERIFY line — only displayed values are audited.)
+  assert.equal(issues.length, 3);
+  assert.match(issues[0], /GG0130 Self Care — B\. oral hygiene/);
+  assert.match(issues[0], /not on the GG scale \(01–06, 07, 09, 10, 88\)/);
+  assert.match(issues[1], /GG0130 Self Care — C\. toileting hygiene/);
+  assert.match(issues[1], /without a quoted basis/);
+  assert.match(issues[2], /GG0170 Mobility — D\. sit to stand/);
+  assert.match(issues[2], /not on the GG scale/);
+});
+
+test("auditGgDraft accepts the full documented scale (incl. single-digit and not-attempted codes) and empty input", () => {
+  assert.deepEqual(
+    auditGgDraft({
+      gg0130_self_care: { a_eating: "6 - independent per referral", e_shower_bathe_self: "88 - unsafe per MD note" },
+      gg0170_mobility: { i_walk_10_feet: "07 - refused per therapy note" },
+    }),
+    []
+  );
+  assert.deepEqual(auditGgDraft({}), []);
+  assert.deepEqual(auditGgDraft(null), []);
+  assert.deepEqual(auditGgDraft({ gg0130_self_care: "not an object" }), []);
+});
+
+test("an invalid GG draft surfaces as a VERIFY line in the briefing email", () => {
+  const { body } = buildAdmissionBriefEmail({
+    referralData: {
+      ...richReferral,
+      oasis_assessment: { gg0130_self_care: { a_eating: "42 - fabricated code" } },
+    },
+  });
+  assert.match(body, /VERIFY: GG0130 Self Care — A\. eating: "42 - fabricated code" is not on the GG scale/);
 });

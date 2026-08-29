@@ -83,6 +83,12 @@ export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
         model: "automatic",
         prompt: `You are an expert home health intake coordinator. Analyze this patient referral and provide:
 
+NON-NEGOTIABLE GROUNDING RULES:
+- Base EVERY statement only on the Referral Data below (plus the deterministic pre-check). Never invent demographics, diagnoses, codes, medications, dates, findings, or history.
+- Information that is absent is MISSING — report it in missing_information instead of assuming a typical value. Before listing a field as missing, confirm it is actually absent from the Referral Data.
+- Risk flags, urgency factors, and the patient summary may only reference documented findings — no textbook-typical risks the referral doesn't support.
+- Visit estimates are planning estimates: when the referral documents too little for a discipline, omit that estimate rather than guessing, and set confidence accordingly.
+
 1. MISSING INFORMATION ANALYSIS:
    - Identify all required fields that are missing or incomplete
    - Flag critical missing information (e.g., physician orders, diagnosis, contact info)
@@ -462,6 +468,7 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
             <CardTitle className="flex items-center gap-2 text-base">
               <AlertTriangle className="w-5 h-5 text-orange-600" />
               Missing Information
+              <Badge variant="outline" className="text-[10px]">AI-checked — confirm against document</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -561,6 +568,7 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
             <CardTitle className="flex items-center gap-2 text-base">
               <AlertTriangle className="w-5 h-5 text-red-600" />
               Risk Flags ({analysis.risk_flags?.length})
+              <Badge variant="outline" className="text-[10px]">AI-identified from referral</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
