@@ -6,6 +6,7 @@ import { useNavigate } from "react-router";
 import { createPageUrl } from "@/utils";
 import ReferralPDFSummarizer from "@/components/referral/ReferralPDFSummarizer";
 import ReferralAnalyzer from "@/components/referral/ReferralAnalyzer";
+import AdmissionBriefEmailCard from "@/components/referral/AdmissionBriefEmailCard";
 import { generateDiagnosisCodes, codeLabel } from "@/components/referral/diagnosisCodeGenerator";
 import { referralPatientReadiness } from "@/components/referral/referralPatientReadiness";
 import AIAdmissionDocumentationAssistant from "@/components/clinical/AIAdmissionDocumentationAssistant";
@@ -21,7 +22,10 @@ export default function ReferralProcessor() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [extractedData, setExtractedData] = useState(null);
-  const [_referralAnalysis, setReferralAnalysis] = useState(null);
+  const [referralAnalysis, setReferralAnalysis] = useState(null);
+  // Source referral file + generated admission packet, for the nurse briefing email.
+  const [sourceFile, setSourceFile] = useState(null);
+  const [packetUrl, setPacketUrl] = useState(null);
   const [isCreatingPatient, setIsCreatingPatient] = useState(false);
   const [diagnosisRanking, setDiagnosisRanking] = useState(null);
   const [isRankingDiagnoses, setIsRankingDiagnoses] = useState(false);
@@ -156,7 +160,14 @@ export default function ReferralProcessor() {
         </Alert>
 
         <ReferralPDFSummarizer
-          onDataExtracted={(data) => setExtractedData(data)}
+          onDataExtracted={(data) => {
+            setExtractedData(data);
+            // A new document supersedes the previous one's analysis/links.
+            setReferralAnalysis(null);
+            setPacketUrl(null);
+          }}
+          onSourceFile={(file) => setSourceFile(file)}
+          onExtractionComplete={(_data, _raw, pdfUrl) => setPacketUrl(pdfUrl || null)}
           onUseForAdmission={(_data) => {
             navigate(createPageUrl('SmartNoteAssistant'));
           }}
@@ -300,6 +311,14 @@ export default function ReferralProcessor() {
               patientData={null}
               onSaveSection={() => {
               }}
+            />
+
+            {/* Email the admitting nurse the full briefing + referral documents */}
+            <AdmissionBriefEmailCard
+              referralData={extractedData}
+              analysis={referralAnalysis}
+              sourceFileUrl={sourceFile?.url || ""}
+              packetUrl={packetUrl || ""}
             />
 
             <Card className="border-2 border-green-300 bg-green-50">

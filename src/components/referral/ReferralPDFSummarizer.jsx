@@ -62,7 +62,10 @@ export default function ReferralPDFSummarizer({
   onDataExtracted,
   onUseForAdmission,
   fileUrl: externalFileUrl = null,
-  onExtractionComplete = null
+  onExtractionComplete = null,
+  // Called with { url, mime } once a document EXTRACTS successfully, so hosts
+  // (e.g. the admission-briefing email) can reference the source referral file.
+  onSourceFile = null
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -242,6 +245,7 @@ export default function ReferralPDFSummarizer({
 
       setExtractedData(result);
       onDataExtracted?.(result);
+      onSourceFile?.({ url, mime: fileType });
 
       // Silently generate + store the admission packet so external workflows
       // (e.g. referral intake) get a permanent URL. The browser download only
@@ -270,7 +274,7 @@ export default function ReferralPDFSummarizer({
       setIsProcessing(false);
       setProcessingStage(0);
     }
-  }, [onDataExtracted, onExtractionComplete, buildAdmissionPacket]);
+  }, [onDataExtracted, onExtractionComplete, onSourceFile, buildAdmissionPacket]);
 
   // Auto-process if fileUrl is provided externally (at most once per URL).
   React.useEffect(() => {
