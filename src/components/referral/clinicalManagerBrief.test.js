@@ -76,6 +76,23 @@ test("buildPdgmRequestFromReferral grounds the request in the harvested coding a
   assert.equal(req.soc_date, "2026-09-02");
 });
 
+test("comorbidities are CODED secondaries only, deduped — never the raw text twice, never uncoded prose", () => {
+  // calculatePDGM counts each entry independently, so the same condition
+  // passed as codeLabel AND as raw secondary text would double-count and
+  // could inflate the comorbidity level (low → high).
+  const req = buildPdgmRequestFromReferral(referral);
+  const diabetesEntries = req.comorbidities.filter((c) => /E11\.9|diabetes/i.test(c));
+  assert.equal(diabetesEntries.length, 1, "one condition must appear exactly once");
+  // An uncoded documented condition stays out of the payment inputs (it is
+  // flagged as a coder query in the clarifications instead).
+  const withUncoded = {
+    ...referral,
+    diagnoses: { ...referral.diagnoses, secondary_diagnoses: ["Type 2 diabetes E11.9", "congestive heart failure, uncoded"] },
+  };
+  const req2 = buildPdgmRequestFromReferral(withUncoded);
+  assert.ok(!req2.comorbidities.some((c) => /uncoded/i.test(c)), "uncoded prose must not reach the payment estimate");
+});
+
 // ── clarifications ──
 
 test("collectRevenueClarifications aggregates coding, PDGM, F2F, and eligibility gaps without duplicates", () => {
@@ -278,6 +295,22 @@ test("GG draft items render with humanized labels in the OASIS table", () => {
   assert.match(brief.emailBody, /GG0170 Mobility: D\. sit to stand: 03 - needs partial assist · I\. walk 10 feet: 04 - supervision/);
   const oasisTable = brief.pdfContent.find((c) => c.type === "table");
   assert.ok(oasisTable.rows.some(([label]) => label === "GG0170 Mobility"));
+});
+
+test("a 30-day episodic contract's margin revenue is scaled to the 60-day plan", () => {
+  const maReferral = {
+    ...referral,
+    demographics: { ...referral.demographics, insurance_primary: "Aetna Medicare Advantage" },
+  };
+  const payers = [
+    { payer_name: "Aetna MA", payer_type: "medicare_advantage", payment_model: "episodic", episode_rate: 1500, episode_length_days: 30, per_visit_rates: {}, approved_visits: {}, match_terms: ["aetna"] },
+  ];
+  const brief = buildClinicalManagerBrief({ referralData: maReferral, pdgm: null, payers, visitCosts: { SN: 95 } });
+  // The reimbursement estimate itself stays the contracted 30-day rate…
+  assert.match(brief.emailBody, /Estimated episode reimbursement \(Aetna MA\): \$1500\.00/);
+  // …but the margin covers the 60-day costed plan: revenue 1500×2 − cost 15×95.
+  assert.match(brief.emailBody, /Estimated episode margin: \$1575\.00 .*— revenue \$3000\.00 − visit cost \$1425\.00/);
+  assert.match(brief.emailBody, /scales the contracted 30-day episodic rate ×2 to cover the 60-day visit plan/);
 });
 
 test("an out-of-scale GG draft code is flagged VERIFY in the email body and the PDF", () => {

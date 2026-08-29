@@ -126,4 +126,22 @@ describe('ProviderFaxRequestCard', () => {
     expect(exportToPDF.mock.calls[0][0].output).toBe('save');
     expect(invoke).not.toHaveBeenCalled();
   });
+
+  it('switching to a different referral clears the destination fax number (PHI guard)', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrap = (data) => (
+      <QueryClientProvider client={client}>
+        <ProviderFaxRequestCard referralData={data} analysis={null} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(wrap(gappyReferral));
+    await screen.findByText(/Face-to-Face encounter documentation missing/);
+    await userEvent.type(screen.getByLabelText(/Provider fax #/), '570-555-0199');
+    expect(screen.getByLabelText(/Provider fax #/).value).toBe('570-555-0199');
+
+    // Patient B's referral arrives in the same mounted card — patient A's
+    // provider fax number must not survive as the destination.
+    rerender(wrap({ ...gappyReferral, demographics: { ...gappyReferral.demographics, full_name: 'Patient B' } }));
+    expect(screen.getByLabelText(/Provider fax #/).value).toBe('');
+  });
 });

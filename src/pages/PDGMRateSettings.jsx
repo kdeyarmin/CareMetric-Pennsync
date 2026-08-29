@@ -476,7 +476,10 @@ export default function PDGMRateSettings() {
             onPersist={(tableOrNull) => weightTableMutation.mutateAsync(tableOrNull)}
             uploadedBy={user?.email || null}
             defaultYear={meta.effective_year}
-            disabled={configFetching || configError || isDirty || saveMutation.isPending || weightTableMutation.isPending}
+            // Cross-disabled on the wage-index mutation too: both tables live on the
+            // same config row via preserve-unless-sent, so concurrent saves could
+            // each preserve the other's PRE-save value and silently erase it.
+            disabled={configFetching || configError || isDirty || saveMutation.isPending || weightTableMutation.isPending || wageIndexTableMutation.isPending}
             disabledReason={
               configError
                 ? "The saved rate set could not be loaded — reload the page before storing a table (persisting now would overwrite it with blanks)."
@@ -494,7 +497,7 @@ export default function PDGMRateSettings() {
             storedTable={config?.wage_index_table || null}
             onPersist={(tableOrNull) => wageIndexTableMutation.mutateAsync(tableOrNull)}
             uploadedBy={user?.email || null}
-            disabled={configFetching || configError || isDirty || saveMutation.isPending || wageIndexTableMutation.isPending}
+            disabled={configFetching || configError || isDirty || saveMutation.isPending || wageIndexTableMutation.isPending || weightTableMutation.isPending}
             disabledReason={
               configError
                 ? "The saved rate set could not be loaded — reload the page before storing a table."

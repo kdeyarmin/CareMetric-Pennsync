@@ -31,6 +31,23 @@ export default function ScannedResponseUpload({ referral, tracking, onApplied })
   const [answers, setAnswers] = useState(null); // usable extracted answers
   const [accepted, setAccepted] = useState(() => new Set());
 
+  // PHI-misdirection guard: when the host switches to a DIFFERENT referral
+  // without remounting, a scan extracted for referral A must never be
+  // previewed or applied against referral B's items (stable rule ids would
+  // silently accept the wrong patient's answers). Render-time state
+  // adjustment clears the preview; the ref lets an in-flight extraction
+  // discard its own result if the referral changed while it ran.
+  const referralIdRef = useRef(referral?.id ?? null);
+  referralIdRef.current = referral?.id ?? null;
+  const [prevReferralId, setPrevReferralId] = useState(referral?.id ?? null);
+  if (prevReferralId !== (referral?.id ?? null)) {
+    setPrevReferralId(referral?.id ?? null);
+    setDocUrl(null);
+    setDocSummary("");
+    setAnswers(null);
+    setAccepted(new Set());
+  }
+
   const items = Array.isArray(tracking?.items) ? tracking.items : [];
   const openItems = openItemsForExtraction(items);
   const itemTitle = (id) => items.find((it) => it.id === id)?.title || id;
@@ -51,10 +68,12 @@ export default function ScannedResponseUpload({ referral, tracking, onApplied })
       toast.error(error);
       return;
     }
+    const forReferralId = referralIdRef.current;
     setBusy(true);
     reset();
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      if (referralIdRef.current !== forReferralId) return; // referral changed mid-flight — discard
       setDocUrl(file_url);
       const mime = resolveMimeType(file) || "application/pdf";
       const extraction = await invokeLLMWithFile({
@@ -64,6 +83,7 @@ export default function ScannedResponseUpload({ referral, tracking, onApplied })
         file_urls: [file_url],
         response_json_schema: RESPONSE_EXTRACTION_SCHEMA,
       });
+      if (referralIdRef.current !== forReferralId) return; // referral changed mid-flight — discard
       const usable = usableAnswers(extraction, openItems);
       setDocSummary(extraction?.document_summary || "");
       setAnswers(usable);
@@ -74,7 +94,7 @@ export default function ScannedResponseUpload({ referral, tracking, onApplied })
     } catch (error) {
       console.error("Scanned response extraction failed:", error);
       toast.error("Couldn't read the scanned response. Try again or resolve items manually.");
-      reset();
+      if (referralIdRef.current === forReferralId) reset();
     } finally {
       setBusy(false);
     }

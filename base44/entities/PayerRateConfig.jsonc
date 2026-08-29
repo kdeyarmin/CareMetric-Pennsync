@@ -84,7 +84,15 @@
     }
   },
   "rls": {
-    "read": {},
+    // Contracted rates, authorized-visit counts, and the agency's own visit
+    // costs are financial data: reads are ADMIN-ONLY (same pattern as
+    // AgencyInvoice), so the client-side FinancialGate is backed server-side
+    // and non-admin users cannot fetch this entity directly through the API.
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
     "write": {
       "user_condition": {
         "role": "__service_role_only__"

@@ -147,10 +147,17 @@ export function matchWageIndex(addressText, stored) {
 
   const zips = [...text.matchAll(/\b(\d{5})(?:-\d{4})?\b/g)].map((m) => m[1]);
   for (const zip of zips) {
+    // Most specific (longest) matching prefix wins across ALL rows, so
+    // overlapping imports ("184" on one row, "18401" on another) resolve to
+    // the exact row instead of whichever row happened to come first.
+    let best = null;
     for (const row of rows) {
-      if ((row.zip_prefixes || []).some((p) => zip.startsWith(p))) {
-        return { wage_index: row.wage_index, cbsa: row.cbsa, label: row.label, matchedBy: "zip" };
+      for (const p of row.zip_prefixes || []) {
+        if (p && zip.startsWith(p) && (!best || p.length > best.p.length)) best = { row, p };
       }
+    }
+    if (best) {
+      return { wage_index: best.row.wage_index, cbsa: best.row.cbsa, label: best.row.label, matchedBy: "zip" };
     }
   }
 

@@ -222,8 +222,12 @@ export function parsePayerRatesCsv(csvText) {
 
 /**
  * Find the configured payer row for a referral's insurance text + classified
- * payer type. Precedence: explicit match_terms hit → payer-name substring →
- * sole row of the classified payer_type. Never guesses across types.
+ * payer type. When the payer classification is known, ONLY rows of that
+ * payer_type are candidates ("never guesses across types" — a generic term
+ * like "medicare" on the Medicare FFS row must not capture "Aetna Medicare
+ * Advantage PPO"); within the candidates the LONGEST matching term wins, then
+ * payer-name substring, then the sole row of the classified type. An
+ * unclassified payer may match any row (still longest-term-first).
  *
  * @param {string} insuranceText the referral's insurance_primary text
  * @param {string} payerType classifyPayer() result ('medicare_ffs', …)
@@ -233,22 +237,28 @@ export function parsePayerRatesCsv(csvText) {
 export function matchPayerRow(insuranceText, payerType, payers) {
   const rows = Array.isArray(payers) ? payers : [];
   const text = String(insuranceText ?? "").toLowerCase();
+  const classified = payerType && payerType !== "unknown";
+  const pool = classified ? rows.filter((r) => r?.payer_type === payerType) : rows;
 
   if (text) {
-    for (const row of rows) {
-      if ((row?.match_terms || []).some((t) => t && text.includes(String(t).toLowerCase()))) {
-        return { row, matchedBy: "match_terms" };
+    let best = null; // most specific (longest) matching term wins, not CSV order
+    for (const row of pool) {
+      for (const t of row?.match_terms || []) {
+        const term = String(t ?? "").toLowerCase();
+        if (term && text.includes(term) && (!best || term.length > best.term.length)) {
+          best = { row, term };
+        }
       }
     }
-    for (const row of rows) {
+    if (best) return { row: best.row, matchedBy: "match_terms" };
+    for (const row of pool) {
       const name = String(row?.payer_name ?? "").toLowerCase();
       if (name && (text.includes(name) || name.includes(text))) {
         return { row, matchedBy: "payer_name" };
       }
     }
   }
-  const ofType = rows.filter((r) => r?.payer_type === payerType);
-  if (ofType.length === 1) return { row: ofType[0], matchedBy: "payer_type" };
+  if (classified && pool.length === 1) return { row: pool[0], matchedBy: "payer_type" };
   return { row: null, matchedBy: null };
 }
 
@@ -267,6 +277,15 @@ export function plannedVisitsByDiscipline(visitPlan) {
     for (const [d, v] of Object.entries(visitPlan.periods.byDiscipline)) {
       const total = Number(v?.total);
       if (Number.isFinite(total) && total > 0 && PAYER_DISCIPLINES.includes(d)) out[d] = total;
+    }
+    // Total-only orders ("PT eval + 6 visits") have no weekly structure so
+    // they sit outside byDiscipline's period math — but the visit COUNT is
+    // known and must still be priced/costed for the episode.
+    for (const order of visitPlan.periods.totalOnly || []) {
+      const t = Number(order?.totalVisits);
+      if (Number.isFinite(t) && t > 0 && PAYER_DISCIPLINES.includes(order?.discipline)) {
+        out[order.discipline] = (out[order.discipline] || 0) + t;
+      }
     }
     return out;
   }

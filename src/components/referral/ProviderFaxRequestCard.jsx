@@ -49,6 +49,20 @@ export default function ProviderFaxRequestCard({ referralData, analysis = null }
   const [busy, setBusy] = useState(false);
   const [sentAt, setSentAt] = useState(null);
 
+  // PHI-misdirection guard: when the host switches to a DIFFERENT referral
+  // without remounting this card, the previous patient's destination fax,
+  // exclusions, and sent status must not carry over — otherwise the next send
+  // could fax patient B's request to patient A's provider. (Render-time state
+  // adjustment per React's "adjusting state when a prop changes" pattern; the
+  // contact-back numbers are agency-level and correctly survive.)
+  const [prevReferralData, setPrevReferralData] = useState(referralData);
+  if (prevReferralData !== referralData) {
+    setPrevReferralData(referralData);
+    setExcluded(new Set());
+    setProviderFax("");
+    setSentAt(null);
+  }
+
   const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),

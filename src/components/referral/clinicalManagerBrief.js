@@ -107,10 +107,21 @@ export function buildPdgmRequestFromReferral(referralData, coding = null) {
   ]) {
     if (oasis[key] != null && String(oasis[key]).trim() !== "") functional[key] = String(oasis[key]);
   }
-  const comorbidities = [
-    ...dxCoding.secondaries.map((d) => codeLabel(d)),
-    ...(Array.isArray(ex?.diagnoses?.secondary_diagnoses) ? ex.diagnoses.secondary_diagnoses : []),
-  ].filter(Boolean);
+  // Comorbidities: CODED secondaries only, deduped by code. calculatePDGM
+  // counts every list entry independently (substring term matching), so
+  // passing the same condition twice — once as codeLabel and once as the raw
+  // secondary text — could double-count it and inflate the comorbidity level
+  // (low → high) and the payment estimate. Documented-but-uncoded conditions
+  // stay OUT of the payment inputs; they surface in the clarifications
+  // section as coder queries instead.
+  const seenCodes = new Set();
+  const comorbidities = [];
+  for (const d of dxCoding.secondaries) {
+    const code = String(d.displayCode || "").toUpperCase();
+    if (!code || seenCodes.has(code)) continue;
+    seenCodes.add(code);
+    comorbidities.push(codeLabel(d));
+  }
 
   return {
     primary_diagnosis:
@@ -350,11 +361,27 @@ export function buildClinicalManagerBrief({
     : "DRAFT ESTIMATE — based on approximate case-mix weights, not confirmed official CMS rates. Load official numbers in Admin → PDGM Rate Settings.";
 
   // ── episode margin: revenue − the agency's own per-visit costs ──
-  const marginRevenue = isPdgmPriced
-    ? (original ? Math.round(original.totalPayment * 2 * 100) / 100 : null)
-    : payerEstimate?.estimable
-    ? payerEstimate.amount
-    : null;
+  // The costed side always covers the estimator's 60-day visit plan, so the
+  // revenue side must cover the same horizon: an episodic contract shorter
+  // than 60 days is scaled up (with a note), mirroring the PDGM path's
+  // two-period revenue — never one 30-day payment against 60 days of costs.
+  let marginRevenue = null;
+  let marginHorizonNote = null;
+  if (isPdgmPriced) {
+    marginRevenue = original ? Math.round(original.totalPayment * 2 * 100) / 100 : null;
+  } else if (payerEstimate?.estimable) {
+    marginRevenue = payerEstimate.amount;
+    if (payerEstimate.model === "episodic") {
+      const days = Number(payerMatch.row?.episode_length_days);
+      if (Number.isFinite(days) && days > 0 && days < 60) {
+        const periods = 60 / days;
+        marginRevenue = Math.round(payerEstimate.amount * periods * 100) / 100;
+        marginHorizonNote = `Margin revenue scales the contracted ${days}-day episodic rate ×${Number.isInteger(periods) ? periods : periods.toFixed(1)} to cover the 60-day visit plan being costed.`;
+      } else if (!Number.isFinite(days) || days <= 0) {
+        marginHorizonNote = "Episode length not configured for this payer — margin assumes the episodic rate covers the full 60-day visit plan.";
+      }
+    }
+  }
   const margin = visitCosts
     ? estimateEpisodeMargin({ revenue: marginRevenue, plannedVisits: plannedVisitsByDiscipline(plan), visitCosts })
     : null;
@@ -369,6 +396,7 @@ export function buildClinicalManagerBrief({
         margin.margin !== null
           ? `Estimated episode margin: ${money(margin.margin)}${margin.marginPct !== null ? ` (${margin.marginPct}%)` : ""} — revenue ${money(marginRevenue)} − visit cost ${money(margin.totalCost)}${isPdgmPriced ? " (revenue ≈ two 30-day periods before late-period reweighting)" : ""}`
           : "",
+        marginHorizonNote || "",
         ...margin.notes,
       ].filter(Boolean)
     : margin.notes;

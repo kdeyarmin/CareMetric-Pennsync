@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from 'sonner';
 import { referralToF2FInput, validateFaceToFace } from "./faceToFaceValidator.js";
+import { classifyPayer } from "./visitPlanEstimator.js";
 import DiagnosisCodeGenerator from "./DiagnosisCodeGenerator.jsx";
 import VisitPlanCard from "./VisitPlanCard.jsx";
 import MedicareEligibilityCard from "./MedicareEligibilityCard.jsx";
@@ -72,11 +73,20 @@ export default function ReferralAnalyzer({ referralData, onAnalysisComplete }) {
     const f2f = f2fInput ? validateFaceToFace(f2fInput) : null;
     // A referral with NO F2F block is itself a critical finding (condition of
     // payment) — tell the model so, instead of leaving it to chance.
+    // The strength of the no-F2F directive depends on the payer: an F2F
+    // encounter is a federal condition of payment for Medicare (42 CFR
+    // 424.22) AND Medicaid home health (42 CFR 440.70(f)(1)); commercial /
+    // unidentified payers get plan-verification language instead so a
+    // Medicare-only framing isn't forced onto every payer.
+    const payer = classifyPayer(referralData).payer;
+    const f2fRequired = ["medicare_ffs", "medicare_advantage", "medicaid"].includes(payer);
     const f2fContext = f2f
       ? `\n\nDETERMINISTIC PRE-CHECK (system-validated, do not contradict it): Face-to-Face encounter validation per 42 CFR 424.22 — status: ${f2f.status}. ${f2f.reasons.join(" ")}${
           f2f.status === "valid" ? " Do NOT list the face-to-face encounter as missing information." : ""
         }`
-      : `\n\nDETERMINISTIC PRE-CHECK (system-validated, do not contradict it): No Face-to-Face encounter is documented in this referral. Per 42 CFR 424.22 an F2F encounter within 90 days before or 30 days after the start of care is a Medicare condition of payment — include the Face-to-Face encounter documentation in critical_missing.`;
+      : f2fRequired
+      ? `\n\nDETERMINISTIC PRE-CHECK (system-validated, do not contradict it): No Face-to-Face encounter is documented in this referral. An F2F encounter within 90 days before or 30 days after the start of care is a federal condition of payment for this payer (Medicare: 42 CFR 424.22; Medicaid home health: 42 CFR 440.70(f)) — include the Face-to-Face encounter documentation in critical_missing.`
+      : `\n\nDETERMINISTIC PRE-CHECK (system-validated, do not contradict it): No Face-to-Face encounter is documented in this referral. This payer is not identified as Medicare or Medicaid, so the federal F2F condition of payment does not directly apply — list the Face-to-Face encounter under recommended_missing with a note to verify this plan's own documentation requirements (many plans mirror Medicare's F2F rule).`;
 
     try {
       const result = await ai.run({
@@ -256,7 +266,12 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
   // the diagnosis-code generator it renders in EVERY state (loading, failed,
   // loaded): an AI outage must never hide a 42 CFR 424.22 compliance result.
   // A referral with NO F2F documented at all gets an explicit warning — a
-  // missing condition-of-payment document must never be silently absent.
+  // missing condition-of-payment document must never be silently absent. The
+  // wording is payer-aware: the federal F2F requirement binds Medicare
+  // (42 CFR 424.22) and Medicaid home health (42 CFR 440.70(f)); other payers
+  // get verify-the-plan language.
+  const payerClass = classifyPayer(referralData).payer;
+  const f2fFederallyRequired = ["medicare_ffs", "medicare_advantage", "medicaid"].includes(payerClass);
   const f2fAlert = !f2fValidation ? (
     <Alert className="border-2 bg-yellow-50 border-yellow-300">
       <ShieldAlert className="w-5 h-5 text-yellow-600" />
@@ -268,9 +283,10 @@ Referral Data: ${JSON.stringify(referralData)}${f2fContext}`,
           <span className="text-xs text-slate-600">42 CFR 424.22</span>
         </div>
         <p className="text-sm">
-          No Face-to-Face encounter is documented in this referral. An encounter by the certifying
-          physician/allowed practitioner within 90 days before or 30 days after the start of care is a
-          Medicare condition of payment — request the F2F note from the referring provider before admission.
+          No Face-to-Face encounter is documented in this referral.{" "}
+          {f2fFederallyRequired
+            ? "An encounter by the certifying physician/allowed practitioner within 90 days before or 30 days after the start of care is a federal condition of payment for this payer (Medicare: 42 CFR 424.22; Medicaid home health: 42 CFR 440.70(f)) — request the F2F note from the referring provider before admission."
+            : "This payer is not identified as Medicare or Medicaid, so the federal F2F condition of payment does not directly apply — verify this plan's own documentation requirements (many plans mirror Medicare's F2F rule) and request the note if required."}
         </p>
       </AlertDescription>
     </Alert>

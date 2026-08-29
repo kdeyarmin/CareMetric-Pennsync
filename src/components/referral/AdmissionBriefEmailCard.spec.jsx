@@ -142,4 +142,28 @@ describe('AdmissionBriefEmailCard', () => {
     await waitFor(() => expect(sendEmail).toHaveBeenCalledTimes(1));
     expect(sendEmail.mock.calls[0][0].body).toBe('EDITED BODY ONLY');
   });
+
+  it('switching to a different referral discards the edited body and recipient (PHI guard)', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrap = (data) => (
+      <QueryClientProvider client={client}>
+        <AdmissionBriefEmailCard referralData={data} analysis={null} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(wrap(referralData));
+    await userEvent.click(await screen.findByText(/Kelly Nurse, RN — kelly@a\.example/));
+    await userEvent.click(screen.getByRole('button', { name: /Preview & edit/i }));
+    const textarea = screen.getByLabelText(/Briefing email body/i);
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, 'EDITED BODY ONLY');
+
+    // Patient B's referral arrives in the same mounted card.
+    rerender(wrap({ ...referralData, demographics: { ...referralData.demographics, full_name: 'Patient B' } }));
+    // The previous patient's edited text is gone…
+    expect(screen.queryByDisplayValue('EDITED BODY ONLY')).not.toBeInTheDocument();
+    // …and the previous recipient selection was cleared, so Send is disabled
+    // until a fresh, deliberate choice is made for the new patient.
+    expect(screen.getByRole('button', { name: /Email briefing/i })).toBeDisabled();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
 });

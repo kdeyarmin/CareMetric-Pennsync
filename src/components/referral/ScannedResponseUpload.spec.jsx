@@ -100,6 +100,19 @@ describe('ScannedResponseUpload', () => {
     expect(referralUpdate).not.toHaveBeenCalled();
   });
 
+  it('switching to a different referral clears an extracted preview (PHI guard)', async () => {
+    const { rerender } = render(<ScannedResponseUpload referral={referral} tracking={tracking} onApplied={() => {}} />);
+    chooseFile();
+    await screen.findByText(/Encounter note attached/);
+
+    // Staff selects referral B while A's extracted answers are still previewed —
+    // the preview must not survive to be applied against B's items.
+    rerender(<ScannedResponseUpload referral={{ id: 'ref2' }} tracking={tracking} onApplied={() => {}} />);
+    expect(screen.queryByText(/Encounter note attached/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Apply/ })).not.toBeInTheDocument();
+    expect(referralUpdate).not.toHaveBeenCalled();
+  });
+
   it('renders nothing when every item is already answered/resolved', () => {
     const done = {
       status: 'received',

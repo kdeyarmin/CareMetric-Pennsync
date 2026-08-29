@@ -44,6 +44,20 @@ export default function AdmissionBriefEmailCard({
   const [isSending, setIsSending] = useState(false);
   const [sentTo, setSentTo] = useState([]);
 
+  // PHI-misdirection guard: when the host switches to a DIFFERENT referral
+  // without remounting this card, the previous patient's edited briefing
+  // text, chosen recipient, and sent status must not carry over — otherwise
+  // Send could email patient A's briefing under patient B's subject. (Render-
+  // time state adjustment per React's "adjusting state when a prop changes"
+  // pattern.)
+  const [prevReferralData, setPrevReferralData] = useState(referralData);
+  if (prevReferralData !== referralData) {
+    setPrevReferralData(referralData);
+    setRecipientEmail("");
+    setEditedBody(null);
+    setSentTo([]);
+  }
+
   const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),

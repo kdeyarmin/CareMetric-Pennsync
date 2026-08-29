@@ -71,3 +71,18 @@ test("ZIP+4 addresses match on the 5-digit ZIP", () => {
   assert.equal(m.cbsa, "20700");
   assert.equal(m.matchedBy, "zip");
 });
+
+test("overlapping ZIP prefixes resolve to the most specific row, not CSV order", () => {
+  const overlapping = {
+    rows: [
+      { cbsa: "1", label: "Broad", wage_index: 0.8, counties: [], zip_prefixes: ["184"] },
+      { cbsa: "2", label: "Exact", wage_index: 1.1, counties: [], zip_prefixes: ["18401"] },
+    ],
+  };
+  assert.equal(matchWageIndex("1 Main St 18401", overlapping).cbsa, "2");
+  // Reversed row order gives the same answer.
+  const reversed = { rows: [...overlapping.rows].reverse() };
+  assert.equal(matchWageIndex("1 Main St 18401", reversed).cbsa, "2");
+  // A ZIP only the broad prefix covers still matches the broad row.
+  assert.equal(matchWageIndex("1 Main St 18455", overlapping).cbsa, "1");
+});

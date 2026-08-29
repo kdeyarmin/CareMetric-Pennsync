@@ -182,11 +182,28 @@ describe('ReferralAnalyzer', () => {
 
     const prompt = invokeLLM.mock.calls[0][0].prompt;
     expect(prompt).toContain('No Face-to-Face encounter is documented');
-    expect(prompt).toContain('critical_missing');
+    // referralA carries no payer → the F2F directive is the verify-the-plan
+    // form, NOT the federal condition-of-payment directive.
+    expect(prompt).toContain('recommended_missing');
+    expect(prompt).not.toContain('include the Face-to-Face encounter documentation in critical_missing');
     // Anti-hallucination contract: every analysis is grounded in the referral.
     expect(prompt).toContain('NON-NEGOTIABLE GROUNDING RULES');
     expect(prompt).toContain('Never invent demographics, diagnoses, codes, medications, dates, findings, or history');
     expect(prompt).toContain('omit that estimate rather than guessing');
+    await act(async () => { d.resolve(analysisFor('REASONING-A')); });
+  });
+
+  it('a Medicare referral with NO F2F gets the federal condition-of-payment directive', async () => {
+    const d = deferred();
+    invokeLLM.mockReturnValueOnce(d.promise);
+    const medicareReferral = {
+      ...referralA,
+      demographics: { ...referralA.demographics, insurance_primary: 'Medicare' },
+    };
+    render(<ReferralAnalyzer referralData={medicareReferral} />);
+    const prompt = invokeLLM.mock.calls[0][0].prompt;
+    expect(prompt).toContain('federal condition of payment for this payer');
+    expect(prompt).toContain('include the Face-to-Face encounter documentation in critical_missing');
     await act(async () => { d.resolve(analysisFor('REASONING-A')); });
   });
 

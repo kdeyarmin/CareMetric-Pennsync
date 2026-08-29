@@ -102,6 +102,26 @@ test("matches by match_terms first, then payer name, then sole payer_type", () =
   assert.equal(matchPayerRow("Mystery Insurance", "medicare_ffs", payers).row, null);
 });
 
+test("a generic term on another type's row never captures a classified payer", () => {
+  // The shipped template's Medicare FFS row carries the generic term
+  // "medicare"; an MA plan containing that word must still match ITS row.
+  const withFfs = [
+    { payer_name: "Medicare (traditional)", payer_type: "medicare_ffs", payment_model: "pdgm", match_terms: ["medicare"] },
+    ...payers,
+  ];
+  const ma = matchPayerRow("Aetna Medicare Advantage PPO", "medicare_advantage", withFfs);
+  assert.equal(ma.row.payer_name, "Aetna Medicare Advantage");
+  assert.equal(ma.matchedBy, "match_terms");
+  // Classified type with no rows of that type → no cross-type guess.
+  assert.equal(matchPayerRow("United Healthcare Medicare Complete", "medicare_advantage", [withFfs[0]]).row, null);
+  // Unclassified text may match any row — the LONGEST term wins, not CSV order.
+  const twoTerms = [
+    { payer_name: "Generic", payer_type: "other", match_terms: ["medic"] },
+    { payer_name: "Specific", payer_type: "other", match_terms: ["medical assistance"] },
+  ];
+  assert.equal(matchPayerRow("PA medical assistance plan", "unknown", twoTerms).row.payer_name, "Specific");
+});
+
 // ── episode estimation ──
 
 const visitPlan = {
@@ -157,6 +177,24 @@ test("plannedVisitsByDiscipline prefers ordered periods and falls back to AI est
   });
   assert.deepEqual(ai, { SN: 8, PT: 4, HHA: 2 });
   assert.deepEqual(plannedVisitsByDiscipline(null), {});
+});
+
+test("total-only orders ('PT eval + 6 visits') count toward planned visits", () => {
+  const withTotalOnly = {
+    periods: {
+      byDiscipline: { SN: { period1: 8, period2: 7, total: 15 } },
+      totalOnly: [
+        { kind: "total_only", discipline: "PT", totalVisits: 6 },
+        { kind: "total_only", discipline: "XX", totalVisits: 3 }, // unknown discipline ignored
+      ],
+    },
+  };
+  assert.deepEqual(plannedVisitsByDiscipline(withTotalOnly), { SN: 15, PT: 6 });
+  // A plan that is ONLY total-only orders still prices those visits.
+  assert.deepEqual(
+    plannedVisitsByDiscipline({ periods: { byDiscipline: {}, totalOnly: [{ discipline: "PT", totalVisits: 6 }] } }),
+    { PT: 6 }
+  );
 });
 
 // ── episode margin ──
