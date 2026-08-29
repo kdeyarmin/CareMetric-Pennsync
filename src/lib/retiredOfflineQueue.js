@@ -1,6 +1,8 @@
 import { base44 } from '@/api/base44Client';
 import { logger } from '@/lib/logger';
 import { migrateLegacyOfflineQueues } from '@/lib/offlineMigration';
+import { OFFLINE_RETIRED_FLAG } from '@/lib/localPhiKeys';
+import { saveDraftNoteLocally, getDraftNoteLocally } from '@/lib/draftNotes';
 
 /**
  * ONE-TIME migration for the retired offline feature. DELETE AFTER ONE RELEASE.
@@ -29,8 +31,14 @@ import { migrateLegacyOfflineQueues } from '@/lib/offlineMigration';
 
 const LEGACY_DB_NAME = 'base44-offline-db';
 const LEGACY_QUEUE_STORE = 'sync_queue';
-/** Marks the retirement as done for this browser, so it runs at most once. */
-const DONE_FLAG = 'pennsync_offline_retired';
+/**
+ * Marks the retirement as done for this browser, so it runs at most once — and
+ * tells the logout/idle PHI purge that the retired queues are now safe to remove
+ * (see lib/localPhiKeys.js, which owns the constant).
+ */
+const DONE_FLAG = OFFLINE_RETIRED_FLAG;
+/** The legacy Smart Note autosave store, which lived in the same database. */
+const LEGACY_DRAFT_STORE = 'draft_notes';
 /** The cache the retired service worker created (see the deleted public/sw.js). */
 const LEGACY_CACHE_PREFIX = 'base44-offline';
 
@@ -50,36 +58,71 @@ const markRetired = () => {
   }
 };
 
-/** Read the legacy queue without creating the database if it is already gone. */
-function readLegacyQueue() {
-  return new Promise((resolve) => {
+/**
+ * Read one store from the legacy database without creating it if it is gone.
+ *
+ * Resolves [] ONLY when there is genuinely nothing to read — no IndexedDB at all,
+ * or the store does not exist. Every real failure (the open erroring, a
+ * transaction or getAll erroring) REJECTS, because the caller treats an empty
+ * result as "nothing left to save" and goes on to delete the database and set the
+ * permanent retirement flag. Resolving [] on a transient storage error therefore
+ * destroyed queued clinical work and guaranteed it would never be retried.
+ */
+function readLegacyStore(storeName) {
+  return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') return resolve([]);
     let open;
     try {
       // No version argument: opens the CURRENT version, and never triggers an
       // upgrade — so this cannot recreate a database the user no longer has.
       open = indexedDB.open(LEGACY_DB_NAME);
-    } catch {
-      return resolve([]);
+    } catch (error) {
+      return reject(error instanceof Error ? error : new Error('IndexedDB open threw'));
     }
-    open.onerror = () => resolve([]);
+    open.onerror = () => reject(open.error || new Error('IndexedDB open failed'));
+    open.onblocked = () => reject(new Error('IndexedDB open blocked'));
     open.onsuccess = () => {
       const db = open.result;
-      if (!db.objectStoreNames.contains(LEGACY_QUEUE_STORE)) {
+      if (!db.objectStoreNames.contains(storeName)) {
         db.close();
-        return resolve([]);
+        return resolve([]); // the store never existed — genuinely nothing here
       }
       try {
-        const tx = db.transaction(LEGACY_QUEUE_STORE, 'readonly');
-        const request = tx.objectStore(LEGACY_QUEUE_STORE).getAll();
+        const tx = db.transaction(storeName, 'readonly');
+        const request = tx.objectStore(storeName).getAll();
         request.onsuccess = () => { db.close(); resolve(request.result || []); };
-        request.onerror = () => { db.close(); resolve([]); };
-      } catch {
+        request.onerror = () => { db.close(); reject(request.error || new Error('IndexedDB read failed')); };
+        tx.onabort = () => { db.close(); reject(tx.error || new Error('IndexedDB transaction aborted')); };
+      } catch (error) {
         db.close();
-        resolve([]);
+        reject(error instanceof Error ? error : new Error('IndexedDB read threw'));
       }
     };
   });
+}
+
+const readLegacyQueue = () => readLegacyStore(LEGACY_QUEUE_STORE);
+
+/**
+ * Rescue Smart Note autosave drafts before the legacy database is deleted.
+ *
+ * The retired `indexedDB.js` kept those drafts in a `draft_notes` store INSIDE
+ * `base44-offline-db`; the replacement (lib/draftNotes.js) uses its own
+ * `pennsync-drafts` database. Deleting the old database without this step threw
+ * away the only durable copy of a note a nurse left unfinished before upgrading,
+ * and the new restore path would never find it. An existing draft under the same
+ * id is left alone — it is newer than anything being recovered.
+ */
+async function migrateLegacyDraftNotes({ saveDraft = saveDraftNoteLocally, getDraft = getDraftNoteLocally } = {}) {
+  const drafts = await readLegacyStore(LEGACY_DRAFT_STORE);
+  let copied = 0;
+  for (const draft of drafts) {
+    if (!draft || draft.id === undefined || draft.id === null) continue;
+    if (await getDraft(draft.id)) continue;
+    await saveDraft(draft);
+    copied += 1;
+  }
+  return copied;
 }
 
 function deleteLegacyDatabase() {
@@ -225,6 +268,7 @@ export async function flushAndRetireOfflineQueue({
   getQueue = readLegacyQueue,
   deleteDatabase = deleteLegacyDatabase,
   unregisterWorker = unregisterOfflineServiceWorker,
+  rescueDrafts = migrateLegacyDraftNotes,
   isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false),
 } = {}) {
   if (alreadyRetired()) return { retired: true, flushed: 0, pending: 0 };
@@ -251,19 +295,36 @@ export async function flushAndRetireOfflineQueue({
   try {
     for (const item of await getQueue()) pendingWrites.push(item);
   } catch (error) {
-    logger.debug('[offline-retire] could not read the legacy queue', error);
+    // A read failure is NOT an empty queue: the database may still hold queued
+    // clinical work. Retire nothing and retry on the next load.
+    logger.error('[offline-retire] could not read the legacy queue; deferring retirement', error);
     return { retired: false, flushed: 0, pending: pendingWrites.length };
   }
 
   const queue = pendingWrites;
 
-  // Nothing left to save: retire immediately, whatever the connection state.
-  if (!queue.length) {
+  // Shared teardown. The legacy database also holds the Smart Note autosave
+  // drafts, which are local-only and have no server copy to fall back on, so they
+  // are rescued into the new draft database FIRST; if that fails nothing is
+  // deleted and the whole retirement retries next load. Re-flushing on that retry
+  // is safe — every action carries an idempotency key.
+  const retire = async () => {
+    try {
+      await rescueDrafts();
+    } catch (error) {
+      logger.error('[offline-retire] could not rescue local note drafts; keeping the legacy storage', error);
+      return false;
+    }
     await unregisterWorker();
     await deleteDatabase();
     clearLegacyStores();
     markRetired();
-    return { retired: true, flushed: 0, pending: 0 };
+    return true;
+  };
+
+  // Nothing left to save: retire immediately, whatever the connection state.
+  if (!queue.length) {
+    return { retired: await retire(), flushed: 0, pending: 0 };
   }
 
   // There IS unsynced clinical work. Only destroy the queue once every item has
@@ -282,11 +343,7 @@ export async function flushAndRetireOfflineQueue({
   }
 
   // Everything reached the server — only now is it safe to destroy local copies.
-  await unregisterWorker();
-  await deleteDatabase();
-  clearLegacyStores();
-  markRetired();
-  return { retired: true, flushed, pending: 0 };
+  return { retired: await retire(), flushed, pending: 0 };
 }
 
 export default flushAndRetireOfflineQueue;

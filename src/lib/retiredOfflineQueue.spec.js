@@ -17,6 +17,7 @@ import { flushAndRetireOfflineQueue } from './retiredOfflineQueue';
 
 function harness(queue = [], { online = true } = {}) {
   const created = { Visit: [], Task: [], Incident: [], NoteConversion: [], ComplianceAudit: [] };
+  const order = [];
   const entities = {
     Visit: {
       create: vi.fn(async (p) => { created.Visit.push(p); return { id: 'visit-1', ...p }; }),
@@ -34,11 +35,13 @@ function harness(queue = [], { online = true } = {}) {
   };
   return {
     created,
+    order,
     entities,
     functions: { invoke: vi.fn(async () => ({ data: {} })) },
     getQueue: vi.fn(async () => queue),
-    deleteDatabase: vi.fn(async () => {}),
+    deleteDatabase: vi.fn(async () => { order.push('delete'); }),
     unregisterWorker: vi.fn(async () => {}),
+    rescueDrafts: vi.fn(async () => { order.push('rescue'); return 0; }),
     isOnline: () => online,
   };
 }
@@ -190,5 +193,79 @@ describe('flushAndRetireOfflineQueue', () => {
     expect(h.created.Visit[0]).toMatchObject({ client_request_id: 'legacy-1', nurse_notes: 'field note' });
     expect(mig.cleared).toBe(1);
     expect(h.deleteDatabase).toHaveBeenCalled();
+  });
+
+  // ── The legacy database is only destroyed when it can be read and drained ──
+
+  it('does NOT retire when the legacy queue cannot be read', async () => {
+    // Regression: a transient IndexedDB failure used to surface as an empty
+    // queue, so the retirement deleted the database and set its permanent flag —
+    // discarding queued clinical work that was never even read, with no retry.
+    const h = harness([]);
+    h.getQueue.mockRejectedValueOnce(new Error('IndexedDB read failed'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false });
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    expect(mig.cleared).toBe(0);
+    error.mockRestore();
+  });
+
+  it('treats an IndexedDB open failure as a deferral, not an empty queue', async () => {
+    // Drives the REAL reader (no injected getQueue) against a database that
+    // errors on open. It used to resolve [], which the caller read as "nothing
+    // left to save" — so it deleted the database and set the permanent flag on a
+    // browser whose queued clinical work it had never managed to read.
+    const originalIndexedDB = globalThis.indexedDB;
+    globalThis.indexedDB = {
+      open: () => {
+        const request = {};
+        queueMicrotask(() => {
+          request.error = new Error('QuotaExceededError');
+          request.onerror?.();
+        });
+        return request;
+      },
+    };
+    const h = harness([]);
+    delete h.getQueue; // fall through to the real readLegacyQueue
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const result = await flushAndRetireOfflineQueue(h);
+
+      expect(result.retired).toBe(false);
+      expect(h.deleteDatabase).not.toHaveBeenCalled();
+      expect(mig.cleared).toBe(0);
+    } finally {
+      error.mockRestore();
+      globalThis.indexedDB = originalIndexedDB;
+    }
+  });
+
+  it('rescues the local note drafts BEFORE deleting the legacy database', async () => {
+    // The drafts lived in the same database and are local-only — there is no
+    // server copy to fall back on if the delete happens first.
+    const h = harness([]);
+
+    await flushAndRetireOfflineQueue(h);
+
+    expect(h.rescueDrafts).toHaveBeenCalled();
+    expect(h.order).toEqual(['rescue', 'delete']);
+  });
+
+  it('keeps the legacy database when the draft rescue fails', async () => {
+    const h = harness([]);
+    h.rescueDrafts.mockRejectedValueOnce(new Error('draft store unreadable'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result.retired).toBe(false);
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    expect(mig.cleared).toBe(0);
+    error.mockRestore();
   });
 });

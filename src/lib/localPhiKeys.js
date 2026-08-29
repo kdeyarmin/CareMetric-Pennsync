@@ -11,16 +11,26 @@
  * is missed.
  *
  * Classification (HIPAA — shared/kiosk devices):
- *   PURGE_FULL    PHI or diagnostic logs → remove entirely on logout.
- *   PURGE_SYNCED  legacy work queues that tag already-synced items → drop those,
- *                 keep anything still marked pending until it is recovered.
- *   PRESERVE      LIVE unsynced local drafts → never wiped (wiping on a 15-minute
- *                 idle timeout mid-visit would be silent loss of documented care).
- *   NON_PHI       bookkeeping/metadata (timestamps, id maps) — no purge needed.
+ *   PURGE_FULL         PHI or diagnostic logs → remove entirely on logout.
+ *   PURGE_AFTER_RETIREMENT
+ *                      retired offline work queues → remove ONLY once
+ *                      retiredOfflineQueue.js has positively completed (its flag
+ *                      is set). Until then they may hold the sole copy of visit
+ *                      notes and incident reports captured in the field.
+ *   PURGE_SYNCED       legacy work queues that tag already-synced items → drop
+ *                      those, keep anything still marked pending until recovered.
+ *   PRESERVE           LIVE unsynced local drafts → never wiped (wiping on a
+ *                      15-minute idle timeout mid-visit would be silent loss of
+ *                      documented care).
+ *   NON_PHI            bookkeeping/metadata (timestamps, id maps) — no purge.
  *
- * Anything a retired offline queue still holds is recovered once, on the next
- * online load, by lib/retiredOfflineQueue.js — which then deletes it. That
- * recovery is what allows these to be purge-on-logout rather than kept forever.
+ * On the retirement gate: the recovery flush needs a connection and a successful
+ * write, so it legitimately fails and retries on the next load. Purging those
+ * queues unconditionally on logout/idle destroyed exactly the work the flush had
+ * deliberately kept — including the stores it preserved BECAUSE an item could not
+ * be safely mapped — so the promised recovery could never happen. Gating on the
+ * flag keeps both properties: unsynced care survives the session, and once it is
+ * on the server the local copy stops outliving the session on a shared device.
  */
 
 export const LOCAL_PHI_KEYS = {
@@ -73,10 +83,22 @@ export const PURGE_FULL_PREFIXES = [
   K.RECENT_PATIENTS_PREFIX, K.FAVORITE_PATIENTS_PREFIX, K.OASIS_DATA_PREFIX,
   K.PENN_CACHE_PREFIX, K.PENN_SYNC_ERRORS, K.PENN_SYNC_STATUS,
   K.APP_PARAM_FROM_URL,
-  // Retired offline queues. These used to be PRESERVEd because the sync worker
-  // would eventually upload them; with offline mode gone nothing ever will, so
-  // retiredOfflineQueue.js recovers their contents once and the purge then stops
-  // them outliving the session on a shared device.
+];
+
+/**
+ * Set by lib/retiredOfflineQueue.js once it has flushed every stranded item to
+ * the server. Lives here so the purge and the retirement agree on one flag.
+ * Bookkeeping, not PHI — deliberately not a LOCAL_PHI_KEYS entry.
+ */
+export const OFFLINE_RETIRED_FLAG = 'pennsync_offline_retired';
+
+/**
+ * Retired offline work queues: PHI that must come off a shared device, but only
+ * after retiredOfflineQueue.js has confirmed it reached the server. Purging these
+ * before that destroyed unsynced field documentation on any logout or idle
+ * timeout that happened while the device was offline.
+ */
+export const PURGE_AFTER_RETIREMENT_KEYS = [
   K.PENDING, K.VISIT_DRAFTS, K.CONFLICTS, K.SYNC_QUEUE,
 ];
 
