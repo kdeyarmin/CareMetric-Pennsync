@@ -230,13 +230,20 @@ export async function flushAndRetireOfflineQueue({
   if (alreadyRetired()) return { retired: true, flushed: 0, pending: 0 };
 
   // Older localStorage queues predate the IndexedDB one; recover them into the
-  // same flush. `migrateLegacyOfflineQueues` only clears a store once every item
-  // in it mapped cleanly, so nothing it can't interpret is destroyed.
+  // same flush. NOTHING is deleted here: `enqueue` only stages an item in memory,
+  // so the migration hands back `clearLegacyStores` and we call it further down,
+  // after every staged write has actually reached the server. Clearing at map time
+  // destroyed stranded field documentation whenever the send that followed was
+  // skipped (device offline) or failed part-way.
   const pendingWrites = [];
+  let clearLegacyStores = () => {};
   try {
-    await migrateLegacyOfflineQueues({
+    const migration = await migrateLegacyOfflineQueues({
       enqueue: async (action, payload) => { pendingWrites.push({ action, payload }); },
     });
+    if (typeof migration?.clearMigratedStores === 'function') {
+      clearLegacyStores = migration.clearMigratedStores;
+    }
   } catch (error) {
     logger.debug('[offline-retire] could not read the legacy localStorage queues', error);
   }
@@ -254,6 +261,7 @@ export async function flushAndRetireOfflineQueue({
   if (!queue.length) {
     await unregisterWorker();
     await deleteDatabase();
+    clearLegacyStores();
     markRetired();
     return { retired: true, flushed: 0, pending: 0 };
   }
@@ -273,8 +281,10 @@ export async function flushAndRetireOfflineQueue({
     }
   }
 
+  // Everything reached the server — only now is it safe to destroy local copies.
   await unregisterWorker();
   await deleteDatabase();
+  clearLegacyStores();
   markRetired();
   return { retired: true, flushed, pending: 0 };
 }

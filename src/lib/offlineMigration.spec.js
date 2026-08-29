@@ -18,9 +18,16 @@ describe('migrateLegacyOfflineQueues', () => {
   let enqueue;
   beforeEach(() => { enqueue = vi.fn(async () => {}); });
 
+  // Migrating no longer deletes anything on its own — the caller commits the clear
+  // once the migrated writes have reached the server. These cases describe the
+  // POST-commit state, so the helper performs that commit; the deferral itself is
+  // covered by its own test below.
   const run = (initial) => {
     const storage = makeStorage(initial);
-    return migrateLegacyOfflineQueues({ enqueue, storage }).then((r) => ({ ...r, storage }));
+    return migrateLegacyOfflineQueues({ enqueue, storage }).then((r) => {
+      r.clearMigratedStores();
+      return { ...r, storage };
+    });
   };
   const actions = () => enqueue.mock.calls.map(([a]) => a);
   const calls = (action) => enqueue.mock.calls.filter(([a]) => a === action).map(([, p]) => p);
@@ -146,6 +153,7 @@ describe('migrateLegacyOfflineQueues', () => {
     });
     const first = await migrateLegacyOfflineQueues({ enqueue, storage });
     expect(first.migrated).toBe(1);
+    first.clearMigratedStores();
     expect(storage.has(LOCAL_PHI_KEYS.SYNC_QUEUE)).toBe(false);
 
     enqueue.mockClear();
@@ -164,5 +172,41 @@ describe('migrateLegacyOfflineQueues', () => {
     expect(enqueue).not.toHaveBeenCalled();
     expect(storage.has(LOCAL_PHI_KEYS.SYNC_QUEUE)).toBe(true);
     expect(storage.has(LOCAL_PHI_KEYS.PENDING)).toBe(true);
+  });
+
+  it('deletes NOTHING until the caller confirms the writes reached the server', async () => {
+    // Regression: the store used to be removed as soon as its items were handed to
+    // `enqueue`. But enqueue only STAGES a write in memory, so when the send that
+    // followed was skipped (device offline) or failed, the queue had already been
+    // destroyed and the nurse's field documentation was gone with it.
+    const storage = makeStorage({
+      [LOCAL_PHI_KEYS.SYNC_QUEUE]: JSON.stringify([
+        { id: 'offline_1', type: 'visit', data: { patient_id: 'p1', nurse_notes: 'documented in the field' } },
+      ]),
+    });
+
+    const { migrated, clearMigratedStores } = await migrateLegacyOfflineQueues({ enqueue, storage });
+
+    expect(migrated).toBe(1);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    // Mapped and staged — but still on the device, because nothing has been sent.
+    expect(storage.has(LOCAL_PHI_KEYS.SYNC_QUEUE)).toBe(true);
+
+    clearMigratedStores();
+    expect(storage.has(LOCAL_PHI_KEYS.SYNC_QUEUE)).toBe(false);
+  });
+
+  it('commits only the stores it fully migrated, never a preserved one', async () => {
+    const storage = makeStorage({
+      [LOCAL_PHI_KEYS.PENN_PENDING_VISITS]: JSON.stringify([{ id: 'offline_a', synced: false, data: { patient_id: 'p1' } }]),
+      // unresolved offline_ target → preserved, so the commit must not touch it
+      [LOCAL_PHI_KEYS.PENN_PENDING_UPDATES]: JSON.stringify([{ visitId: 'offline_c', synced: false, data: { nurse_notes: 'u' } }]),
+    });
+
+    const { clearMigratedStores } = await migrateLegacyOfflineQueues({ enqueue, storage });
+    clearMigratedStores();
+
+    expect(storage.has(LOCAL_PHI_KEYS.PENN_PENDING_VISITS)).toBe(false);
+    expect(storage.has(LOCAL_PHI_KEYS.PENN_PENDING_UPDATES)).toBe(true);
   });
 });

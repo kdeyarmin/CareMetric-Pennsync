@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/api/base44Client', () => ({ base44: { entities: {}, functions: {} } }));
-// The legacy localStorage sweep is covered by offlineMigration.spec.js; keep it
-// out of the way here so these tests are about the retirement decision itself.
-vi.mock('@/lib/offlineMigration', () => ({ migrateLegacyOfflineQueues: vi.fn(async () => ({ migrated: 0 })) }));
+// The legacy localStorage sweep itself is covered by offlineMigration.spec.js.
+// It's stubbed here so these tests can assert the RETIREMENT decision: what gets
+// staged, and — critically — whether the legacy stores are committed (deleted) or
+// left in place when the flush doesn't complete.
+const mig = vi.hoisted(() => ({ actions: [], cleared: 0 }));
+vi.mock('@/lib/offlineMigration', () => ({
+  migrateLegacyOfflineQueues: async ({ enqueue }) => {
+    for (const [action, payload] of mig.actions) await enqueue(action, payload);
+    return { migrated: mig.actions.length, clearMigratedStores: () => { mig.cleared += 1; } };
+  },
+}));
 
 import { flushAndRetireOfflineQueue } from './retiredOfflineQueue';
 
@@ -36,7 +44,11 @@ function harness(queue = [], { online = true } = {}) {
 }
 
 describe('flushAndRetireOfflineQueue', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    mig.actions = [];
+    mig.cleared = 0;
+  });
 
   it('retires immediately when the device has nothing queued', async () => {
     const h = harness([]);
@@ -135,5 +147,48 @@ describe('flushAndRetireOfflineQueue', () => {
 
     expect(result).toMatchObject({ retired: true, flushed: 0 });
     expect(second.getQueue).not.toHaveBeenCalled();
+  });
+
+  // ── The legacy localStorage stores are committed only after a complete flush ──
+  // Regression: the migration used to delete each store the moment its items were
+  // mapped. Staging is not sending, so any run that stopped short — offline, or a
+  // rejected write — destroyed unsynced field documentation.
+
+  it('does NOT clear the legacy localStorage stores when the device is offline', async () => {
+    mig.actions = [['CREATE_VISIT', { client_request_id: 'legacy-1', patient_id: 'p1', nurse_notes: 'field note' }]];
+    const h = harness([], { online: false });
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, pending: 1 });
+    expect(mig.cleared).toBe(0);
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    expect(h.entities.Visit.create).not.toHaveBeenCalled();
+  });
+
+  it('does NOT clear them when an upload fails part-way', async () => {
+    mig.actions = [['CREATE_VISIT', { client_request_id: 'legacy-1', patient_id: 'p1' }]];
+    const h = harness([]);
+    h.entities.Visit.create.mockImplementation(() => { throw new Error('server rejected'); });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0 });
+    expect(mig.cleared).toBe(0);
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('clears them once every migrated write has reached the server', async () => {
+    mig.actions = [['CREATE_VISIT', { client_request_id: 'legacy-1', patient_id: 'p1', nurse_notes: 'field note' }]];
+    const h = harness([]);
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: true, flushed: 1, pending: 0 });
+    expect(h.created.Visit[0]).toMatchObject({ client_request_id: 'legacy-1', nurse_notes: 'field note' });
+    expect(mig.cleared).toBe(1);
+    expect(h.deleteDatabase).toHaveBeenCalled();
   });
 });
