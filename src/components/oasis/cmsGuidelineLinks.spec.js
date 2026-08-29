@@ -48,6 +48,19 @@ describe('resolveCmsGuidelineLink', () => {
     expect(resolveCmsGuidelineLink('Medicare Conditions of Participation', undefined)).toBe(HH_COPS_PART_484_URL);
   });
 
+  it('matches the CoP acronym only as a whole word — COPD must not resolve to the CoPs link', () => {
+    // COPD is one of the most common home health diagnoses, so an unbounded
+    // "CoP" alternation turned ordinary clinical text into a CoP citation.
+    expect(resolveCmsGuidelineLink('COPD exacerbation management', '')).toBeNull();
+    expect(resolveCmsGuidelineLink('Chronic obstructive pulmonary disease (COPD)', '')).toBeNull();
+    expect(resolveCmsGuidelineLink('Scope of practice', '')).toBeNull();
+    expect(resolveCmsGuidelineLink('copay collection policy', '')).toBeNull();
+    // Genuine CoP references still resolve.
+    expect(resolveCmsGuidelineLink('CoP compliance', '')).toBe(HH_COPS_PART_484_URL);
+    expect(resolveCmsGuidelineLink('Home health CoPs', '')).toBe(HH_COPS_PART_484_URL);
+    expect(resolveCmsGuidelineLink('Medicare Condition of Participation', '')).toBe(HH_COPS_PART_484_URL);
+  });
+
   it('returns null when nothing can be resolved', () => {
     expect(resolveCmsGuidelineLink('internal agency policy', 'not a url')).toBeNull();
     expect(resolveCmsGuidelineLink('', '')).toBeNull();

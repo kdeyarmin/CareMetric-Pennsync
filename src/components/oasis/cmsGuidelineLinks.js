@@ -67,8 +67,11 @@ export function resolveCmsGuidelineLink(regulationText, aiLink) {
   const aiHref = String(aiLink || "");
   if (/^https?:\/\//i.test(aiHref) && isSafeExternalUrl(aiHref)) return aiHref;
   const topic = String(regulationText || "");
+  // Acronyms are matched as whole words: an unanchored "CoP" also matches
+  // COPD — one of the most common home health diagnoses — and "scope", which
+  // routed ordinary clinical text to the Conditions of Participation link.
   if (/oasis/i.test(topic)) return OASIS_DATA_SETS_URL;
-  if (/quality|star\s*rating|qrp/i.test(topic)) return HH_QUALITY_REPORTING_URL;
-  if (/conditions?\s+of\s+participation|CoP/i.test(topic)) return HH_COPS_PART_484_URL;
+  if (/quality|star\s*rating|\bqrp\b/i.test(topic)) return HH_QUALITY_REPORTING_URL;
+  if (/conditions?\s+of\s+participation|\bCoPs?\b/i.test(topic)) return HH_COPS_PART_484_URL;
   return null;
 }
