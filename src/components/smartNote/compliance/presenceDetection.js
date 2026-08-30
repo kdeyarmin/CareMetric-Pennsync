@@ -3,6 +3,7 @@
 // found and, if so, a clean single-line evidence sentence (for provenance and
 // for the homebound_justification chart field).
 import { splitSentences } from "./factExtraction.js";
+import { hasPlaceholder } from "./placeholderGuard.js";
 
 // Negation guard for `negationSensitive` elements (homebound, skilled need):
 // a NEGATED mention is not evidence — "Patient is not homebound", "No wound
@@ -71,7 +72,16 @@ function isNegatedHit(segment, re) {
 export function detectPresence(draftText, requiredElements) {
   // Newline/bullet/sentence-aware segments, trimmed — so a bullet draft (few
   // periods) yields clean one-line evidence rather than a multi-line chunk.
-  const segments = splitSentences(draftText || "");
+  // An UNFILLED template line is not documentation. A seeded-but-untouched
+  // "Homebound status: unable to leave home ... due to [diagnosis]" matched the
+  // homebound pattern, so the element scanned as documented, the nurse was never
+  // asked the question, and the blank rode into the note. Segments still holding
+  // a placeholder are dropped from BOTH the evidence search and the keyword
+  // fallback's haystack, so they can never satisfy a required element.
+  // (ConstrainedNoteReviewer separately blocks generation until they are filled,
+  // so this only suppresses the false pass — it never hides real documentation.)
+  const segments = splitSentences(draftText || "").filter((s) => !hasPlaceholder(s));
+  const searchText = segments.join(" ");
   return requiredElements.map((elem) => {
     let evidence = null;
     const accepts = (s, re) => re.test(s) && !(elem.negationSensitive && isNegatedHit(s, re));
@@ -93,7 +103,7 @@ export function detectPresence(draftText, requiredElements) {
       const kwRegex = (k) =>
         new RegExp(`\\b${String(k).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
       for (const k of elem.keywords) {
-        if (!k || !kwRegex(k).test(draftText || "")) continue;
+        if (!k || !kwRegex(k).test(searchText)) continue;
         const re = kwRegex(k);
         const seg = segments.find((s) => accepts(s, re));
         if (seg) {

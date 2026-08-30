@@ -138,3 +138,76 @@ describe("ConstrainedNoteReviewer — critic demotion propagates into scoring", 
     expect(await screen.findByDisplayValue(/safety \/ fall-risk assessment was not documented this visit/i)).toBeInTheDocument();
   });
 });
+
+describe("ConstrainedNoteReviewer — unfilled template blanks gate generation", () => {
+  // Criticals ARE documented here, so only the leftover blank can block: this
+  // isolates the placeholder gate from the critical-element gate.
+  const DRAFT_WITH_BLANK = [
+    "Patient is homebound due to severe dyspnea and requires a walker with one-person assist.",
+    "Skilled wound care with a sterile dressing change to the sacral ulcer.",
+    "Pain level: _/10, location: _",
+  ].join("\n");
+
+  const CLEAN_DRAFT = [
+    "Patient is homebound due to severe dyspnea and requires a walker with one-person assist.",
+    "Skilled wound care with a sterile dressing change to the sacral ulcer.",
+    "Pain level 4/10, location right heel.",
+  ].join("\n");
+
+  beforeEach(() => { setOnline(false); });
+  afterEach(() => { setOnline(true); vi.clearAllMocks(); });
+
+  it("blocks generation and names the lines still holding blanks", async () => {
+    const { generateConstrainedNote } = await import("./compliance/generation");
+    renderWithProviders(<ConstrainedNoteReviewer roughNote={DRAFT_WITH_BLANK} serviceLine="home_health" visitType="routine_visit" />);
+
+    expect(screen.getByText(/unfilled blanks in your draft/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pain level: _\/10, location: _/)).toBeInTheDocument();
+
+    const generateBtn = screen.getByRole("button", { name: /generate final note/i });
+    expect(generateBtn).toBeDisabled();
+    fireEvent.click(generateBtn);
+    expect(generateConstrainedNote).not.toHaveBeenCalled();
+  });
+
+  it("generates once the blanks are filled in", async () => {
+    const { generateConstrainedNote } = await import("./compliance/generation");
+    renderWithProviders(<ConstrainedNoteReviewer roughNote={CLEAN_DRAFT} serviceLine="home_health" visitType="routine_visit" />);
+
+    expect(screen.queryByText(/unfilled blanks in your draft/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /generate final note/i }));
+
+    expect(await screen.findByText(/final clinical note/i)).toBeInTheDocument();
+    await waitFor(() => expect(generateConstrainedNote).toHaveBeenCalledTimes(1));
+  });
+
+  it("a blank re-introduced by a manual edit fails verification", async () => {
+    renderWithProviders(<ConstrainedNoteReviewer roughNote={CLEAN_DRAFT} serviceLine="home_health" visitType="routine_visit" />);
+    fireEvent.click(screen.getByRole("button", { name: /generate final note/i }));
+    expect(await screen.findByText(/final clinical note/i)).toBeInTheDocument();
+
+    // Hand-edit the verified note to reintroduce a blank, then re-check.
+    const noteBox = screen.getByDisplayValue(/Patient was seen for a routine visit/i);
+    fireEvent.change(noteBox, { target: { value: "Patient was seen for a routine visit. Wound measured _ cm." } });
+    fireEvent.click(screen.getByRole("button", { name: /re-check/i }));
+
+    expect(await screen.findByText(/fix required before finalizing/i)).toBeInTheDocument();
+    expect(screen.getByText(/unfilled blanks are still in the note/i)).toBeInTheDocument();
+  });
+
+  it("an untouched template scores 0% and asks every required question", () => {
+    // The shipped routine-SN template, unedited. Every line is scaffolding, so
+    // nothing counts as documented and the nurse is asked about all of it.
+    const TEMPLATE = [
+      "• Vital signs: BP _/_,  HR _, RR _, O2 _% on RA, Temp _°F, Wt _ lbs",
+      "• Homebound status: patient unable to leave home without considerable effort due to [diagnosis]",
+      "• Skilled need: [wound care / medication management / disease management teaching]",
+    ].join("\n");
+    renderWithProviders(<ConstrainedNoteReviewer roughNote={TEMPLATE} serviceLine="home_health" visitType="routine_visit" />);
+
+    expect(screen.getByText("0%")).toBeInTheDocument();
+    expect(screen.getByText(/0 of \d+ required elements documented/i)).toBeInTheDocument();
+    expect(screen.getByText(/why is the patient homebound/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /generate final note/i })).toBeDisabled();
+  });
+});

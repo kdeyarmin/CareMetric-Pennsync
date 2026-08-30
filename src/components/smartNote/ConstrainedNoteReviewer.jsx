@@ -3,17 +3,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, ArrowRight, HelpCircle, AlertTriangle, ShieldCheck, ShieldAlert, Loader2, Copy, CheckCircle2, Activity, BellRing, ListChecks } from "lucide-react";
 import { toast } from "sonner";
-import { normalizeDraft } from "./compliance/normalize";
-import { getRequiredElements } from "./compliance/requiredElements";
-import { buildOverrides } from "./compliance/ruleLibrary";
+import { scanDraft } from "./compliance/draftScan";
 import { checkAnswerAdequacy, findInadequateCritical } from "./compliance/answerAdequacy";
 import { critiqueCoverage } from "./compliance/completenessCritic";
 import { reconcileCritique } from "./compliance/criticReconcile";
-import { detectPresence, computeGaps, computeCriticalGaps, computeCarryForward } from "./compliance/presenceDetection";
-import { splitSentences, formatVitalsSentence } from "./compliance/factExtraction";
+import { computeGaps, computeCriticalGaps, computeCarryForward } from "./compliance/presenceDetection";
+import { splitSentences } from "./compliance/factExtraction";
 import { generateConstrainedNote, groundNote } from "./compliance/generation";
 import { valueGuard } from "./compliance/valueGuard";
-import { computeCoverageScore, computeDraftPresenceScore } from "./compliance/coverageScore";
+import { describePlaceholders } from "./compliance/placeholderGuard";
+import { computeCoverageScore } from "./compliance/coverageScore";
 import { compareVisits, buildTrendSummary, detectSustainedTrends } from "./compliance/visitComparison";
 import { crossCheckChart } from "./compliance/chartCrossCheck";
 import VisitComparisonPanel from "./VisitComparisonPanel";
@@ -191,28 +190,13 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const [showThinConfirm, setShowThinConfirm] = useState(false);
   const [confirmedThinCritical, setConfirmedThinCritical] = useState(false);
 
-  // Deterministic, instant, offline scan — no LLM, no invented score.
-  const analysis = useMemo(() => {
-    if (!roughNote || roughNote.trim().length < 20) return null;
-    const normalized = normalizeDraft(roughNote);
-    const vitalsSentence = formatVitalsSentence(vitals);
-    // Fold any agency-configured MedicareComplianceRule records over the static
-    // defaults. `overrides` is null when nothing applies, so getRequiredElements
-    // falls back to the offline static set. `appliedRules` is stamped into the
-    // saved compliance audit so each note records which rule version judged it.
-    const { overrides, applied: appliedRules } = buildOverrides(complianceRules, { serviceLine, visitType });
-    const required = getRequiredElements(serviceLine, visitType, overrides);
-    // Presence/coverage must see structured vitals captured on the form, even
-    // when the nurse didn't retype them into the draft — otherwise vitals are
-    // falsely scored as "not documented this visit". The draft sentences fed to
-    // the scribe stay roughNote-only (vitals are appended verbatim, never
-    // re-voiced), so this only affects gap detection and the coverage score.
-    const presenceText = vitalsSentence ? normalizeDraft(`${roughNote} ${vitalsSentence}`) : normalized;
-    const presence = detectPresence(presenceText, required);
-    const gaps = computeGaps(presence, required);
-    const draftScore = computeDraftPresenceScore({ requiredElements: required, presenceResults: presence });
-    return { normalized, vitalsSentence, required, presence, gaps, draftScore, appliedRules };
-  }, [roughNote, serviceLine, visitType, vitals, complianceRules]);
+  // Deterministic, instant, offline scan — no LLM, no invented score. Shared with
+  // the Step 1 readiness bar (compliance/draftScan.js) so the two screens can
+  // never disagree about what the draft documents.
+  const analysis = useMemo(
+    () => scanDraft({ roughNote, serviceLine, visitType, vitals, complianceRules }),
+    [roughNote, serviceLine, visitType, vitals, complianceRules],
+  );
 
   // Critic-aware presence: the completeness critic can demote an element the
   // keyword scan over-counted as present (e.g. a negated "no fall assessment
@@ -227,6 +211,13 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     const set = new Set(demoted);
     return analysis.presence.map((p) => (set.has(p.id) ? { ...p, present: false, evidence: null } : p));
   }, [analysis, critic]);
+
+  // Unfilled template/quick-phrase scaffolding still in the draft ("due to
+  // [diagnosis]", "BP _/_"). These are NOT documentation — presenceDetection
+  // ignores them, so they surface as ordinary gaps — but they must also never be
+  // handed to the scribe, which would faithfully re-voice the blank into the note
+  // the nurse copies into the EMR. Generation is gated until they are resolved.
+  const draftPlaceholders = analysis?.placeholders || [];
 
   // Deterministic visit-over-visit comparison: what measured values changed since
   // the patient's last documented note. Pure + offline, derived from the same
@@ -392,6 +383,12 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   // verbatim extras aren't re-classified; on a re-check after a manual edit we
   // ground the whole note (the nurse may have changed anything).
   const verifyNote = useCallback(async (text, groundingText = text) => {
+    // A hand-edit can reintroduce a blank after generation; an unfilled
+    // placeholder must never pass verification and reach the chart.
+    const placeholders = describePlaceholders(text);
+    if (placeholders.length) {
+      return { ok: false, fix: { values: [], sentences: [], placeholders } };
+    }
     const allowed = buildAllowedInput();
     const vg = valueGuard(text, allowed);
     if (!vg.ok) return { ok: false, fix: { values: vg.unverified, sentences: [] } };
@@ -423,6 +420,12 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
 
   const generate = async () => {
     if (!analysis) return;
+    // A blank left in the draft would be re-voiced verbatim into the chart note.
+    // Hard gate, like the critical-element gate below: fix the draft first.
+    if (draftPlaceholders.length) {
+      toast.error("Fill in (or delete) the blanks left in your draft before generating.");
+      return;
+    }
     const { required } = analysis;
     // A confirmed standard negative COUNTS as answering a critical gap: the
     // confirm checkbox hides the answer box, and its phrase is real
@@ -615,6 +618,32 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
             </div>
           )}
 
+          {draftPlaceholders.length > 0 && (
+            <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4 space-y-2">
+              <h3 className="font-semibold text-red-800 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" /> Unfilled blanks in your draft
+              </h3>
+              <p className="text-sm text-red-800">
+                These lines still contain template placeholders. They are not counted as documentation, and the note
+                can&apos;t be generated until you fill them in or delete them — otherwise the blank would be written
+                into the note you paste into the EMR.
+              </p>
+              <ul className="space-y-1">
+                {draftPlaceholders.map((row) => (
+                  <li key={row.line} className="text-xs text-red-900 bg-white border border-red-200 rounded-md px-2 py-1 leading-relaxed">
+                    <span className="font-mono">{row.placeholders.join(" · ")}</span>
+                    <span className="text-red-700"> — {row.line}</span>
+                  </li>
+                ))}
+              </ul>
+              {onBack && (
+                <Button variant="outline" onClick={onBack} className="h-9 gap-2 text-sm font-semibold border-red-300 text-red-700 hover:bg-red-100">
+                  ← Back to edit the draft
+                </Button>
+              )}
+            </div>
+          )}
+
           <DenialRiskPanel guard={denialGuardrail} openClusters={openDenialClusters} onToggleCluster={toggleDenialCluster} />
 
           <ChartCrossCheckPanel findings={chartFindings} />
@@ -738,7 +767,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
           )}
 
           <div className="flex gap-3">
-            <Button onClick={generate} disabled={criticalUnanswered.length > 0} className="flex-1 bg-indigo-600 hover:bg-indigo-700 h-12 font-semibold gap-2">
+            <Button onClick={generate} disabled={criticalUnanswered.length > 0 || draftPlaceholders.length > 0} className="flex-1 bg-indigo-600 hover:bg-indigo-700 h-12 font-semibold gap-2">
               <Sparkles className="w-4 h-4" /> Generate Final Note <ArrowRight className="w-4 h-4" />
             </Button>
             {onBack && <Button variant="outline" onClick={onBack} className="h-12 px-4">← Back</Button>}
@@ -755,6 +784,15 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
               {fixRequired.sentences?.length > 0 && (
                 <div className="text-sm text-red-800">Sentences not supported by your input:
                   <ul className="list-disc ml-5 mt-1 space-y-0.5">{fixRequired.sentences.slice(0, 6).map((s, i) => <li key={i}>{s.text}</li>)}</ul>
+                </div>
+              )}
+              {fixRequired.placeholders?.length > 0 && (
+                <div className="text-sm text-red-800">Unfilled blanks are still in the note:
+                  <ul className="list-disc ml-5 mt-1 space-y-0.5">
+                    {fixRequired.placeholders.map((row) => (
+                      <li key={row.line}><span className="font-mono">{row.placeholders.join(" · ")}</span> — {row.line}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
               {fixRequired.groundingError && <p className="text-sm text-red-700">Verification error: {fixRequired.groundingError}</p>}

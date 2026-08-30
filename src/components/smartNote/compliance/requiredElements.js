@@ -211,6 +211,11 @@ const E = {
     pattern: /reason for discharge|\bdischarged\b|discharg(?:e|ing)\s+(?:plan|planning|instructions|criteria|date|today|home|from|to\b)|goals (?:have been |were )?met|revocation|revoked|no longer (?:homebound|skilled|eligible)|transfer(?:red|ring)? to (?:the )?(?:hospital|inpatient|outpatient|facility|snf|skilled nursing|hospice|assisted living|another agency|er\b|emergency)/i,
     question: "What is the reason for discharge (goals met, transfer, no longer eligible)?",
     notDocumentedPhrase: "Reason for discharge was not documented this visit.",
+    hint: "Say WHY care is ending — goals met, transfer to another level of care, no longer homebound/eligible, or patient/family request. A discharge date alone is not a reason.",
+    examples: [
+      "Discharged from home health with all care-plan goals met: the sacral wound is fully granulated and the patient independently performs her own dressing changes, so skilled nursing is no longer required.",
+      "Discharge secondary to transfer — patient admitted to the hospital on 3/12 for an acute CHF exacerbation; the physician was notified and agency services are ending.",
+    ],
   },
   goals_met: {
     label: "Goals met / unmet",
@@ -245,6 +250,11 @@ const E = {
     pattern: /reason for (?:the |this )?visit|complaint of|prn (?:visit|call)|after[- ]hours (?:visit|call)|crisis visit|unscheduled|(?:patient|family|caregiver|office|agency|md|physician) (?:called|requested)|called (?:to request|for|regarding|due to)|visit (?:made|requested|prompted) (?:due to|for|because)/i,
     question: "What was the reason for this unscheduled / PRN visit?",
     notDocumentedPhrase: "Reason for the unscheduled visit was not documented.",
+    hint: "Name what prompted the visit — who called and when, and the symptom or change in condition that made an extra visit necessary.",
+    examples: [
+      "PRN visit made at the daughter's request after the patient reported new shortness of breath and a 4 lb weight gain over two days.",
+      "After-hours visit prompted by an on-call report of uncontrolled pain rated 9/10 despite the scheduled medication regimen.",
+    ],
   },
   physician_notification: {
     label: "Physician notification",

@@ -19,6 +19,7 @@
 
 import { getRequiredElements } from "../smartNote/compliance/requiredElements.js";
 import { detectPresence } from "../smartNote/compliance/presenceDetection.js";
+import { hasPlaceholder } from "../smartNote/compliance/placeholderGuard.js";
 
 export const CLUSTER = {
   HOMEBOUND: "homebound_narrative",
@@ -114,7 +115,12 @@ function sentencesWith(text, re) {
     .replace(/([.!?])\s+/g, "$1\n")
     .split(/\n+/)
     .map((s) => s.trim())
-    .filter((s) => s && re.test(s));
+    // An unfilled template line is not a documented narrative. Without this an
+    // untouched "Homebound status: unable to leave home without considerable
+    // effort due to [diagnosis]" supplied BOTH the causal phrase and the
+    // taxing-effort evidence, so the homebound cluster reported PASS at 0%
+    // denial risk for a note whose reason was still a blank.
+    .filter((s) => s && !hasPlaceholder(s) && re.test(s));
 }
 
 function finding(cluster, status, extra = {}) {
@@ -325,14 +331,19 @@ function evaluateF2F(f2fValidation, cop, applicable = false) {
 /**
  * Run the denial-reason guardrail over a draft note.
  *
- * @param {Object} input
- * @param {string} input.noteText
+ * The whole argument is optional (the signature defaults it to `{}`), so the
+ * JSDoc marks it — and `noteText` — optional too: `normalize()` already treats a
+ * missing note as empty text, and checkJs otherwise rejects every no-arg /
+ * partial call.
+ *
+ * @param {Object} [input]
+ * @param {string} [input.noteText]
  * @param {string} [input.serviceLine="home_health"]
  * @param {string} [input.visitType="routine_visit"]
  * @param {Object} [input.context]  { f2fValidation, primaryDiagnosis }
  * @returns {{
  *   passed: boolean, blocking: boolean, denial_risk_score: number,
- *   findings: Array, blocking_findings: Array,
+ *   findings: Array, blocking_findings: Array, present_element_ids: string[],
  * }}
  */
 export function runDenialGuardrail({ noteText, serviceLine = "home_health", visitType = "routine_visit", context = {} } = {}) {

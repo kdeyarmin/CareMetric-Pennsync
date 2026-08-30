@@ -25,9 +25,11 @@ import ComplianceChecklist from "../components/smartNote/ComplianceChecklist";
 import QuickPhraseTextarea from "../components/smartNote/QuickPhraseTextarea";
 import FacilityRequirementsChecklist from "../components/smartNote/FacilityRequirementsChecklist";
 import ConstrainedNoteReviewer from "../components/smartNote/ConstrainedNoteReviewer";
+import NoteReadinessBar from "../components/smartNote/NoteReadinessBar";
 import { persistVisitNote } from "../components/smartNote/persistVisitNote";
 import { getPriorNote, parseNoteSections } from "../components/smartNote/noteHelpers";
 import { evaluateFacilityRules, summarizeFacilityRules } from "../components/smartNote/compliance/facilityDocRules";
+import { describePlaceholders } from "../components/smartNote/compliance/placeholderGuard";
 import { claimDictation, releaseDictation } from "@/components/smartNote/dictationController";
 import { generateFollowUpTasks } from "@/functions/generateFollowUpTasks";
 import { analyzeVisitForSupplyUsage } from "@/functions/analyzeVisitForSupplyUsage";
@@ -312,6 +314,13 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
   const startReview = () => {
     if (!note || note.trim().length < 20) return;
+    // Blanks are fixable HERE and not on the review screen, so stop at the door
+    // rather than letting the nurse discover the hard block a click later.
+    const blanks = describePlaceholders(note);
+    if (blanks.length) {
+      toast.error(`Fill in or delete the ${blanks.length} blank${blanks.length > 1 ? "s" : ""} left in your draft (${blanks[0].placeholders[0]}…) before reviewing.`);
+      return;
+    }
     const facilityResults = evaluateFacilityRules({
       rules: facilityDocRules,
       patient: patientDetail || patient,
@@ -640,6 +649,14 @@ export default function SmartNoteAssistant({ visitId = null }) {
                   </Button>
                 </div>
               </div>
+
+              <NoteReadinessBar
+                roughNote={note}
+                serviceLine={serviceLine}
+                visitType={visitType}
+                vitals={vitals}
+                complianceRules={complianceRules}
+              />
 
               <VitalSignValidator noteText={note} />
 

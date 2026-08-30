@@ -182,3 +182,47 @@ test("clinical negative findings on ordinary elements still count as evidence", 
     assert.equal(res[0].present, true);
   }
 });
+
+// ── Unfilled template placeholders are not documentation ───────────────────
+// The routine-SN template seeds these exact lines. Untouched, they used to
+// satisfy homebound/skilled-need/vitals, so the nurse was never asked and the
+// blanks rode into the generated note.
+const UNTOUCHED_TEMPLATE = [
+  "Vital signs: BP _/_,  HR _, RR _, O2 _% on RA, Temp _°F, Wt _ lbs",
+  "Homebound status: patient unable to leave home without considerable effort due to [diagnosis]",
+  "Skilled need: [wound care / medication management / disease management teaching]",
+  "Patient educated on: [topic] — patient verbalized understanding",
+].join("\n");
+
+test("an untouched template does not mark required elements documented", () => {
+  const elements = getRequiredElements("home_health", "routine_visit");
+  const presence = detectPresence(UNTOUCHED_TEMPLATE, elements);
+  const present = presence.filter((p) => p.present).map((p) => p.id);
+  assert.deepEqual(present, [], `placeholder lines must not count as evidence (got ${present.join(", ")})`);
+});
+
+test("filling the template in makes those elements documented again", () => {
+  const elements = getRequiredElements("home_health", "routine_visit");
+  const filled = [
+    "Vital signs: BP 148/90, HR 82, RR 16, O2 95% on RA, Temp 98.6, Wt 180 lbs",
+    "Homebound status: patient unable to leave home without considerable effort due to severe exertional dyspnea",
+    "Skilled need: wound care to the sacral ulcer",
+    "Patient educated on medication schedule — patient verbalized understanding",
+  ].join("\n");
+  const present = detectPresence(filled, elements).filter((p) => p.present).map((p) => p.id);
+  for (const id of ["vitals", "homebound", "skilled_need", "education"]) {
+    assert.ok(present.includes(id), `${id} should be documented once the blanks are filled`);
+  }
+});
+
+test("a placeholder on one line does not suppress a complete line elsewhere", () => {
+  const elements = getRequiredElements("home_health", "routine_visit");
+  const mixed = [
+    "Homebound status: unable to leave home due to [diagnosis]",
+    "Skilled need: sterile dressing change to the stage 3 sacral ulcer.",
+  ].join("\n");
+  const presence = detectPresence(mixed, elements);
+  const byId = Object.fromEntries(presence.map((p) => [p.id, p.present]));
+  assert.equal(byId.homebound, false, "the placeholder line is still a gap");
+  assert.equal(byId.skilled_need, true, "the completed line is still evidence");
+});

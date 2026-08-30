@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { checkAnswerAdequacy, elementsWithAdequacyRules, findInadequateCritical } from "./answerAdequacy.js";
+import { REQUIRED_ELEMENTS, VISIT_TYPES, getCriticalElements } from "./requiredElements.js";
 
 test("flags a conclusory homebound restatement", () => {
   const r = checkAnswerAdequacy("homebound", "Patient is homebound.");
@@ -88,4 +89,42 @@ test("findInadequateCritical returns nothing when critical answers are specific"
     skilled_need: "Skilled observation and assessment of unstable CHF with lung auscultation.",
   });
   assert.equal(out.length, 0);
+});
+
+test("every CRITICAL required element has an adequacy rule", () => {
+  // Adequacy drives the soft-confirm nudge before generation. A critical element
+  // without a rule silently accepts a conclusory answer on the exact fields
+  // Medicare denies most, so this is a contract for new critical elements.
+  const withRules = new Set(elementsWithAdequacyRules());
+  const missing = new Set();
+  for (const line of Object.keys(REQUIRED_ELEMENTS)) {
+    for (const vt of VISIT_TYPES) {
+      for (const e of getCriticalElements(line, vt)) {
+        if (!withRules.has(e.id)) missing.add(`${e.id} (${line}/${vt})`);
+      }
+    }
+  }
+  assert.deepEqual([...missing], [], "critical elements without an adequacy rule");
+});
+
+test("discharge reason: a bare date is inadequate, a real reason is adequate", () => {
+  assert.equal(checkAnswerAdequacy("discharge_reason", "Discharged on 3/12.").adequate, false);
+  assert.equal(
+    checkAnswerAdequacy(
+      "discharge_reason",
+      "Discharged with all care-plan goals met; patient independently performs her own dressing changes.",
+    ).adequate,
+    true,
+  );
+});
+
+test("PRN visit reason: 'PRN visit' alone is inadequate, a prompting symptom is adequate", () => {
+  assert.equal(checkAnswerAdequacy("visit_reason", "PRN visit today.").adequate, false);
+  assert.equal(
+    checkAnswerAdequacy(
+      "visit_reason",
+      "Daughter called reporting new shortness of breath and a 4 lb weight gain over two days.",
+    ).adequate,
+    true,
+  );
 });

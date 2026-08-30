@@ -1,0 +1,69 @@
+import { describe, it, expect } from "vitest";
+import { screen } from "@testing-library/react";
+import { renderWithProviders } from "@/test/testUtils";
+import NoteReadinessBar from "./NoteReadinessBar";
+
+describe("NoteReadinessBar — Step 1 live compliance preview", () => {
+  it("renders nothing for a draft too short to scan", () => {
+    const { container } = renderWithProviders(<NoteReadinessBar roughNote="too short" />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("names the elements required to bill when they are missing", () => {
+    renderWithProviders(
+      <NoteReadinessBar roughNote="Saw the client today and things seemed to be going fine overall." />,
+    );
+    expect(screen.getByText(/required to bill this visit/i)).toBeInTheDocument();
+    const billing = screen.getByText(/required to bill this visit/i).parentElement;
+    expect(billing).toHaveTextContent(/Homebound status/i);
+    expect(billing).toHaveTextContent(/Skilled need/i);
+  });
+
+  it("confirms readiness once the billing-critical elements are documented", () => {
+    renderWithProviders(
+      <NoteReadinessBar
+        roughNote={
+          "Patient is homebound due to severe dyspnea and requires a walker with one-person assist. "
+          + "Skilled wound care with a sterile dressing change to the sacral ulcer."
+        }
+      />,
+    );
+    expect(screen.getByText(/every element medicare requires to bill/i)).toBeInTheDocument();
+    expect(screen.queryByText(/required to bill this visit/i)).not.toBeInTheDocument();
+  });
+
+  it("warns about unfilled template blanks while the draft is still editable", () => {
+    renderWithProviders(
+      <NoteReadinessBar roughNote={"Homebound status: unable to leave home due to [diagnosis]\nPain level: _/10"} />,
+    );
+    expect(screen.getByText(/unfilled blank/i)).toBeInTheDocument();
+    // A blank is not documentation, so homebound is still reported as missing.
+    expect(screen.getByText(/required to bill this visit/i).parentElement).toHaveTextContent(/Homebound status/i);
+  });
+
+  it("counts vitals captured on the structured form, not just typed prose", () => {
+    const roughNote = "Patient is homebound due to dyspnea, needs a walker. Skilled wound care performed.";
+    const { unmount } = renderWithProviders(<NoteReadinessBar roughNote={roughNote} />);
+    const before = screen.getByText(/of \d+ required elements documented/i).textContent;
+    unmount();
+
+    renderWithProviders(
+      <NoteReadinessBar
+        roughNote={roughNote}
+        vitals={{ blood_pressure_systolic: 148, blood_pressure_diastolic: 90, heart_rate: 82 }}
+      />,
+    );
+    const after = screen.getByText(/of \d+ required elements documented/i).textContent;
+    expect(after).not.toEqual(before);
+  });
+
+  it("uses the hospice element set for a hospice visit", () => {
+    renderWithProviders(
+      <NoteReadinessBar
+        roughNote="Visited the patient at home today and reviewed how the week has been going."
+        serviceLine="hospice"
+      />,
+    );
+    expect(screen.getByText(/required to bill this visit/i).parentElement).toHaveTextContent(/Comfort-focused skilled need/i);
+  });
+});

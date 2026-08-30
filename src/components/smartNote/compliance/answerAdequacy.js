@@ -32,6 +32,14 @@ const ADEQUACY_RULES = {
     signals: /verbali|teach[- ]?back|return demonstrat|demonstrat|understood|repeated back|able to state|correctly/i,
     tip: "State how you confirmed understanding — teach-back, return demonstration, or verbalized understanding.",
   },
+  discharge_reason: {
+    signals: /goals? (?:met|achieved)|no longer (?:homebound|skilled|eligible|requir)|transfer|hospitali|admitted|expired|deceased|revocation|revoked|request|refus|moved|relocat|independent(?:ly)?|self[- ]manag/i,
+    tip: "Name why care is ending — goals met, transfer/hospitalization, no longer homebound or eligible, or patient/family request. A date alone is not a reason.",
+  },
+  visit_reason: {
+    signals: /call|request|report|complain|new onset|change in condition|increas|worsen|\bfell\b|\bfall|pain|short(?:ness)? of breath|\bsob\b|bleed|fever|nausea|vomit|symptom|concern|urgent|crisis|after[- ]hours/i,
+    tip: "Say what prompted the visit — who called and the symptom or change in condition that made an extra visit necessary.",
+  },
   terminal_prognosis: {
     signals: /\bpps\b|\bfast\b|weight loss|\blbs?\b|\bpound|decline|declining|bedbound|intake|score|%|infection|symptom burden|functional/i,
     tip: "Cite objective decline supporting a ≤6-month prognosis: measurable changes (weight, PPS/FAST, intake), symptom burden, or functional decline.",
