@@ -36,7 +36,15 @@ const HB_REASON = /\b(dyspnea|short(?:ness)? of breath|sob|weak(?:ness)?|cva|str
 const HB_CAUSAL = /\b(due to|secondary to|because of|related to|as a result of|r\/t)\b/i;
 // Evidence that leaving home is a considerable and TAXING effort.
 const HB_EFFORT = /\b(taxing|considerable effort|requires? (?:the )?assist|assistance of|max(?:imal)? assist|moderate assist|min(?:imal)? assist|two[- ]person|one[- ]person|walker|wheelchair|w\/c|cane|crutch|unable to leave|unsafe to leave|cannot leave|exhaust\w*|only .*(?:with help|steps)|supervision to ambulat\w*|tolerates only)\b/i;
-const HB_MENTION = /\b(homebound|confined to (?:home|residence|the house)|leaving (?:the )?home)\b/i;
+// The homebound VOCABULARY must match what presenceDetection's homebound element
+// accepts, because coverageScore now uses a FAILED homebound cluster to veto
+// `homebound_status_verified`. When the two disagreed, a note the presence
+// detector accepted ("Patient unable to leave home due to severe dyspnea and
+// requires a walker with one-person assistance") fell through to "Homebound
+// status is not documented" here — HB_MENTION knew "leaving home" but not
+// "unable to leave home" — and the veto then persisted `false` for genuinely
+// good documentation. Keep this list in sync with E.homebound's pattern.
+const HB_MENTION = /\b(homebound|confined to (?:home|residence|the house)|(?:unable to|not able to|cannot|can't|unsafe to) leave (?:the )?(?:home|house|residence)|leaving (?:the )?home)\b/i;
 // An affirmative statement that the patient is NOT homebound — an ELIGIBILITY
 // failure, never a quality pass ("no longer homebound", "not homebound",
 // "denies being homebound").

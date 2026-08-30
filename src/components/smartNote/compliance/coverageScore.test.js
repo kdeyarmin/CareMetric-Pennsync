@@ -97,6 +97,7 @@ test("a home-health visit still reports a genuinely missing skilled need", () =>
 // ── Structured Visit fields are QUALITY-aware, not just presence-aware ──────
 import { runDenialGuardrail } from "../../compliance/denialGuardrailEngine.js";
 import { getRequiredElements } from "./requiredElements.js";
+import { detectPresence } from "./presenceDetection.js";
 
 const hhPresence = (ids) =>
   getRequiredElements("home_health", "routine_visit").map((e) => ({
@@ -147,4 +148,23 @@ test("guardrail findings can only withhold a claim, never grant one", () => {
   const structured = deriveStructuredVisitFields(hhPresence([]), { denialFindings });
   assert.equal(structured.homebound_status_verified, false);
   assert.equal(structured.skilled_intervention_documented, false);
+});
+
+test("the guardrail veto does not fire on documentation the detector accepts", () => {
+  // Regression: the veto is only sound while the guardrail's homebound
+  // vocabulary matches presenceDetection's. When it didn't, this well-documented
+  // note — accepted by the detector — was vetoed to `false`.
+  const note =
+    "Patient unable to leave home due to severe dyspnea and requires a walker with one-person assistance. "
+    + "Skilled wound care with a sterile dressing change for management of the sacral wound.";
+  const elements = getRequiredElements("home_health", "routine_visit");
+  const presence = detectPresence(note, elements);
+  assert.equal(presence.find((p) => p.id === "homebound").present, true, "detector accepts this note");
+
+  const denialFindings = runDenialGuardrail({
+    noteText: note, serviceLine: "home_health", visitType: "routine_visit",
+  }).findings;
+  const structured = deriveStructuredVisitFields(presence, { denialFindings });
+  assert.equal(structured.homebound_status_verified, true);
+  assert.equal(structured.skilled_intervention_documented, true);
 });

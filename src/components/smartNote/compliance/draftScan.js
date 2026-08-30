@@ -1,11 +1,17 @@
 // The single deterministic "what does this draft document?" scan, shared by the
 // Step 1 readiness bar and the Step 2 reviewer. Pure + offline.
 //
-// Both surfaces answer the same question and must never disagree: a nurse who is
-// told "2 required elements still missing" while writing, and then sees a
+// Both surfaces run this one composition so the DETERMINISTIC layer cannot drift:
+// a nurse told "2 required elements still missing" while writing, who then sees a
 // different set on the review screen, stops trusting the number. Previously only
-// the reviewer ran this composition, so a Step 1 preview would have had to
-// re-derive it — the classic way two screens drift apart.
+// the reviewer ran it, so a Step 1 preview would have had to re-derive it — the
+// classic way two screens drift apart.
+//
+// This is not the whole picture, and callers should not present it as final:
+// Step 2 additionally runs the ONLINE completeness critic, which can demote an
+// element this keyword scan counted as present, so the reviewer's score can be
+// lower than a Step 1 preview built from this scan. What is guaranteed is that
+// neither screen can disagree about the deterministic result.
 import { normalizeDraft } from "./normalize.js";
 import { getRequiredElements } from "./requiredElements.js";
 import { buildOverrides } from "./ruleLibrary.js";

@@ -14,8 +14,13 @@ import { scanDraft } from "./compliance/draftScan";
  * note, which is the weaker documentation path.
  *
  * It runs the SAME pure scan the reviewer runs (compliance/draftScan.js), so the
- * two screens can't report different numbers. No LLM, no network: it updates as
- * fast as the nurse types and works offline.
+ * DETERMINISTIC layer can't drift between the two screens. No LLM, no network:
+ * it updates as fast as the nurse types and works offline.
+ *
+ * It is a preview, not the final verdict. Step 2 additionally runs the online
+ * completeness critic, which can demote an element this keyword scan counted as
+ * present — so the reviewer's score can be LOWER than what is shown here. The
+ * copy below is worded to promise only what this scan actually establishes.
  */
 export default function NoteReadinessBar({
   roughNote,
@@ -34,7 +39,13 @@ export default function NoteReadinessBar({
 
   // `placeholderCount` is the true number of blanks; `placeholders` is the
   // capped display list. Never count the display rows (see draftScan.js).
-  const { required, presence, criticalGaps, draftScore, placeholders, placeholderCount } = scan;
+  const { required, presence, gaps, criticalGaps, draftScore, placeholders, placeholderCount } = scan;
+  // Required-but-not-billing-critical elements still missing. Previously the
+  // green "all documented" line showed whenever the CRITICAL gaps were closed,
+  // so a draft could read "2 of 10 required elements documented" directly above
+  // a claim that everything required was present — which invites a nurse to stop
+  // writing. These get their own intermediate state.
+  const otherGaps = gaps.filter((g) => g.severity !== "critical");
   const documented = presence.filter((p) => p.present).length;
   const blocked = criticalGaps.length > 0 || placeholders.length > 0;
   const tone = blocked ? "amber" : draftScore >= 90 ? "green" : "slate";
@@ -82,11 +93,22 @@ export default function NoteReadinessBar({
             answer the question on the next screen.
           </span>
         </p>
+      ) : placeholders.length === 0 && otherGaps.length > 0 ? (
+        <p className="flex items-start gap-1.5 text-xs text-slate-600">
+          <CheckCircle2 className="w-3.5 h-3.5 mt-px shrink-0 text-green-600" aria-hidden="true" />
+          <span>
+            Billing-critical elements are documented. Still missing:{" "}
+            <strong>{otherGaps.map((e) => e.label).join(", ")}</strong> — the review step will ask about these.
+          </span>
+        </p>
       ) : (
         placeholders.length === 0 && (
-          <p className="flex items-center gap-1.5 text-xs text-green-700">
-            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-            Every element Medicare requires to bill this visit type is documented.
+          <p className="flex items-start gap-1.5 text-xs text-green-700">
+            <CheckCircle2 className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+            <span>
+              All {required.length} required elements are documented. The review step runs a further completeness check
+              before generating.
+            </span>
           </p>
         )
       )}

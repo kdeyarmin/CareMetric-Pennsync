@@ -325,3 +325,28 @@ test('the same lines PASS once the blanks are genuinely filled in', () => {
   assert.equal(res.findings.find((f) => f.cluster === CLUSTER.HOMEBOUND).status, GUARD_STATUS.PASS);
   assert.equal(res.findings.find((f) => f.cluster === CLUSTER.SKILLED_NEED).status, GUARD_STATUS.PASS);
 });
+
+test('recognizes homebound narratives that never use the word "homebound"', () => {
+  // HB_MENTION knew "leaving home" but not "unable to leave home", so a note the
+  // required-element detector accepts fell through to "not documented" here.
+  // coverageScore uses a FAILED homebound cluster to veto
+  // homebound_status_verified, so the mismatch persisted `false` for good
+  // documentation. The two vocabularies must agree.
+  for (const phrasing of [
+    'Patient unable to leave home due to severe dyspnea and requires a walker with one-person assistance.',
+    'Patient is confined to the house due to advanced CHF and needs max assist to ambulate.',
+    'Patient cannot leave the residence secondary to a recent CVA; requires two-person assist.',
+  ]) {
+    const res = runDenialGuardrail({ noteText: phrasing, serviceLine: 'home_health', visitType: 'routine_visit' });
+    const hb = find(res, CLUSTER.HOMEBOUND);
+    assert.equal(hb.status, GUARD_STATUS.PASS, `should PASS: ${phrasing} (got: ${hb.message})`);
+  }
+});
+
+test('an explicit NOT-homebound statement still fails, whatever the phrasing', () => {
+  const res = runDenialGuardrail({
+    noteText: 'Patient is no longer homebound and ambulates in the community independently.',
+    serviceLine: 'home_health', visitType: 'routine_visit',
+  });
+  assert.equal(find(res, CLUSTER.HOMEBOUND).status, GUARD_STATUS.FAIL);
+});

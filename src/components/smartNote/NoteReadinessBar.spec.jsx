@@ -19,7 +19,10 @@ describe("NoteReadinessBar — Step 1 live compliance preview", () => {
     expect(billing).toHaveTextContent(/Skilled need/i);
   });
 
-  it("confirms readiness once the billing-critical elements are documented", () => {
+  it("does not claim completeness while non-critical elements are still missing", () => {
+    // Criticals are documented but most other required elements are not. Showing
+    // a green "everything required is documented" here contradicted the
+    // "N of 10 documented" line right above it and invited the nurse to stop.
     renderWithProviders(
       <NoteReadinessBar
         roughNote={
@@ -28,7 +31,29 @@ describe("NoteReadinessBar — Step 1 live compliance preview", () => {
         }
       />,
     );
-    expect(screen.getByText(/every element medicare requires to bill/i)).toBeInTheDocument();
+    expect(screen.queryByText(/required to bill this visit/i)).not.toBeInTheDocument();
+    const line = screen.getByText(/billing-critical elements are documented/i);
+    expect(line).toBeInTheDocument();
+    expect(line.parentElement).toHaveTextContent(/still missing/i);
+    expect(screen.queryByText(/all \d+ required elements are documented/i)).not.toBeInTheDocument();
+  });
+
+  it("confirms full readiness only once every required element is documented", () => {
+    const complete = [
+      "Patient is homebound due to severe dyspnea and requires a walker with one-person assist.",
+      "Skilled wound care with a sterile dressing change to the sacral ulcer.",
+      "Vital signs BP 148/90, HR 82, O2 95% on RA.",
+      "Patient tolerated the dressing change well.",
+      "Educated the caregiver on the medication schedule; caregiver verbalized understanding.",
+      "Progress toward the plan of care goals continues.",
+      "Fall risk assessed and the home environment reviewed.",
+      "Pain 3/10 at the wound site.",
+      "Patient reports no new complaints this visit.",
+      "Medication list reviewed for adherence.",
+    ].join("\n");
+    renderWithProviders(<NoteReadinessBar roughNote={complete} />);
+    expect(screen.getByText(/all \d+ required elements are documented/i)).toBeInTheDocument();
+    expect(screen.queryByText(/still missing/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/required to bill this visit/i)).not.toBeInTheDocument();
   });
 
