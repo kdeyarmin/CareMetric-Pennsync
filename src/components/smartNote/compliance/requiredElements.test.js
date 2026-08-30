@@ -80,3 +80,25 @@ test("agency overrides take precedence when provided", () => {
   assert.equal(result.length, 1);
   assert.equal(result[0].id, "custom");
 });
+
+test("every CRITICAL element coaches the nurse with a hint and an example", () => {
+  // A critical element hard-blocks generation. Blocking someone with no guidance
+  // on what a compliant answer looks like is the worst moment in the flow, so
+  // this is a contract: add a hint + examples with any new critical element.
+  const seen = new Set();
+  for (const line of Object.keys(REQUIRED_ELEMENTS)) {
+    for (const vt of VISIT_TYPES) {
+      for (const e of getCriticalElements(line, vt)) {
+        if (seen.has(e.id)) continue;
+        seen.add(e.id);
+        assert.ok(e.hint, `critical element ${e.id} (${line}/${vt}) has no hint`);
+        assert.ok(
+          Array.isArray(e.examples) && e.examples.length >= 1,
+          `critical element ${e.id} (${line}/${vt}) has no compliant example`,
+        );
+      }
+    }
+  }
+  // Guard against the invariant passing vacuously.
+  assert.ok(seen.size >= 5, `expected several distinct critical elements, saw ${seen.size}`);
+});

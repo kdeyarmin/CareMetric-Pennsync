@@ -67,8 +67,13 @@ export async function persistVisitNote({
     answeredIds, confirmedNegativeIds, answers, chartFindings = [], sustainedTrends = [],
     appliedRules = [], denialGuardrail = null,
   } = result;
-  const structured = deriveStructuredVisitFields(presence, { answeredIds, confirmedNegativeIds, textById: answers });
   const denialFindings = denialGuardrail?.findings || [];
+  // The guardrail findings make homebound_status_verified /
+  // skilled_intervention_documented quality-aware: a narrative the guardrail
+  // failed no longer persists as "verified" to the compliance dashboards.
+  const structured = deriveStructuredVisitFields(presence, {
+    answeredIds, confirmedNegativeIds, textById: answers, denialFindings,
+  });
   // Surface the deterministic chart conflicts + trends + denial-guardrail
   // findings in the saved records so they reach the compliance dashboards, not
   // just the live review UI.

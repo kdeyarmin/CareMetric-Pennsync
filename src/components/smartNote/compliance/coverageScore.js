@@ -3,6 +3,7 @@
 // "compliance_improvement: 20" constant with a real coverage measure:
 //   coverage = round(100 * present-or-confirmed / required)
 // Pure + offline; safe to unit test.
+import { CLUSTER, GUARD_STATUS } from "../../compliance/denialGuardrailEngine.js";
 
 /** Was a required element satisfied (documented in the draft, answered, or a confirmed negative)? */
 function isCovered(id, presentIds, answeredIds, confirmedNegativeIds) {
@@ -62,11 +63,30 @@ export function toNoteConversionFields({
 
 /**
  * Derive the structured Visit compliance fields (previously never populated).
+ *
+ * `denialFindings` (the deterministic denial-guardrail result for the text being
+ * saved) makes these fields QUALITY-aware, not merely presence-aware. Coverage
+ * asks "is the topic addressed at all?"; these two booleans are read by the
+ * compliance dashboards as an assertion that the eligibility requirement is
+ * actually MET. A conclusory "patient is homebound" satisfies coverage but fails
+ * an audit, and persisting `homebound_status_verified: true` for it told the
+ * dashboards the note was defensible when the guardrail had already judged the
+ * narrative a critical denial risk. A failing cluster now withholds the claim.
+ * Guardrail findings can only WITHHOLD it — never grant one coverage didn't.
+ * Omitting `denialFindings` preserves the original presence-only behavior.
+ *
  * @param {Array} presenceResults
- * @param {{ answeredIds?: string[], confirmedNegativeIds?: string[], textById?: Record<string,string> }} ctx
+ * @param {{ answeredIds?: string[], confirmedNegativeIds?: string[], textById?: Record<string,string>, denialFindings?: Array }} ctx
  */
 export function deriveStructuredVisitFields(presenceResults, ctx = {}) {
-  const { answeredIds = [], confirmedNegativeIds = [], textById = {} } = ctx;
+  const { answeredIds = [], confirmedNegativeIds = [], textById = {}, denialFindings = [] } = ctx;
+  // A cluster the guardrail explicitly FAILED withholds the corresponding claim.
+  // Any other state (pass, not-applicable, cluster absent, no findings at all)
+  // leaves the coverage answer untouched.
+  const clusterFailed = (cluster) =>
+    (Array.isArray(denialFindings) ? denialFindings : []).some(
+      (f) => f && f.cluster === cluster && f.status === GUARD_STATUS.FAIL,
+    );
   const presentIds = presenceResults.filter((r) => r.present).map((r) => r.id);
   const inRequiredSet = (id) => presenceResults.some((r) => r.id === id);
   const evidenceFor = (id) => {
@@ -83,9 +103,11 @@ export function deriveStructuredVisitFields(presenceResults, ctx = {}) {
   return {
     homebound_status_verified: inRequiredSet("homebound")
       ? isCovered("homebound", presentIds, answeredIds, confirmedNegativeIds)
+        && !clusterFailed(CLUSTER.HOMEBOUND)
       : true,
     skilled_intervention_documented: skilledIds.length
       ? skilledIds.some((id) => isCovered(id, presentIds, answeredIds, confirmedNegativeIds))
+        && !clusterFailed(CLUSTER.SKILLED_NEED)
       : true,
     homebound_justification: evidenceFor("homebound"),
   };

@@ -545,3 +545,154 @@ the removed `MedicalScribeAssistant`). Shared utilities (`VitalSignsForm`,
   kept the still-tested `oasisScrubberPrompt.jsx`/`.spec.js`.
 
 </content>
+
+## Update — usability & accuracy pass (2026-08-30)
+
+A fresh end-to-end review of the Smart Note flow (page → reviewer → compliance
+engine → chart write). The pipeline built in the earlier passes holds up well;
+this round closes one significant accuracy hole, two narrower ones, and moves
+the compliance feedback to where the nurse can act on it.
+
+### 1. Unfilled template placeholders were scored as real documentation (highest priority)
+
+`NoteTemplateSelector` seeds the draft with fill-in-the-blank scaffolding:
+
+```
+• Homebound status: patient unable to leave home without considerable effort due to [diagnosis]
+• Vital signs: BP _/_, HR _, O2 _% on RA
+```
+
+Left untouched, **every downstream check passed it**:
+
+- `detectPresence` matched `homebound` / `unable to leave`, so the element scanned
+  as documented and **the nurse was never asked the question**;
+- `computeCoverageScore` counted it, so an untouched template reported **100%
+  coverage**;
+- the denial guardrail found `due to` (causal) *and* `considerable effort`
+  (taxing effort) in the same seeded sentence and reported the homebound
+  narrative as **PASS at 0% denial risk**;
+- the value-guard couldn't catch it either — it verifies numbers and
+  medications, and `[diagnosis]` is neither.
+
+The constrained scribe then re-voiced the blank into the note the nurse copies
+into the EMR. This is the same class of defect as the original C1 finding
+(`[bracketed]` placeholders reaching the final note), reintroduced through the
+template path rather than the LLM path.
+
+**Fix** — new pure module `compliance/placeholderGuard.js` (10 unit tests) makes
+an unfilled placeholder a first-class deterministic defect:
+
+| Layer | Behavior |
+| --- | --- |
+| `presenceDetection` | a segment holding a placeholder is dropped from both the evidence search and the keyword fallback's haystack, so it can never satisfy a required element |
+| `denialGuardrailEngine` | `sentencesWith` skips placeholder lines, so seeded scaffolding can't supply the reason/effort signals |
+| `ConstrainedNoteReviewer` | hard-gates generation while blanks remain, listing the exact offending lines; a blank reintroduced by a hand-edit fails verification |
+| `SmartNoteAssistant` | Step 1 refuses to advance, since the draft is only editable there |
+
+An untouched routine-SN template now scores **0%**, asks every required
+question, and cannot be generated — asserted end-to-end in
+`ConstrainedNoteReviewer.spec.jsx`.
+
+*Latent bug found while testing this:* the guard's patterns were module-level
+`/g` regexes. `.test()` advances `lastIndex`, and `String.prototype.matchAll`
+seeds its matcher **from** that `lastIndex`, so an interleaved
+`hasPlaceholder` → `findPlaceholders` sequence (exactly what `scanDraft`
+produces) silently skipped earlier matches. The shared patterns are now
+non-global with a fresh global copy per scan, with a regression test.
+
+### 2. Structured chart fields asserted verification the narrative didn't support
+
+`deriveStructuredVisitFields` set `homebound_status_verified: true` from
+*coverage alone*. Coverage asks "is the topic addressed?"; the compliance
+dashboards read that boolean as "the eligibility requirement is met." So a
+conclusory *"Patient is homebound."* — which the denial guardrail had **already
+judged a critical denial risk** in the same save — persisted to the chart as
+verified.
+
+**Fix** — the builder now takes the guardrail findings for the text being saved
+and withholds the claim when the corresponding cluster failed. Findings can only
+*withhold* a claim, never grant one coverage didn't (asserted); omitting them
+preserves the original presence-only behavior for other callers.
+
+### 3. Two hard-blocking gates offered no guidance
+
+`discharge_reason` and `visit_reason` are **critical** — they hard-block
+generation — but had no `hint`, no compliant `examples`, and no adequacy rule, so
+a nurse hit a wall with nothing to act on and a conclusory answer ("Discharged
+on 3/12", "PRN visit") sailed through the soft-confirm nudge.
+
+Both now carry hints, worked examples, and adequacy signals. Two **contract
+tests** keep it that way: every critical element, across both service lines and
+all five visit types, must have a hint + example (`requiredElements.test.js`) and
+an adequacy rule (`answerAdequacy.test.js`).
+
+### 4. Compliance feedback only appeared after leaving the editor
+
+Coverage, the required-element gaps, and the critical items that block
+generation all lived on the Step 2 review screen. A nurse learned that homebound
+and skilled need were missing on a *different screen from the one holding their
+draft* — and the path of least resistance from there is to answer the gap
+questions rather than improve the note, which is the weaker documentation.
+
+**New `NoteReadinessBar`** renders the same signals live in Step 1: coverage,
+`N of M required elements documented`, the billing-critical gaps by name, and any
+unfilled blanks. Deterministic and offline, so it updates as fast as typing.
+
+To guarantee the two screens can never report different numbers, the scan itself
+was extracted to a shared pure module — **`compliance/draftScan.js`** (7 unit
+tests) — and `ConstrainedNoteReviewer` was refactored onto it, removing the
+duplicated composition rather than adding a second copy of it.
+
+### Validation
+
+`lint` (0 errors, 0 warnings) · `typecheck:signal` (0 findings) · `test:utils`
+1611 · `test:components` 795 · contracts 22 · security 86 · dedupe 47 · `test:a11y`
+· `build` — all green. New tests: 26 (10 placeholderGuard, 7 draftScan, 3
+coverageScore, 3 presenceDetection, 2 denialGuardrail, 1 requiredElements
+contract, 3 answerAdequacy) plus 6 `NoteReadinessBar` and 4
+`ConstrainedNoteReviewer` component tests.
+
+### Still open (unchanged from prior passes)
+
+S3 (fewer model calls), S6/S7 polish, and a manual run of the generation +
+grounding calls and the chart-save path against the live Base44 backend — the
+two LLM calls remain untestable from this repo.
+
+### Follow-up — adequacy over draft evidence (2026-08-30)
+
+A review pass on the above surfaced that the adequacy rules only ever reached the
+`answers` map. When the **draft itself** satisfied the presence scan —
+`Discharged on 3/12`, `PRN visit today` — no gap was created, no question was
+asked, and the rule written for exactly that phrase never ran. Generate stayed
+enabled for the conclusory text it was added to catch.
+
+`findInadequateCriticalEvidence` closes that path: a critical element whose
+*draft evidence* reads conclusory now raises the same soft confirm as a
+conclusory typed answer.
+
+It deliberately does **not** apply to every critical element. The denial
+guardrail already judges homebound and skilled-need quality with purpose-built
+heuristics (medical reason + taxing effort; service specificity), renders that
+verdict in its own panel, and gates the chart save on it — so warning about the
+same sentence twice, in two voices, is worse than not warning at all. Callers
+pass `elementsJudgedByGuardrail(findings)` as `skipIds`, which makes the split
+self-maintaining: add a cluster later and the dedup follows automatically.
+
+| Critical element | Quality judge |
+| --- | --- |
+| `homebound` | denial guardrail (homebound narrative) |
+| `skilled_need`, `comfort_skilled_need` | denial guardrail (skilled-need specificity) |
+| `discharge_reason`, `visit_reason`, `terminal_prognosis` | **adequacy — no cluster covers these** |
+
+The last row is where this adds real protection: those three had no quality
+judge at all on the draft-evidence path.
+
+**Bracket strictness — decided, not changed.** The same pass asked whether
+`[high]` (a nurse narrowing `[low/medium/high]`) should be exempt from the
+placeholder gate. It should not. The tempting rule — "a single resolved word is
+fine" — cannot work, because the primary case the guard exists for
+(`[diagnosis]`, `[topic]`) is *also* a single word; any heuristic admitting one
+admits the other. The asymmetry settles it: a false positive costs deleting two
+brackets, a false negative puts `[diagnosis]` in a patient's legal record and a
+denied claim. Brackets are not standard notation in a finished note, so removal
+is the right end state regardless.

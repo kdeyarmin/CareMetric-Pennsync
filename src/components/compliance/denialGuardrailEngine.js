@@ -19,6 +19,7 @@
 
 import { getRequiredElements } from "../smartNote/compliance/requiredElements.js";
 import { detectPresence } from "../smartNote/compliance/presenceDetection.js";
+import { hasPlaceholder } from "../smartNote/compliance/placeholderGuard.js";
 
 export const CLUSTER = {
   HOMEBOUND: "homebound_narrative",
@@ -29,13 +30,41 @@ export const CLUSTER = {
 
 export const GUARD_STATUS = { PASS: "pass", FAIL: "fail", NOT_APPLICABLE: "not_applicable" };
 
+// Which required-element ids each cluster already judges the QUALITY of.
+// Consumers use this to avoid double-judging: an element covered by a cluster
+// here is assessed by this engine's purpose-built heuristics (reason + taxing
+// effort, service specificity), which are stronger than the generic adequacy
+// signals, and a failing cluster already gates the chart save. Elements absent
+// from this map have no quality judge but the adequacy rules.
+export const CLUSTER_ELEMENT_IDS = {
+  [CLUSTER.HOMEBOUND]: ["homebound"],
+  [CLUSTER.SKILLED_NEED]: ["skilled_need", "comfort_skilled_need"],
+};
+
+/** Element ids whose quality is already judged by a cluster present in `findings`. */
+export function elementsJudgedByGuardrail(findings = []) {
+  const out = new Set();
+  for (const f of Array.isArray(findings) ? findings : []) {
+    for (const id of CLUSTER_ELEMENT_IDS[f?.cluster] || []) out.add(id);
+  }
+  return [...out];
+}
+
 // ── homebound quality signals ───────────────────────────────────────────────
 // A medical REASON the patient is confined (or an explicit causal phrase).
 const HB_REASON = /\b(dyspnea|short(?:ness)? of breath|sob|weak(?:ness)?|cva|stroke|fracture|fx|pain|dizz(?:y|iness)|fall risk|falls?|wound|surg(?:ery|ical)|post[- ]?op|oxygen|\bo2\b|deconditio\w*|unsteady|gait|amputat\w*|paraly\w*|bedbound|bedfast|edema|chf|copd|neuropath\w*|contracture|non[- ]?weight[- ]?bearing|nwb)\b/i;
 const HB_CAUSAL = /\b(due to|secondary to|because of|related to|as a result of|r\/t)\b/i;
 // Evidence that leaving home is a considerable and TAXING effort.
 const HB_EFFORT = /\b(taxing|considerable effort|requires? (?:the )?assist|assistance of|max(?:imal)? assist|moderate assist|min(?:imal)? assist|two[- ]person|one[- ]person|walker|wheelchair|w\/c|cane|crutch|unable to leave|unsafe to leave|cannot leave|exhaust\w*|only .*(?:with help|steps)|supervision to ambulat\w*|tolerates only)\b/i;
-const HB_MENTION = /\b(homebound|confined to (?:home|residence|the house)|leaving (?:the )?home)\b/i;
+// The homebound VOCABULARY must match what presenceDetection's homebound element
+// accepts, because coverageScore now uses a FAILED homebound cluster to veto
+// `homebound_status_verified`. When the two disagreed, a note the presence
+// detector accepted ("Patient unable to leave home due to severe dyspnea and
+// requires a walker with one-person assistance") fell through to "Homebound
+// status is not documented" here — HB_MENTION knew "leaving home" but not
+// "unable to leave home" — and the veto then persisted `false` for genuinely
+// good documentation. Keep this list in sync with E.homebound's pattern.
+const HB_MENTION = /\b(homebound|confined to (?:home|residence|the house)|(?:unable to|not able to|cannot|can't|unsafe to) leave (?:the )?(?:home|house|residence)|leaving (?:the )?home)\b/i;
 // An affirmative statement that the patient is NOT homebound — an ELIGIBILITY
 // failure, never a quality pass ("no longer homebound", "not homebound",
 // "denies being homebound").
@@ -114,7 +143,12 @@ function sentencesWith(text, re) {
     .replace(/([.!?])\s+/g, "$1\n")
     .split(/\n+/)
     .map((s) => s.trim())
-    .filter((s) => s && re.test(s));
+    // An unfilled template line is not a documented narrative. Without this an
+    // untouched "Homebound status: unable to leave home without considerable
+    // effort due to [diagnosis]" supplied BOTH the causal phrase and the
+    // taxing-effort evidence, so the homebound cluster reported PASS at 0%
+    // denial risk for a note whose reason was still a blank.
+    .filter((s) => s && !hasPlaceholder(s) && re.test(s));
 }
 
 function finding(cluster, status, extra = {}) {
@@ -325,14 +359,19 @@ function evaluateF2F(f2fValidation, cop, applicable = false) {
 /**
  * Run the denial-reason guardrail over a draft note.
  *
- * @param {Object} input
- * @param {string} input.noteText
+ * The whole argument is optional (the signature defaults it to `{}`), so the
+ * JSDoc marks it — and `noteText` — optional too: `normalize()` already treats a
+ * missing note as empty text, and checkJs otherwise rejects every no-arg /
+ * partial call.
+ *
+ * @param {Object} [input]
+ * @param {string} [input.noteText]
  * @param {string} [input.serviceLine="home_health"]
  * @param {string} [input.visitType="routine_visit"]
  * @param {Object} [input.context]  { f2fValidation, primaryDiagnosis }
  * @returns {{
  *   passed: boolean, blocking: boolean, denial_risk_score: number,
- *   findings: Array, blocking_findings: Array,
+ *   findings: Array, blocking_findings: Array, present_element_ids: string[],
  * }}
  */
 export function runDenialGuardrail({ noteText, serviceLine = "home_health", visitType = "routine_visit", context = {} } = {}) {

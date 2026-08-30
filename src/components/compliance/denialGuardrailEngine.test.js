@@ -291,3 +291,62 @@ test("medical necessity cannot PASS when no skilled service is documented", () =
   assert.equal(mn.status, GUARD_STATUS.FAIL);
   assert.match(mn.message, /no skilled service is documented/i);
 });
+
+// ── Unfilled template scaffolding must not read as a compliant narrative ────
+test('untouched template homebound line does not PASS the homebound cluster', () => {
+  // "due to" (causal) + "considerable effort" (taxing effort) both appear on this
+  // seeded line, so the cluster used to report PASS at 0% denial risk while the
+  // actual reason was still the literal blank "[diagnosis]".
+  const res = runDenialGuardrail({
+    noteText: [
+      '• Homebound status: patient unable to leave home without considerable effort due to [diagnosis]',
+      '• Skilled need: [wound care / medication management]',
+    ].join('\n'),
+    serviceLine: 'home_health',
+    visitType: 'routine_visit',
+  });
+  const homebound = res.findings.find((f) => f.cluster === CLUSTER.HOMEBOUND);
+  assert.equal(homebound.status, GUARD_STATUS.FAIL);
+  assert.ok(res.denial_risk_score > 0, 'an unfilled template must carry denial risk');
+
+  const skilled = res.findings.find((f) => f.cluster === CLUSTER.SKILLED_NEED);
+  assert.equal(skilled.status, GUARD_STATUS.FAIL, 'a bracketed menu is not a documented service');
+});
+
+test('the same lines PASS once the blanks are genuinely filled in', () => {
+  const res = runDenialGuardrail({
+    noteText: [
+      'Homebound status: patient unable to leave home without considerable effort due to severe exertional dyspnea and requires a walker with one-person assist.',
+      'Skilled need: sterile dressing change to the stage 3 sacral ulcer for management of the wound.',
+    ].join('\n'),
+    serviceLine: 'home_health',
+    visitType: 'routine_visit',
+  });
+  assert.equal(res.findings.find((f) => f.cluster === CLUSTER.HOMEBOUND).status, GUARD_STATUS.PASS);
+  assert.equal(res.findings.find((f) => f.cluster === CLUSTER.SKILLED_NEED).status, GUARD_STATUS.PASS);
+});
+
+test('recognizes homebound narratives that never use the word "homebound"', () => {
+  // HB_MENTION knew "leaving home" but not "unable to leave home", so a note the
+  // required-element detector accepts fell through to "not documented" here.
+  // coverageScore uses a FAILED homebound cluster to veto
+  // homebound_status_verified, so the mismatch persisted `false` for good
+  // documentation. The two vocabularies must agree.
+  for (const phrasing of [
+    'Patient unable to leave home due to severe dyspnea and requires a walker with one-person assistance.',
+    'Patient is confined to the house due to advanced CHF and needs max assist to ambulate.',
+    'Patient cannot leave the residence secondary to a recent CVA; requires two-person assist.',
+  ]) {
+    const res = runDenialGuardrail({ noteText: phrasing, serviceLine: 'home_health', visitType: 'routine_visit' });
+    const hb = find(res, CLUSTER.HOMEBOUND);
+    assert.equal(hb.status, GUARD_STATUS.PASS, `should PASS: ${phrasing} (got: ${hb.message})`);
+  }
+});
+
+test('an explicit NOT-homebound statement still fails, whatever the phrasing', () => {
+  const res = runDenialGuardrail({
+    noteText: 'Patient is no longer homebound and ambulates in the community independently.',
+    serviceLine: 'home_health', visitType: 'routine_visit',
+  });
+  assert.equal(find(res, CLUSTER.HOMEBOUND).status, GUARD_STATUS.FAIL);
+});
