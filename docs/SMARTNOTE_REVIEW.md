@@ -657,3 +657,42 @@ contract, 3 answerAdequacy) plus 6 `NoteReadinessBar` and 4
 S3 (fewer model calls), S6/S7 polish, and a manual run of the generation +
 grounding calls and the chart-save path against the live Base44 backend — the
 two LLM calls remain untestable from this repo.
+
+### Follow-up — adequacy over draft evidence (2026-08-30)
+
+A review pass on the above surfaced that the adequacy rules only ever reached the
+`answers` map. When the **draft itself** satisfied the presence scan —
+`Discharged on 3/12`, `PRN visit today` — no gap was created, no question was
+asked, and the rule written for exactly that phrase never ran. Generate stayed
+enabled for the conclusory text it was added to catch.
+
+`findInadequateCriticalEvidence` closes that path: a critical element whose
+*draft evidence* reads conclusory now raises the same soft confirm as a
+conclusory typed answer.
+
+It deliberately does **not** apply to every critical element. The denial
+guardrail already judges homebound and skilled-need quality with purpose-built
+heuristics (medical reason + taxing effort; service specificity), renders that
+verdict in its own panel, and gates the chart save on it — so warning about the
+same sentence twice, in two voices, is worse than not warning at all. Callers
+pass `elementsJudgedByGuardrail(findings)` as `skipIds`, which makes the split
+self-maintaining: add a cluster later and the dedup follows automatically.
+
+| Critical element | Quality judge |
+| --- | --- |
+| `homebound` | denial guardrail (homebound narrative) |
+| `skilled_need`, `comfort_skilled_need` | denial guardrail (skilled-need specificity) |
+| `discharge_reason`, `visit_reason`, `terminal_prognosis` | **adequacy — no cluster covers these** |
+
+The last row is where this adds real protection: those three had no quality
+judge at all on the draft-evidence path.
+
+**Bracket strictness — decided, not changed.** The same pass asked whether
+`[high]` (a nurse narrowing `[low/medium/high]`) should be exempt from the
+placeholder gate. It should not. The tempting rule — "a single resolved word is
+fine" — cannot work, because the primary case the guard exists for
+(`[diagnosis]`, `[topic]`) is *also* a single word; any heuristic admitting one
+admits the other. The asymmetry settles it: a false positive costs deleting two
+brackets, a false negative puts `[diagnosis]` in a patient's legal record and a
+denied claim. Brackets are not standard notation in a finished note, so removal
+is the right end state regardless.

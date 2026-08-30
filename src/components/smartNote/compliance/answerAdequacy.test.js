@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkAnswerAdequacy, elementsWithAdequacyRules, findInadequateCritical } from "./answerAdequacy.js";
-import { REQUIRED_ELEMENTS, VISIT_TYPES, getCriticalElements } from "./requiredElements.js";
+import { checkAnswerAdequacy, elementsWithAdequacyRules, findInadequateCritical, findInadequateCriticalEvidence } from "./answerAdequacy.js";
+import { REQUIRED_ELEMENTS, VISIT_TYPES, getCriticalElements, getRequiredElements } from "./requiredElements.js";
+import { detectPresence } from "./presenceDetection.js";
+import { elementsJudgedByGuardrail, runDenialGuardrail } from "../../compliance/denialGuardrailEngine.js";
 
 test("flags a conclusory homebound restatement", () => {
   const r = checkAnswerAdequacy("homebound", "Patient is homebound.");
@@ -127,4 +129,67 @@ test("PRN visit reason: 'PRN visit' alone is inadequate, a prompting symptom is 
     ).adequate,
     true,
   );
+});
+
+// ── Adequacy over DRAFT EVIDENCE (not just typed answers) ──────────────────
+const draftEvidence = (note, visitType, serviceLine = "home_health") => {
+  const required = getRequiredElements(serviceLine, visitType);
+  return { required, presence: detectPresence(note, required) };
+};
+
+test("flags a conclusory discharge reason that came from the draft", () => {
+  // "Discharged on 3/12" satisfies presence, so no gap answer is ever created and
+  // findInadequateCritical (answers-only) never sees it.
+  const { required, presence } = draftEvidence("Discharged on 3/12. Paperwork left with the family.", "discharge");
+  assert.equal(presence.find((p) => p.id === "discharge_reason").present, true, "presence is satisfied");
+  assert.deepEqual(findInadequateCritical(required, {}), [], "the answers-only check sees nothing");
+
+  const flagged = findInadequateCriticalEvidence(required, presence, {});
+  assert.deepEqual(flagged.map((f) => f.id), ["discharge_reason"]);
+  assert.match(flagged[0].tip, /date alone is not a reason/i);
+});
+
+test("does not flag draft evidence that states a real reason", () => {
+  const { required, presence } = draftEvidence(
+    "Discharged with all care-plan goals met; patient independently performs her own dressing changes.",
+    "discharge",
+  );
+  assert.deepEqual(findInadequateCriticalEvidence(required, presence, {}), []);
+});
+
+test("a typed answer supersedes the draft evidence", () => {
+  const { required, presence } = draftEvidence("Discharged on 3/12. Paperwork left with the family.", "discharge");
+  // findInadequateCritical owns the answered case; this must not double-report it.
+  const answers = { discharge_reason: "Discharged with all goals met; patient self-manages her wound care." };
+  assert.deepEqual(findInadequateCriticalEvidence(required, presence, answers), []);
+});
+
+test("skipIds suppresses elements another judge already covers", () => {
+  const { required, presence } = draftEvidence("PRN visit today. Saw the patient at home.", "prn");
+  assert.deepEqual(findInadequateCriticalEvidence(required, presence, {}).map((f) => f.id), ["visit_reason"]);
+  assert.deepEqual(findInadequateCriticalEvidence(required, presence, {}, { skipIds: ["visit_reason"] }), []);
+});
+
+test("an absent element is not flagged — that is the hard gate's job", () => {
+  const { required, presence } = draftEvidence("Saw the patient at home and reviewed how the week went.", "discharge");
+  assert.equal(presence.find((p) => p.id === "discharge_reason").present, false);
+  assert.deepEqual(findInadequateCriticalEvidence(required, presence, {}), []);
+});
+
+test("the guardrail claims exactly the elements it judges the quality of", () => {
+  // The reviewer feeds these ids to skipIds, so a drift here would either
+  // double-warn (homebound in both voices) or silently drop a check.
+  const findings = runDenialGuardrail({
+    noteText: "Patient is homebound. Provided nursing care.",
+    serviceLine: "home_health",
+    visitType: "routine_visit",
+  }).findings;
+  assert.deepEqual(elementsJudgedByGuardrail(findings).sort(), ["homebound", "skilled_need", "comfort_skilled_need"].sort());
+
+  // A discharge visit has neither cluster, so nothing is suppressed there.
+  const dischargeFindings = runDenialGuardrail({
+    noteText: "Discharged on 3/12.", serviceLine: "home_health", visitType: "discharge",
+  }).findings;
+  assert.deepEqual(elementsJudgedByGuardrail(dischargeFindings), []);
+  assert.deepEqual(elementsJudgedByGuardrail([]), []);
 });

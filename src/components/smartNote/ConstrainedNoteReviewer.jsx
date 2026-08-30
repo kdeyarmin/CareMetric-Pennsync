@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkles, ArrowRight, HelpCircle, AlertTriangle, ShieldCheck, ShieldAlert, Loader2, Copy, CheckCircle2, Activity, BellRing, ListChecks } from "lucide-react";
 import { toast } from "sonner";
 import { scanDraft } from "./compliance/draftScan";
-import { checkAnswerAdequacy, findInadequateCritical } from "./compliance/answerAdequacy";
+import { checkAnswerAdequacy, findInadequateCritical, findInadequateCriticalEvidence } from "./compliance/answerAdequacy";
 import { critiqueCoverage } from "./compliance/completenessCritic";
 import { reconcileCritique } from "./compliance/criticReconcile";
 import { computeGaps, computeCriticalGaps, computeCarryForward } from "./compliance/presenceDetection";
@@ -24,7 +24,7 @@ import { annotateProvenance } from "./compliance/provenance";
 import { detectNoteCriticalVitals } from "./compliance/noteEscalation";
 import { DENIAL_CLUSTER_LABELS } from "./compliance/reportingFields";
 import { withTimeout } from "./compliance/withTimeout";
-import { runDenialGuardrail } from "../compliance/denialGuardrailEngine";
+import { runDenialGuardrail, elementsJudgedByGuardrail } from "../compliance/denialGuardrailEngine";
 
 /**
  * The canonical "constrained scribe" review flow, reusable across pages:
@@ -359,6 +359,23 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     [analysis, runGuardrail, finalNote, buildAllowedInput],
   );
 
+  // Conclusory CRITICAL documentation, from either source: the nurse's typed
+  // answer, or the draft itself when it satisfied the presence scan and so was
+  // never turned into a question. Elements the denial guardrail already judges
+  // (homebound, skilled need) are excluded here — it renders its own, stronger
+  // verdict for those and gates the save on it, so surfacing the same text twice
+  // would just be noise. Computed once and used by BOTH the generate() gate and
+  // the rendered confirm panel so the two cannot diverge.
+  const inadequateCritical = useMemo(() => {
+    if (!analysis) return [];
+    const typed = findInadequateCritical(analysis.required, answers);
+    const fromDraft = findInadequateCriticalEvidence(analysis.required, effectivePresence, answers, {
+      skipIds: elementsJudgedByGuardrail(denialGuardrail?.findings),
+    });
+    const seen = new Set(typed.map((t) => t.id));
+    return [...typed, ...fromDraft.filter((f) => !seen.has(f.id))];
+  }, [analysis, answers, effectivePresence, denialGuardrail]);
+
   // Save-ready snapshot the host (e.g. SmartNoteAssistant) persists to the chart.
   const computeResult = (text) => {
     if (!analysis) return null;
@@ -444,8 +461,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     // Soft gate: a critical answer that's present but conclusory (e.g. "patient is
     // homebound") surfaces a one-time confirm rather than a hard block — nudging
     // specificity without standing between the nurse and a genuine quick note.
-    const thinCritical = findInadequateCritical(required, answers);
-    if (thinCritical.length && !confirmedThinCritical) {
+    if (inadequateCritical.length && !confirmedThinCritical) {
       setShowThinConfirm(true);
       return;
     }
@@ -514,8 +530,9 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   // critic demoted (over-counted as present). Additive only — the critic can't
   // remove a deterministic gap, since it only flips present→absent.
   const gaps = analysis ? computeGaps(effectivePresence, analysis.required) : [];
-  // Critical answers that are present but read as conclusory — drive the soft confirm.
-  const thinCritical = analysis ? findInadequateCritical(analysis.required, answers) : [];
+  // Critical documentation that is present but reads as conclusory — drives the
+  // soft confirm. Covers both the typed-answer and the draft-evidence paths.
+  const thinCritical = inadequateCritical;
   const answeredOrConfirmed = (id) => !!answers[id]?.trim() || confirmedNegatives.has(id);
   const answeredCount = gaps.filter(g => answeredOrConfirmed(g.id)).length;
   // Mirrors generate(): a confirmed standard negative satisfies a critical gap.
@@ -759,14 +776,14 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
 
           {showThinConfirm && thinCritical.length > 0 && !confirmedThinCritical && (
             <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 space-y-2">
-              <h3 className="font-semibold text-amber-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> These required answers look brief</h3>
-              <p className="text-sm text-amber-800">A vague answer on a required element is a common reason Medicare denies a visit. Add detail above, or confirm it's complete as written:</p>
+              <h3 className="font-semibold text-amber-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> These required elements look brief</h3>
+              <p className="text-sm text-amber-800">A vague entry on a required element is a common reason Medicare denies a visit. This covers what you typed here and what your draft already said. Add detail, or confirm it&apos;s complete as written:</p>
               <ul className="text-sm text-amber-900 list-disc ml-5 space-y-0.5">
                 {thinCritical.map((t) => (<li key={t.id}><span className="font-semibold">{t.label}:</span> {t.tip}</li>))}
               </ul>
               <label className="flex items-start gap-2 text-sm text-amber-900 cursor-pointer pt-1">
                 <input type="checkbox" checked={confirmedThinCritical} onChange={(e) => setConfirmedThinCritical(e.target.checked)} className="w-4 h-4 mt-0.5 text-amber-600 rounded shrink-0" />
-                <span>These answers are complete as written — generate the note.</span>
+                <span>These are complete as written — generate the note.</span>
               </label>
             </div>
           )}

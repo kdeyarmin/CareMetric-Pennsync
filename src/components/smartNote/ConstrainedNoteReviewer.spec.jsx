@@ -70,7 +70,7 @@ describe("ConstrainedNoteReviewer — questions, adequacy & soft-confirm gate", 
     fireEvent.click(generateBtn);
 
     // The brief homebound answer triggers the soft confirm — generation has NOT run.
-    expect(await screen.findByText(/these required answers look brief/i)).toBeInTheDocument();
+    expect(await screen.findByText(/these required elements look brief/i)).toBeInTheDocument();
     expect(generateConstrainedNote).not.toHaveBeenCalled();
     expect(screen.queryByText(/final clinical note/i)).not.toBeInTheDocument();
 
@@ -93,7 +93,7 @@ describe("ConstrainedNoteReviewer — questions, adequacy & soft-confirm gate", 
     fireEvent.click(screen.getByRole("button", { name: /generate final note/i }));
 
     expect(await screen.findByText(/final clinical note/i)).toBeInTheDocument();
-    expect(screen.queryByText(/these required answers look brief/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/these required elements look brief/i)).not.toBeInTheDocument();
     await waitFor(() => expect(generateConstrainedNote).toHaveBeenCalledTimes(1));
   });
 
@@ -209,5 +209,72 @@ describe("ConstrainedNoteReviewer — unfilled template blanks gate generation",
     expect(screen.getByText(/0 of \d+ required elements documented/i)).toBeInTheDocument();
     expect(screen.getByText(/why is the patient homebound/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /generate final note/i })).toBeDisabled();
+  });
+});
+
+describe("ConstrainedNoteReviewer — conclusory documentation in the DRAFT itself", () => {
+  beforeEach(() => { setOnline(false); });
+  afterEach(() => { setOnline(true); vi.clearAllMocks(); });
+
+  // "Discharged on 3/12" satisfies the discharge_reason presence scan, so it was
+  // never turned into a question — and the adequacy rule written for exactly that
+  // phrase only ever ran against the `answers` map. Generate stayed enabled.
+  const BARE_DISCHARGE = "Discharged on 3/12. Final visit completed and the paperwork was left with the family.";
+
+  it("soft-confirms a conclusory discharge reason that came from the draft", async () => {
+    const { generateConstrainedNote } = await import("./compliance/generation");
+    renderWithProviders(<ConstrainedNoteReviewer roughNote={BARE_DISCHARGE} serviceLine="home_health" visitType="discharge" />);
+
+    // No critical GAP — the draft satisfied presence — so the hard gate is clear.
+    expect(screen.queryByText(/required before generating/i)).not.toBeInTheDocument();
+    const generateBtn = screen.getByRole("button", { name: /generate final note/i });
+    expect(generateBtn).toBeEnabled();
+
+    fireEvent.click(generateBtn);
+    const panel = await screen.findByText(/these required elements look brief/i);
+    expect(panel).toBeInTheDocument();
+    expect(screen.getByText(/a date alone is not a reason/i)).toBeInTheDocument();
+    expect(generateConstrainedNote).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /complete as written/i }));
+    fireEvent.click(screen.getByRole("button", { name: /generate final note/i }));
+    expect(await screen.findByText(/final clinical note/i)).toBeInTheDocument();
+    expect(generateConstrainedNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not soft-confirm a discharge reason that actually states a reason", async () => {
+    const { generateConstrainedNote } = await import("./compliance/generation");
+    renderWithProviders(
+      <ConstrainedNoteReviewer
+        roughNote={
+          "Discharged with all care-plan goals met; the patient independently performs her own dressing changes "
+          + "and no longer requires skilled nursing."
+        }
+        serviceLine="home_health"
+        visitType="discharge"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /generate final note/i }));
+    expect(await screen.findByText(/final clinical note/i)).toBeInTheDocument();
+    expect(screen.queryByText(/these required elements look brief/i)).not.toBeInTheDocument();
+    expect(generateConstrainedNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not double-warn on homebound, which the denial guardrail already judges", async () => {
+    const { generateConstrainedNote } = await import("./compliance/generation");
+    // Conclusory homebound IN THE DRAFT. The guardrail panel reports it and gates
+    // the save; the soft confirm must stay out of the way rather than say it twice.
+    renderWithProviders(
+      <ConstrainedNoteReviewer
+        roughNote="Patient is homebound. Skilled wound care with a sterile dressing change to the sacral ulcer."
+        serviceLine="home_health"
+        visitType="routine_visit"
+      />,
+    );
+    expect(screen.getByText(/denial risk/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /generate final note/i }));
+    expect(await screen.findByText(/final clinical note/i)).toBeInTheDocument();
+    expect(screen.queryByText(/these required elements look brief/i)).not.toBeInTheDocument();
+    expect(generateConstrainedNote).toHaveBeenCalledTimes(1);
   });
 });

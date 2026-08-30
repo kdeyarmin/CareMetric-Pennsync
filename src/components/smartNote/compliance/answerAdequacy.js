@@ -65,6 +65,49 @@ export function checkAnswerAdequacy(id, text) {
   return { adequate: false, tip: rule.tip };
 }
 
+/**
+ * Critical elements whose DRAFT EVIDENCE reads inadequate.
+ *
+ * `findInadequateCritical` only ever sees the `answers` map, so it fires solely
+ * on the gap-question path. When the draft ITSELF satisfies the presence scan —
+ * "Discharged on 3/12", "PRN visit today" — no gap is created, no question is
+ * asked, and the adequacy rule for that element never runs, even though it is
+ * written precisely for that phrase. This closes that path.
+ *
+ * `skipIds` exists to avoid double-judging. The denial guardrail already assesses
+ * the quality of homebound / skilled-need narratives with purpose-built
+ * heuristics (medical reason + taxing effort; service specificity), renders that
+ * verdict in its own panel, and gates the chart save on it. Warning about the
+ * same text twice, in two voices, is worse than not warning at all — so callers
+ * pass the ids the guardrail already covers (see
+ * denialGuardrailEngine.elementsJudgedByGuardrail). Elements with no cluster —
+ * discharge_reason, visit_reason, terminal_prognosis — have no other quality
+ * judge, which is exactly where this adds protection.
+ *
+ * An element with a TYPED answer is skipped: findInadequateCritical owns it, and
+ * the nurse's answer supersedes whatever the draft said.
+ *
+ * @param {Array} requiredElements
+ * @param {Array} presenceResults from detectPresence()
+ * @param {Record<string,string>} [answers]
+ * @param {{ skipIds?: string[] }} [options]
+ * @returns {Array<{id:string,label?:string,tip?:string}>}
+ */
+export function findInadequateCriticalEvidence(requiredElements = [], presenceResults = [], answers = {}, options = {}) {
+  const skip = new Set(options.skipIds || []);
+  const byId = new Map((presenceResults || []).map((r) => [r.id, r]));
+  const out = [];
+  for (const e of requiredElements) {
+    if (e.severity !== "critical" || skip.has(e.id)) continue;
+    if (answers[e.id] && answers[e.id].trim()) continue;
+    const found = byId.get(e.id);
+    if (!found || !found.present || !found.evidence) continue;
+    const adq = checkAnswerAdequacy(e.id, found.evidence);
+    if (!adq.adequate) out.push({ id: e.id, label: e.label, tip: adq.tip });
+  }
+  return out;
+}
+
 /** Which element ids carry an adequacy rule (handy for tests / callers). */
 export function elementsWithAdequacyRules() {
   return Object.keys(ADEQUACY_RULES);

@@ -30,6 +30,26 @@ export const CLUSTER = {
 
 export const GUARD_STATUS = { PASS: "pass", FAIL: "fail", NOT_APPLICABLE: "not_applicable" };
 
+// Which required-element ids each cluster already judges the QUALITY of.
+// Consumers use this to avoid double-judging: an element covered by a cluster
+// here is assessed by this engine's purpose-built heuristics (reason + taxing
+// effort, service specificity), which are stronger than the generic adequacy
+// signals, and a failing cluster already gates the chart save. Elements absent
+// from this map have no quality judge but the adequacy rules.
+export const CLUSTER_ELEMENT_IDS = {
+  [CLUSTER.HOMEBOUND]: ["homebound"],
+  [CLUSTER.SKILLED_NEED]: ["skilled_need", "comfort_skilled_need"],
+};
+
+/** Element ids whose quality is already judged by a cluster present in `findings`. */
+export function elementsJudgedByGuardrail(findings = []) {
+  const out = new Set();
+  for (const f of Array.isArray(findings) ? findings : []) {
+    for (const id of CLUSTER_ELEMENT_IDS[f?.cluster] || []) out.add(id);
+  }
+  return [...out];
+}
+
 // ── homebound quality signals ───────────────────────────────────────────────
 // A medical REASON the patient is confined (or an explicit causal phrase).
 const HB_REASON = /\b(dyspnea|short(?:ness)? of breath|sob|weak(?:ness)?|cva|stroke|fracture|fx|pain|dizz(?:y|iness)|fall risk|falls?|wound|surg(?:ery|ical)|post[- ]?op|oxygen|\bo2\b|deconditio\w*|unsteady|gait|amputat\w*|paraly\w*|bedbound|bedfast|edema|chf|copd|neuropath\w*|contracture|non[- ]?weight[- ]?bearing|nwb)\b/i;
