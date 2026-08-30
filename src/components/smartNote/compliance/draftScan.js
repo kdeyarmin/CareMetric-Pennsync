@@ -12,7 +12,7 @@ import { buildOverrides } from "./ruleLibrary.js";
 import { detectPresence, computeGaps, computeCriticalGaps } from "./presenceDetection.js";
 import { formatVitalsSentence } from "./factExtraction.js";
 import { computeDraftPresenceScore } from "./coverageScore.js";
-import { describePlaceholders } from "./placeholderGuard.js";
+import { describePlaceholders, countPlaceholders } from "./placeholderGuard.js";
 
 /** A draft shorter than this isn't worth scanning (matches the reviewer's gate). */
 export const MIN_DRAFT_LENGTH = 20;
@@ -31,7 +31,8 @@ export const MIN_DRAFT_LENGTH = 20;
  * @returns {null | {
  *   normalized: string, vitalsSentence: string, required: Array,
  *   presence: Array, gaps: Array, criticalGaps: Array,
- *   draftScore: number, appliedRules: Array, placeholders: Array,
+ *   draftScore: number, appliedRules: Array,
+ *   placeholders: Array, placeholderCount: number,
  * }} null when the draft is too short to scan.
  */
 export function scanDraft({
@@ -70,6 +71,15 @@ export function scanDraft({
     appliedRules,
     // Unfilled template scaffolding still in the draft. Surfaced here so Step 1
     // can flag it in place, where the nurse can actually fix it.
+    //
+    // TWO fields on purpose. `placeholders` is a DISPLAY list: one row per line,
+    // deduped and capped, for rendering. `placeholderCount` is the true total
+    // number of blanks. Counting the display rows conflates "lines" with
+    // "blanks" AND silently saturates at the cap, so a draft with 30 blanks
+    // across 10 lines reported "6 unfilled blanks" — an undercount the nurse
+    // would act on. Render counts from `placeholderCount`, lists from
+    // `placeholders`.
     placeholders: describePlaceholders(roughNote),
+    placeholderCount: countPlaceholders(roughNote),
   };
 }

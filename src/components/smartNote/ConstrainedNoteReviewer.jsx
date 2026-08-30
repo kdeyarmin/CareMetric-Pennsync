@@ -218,6 +218,10 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   // handed to the scribe, which would faithfully re-voice the blank into the note
   // the nurse copies into the EMR. Generation is gated until they are resolved.
   const draftPlaceholders = analysis?.placeholders || [];
+  // True total number of blanks. The list above is a capped, per-line DISPLAY
+  // set, so counting its rows both conflates lines with blanks and saturates at
+  // the cap — never render a count from it (see draftScan.js).
+  const draftPlaceholderCount = analysis?.placeholderCount || 0;
 
   // Deterministic visit-over-visit comparison: what measured values changed since
   // the patient's last documented note. Pure + offline, derived from the same
@@ -624,9 +628,10 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
                 <AlertTriangle className="w-4 h-4" /> Unfilled blanks in your draft
               </h3>
               <p className="text-sm text-red-800">
-                These lines still contain template placeholders. They are not counted as documentation, and the note
-                can&apos;t be generated until you fill them in or delete them — otherwise the blank would be written
-                into the note you paste into the EMR.
+                Your draft still has <strong>{draftPlaceholderCount} unfilled blank{draftPlaceholderCount > 1 ? "s" : ""}</strong> left
+                from a template. They are not counted as documentation, and the note can&apos;t be generated until you
+                fill them in or delete them — otherwise the blank would be written into the note you paste into the EMR.
+                Affected lines include:
               </p>
               <ul className="space-y-1">
                 {draftPlaceholders.map((row) => (

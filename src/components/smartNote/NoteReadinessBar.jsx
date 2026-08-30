@@ -32,7 +32,9 @@ export default function NoteReadinessBar({
   // Nothing useful to say about a draft too short to scan.
   if (!scan) return null;
 
-  const { required, presence, criticalGaps, draftScore, placeholders } = scan;
+  // `placeholderCount` is the true number of blanks; `placeholders` is the
+  // capped display list. Never count the display rows (see draftScan.js).
+  const { required, presence, criticalGaps, draftScore, placeholders, placeholderCount } = scan;
   const documented = presence.filter((p) => p.present).length;
   const blocked = criticalGaps.length > 0 || placeholders.length > 0;
   const tone = blocked ? "amber" : draftScore >= 90 ? "green" : "slate";
@@ -65,7 +67,7 @@ export default function NoteReadinessBar({
         <p className="flex items-start gap-1.5 text-xs text-amber-800">
           <AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
           <span>
-            <strong>{placeholders.length} unfilled blank{placeholders.length > 1 ? "s" : ""}</strong> left from a
+            <strong>{placeholderCount} unfilled blank{placeholderCount > 1 ? "s" : ""}</strong> left from a
             template ({placeholders[0].placeholders[0]}…). Fill them in or delete the line — blanks don&apos;t count as
             documentation and will block the note.
           </span>

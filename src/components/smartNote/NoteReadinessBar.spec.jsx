@@ -67,3 +67,20 @@ describe("NoteReadinessBar — Step 1 live compliance preview", () => {
     expect(screen.getByText(/required to bill this visit/i).parentElement).toHaveTextContent(/Comfort-focused skilled need/i);
   });
 });
+
+describe("NoteReadinessBar — blank count accuracy", () => {
+  it("reports the true number of blanks, not the capped display-row count", () => {
+    // 10 lines x 3 blanks = 30. Counting the capped display rows said "6".
+    const draft = Array.from({ length: 10 }, (_, i) => `Line ${i}: BP _/_, HR _`).join("\n");
+    renderWithProviders(<NoteReadinessBar roughNote={draft} />);
+    expect(screen.getByText(/30 unfilled blanks/i)).toBeInTheDocument();
+    expect(screen.queryByText(/6 unfilled blanks/i)).not.toBeInTheDocument();
+  });
+
+  it("uses the singular form for exactly one blank", () => {
+    renderWithProviders(
+      <NoteReadinessBar roughNote="Homebound status: unable to leave the home due to [diagnosis] this visit." />,
+    );
+    expect(screen.getByText(/1 unfilled blank$/i)).toBeInTheDocument();
+  });
+});

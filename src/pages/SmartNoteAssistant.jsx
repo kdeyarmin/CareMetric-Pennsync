@@ -29,7 +29,7 @@ import NoteReadinessBar from "../components/smartNote/NoteReadinessBar";
 import { persistVisitNote } from "../components/smartNote/persistVisitNote";
 import { getPriorNote, parseNoteSections } from "../components/smartNote/noteHelpers";
 import { evaluateFacilityRules, summarizeFacilityRules } from "../components/smartNote/compliance/facilityDocRules";
-import { describePlaceholders } from "../components/smartNote/compliance/placeholderGuard";
+import { describePlaceholders, countPlaceholders } from "../components/smartNote/compliance/placeholderGuard";
 import { claimDictation, releaseDictation } from "@/components/smartNote/dictationController";
 import { generateFollowUpTasks } from "@/functions/generateFollowUpTasks";
 import { analyzeVisitForSupplyUsage } from "@/functions/analyzeVisitForSupplyUsage";
@@ -318,7 +318,9 @@ export default function SmartNoteAssistant({ visitId = null }) {
     // rather than letting the nurse discover the hard block a click later.
     const blanks = describePlaceholders(note);
     if (blanks.length) {
-      toast.error(`Fill in or delete the ${blanks.length} blank${blanks.length > 1 ? "s" : ""} left in your draft (${blanks[0].placeholders[0]}…) before reviewing.`);
+      // Count from countPlaceholders, not the capped display rows (see draftScan.js).
+      const total = countPlaceholders(note);
+      toast.error(`Fill in or delete the ${total} blank${total > 1 ? "s" : ""} left in your draft (${blanks[0].placeholders[0]}…) before reviewing.`);
       return;
     }
     const facilityResults = evaluateFacilityRules({

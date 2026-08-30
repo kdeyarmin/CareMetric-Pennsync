@@ -69,3 +69,27 @@ test("an agency rule can raise severity and is reported for the audit stamp", ()
   assert.equal(scan.appliedRules.length, 1);
   assert.equal(scan.appliedRules[0].rule_name, "Safety sweep");
 });
+
+test("placeholderCount is the true total, independent of the display cap", () => {
+  // 10 lines x 3 blanks = 30 blanks, well past describePlaceholders' cap of 6
+  // rows. Counting the display rows reported "6", which is both the wrong unit
+  // (lines, not blanks) and saturated at the cap.
+  const draft = Array.from({ length: 10 }, (_, i) => `Line ${i}: BP _/_, HR _`).join("\n");
+  const scan = scanDraft({ roughNote: draft });
+  assert.equal(scan.placeholders.length, 6, "display list stays capped");
+  assert.equal(scan.placeholderCount, 30, "count is the true, uncapped total");
+});
+
+test("placeholderCount counts blanks, not lines", () => {
+  const scan = scanDraft({ roughNote: "Homebound status: unable to leave home due to [diagnosis] with BP _/_" });
+  assert.equal(scan.placeholders.length, 1, "one affected line");
+  assert.equal(scan.placeholderCount, 3, "[diagnosis] plus the two BP blanks");
+});
+
+test("placeholderCount is 0 for a draft with no blanks", () => {
+  const scan = scanDraft({
+    roughNote: "Patient is homebound due to dyspnea and needs a walker. Skilled wound care performed.",
+  });
+  assert.equal(scan.placeholderCount, 0);
+  assert.deepEqual(scan.placeholders, []);
+});
