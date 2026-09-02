@@ -3,7 +3,6 @@ import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Shield, ChevronLeft, ChevronRight, Sparkles, Users, LogOut, Search } from "lucide-react";
-import FeedbackButton from "@/components/feedback/FeedbackButton";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -215,8 +214,7 @@ export default function DesktopSidebar({
 
       {/* User Footer */}
       <div className="border-t border-navy-700 p-3 flex-shrink-0">
-        {!collapsed && <FeedbackButton />}
-        <div className={`flex items-center gap-2 mt-2 ${collapsed ? 'justify-center flex-col' : ''}`}>
+        <div className={`flex items-center gap-2 ${collapsed ? 'justify-center flex-col' : ''}`}>
           <div className="w-8 h-8 bg-gradient-to-br from-navy-500 to-navy-700 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
             {currentUser?.full_name?.charAt(0)?.toUpperCase() || 'U'}
           </div>
