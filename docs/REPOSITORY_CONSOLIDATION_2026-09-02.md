@@ -48,6 +48,7 @@ none of these operations targeted the CareMetric production app above:
 | Staging URL | `https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/` |
 | Source baseline | merged canonical `main` at `67d9d5ee66aad222a712e6ba49d00461d0a68337` plus draft staging PR `#143` |
 | Frontend | built with the staging app id and `https://base44.app` backend origin; real-browser boot reaches the PennSync sign-in screen |
+| PWA | hosted manifest preserves relative `id`, `start_url`, and `scope`; all four manifest icons and the Apple touch icon return HTTP 200 |
 | Entities | hosted deployment accepted the candidate entity schemas, including the service-role-only OASIS/outcome/PDGM contracts |
 | Data | only the staging owner account exists; Patient, OASISAssessment, OASISUpload, PatientOutcomeMetric, AgencyKPI, PDGMRateConfig, and Agency all have zero rows |
 | Functions | `139 / 240` deployed; the interrupted bulk job's server lock cleared and subsequent controlled batches completed without function errors |
