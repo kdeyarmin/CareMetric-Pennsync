@@ -37,6 +37,28 @@ The installed mobile apps continue to use their existing store records. Adding
 PennSync domains later must point those domains at the same CareMetric Base44
 app; it must not change the permanent origin embedded in the iOS shell.
 
+## Nonproduction hosted-validation evidence (2026-09-02)
+
+The first release gate is now in progress in a separate Base44 application;
+none of these operations targeted the CareMetric production app above:
+
+| Surface | Hosted staging evidence |
+| --- | --- |
+| Base44 app | `caremetric-pennsync-staging-2026-09-02`, `6a9881683dc68a0bd54f1ef7` |
+| Staging URL | `https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/` |
+| Source baseline | merged canonical `main` at `67d9d5ee66aad222a712e6ba49d00461d0a68337` plus draft staging PR `#143` |
+| Frontend | built with the staging app id and `https://base44.app` backend origin; real-browser boot reaches the PennSync sign-in screen |
+| Entities | hosted deployment accepted the candidate entity schemas, including the service-role-only OASIS/outcome/PDGM contracts |
+| Data | only the staging owner account exists; Patient, OASISAssessment, OASISUpload, PatientOutcomeMetric, AgencyKPI, PDGMRateConfig, and Agency all have zero rows |
+| Functions | `139 / 240` deployed; the interrupted bulk job's server lock cleared and subsequent controlled batches completed without function errors |
+| Feature gates | no AgencySettings row exists; `oasis_response_schema_v2_enabled` therefore remains absent/default-off, the writer remains hard-paused, PDGM reimbursement remains source-disabled, and no outcome schedule was added |
+
+The initial entity deployment exposed unsupported `$contains` array-membership
+RLS in Message and SharedDocument. Draft PR `#143` replaces it with Base44's
+accepted `data.<array>.$in` form and adds a repository-wide operator contract.
+Both PR workflows pass. The remaining function source upload requires explicit
+authorization for the staging destination before the hosted batch can resume.
+
 ## Deliberate merge decisions
 
 - Kept the newest Smart Note, visit preparation, medication reconciliation,
