@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateOASIS, computeCareScope, SEVERITY_ORDER } from "./oasisScoringEngine.js";
+import {
+  SCORED_QUESTION_IDS,
+  SEVERITY_ORDER,
+  computeCareScope,
+  evaluateOASIS,
+  isPennSyncFormAnswers,
+} from "./oasisScoringEngine.js";
 
 test("a high-severity trigger produces a high-severity suggestion", () => {
   const results = evaluateOASIS({ m1910: 2 }); // fall risk high
@@ -125,4 +131,52 @@ test('M1900 "Unknown" (4) does not trigger a fall-prevention suggestion', () => 
 test('completed high-risk drug education (m2010 = 1) is not a medication gap', () => {
   assert.equal(evaluateOASIS({ m2010: 1 }).find((r) => r.domain === "Medication Management"), undefined);
   assert.ok(evaluateOASIS({ m2010: 2 }).find((r) => r.domain === "Medication Management"));
+});
+
+// ── The ids this engine reads are PennSync's, not CMS item numbers ──────────
+
+test("the engine refuses CMS-shaped data rather than returning a confident empty", () => {
+  // An empty result reads as "no concerns found". On data this engine cannot
+  // interpret the truth is "these answers could not be read" — a different
+  // answer, and the dangerous one to get wrong.
+  const cmsShaped = { j1800: 1, d0150: 2, gg0100: 3, m1021: "I50.9" };
+  assert.equal(isPennSyncFormAnswers(cmsShaped), false);
+  assert.throws(
+    () => evaluateOASIS(cmsShaped, { strict: true }),
+    /match none of PennSync's form question ids/,
+  );
+  // Non-strict stays backward compatible for the existing caller.
+  assert.deepEqual(evaluateOASIS(cmsShaped), []);
+});
+
+test("PennSync form answers are recognised", () => {
+  assert.equal(isPennSyncFormAnswers({ m1860: 3 }), true);
+  assert.equal(isPennSyncFormAnswers({}), false);
+  assert.equal(isPennSyncFormAnswers(null), false);
+});
+
+test("every scored id is a known PennSync form question, not an invented one", async () => {
+  // Guards against a rule keying off an id no form question supplies, which
+  // would be a trigger that can never fire.
+  const { ITEM_VERIFICATION } = await import("./specs/verification.js");
+  for (const id of SCORED_QUESTION_IDS) {
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(ITEM_VERIFICATION, id),
+      `${id} is scored but is not in the item registry`,
+    );
+  }
+});
+
+test("ids this engine reads that are NOT current CMS items are known and documented", async () => {
+  // Pins the source-check result so a future edit cannot quietly reintroduce a
+  // CMS claim for one of these.
+  const { classifyItem } = await import("./specs/verification.js");
+  const notCurrentCms = SCORED_QUESTION_IDS.filter(
+    (id) => !["verified", "abbreviated"].includes(classifyItem(id).level),
+  );
+  assert.deepEqual(
+    notCurrentCms.sort(),
+    ["m1020", "m1030", "m1350", "m1730", "m1900", "m1910"],
+    "the set of non-CMS ids this engine reads changed — re-check specs/verification.js",
+  );
 });

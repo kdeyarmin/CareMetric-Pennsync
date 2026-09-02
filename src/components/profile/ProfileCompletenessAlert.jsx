@@ -5,36 +5,41 @@ import { AlertTriangle, ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { getStaffRole } from "@/lib/roles";
 
 export default function ProfileCompletenessAlert({ user }) {
+  const isNurse = getStaffRole(user) === "nurse";
+
   const { data: credentials = [] } = useQuery({
     queryKey: ['myCredentials', user?.email],
     queryFn: () => user?.email ? base44.entities.PersonnelCredential.filter({ user_id: user.email }, undefined, PATIENT_HISTORY_ROWS) : Promise.resolve([]),
-    enabled: !!user?.email,
+    enabled: !!user?.email && isNurse,
     initialData: [],
   });
 
   const validation = useMemo(() => {
     if (!user) return { isComplete: true, missing: [], needsCredentials: false };
 
-    const requiredFields = [
-      { key: 'phone', label: 'Phone Number' },
-      { key: 'care_scope', label: 'Care Scope' },
-      { key: 'credential_type', label: 'Credential Type' },
-    ];
+    const requiredFields = isNurse
+      ? [
+          { key: 'phone', label: 'Phone Number' },
+          { key: 'care_scope', label: 'Care Scope' },
+          { key: 'credential_type', label: 'Credential Type' },
+        ]
+      : [{ key: 'phone', label: 'Phone Number' }];
 
     const missing = requiredFields.filter(field => 
       !user[field.key] || user[field.key] === ''
     );
 
-    const hasActiveCredential = credentials.some(c => c.status === 'approved' || c.status === 'pending_approval');
+    const hasActiveCredential = !isNurse || credentials.some(c => c.status === 'approved' || c.status === 'pending_approval');
 
     return {
       isComplete: missing.length === 0 && hasActiveCredential,
       missing: missing.map(m => m.label),
       needsCredentials: !hasActiveCredential
     };
-  }, [user, credentials]);
+  }, [user, credentials, isNurse]);
 
   if (validation.isComplete) {
     return null;

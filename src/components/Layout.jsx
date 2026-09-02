@@ -257,7 +257,7 @@ export default function Layout() {
 
   // Build nav arrays from manifest, then inject runtime badges/actions
   const navCategories = useMemo(() => {
-    const cats = buildNavCategories(NAV_MANIFEST);
+    const cats = buildNavCategories(NAV_MANIFEST, currentUser);
     return cats.map(cat => ({
       ...cat,
       items: cat.items.map(({ _badgeKey, ...item }) => ({
@@ -265,7 +265,7 @@ export default function Layout() {
         badge: _badgeKey ? (badgeValues[_badgeKey] ?? 0) : 0,
       })),
     }));
-  }, [badgeValues]);
+  }, [badgeValues, currentUser]);
 
   const adminItems = useMemo(() => {
     const cats = buildAdminItems(NAV_MANIFEST, isSuperAdminUser);
@@ -387,8 +387,8 @@ export default function Layout() {
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:bg-white focus:px-4 focus:py-2 focus:rounded-md focus:shadow-lg focus:text-blue-700 focus:font-medium">
         Skip to content
       </a>
-      <CommandPalette isAdmin={isAdmin} isSuperAdmin={isSuperAdminUser} />
-      <div className="min-h-screen flex">
+      <CommandPalette isAdmin={isAdmin} isSuperAdmin={isSuperAdminUser} user={currentUser} />
+      <div className="min-h-screen md:h-[100dvh] flex w-full max-w-full overflow-x-clip-safe md:overflow-y-hidden">
         <DesktopSidebar
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(v => !v)}
@@ -421,10 +421,10 @@ export default function Layout() {
 
         <main
           id="main-content"
-          className="flex-1 pt-[calc(4rem_+_env(safe-area-inset-top))] md:pt-0 pb-[calc(5rem_+_env(safe-area-inset-bottom))] md:pb-0 min-h-screen w-0 md:w-auto overscroll-none"
+          className="app-page-scroll flex-1 min-w-0 overflow-x-clip-safe md:h-[100dvh] md:overflow-y-auto pt-[calc(4rem_+_env(safe-area-inset-top))] md:pt-0 pb-[calc(5rem_+_env(safe-area-inset-bottom))] md:pb-0 min-h-screen overscroll-y-contain"
           style={{ background: "var(--app-shell-background)" }}
         >
-          <div className="p-4 sm:p-6 md:p-8 lg:p-10 min-w-0 max-w-[1600px] mx-auto">
+          <div className="mx-auto w-full min-w-0 max-w-[1600px] p-4 sm:p-6 md:p-8 lg:p-10">
             <Breadcrumbs currentPageName={currentPageName} />
             <PageTransition>
               <Outlet key={location.pathname} />
@@ -432,7 +432,7 @@ export default function Layout() {
           </div>
         </main>
 
-        <MobileBottomNav isActive={isActive} unreadMessageCount={unreadMessageCount} isAdmin={isAdmin} />
+        <MobileBottomNav isActive={isActive} unreadMessageCount={unreadMessageCount} isAdmin={isAdmin} currentUser={currentUser} />
 
         <SessionTimeoutManager timeoutMinutes={15} warningMinutes={2} />
 

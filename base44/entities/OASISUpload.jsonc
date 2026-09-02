@@ -96,6 +96,19 @@
       "type": "object",
       "description": "Extracted/edited OASIS field data (item values, AI suggestions, supervisor approvals)"
     },
+    "response_schema_id": {
+      "type": "string",
+      "description": "Response schema of any OASIS-like values derived from this upload. Absent means legacy/unknown: such values are never CMS-scorable or exportable with a code."
+    },
+    "instrument_version": {
+      "type": "string",
+      "description": "CMS instrument version the derived values were read under, when known."
+    },
+    "derived_value_origin": {
+      "type": "string",
+      "enum": ["ai_extracted", "clinician_selected"],
+      "description": "How the derived values came to be. 'ai_extracted' values are evidence for a clinician to check — never an official response, and never CMS-scorable."
+    },
     "supervisor_review_status": {
       "type": "string",
       "enum": [

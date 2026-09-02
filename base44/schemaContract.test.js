@@ -192,6 +192,11 @@ const ENUM_USAGE = {
   // Visit.status — the offline capture queues 'pending_review' (grounding deferred
   // to reconnect); the sync worker / other flows write 'completed'.
   'Visit.status': ['completed', 'pending_review'],
+  // Visit.emr_handoff_status — SELF-REPORTED EMR handoff progress written by the
+  // Smart Note EMR-handoff panel (src/components/smartNote/emrHandoff.js). These
+  // are operational workflow states only: PennSync has no EMR integration and
+  // never asserts the note was actually entered or signed there.
+  'Visit.emr_handoff_status': ['copied_to_emr', 'reviewed_in_emr', 'signed_in_emr'],
   // AdrAuditCase.status — the ADR Center workflow writes every stage transition
   // (src/pages/ADRCenter.jsx + components); generateAdrPacket writes
   // 'packet_generated'.
@@ -242,13 +247,21 @@ const FIELD_USAGE = {
   // captured (smart_note / audio / manual) for the compliance audit trail.
   // Visit.grounding_pending — set true when an offline save deferred the AI
   // grounding pass until reconnect (audit-trail completeness marker).
-  Visit: ['documentation_source', 'grounding_pending'],
+  // Visit.emr_handoff_history / documentation_review_ack — the EMR-handoff trail
+  // and the AI-governance review record (NOT a clinical signature).
+  Visit: [
+    'documentation_source', 'grounding_pending',
+    'emr_handoff_status', 'emr_handoff_history', 'documentation_review_ack',
+  ],
   Referral: [
     'page_range', 'detection_confidence', 'manually_confirmed', 'rejection_date', 'rejected_by',
     // Intake→SOC (Timely Initiation of Care) tracker writes these.
     'soc_date', 'first_visit_date', 'soc_completed_by',
   ],
   PatientAlert: ['contributing_factors', 'recommended_actions', 'risk_score'],
+  // oasis_items rows now carry their classification and the spec version it was
+  // made against.
+  OASISAssessment: ['oasis_items[].item_source', 'oasis_items[].item_spec_version'],
   // PatientOutcomeMetric — written by computeOutcomeMeasures (the keystone
   // outcome-measure cron). These fields were added alongside the CMS change-score
   // engine; without them the platform would silently drop the per-measure

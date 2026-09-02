@@ -18,11 +18,6 @@ export const PPH_MEASURE = "within_stay_pph";
 const BASELINE_RISK = 15;
 const RISK_CAP = 95;
 
-function toNum(v) {
-  const n = typeof v === "number" ? v : parseFloat(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
 /**
  * Compute a patient's PPH risk from OASIS/PDGM + visit adherence. Mirrors the
  * RehospitalizationPredictor factor weights.
@@ -44,13 +39,33 @@ export function computePphRisk({ oasis = [], visits = [] } = {}) {
       base += 25;
       factors.push({ factor: "Recent hospitalization/SNF stay", impact: 25 });
     }
-    const totalFunctional = toNum(fs.m1860_ambulation) + toNum(fs.m1850_transferring) + toNum(fs.m1830_bathing);
-    if (totalFunctional >= 12) {
-      base += 20;
-      factors.push({ factor: "Severe functional impairment", impact: 20 });
-    } else if (totalFunctional >= 8) {
-      base += 12;
-      factors.push({ factor: "Moderate functional impairment", impact: 12 });
+    // Only score functional impairment when ALL THREE items are present. Summing
+    // them treated a missing item as 0, which on these scales means fully
+    // independent — so a partially extracted assessment scored as LOWER risk
+    // than an unknown one.
+    //
+    // The presence check deliberately does NOT go through `toNum`: that helper
+    // maps a missing or non-numeric value to 0, so every part would look
+    // present and this guard would never fire. Reading 0 as "independent" is
+    // the exact coercion the guard exists to prevent, so it has to see the raw
+    // value.
+    const readScore = (v) => {
+      if (v === undefined || v === null || v === "") return null;
+      const n = typeof v === "number" ? v : Number(String(v).trim());
+      return Number.isFinite(n) ? n : null;
+    };
+    const parts = [fs.m1860_ambulation, fs.m1850_transferring, fs.m1830_bathing].map(readScore);
+    if (parts.every((n) => n !== null)) {
+      const totalFunctional = parts.reduce((a, b) => a + b, 0);
+      if (totalFunctional >= 12) {
+        base += 20;
+        factors.push({ factor: "Severe functional impairment", impact: 20 });
+      } else if (totalFunctional >= 8) {
+        base += 12;
+        factors.push({ factor: "Moderate functional impairment", impact: 12 });
+      }
+    } else {
+      factors.push({ factor: "Functional status incomplete — risk may be understated", impact: 0 });
     }
     const dx = String(pdgm.primary_diagnosis || "").toLowerCase();
     if (dx.includes("heart failure") || dx.includes("chf")) {

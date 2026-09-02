@@ -278,3 +278,79 @@ describe("ConstrainedNoteReviewer — conclusory documentation in the DRAFT itse
     expect(generateConstrainedNote).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ConstrainedNoteReviewer — what is left, and where the advisories went", () => {
+  beforeEach(() => { setOnline(false); });
+  afterEach(() => { setOnline(true); });
+
+  it("names what is blocking Generate instead of leaving the nurse to find it", () => {
+    renderWithProviders(
+      <ConstrainedNoteReviewer roughNote={NEUTRAL_DRAFT} serviceLine="home_health" visitType="routine_visit" />,
+    );
+    // Two criticals (homebound, skilled need) are unanswered on a neutral draft.
+    expect(screen.getAllByText(/2 required answers needed/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /generate final note/i })).toBeDisabled();
+  });
+
+  it("counts unfilled blanks alongside the unanswered criticals", () => {
+    renderWithProviders(
+      <ConstrainedNoteReviewer
+        roughNote={"Patient homebound, unable to leave without considerable effort due to severe dyspnea. "
+          + "Skilled wound care with a sterile dressing change performed. Pain level: _/10, location: _"}
+        serviceLine="home_health"
+        visitType="routine_visit"
+      />,
+    );
+    expect(screen.getAllByText(/blanks to fix/i).length).toBeGreaterThan(0);
+  });
+
+  it("says so plainly when nothing is blocking", () => {
+    renderWithProviders(
+      <ConstrainedNoteReviewer
+        roughNote={"Patient homebound, unable to leave home without considerable effort due to severe dyspnea and "
+          + "requires a rolling walker. Skilled wound care with a sterile dressing change to the sacral ulcer."}
+        serviceLine="home_health"
+        visitType="routine_visit"
+      />,
+    );
+    expect(screen.getByText(/nothing blocking — ready to generate/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /generate final note/i })).toBeEnabled();
+  });
+
+  it("keeps an advisory's count on its header, so collapsing it hides nothing important", () => {
+    renderWithProviders(
+      <ConstrainedNoteReviewer roughNote={NEUTRAL_DRAFT} serviceLine="home_health" visitType="routine_visit" />,
+    );
+    const denial = screen.getByRole("button", { name: /denial risk/i });
+    expect(denial).toHaveTextContent(/% risk/);
+    expect(denial).toHaveTextContent(/to strengthen/);
+  });
+
+  it("lets the nurse collapse an advisory once they have read it", async () => {
+    renderWithProviders(
+      <ConstrainedNoteReviewer roughNote={NEUTRAL_DRAFT} serviceLine="home_health" visitType="routine_visit" />,
+    );
+    // A draft this thin has a blocking finding, so the panel starts open.
+    expect(screen.getByText(/These documentation patterns drive most Medicare denials/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /denial risk/i }));
+    await waitFor(() => {
+      expect(screen.queryByText(/These documentation patterns drive most Medicare denials/i)).not.toBeInTheDocument();
+    });
+    // The header keeps reporting it either way.
+    expect(screen.getByRole("button", { name: /denial risk/i })).toHaveTextContent(/% risk/);
+  });
+
+  it("opens an advisory that carries a blocking finding, rather than hiding it", () => {
+    // Conclusory homebound: the guardrail reports this as a critical cluster.
+    renderWithProviders(
+      <ConstrainedNoteReviewer
+        roughNote="Patient is homebound. Skilled wound care with a sterile dressing change to the sacral ulcer."
+        serviceLine="home_health"
+        visitType="routine_visit"
+      />,
+    );
+    expect(screen.getByText(/These documentation patterns drive most Medicare denials/i)).toBeInTheDocument();
+  });
+
+});

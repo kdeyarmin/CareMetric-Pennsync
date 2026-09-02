@@ -1,175 +1,96 @@
-// Note → OASIS autofill mapper.
+// Note → OASIS EVIDENCE mapper.
 //
-// mapNoteToOASIS produces verbatim-evidenced, confidence-scored M-item
-// suggestions, but nothing ever pre-filled the OASIS form — nurses re-entered
-// ambulation, dyspnea, meds, pain, and wounds by hand. This turns those
-// suggestions into ATTESTABLE DRAFTS for the form: each suggested value is
-// validated against the item's real option set, deduped to the highest-
-// confidence hit, and carried with its verbatim evidence so the nurse attests
-// (accepts) it rather than it silently overwriting the chart.
+// WHAT CHANGED AND WHY
+// This module used to turn `mapNoteToOASIS` output into "attestable drafts":
+// each carried a `value` resolved against the form's option set, and the panel
+// above it could apply them one by one or in bulk at ≥85% confidence. However it
+// was labelled, that is AI selecting official OASIS responses — and the resolver
+// did the selecting by string-matching a model's text against option labels,
+// which is a guess dressed as a code.
+//
+// Every final official OASIS response must be selected explicitly by a
+// clinician. So the mapper no longer produces a value at all. It produces what
+// AI is genuinely good for and is permitted to return: the verbatim sentence
+// from the note, the item that sentence is relevant to, an explicit
+// discrepancy/uncertainty flag, and a question for the clinician to answer in
+// their EMR.
+//
+// There is deliberately no `answersFromDrafts` any more: there is no draft value
+// to apply, so no code path can write one.
 //
 // Pure + offline (unit-tested with `node --test`).
 
-export const DEFAULT_MIN_CONFIDENCE = 70;
+import { stripCodeAssertions } from "./responseSchema/aiResponseSanitizer.js";
 
 /** Normalize an OASIS item number ("M1860", "m1860", "M 1860") to a form id. */
 export function normalizeItemId(itemNumber) {
   return String(itemNumber || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** Index the OASIS_SECTIONS question set by id → { label, options, values }. */
+/** Index the OASIS question set by id → { label }. */
 function buildItemIndex(sections) {
   const idx = {};
   for (const section of sections || []) {
     for (const q of section.questions || []) {
-      idx[q.id] = { label: q.label, options: q.options || [], values: new Set((q.options || []).map((o) => o.value)) };
+      idx[q.id] = { label: q.label, description: q.description || "" };
     }
   }
   return idx;
 }
 
-function optionLabel(question, value) {
-  const opt = (question.options || []).find((o) => o.value === value);
-  return opt ? opt.label : String(value);
-}
-
-// Words that flip an option's clinical meaning. A fragment match across a
-// negation boundary drafts the OPPOSITE answer — "short of breath" is a
-// substring of "Patient is not short of breath" — so both sides must agree
-// on polarity before any label match counts.
-const NEGATION_TOKENS = new Set(["no", "not", "never", "none", "without", "denies", "denied", "unable"]);
-
-const tokenize = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
-const hasNegation = (toks) => toks.some((t) => NEGATION_TOKENS.has(t));
-
 /**
- * Whole-token label match: exact token-sequence equality, or a multi-token
- * contiguous run inside the longer side. Single-token needles ("no", "yes")
- * only match by full equality — substring/fragment matching is how "…noted"
- * used to match the "No" option.
- */
-function labelTokensMatch(a, b) {
-  if (!a.length || !b.length) return false;
-  if (hasNegation(a) !== hasNegation(b)) return false;
-  const [needle, hay] = a.length <= b.length ? [a, b] : [b, a];
-  if (needle.length === hay.length) return needle.every((t, i) => t === hay[i]);
-  if (needle.length === 1) return false;
-  for (let i = 0; i <= hay.length - needle.length; i++) {
-    if (needle.every((t, j) => t === hay[i + j])) return true;
-  }
-  return false;
-}
-
-/**
- * Resolve a suggestion's value to a valid numeric option for the item, or null.
- * Tries the raw numeric value first, then a whole-token option-label match.
- */
-function resolveValue(suggestion, question) {
-  // Primary: the raw numeric value must be one of the item's real options.
-  const raw = String(suggestion.suggested_value ?? "").trim();
-  const n = parseInt(raw, 10);
-  if (!Number.isNaN(n) && question.values.has(n)) return n;
-
-  // Fallback: match the descriptive label (or a non-numeric suggested_value
-  // like "yes") against option labels on whole-token boundaries with matching
-  // negation polarity. Plain substring matching drafted opposite values:
-  // "Unhealed pressure injury noted" contains "no" → M1306 = 0. A bare
-  // numeric ("9") still never matches an option by label.
-  const stripPrefix = (s) => String(s).replace(/^\s*\d+\s*[—–-]\s*/, "");
-  const candidates = [suggestion.suggested_value_label, /\d/.test(raw) ? "" : raw]
-    .map(tokenize)
-    .filter((toks) => toks.length > 0);
-  for (const cand of candidates) {
-    const matches = (question.options || []).filter((o) => labelTokensMatch(cand, tokenize(stripPrefix(o.label))));
-    if (matches.length === 1) return matches[0].value;
-    if (matches.length > 1) {
-      // Ambiguous fragment ("short of breath" appears in several severity
-      // levels) — only an exact whole-label match may resolve it; otherwise
-      // skip rather than draft an arbitrary level.
-      const exact = matches.filter((o) => {
-        const ot = tokenize(stripPrefix(o.label));
-        return ot.length === cand.length && ot.every((t, i) => t === cand[i]);
-      });
-      if (exact.length === 1) return exact[0].value;
-    }
-  }
-  return null;
-}
-
-/**
- * Build attestable OASIS drafts from mapNoteToOASIS suggestions.
+ * Build EVIDENCE entries from mapNoteToOASIS suggestions.
  *
- * @param {Array} suggestions  mapNoteToOASIS `oasis_suggestions`
- * @param {Array} sections     OASIS_SECTIONS
- * @param {Object} [opts] { minConfidence }
- * @returns {{ drafts: Object, applied: Array, skipped: Array }}
+ * No entry carries a code, a value, or anything a caller could apply to the
+ * form. A model-produced code inside free text is stripped on the way through,
+ * so an unexpected one still cannot reach the clinician as a recommendation.
+ *
+ * @param {Array} suggestions mapNoteToOASIS `oasis_suggestions`
+ * @param {Array} sections    OASIS_SECTIONS
+ * @returns {{ evidence: Array, skipped: Array }}
  */
-export function buildOasisAutofill(suggestions, sections, opts = {}) {
-  const minConf = opts.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
+export function buildOasisEvidence(suggestions, sections) {
   const idx = buildItemIndex(sections);
-  const drafts = {};
+  const evidence = [];
   const skipped = [];
+  const seen = new Set();
 
   for (const s of Array.isArray(suggestions) ? suggestions : []) {
+    if (!s || typeof s !== "object") continue;
     const id = normalizeItemId(s.item_number);
     const q = idx[id];
-    const confidence = Number(s.confidence_score) || 0;
-
     if (!q) {
       skipped.push({ id, item_number: s.item_number, reason: "not_in_form" });
       continue;
     }
-    const value = resolveValue(s, q);
-    if (value === null) {
-      skipped.push({ id, item_number: s.item_number, reason: "unresolved_value" });
+    const quote = String(s.supporting_text || "").trim();
+    if (!quote) {
+      // Without a verbatim quote there is nothing for the clinician to check,
+      // and an unevidenced assertion is exactly what must not be shown.
+      skipped.push({ id, item_number: s.item_number, reason: "no_verbatim_evidence" });
       continue;
     }
-    if (confidence < minConf) {
-      skipped.push({ id, item_number: s.item_number, reason: "low_confidence", confidence });
-      continue;
-    }
+    if (seen.has(id)) continue;
+    seen.add(id);
 
-    const draft = {
+    evidence.push({
       id,
-      value,
-      confidence,
-      evidence: s.supporting_text || "",
       label: q.label,
-      value_label: optionLabel(q, value),
-      rationale: s.clinical_rationale || "",
+      // Verbatim from the note. Kept as written so the clinician can find it.
+      evidence: quote,
+      // Free text, with any code assertion neutralised.
+      note: stripCodeAssertions(s.clinical_rationale || ""),
       discrepancy: !!s.discrepancy_flag,
-      current_value: s.current_oasis_value ?? null,
-      attested: false,
-      source: "note_autofill",
-    };
-    // Keep the highest-confidence suggestion per item.
-    if (!drafts[id] || confidence > drafts[id].confidence) drafts[id] = draft;
+      question:
+        "Does this support your answer for this item? Choose the official response "
+        + "yourself from the wording in your EMR.",
+      source: "note_evidence",
+    });
   }
-
-  const applied = Object.values(drafts).sort((a, b) => b.confidence - a.confidence);
-  return { drafts, applied, skipped };
+  return { evidence, skipped };
 }
 
-/**
- * Build an `answers` patch ({ id: value }) from OASIS autofill drafts.
- *
- * This is a pure patch-builder: it does NOT itself enforce attestation. Every
- * draft starts with `attested: false`, and the ATTESTATION GATE is the caller's
- * responsibility — the nurse attests specific items in the UI and the caller
- * passes exactly those ids. Omitting `ids` applies every draft and must only be
- * used where the whole set has already been attested (e.g. an "accept all"
- * action or a test fixture); never wire an automated/bulk caller to the
- * no-`ids` form, or it would silently overwrite the chart with unattested AI
- * suggestions.
- *
- * @param {Object} drafts        buildOasisAutofill().drafts
- * @param {Array<string>} [ids]  attested ids to apply; omit only for a fully-attested set
- */
-export function answersFromDrafts(drafts, ids) {
-  const keys = ids || Object.keys(drafts || {});
-  const patch = {};
-  for (const id of keys) {
-    if (drafts && drafts[id]) patch[id] = drafts[id].value;
-  }
-  return patch;
-}
+/** The notice shown wherever this evidence appears. */
+export const EVIDENCE_ONLY_NOTICE =
+  "PennSync does not select OASIS responses. These are sentences from the note that relate to "
+  + "an item, shown so you can check them — not suggested answers.";

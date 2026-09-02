@@ -6,15 +6,15 @@ export const OASIS_SECTIONS = [
     questions: [
       {
         id: "m0069",
-        label: "M0069 — Prognosis",
-        description: "Does this patient have a condition that has a life expectancy of a year or less?",
+        label: "Terminal prognosis (PennSync screening item)",
+        description: "Not a current CMS OASIS item. M0069 was Gender and is replaced by A0810 Sex in OASIS-E2; PennSync keeps this as an internal prognosis prompt.",
         type: "radio",
         options: [{ value: 0, label: "0 — No" }, { value: 1, label: "1 — Yes" }],
       },
       {
         id: "m1020",
-        label: "M1020 — Primary Diagnosis",
-        description: "Primary diagnosis that prompted home care admission.",
+        label: "Primary diagnosis (PennSync screening item)",
+        description: "Not a CMS item number — the official item is M1021 (M1023 is Other Diagnoses), which records an ICD-10 code. Enter it in your EMR.",
         type: "select",
         options: [
           { value: 0, label: "Select primary diagnosis..." },
@@ -30,8 +30,8 @@ export const OASIS_SECTIONS = [
       },
       {
         id: "m1030",
-        label: "M1030 — Therapies at Home",
-        description: "Intravenous/infusion therapy, parenteral nutrition, or enteral nutrition received at home.",
+        label: "Therapies at home (PennSync screening item — retired CMS item)",
+        description: "Retired: M1030 is not in the OASIS instrument currently in effect. Internal prompt only.",
         type: "radio",
         options: [
           { value: 0, label: "0 — None" },
@@ -67,7 +67,7 @@ export const OASIS_SECTIONS = [
     questions: [
       {
         id: "m1730",
-        label: "M1730 — Depression Screening",
+        label: "Depression screening (PennSync screening item — retired CMS item)",
         description: "PHQ-2 positive screen — 'Little interest or pleasure in doing things' or 'Feeling down, depressed, or hopeless' in last 2 weeks?",
         type: "radio",
         options: [
@@ -156,7 +156,7 @@ export const OASIS_SECTIONS = [
       },
       {
         id: "m1350",
-        label: "M1350 — Skin Lesion or Open Wound",
+        label: "Skin lesion or open wound (PennSync screening item)",
         description: "Does the patient have a skin lesion or open wound, excluding pressure ulcers and surgical wounds?",
         type: "radio",
         options: [
@@ -258,7 +258,7 @@ export const OASIS_SECTIONS = [
     questions: [
       {
         id: "m1910",
-        label: "M1910 — Fall Risk Assessment",
+        label: "Fall risk assessment (PennSync screening item — retired CMS item)",
         description: "Has the patient had two or more falls in the past year or any fall with injury?",
         type: "radio",
         alert: { threshold: 1, message: "Fall history identified — comprehensive fall prevention protocol is required." },
@@ -270,7 +270,7 @@ export const OASIS_SECTIONS = [
       },
       {
         id: "m1900",
-        label: "M1900 — Prior Functioning",
+        label: "Prior functioning (PennSync screening item)",
         description: "In the 2 weeks prior to the current illness, exacerbation, or injury, patient's ADL ability was:",
         type: "radio",
         options: [
@@ -406,7 +406,7 @@ export const OASIS_SECTIONS = [
     questions: [
       {
         id: "m1242",
-        label: "M1242 — Frequency of Pain",
+        label: "Frequency of pain (PennSync screening item — retired CMS item)",
         description: "What is the frequency of patient-reported pain?",
         type: "radio",
         // OASIS-E M1242 is a 0–4 scale; threshold 3 alerts on daily-or-constant
@@ -422,7 +422,7 @@ export const OASIS_SECTIONS = [
       },
       {
         id: "m1300",
-        label: "M1300 — Pressure Ulcer Risk",
+        label: "Pressure ulcer risk (PennSync screening item)",
         description: "Does this patient have a Risk Assessment for Pressure Ulcers (e.g., Braden)?",
         type: "radio",
         options: [
@@ -478,14 +478,30 @@ export const OASIS_SECTIONS = [
     ],
   },
   {
+    // FACTUAL CORRECTION (2026-08-31 audit). These three questions previously
+    // carried the CMS item numbers M2102, M2110 and M2200 attached to content
+    // that does not belong to them: M2102/M2110 are assistance items in the CMS
+    // instrument (this repo says so itself in AIProactiveOASISAssistant.jsx),
+    // and M2200 (Therapy Need) was discontinued under PDGM. A nurse could have
+    // carried a wrong item number into the official assessment.
+    //
+    // PennSync does not hold the authoritative CMS instrument, so inventing the
+    // "correct" item content would replace one fabrication with another. The
+    // useful screening questions are kept — with the false CMS attribution
+    // removed. Their internal ids are unchanged so existing stored responses
+    // keep resolving; `specs/verification.js` classifies them as
+    // `pennsync_screening` and the UI must not show a CMS item number for them.
     id: "therapy",
-    title: "Therapy Needs",
+    title: "Therapy Needs (PennSync screening)",
     icon: "🏃",
+    description:
+      "PennSync screening questions — not official CMS OASIS items. Enter therapy need on the "
+      + "official assessment in your EMR.",
     questions: [
       {
         id: "m2102",
-        label: "M2102 — Physical Therapy",
-        description: "Does the comprehensive assessment indicate a need for physical therapy?",
+        label: "Physical therapy need (PennSync screening item)",
+        description: "Does your assessment indicate a need for physical therapy? Not a CMS OASIS item.",
         type: "radio",
         options: [
           { value: 0, label: "0 — No need for PT" },
@@ -494,8 +510,8 @@ export const OASIS_SECTIONS = [
       },
       {
         id: "m2110",
-        label: "M2110 — Occupational Therapy",
-        description: "Does the comprehensive assessment indicate a need for occupational therapy?",
+        label: "Occupational therapy need (PennSync screening item)",
+        description: "Does your assessment indicate a need for occupational therapy? Not a CMS OASIS item.",
         type: "radio",
         options: [
           { value: 0, label: "0 — No need for OT" },
@@ -504,8 +520,8 @@ export const OASIS_SECTIONS = [
       },
       {
         id: "m2200",
-        label: "M2200 — Speech-Language Pathology",
-        description: "Does the comprehensive assessment indicate a need for speech-language pathology?",
+        label: "Speech-language pathology need (PennSync screening item)",
+        description: "Does your assessment indicate a need for speech-language pathology? Not a CMS OASIS item.",
         type: "radio",
         options: [
           { value: 0, label: "0 — No need for SLP" },

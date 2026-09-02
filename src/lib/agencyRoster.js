@@ -15,7 +15,10 @@ import { base44 } from '@/api/base44Client';
 import { filterPatientsByCallerAgency, describePatientAgencyScope } from '@/lib/agencyScope';
 
 const ROSTER_TTL_MS = 60000; // matches the app-wide React Query staleTime
-const ROSTER_LIMIT = 2000;
+const ROSTER_PAGE_SIZE = 2000;
+// Safety valve so a pathological backend response can't loop forever; at 2,000
+// rows per page this still covers a 100,000-account platform.
+const ROSTER_MAX_PAGES = 50;
 
 let cachedRoster = [];
 let cachedAt = 0;
@@ -24,6 +27,25 @@ let inFlight = null;
 let cachedCaller = null;
 let callerAt = 0;
 let callerInFlight = null;
+
+/**
+ * Fetch the COMPLETE platform roster, paging past the per-request limit.
+ * `filterPatientsByCallerAgency` / `filterRecordsByAuthorAgency` treat an
+ * author who is missing from the roster as "unattributable" and deliberately
+ * retain the record, so a truncated roster (only the newest N accounts) would
+ * misclassify records authored by older foreign-agency users and leak them
+ * across tenants. Paginate until a short page proves we have every account.
+ */
+async function fetchFullRoster() {
+  const all = [];
+  for (let page = 0; page < ROSTER_MAX_PAGES; page += 1) {
+    const rows = await base44.entities.User.list('-created_date', ROSTER_PAGE_SIZE, page * ROSTER_PAGE_SIZE);
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    all.push(...rows);
+    if (rows.length < ROSTER_PAGE_SIZE) break;
+  }
+  return all;
+}
 
 /**
  * Resolve the staff roster, reusing a recent fetch when one is available.
@@ -36,7 +58,7 @@ export function loadAgencyRoster() {
     return Promise.resolve(cachedRoster);
   }
   if (inFlight) return inFlight;
-  inFlight = base44.entities.User.list('-created_date', ROSTER_LIMIT)
+  inFlight = fetchFullRoster()
     .then((rows) => {
       cachedRoster = Array.isArray(rows) ? rows : [];
       cachedAt = Date.now();

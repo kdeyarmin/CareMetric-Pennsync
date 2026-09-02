@@ -22,16 +22,17 @@ open PennSync.xcodeproj
 
 Then in Xcode: select the `PennSync` target → *Signing & Capabilities* → pick
 your development team (signing style is Automatic), choose a device or
-simulator, and build. The bundle identifier defaults to
-`com.caremetric.pennsync` (set in `project.yml`); change it there if your
-App Store Connect record uses a different one, then re-run
-`xcodegen generate`.
+simulator, and build. The bundle identifier is `com.caremetric.ai` (set in
+`project.yml`) and must remain identical to the existing CareMetric AI App
+Store record (Apple ID `6757097720`). Do not change it or create a new App
+Store Connect record; re-run `xcodegen generate` after intentional project-spec
+changes.
 
 ## What's here
 
 | File | Purpose |
 | --- | --- |
-| `project.yml` | XcodeGen spec — app target, iOS 15.0 deployment target, bundle id, marketing version 1.0.0, scheme. |
+| `project.yml` | XcodeGen spec — app target, iOS 15.0 deployment target, existing CareMetric AI bundle id, marketing version 1.0.0, scheme. |
 | `PennSync/AppDelegate.swift` / `PennSync/SceneDelegate.swift` | UIKit lifecycle; a single window whose root is `WebViewController`. |
 | `PennSync/WebViewController.swift` | The WKWebView host: navigation policy, downloads, popups/printing, media capture grants, offline recovery, pull-to-refresh. |
 | `PennSync/BlobDownloadHandler.swift` | `WKDownloadDelegate` that saves blob CSV/PDF exports to a temp file and presents the iOS share sheet. |

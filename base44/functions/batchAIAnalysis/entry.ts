@@ -165,7 +165,11 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
       promises.push(
         base44.asServiceRole.integrations.Core.InvokeLLM({
           model: "automatic",
-          prompt: `Map this clinical note to OASIS items with confidence scores and justifications.
+          prompt: `Point out which OASIS items this clinical note contains evidence for.
+
+NEVER state, suggest or imply an OASIS response, score or code — the clinician
+selects every official response themselves. Quote the note verbatim instead, and
+say what the note does and does not establish.
 
 ${sharedContext}
 
@@ -173,7 +177,7 @@ ENHANCED NOTE:
 ${enhancedNote}
 
 Return ONLY valid JSON, no prose or code fences, with this shape:
-{"mappings":[{"oasis_item":"","suggested_value":"","confidence":0,"evidence_from_note":"","clinical_justification":""}],"high_confidence_items":0,"medium_confidence_items":0}`
+{"mappings":[{"oasis_item":"","evidence_from_note":"","what_is_established":"","what_is_missing":""}],"items_with_evidence":0,"items_needing_more_documentation":0}`
         }).then(result => { analyses.oasis = parseLLMJson(result) || {}; })
       );
     }

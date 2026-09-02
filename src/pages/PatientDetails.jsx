@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -29,6 +29,10 @@ import PatientRiskStratification from "../components/patient/PatientRiskStratifi
 import DischargeSummaryGenerator from "../components/discharge/DischargeSummaryGenerator";
 import AIPatientDashboardSummary from "../components/patient/AIPatientDashboardSummary";
 import QuickActionsPanel from "../components/patient/QuickActionsPanel";
+import VisitPrepPanel from "../components/visit/VisitPrepPanel";
+import DocumentationReadinessPanel from "../components/compliance/DocumentationReadinessPanel";
+import CrossDocumentReviewPanel from "../components/compliance/CrossDocumentReviewPanel";
+import MedicationReconciliationPanel from "../components/medication/MedicationReconciliationPanel";
 import AIComplianceAuditor from "../components/compliance/AIComplianceAuditor";
 import PredictiveRiskAnalyzer from "../components/analytics/PredictiveRiskAnalyzer";
 import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
@@ -70,7 +74,13 @@ export default function PatientDetails() {
   const [showVisitForm, setShowVisitForm] = useState(false);
   const [showOASISPrompt, setShowOASISPrompt] = useState(false);
   const [oasisTriggerVisit, setOasisTriggerVisit] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview");
+  // Top-level tabs, and ?tab= deep-linking. Without this the tab param was
+  // ignored entirely, so every deep link silently landed on the overview.
+  const TOP_LEVEL_TABS = ["overview", "events", "oasis", "clinical", "ai-tools", "telehealth", "documents", "messaging"];
+  const requestedTab = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState(
+    () => (TOP_LEVEL_TABS.includes(requestedTab) ? requestedTab : "overview"),
+  );
   const [aiToolsTab, setAiToolsTab] = useState("analysis");
   const [isDocumentUploaderOpen, setIsDocumentUploaderOpen] = useState(false);
   const [isFaxDialogOpen, setIsFaxDialogOpen] = useState(false);
@@ -141,6 +151,21 @@ export default function PatientDetails() {
 
   // Critical alerts drive the banner styling below the header.
   const hasCriticalAlerts = activeAlerts.some(a => a.severity === 'critical');
+
+  // The most recently documented note, used by the deterministic cross-record
+  // and medication reviews below. Visits arrive newest-first from
+  // getPatientContext, so the first one carrying a note is the current one.
+  const latestNoteText = visits.find(v => v?.nurse_notes)?.nurse_notes || '';
+
+  // Sorted here as well as server-side: the cross-document review reads [0] as
+  // "the current assessment", and clinical chronology is assessment_date, not
+  // the order rows happened to be created in.
+  const oasisByAssessmentDate = useMemo(() => {
+    const rows = ctx.oasisAssessments ?? [];
+    return [...rows].sort((a, b) => (
+      Date.parse(String(b?.assessment_date || b?.created_date || '')) || 0)
+      - (Date.parse(String(a?.assessment_date || a?.created_date || '')) || 0));
+  }, [ctx.oasisAssessments]);
 
   const createVisitMutation = useMutation({
     mutationFn: (visitData) => base44.entities.Visit.create({ ...visitData, patient_id: patientId }),
@@ -297,6 +322,19 @@ export default function PatientDetails() {
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
+          {/* Pre-visit briefing, first on the tab. It is assembled
+              deterministically from the context already fetched above (no extra
+              request, no LLM) and is what a nurse standing in a driveway needs
+              before they open anything else. */}
+          <VisitPrepPanel
+            patient={patient}
+            priorVisits={visits.filter((v) => v.status === 'completed')}
+            openTasks={tasks}
+            carePlans={ctx.carePlans ?? []}
+            oasisAssessments={oasisByAssessmentDate}
+            alerts={activeAlerts}
+          />
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <AIPatientDashboardSummary
@@ -621,6 +659,41 @@ export default function PatientDetails() {
             </TabsContent>
 
             <TabsContent value="documentation" className="space-y-6">
+              {/* Deterministic readiness view for QA/office staff. NOT a billing
+                  gate — it reports only what PennSync knows and says so. */}
+              {/* Every dataset the engine can check is supplied explicitly.
+                  Omitting one no longer reads as "checked and clear" — the
+                  engine now distinguishes a dataset that was not supplied from
+                  one that was empty, and the panel reports what it could not
+                  check. PennSync holds no separate draft/OASIS-finding/ADR
+                  store on this page, so those are passed as the empty arrays
+                  they genuinely are for this patient view. */}
+              <DocumentationReadinessPanel
+                patient={patient}
+                visits={visits}
+                openTasks={tasks}
+                incidents={incidents}
+                drafts={[]}
+                complianceAudits={ctx.complianceAudits ?? []}
+                oasisFindings={[]}
+                adrCases={ctx.adrCases ?? []}
+                handoffTrackingSince={ctx.handoffTrackingSince ?? null}
+              />
+              {/* Deterministic cross-record review: where the most recent note,
+                  PennSync's OASIS copy and the care plan disagree. Nothing here
+                  edits a record — the reviewer decides. */}
+              <CrossDocumentReviewPanel
+                noteText={latestNoteText}
+                patient={patient}
+                oasis={oasisByAssessmentDate[0] ?? null}
+                carePlans={ctx.carePlans ?? []}
+                openTasks={tasks}
+                currentUserEmail={currentUser?.email}
+              />
+              <MedicationReconciliationPanel
+                patient={patient}
+                noteText={latestNoteText}
+              />
               {oasisTriggerVisit && (
                 <AIGeneratedOASISAssessment
                   patientId={patientId}

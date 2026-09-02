@@ -9,7 +9,7 @@ import { formatVitalsSentence } from "@/components/smartNote/compliance/factExtr
 // unit mistakes (e.g. a Celsius temperature, a transposed BP) — not to second-guess
 // genuinely abnormal-but-real readings. Out-of-range values are flagged for the nurse
 // to confirm; entry is never blocked, so a true critical value can still be recorded.
-const VITAL_FIELDS = [
+export const VITAL_FIELDS = [
   { key: "temperature", label: "Temperature (°F)", step: "0.1", placeholder: "98.6", min: 90, max: 110, unit: "°F" },
   { key: "blood_pressure_systolic", label: "BP Systolic", placeholder: "120", min: 60, max: 260, unit: "mmHg" },
   { key: "blood_pressure_diastolic", label: "BP Diastolic", placeholder: "80", min: 30, max: 180, unit: "mmHg" },

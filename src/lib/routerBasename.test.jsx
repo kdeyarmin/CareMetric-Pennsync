@@ -34,4 +34,14 @@ describe('getRouterBasename', () => {
   it('still infers the hosted mount root from the slash route', () => {
     expect(getRouterBasename({ pathname: '/apps/pennsync/', baseUrl: '/', routerPaths: ['/', '/Help', '/Telehealth'] })).toBe('/apps/pennsync');
   });
+
+  it('infers the mount root when opened without a trailing slash', () => {
+    expect(getRouterBasename({ pathname: '/apps/pennsync', baseUrl: '/', routerPaths: ['/', '/Help', '/Telehealth'] })).toBe('/apps/pennsync');
+    expect(getRouterBasename({ pathname: '/store/apps/pennsync', baseUrl: '/', routerPaths: ['/Dashboard', '/PatientDetails', '/join'] })).toBe('/store/apps/pennsync');
+  });
+
+  it('keeps returning undefined when no route table is supplied (asset paths)', () => {
+    expect(getRouterBasename({ pathname: '/Dashboard', baseUrl: '/', routerPaths: [] })).toBeUndefined();
+    expect(getRouterBasename({ pathname: '/', baseUrl: '/', routerPaths: ['/', '/Help'] })).toBeUndefined();
+  });
 });

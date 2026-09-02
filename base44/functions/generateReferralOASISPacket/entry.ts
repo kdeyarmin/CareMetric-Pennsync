@@ -447,12 +447,22 @@ Also provide:
     if (shouldInclude('oasis_assessment')) {
       doc.addPage();
       yPos = 20;
-      addSectionHeader('COMPLETE OASIS-E ASSESSMENT', [5, 150, 105]);
+      addSectionHeader('OASIS PREPARATION WORKSHEET (not an assessment)', [5, 150, 105]);
     
     doc.setFontSize(10);
     doc.setTextColor(75, 85, 99);
     doc.setFont('helvetica', 'normal');
-    const oasisIntro = doc.splitTextToSize('AI-Generated OASIS assessment based on referral data. VERIFY ALL ITEMS during admission visit.', 175);
+    // This packet is a BLANK WORKSHEET, not an assessment. It used to prefill
+    // each item from `referralData.oasis_assessment` — AI-derived values printed
+    // under official M-numbers, which is a prefilled official code in a document
+    // that leaves the building. Referral packets may carry source evidence and
+    // questions; they may not carry a response.
+    const oasisIntro = doc.splitTextToSize(
+      'OASIS preparation worksheet. PennSync is a companion reference: it did not complete this '
+      + 'assessment and does not certify any response. Every item below is intentionally blank — '
+      + 'assess and record each official response in your EMR during the admission visit.',
+      175,
+    );
     oasisIntro.forEach(line => {
       doc.text(line, margin, yPos);
       yPos += 6;
@@ -472,15 +482,15 @@ Also provide:
     yPos += 10;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    addKeyValue('M1021 - Primary Diagnosis', oasis.m1021_primary_diagnosis || dx.primary_diagnosis);
+    addKeyValue('M1021 - Primary Diagnosis', dx.primary_diagnosis);
     addKeyValue('M1023 - Primary Diagnosis ICD-10', dx.primary_icd10 || 'Verify code');
-    if ((oasis.m1023_other_diagnoses || dx.secondary_diagnoses)?.length > 0) {
+    if ((dx.secondary_diagnoses)?.length > 0) {
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.text('M1024-M1029 - Other Diagnoses:', margin, yPos);
       yPos += 6;
       doc.setFont('helvetica', 'normal');
-      (oasis.m1023_other_diagnoses || dx.secondary_diagnoses).slice(0, 5).forEach((d, i) => {
+      (dx.secondary_diagnoses).slice(0, 5).forEach((d, i) => {
         checkPageBreak();
         const dxLines = doc.splitTextToSize(`${i + 2}. ${d}`, 172);
         dxLines.forEach(line => {
@@ -517,7 +527,7 @@ Also provide:
     yPos += 10;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    const riskText = oasis.m1033_risk_hospitalization || 'Assess during visit';
+    const riskText = 'Assess during visit';
     const riskLines = doc.splitTextToSize(riskText, 175);
     riskLines.forEach(line => {
       checkPageBreak();
@@ -542,15 +552,15 @@ Also provide:
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(10);
     
-    addKeyValue('M1800 - Grooming', oasis.m1800_grooming || '[ ] Assess during visit');
-    addKeyValue('M1810 - Dress Upper Body', oasis.m1810_dress_upper || '[ ] Assess');
-    addKeyValue('M1820 - Dress Lower Body', oasis.m1820_dress_lower || '[ ] Assess');
-    addKeyValue('M1830 - Bathing', oasis.m1830_bathing || '[ ] Assess');
-    addKeyValue('M1840 - Toilet Transfer', oasis.m1840_toilet_transfer || '[ ] Assess');
-    addKeyValue('M1845 - Toilet Hygiene', oasis.m1845_toilet_hygiene || '[ ] Assess');
-    addKeyValue('M1850 - Transferring', oasis.m1850_transferring || '[ ] Assess');
-    addKeyValue('M1860 - Ambulation', oasis.m1860_ambulation || func.ambulation || '[ ] Assess');
-    addKeyValue('M1870 - Feeding/Eating', oasis.m1870_feeding || '[ ] Assess');
+    addKeyValue('M1800 - Grooming', '[ ] Assess during visit');
+    addKeyValue('M1810 - Dress Upper Body', '[ ] Assess');
+    addKeyValue('M1820 - Dress Lower Body', '[ ] Assess');
+    addKeyValue('M1830 - Bathing', '[ ] Assess');
+    addKeyValue('M1840 - Toilet Transfer', '[ ] Assess');
+    addKeyValue('M1845 - Toilet Hygiene', '[ ] Assess');
+    addKeyValue('M1850 - Transferring', '[ ] Assess');
+    addKeyValue('M1860 - Ambulation', '[ ] Assess');
+    addKeyValue('M1870 - Feeding/Eating', '[ ] Assess');
     yPos += 5;
 
     // COGNITIVE & BEHAVIORAL
@@ -563,11 +573,11 @@ Also provide:
     yPos += 10;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    addKeyValue('M1700 - Cognitive Functioning', oasis.m1700_cognitive_functioning || '[ ] Assess');
-    addKeyValue('M1710 - Confusion Frequency', oasis.m1710_confusion_frequency || '[ ] Assess');
-    addKeyValue('M1720 - Anxiety Frequency', oasis.m1720_anxiety_frequency || '[ ] Assess');
-    addKeyValue('M1730 - Depression Screening', oasis.m1730_depression_screening || '[ ] PHQ-2 required');
-    addKeyValue('M1740 - Cognitive/Behavioral Issues', oasis.m1740_cognitive_behavioral || '[ ] Assess');
+    addKeyValue('M1700 - Cognitive Functioning', '[ ] Assess');
+    addKeyValue('M1710 - Confusion Frequency', '[ ] Assess');
+    addKeyValue('M1720 - Anxiety Frequency', '[ ] Assess');
+    addKeyValue('M1730 - Depression Screening', '[ ] PHQ-2 required');
+    addKeyValue('M1740 - Cognitive/Behavioral Issues', '[ ] Assess');
     yPos += 5;
 
     // SENSORY STATUS
@@ -580,7 +590,7 @@ Also provide:
     yPos += 10;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    addKeyValue('M1200 - Vision Status', oasis.m1200_vision || func.vision || '[ ] Assess');
+    addKeyValue('M1200 - Vision Status', '[ ] Assess');
     yPos += 5;
 
     // PAIN
@@ -593,7 +603,7 @@ Also provide:
     yPos += 10;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    addKeyValue('M1242 - Frequency of Pain', oasis.m1242_pain_frequency || func.pain || '[ ] Assess');
+    addKeyValue('M1242 - Frequency of Pain', '[ ] Assess');
     yPos += 5;
 
     // PRESSURE ULCERS & WOUNDS
@@ -606,11 +616,11 @@ Also provide:
     yPos += 10;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    addKeyValue('M1306 - Pressure Ulcer Risk', oasis.m1306_pressure_ulcer_risk || '[ ] Assess');
-    addKeyValue('M1307 - Oldest Stage 2 Pressure Ulcer', oasis.m1307_oldest_stage2 || '[ ] No stage 2');
-    addKeyValue('M1311 - Current Pressure Ulcers', oasis.m1311_current_pressure_ulcers ? JSON.stringify(oasis.m1311_current_pressure_ulcers) : '[ ] Assess');
-    addKeyValue('M1322 - Stasis Ulcers', oasis.m1322_current_stasis_ulcers || '[ ] Assess');
-    addKeyValue('M1324 - Surgical Wounds', oasis.m1324_surgical_wounds || '[ ] Assess');
+    addKeyValue('M1306 - Pressure Ulcer Risk', '[ ] Assess');
+    addKeyValue('M1307 - Oldest Stage 2 Pressure Ulcer', '[ ] No stage 2');
+    addKeyValue('M1311 - Current Pressure Ulcers', '[ ] Assess during visit');
+    addKeyValue('M1322 - Stasis Ulcers', '[ ] Assess');
+    addKeyValue('M1324 - Surgical Wounds', '[ ] Assess');
     yPos += 5;
 
     // ELIMINATION
@@ -623,8 +633,8 @@ Also provide:
     yPos += 10;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    addKeyValue('M1610 - Urinary Incontinence', oasis.m1610_urinary_incontinence || '[ ] Assess');
-    addKeyValue('M1620 - Bowel Incontinence', oasis.m1620_bowel_incontinence || '[ ] Assess');
+    addKeyValue('M1610 - Urinary Incontinence', '[ ] Assess');
+    addKeyValue('M1620 - Bowel Incontinence', '[ ] Assess');
     yPos += 5;
 
     // MEDICATIONS - M2001-M2030
@@ -637,17 +647,21 @@ Also provide:
     yPos += 10;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    addKeyValue('M2001 - Drug Regimen Review', oasis.m2001_drug_regimen_review || '[ ] Complete at visit');
-    addKeyValue('M2003 - Medication Follow-up', oasis.m2003_medication_followup || '[ ] Assess');
+    addKeyValue('M2001 - Drug Regimen Review', '[ ] Complete at visit');
+    addKeyValue('M2003 - Medication Follow-up', '[ ] Assess');
+    // The drug LIST is referral evidence and is useful; the M2010 RESPONSE is
+    // not ours to state, so the item stays blank and the list is labelled as
+    // what it is.
     if (oasis.m2010_high_risk_drugs?.length > 0) {
-      addKeyValue('M2010 - High-Risk Drugs', oasis.m2010_high_risk_drugs.join(', '));
+      addKeyValue('High-risk drugs noted in the referral', oasis.m2010_high_risk_drugs.join(', '));
+      addKeyValue('M2010 - Patient/Caregiver High-Risk Drug Education', '[ ] Assess during visit');
     }
-    addKeyValue('M2020 - Oral Medication Mgmt', oasis.m2020_management_oral_meds || '[ ] Assess');
-    addKeyValue('M2030 - Injectable Medication Mgmt', oasis.m2030_management_injectable_meds || '[ ] Assess');
+    addKeyValue('M2020 - Oral Medication Mgmt', '[ ] Assess');
+    addKeyValue('M2030 - Injectable Medication Mgmt', '[ ] Assess');
     yPos += 5;
 
     // AI CONFIDENCE & VERIFICATION NOTES
-    if (oasis.confidence_notes || oasis.items_needing_verification?.length > 0) {
+    if (oasis.items_needing_verification?.length > 0) {
       checkPageBreak(30);
       doc.setFillColor(255, 245, 230);
       doc.rect(margin - 2, yPos - 3, 180, 9, 'F');

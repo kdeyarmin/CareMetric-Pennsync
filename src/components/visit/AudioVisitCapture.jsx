@@ -11,7 +11,7 @@ import VitalSignsForm from "./VitalSignsForm";
 import ConstrainedNoteReviewer from "../smartNote/ConstrainedNoteReviewer";
 import FinalNoteDisplay from "../smartNote/FinalNoteDisplay";
 import { persistVisitNote } from "../smartNote/persistVisitNote";
-import { getPriorNote, parseNoteSections } from "../smartNote/noteHelpers";
+import { getPriorNote } from "../smartNote/noteHelpers";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
 import { todayEastern } from "../utils/timezone";
@@ -348,10 +348,8 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
               analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: [] }}
               currentUser={currentUser}
               signatureImage={signatureImage}
-              setSignatureImage={setSignatureImage}
               onReset={resetCapture}
               originalNote={roughNote}
-              noteSections={parseNoteSections(api.finalNote)}
               onSave={() => handleSave(api)}
               saving={saving}
               saved={saved && !api.dirty}

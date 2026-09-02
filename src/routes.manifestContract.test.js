@@ -16,6 +16,7 @@ const manifestPages = new Set([...manifestSrc.matchAll(/page:\s*["']([^"']+)["']
 
 const PUBLIC_NON_MANIFEST_PAGES = new Set([
   'JoinTelehealth',
+  'OAuthConsent',
   'PrivacyPolicy',
   'ProviderFollowUpPortal',
   'SignerPortal',

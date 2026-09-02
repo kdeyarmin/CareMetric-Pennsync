@@ -21,12 +21,14 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { toast } from "sonner";
+import { STAFF_ROLE_OPTIONS, getStaffRole, staffRoleLabel } from "@/lib/roles";
 
 export default function AdminUserSetup() {
   const queryClient = useQueryClient();
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteFullName, setInviteFullName] = useState("");
   const [inviteRole, setInviteRole] = useState("user");
+  const [inviteStaffRole, setInviteStaffRole] = useState("nurse");
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -45,8 +47,8 @@ export default function AdminUserSetup() {
   });
 
   const inviteUserMutation = useMutation({
-    mutationFn: async ({ email, full_name, role }) => {
-      const res = await base44.functions.invoke('createUserWithTempPassword', { email, full_name, role });
+    mutationFn: async ({ email, full_name, role, staff_role }) => {
+      const res = await base44.functions.invoke('createUserWithTempPassword', { email, full_name, role, staff_role });
       const data = res?.data ?? res;
       if (data?.error) throw new Error(data.error);
       return data;
@@ -57,6 +59,7 @@ export default function AdminUserSetup() {
       setInviteEmail("");
       setInviteFullName("");
       setInviteRole("user");
+      setInviteStaffRole("nurse");
       queryClient.invalidateQueries({ queryKey: ['allUsers'] });
     },
     onError: (error) => {
@@ -77,7 +80,12 @@ export default function AdminUserSetup() {
       toast.error("Please enter the user's full name");
       return;
     }
-    inviteUserMutation.mutate({ email: inviteEmail, full_name: inviteFullName.trim(), role: inviteRole });
+    inviteUserMutation.mutate({
+      email: inviteEmail,
+      full_name: inviteFullName.trim(),
+      role: inviteRole,
+      staff_role: inviteRole === "user" ? inviteStaffRole : "nurse",
+    });
   };
 
   const isAdmin = isAdminView(currentUser);
@@ -135,18 +143,36 @@ export default function AdminUserSetup() {
                 />
               </div>
               <div>
-                <Label htmlFor="role">Role</Label>
+                <Label htmlFor="role">Access Level</Label>
                 <Select value={inviteRole} onValueChange={setInviteRole}>
                   <SelectTrigger id="role" className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">User</SelectItem>
+                    <SelectItem value="user">Staff Member</SelectItem>
                     <SelectItem value="admin">Administrator</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
+            {inviteRole === "user" && (
+              <div>
+                <Label htmlFor="staff_role">Discipline / Role</Label>
+                <Select value={inviteStaffRole} onValueChange={setInviteStaffRole}>
+                  <SelectTrigger id="staff_role" className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STAFF_ROLE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500 mt-1">
+                  {STAFF_ROLE_OPTIONS.find((opt) => opt.value === inviteStaffRole)?.description}
+                </p>
+              </div>
+            )}
             <Button
               onClick={handleInviteUser}
               disabled={inviteUserMutation.isPending}
@@ -200,7 +226,7 @@ export default function AdminUserSetup() {
                     ) : (
                       <>
                         <Check className="w-3 h-3 mr-1" />
-                        User
+                        {staffRoleLabel(getStaffRole(user))}
                       </>
                     )}
                   </Badge>

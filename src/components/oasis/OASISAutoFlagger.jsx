@@ -91,28 +91,28 @@ async function autoFlagOASIS(oasisUpload, analysisResults) {
     });
   });
 
-  // Compile rescore opportunities
-  const rescoreOpps = (analysisResults.specific_rescore_opportunities || []).map(opp => ({
-    m_item: opp.m_item,
-    current_score: opp.current_score,
-    recommended_score: opp.recommended_score,
-    revenue_impact: opp.revenue_impact
+  // Rescore opportunities are no longer compiled. They carried
+  // `current_score → recommended_score` per M-item with a dollar figure — an
+  // AI-chosen OASIS response presented as money left on the table.
+  //
+  // Documentation gaps REPLACE them in the audit record. Leaving this as an
+  // empty array dropped the replacement findings entirely, so a new auto-flagged
+  // audit rendered blank where the old one had content.
+  const rescoreOpps = [];
+  const estimatedRevenue = 0;
+  const documentationGaps = (analysisResults.documentation_gaps || []).map((gap) => ({
+    m_item: gap.m_item_code || gap.m_item,
+    gap_description: gap.gap_description,
+    question: gap.documentation_question || gap.question,
+    supporting_documentation: gap.supporting_documentation,
   }));
-
-  // Estimate total revenue impact
-  let estimatedRevenue = 0;
-  rescoreOpps.forEach(opp => {
-    const match = (opp.revenue_impact || '').match(/\$?([\d,]+)/);
-    if (match) {
-      estimatedRevenue += parseInt(match[1].replace(/,/g, '')) || 0;
-    }
-  });
 
   const auditRecord = {
     oasis_upload_id: oasisUpload.id,
     patient_id: oasisUpload.patient_id,
     patient_name: oasisUpload.patient_name,
     flag_reason: flagReason,
+    documentation_gaps: documentationGaps,
     accuracy_score: analysisResults.accuracy_score,
     compliance_score: analysisResults.compliance_score,
     revenue_score: analysisResults.revenue_optimization_score,

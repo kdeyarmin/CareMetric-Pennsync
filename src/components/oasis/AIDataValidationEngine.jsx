@@ -10,11 +10,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Brain,
   AlertTriangle,
-  CheckCircle2,
+  FileText,
   TrendingDown,
-  DollarSign,
   Lightbulb,
-  ArrowRight,
   Loader2,
   Shield
 } from "lucide-react";
@@ -26,7 +24,8 @@ export default function AIDataValidationEngine({
   clinicalNotes,
   patientHistory,
   autoValidate = false,
-  onCorrection
+  // `onCorrection` is intentionally gone: this panel no longer produces a
+  // correction to apply. Callers that passed it can drop the prop.
 }) {
   // Auto-fired analyses are background work in the app-wide AI budget, so
   // several such cards on one page queue instead of hitting the provider at
@@ -34,13 +33,17 @@ export default function AIDataValidationEngine({
   // takes the reserved slot instead of queueing behind that background work.
   const ai = useAICall({ priority: 'background' });
   const [validationResults, setValidationResults] = useState(null);
-  const [appliedCorrections, setAppliedCorrections] = useState(new Set());
 
   const performValidation = useCallback(async ({ interactive = false } = {}) => {
     if (!oasisData || !patientData) return;
 
     try {
-      const prompt = `You are an expert OASIS validator and Medicare compliance specialist. Analyze OASIS data for accuracy, consistency, and reimbursement optimization.
+      // The model is asked for EVIDENCE and QUESTIONS, never for a response.
+      // The previous prompt asked it to name a "suggested value" per M-item and
+      // to identify fields that "could increase payment" — an instruction to
+      // pick reimbursement-maximising OASIS codes, which is precisely what an
+      // assistive tool must not do.
+      const prompt = `You are helping a home-health clinician REVIEW their own documentation. You do NOT choose OASIS responses.
 
 OASIS DATA:
 ${JSON.stringify(oasisData.extracted_data || {}, null, 2)}
@@ -62,24 +65,25 @@ ${patientHistory ? `HISTORICAL DATA:
 - Functional Decline: ${patientHistory.functionalDecline ? 'Yes' : 'No'}` : ''}
 
 ANALYZE FOR:
-1. **Data Inconsistencies**: Compare OASIS fields with clinical notes and patient data
-2. **Reimbursement Impact**: Identify fields that could increase/decrease payment
-3. **Quality Score Impact**: Flag items affecting OASIS quality measures
-4. **Clinical Logic Errors**: Detect contradictory or illogical data
-5. **Missing Critical Data**: Identify high-value missing fields
-6. **Compliance Risks**: Highlight audit red flags
+1. **Documentation Inconsistencies**: Where the clinical notes and the recorded assessment appear to describe different things
+2. **Clinical Logic Concerns**: Combinations that look contradictory and are worth a second look
+3. **Missing Information**: What the documentation does not say that a reviewer would expect
+4. **Compliance Risks**: Documentation patterns that commonly draw audit attention
 
-For each issue found, provide:
-- The specific OASIS M-item code
-- Current value vs. suggested value
-- Clinical justification from notes/data
-- Reimbursement impact ($$ estimate if applicable)
-- Quality measure impact
+HARD RULES — these override anything else in this prompt:
+- NEVER state, suggest, recommend, imply or "correct to" an OASIS response code or value.
+- NEVER consider payment, reimbursement, revenue, PDGM or case-mix impact. Do not mention money.
+- NEVER tell the clinician what to answer. Ask them a question instead.
+- Quote the documentation VERBATIM as your evidence. If there is no quote, omit the finding.
+
+For each finding, provide:
+- The specific OASIS M-item code the finding RELATES TO (for navigation only)
+- The verbatim sentence(s) from the documentation
+- A plain-language description of the apparent inconsistency or gap
+- A QUESTION for the clinician to resolve in their EMR
 - Compliance risk level
-- Detailed explanation of why this matters
-- CMS regulation/guideline reference with link
-- Plain-language explanation of the rule
-- Specific do's and don'ts examples`;
+- CMS regulation/guideline reference with link, where one applies
+- Specific documentation do's and don'ts examples`;
 
       const result = await ai.run({
         model: "automatic",
@@ -100,7 +104,9 @@ For each issue found, provide:
                   m_item_code: { type: "string" },
                   m_item_name: { type: "string" },
                   current_value: { type: "string" },
-                  suggested_value: { type: "string" },
+                  // Deliberately NO suggested_value: the model does not choose
+                  // a response. It asks the clinician a question instead.
+                  documentation_question: { type: "string" },
                   confidence: { type: "number" },
                   clinical_evidence: { type: "string" },
                   inconsistency_type: {
@@ -121,18 +127,19 @@ For each issue found, provide:
                 }
               }
             },
-            reimbursement_optimizations: {
+            // `reimbursement_optimizations` is REMOVED. It asked the model
+            // which OASIS value would pay better and offered an "Apply
+            // Optimization" button for it. Documentation gaps replace it: the
+            // same review value, with no code and no dollar figure.
+            documentation_gaps: {
               type: "array",
               items: {
                 type: "object",
                 properties: {
                   m_item_code: { type: "string" },
                   m_item_name: { type: "string" },
-                  current_value: { type: "string" },
-                  suggested_value: { type: "string" },
-                  financial_impact: { type: "string" },
-                  estimated_dollar_impact: { type: "number" },
-                  justification: { type: "string" },
+                  gap_description: { type: "string" },
+                  documentation_question: { type: "string" },
                   supporting_documentation: { type: "string" },
                   risk_of_audit_flag: { type: "string" }
                 }
@@ -208,20 +215,6 @@ For each issue found, provide:
       performValidation();
     }
   }, [autoValidate, oasisData?.id, oasisData, patientData, performValidation]);
-
-  const applyCorrection = (correction, key) => {
-    if (onCorrection) {
-      onCorrection({
-        m_item_code: correction.m_item_code,
-        current_value: correction.current_value,
-        suggested_value: correction.suggested_value,
-        justification: correction.clinical_evidence || correction.justification
-      });
-    }
-    // Key on a stable per-row id so issues that share a missing/duplicate
-    // m_item_code don't ALL flip to "Applied" when one of them is applied.
-    setAppliedCorrections(prev => new Set([...prev, key ?? correction.m_item_code]));
-  };
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -331,13 +324,12 @@ For each issue found, provide:
                             <span className="text-slate-600">Current:</span>
                             <span className="font-medium line-through text-red-600">{issue.current_value}</span>
                           </div>
-                          <div className="flex items-center gap-2 text-sm">
-                            <span className="text-slate-600">Suggested:</span>
-                            <span className="font-medium text-green-600">{issue.suggested_value}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {issue.confidence}% confidence
-                            </Badge>
-                          </div>
+                          {issue.documentation_question && (
+                            <div className="flex items-start gap-2 text-sm">
+                              <span className="text-slate-600 flex-shrink-0">To resolve:</span>
+                              <span className="font-medium text-slate-800">{issue.documentation_question}</span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="bg-white/80 rounded p-2 mb-3 text-sm">
@@ -413,21 +405,12 @@ For each issue found, provide:
                           </div>
                         )}
 
-                        {!appliedCorrections.has(`inc-${issue.m_item_code || idx}`) && (
-                          <Button
-                            size="sm"
-                            onClick={() => applyCorrection(issue, `inc-${issue.m_item_code || idx}`)}
-                          >
-                            <CheckCircle2 className="w-3 h-3 mr-1" />
-                            Apply Correction
-                          </Button>
-                        )}
-                        {appliedCorrections.has(`inc-${issue.m_item_code || idx}`) && (
-                          <Badge className="bg-green-600 text-white">
-                            <CheckCircle2 className="w-3 h-3 mr-1" />
-                            Applied
-                          </Badge>
-                        )}
+                        {/* No "Apply Correction". PennSync does not write an
+                            OASIS response on a clinician's behalf; the finding
+                            is a question to answer in the EMR. */}
+                        <p className="text-xs text-slate-500 italic">
+                          Answer this item yourself in your EMR — PennSync does not select OASIS responses.
+                        </p>
                       </motion.div>
                     ))}
                   </div>
@@ -435,68 +418,40 @@ For each issue found, provide:
               </div>
             )}
 
-            {/* Reimbursement Optimizations */}
-            {validationResults.reimbursement_optimizations?.length > 0 && (
+            {/* Documentation gaps. This replaced a "Reimbursement
+                Optimizations" panel that asked the model which OASIS value
+                would pay better, showed current → suggested with a dollar
+                figure, and offered an "Apply Optimization" button. */}
+            {validationResults.documentation_gaps?.length > 0 && (
               <div>
                 <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-green-600" />
-                  Reimbursement Optimizations ({validationResults.reimbursement_optimizations.length})
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  Documentation gaps ({validationResults.documentation_gaps.length})
                 </h3>
                 <div className="space-y-3">
-                  {validationResults.reimbursement_optimizations.map((opt, idx) => (
-                    <div key={idx} className="border-2 border-green-300 rounded-lg p-4 bg-green-50">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant="outline" className="font-mono text-xs">
-                              {opt.m_item_code}
-                            </Badge>
-                            <h4 className="font-semibold">{opt.m_item_name}</h4>
-                          </div>
-                          <Badge className="bg-green-600 text-white">
-                            <DollarSign className="w-3 h-3 mr-1" />
-                            {opt.financial_impact}
-                            {opt.estimated_dollar_impact && ` (~$${opt.estimated_dollar_impact})`}
-                          </Badge>
+                  {validationResults.documentation_gaps.map((gap, idx) => (
+                    <div key={idx} className="border-2 border-blue-200 rounded-lg p-4 bg-blue-50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="outline" className="font-mono text-xs">{gap.m_item_code}</Badge>
+                        <h4 className="font-semibold">{gap.m_item_name}</h4>
+                      </div>
+                      <p className="text-sm text-slate-700 mt-1">{gap.gap_description}</p>
+                      {gap.documentation_question && (
+                        <p className="text-sm font-medium text-slate-800 mt-2">{gap.documentation_question}</p>
+                      )}
+                      {gap.supporting_documentation && (
+                        <div className="bg-white rounded p-2 mt-2 text-sm">
+                          <p className="font-medium text-xs text-slate-600 mb-1">From the documentation:</p>
+                          <p className="text-slate-700 text-xs italic">{gap.supporting_documentation}</p>
                         </div>
-                      </div>
-
-                      <div className="space-y-2 mb-3">
-                        <div className="text-sm">
-                          <span className="text-slate-600">Current: </span>
-                          <span className="font-medium">{opt.current_value}</span>
-                          <ArrowRight className="w-4 h-4 inline mx-2 text-slate-400" />
-                          <span className="font-medium text-green-600">{opt.suggested_value}</span>
-                        </div>
-                      </div>
-
-                      <div className="bg-white rounded p-2 mb-2 text-sm">
-                        <p className="font-medium text-xs text-slate-600 mb-1">Justification:</p>
-                        <p className="text-slate-700">{opt.justification}</p>
-                      </div>
-
-                      <div className="bg-blue-50 rounded p-2 mb-2 text-sm">
-                        <p className="font-medium text-xs text-blue-800 mb-1">Supporting Documentation:</p>
-                        <p className="text-blue-900 text-xs">{opt.supporting_documentation}</p>
-                      </div>
-
-                      {opt.risk_of_audit_flag !== 'low' && (
+                      )}
+                      {gap.risk_of_audit_flag && gap.risk_of_audit_flag !== 'low' && (
                         <Alert className="mt-2">
                           <AlertTriangle className="w-4 h-4" />
                           <AlertDescription className="text-xs">
-                            <strong>Audit Risk:</strong> {opt.risk_of_audit_flag} - Ensure documentation clearly supports this value
+                            <strong>Audit Risk:</strong> {gap.risk_of_audit_flag} — make sure the documentation says what happened.
                           </AlertDescription>
                         </Alert>
-                      )}
-
-                      {!appliedCorrections.has(`opt-${opt.m_item_code || idx}`) && (
-                        <Button
-                          size="sm"
-                          onClick={() => applyCorrection(opt, `opt-${opt.m_item_code || idx}`)}
-                          className="mt-2"
-                        >
-                          Apply Optimization
-                        </Button>
                       )}
                     </div>
                   ))}

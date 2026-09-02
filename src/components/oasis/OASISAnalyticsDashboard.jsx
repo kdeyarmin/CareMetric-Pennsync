@@ -21,6 +21,7 @@ import {
 import { BarChart3 } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
+import DocumentationGapAdminPanel from "@/components/oasis/DocumentationGapAdminPanel";
 // Analytics Dashboard Component — payment trends & revenue stats.
 // Extracted from OASISAnalyzer.jsx; pure aggregation logic lives in oasisAnalytics.js (unit-tested).
 export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
@@ -28,7 +29,8 @@ export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
 
   const demographicsData = React.useMemo(() => aggregateDemographics(savedOASISUploads), [savedOASISUploads]);
   const diagnosesData = React.useMemo(() => aggregateTopDiagnoses(savedOASISUploads), [savedOASISUploads]);
-  const functionalScoresData = React.useMemo(() => aggregateFunctionalScores(savedOASISUploads), [savedOASISUploads]);
+  const functionalScores = React.useMemo(() => aggregateFunctionalScores(savedOASISUploads), [savedOASISUploads]);
+  const functionalScoresData = functionalScores.points;
   const paymentTrendsData = React.useMemo(() => aggregatePaymentTrends(savedOASISUploads), [savedOASISUploads]);
   const summaryStats = React.useMemo(() => computeSummaryStats(savedOASISUploads), [savedOASISUploads]);
 
@@ -191,9 +193,20 @@ export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
                 <Line type="monotone" dataKey="bathing" stroke="#f59e0b" name="Bathing" strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
+            <p className="text-xs text-slate-500 mt-2">
+              Values read from uploaded OASIS documents — a reference, not the official assessment.
+              A gap in a line means the score was not present in the document; it is not a zero.
+            </p>
+            {functionalScores.excluded > 0 && (
+              <p className="text-xs text-amber-700 mt-1">{functionalScores.excluded_reason}</p>
+            )}
           </CardContent>
         </Card>
       )}
+
+      {/* Documentation gaps and their revenue context — administrators only.
+          The panel gates itself; it is not relying on this placement. */}
+      <DocumentationGapAdminPanel uploads={savedOASISUploads} />
 
       {/* PDGM Payment Trends */}
       {paymentTrendsData.length > 0 && (

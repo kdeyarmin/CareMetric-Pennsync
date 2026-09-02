@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, ArrowRight, CheckCircle2, Database } from "lucide-react";
 import { parseLocalDate } from "@/lib/dateLocal";
 import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { getStaffRole } from "@/lib/roles";
 
 export default function QuickHealthOverview() {
   const { data: currentUser } = useQuery({
@@ -39,16 +40,17 @@ export default function QuickHealthOverview() {
     !p.emergency_contact_name || !p.emergency_contact_phone || !p.physician_name
   ).length;
 
-  const incompleteUsers = users.filter(u => 
-    !u.phone || u.phone === '' || !u.care_scope
+  const incompleteUsers = users.filter(u =>
+    !u.phone || u.phone === '' || (getStaffRole(u) === 'nurse' && !u.care_scope)
   ).length;
 
   // PersonnelCredential.user_id references a user's email. Count fetched users
   // that lack any credential — filtering falsy ids and restricting to the loaded
   // user set keeps the figure from being deflated (or negative) by stale/ownerless
   // credential rows (e.g. ex-employees outside the current page).
+  const nurseEmails = new Set(users.filter(u => getStaffRole(u) === 'nurse').map(u => u.email).filter(Boolean));
   const coveredUsers = new Set(credentials.map(c => c.user_id).filter(Boolean));
-  const usersWithoutCreds = users.filter(u => !coveredUsers.has(u.email)).length;
+  const usersWithoutCreds = [...nurseEmails].filter(email => !coveredUsers.has(email)).length;
 
   const now = new Date();
   // Compare on local calendar midnights so a date-only expiration isn't parsed as

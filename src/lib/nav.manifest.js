@@ -15,6 +15,9 @@
  *  adminOnly        – hide from nurses (visible to facility admins + super admin)
  *  superAdminOnly   – platform-level page: hide from facility admins too
  *                     (visible to the super admin only). Implies adminOnly.
+ *  access           – staff-discipline gate for non-admin users: "general"
+ *                     (default), "patient" (patient records), or "nursing"
+ *                     (nursing-only tools). Admins always pass.
  *  breadcrumbParent – page key of the logical parent (builds the crumb chain)
  *  keywords         – extra search terms for the command palette
  *  badge            – runtime badge key resolved in Layout: "messages" | "sms" | "notifications" | "timeOffApprovals"
@@ -31,6 +34,7 @@ import {
   Clipboard, ClipboardCheck, FileSearch, Filter, Globe,
   Monitor, PieChart, Radio, Search, Target, TrendingUp, Upload, UserCheck, Zap, Pen, CalendarDays, ShieldAlert, ShieldCheck
 } from "lucide-react";
+import { canAccessLevel } from "@/lib/roles";
 
 // NOTE: PAGE_NAMES and REDIRECTS are NOT imported here to avoid a circular
 // dependency (nav.manifest → routes → nav.manifest). Instead, the helpers below
@@ -73,6 +77,7 @@ export const NAV_MANIFEST = [
     icon: Users,
     category: "Patient Care",
     adminOnly: false,
+    access: "patient",
     breadcrumbParent: null,
     keywords: ["roster", "directory", "list", "census"],
   },
@@ -82,6 +87,7 @@ export const NAV_MANIFEST = [
     icon: Users,
     category: null,
     adminOnly: false,
+    access: "patient",
     breadcrumbParent: "Patients",
     keywords: ["record", "chart", "profile"],
   },
@@ -91,6 +97,7 @@ export const NAV_MANIFEST = [
     icon: AlertTriangle,
     category: null,
     adminOnly: false,
+    access: "patient",
     breadcrumbParent: "Patients",
     keywords: ["alert", "warning", "notification"],
   },
@@ -100,6 +107,7 @@ export const NAV_MANIFEST = [
     icon: Clipboard,
     category: null,
     adminOnly: false,
+    access: "patient",
     breadcrumbParent: "Patients",
     keywords: ["record", "patient dashboard"],
   },
@@ -121,6 +129,7 @@ export const NAV_MANIFEST = [
     icon: Target,
     category: "Patient Care",
     adminOnly: false,
+    access: "nursing",
     breadcrumbParent: null,
     keywords: ["care plan", "goals", "treatment plan"],
   },
@@ -130,6 +139,7 @@ export const NAV_MANIFEST = [
     icon: Target,
     category: null,
     adminOnly: false,
+    access: "nursing",
     breadcrumbParent: "CarePlanManagement",
     keywords: ["care plan", "builder", "create"],
   },
@@ -139,6 +149,7 @@ export const NAV_MANIFEST = [
     icon: Zap,
     category: null,
     adminOnly: false,
+    access: "nursing",
     breadcrumbParent: "CarePlanManagement",
     keywords: ["auto care plan", "ai care plan"],
   },
@@ -153,6 +164,7 @@ export const NAV_MANIFEST = [
     icon: ClipboardList,
     category: "Patient Care",
     adminOnly: false,
+    access: "nursing",
     breadcrumbParent: null,
     keywords: ["oasis", "assessment", "hha", "complete", "review", "analyze", "compliance", "documentation", "revenue", "audit", "analytics", "pdgm"],
   },
@@ -180,6 +192,7 @@ export const NAV_MANIFEST = [
     icon: Heart,
     category: "Patient Care",
     adminOnly: false,
+    access: "patient",
     breadcrumbParent: null,
     keywords: ["patient education", "handout", "teaching"],
   },
@@ -241,6 +254,7 @@ export const NAV_MANIFEST = [
     icon: Brain,
     category: "Documentation",
     adminOnly: false,
+    access: "nursing",
     breadcrumbParent: null,
     // Documenting a visit is a two-choice flow here: Smart Note or Visit Scribe
     // (record/upload or live dictation). Keep the audio/scribe keywords so search
@@ -256,6 +270,7 @@ export const NAV_MANIFEST = [
     icon: Brain,
     category: null,
     adminOnly: false,
+    access: "nursing",
     breadcrumbParent: "ClinicalDocumentation",
     keywords: ["smart note", "ai note", "documentation", "ai"],
   },
@@ -290,6 +305,7 @@ export const NAV_MANIFEST = [
     icon: Filter,
     category: null,
     adminOnly: false,
+    access: "patient",
     breadcrumbParent: "ReferralIntake",
     keywords: ["referral", "triage", "priority"],
   },
@@ -349,6 +365,7 @@ export const NAV_MANIFEST = [
     icon: Video,
     category: "Communication",
     adminOnly: false,
+    access: "patient",
     breadcrumbParent: null,
     keywords: ["telehealth", "video", "call", "virtual visit"],
   },
@@ -885,7 +902,7 @@ export function isLinkablePage(page, routedSet, redirectedSet) {
  * Build sidebar navCategories array for non-admin users.
  * Dynamic badge values are injected by Layout after this call.
  */
-export function buildNavCategories(manifest) {
+export function buildNavCategories(manifest, user = null) {
   const categoryOrder = [
     "Overview", "Patient Care", "Documentation", "Communication",
     "Learning & Resources", "Tools",
@@ -895,6 +912,7 @@ export function buildNavCategories(manifest) {
   for (const entry of manifest) {
     if (!entry.category || entry.adminOnly) continue;
     if (!routed.has(entry.page)) continue;  // never link to an unrouted page
+    if (!canAccessLevel(user, entry.access)) continue;
     if (!map[entry.category]) map[entry.category] = [];
     map[entry.category].push({
       name: entry.navLabel ?? entry.label,
@@ -977,14 +995,27 @@ export function buildBreadcrumbs(pageName, navMap = NAV_MAP) {
  * instead of dead-ending on PageNotFound. Redirect aliases are excluded to
  * avoid duplicate entries for the same destination.
  */
-export function buildPaletteEntries(manifest, isAdmin, isSuperAdmin = false) {
+export function buildPaletteEntries(manifest, isAdmin, isSuperAdmin = false, user = null) {
   const routed = getRoutedPages();
   return manifest.filter(e => {
     if (!routed.has(e.page)) return false;
     if (e.superAdminOnly && !isSuperAdmin) return false;  // platform-only pages
     if (e.adminOnly && !isAdmin) return false;
+    if (!isAdmin && !canAccessLevel(user, e.access)) return false;
     return true;
   });
+}
+
+/**
+ * Whether a page should be reachable for a given admin role view and staff
+ * discipline. Used by tests and route-level guards to mirror nav filtering.
+ */
+export function isPageAllowedForRole(pageName, roleView, user = null) {
+  const entry = NAV_MAP[pageName];
+  if (!entry) return true;
+  if (entry.superAdminOnly) return roleView === "super_admin";
+  if (entry.adminOnly) return roleView === "super_admin" || roleView === "facility_admin";
+  return canAccessLevel(user, entry.access);
 }
 
 /**

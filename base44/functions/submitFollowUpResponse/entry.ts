@@ -92,6 +92,12 @@ Deno.serve(async (req) => {
     } catch {
       return Response.json({ error: 'This request was already submitted.' }, { status: 409 });
     }
+    // The claim write above is last-write-wins, so two concurrent submissions
+    // could each write-then-verify their own token before seeing the other's.
+    // Wait out a write-propagation window before verifying: after the delay
+    // whichever token was written LAST is what both requests read back, so at
+    // most one claimant can see its own token and proceed to the merge.
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const claimCheck = await base44.asServiceRole.entities.ProviderFollowUpToken
       .filter({ id: record.id }, undefined, 1).catch(() => []);
     if (!claimCheck[0] || claimCheck[0].submit_claimed_by !== claimToken) {

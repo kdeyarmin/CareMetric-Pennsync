@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { invokeLLM } from "@/lib/invokeLLM";
+import { uploadFailureMessage, MISSING_FILE_URL_MESSAGE } from "@/lib/uploadError";
 import { runReferralExtraction } from "./referralExtraction";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -131,20 +132,37 @@ export default function ReferralPDFSummarizer({
     setProcessingError(null);
     setFileName(file.name);
     setIsUploading(true);
+
+    // Only the upload itself is wrapped here. `processReferral` reports its own
+    // failures (with its own copy) — folding it into this catch would blame a
+    // failed extraction on the upload and send the user back to re-upload a
+    // document the server already has.
+    let uploaded;
     try {
-      const result = await base44.integrations.Core.UploadFile({ file });
-      // Preserve the real resolved MIME (with extension fallback for type-less
-      // scanner/fax uploads) so downstream context/logging stays accurate.
-      const mime = resolveMimeType(file) || "application/pdf";
-      setFileUrl(result.file_url);
-      lastProcessedRef.current = { url: result.file_url, mime };
-      setIsUploading(false);
-      await processReferral(result.file_url, mime);
+      uploaded = await base44.integrations.Core.UploadFile({ file });
     } catch (error) {
       console.error("Error uploading file:", error);
-      toast.error("Failed to upload file. Please check your connection and try again.");
+      // An expired session, a missing permission, or a server-side size limit
+      // will never resolve by retrying — say which one it was.
+      toast.error(uploadFailureMessage(error, { noun: "referral document" }));
+      return;
+    } finally {
       setIsUploading(false);
     }
+
+    // A 2xx carrying no file_url is a failed upload: continuing would extract
+    // from `undefined` and store a referral with no document behind it.
+    if (!uploaded?.file_url) {
+      toast.error(MISSING_FILE_URL_MESSAGE);
+      return;
+    }
+
+    // Preserve the real resolved MIME (with extension fallback for type-less
+    // scanner/fax uploads) so downstream context/logging stays accurate.
+    const mime = resolveMimeType(file) || "application/pdf";
+    setFileUrl(uploaded.file_url);
+    lastProcessedRef.current = { url: uploaded.file_url, mime };
+    await processReferral(uploaded.file_url, mime);
   };
 
   const handleFileUpload = (e) => {

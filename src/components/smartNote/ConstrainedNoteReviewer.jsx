@@ -15,14 +15,22 @@ import { describePlaceholders } from "./compliance/placeholderGuard";
 import { computeCoverageScore } from "./compliance/coverageScore";
 import { compareVisits, buildTrendSummary, detectSustainedTrends } from "./compliance/visitComparison";
 import { crossCheckChart } from "./compliance/chartCrossCheck";
+import { analyzeDocumentationStrength } from "./compliance/documentationStrength";
+import { reviewCopyForward } from "./compliance/noteSimilarity";
+import { extractVitals } from "./compliance/factExtraction";
+import DocumentationStrengthPanel from "./DocumentationStrengthPanel";
+import CopyForwardPanel from "./CopyForwardPanel";
 import VisitComparisonPanel from "./VisitComparisonPanel";
 import ChartCrossCheckPanel from "./ChartCrossCheckPanel";
+import DenialRiskPanel from "./DenialRiskPanel";
+import CollapsibleSection from "./CollapsibleSection";
+import StickyActionBar from "./StickyActionBar";
+import AcknowledgeGate from "./AcknowledgeGate";
 import ClinicalIndicatorsPanel from "../visit/ClinicalIndicatorsPanel";
 import NoteDiffView from "./NoteDiffView";
 import DictationButton from "./DictationButton";
 import { annotateProvenance } from "./compliance/provenance";
 import { detectNoteCriticalVitals } from "./compliance/noteEscalation";
-import { DENIAL_CLUSTER_LABELS } from "./compliance/reportingFields";
 import { withTimeout } from "./compliance/withTimeout";
 import { runDenialGuardrail, elementsJudgedByGuardrail } from "../compliance/denialGuardrailEngine";
 
@@ -46,7 +54,8 @@ import { runDenialGuardrail, elementsJudgedByGuardrail } from "../compliance/den
  *   onFinalNote    — (optional) called with the verified note text
  *   onBack         — (optional) renders a Back button next to Generate
  *   renderFinalNote — (optional) host render-prop for the final-note area. Receives
- *                     an `api` with { finalNote, setFinalNote, building, copy,
+ *                     an `api` with { finalNote, setFinalNote, generatedNote,
+ *                     nurseEdited, building, copy,
  *                     copied, verified, dirty, fixRequired, coverage, recheck,
  *                     result }. `recheck()` re-verifies and resolves to the
  *                     save-ready `result` (or null if it fails). When provided,
@@ -58,102 +67,6 @@ import { runDenialGuardrail, elementsJudgedByGuardrail } from "../compliance/den
 // complianceRules in its deps) on every render → its reset effect re-runs →
 // setState → infinite render loop for any caller that doesn't pass the prop.
 const EMPTY_RULES = [];
-
-// ── Denial-risk panel ───────────────────────────────────────────────────────
-// Renders the deterministic denial-guardrail findings (the four recurring audit
-// clusters behind most documentation-driven denials) in the same visual language
-// as the compliance checklist: severity badges + expandable remediation/evidence.
-// ADVISORY: findings never hard-block. When `ack` is provided (the save step) and
-// a critical cluster fails, the nurse acknowledges before saving — the same
-// override pattern as the chart safety conflicts.
-// Cluster names come from reportingFields' DENIAL_CLUSTER_LABELS so the live
-// panel and the persisted compliance issues/tags use identical wording.
-const DENIAL_SEVERITY_BADGE = {
-  critical: "bg-red-100 text-red-800",
-  high: "bg-orange-100 text-orange-800",
-  info: "bg-slate-100 text-slate-600",
-};
-
-function DenialRiskPanel({ guard, openClusters, onToggleCluster, ack = null }) {
-  if (!guard || !guard.findings?.length) return null;
-  const failed = guard.findings.filter((f) => f.status === "fail");
-  const passedOrNA = guard.findings.filter((f) => f.status !== "fail");
-  const blocking = failed.filter((f) => f.severity === "critical");
-  const tone = blocking.length ? "red" : failed.length ? "orange" : "green";
-  const frame = tone === "red" ? "border-red-300 bg-red-50" : tone === "orange" ? "border-orange-300 bg-orange-50" : "border-green-300 bg-green-50";
-  const heading = tone === "red" ? "text-red-800" : tone === "orange" ? "text-orange-800" : "text-green-800";
-  return (
-    <div className={`rounded-xl border-2 p-4 space-y-2 ${frame}`}>
-      <div className="flex items-center justify-between gap-2">
-        <h3 className={`font-semibold flex items-center gap-2 ${heading}`}>
-          {failed.length > 0 ? <ShieldAlert className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />} Denial Risk
-        </h3>
-        <Badge className={`${tone === "red" ? "bg-red-600" : tone === "orange" ? "bg-orange-500" : "bg-green-600"} text-white shrink-0`}>
-          {guard.denial_risk_score}% risk
-        </Badge>
-      </div>
-      {failed.length === 0 ? (
-        <p className="text-sm text-green-800">No denial-risk documentation patterns detected — the audited clusters below all read as documented.</p>
-      ) : (
-        <p className={`text-xs ${tone === "red" ? "text-red-700" : "text-orange-700"}`}>
-          These documentation patterns drive most Medicare denials. Advisory only — strengthen the language, or review and proceed.
-        </p>
-      )}
-      {failed.length > 0 && (
-        <div className="space-y-2">
-          {failed.map((f) => {
-            const open = openClusters.has(f.cluster);
-            return (
-              <div key={f.cluster} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-                <button type="button" onClick={() => onToggleCluster(f.cluster)} className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-slate-50">
-                  <Badge className={`shrink-0 text-xs ${DENIAL_SEVERITY_BADGE[f.severity] || DENIAL_SEVERITY_BADGE.info}`}>{f.severity}</Badge>
-                  <span className="flex-1 min-w-0 text-sm text-slate-800">
-                    <span className="font-semibold">{DENIAL_CLUSTER_LABELS[f.cluster] || f.cluster}:</span> {f.message}
-                  </span>
-                  <span className="text-xs text-slate-400 shrink-0">{open ? "Hide" : "Detail"}</span>
-                </button>
-                {open && (
-                  <div className="px-3 pb-2.5 space-y-1 border-t border-slate-100">
-                    {f.remediation && <p className="text-xs text-slate-600 mt-1.5"><span className="font-semibold">How to fix:</span> {f.remediation}</p>}
-                    {f.evidence && <p className="text-xs text-slate-500 italic">Found: “{f.evidence}”</p>}
-                    {f.cop_reference && <p className="text-[10px] text-slate-400">{f.cop_reference}</p>}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {passedOrNA.length > 0 && (
-        <ul className="space-y-0.5">
-          {passedOrNA.map((f) => (
-            <li key={f.cluster} className="flex items-start gap-1.5 text-xs text-slate-600">
-              <CheckCircle2 className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${f.status === "pass" ? "text-green-600" : "text-slate-300"}`} />
-              <span><span className="font-medium">{DENIAL_CLUSTER_LABELS[f.cluster] || f.cluster}:</span> {f.message}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {ack && blocking.length > 0 && (
-        <>
-          <label className="flex items-start gap-2 text-sm text-red-900 cursor-pointer pt-1">
-            <input type="checkbox" checked={ack.acknowledged} onChange={(e) => ack.onAcknowledge(e.target.checked)} className="w-4 h-4 mt-0.5 text-red-600 rounded shrink-0" />
-            <span>I have reviewed these denial risks and choose to save the note as documented.</span>
-          </label>
-          {ack.acknowledged && (
-            <textarea
-              value={ack.justification}
-              onChange={(e) => ack.onJustification(e.target.value)}
-              rows={2}
-              placeholder="Optional: why the documentation stands as written (e.g. detail lives in the plan of care). Saved to the compliance record."
-              className="w-full text-sm rounded-lg border border-red-300 bg-white p-2 text-red-900 placeholder:text-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
-            />
-          )}
-        </>
-      )}
-    </div>
-  );
-}
 
 export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home_health", visitType = "routine_visit", vitals = null, priorNote = "", patient = null, currentUser, onFinalNote, onBack, renderFinalNote, onEscalate, complianceRules = EMPTY_RULES }) {
   const [answers, setAnswers] = useState({});
@@ -169,6 +82,11 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   // Which denial-risk findings are expanded to show remediation/evidence.
   const [openDenialClusters, setOpenDenialClusters] = useState(() => new Set());
   const [finalNote, setFinalNote] = useState("");
+  // The note EXACTLY as generated, before any hand-edit. Kept so a caller can
+  // tell "the AI rewrote the rough draft" (always true, and not interesting)
+  // apart from "the clinician changed the generated text" (the fact an
+  // AI-governance record actually needs).
+  const [generatedNote, setGeneratedNote] = useState("");
   const [verifiedNote, setVerifiedNote] = useState("");
   const [fixRequired, setFixRequired] = useState(null);
   const [building, setBuilding] = useState(false);
@@ -237,6 +155,29 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     return detectSustainedTrends([...priorTexts, roughNote]);
   }, [patient, roughNote]);
 
+  // Deterministic documentation-STRENGTH grading. presenceDetection above answers
+  // "is homebound mentioned?"; this answers "does the homebound statement carry
+  // the factual support a reviewer looks for?" — the difference between
+  // "Patient is homebound." passing and being flagged as a potential gap.
+  // Graded against the text the nurse will actually use (final note once built).
+  const strength = useMemo(
+    () => analyzeDocumentationStrength(finalNote || roughNote, { serviceLine }),
+    [finalNote, roughNote, serviceLine],
+  );
+
+  // Deterministic copy-forward / visit-specificity review against the patient's
+  // recent notes. ADVISORY ONLY — it never blocks a save and never alleges
+  // cloning; repeated wording is expected for a stable patient.
+  const copyForward = useMemo(() => {
+    const history = Array.isArray(patient?.enhanced_notes_history) ? patient.enhanced_notes_history : [];
+    const priors = history.slice(-5).reverse();
+    const priorTexts = priors.length ? priors : (priorNote ? [{ note: priorNote }] : []);
+    return reviewCopyForward(finalNote || roughNote, priorTexts, {
+      currentVitals: extractVitals(finalNote || roughNote),
+      priorVitals: priorTexts.map((p) => extractVitals(p?.note || p?.text || "")),
+    });
+  }, [finalNote, roughNote, patient, priorNote]);
+
   // Deterministic chart cross-check: how the note lines up against the standing
   // chart (allergies, med list, fall risk). Advisory only — never edits the note.
   // Once a final note exists it cross-checks the text the nurse will actually
@@ -258,7 +199,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const priorNoteRef = useRef("");
   priorNoteRef.current = priorNote;
   useEffect(() => {
-    setFinalNote(""); setVerifiedNote(""); setFixRequired(null); setIncludeTrend(false); setAcknowledgedRisks(false); setAckJustification(""); setAcknowledgedDenialRisk(false); setDenialAckJustification(""); setOpenDenialClusters(new Set()); setShowProvenance(false); setEscalatedKeys(new Set()); setCritic(null); setOpenExamples(new Set()); setShowThinConfirm(false); setConfirmedThinCritical(false);
+    setFinalNote(""); setGeneratedNote(""); setVerifiedNote(""); setFixRequired(null); setIncludeTrend(false); setAcknowledgedRisks(false); setAckJustification(""); setAcknowledgedDenialRisk(false); setDenialAckJustification(""); setOpenDenialClusters(new Set()); setShowProvenance(false); setEscalatedKeys(new Set()); setCritic(null); setOpenExamples(new Set()); setShowThinConfirm(false); setConfirmedThinCritical(false);
     if (!analysis) { setAnswers({}); setPrefilledIds(new Set()); setConfirmedNegatives(new Set()); return; }
     const prefill = computeCarryForward(priorNoteRef.current || "", analysis.gaps);
     setAnswers(prefill);
@@ -490,6 +431,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
       const extras = [activeTrendSummary(), analysis.vitalsSentence, ...computeNotDocumented()].filter(Boolean);
       const finalText = extras.length ? `${generated}\n\n${extras.join(" ")}` : generated;
       setFinalNote(finalText);
+      setGeneratedNote(finalText);
       // Ground only the LLM-authored portion. The appended extras (trend summary,
       // structured vitals, "not documented" fallbacks) are deterministic and
       // already pass the value-guard, so re-grounding them only burns tokens.
@@ -540,6 +482,23 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const documentedCount = analysis ? analysis.required.filter(e => { const p = effectivePresence.find(r => r.id === e.id); return (p && p.present) || answeredOrConfirmed(e.id); }).length : 0;
   const liveCoverage = analysis ? computeCoverageScore({ requiredElements: analysis.required, presenceResults: effectivePresence, answeredIds: analysis.required.filter(e => answers[e.id]?.trim()).map(e => e.id), confirmedNegativeIds: Array.from(confirmedNegatives) }) : 0;
   const tone = liveCoverage >= 90 ? "green" : liveCoverage >= 70 ? "orange" : "red";
+
+  // What is actually stopping Generate, phrased for the readiness line and the
+  // sticky bar. These read the same values the disabled= expression does, so the
+  // wording can never disagree with the button.
+  const blockers = [
+    criticalUnanswered.length > 0
+      ? `${criticalUnanswered.length} required answer${criticalUnanswered.length === 1 ? "" : "s"} needed`
+      : null,
+    draftPlaceholderCount > 0
+      ? `${draftPlaceholderCount} blank${draftPlaceholderCount === 1 ? "" : "s"} to fix`
+      : null,
+  ].filter(Boolean);
+  const denialFindings = denialGuardrail?.findings || [];
+  const denialFailedCount = denialFindings.filter((f) => f.status === "fail").length;
+  const denialBlockingCount = denialFindings.filter((f) => f.status === "fail" && f.severity === "critical").length;
+  const advisoryCount = denialFailedCount + chartFindings.length;
+
   const dirty = !!finalNote && finalNote !== verifiedNote;
   // Routine negatives the nurse hasn't typed an answer for — surfaced as a single
   // bulk-confirm so a stable patient doesn't require a dozen individual taps.
@@ -581,6 +540,9 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
 
   const finalApi = {
     finalNote, setFinalNote, building, copy, copied,
+    // What the scribe produced, and whether the clinician has since changed it.
+    generatedNote,
+    nurseEdited: !!generatedNote && finalNote !== generatedNote,
     verified: !dirty && !fixRequired,
     dirty, fixRequired,
     coverage: liveCoverage,
@@ -630,6 +592,12 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
             <div className="h-2 bg-white rounded-full overflow-hidden">
               <div className={`h-full transition-all ${tone === "green" ? "bg-green-500" : tone === "orange" ? "bg-orange-400" : "bg-red-400"}`} style={{ width: `${liveCoverage}%` }} />
             </div>
+            {/* One line for "what is actually left", so the nurse does not have to
+                scroll the panels below to work out why Generate is disabled. */}
+            <p className="text-xs text-slate-600 mt-2">
+              {blockers.length > 0 ? <span className="font-semibold">{blockers.join(" \u00b7 ")}</span> : "Nothing blocking \u2014 ready to generate"}
+              {advisoryCount > 0 && <span className="text-slate-500">{blockers.length > 0 ? " \u00b7 " : " \u00b7 "}{advisoryCount} advisory item{advisoryCount === 1 ? "" : "s"} below</span>}
+            </p>
           </div>
 
           {criticalUnanswered.length > 0 && (
@@ -666,11 +634,68 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
             </div>
           )}
 
-          <DenialRiskPanel guard={denialGuardrail} openClusters={openDenialClusters} onToggleCluster={toggleDenialCluster} />
+          {/* Advisories. Every one of these still says exactly what it said before
+              and still never hard-blocks — they simply no longer sit between the
+              nurse and the questions they are here to answer. Each header keeps
+              its own count, and anything with a blocking finding opens itself. */}
+          {denialGuardrail?.findings?.length > 0 && (
+            <CollapsibleSection
+              title="Denial Risk"
+              icon={denialFailedCount > 0 ? ShieldAlert : ShieldCheck}
+              badge={`${denialGuardrail.denial_risk_score}% risk`}
+              badgeVariant={denialBlockingCount > 0 ? "destructive" : denialFailedCount > 0 ? "warning" : "success"}
+              summary={denialFailedCount > 0 ? `${denialFailedCount} to strengthen` : "No denial patterns detected"}
+              defaultOpen={denialBlockingCount > 0}
+            >
+              <DenialRiskPanel
+                guard={denialGuardrail}
+                openClusters={openDenialClusters}
+                onToggleCluster={toggleDenialCluster}
+                chrome={false}
+              />
+            </CollapsibleSection>
+          )}
 
-          <ChartCrossCheckPanel findings={chartFindings} />
+          {chartFindings.length > 0 && (
+            <CollapsibleSection
+              title="Chart Cross-Check"
+              icon={ShieldAlert}
+              badge={`${chartFindings.length} finding${chartFindings.length === 1 ? "" : "s"}`}
+              badgeVariant={criticalChartFindings.length > 0 ? "destructive" : "warning"}
+              defaultOpen={criticalChartFindings.length > 0}
+            >
+              <ChartCrossCheckPanel findings={chartFindings} />
+            </CollapsibleSection>
+          )}
 
+          {/* Already self-collapsing and closed by default — left as it is. */}
           <ClinicalIndicatorsPanel narrativeText={roughNote} />
+
+          {strength.needsReview.length > 0 && (
+            <CollapsibleSection
+              title="Documentation strength"
+              icon={ShieldAlert}
+              badge={`${strength.needsReview.length} to strengthen`}
+              badgeVariant={strength.weakest === "weak" ? "warning" : "secondary"}
+              summary="Whether these statements carry the support a reviewer looks for"
+              defaultOpen={strength.weakest === "weak"}
+            >
+              <DocumentationStrengthPanel findings={strength.needsReview} />
+            </CollapsibleSection>
+          )}
+
+          {copyForward.comparedCount > 0 && copyForward.band.id !== "low" && (
+            <CollapsibleSection
+              title="Visit-specific detail"
+              icon={Copy}
+              badge={copyForward.band.label}
+              badgeVariant={copyForward.band.tone === "red" ? "destructive" : copyForward.band.tone === "amber" ? "warning" : "secondary"}
+              summary="How this note compares with recent documentation"
+              defaultOpen={copyForward.band.id === "very_high"}
+            >
+              <CopyForwardPanel review={copyForward} />
+            </CollapsibleSection>
+          )}
 
           {gaps.length > 0 && (
             <div className="bg-white border border-amber-200 rounded-xl p-4 shadow-sm">
@@ -766,34 +791,46 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
             </div>
           )}
 
-          <VisitComparisonPanel
-            comparisons={comparisons}
-            trends={sustainedTrends}
-            include={includeTrend}
-            onToggleInclude={setIncludeTrend}
-            summary={trendSummary}
-          />
+          {(comparisons.length > 0 || sustainedTrends.length > 0) && (
+            <CollapsibleSection
+              title="Visit Comparison & Trends"
+              icon={Activity}
+              badge={`${comparisons.length + sustainedTrends.length} change${comparisons.length + sustainedTrends.length === 1 ? "" : "s"}`}
+              badgeVariant="info"
+              summary={includeTrend ? "Trend summary will be added to the note" : null}
+              defaultOpen={sustainedTrends.length > 0}
+            >
+              <VisitComparisonPanel
+                comparisons={comparisons}
+                trends={sustainedTrends}
+                include={includeTrend}
+                onToggleInclude={setIncludeTrend}
+                summary={trendSummary}
+              />
+            </CollapsibleSection>
+          )}
 
           {showThinConfirm && thinCritical.length > 0 && !confirmedThinCritical && (
-            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 space-y-2">
-              <h3 className="font-semibold text-amber-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> These required elements look brief</h3>
+            <AcknowledgeGate
+              tone="amber"
+              title="These required elements look brief"
+              checked={confirmedThinCritical}
+              onCheckedChange={setConfirmedThinCritical}
+              label="These are complete as written — generate the note."
+            >
               <p className="text-sm text-amber-800">A vague entry on a required element is a common reason Medicare denies a visit. This covers what you typed here and what your draft already said. Add detail, or confirm it&apos;s complete as written:</p>
               <ul className="text-sm text-amber-900 list-disc ml-5 space-y-0.5">
                 {thinCritical.map((t) => (<li key={t.id}><span className="font-semibold">{t.label}:</span> {t.tip}</li>))}
               </ul>
-              <label className="flex items-start gap-2 text-sm text-amber-900 cursor-pointer pt-1">
-                <input type="checkbox" checked={confirmedThinCritical} onChange={(e) => setConfirmedThinCritical(e.target.checked)} className="w-4 h-4 mt-0.5 text-amber-600 rounded shrink-0" />
-                <span>These are complete as written — generate the note.</span>
-              </label>
-            </div>
+            </AcknowledgeGate>
           )}
 
-          <div className="flex gap-3">
-            <Button onClick={generate} disabled={criticalUnanswered.length > 0 || draftPlaceholders.length > 0} className="flex-1 bg-indigo-600 hover:bg-indigo-700 h-12 font-semibold gap-2">
+          <StickyActionBar status={blockers.length > 0 ? blockers.join(" \u00b7 ") : `${liveCoverage}% coverage \u2014 ready to generate`}>
+            {onBack && <Button variant="outline" onClick={onBack} className="h-12 px-4">← Back</Button>}
+            <Button onClick={generate} disabled={criticalUnanswered.length > 0 || draftPlaceholders.length > 0} className="flex-1 bg-indigo-600 hover:bg-indigo-700 h-12 font-semibold gap-2 whitespace-nowrap">
               <Sparkles className="w-4 h-4" /> Generate Final Note <ArrowRight className="w-4 h-4" />
             </Button>
-            {onBack && <Button variant="outline" onClick={onBack} className="h-12 px-4">← Back</Button>}
-          </div>
+          </StickyActionBar>
         </>
       )}
 
@@ -875,25 +912,17 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
           />
 
           {criticalChartFindings.length > 0 && (
-            <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4 space-y-2">
-              <h3 className="font-semibold text-red-800 flex items-center gap-2"><ShieldAlert className="w-4 h-4" /> Chart safety conflict — review before saving</h3>
-              {criticalChartFindings.map((f) => (
-                <p key={f.id} className="text-sm text-red-800"><span className="font-semibold">{f.category}:</span> {f.message}</p>
-              ))}
-              <label className="flex items-start gap-2 text-sm text-red-900 cursor-pointer pt-1">
-                <input type="checkbox" checked={acknowledgedRisks} onChange={(e) => setAcknowledgedRisks(e.target.checked)} className="w-4 h-4 mt-0.5 text-red-600 rounded shrink-0" />
-                <span>I have reviewed this against the chart and confirm the documentation is correct.</span>
-              </label>
-              {acknowledgedRisks && (
-                <textarea
-                  value={ackJustification}
-                  onChange={(e) => setAckJustification(e.target.value)}
-                  rows={2}
-                  placeholder="Optional: note your clinical rationale (e.g. confirmed new order with provider). Saved to the compliance record."
-                  className="w-full text-sm rounded-lg border border-red-300 bg-white p-2 text-red-900 placeholder:text-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
-                />
-              )}
-              {onEscalate && (
+            <AcknowledgeGate
+              tone="red"
+              icon={ShieldAlert}
+              title="Chart safety conflict — review before saving"
+              checked={acknowledgedRisks}
+              onCheckedChange={setAcknowledgedRisks}
+              label="I have reviewed this against the chart and confirm the documentation is correct."
+              justification={ackJustification}
+              onJustificationChange={setAckJustification}
+              justificationPlaceholder="Optional: note your clinical rationale (e.g. confirmed new order with provider). Saved to the compliance record."
+              actions={onEscalate ? (
                 <Button
                   onClick={() => escalate("chart", criticalChartFindings.map((f) => ({ title: `Provider follow-up: ${f.category} conflict`, description: f.message, reason: f.recommendation })))}
                   disabled={escalatedKeys.has("chart")}
@@ -902,8 +931,12 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
                 >
                   {escalatedKeys.has("chart") ? <><CheckCircle2 className="w-4 h-4" /> Follow-up task created</> : <><BellRing className="w-4 h-4" /> Create provider follow-up task</>}
                 </Button>
-              )}
-            </div>
+              ) : null}
+            >
+              {criticalChartFindings.map((f) => (
+                <p key={f.id} className="text-sm text-red-800"><span className="font-semibold">{f.category}:</span> {f.message}</p>
+              ))}
+            </AcknowledgeGate>
           )}
 
           {renderFinalNote ? (
@@ -920,7 +953,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
                   <Button onClick={copy} className="flex-1 h-11 gap-2 font-semibold">
                     {copied ? <><CheckCircle2 className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy</>}
                   </Button>
-                  <Button variant="outline" className="h-11 px-4" onClick={() => { setFinalNote(""); setVerifiedNote(""); setFixRequired(null); }}>Back</Button>
+                  <Button variant="outline" className="h-11 px-4" onClick={() => { setFinalNote(""); setGeneratedNote(""); setVerifiedNote(""); setFixRequired(null); }}>Back</Button>
                 </div>
               </div>
               <NoteDiffView originalNote={roughNote} enhancedNote={finalNote} />

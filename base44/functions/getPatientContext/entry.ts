@@ -44,9 +44,12 @@ async function assertPatientAccess(base44, user, patient) {
 
 /**
  * getPatientContext — returns the core datasets the PatientDetails page needs for
- * a single patient (the patient record, visits, incidents, tasks, and active
- * alerts) in ONE round-trip instead of the page firing several independent
- * entity queries from the browser.
+ * a single patient (the patient record, visits, incidents, tasks, active alerts,
+ * care plans and PennSync's own OASIS assessment copies) in ONE round-trip
+ * instead of the page firing several independent entity queries from the
+ * browser. Care plans and OASIS rows feed the deterministic pre-visit briefing
+ * (src/components/visit/visitPrep.js) — the goals and the most recent assessment
+ * date a nurse needs before the visit, without a second round-trip on a phone.
  *
  * Access: caller-scoped entity reads plus assertPatientAccess so facility
  * admins (bare role:admin RLS is platform-wide) cannot pull another agency's
@@ -77,20 +80,33 @@ Deno.serve(async (req) => {
     const patientArr = await e.Patient.filter({ id: patientId }, undefined, 5);
     const patient = patientArr?.[0] || null;
     if (!patient) {
-      return Response.json({ patient: null, visits: [], incidents: [], tasks: [], activeAlerts: [] });
+      return Response.json({
+        patient: null, visits: [], incidents: [], tasks: [], activeAlerts: [],
+        carePlans: [], oasisAssessments: [],
+      });
     }
     const denied = await assertPatientAccess(base44, user, patient);
     if (denied) return denied;
 
     const HISTORY = 1000;
-    const [visits, incidents, tasks, activeAlerts] = await Promise.all([
+    const [visits, incidents, tasks, activeAlerts, carePlans, oasisAssessments] = await Promise.all([
       e.Visit.filter({ patient_id: patientId }, '-visit_date', HISTORY),
       e.Incident.filter({ patient_id: patientId }, '-incident_date', HISTORY),
       e.Task.filter({ patient_id: patientId }, undefined, HISTORY),
       e.PatientAlert.filter({ patient_id: patientId, status: 'active' }, '-created_date', 500),
+      // Small, bounded reads: the briefing needs current goals and the most
+      // recent assessment date, not the full history.
+      e.CarePlan.filter({ patient_id: patientId }, '-updated_date', 20),
+      // Sorted by assessment_date, the CLINICAL chronology. Ordering by
+      // created_date meant a backfilled older assessment entered after a newer
+      // one would be picked as "most recent", and with enough late-created
+      // backfills the actual latest assessment could fall outside the page.
+      e.OASISAssessment.filter({ patient_id: patientId }, '-assessment_date', 10),
     ]);
 
-    return Response.json({ patient, visits, incidents, tasks, activeAlerts });
+    return Response.json({
+      patient, visits, incidents, tasks, activeAlerts, carePlans, oasisAssessments,
+    });
   } catch (error) {
     console.error('getPatientContext error:', error?.message);
     return Response.json({ error: 'Failed to load patient context' }, { status: 500 });

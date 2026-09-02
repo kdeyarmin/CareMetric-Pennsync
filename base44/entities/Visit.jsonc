@@ -203,6 +203,28 @@
       "format": "date-time",
       "description": "When extractClinicalEvents finished creating ClinicalEvent rows for this visit"
     },
+    "emr_handoff_status": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "copied_to_emr",
+        "reviewed_in_emr",
+        "signed_in_emr"
+      ],
+      "default": "not_started",
+      "description": "SELF-REPORTED operational workflow state for moving PennSync's prepared documentation into the agency's EMR. PennSync has no EMR integration: this records only what the nurse said they did and is NEVER evidence that the note was entered, reviewed, or signed in the EMR. The official record remains the EMR."
+    },
+    "emr_handoff_history": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Append-only trail of emr_handoff_status reports: { status, reported_by, reported_at, self_reported, note }. Forward-only — a later state is never rewritten by re-reporting an earlier one."
+    },
+    "documentation_review_ack": {
+      "type": "object",
+      "description": "AI-governance record that a human reviewed the AI-assisted text before copying it to the EMR: { acknowledged, acknowledged_by, acknowledged_at, note_hash, note_length, ai_assisted, nurse_edited, statement, is_clinical_signature:false }. Explicitly NOT a clinical signature or legal attestation — it stores a note HASH, not a second copy of the note."
+    },
     "followup_tasks_claimed_by": {
       "type": "string",
       "description": "Claim token for generateFollowUpTasks idempotency. Set before LLM extraction and Task.create so concurrent runs cannot create duplicate follow-up tasks for the same visit."

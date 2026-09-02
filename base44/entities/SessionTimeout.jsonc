@@ -28,5 +28,17 @@
   "required": [
     "user_email",
     "last_activity"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
+    }
+  }
 }

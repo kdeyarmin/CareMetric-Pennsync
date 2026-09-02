@@ -63,12 +63,40 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
     setTrigger({ trigger: "/", query: "", start: slashPos, end: slashPos + 1 });
   }, [onChange]);
 
-  // Expose focus (the parent calls .focus()) plus an imperative way to open the
-  // picker from a toolbar button.
+  // Select a range of the draft and bring it into view. Used to walk the nurse
+  // through the fill-in-the-blank scaffolding a template leaves behind: the blank
+  // arrives selected, so typing replaces it. setSelectionRange alone does not
+  // scroll, hence the caret-line estimate below.
+  const selectRange = useCallback((start, end) => {
+    const el = areaRef.current;
+    if (!el) return;
+    el.focus();
+    try {
+      el.setSelectionRange(start, end);
+    } catch {
+      return; // a detached or unsupported element — nothing to select
+    }
+    const style = typeof window !== "undefined" && window.getComputedStyle
+      ? window.getComputedStyle(el)
+      : null;
+    const lineHeight = parseFloat(style?.lineHeight || "") || 20;
+    const linesBefore = (el.value.slice(0, start).match(/\n/g) || []).length;
+    // Park the target line about a third of the way down rather than at the very
+    // top, so the nurse sees the blank in the context of the lines around it.
+    el.scrollTop = Math.max(0, linesBefore * lineHeight - el.clientHeight / 3);
+  }, []);
+
+  // Expose focus (the parent calls .focus()) plus imperative ways to open the
+  // picker from a toolbar button and to jump to a blank.
   useImperativeHandle(
     forwardedRef,
-    () => ({ focus: () => areaRef.current?.focus(), openQuickPhrases }),
-    [openQuickPhrases],
+    () => ({
+      focus: () => areaRef.current?.focus(),
+      openQuickPhrases,
+      selectRange,
+      getCaret: () => areaRef.current?.selectionStart ?? 0,
+    }),
+    [openQuickPhrases, selectRange],
   );
 
   // Must use the SAME paging queryFn as the library manager / analytics /

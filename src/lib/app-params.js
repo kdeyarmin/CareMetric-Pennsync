@@ -56,6 +56,28 @@ const isTrustedBackendHost = (host) => {
 	return TRUSTED_BACKEND_SUFFIXES.some((s) => h === s || h.endsWith('.' + s));
 };
 
+// Stricter gate for the `?access_token=` referrer check. `isTrustedBackendHost`
+// accepts EVERY tenant app under the shared platform suffixes (any
+// `*.base44.app` etc.), but any Base44 customer can host an app there — so a
+// hostile tenant app could redirect a victim here carrying the attacker's
+// token and a "trusted" Referrer, silently switching the victim's session.
+// Auth handoffs only ever come from the app's own backend host or the fixed
+// platform login/app origins, so trust exactly those.
+const TRUSTED_AUTH_REFERRER_HOSTS = [
+	'base44.com',
+	'app.base44.com',
+	'login.base44.com',
+	'auth.base44.com',
+	'base44.app',
+	'base44.io',
+	'base44.dev',
+];
+const isTrustedAuthReferrerHost = (host) => {
+	const h = String(host || '').toLowerCase();
+	if (envBackendHost && h === envBackendHost) return true;
+	return TRUSTED_AUTH_REFERRER_HOSTS.includes(h);
+};
+
 const sanitizeServerUrl = (value) => {
 	const sanitized = sanitizeValue(value);
 	if (!sanitized) {
@@ -114,7 +136,7 @@ const evaluateLandingTokenTrust = () => {
 		plantedState: planted,
 		referrer: typeof document !== 'undefined' ? document.referrer : '',
 		hasExistingToken: !!storage.getItem('base44_access_token'),
-		isTrustedBackendHost,
+		isTrustedBackendHost: isTrustedAuthReferrerHost,
 		pageHost: typeof window !== 'undefined' ? window.location.host : null,
 	});
 };

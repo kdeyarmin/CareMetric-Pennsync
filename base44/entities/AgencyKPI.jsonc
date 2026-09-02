@@ -78,6 +78,19 @@
       ],
       "description": "Performance status"
     },
+    "input_response_schema_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Response schema ids contributing to this KPI. A KPI without verified v2 provenance stays auditable but is excluded from current CMS-labeled views."
+    },
+    "calculation_version": {
+      "type": "string",
+      "description": "Version of the deterministic outcome core that produced this KPI."
+    },
+    "excluded_episode_count": {
+      "type": "number",
+      "description": "Episodes excluded from this KPI's denominator, so a rate is never read as covering everyone."
+    },
     "contributing_factors": {
       "type": "array",
       "items": {

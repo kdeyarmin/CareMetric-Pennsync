@@ -19,6 +19,10 @@ import { toast } from "sonner";
 import { exportToPDF } from "@/components/utils/pdfExporter";
 import { todayEastern } from "@/components/utils/timezone";
 import { evaluateOASIS, computeCareScope } from "@/components/oasis/oasisScoringEngine";
+import { itemSourceFor } from "@/components/oasis/specs/verification.js";
+import { buildLegacyFormOutput } from "@/components/oasis/responseSchema/legacyFormOutput.js";
+import { saveLegacyScreeningDraft } from "@/components/oasis/responseSchema/oasisWriteAdapter.js";
+import OasisItemNotice from "@/components/oasis/OasisItemNotice.jsx";
 import OASISSuggestionPanel from "@/components/oasis/OASISSuggestionPanel";
 import OASISComplianceWarnings, { getComplianceIssues } from "@/components/oasis/OASISComplianceWarnings";
 import OASISClinicalReasoningEngine, { getClinicalReasoningIssues } from "@/components/oasis/OASISClinicalReasoningEngine";
@@ -163,6 +167,10 @@ function SectionCard({ section, answers, onChange, onShowGuidance }) {
                 )}
               </div>
               <QuestionField question={q} value={answers[q.id]} onChange={onChange} onShowGuidance={onShowGuidance} />
+              {/* The answer-choice caveat sits with the choices, because that is
+                  where a nurse would otherwise read a code and carry it into the
+                  same-numbered item in the EMR. */}
+              <OasisItemNotice itemId={q.id} />
             </div>
           ))}
         </div>
@@ -383,15 +391,27 @@ export default function SmartOASISAssessment() {
       // Eastern calendar day (matches OASISQuickUpdate) — this date drives
       // Medicare assessment-timing windows and the referral SOC clock below.
       const assessmentDate = todayEastern();
-      await base44.entities.OASISAssessment.create({
-        patient_id: selectedPatientId,
-        visit_type: visitType,
-        assessment_date: assessmentDate,
-        oasis_items: Object.entries(answers).map(([item_number, response]) => ({
-          item_number, response: String(response), ai_suggested: false, manually_edited: true,
+      // Routed through the single write adapter, never straight at the entity.
+      // `item_number` here is PennSync's own FORM id, not necessarily a CMS item
+      // number — several of this form's ids are retired CMS items or appear in
+      // no CMS manual (see specs/verification.js). The adapter stamps
+      // `pennsync-oasis-response-v1-legacy` on every row, so a screening answer
+      // is not merely distinguishable from a CMS response: every CMS-labeled
+      // consumer refuses it by name.
+      await saveLegacyScreeningDraft({
+        assessment: {
+          patient_id: selectedPatientId,
+          visit_type: visitType,
+          assessment_date: assessmentDate,
+          status: "completed",
+          completed_date: new Date().toISOString(),
+        },
+        answers: Object.entries(answers).map(([item_number, response]) => ({
+          id: item_number,
+          itemNumber: item_number,
+          itemSource: itemSourceFor(item_number),
+          response,
         })),
-        status: "completed",
-        completed_date: new Date().toISOString(),
       });
       // The assessment now lives server-side — the local draft is obsolete.
       // Cancel any pending debounced write first so it can't resurrect it.
@@ -448,14 +468,6 @@ export default function SmartOASISAssessment() {
         ? `${selectedPatient.first_name} ${selectedPatient.last_name}`.trim()
         : "";
 
-      // isAnswered (module scope) skips placeholder select prompts, so they are
-      // neither counted as answered nor printed as a response.
-      const responseLabel = (q) => {
-        if (!isAnswered(q, answers)) return "— Not answered —";
-        const opt = q.options.find(o => o.value === toNum(answers[q.id]));
-        return opt ? opt.label : String(answers[q.id]);
-      };
-
       const exportAnswered = OASIS_SECTIONS.reduce(
         (n, s) => n + s.questions.filter(q => isAnswered(q, answers)).length, 0,
       );
@@ -465,27 +477,70 @@ export default function SmartOASISAssessment() {
       }
       const exportPct = Math.round((exportAnswered / totalQuestions) * 100);
 
+      // Fail-closed output policy. This guide used to print EVERY answered item
+      // under its M-number and tell the nurse to transcribe it — including the
+      // items whose PennSync response set means something different than the
+      // same code on the official assessment. A code may appear in the
+      // CMS-reference section only when PennSync's answer choices reproduce the
+      // CMS response set; everything else is named and refused, never dropped
+      // silently, because a missing row reads as "not applicable".
+      const policy = buildLegacyFormOutput(OASIS_SECTIONS, answers, isAnswered);
+
       const content = [
         { type: "text", text: `Patient: ${patientName || "—"}` },
         { type: "text", text: `Suggested Care Scope: ${careScopeBadge[careScope].label}` },
         { type: "text", text: `Items Answered: ${exportAnswered} of ${totalQuestions} (${exportPct}%)` },
         { type: "spacer", height: 2 },
-        {
-          type: "text",
-          text: "Transcribe each OASIS item below into your EMR. Verify every response against your clinical findings before submission — care-scope and AI suggestions are estimates, not an official OASIS determination.",
-        },
+        { type: "text", text: policy.disclaimer },
         { type: "line" },
       ];
 
-      OASIS_SECTIONS.forEach(section => {
-        content.push({ type: "heading", text: section.title, size: 12 });
+      if (policy.cms.length > 0) {
+        content.push({
+          type: "heading",
+          text: "CMS-aligned responses for PennSync's supported OASIS-E2 item subset",
+          size: 13,
+        });
         content.push({
           type: "table",
-          headers: ["OASIS Item", "Selected Response"],
-          rows: section.questions.map(q => [q.label, responseLabel(q)]),
+          headers: ["OASIS Item", "Response you selected in PennSync"],
+          rows: policy.cms.map(r => [r.itemLabel, r.display]),
         });
         content.push({ type: "spacer", height: 3 });
-      });
+      }
+
+      if (policy.screening.length > 0) {
+        content.push({ type: "heading", text: "PennSync screening — not an OASIS item", size: 13 });
+        content.push({
+          type: "text",
+          text: "These are PennSync's own screening prompts. They have no OASIS item number and must not be entered on the official assessment.",
+        });
+        content.push({
+          type: "table",
+          headers: ["Screening prompt", "Answer"],
+          rows: policy.screening.map(r => [r.itemLabel, r.display]),
+        });
+        content.push({ type: "spacer", height: 3 });
+      }
+
+      if (policy.quarantined.length > 0) {
+        content.push({ type: "pageBreak" });
+        content.push({
+          type: "heading",
+          text: "Not included — answer these from the wording in your EMR",
+          size: 13,
+        });
+        content.push({
+          type: "text",
+          text: "PennSync recorded an answer for each item below, but its answer choices do not reproduce the CMS response set, so the code is not shown and must not be carried across.",
+        });
+        content.push({
+          type: "table",
+          headers: ["OASIS Item", "Why it is not shown"],
+          rows: policy.quarantined.map(r => [r.itemLabel, r.reason]),
+        });
+        content.push({ type: "spacer", height: 3 });
+      }
 
       if (complianceIssues.length > 0) {
         content.push({ type: "pageBreak" });
@@ -506,7 +561,7 @@ export default function SmartOASISAssessment() {
       const dateStr = toLocalISODate();
       await exportToPDF({
         filename: `OASIS_Guide_${safeName}_${dateStr}.pdf`,
-        title: "OASIS Data Entry Guide",
+        title: "OASIS companion reference (PennSync)",
         subtitle: patientName || "Smart OASIS Assessment",
         content,
       });
@@ -618,10 +673,11 @@ export default function SmartOASISAssessment() {
               </div>
             </div>
           )}
+          {/* Evidence only — deliberately NOT wired to handleAnswer. AI may show
+              what the note says; the clinician chooses every response. */}
           <NoteToOasisPrefill
             patientId={selectedPatientId}
             sections={OASIS_SECTIONS}
-            onApply={handleAnswer}
           />
           {OASIS_SECTIONS.map(section => (
             <SectionCard 

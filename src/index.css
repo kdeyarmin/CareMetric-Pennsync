@@ -525,9 +525,12 @@
       border-radius: 1rem;
     }
 
-    /* Prevent horizontal scroll on mobile */
+    /* Prevent horizontal scroll on mobile.
+       `clip` not `hidden`: hidden would compute overflow-y to `auto` and make
+       <main> a scroll container that never scrolls, which silently disables
+       every `position: sticky` inside it. See .overflow-x-clip-safe below. */
     main, .main-content {
-      overflow-x: hidden;
+      overflow-x: clip;
       max-width: 100vw;
     }
 
@@ -713,6 +716,24 @@
   }
 }
 @layer components {
+  /* The app shell's <main> must clip horizontal overflow WITHOUT becoming a
+     scroll container.
+     `overflow-x: hidden` computes the other axis to `overflow-y: auto`, which
+     makes <main> the sticky positioning container for everything inside it.
+     Below `md` that container's height always equals its content height, so it
+     never actually scrolls and every `position: sticky` descendant is inert —
+     it rides along in normal flow instead of pinning. (At `md` and up <main>
+     carries its own `h-screen overflow-y-auto`, so it genuinely scrolls and
+     sticky has always worked there.)
+     `overflow-x: clip` clips identically but leaves `overflow-y: visible`, so
+     <main> is not a scroll container and sticky resolves against the document.
+     No `overflow-x: hidden` fallback: the build floor is Safari/iOS 16.4
+     (vite build.cssTarget) and `clip` has shipped since Safari 16.0, so every
+     targeted browser supports it — the minifier strips such a fallback anyway. */
+  .overflow-x-clip-safe {
+    overflow-x: clip;
+  }
+
   .page-header-gradient {
     /* Default brand navy gradient. Lives in @layer components so any page that
        supplies its own from-/to- utility classes still overrides it. */

@@ -23,48 +23,62 @@ const SECTIONS = [
 
 const SUGGESTION = {
   item_number: "M1860",
+  // The model still sends these; the panel must not act on them.
   suggested_value: "3",
+  suggested_value_label: "3 — Requires use of two-handed device or walker",
   confidence_score: 92,
   supporting_text: "Patient ambulates with a rolling walker and one-person assist.",
-  clinical_rationale: "Documented walker use.",
+  clinical_rationale: "Documented walker use — enter code 3.",
 };
+
+async function runPanel(suggestions) {
+  mapNoteToOASIS.mockResolvedValue({ data: { success: true, oasis_suggestions: suggestions } });
+  render(<NoteToOasisPrefill patientId="p1" sections={SECTIONS} />);
+  fireEvent.click(screen.getByText("Find note evidence for OASIS items"));
+  fireEvent.change(screen.getByPlaceholderText(/Paste the clinical/i), {
+    target: { value: "Patient ambulates with a rolling walker." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Find evidence in this note/i }));
+  await waitFor(() => expect(mapNoteToOASIS).toHaveBeenCalled());
+}
 
 describe("NoteToOasisPrefill", () => {
   beforeEach(() => {
     mapNoteToOASIS.mockReset();
   });
 
-  it("maps a note to attestable drafts and applies on attest", async () => {
-    mapNoteToOASIS.mockResolvedValue({ data: { success: true, oasis_suggestions: [SUGGESTION] } });
-    const onApply = vi.fn();
-    render(<NoteToOasisPrefill patientId="p1" sections={SECTIONS} onApply={onApply} />);
+  it("shows the verbatim evidence and a question, never a suggested response", async () => {
+    await runPanel([SUGGESTION]);
 
-    // Expand the panel.
-    fireEvent.click(screen.getByText("Pre-fill OASIS from a Note"));
-    fireEvent.change(screen.getByPlaceholderText(/Paste the clinical/i), {
-      target: { value: "Patient ambulates with a rolling walker." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Pre-fill OASIS from this note/i }));
-
-    // The draft appears with its evidence; nothing applied yet.
     expect(await screen.findByText("M1860 — Ambulation/Locomotion")).toBeInTheDocument();
     expect(screen.getByText(/rolling walker and one-person assist/i)).toBeInTheDocument();
-    expect(onApply).not.toHaveBeenCalled();
+    expect(screen.getByText(/Choose the official response yourself/i)).toBeInTheDocument();
 
-    // Attesting applies the validated value to the form.
-    fireEvent.click(screen.getByRole("button", { name: /Attest & apply/i }));
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith("m1860", 3));
-    expect(await screen.findByText("Applied")).toBeInTheDocument();
+    // The model's chosen value must appear nowhere on the panel.
+    expect(screen.queryByText(/Requires use of two-handed device or walker/i)).not.toBeInTheDocument();
+    // Its code assertion in free text is neutralised.
+    expect(screen.queryByText(/enter code 3/i)).not.toBeInTheDocument();
   });
 
-  it("shows an info state when no confident suggestions are returned", async () => {
-    mapNoteToOASIS.mockResolvedValue({ data: { success: true, oasis_suggestions: [] } });
-    const onApply = vi.fn();
-    render(<NoteToOasisPrefill patientId="p1" sections={SECTIONS} onApply={onApply} />);
-    fireEvent.click(screen.getByText("Pre-fill OASIS from a Note"));
-    fireEvent.change(screen.getByPlaceholderText(/Paste the clinical/i), { target: { value: "note" } });
-    fireEvent.click(screen.getByRole("button", { name: /Pre-fill OASIS from this note/i }));
-    await waitFor(() => expect(mapNoteToOASIS).toHaveBeenCalled());
-    expect(onApply).not.toHaveBeenCalled();
+  it("offers no control that could apply a model-chosen response", async () => {
+    await runPanel([SUGGESTION]);
+    await screen.findByText("M1860 — Ambulation/Locomotion");
+
+    for (const name of [/Attest/i, /Apply/i, /Pre-fill/i, /Accept/i]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it("states that PennSync does not select OASIS responses", async () => {
+    await runPanel([]);
+    expect(screen.getByText(/does not select OASIS responses/i)).toBeInTheDocument();
+  });
+
+  it("skips a suggestion with no verbatim evidence", async () => {
+    await runPanel([{ item_number: "M1860", clinical_rationale: "Probably a 3." }]);
+    await waitFor(() =>
+      expect(screen.getByText(/not shown \(no verbatim evidence/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("M1860 — Ambulation/Locomotion")).not.toBeInTheDocument();
   });
 });

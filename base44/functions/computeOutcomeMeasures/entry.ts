@@ -66,13 +66,25 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 
 // ── inlined outcome-measure engine (mirror of outcomeMeasureEngine.js) ────────
+// Ranked by POSITION in the CMS response order — never by parsing a code as a
+// number. Mirror of src/components/oasis/outcomeMeasureEngine.js; parity is
+// asserted by base44/functionTests/computeOutcomeMeasuresContract.test.js.
+const OASIS_RESPONSE_SCHEMA_V2_CMS_E2 = 'pennsync-oasis-response-v2-cms-e2';
+const OUTCOME_CALCULATION_VERSION = '2026-09-01.v2-cms-e2';
 const IMPROVEMENT_MEASURES = [
-  // M1860 is a 0–6 scale (6 = bedfast); all levels are ratable, so startMax is 6 (mirror of outcomeMeasureEngine.js).
-  { key: 'ambulation', item: 'm1860', label: 'Improvement in Ambulation/Locomotion', startMax: 6, excludeStart: [0], excludeEither: [], metricField: 'ambulation_improved' },
-  { key: 'bed_transfer', item: 'm1850', label: 'Improvement in Bed Transferring', startMax: 5, excludeStart: [0], excludeEither: [], metricField: 'transferring_improved' },
-  { key: 'bathing', item: 'm1830', label: 'Improvement in Bathing', startMax: 6, excludeStart: [0], excludeEither: [6], metricField: 'bathing_improved' },
-  { key: 'dyspnea', item: 'm1400', label: 'Improvement in Dyspnea', startMax: 4, excludeStart: [0], excludeEither: [], metricField: 'dyspnea_improved' },
-  { key: 'oral_meds', item: 'm2020', label: 'Improvement in Management of Oral Medications', startMax: 3, excludeStart: [0], excludeEither: [], metricField: 'medication_management_improved' },
+  { key: 'ambulation', item: 'm1860', label: 'Improvement in Ambulation/Locomotion', definitionId: 'm1860_cms_e2', ordinalCodes: ['0', '1', '2', '3', '4', '5', '6'], excludeStartCodes: ['0'], excludeEitherCodes: [], metricField: 'ambulation_improved' },
+  // M1850 was left out of the CMS-alignment cutover, so PennSync holds no
+  // verified response set for it and it can never be scored.
+  { key: 'bed_transfer', item: 'm1850', label: 'Improvement in Bed Transferring', definitionId: null, ordinalCodes: [], excludeStartCodes: [], excludeEitherCodes: [], metricField: 'transferring_improved' },
+  // CMS M1830 code 6 is "bathed totally by another person" — a real, most-
+  // dependent level that stays in the denominator. It was excluded because the
+  // LEGACY 6 meant "unable to rate — artificial opening"; legacy rows are now
+  // excluded wholesale by the schema gate, so no legacy 6 reaches this scale.
+  { key: 'bathing', item: 'm1830', label: 'Improvement in Bathing', definitionId: 'm1830_cms_e2', ordinalCodes: ['0', '1', '2', '3', '4', '5', '6'], excludeStartCodes: ['0'], excludeEitherCodes: [], metricField: 'bathing_improved' },
+  { key: 'dyspnea', item: 'm1400', label: 'Improvement in Dyspnea', definitionId: 'm1400_cms_e2', ordinalCodes: ['0', '1', '2', '3', '4'], excludeStartCodes: ['0'], excludeEitherCodes: [], metricField: 'dyspnea_improved' },
+  // "NA" is deliberately absent from the ordinal list: it is not a point on the
+  // ability scale, so an episode carrying it is excluded rather than ranked.
+  { key: 'oral_meds', item: 'm2020', label: 'Improvement in Management of Oral Medications', definitionId: 'm2020_cms_e2', ordinalCodes: ['0', '1', '2', '3'], excludeStartCodes: ['0'], excludeEitherCodes: [], metricField: 'medication_management_improved' },
 ];
 const STAR_MIN_EPISODES = 20;
 const STAR_MIN_MEASURES = 5;
@@ -89,33 +101,60 @@ function toNum(v) {
   const n = typeof v === 'number' ? v : parseInt(String(v).trim(), 10);
   return Number.isNaN(n) ? null : n;
 }
-function answersFromOasisItems(items) {
-  if (!items) return {};
-  if (!Array.isArray(items)) {
-    const out = {};
-    for (const [k, v] of Object.entries(items)) {
-      const n = toNum(v);
-      if (n !== null) out[String(k).toLowerCase()] = n;
-    }
-    return out;
-  }
+// Only a v2, CMS-sourced, clinician-selected response is CMS-scorable. A row
+// that states no response schema, or the frozen legacy one, means whatever
+// PennSync's old option list meant and yields NOTHING — it is never coerced to
+// zero or to a low functional level.
+function scorableCodesFromAssessment(assessment) {
   const out = {};
+  const excluded = [];
+  const items = Array.isArray(assessment?.oasis_items) ? assessment.oasis_items : [];
+  for (const it of items) {
+    if (!it || it.item_number == null) { excluded.push({ item: 'unknown', reason: 'missing_item_number' }); continue; }
+    const key = String(it.item_number).toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (it.response_schema_id !== OASIS_RESPONSE_SCHEMA_V2_CMS_E2) {
+      excluded.push({ item: it.item_number, reason: it.response_schema_id ? 'legacy_response_schema' : 'missing_response_schema' });
+      continue;
+    }
+    if (it.item_source !== 'cms_item') { excluded.push({ item: it.item_number, reason: 'not_cms_item' }); continue; }
+    if (it.response_origin !== 'clinician_selected') { excluded.push({ item: it.item_number, reason: 'not_clinician_selected' }); continue; }
+    if (it.ai_suggested === true) { excluded.push({ item: it.item_number, reason: 'ai_originated' }); continue; }
+    const code = it.response_value && typeof it.response_value === 'object' ? it.response_value.code : undefined;
+    if (typeof code !== 'string') { excluded.push({ item: it.item_number, reason: 'invalid_response_shape' }); continue; }
+    out[key] = code;
+  }
+  return { codes: out, excluded };
+}
+
+// GG0130/GG0170 are NOT among the 18 items whose response sets conflicted, so
+// they are outside this cutover and keep their existing extraction.
+function ggAnswersFrom(assessment) {
+  const out = {};
+  const items = Array.isArray(assessment?.oasis_items) ? assessment.oasis_items : [];
   for (const it of items) {
     if (!it || it.item_number == null) continue;
     const key = String(it.item_number).toLowerCase().replace(/[^a-z0-9]/g, '');
-    const n = toNum(it.response);
+    if (!GG_FUNCTION_ITEMS.includes(key)) continue;
+    const n = toNum(it.response_value?.code ?? it.response);
     if (n !== null) out[key] = n;
   }
   return out;
 }
 function evaluateMeasure(measure, startAns, dcAns) {
-  const s = toNum(startAns[measure.item]);
-  const d = toNum(dcAns[measure.item]);
-  const base = { key: measure.key, label: measure.label, item: measure.item, start_value: s, discharge_value: d };
-  if (s === null || d === null) return { ...base, status: 'excluded', reason: 'missing_data' };
-  if (s < 0 || s > measure.startMax || d < 0 || d > measure.startMax) return { ...base, status: 'excluded', reason: 'unratable_code' };
-  if (measure.excludeEither.includes(s) || measure.excludeEither.includes(d)) return { ...base, status: 'excluded', reason: 'unratable_code' };
-  if (measure.excludeStart.includes(s)) return { ...base, status: 'excluded', reason: 'no_room_to_improve' };
+  const sCode = startAns[measure.item];
+  const dCode = dcAns[measure.item];
+  const base = { key: measure.key, label: measure.label, item: measure.item, start_value: sCode ?? null, discharge_value: dCode ?? null };
+  if (!measure.definitionId || measure.ordinalCodes.length === 0) {
+    return { ...base, status: 'excluded', reason: 'no_verified_response_set' };
+  }
+  if (sCode === undefined || dCode === undefined) return { ...base, status: 'excluded', reason: 'missing_data' };
+  const s = measure.ordinalCodes.indexOf(sCode);
+  const d = measure.ordinalCodes.indexOf(dCode);
+  if (s === -1 || d === -1) return { ...base, status: 'excluded', reason: 'unratable_code' };
+  if (measure.excludeStartCodes.includes(sCode)) return { ...base, status: 'excluded', reason: 'already_independent_at_start' };
+  if (measure.excludeEitherCodes.includes(sCode) || measure.excludeEitherCodes.includes(dCode)) {
+    return { ...base, status: 'excluded', reason: 'unratable_code' };
+  }
   const improved = d < s;
   return { ...base, status: improved ? 'improved' : 'not_improved', reason: improved ? 'improved' : 'no_improvement' };
 }
@@ -131,13 +170,39 @@ function computeGGDischargeFunctionScore(dcAns) {
   const applicable = scored >= Math.ceil(GG_FUNCTION_ITEMS.length / 2);
   return { applicable, score: applicable ? score : null, items_scored: scored };
 }
+function oasisResolveInstrumentOk(assessment) {
+  const raw = assessment?.assessment_date;
+  if (raw === null || raw === undefined || String(raw).trim() === '') return false;
+  const t = Date.parse(String(raw));
+  return Number.isFinite(t) && t >= Date.parse('2026-04-01');
+}
+
 function computeEpisodeOutcome({ start, discharge, dischargeDisposition }) {
-  const startAns = answersFromOasisItems(start);
-  const dcAns = answersFromOasisItems(discharge);
+  const startX = scorableCodesFromAssessment(start);
+  const dcX = scorableCodesFromAssessment(discharge);
+  const startAns = startX.codes;
+  const dcAns = dcX.codes;
+
+  // Episode-level fail-closed gates. A CMS-labeled rate may only be computed
+  // when BOTH endpoints carry the v2 schema and a resolvable instrument. A
+  // legacy or mixed pair is excluded with a visible reason and contributes ZERO
+  // denominator — never "no improvement".
+  const episodeExclusions = [];
+  const startSchema = start?.response_schema_id ?? null;
+  const dcSchema = discharge?.response_schema_id ?? null;
+  if (!oasisResolveInstrumentOk(start)) episodeExclusions.push('start_instrument_unresolved');
+  if (!oasisResolveInstrumentOk(discharge)) episodeExclusions.push('discharge_instrument_unresolved');
+  if (startSchema !== OASIS_RESPONSE_SCHEMA_V2_CMS_E2) episodeExclusions.push('start_schema_not_v2');
+  if (dcSchema !== OASIS_RESPONSE_SCHEMA_V2_CMS_E2) episodeExclusions.push('discharge_schema_not_v2');
+  if (startSchema && dcSchema && startSchema !== dcSchema) episodeExclusions.push('mixed_schema_episode');
+
   const deceased = dischargeDisposition && DECEASED_DISPOSITIONS.has(String(dischargeDisposition).toLowerCase());
   const measures = IMPROVEMENT_MEASURES.map((m) => {
+    if (episodeExclusions.length) {
+      return { key: m.key, label: m.label, item: m.item, start_value: startAns[m.item] ?? null, discharge_value: dcAns[m.item] ?? null, status: 'excluded', reason: episodeExclusions[0] };
+    }
     if (deceased) {
-      return { key: m.key, label: m.label, item: m.item, start_value: toNum(startAns[m.item]), discharge_value: toNum(dcAns[m.item]), status: 'excluded', reason: 'episode_ended_in_death' };
+      return { key: m.key, label: m.label, item: m.item, start_value: startAns[m.item] ?? null, discharge_value: dcAns[m.item] ?? null, status: 'excluded', reason: 'episode_ended_in_death' };
     }
     return evaluateMeasure(m, startAns, dcAns);
   });
@@ -145,13 +210,22 @@ function computeEpisodeOutcome({ start, discharge, dischargeDisposition }) {
   const improved = eligibleMeasures.filter((r) => r.status === 'improved');
   const overall = eligibleMeasures.length ? Math.round((improved.length / eligibleMeasures.length) * 100) : null;
   return {
-    eligible: !deceased && eligibleMeasures.length > 0,
-    episode_excluded_reason: deceased ? 'episode_ended_in_death' : null,
+    eligible: !deceased && episodeExclusions.length === 0 && eligibleMeasures.length > 0,
+    episode_excluded_reason: episodeExclusions[0] || (deceased ? 'episode_ended_in_death' : null),
+    episode_excluded_reasons: episodeExclusions,
+    excluded_row_count: startX.excluded.length + dcX.excluded.length,
+    excluded_rows: [...startX.excluded, ...dcX.excluded],
     measures,
     improved_count: improved.length,
     eligible_measure_count: eligibleMeasures.length,
     overall_improvement_score: overall,
-    gg_discharge_function: computeGGDischargeFunctionScore(dcAns),
+    input_response_schema_ids: [startSchema, dcSchema],
+    source_assessment_ids: [start?.id ?? null, discharge?.id ?? null],
+    instrument_versions: [start?.instrument_version ?? null, discharge?.instrument_version ?? null],
+    calculation_version: OUTCOME_CALCULATION_VERSION,
+    gg_discharge_function: episodeExclusions.length
+      ? { applicable: false, score: null, items_scored: 0 }
+      : computeGGDischargeFunctionScore(ggAnswersFrom(discharge)),
   };
 }
 function toPatientOutcomeMetric(meta, outcome) {
@@ -178,6 +252,13 @@ function toPatientOutcomeMetric(meta, outcome) {
     ...(outcome.gg_discharge_function.score != null ? { gg_discharge_function_score: outcome.gg_discharge_function.score } : {}),
     measure_results: outcome.measures.map((m) => ({ measure: m.key, status: m.status, start_value: m.start_value, discharge_value: m.discharge_value, reason: m.reason })),
     outcome_measure_source: 'oasis_change_score',
+    // Provenance travels with the derived record so a reviewer can tell which
+    // response meanings produced it, and so records without verified v2 inputs
+    // can be retired from CMS-labeled views instead of silently re-read.
+    input_response_schema_ids: outcome.input_response_schema_ids.map((x) => x || 'unknown'),
+    source_assessment_ids: (outcome.source_assessment_ids || []).map((x) => x || 'unknown'),
+    instrument_versions: (outcome.instrument_versions || []).map((x) => x || 'unknown'),
+    calculation_version: outcome.calculation_version,
   };
 }
 function rollupMeasures(outcomes) {
@@ -200,7 +281,7 @@ function rollupMeasures(outcomes) {
   return { measures, total_episodes: outcomes.length, star_eligible_measure_count: starEligibleCount, star_eligible: starEligibleCount >= STAR_MIN_MEASURES };
 }
 function toAgencyKPIs(rollup, opts) {
-  const { periodStart, periodEnd, periodType = 'quarterly', agencyId, benchmark } = opts;
+  const { periodStart, periodEnd, periodType = 'quarterly', agencyId, benchmark, excludedEpisodeCount = 0 } = opts;
   return (rollup?.measures || [])
     .filter((m) => m.rate !== null)
     .map((m) => {
@@ -220,8 +301,14 @@ function toAgencyKPIs(rollup, opts) {
         ...(benchmark != null ? { benchmark_value: benchmark } : {}),
         unit: '%',
         status,
+        input_response_schema_ids: [OASIS_RESPONSE_SCHEMA_V2_CMS_E2],
+        calculation_version: OUTCOME_CALCULATION_VERSION,
+        excluded_episode_count: excludedEpisodeCount,
         contributing_factors: [
           `${m.numerator} of ${m.denominator} eligible episodes improved`,
+          ...(excludedEpisodeCount
+            ? [`${excludedEpisodeCount} episode(s) excluded: response meanings could not be verified`]
+            : []),
           m.star_eligible
             ? `Meets the ${STAR_MIN_EPISODES}-episode star-rating threshold`
             : `Below the ${STAR_MIN_EPISODES}-episode star-rating threshold (${m.denominator})`,
@@ -234,11 +321,28 @@ function toAgencyKPIs(rollup, opts) {
 }
 
 // M2420 discharge-disposition code → PatientOutcomeMetric.discharge_disposition enum.
+/**
+ * Discharge disposition from M2420 — community and hospice only.
+ *
+ * This used to read `2 → hospital` and `3|4 → snf`, which is the PRE-OASIS-D
+ * response list. Under the instrument in effect, M2420 code 2 is "remained in
+ * the community (with skilled services from a Medicare Certified HHA)", 3 is
+ * "transferred to a non-institutional hospice" and 4 is "moved to a geographic
+ * location not served by this agency". M2420 NEVER represents an
+ * inpatient-facility transfer — that is M2410, which PennSync does not
+ * implement, so no facility disposition can be derived here at all.
+ *
+ * The code is compared as an opaque STRING; `toNum` would turn "UK" into null
+ * and could not distinguish a leading-zero code.
+ */
 function dispositionFromAnswers(dcAns, patient) {
-  const code = toNum(dcAns['m2420']);
-  if (code === 1) return 'remained_home';
-  if (code === 2) return 'hospital';
-  if (code === 3 || code === 4) return 'snf';
+  const code = dcAns['m2420'];
+  if (code === '1') return 'remained_home';
+  if (code === '2') return 'remained_community_with_hha';
+  if (code === '3') return 'non_institutional_hospice';
+  if (code === '4') return 'moved_out_of_service_area';
+  // 'UK' (other unknown) and an absent answer both leave the disposition
+  // unknown rather than inventing one.
   if (String(patient?.status || '').toLowerCase() === 'deceased') return 'deceased';
   return undefined;
 }
@@ -280,6 +384,9 @@ Deno.serve(async (req) => {
     const episodeEndDates = [];
     let metricsWritten = 0;
     let skippedNoDate = 0;
+    let skippedNotScorable = 0;
+    let metricsRetired = 0;
+    const skipReasons = [];
 
     for (const dc of discharges) {
       if (!inPeriod(dc.assessment_date)) continue;
@@ -299,17 +406,51 @@ Deno.serve(async (req) => {
       if (!start.assessment_date || !dc.assessment_date) { skippedNoDate += 1; continue; }
       episodeEndDates.push(dc.assessment_date);
 
-      const dcAns = answersFromOasisItems(dc.oasis_items);
+      const dcAns = scorableCodesFromAssessment(dc).codes;
       const patient = await base44.asServiceRole.entities.Patient.filter({ id: dc.patient_id }, '-created_date', 1)
         .then((rows) => rows[0]).catch(() => null);
       const dischargeDisposition = dispositionFromAnswers(dcAns, patient);
 
+      // WHOLE assessments, not bare item arrays: eligibility depends on the
+      // response schema, instrument and dates the array does not carry.
       const outcome = computeEpisodeOutcome({
-        start: start.oasis_items,
-        discharge: dc.oasis_items,
+        start,
+        discharge: dc,
         dischargeDisposition,
       });
       outcomes.push(outcome);
+
+      // A pair that is not CMS-scorable writes NO metric. Recording an excluded
+      // episode as a metric row is how a legacy pair became a quality number.
+      if (!outcome.eligible) {
+        skippedNotScorable += 1;
+        const reasons = outcome.episode_excluded_reasons.length
+          ? outcome.episode_excluded_reasons
+          : [outcome.episode_excluded_reason].filter(Boolean);
+        skipReasons.push({ patient_id: dc.patient_id, episode_end: dc.assessment_date, reasons });
+
+        // Skipping is not enough. An episode that was scored under the old
+        // rules already HAS a PatientOutcomeMetric, and consumers query all
+        // `oasis_change_score` rows without filtering on the new provenance
+        // fields — so a silent skip leaves the stale, unverified quality result
+        // visible and counted. Mark it retired instead, which keeps it
+        // auditable while taking it out of current CMS-labeled views.
+        const stale = await base44.asServiceRole.entities.PatientOutcomeMetric.filter({
+          patient_id: dc.patient_id,
+          episode_start: start.assessment_date,
+          episode_end: dc.assessment_date,
+        }, '-created_date', 1).catch(() => []);
+        if (stale && stale[0] && stale[0].outcome_measure_source !== 'retired_unverified_schema') {
+          await base44.asServiceRole.entities.PatientOutcomeMetric.update(stale[0].id, {
+            outcome_measure_source: 'retired_unverified_schema',
+            retired_reason: reasons.join(', ') || 'not_cms_scorable',
+            retired_at: new Date().toISOString(),
+            calculation_version: OUTCOME_CALCULATION_VERSION,
+          }).catch(() => {});
+          metricsRetired += 1;
+        }
+        continue;
+      }
 
       const payload = toPatientOutcomeMetric({
         patientId: dc.patient_id,
@@ -345,6 +486,7 @@ Deno.serve(async (req) => {
       periodStart: periodStart || defaultStart,
       periodEnd: periodEnd || defaultEnd,
       benchmark,
+      excludedEpisodeCount: skippedNotScorable,
     });
     let kpisWritten = 0;
     for (const kpi of kpis) {
@@ -371,6 +513,12 @@ Deno.serve(async (req) => {
       discharges_evaluated: outcomes.length,
       patient_outcome_metrics_written: metricsWritten,
       skipped_missing_episode_date: skippedNoDate,
+      // Excluded episodes are REPORTED, never silently dropped: a rate that
+      // covers fewer episodes than the reader assumes is a false quality claim.
+      skipped_not_cms_scorable: skippedNotScorable,
+      metrics_retired_unverified: metricsRetired,
+      skip_reasons: skipReasons,
+      calculation_version: OUTCOME_CALCULATION_VERSION,
       agency_kpis_written: kpisWritten,
       star_eligible_measure_count: rollup.star_eligible_measure_count,
       star_eligible: rollup.star_eligible,

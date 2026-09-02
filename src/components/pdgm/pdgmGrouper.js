@@ -176,7 +176,9 @@ export function lookupCaseMix(variables, caseMixTable) {
  * a `missing` list. Never fabricates a group, level, HIPPS, or weight.
  *
  * @param {Record<string, any>} [input] { periodNumber, hadInstitutionalStay, principalDiagnosis,
- *                         secondaryDiagnoses, answers }
+ *                         secondaryDiagnoses, answers, responseSchemaId }
+ *                 `responseSchemaId` must be "pennsync-oasis-response-v2-cms-e2";
+ *                 anything else (including absent) is reported in `missing`.
  * @param {Record<string, any>} [cmsTables] { itemPoints, functionalThresholds, dxToGroup,
  *                             comorbidity, caseMixTable } (from official CMS files).
  *                 `functionalThresholds` may be flat ({ low, medium }) or keyed
@@ -195,6 +197,18 @@ export function groupPeriod(input = {}, cmsTables = {}) {
   const comorbidityLevel = assignComorbidityAdjustment(secondaryDiagnoses, comorbidity);
 
   const missing = [];
+  // Provenance gate. The functional points below are computed from response
+  // CODES, and a code only means something once you know which response set it
+  // came from. Without `responseSchemaId` the answers are legacy or unknown, so
+  // there is no CMS functional level to report — and a payment grouping built
+  // on one would be a number nobody can defend.
+  if (input.responseSchemaId !== "pennsync-oasis-response-v2-cms-e2") {
+    missing.push(
+      input.responseSchemaId
+        ? `functional answers use response schema "${input.responseSchemaId}", not the CMS-aligned v2 set`
+        : "response schema for the functional answers (legacy or unversioned input)",
+    );
+  }
   if (!timing) missing.push("timing (valid periodNumber)");
   if (!dxToGroup) missing.push("CMS diagnosis→clinical-group table");
   else if (!clinicalGroup) missing.push(`clinical group for principal Dx "${principalDiagnosis || ""}"`);

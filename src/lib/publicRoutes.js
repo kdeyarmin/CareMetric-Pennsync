@@ -11,7 +11,7 @@
  * which sends those URLs into the public branch where no route matches — the
  * user gets a blank white screen instead of the normal not-found page.
  */
-export const PUBLIC_TOKEN_SEGMENTS = Object.freeze(['join', 'signer', 'followup', 'privacy']);
+export const PUBLIC_TOKEN_SEGMENTS = Object.freeze(['join', 'signer', 'followup', 'privacy', 'consent']);
 
 const SEGMENTS = new Set(PUBLIC_TOKEN_SEGMENTS);
 

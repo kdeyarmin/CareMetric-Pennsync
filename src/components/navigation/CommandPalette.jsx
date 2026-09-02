@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/command";
 import { Brain, Send, CalendarDays, Mail, FileText, User } from "lucide-react";
 import { buildPaletteEntries, paletteGroupFor, NAV_MANIFEST } from "@/lib/nav.manifest";
+import { ACCESS, canAccessLevel, canViewPatients } from "@/lib/roles";
 
 const RECENTS_KEY = "caremetric_recent_pages";
 const MAX_RECENTS = 5;
@@ -24,7 +25,7 @@ const MAX_RECENTS = 5;
 // nurses (mirrors the route guard). `to` is a real route path so selecting an
 // action can never dead-end.
 const QUICK_ACTIONS = [
-  { id: "start-smart-note", label: "Start a Smart Note", icon: Brain, to: "/SmartNoteAssistant", keywords: "new note chart document visit dictation scribe ai" },
+  { id: "start-smart-note", label: "Start a Smart Note", icon: Brain, to: "/SmartNoteAssistant", keywords: "new note chart document visit dictation scribe ai", access: ACCESS.NURSING },
   { id: "send-fax", label: "Send a fax", icon: Send, to: "/SendFax", keywords: "new outbound physician" },
   { id: "new-message", label: "New message", icon: Mail, to: "/Messages", keywords: "send inbox chat compose" },
   { id: "request-time-off", label: "Request time off", icon: CalendarDays, to: "/TimeOff", keywords: "pto leave vacation new request" },
@@ -52,7 +53,7 @@ function pushRecent(pageName) {
 
 const getCategory = (page) => page.category || paletteGroupFor(page.page);
 
-export default function CommandPalette({ isAdmin, isSuperAdmin = false }) {
+export default function CommandPalette({ isAdmin, isSuperAdmin = false, user = null }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [recents, setRecents] = useState([]);
@@ -62,7 +63,7 @@ export default function CommandPalette({ isAdmin, isSuperAdmin = false }) {
   // "jump to chart" bar. Fetch the roster only while the palette is open (not on
   // every page load) and surface name/MRN matches once the user has typed ≥2
   // chars — server RLS still scopes the list to the user's assigned patients.
-  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 2000, enabled: open, staleTime: 60000 });
+  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 2000, enabled: open && canViewPatients(user), staleTime: 60000 });
 
   const patientMatches = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -106,7 +107,7 @@ export default function CommandPalette({ isAdmin, isSuperAdmin = false }) {
     }
   }, [open]);
 
-  const pages = useMemo(() => buildPaletteEntries(NAV_MANIFEST, isAdmin, isSuperAdmin), [isAdmin, isSuperAdmin]);
+  const pages = useMemo(() => buildPaletteEntries(NAV_MANIFEST, isAdmin, isSuperAdmin, user), [isAdmin, isSuperAdmin, user]);
 
   const pageByName = useMemo(() => {
     const map = new Map();
@@ -128,8 +129,8 @@ export default function CommandPalette({ isAdmin, isSuperAdmin = false }) {
   }, [navigate]);
 
   const quickActions = useMemo(
-    () => QUICK_ACTIONS.filter((a) => (!a.adminOnly || isAdmin) && (!a.superAdminOnly || isSuperAdmin)),
-    [isAdmin, isSuperAdmin],
+    () => QUICK_ACTIONS.filter((a) => (!a.adminOnly || isAdmin) && (!a.superAdminOnly || isSuperAdmin) && (isAdmin || canAccessLevel(user, a.access))),
+    [isAdmin, isSuperAdmin, user],
   );
 
   const recentPages = recents.map((name) => pageByName.get(name)).filter(Boolean);

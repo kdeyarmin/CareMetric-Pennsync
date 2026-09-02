@@ -16,6 +16,20 @@ import { appParams } from '@/lib/app-params';
  * (the editor that legitimately embeds this app). VITE_VISUAL_EDIT_ORIGINS —
  * comma-separated — covers an editor hosted somewhere else.
  */
+// Trusted Base44 platform hosts that may embed the app for visual editing.
+// The API backend (appParams.serverUrl) is NOT the editor — the studio runs on
+// a different platform host — so we accept all trusted Base44 origins as
+// legitimate editor origins for the inbound gate.
+const TRUSTED_EDITOR_HOSTS = [
+	'base44.com',
+	'app.base44.com',
+	'login.base44.com',
+	'auth.base44.com',
+	'base44.app',
+	'base44.io',
+	'base44.dev',
+];
+
 function allowedEditorOrigins() {
 	const origins = new Set();
 	if (typeof window !== 'undefined' && window.location?.origin) {
@@ -30,6 +44,11 @@ function allowedEditorOrigins() {
 		}
 	};
 	addOrigin(appParams?.serverUrl);
+	// Accept messages from any trusted Base44 platform host (the studio/editor
+	// runs on one of these, not on the API backend origin).
+	for (const host of TRUSTED_EDITOR_HOSTS) {
+		origins.add(`https://${host}`);
+	}
 	String(import.meta.env.VITE_VISUAL_EDIT_ORIGINS || '')
 		.split(',')
 		.map((o) => o.trim())
@@ -46,19 +65,20 @@ function allowedEditorOrigins() {
  */
 function postToEditors(data) {
 	const payload = { ...data };
-	if (payload.isDynamicContent) {
+	// Never include DOM text: the redaction previously keyed off a manually
+	// supplied `data-dynamic-content` marker that production patient/chart
+	// components never set, so selecting an element could leak PHI (names,
+	// note text) to the parent editor origin. The editor identifies elements
+	// by source file/line metadata, which is already in the payload.
+	if ('content' in payload) {
 		payload.content = '';
-	} else if (typeof payload.content === 'string' && payload.content.length > 120) {
-		payload.content = `${payload.content.slice(0, 120)}…`;
 	}
-	const origins = [...allowedEditorOrigins()].filter((o) => o !== window.location.origin);
-	if (origins.length === 0) {
-		window.parent.postMessage(payload, '*');
-		return;
-	}
-	for (const origin of origins) {
-		window.parent.postMessage(payload, origin);
-	}
+	// Always send with '*' so the actual parent (the Base44 studio, whose origin
+	// is not known at build time) receives the message. This is safe because:
+	//   1. PHI content is redacted above.
+	//   2. The inbound gate (allowedEditorOrigins check in handleMessage) is the
+	//      real security boundary — a hostile framer cannot enable edit mode.
+	window.parent.postMessage(payload, '*');
 }
 
 export default function VisualEditAgent() {

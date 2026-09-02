@@ -26,11 +26,15 @@
       "type": "string",
       "enum": [
         "remained_home",
+        "remained_community_with_hha",
+        "non_institutional_hospice",
+        "moved_out_of_service_area",
         "hospital",
         "snf",
         "deceased",
         "other"
-      ]
+      ],
+      "description": "Discharge disposition. The community and hospice values come from OASIS-E2 M2420 codes 1-4. 'hospital' and 'snf' are NOT derivable from M2420 — under the current instrument its codes 2-4 name community and hospice destinations, not facilities — so they can only come from M2410 (Inpatient Facility), which PennSync does not implement. They remain in the enum because rows written before this correction carry them."
     },
     "length_of_service": {
       "type": "number",
@@ -92,9 +96,37 @@
         }
       }
     },
+    "input_response_schema_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The response schema id of each episode endpoint (SOC/ROC, Discharge). A record without both endpoints on 'pennsync-oasis-response-v2-cms-e2' was computed from response meanings PennSync cannot vouch for and must be excluded from current CMS-labeled aggregates."
+    },
+    "source_assessment_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The OASISAssessment ids this metric was computed from, so a reviewer can re-derive it."
+    },
+    "instrument_versions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "CMS instrument version at each endpoint."
+    },
+    "calculation_version": {
+      "type": "string",
+      "description": "Version of the deterministic outcome core that produced this record. Bumped when the rules change meaning, so stale records can be retired rather than silently re-read under new rules."
+    },
+    "retired_reason": {
+      "type": "string",
+      "description": "Why this metric was retired from current CMS-labeled views — the episode's exclusion reasons at the time it was retired. The row is KEPT so the history stays auditable; it is not deleted."
+    },
+    "retired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the metric was retired."
+    },
     "outcome_measure_source": {
       "type": "string",
-      "description": "Provenance of the outcome metric (e.g. oasis_change_score)"
+      "description": "Provenance of the outcome metric. 'oasis_change_score' is a live metric; 'retired_unverified_schema' means the episode it came from could not be verified under the CMS-aligned response schema, so the row must be excluded from current CMS-labeled aggregates while remaining auditable."
     },
     "pph_prevention": {
       "type": "object",

@@ -27,5 +27,15 @@ export const getRouterBasename = ({ pathname = window.location.pathname, baseUrl
     }
   }
 
+  // Nothing matched a known route: the whole path is a mount root opened
+  // without a trailing slash (e.g. `/apps/pennsync`). Without a basename the
+  // router would treat the full mount path as an app route and nothing would
+  // match, so infer the mount root from the path itself. Only do this when the
+  // caller supplied a route table — with no routes to rule out we have no
+  // signal, and callers like hostedAssetPath rely on `undefined` meaning root.
+  if (routeSuffixes.length > 0 && trimmedPathname !== '/') {
+    return normalizeBasePath(trimmedPathname);
+  }
+
   return undefined;
 };

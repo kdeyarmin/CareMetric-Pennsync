@@ -47,6 +47,9 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/workflow-quality.yml'
 
+permissions:
+  contents: read
+
 concurrency:
   group: workflow-quality-${{ github.ref }}
   cancel-in-progress: true
@@ -92,6 +95,9 @@ jobs:
 
       - name: Check Base44 functions transpile (syntax)
         run: pnpm run check:backend-transpile
+
+      - name: Check OASIS review worksheet is current
+        run: pnpm run check:oasis-worksheet
 
       - name: Check inlined shared helpers are in sync
         run: pnpm run check:shared-helpers

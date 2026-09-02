@@ -54,6 +54,7 @@ import CareScopeSelector from "../components/profile/CareScopeSelector";
 import CareScopeBadge from "../components/profile/CareScopeBadge";
 import DutyStatusCard from "../components/voice/DutyStatusCard";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { getStaffRole, staffRoleLabel } from "@/lib/roles";
 
 export default function UserSettings() {
   const queryClient = useQueryClient();
@@ -74,6 +75,7 @@ export default function UserSettings() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+  const isNurse = getStaffRole(currentUser) === "nurse";
 
   useEffect(() => {
     if (currentUser) {
@@ -292,6 +294,27 @@ export default function UserSettings() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-indigo-600" />
+                Your Role
+              </CardTitle>
+              <CardDescription>
+                Your role tailors your navigation and dashboard.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{staffRoleLabel(getStaffRole(currentUser))}</p>
+                  <p className="text-xs text-slate-500">Assigned by your administrator</p>
+                </div>
+                <Badge variant="outline" className="flex-shrink-0">Contact your administrator to change</Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-600" />
                 Profile Information
               </CardTitle>
               <CardDescription>
@@ -318,7 +341,9 @@ export default function UserSettings() {
                 />
               </div>
               <div>
-                <Label htmlFor="credential_type" className="text-sm font-medium">Credential Type *</Label>
+                <Label htmlFor="credential_type" className="text-sm font-medium">
+                  Credential Type{isNurse ? " *" : " (optional)"}
+                </Label>
                 <Select
                   value={profileData.credential_type}
                   onValueChange={(value) => setProfileData(prev => ({ ...prev, credential_type: value }))}
@@ -353,6 +378,8 @@ export default function UserSettings() {
             </CardContent>
           </Card>
 
+          {isNurse && (
+          <>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -425,6 +452,8 @@ export default function UserSettings() {
               )}
             </CardContent>
           </Card>
+          </>
+          )}
         </TabsContent>
 
         {/* Credentials Tab */}

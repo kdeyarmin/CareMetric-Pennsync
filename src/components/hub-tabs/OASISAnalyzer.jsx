@@ -70,7 +70,6 @@ import AIDocumentationGenerator from "@/components/oasis/AIDocumentationGenerato
 import OASISValidationPanel from "@/components/oasis/OASISValidationPanel";
 import ClinicalPathwayTrigger from "@/components/oasis/ClinicalPathwayTrigger";
 import PDGMPredictiveForecaster from "@/components/oasis/PDGMPredictiveForecaster";
-import PDGMImpactAnalyzer from "@/components/oasis/PDGMImpactAnalyzer";
 const EnhancedPDGMCaseMixAnalyzer = lazy(() => import("@/components/oasis/EnhancedPDGMCaseMixAnalyzer"));
 import PatientMatchSelector from "@/components/oasis/PatientMatchSelector";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
@@ -99,21 +98,9 @@ import OASISPDFComparison from "@/components/oasis/OASISPDFComparison";
 import { toast } from 'sonner';
 
 /** Map OASIS M-item codes (UI / AI output) onto pdgmData.functional_scores keys. */
-const FUNCTIONAL_M_ITEM_FIELDS = {
-  M1800: 'm1800_grooming', m1800: 'm1800_grooming', m1800_grooming: 'm1800_grooming',
-  M1810: 'm1810_dress_upper', m1810: 'm1810_dress_upper', m1810_dress_upper: 'm1810_dress_upper',
-  M1820: 'm1820_dress_lower', m1820: 'm1820_dress_lower', m1820_dress_lower: 'm1820_dress_lower',
-  M1830: 'm1830_bathing', m1830: 'm1830_bathing', m1830_bathing: 'm1830_bathing',
-  M1840: 'm1840_toilet_transfer', m1840: 'm1840_toilet_transfer', m1840_toilet_transfer: 'm1840_toilet_transfer',
-  M1850: 'm1850_transferring', m1850: 'm1850_transferring', m1850_transferring: 'm1850_transferring',
-  M1860: 'm1860_ambulation', m1860: 'm1860_ambulation', m1860_ambulation: 'm1860_ambulation',
-};
-
-function functionalFieldForMItem(code) {
-  if (!code) return null;
-  const raw = String(code).trim();
-  return FUNCTIONAL_M_ITEM_FIELDS[raw] || FUNCTIONAL_M_ITEM_FIELDS[raw.toUpperCase()] || FUNCTIONAL_M_ITEM_FIELDS[raw.toLowerCase()] || null;
-}
+// `FUNCTIONAL_M_ITEM_FIELDS` / `functionalFieldForMItem` are removed with the
+// AI→PDGM wiring they existed for: they translated a model-chosen M-item score
+// into a `pdgmData.functional_scores` key so it could move a payment estimate.
 
 export default function OASISAnalyzer() {
   const [activeTab, setActiveTab] = useState("single");
@@ -1203,31 +1190,41 @@ Return JSON:
         analysisResult = await Promise.race([
           invokeLLM({
             model: "automatic",
-            prompt: `Analyze OASIS document. Extract: diagnosis, functional scores, compliance issues, revenue opportunities.
+            prompt: `Review this OASIS document for DOCUMENTATION quality. Extract: diagnosis, compliance issues, and documentation gaps.
+
+HARD RULES — these override anything else in this prompt:
+- NEVER state, suggest, recommend or imply an OASIS response, score or code, and
+  never propose "rescoring" an item. The clinician selects every official
+  response themselves from the wording in their EMR.
+- NEVER reason about payment, reimbursement, revenue, PDGM or case-mix impact
+  when discussing a clinical item.
 
 DATA:
 Primary Dx: ${structuredPdgmData.primary_diagnosis_code} ${structuredPdgmData.primary_diagnosis_description}
 Comorbidities: ${structuredPdgmData.comorbidities?.slice(0, 5).join(', ') || 'None'}
 Functional: Bathing=${structuredPdgmData.functional_scores?.m1830_bathing}, Transfer=${structuredPdgmData.functional_scores?.m1850_transferring}, Ambulation=${structuredPdgmData.functional_scores?.m1860_ambulation}
 
-Return scores (0-100) and top 3-5 issues in each category.`,
+Return quality scores (0-100) and the top 3-5 documentation issues in each category.`,
             response_json_schema: {
               type: "object",
               properties: {
                 overall_score: { type: "number" },
                 accuracy_score: { type: "number" },
                 compliance_score: { type: "number" },
-                revenue_optimization_score: { type: "number" },
+
                 summary: { type: "string" },
                 pdgm_data: { type: "object" },
                 extracted_items: { type: "object" },
                 accuracy_issues: { type: "array", items: { type: "object" } },
                 compliance_concerns: { type: "array", items: { type: "object" } },
-                revenue_tips: { type: "array", items: { type: "object" } },
+
                 documentation_improvements: { type: "array", items: { type: "object" } },
                 audit_risk_areas: { type: "array", items: { type: "object" } },
-                specific_rescore_opportunities: { type: "array", items: { type: "object" } },
-                missing_high_value_documentation: { type: "array", items: { type: "object" } },
+                // `specific_rescore_opportunities` is REMOVED: it asked the
+                // model which OASIS items to re-score higher, and those scores
+                // were fed into the PDGM impact analyzer.
+                documentation_gaps: { type: "array", items: { type: "object" } },
+                missing_documentation: { type: "array", items: { type: "object" } },
                 strengths: { type: "array", items: { type: "string" } },
                 key_recommendations: { type: "array", items: { type: "string" } },
                 quick_wins: { type: "array", items: { type: "object" } },
@@ -1710,7 +1707,12 @@ Return scores (0-100) and top 3-5 issues in each category.`,
         />
       )}
 
-      {/* AI Data Validation Engine - Proactive OASIS Corrections */}
+      {/* AI documentation review — findings and questions only.
+          This used to accept an `onCorrection` callback that wrote the model's
+          `suggested_value` / `recommended_score` straight into
+          `pdgmData.functional_scores`, so a model-chosen OASIS code fed the
+          payment calculation. The callback is gone, and the panel no longer
+          produces a value to write. */}
       {analysisResults && pdgmData && (
         <AIDataValidationEngine
           oasisData={{ extracted_data: pdgmData, pdgm_data: pdgmData }}
@@ -1718,27 +1720,6 @@ Return scores (0-100) and top 3-5 issues in each category.`,
           clinicalNotes={analysisResults?.summary}
           patientHistory={patientHistoricalData}
           autoValidate={true}
-          onCorrection={(correction) => {
-            const field = functionalFieldForMItem(correction.m_item_code || correction.m_item);
-            const value = correction.suggested_value ?? correction.recommended_score ?? correction.suggested_score;
-            setPdgmData((prev) => {
-              if (!prev) return prev;
-              if (field) {
-                return {
-                  ...prev,
-                  functional_scores: {
-                    ...prev.functional_scores,
-                    [field]: value,
-                  },
-                };
-              }
-              // Non-functional corrections (e.g. timing/source) land at top level.
-              if (correction.m_item_code) {
-                return { ...prev, [correction.m_item_code]: value };
-              }
-              return prev;
-            });
-          }}
         />
       )}
 
@@ -2311,30 +2292,13 @@ Return scores (0-100) and top 3-5 issues in each category.`,
             />
           )}
 
-          {/* PDGM Impact Analyzer */}
-          {analysisResults?.specific_rescore_opportunities?.length > 0 && (
-            <PDGMImpactAnalyzer
-              currentPdgmData={pdgmData}
-              suggestedChanges={{
-                functional_improvements: analysisResults.specific_rescore_opportunities
-                  ?.filter(opp => opp.category === 'functional')
-                  ?.reduce((acc, opp) => {
-                    const score = opp.recommended_score ?? opp.suggested_score;
-                    const field = functionalFieldForMItem(opp.m_item);
-                    if (field && score !== undefined && score !== null) {
-                      acc[field] = score;
-                    }
-                    return acc;
-                  }, {}),
-                comorbidity_additions: analysisResults.specific_rescore_opportunities
-                  ?.filter(opp => opp.category === 'comorbidity')
-                  ?.map(opp => opp.comorbidity),
-                clinical_items: {}
-              }}
-              onAnalysisComplete={() => {
-              }}
-            />
-          )}
+          {/* The PDGM Impact Analyzer is removed from this surface. It was fed
+              `specific_rescore_opportunities` — model-chosen functional OASIS
+              scores mapped onto PDGM fields — so an AI suggestion moved a
+              payment estimate. There is no version of that wiring that is safe:
+              the only functional scores PDGM may see are the ones a clinician
+              actually recorded, which the protected calculation path reads
+              directly. */}
 
           {/* PDGM Revenue Analysis */}
           <PDGMRevenueComparison 
@@ -2698,56 +2662,8 @@ Return scores (0-100) and top 3-5 issues in each category.`,
             )}
 
             {/* Specific Rescore Opportunities */}
-            {analysisResults.specific_rescore_opportunities?.length > 0 && (
-              <AccordionItem value="rescore" className="border rounded-lg border-green-300">
-                <AccordionTrigger className="px-4 hover:no-underline bg-green-50 rounded-t-lg">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                    <span className="text-green-800">Rescore Opportunities ({analysisResults.specific_rescore_opportunities.length})</span>
-                    <FinancialGate><Badge className="bg-emerald-600 text-white ml-2"><DollarSign className="w-3 h-3 mr-1" />Revenue Impact</Badge></FinancialGate>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-3">
-                    {analysisResults.specific_rescore_opportunities.map((opp, idx) => (
-                     <div key={idx} className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-300">
-                       <div className="flex items-center justify-between mb-2">
-                         <Badge className="bg-green-700 text-white font-mono">{opp.m_item}</Badge>
-                         <FinancialGate>
-                         {opp.revenue_impact && (
-                           <Badge className="bg-emerald-600 text-white">{opp.revenue_impact}</Badge>
-                         )}
-                         </FinancialGate>
-                       </div>
-                       <div className="grid grid-cols-2 gap-2 mb-2">
-                         <div className="bg-red-100 p-2 rounded text-center">
-                           <p className="text-xs text-red-600">Current Score</p>
-                           <p className="text-xl font-bold text-red-800">{opp.current_score}</p>
-                         </div>
-                         <div className="bg-green-100 p-2 rounded text-center">
-                           <p className="text-xs text-green-600">Recommended Score</p>
-                           <p className="text-xl font-bold text-green-800">{opp.recommended_score}</p>
-                         </div>
-                       </div>
-                       <div className="bg-white p-2 rounded border mb-2">
-                         <p className="text-xs text-slate-500 mb-1">Clinical Evidence:</p>
-                         <p className="text-sm text-slate-800">{opp.clinical_evidence}</p>
-                       </div>
-                       <div className="bg-blue-50 p-2 rounded border border-blue-200">
-                         <p className="text-xs text-blue-600 mb-1 font-medium flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> Action Required:</p>
-                         <p className="text-sm text-blue-900">{opp.action_required}</p>
-                       </div>
-                       <InlineDocumentationAssistant 
-                         issue={opp} 
-                         issueType="rescore"
-                         pdgmData={pdgmData}
-                       />
-                     </div>
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
+            {/* "Rescore Opportunities" removed — it showed current → recommended
+                OASIS scores with a revenue badge. */}
 
             {/* Missing High-Value Documentation */}
             {analysisResults.missing_high_value_documentation?.length > 0 && (

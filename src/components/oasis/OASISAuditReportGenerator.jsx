@@ -195,10 +195,10 @@ ${data.key_issues?.map(issue => `
 - **Recommendation:** ${issue.recommendation}
 `).join('\n') || 'No issues identified.'}
 
-## Rescore Opportunities
-${data.rescore_opportunities?.map(opp => `
-- **${opp.m_item}:** ${opp.current_score} → ${opp.recommended_score} (${opp.revenue_impact})
-`).join('\n') || 'No rescore opportunities.'}
+## Documentation Gaps
+${data.documentation_gaps?.map(gap => `
+- **${gap.m_item}:** ${gap.gap_description || gap.question || ''}
+`).join('\n') || 'No documentation gaps identified.'}
 
 ## Auditor Findings
 ${data.auditor_findings || data.additional_findings || 'No additional findings.'}

@@ -2,7 +2,7 @@ import { useMemo, lazy, Suspense, useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { Clock, User, FileText, Mic, Send, Home, Heart, AlertTriangle, Calendar } from "lucide-react";
+import { Clock, User, FileText, Mic, Send, Mail, Home, Heart, AlertTriangle, Calendar, GraduationCap, BookOpen, Users as UsersIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/stat-card";
@@ -25,6 +25,7 @@ import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import { calculateNurseStats } from "@/components/utils/statsCalculator";
 import ProfileCompletenessAlert from "@/components/profile/ProfileCompletenessAlert";
+import { isClinicalUser, canViewPatients, getStaffRole, staffRoleLabel } from "@/lib/roles";
 
 // Non-critical below-the-fold — lazy loaded
 const HighRiskPatientsWidget    = lazy(() => import("@/components/dashboard/HighRiskPatientsWidget"));
@@ -176,6 +177,9 @@ export default function Dashboard() {
     : careScope === "both"
     ? "Home Health & Hospice"
     : "Home Health";
+  const clinical = isClinicalUser(currentUser);
+  const patientAccess = canViewPatients(currentUser);
+  const eyebrow = clinical ? careScopeLabel : staffRoleLabel(getStaffRole(currentUser));
 
   // Map app roles onto the pure work-queue summarizer vocabulary.
   const workQueueRole = useMemo(() => {
@@ -199,8 +203,8 @@ export default function Dashboard() {
     return <DashboardSkeleton />;
   }
 
-  // If user hasn't set their care scope yet, prompt them
-  if (currentUser && !careScope) {
+  // Care scope only applies to nurses/admins; non-nurse staff skip this prompt.
+  if (currentUser && clinical && !careScope) {
     return (
       <div className="max-w-lg mx-auto pt-8 px-4">
         <div className="text-center mb-6">
@@ -247,29 +251,31 @@ export default function Dashboard() {
       {/* Welcome header — personalized, but rendered through the standard PageHeader */}
       <PageHeader
         icon={careScope === "hospice" ? Heart : Home}
-        eyebrow={careScopeLabel}
+        eyebrow={eyebrow}
         title={`${greeting}, ${firstName}!`}
         description={formatEastern(new Date(), 'EEEE, MMMM d, yyyy') || new Date().toLocaleDateString()}
         favoritePage="Dashboard"
       />
 
-      <TodayPriorities
-        currentUser={currentUser}
-        visits={visits}
-        patients={patients}
-        incidents={incidents}
-        noteConversions={noteConversions}
-        messages={messages}
-        dashboardError={dashboardError}
-      />
+      {clinical && (
+        <>
+          <TodayPriorities
+            currentUser={currentUser}
+            visits={visits}
+            patients={patients}
+            incidents={incidents}
+            noteConversions={noteConversions}
+            messages={messages}
+            dashboardError={dashboardError}
+          />
 
-      {/* Role-aware work queues (pure helper). Referrals/credentials/tasks stay empty
-          until a scoped multi-entity feed is available; incidents + notes still surface. */}
-      <CoreWorkQueuesStrip
-        role={workQueueRole}
-        incidents={incidents}
-        notes={notesForQueues}
-      />
+          <CoreWorkQueuesStrip
+            role={workQueueRole}
+            incidents={incidents}
+            notes={notesForQueues}
+          />
+        </>
+      )}
 
       {/* Quick Navigation Hint */}
       <div className="flex items-center justify-center">
@@ -284,6 +290,36 @@ export default function Dashboard() {
       {/* Admin Announcements */}
       <AnnouncementsWidget />
 
+      {!clinical && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+          {[
+            ...(patientAccess ? [{ page: "Patients", label: "Patients", Icon: UsersIcon }] : []),
+            { page: "LearningCenter", label: "Learning Center", Icon: GraduationCap },
+            { page: "TimeOff", label: "Time Off", Icon: Calendar },
+            { page: "Messages", label: "Messages", Icon: Mail },
+            { page: "SendFax", label: "Send Fax", Icon: Send },
+            { page: "ResourceLibrary", label: "Library", Icon: BookOpen },
+            { page: "Incidents", label: "Incidents", Icon: AlertTriangle },
+          ].map((item) => {
+            const ItemIcon = item.Icon;
+            return (
+              <Link key={item.page} to={`/${item.page}`} className="group">
+                <Card className="h-full transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:border-navy-200 bg-white/50 hover:bg-white">
+                  <CardContent className="p-4 sm:p-6 flex flex-col items-center justify-center text-center gap-3 min-h-[110px]">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-50 text-slate-500 ring-1 ring-inset ring-slate-200 transition-all group-hover:bg-navy-50 group-hover:text-navy-700 group-hover:ring-navy-200 shadow-sm">
+                      <ItemIcon className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-sm font-semibold leading-tight text-slate-600 transition-colors group-hover:text-navy-900">{item.label}</h3>
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {clinical && (
+      <>
       {/* Scheduled Telehealth reminders */}
       <UpcomingTelehealthWidget />
 
@@ -397,6 +433,8 @@ export default function Dashboard() {
         {/* Top Clinical Templates */}
         <TopTemplatesWidget />
         </Suspense>
+      </>
+      )}
 
     </div>
     </PullToRefresh>

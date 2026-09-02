@@ -34,17 +34,68 @@
           "item_number": {
             "type": "string"
           },
+          "item_source": {
+            "type": "string",
+            "enum": [
+              "cms_item",
+              "pennsync_screening",
+              "retired_cms_item",
+              "unknown"
+            ],
+            "description": "Whether item_number is a CMS item number in the instrument currently in effect, a PennSync-internal screening question, or a retired CMS item. PennSync writes its own form ids into item_number, so without this a screening answer is indistinguishable from a CMS response downstream. Absent on rows written before this field existed — treat those as 'unknown', NOT as CMS items."
+          },
+          "item_spec_version": {
+            "type": "string",
+            "description": "The OASIS spec version item_source was classified against (e.g. 'oasis-e2'), so a later reclassification does not silently re-interpret an older row."
+          },
           "item_name": {
             "type": "string"
           },
           "response": {
-            "type": "string"
+            "type": "string",
+            "description": "LEGACY scalar response. Ambiguous by construction: it records a value without recording which response set the value was picked from, so the same '6' can mean two different clinical facts. Kept byte-for-byte for historical reads. v2 responses are NOT dual-written here — a v2 row stores its value in response_value and leaves this field alone."
+          },
+          "definition_id": {
+            "type": "string",
+            "description": "Stable id of the response definition this answer was picked from (e.g. 'm1830_cms_e2', 'ps_hospitalization_risk_tier'). The definition, not the item number, is what fixes the meaning of the stored code."
+          },
+          "response_schema_id": {
+            "type": "string",
+            "enum": [
+              "pennsync-oasis-response-v1-legacy",
+              "pennsync-oasis-response-v2-cms-e2"
+            ],
+            "description": "Which PennSync RESPONSE schema the answer was chosen under. Distinct from item_spec_version, which names the CMS instrument and says nothing about what PennSync's own answer choices meant. Absent on pre-cutover rows: treat those as legacy, never as v2."
+          },
+          "response_shape": {
+            "type": "string",
+            "enum": ["single", "multi_select", "matrix_choice", "grid"],
+            "description": "The shape the item declares. Validated on write; a mismatch is rejected."
+          },
+          "response_value": {
+            "type": "object",
+            "description": "Structured response. Exactly one of: { code } for single/matrix_choice, { codes: [...] } for multi_select, { rows: [{ row_id, code }] } for grid. CMS codes are OPAQUE STRINGS — leading zeros ('01'-'15') and non-numeric codes ('NA', 'UK') and M2001's '9' must survive exactly. Never parseInt/Number a code."
+          },
+          "response_origin": {
+            "type": "string",
+            "enum": ["clinician_selected"],
+            "description": "Only value permitted for an official response. AI may identify evidence and questions; it may never originate an official OASIS response."
+          },
+          "selected_by": {
+            "type": "string",
+            "description": "Email of the clinician who explicitly selected this response."
+          },
+          "selected_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the clinician selected this response."
           },
           "confidence_level": {
             "type": "string"
           },
           "ai_suggested": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Legacy marker. An official v2 response is never AI-suggested: the protected writer rejects a row with ai_suggested true, and readers exclude such a row from CMS-labeled output and calculation."
           },
           "manually_edited": {
             "type": "boolean"
@@ -86,6 +137,40 @@
       "type": "string",
       "format": "date-time",
       "description": "When assessment was completed"
+    },
+    "response_schema_id": {
+      "type": "string",
+      "enum": [
+        "pennsync-oasis-response-v1-legacy",
+        "pennsync-oasis-response-v2-cms-e2"
+      ],
+      "description": "Assessment-level response schema, queryable so legacy and v2 populations can be separated without scanning oasis_items. Absent on pre-cutover assessments: treat as legacy."
+    },
+    "instrument_version": {
+      "type": "string",
+      "description": "CMS instrument the assessment was completed under (e.g. 'oasis-e2'). Resolved from assessment_date; a missing or invalid date leaves this unset rather than defaulting to the active instrument."
+    },
+    "response_schema_source": {
+      "type": "string",
+      "description": "Provenance of the response sets used, e.g. 'final-oasis-e2-all-item-04-01-2026'. Records that a FINAL CMS artifact, not a draft, defined these response meanings."
+    },
+    "migration_status": {
+      "type": "string",
+      "enum": [
+        "native_v2",
+        "legacy_unconverted",
+        "legacy_provenance_annotated"
+      ],
+      "description": "How this row came to have its schema. 'legacy_unconverted' is the resting state for pre-cutover data: PennSync does not convert or recode existing responses. 'legacy_provenance_annotated' means only non-clinical provenance was added; no response bytes changed."
+    },
+    "last_written_by": {
+      "type": "string",
+      "description": "Email recorded by the protected write path."
+    },
+    "last_written_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the protected write path last wrote this row."
     }
   },
   "required": [
@@ -107,6 +192,26 @@
         { "user_condition": { "role": "admin" } }
       ]
     },
-    "write": {}
+    // Write-scoping. The previous `"write": {}` let ANY authenticated client PUT
+    // an assessment with whatever oasis_items[] it liked — a legacy code, an
+    // AI-chosen code, a screening answer wearing an M-number, an item at a time
+    // point CMS does not collect it at. UI-only enforcement cannot stop that,
+    // because the entity endpoint is reachable directly.
+    //
+    // Scoped to the owning user (+ admin), matching the read rule. The
+    // protected write path (base44/functions/saveOasisResponses) is the only
+    // sanctioned writer of response-bearing rows and re-validates every row
+    // server-side.
+    //
+    // NOTE — hosted validation is still OUTSTANDING. This file is the declared
+    // contract; whether the hosted Base44 app enforces it has not been proven
+    // in this environment. See docs/oasis/OASIS_RESPONSE_SCHEMA_MIGRATION.md
+    // ("Hosted schema / RLS status") — v2 entry stays disabled until it is.
+    "write": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
   }
 }

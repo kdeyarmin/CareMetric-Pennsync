@@ -59,21 +59,57 @@ test("aggregateTopDiagnoses counts, sorts, limits, and filters placeholders", ()
   assert.deepEqual(rows[0], { name: "CHF", count: 2 }); // most frequent first
 });
 
+const V2 = "pennsync-oasis-response-v2-cms-e2";
+/** An upload whose derived values state the CMS-aligned response set. */
+const v2Upload = (over = {}) => u({ response_schema_id: V2, ...over });
+
 test("aggregateFunctionalScores filters, orders oldest->newest, slices, maps fields", () => {
-  const rows = aggregateFunctionalScores(
+  const { points } = aggregateFunctionalScores(
     [
-      u({ assessment_date: "2026-03-01", patient_name: "Bob", pdgm_data: { functional_scores: { m1860_ambulation: 3 } } }),
-      u({ assessment_date: "2026-01-01", patient_name: "Amy", pdgm_data: { functional_scores: { m1850_transferring: 2 } } }),
-      u({ assessment_date: null, pdgm_data: { functional_scores: { m1830_bathing: 1 } } }), // filtered (no date)
-      u({ assessment_date: "2026-02-01", patient_name: "Cy" }), // filtered (no functional_scores)
+      v2Upload({ assessment_date: "2026-03-01", patient_name: "Bob", pdgm_data: { functional_scores: { m1860_ambulation: 3 } } }),
+      v2Upload({ assessment_date: "2026-01-01", patient_name: "Amy", pdgm_data: { functional_scores: { m1850_transferring: 2 } } }),
+      v2Upload({ assessment_date: null, pdgm_data: { functional_scores: { m1830_bathing: 1 } } }), // filtered (no date)
+      v2Upload({ assessment_date: "2026-02-01", patient_name: "Cy" }), // filtered (no functional_scores)
     ],
     20,
   );
-  assert.equal(rows.length, 2);
-  assert.equal(rows[0].patient, "Amy"); // oldest first
-  assert.equal(rows[0].transferring, 2);
-  assert.equal(rows[1].ambulation, 3);
-  assert.equal(rows[1].bathing, 0); // default
+  assert.equal(points.length, 2);
+  assert.equal(points[0].patient, "Amy"); // oldest first
+  assert.equal(points[0].transferring, 2);
+  assert.equal(points[1].ambulation, 3);
+  // A MISSING score is null, not 0. On every OASIS functional scale 0 means
+  // fully independent, so defaulting a gap to 0 plotted an incompletely
+  // extracted upload as an independent patient.
+  assert.equal(points[1].bathing, null);
+});
+
+test("aggregateFunctionalScores excludes uploads whose response set cannot be verified", () => {
+  const scores = { functional_scores: { m1860_ambulation: 3 } };
+  const res = aggregateFunctionalScores([
+    v2Upload({ assessment_date: "2026-01-01", patient_name: "Amy", pdgm_data: scores }),
+    u({ assessment_date: "2026-02-01", patient_name: "Bob", response_schema_id: "pennsync-oasis-response-v1-legacy", pdgm_data: scores }),
+    // ABSENT is unknown, not "fine". Legacy M1860 "2" is a one-handed device;
+    // CMS "2" is two-handed/supervision — they cannot share an axis.
+    u({ assessment_date: "2026-02-15", patient_name: "Cy", pdgm_data: scores }),
+    u({ assessment_date: "2026-02-20", patient_name: "Di", response_schema_id: "pennsync-oasis-response-v9", pdgm_data: scores }),
+  ]);
+  assert.equal(res.points.length, 1);
+  assert.equal(res.points[0].patient, "Amy");
+  assert.equal(res.excluded, 3, "legacy, absent and unknown schemas are all excluded");
+  assert.match(res.excluded_reason, /cannot verify/);
+});
+
+test("before cutover the series is EMPTY rather than mixing incompatible scales", () => {
+  // Every upload predates the response-schema stamp. An empty chart with a
+  // stated reason is the honest state; a populated one would be plotting
+  // legacy and CMS codes on the same axis.
+  const res = aggregateFunctionalScores([
+    u({ assessment_date: "2026-01-01", patient_name: "Amy", pdgm_data: { functional_scores: { m1860_ambulation: 3 } } }),
+    u({ assessment_date: "2026-02-01", patient_name: "Bob", pdgm_data: { functional_scores: { m1860_ambulation: 4 } } }),
+  ]);
+  assert.deepEqual(res.points, []);
+  assert.equal(res.excluded, 2);
+  assert.ok(res.excluded_reason.length > 0);
 });
 
 test("aggregatePaymentTrends keeps only rows with date + payment", () => {

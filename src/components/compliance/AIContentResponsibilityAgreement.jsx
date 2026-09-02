@@ -3,12 +3,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sparkles, ShieldCheck, LogOut, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { BRAND_LOGO_URL } from "@/lib/brand";
-import { logAudit } from "@/components/utils/auditLogger";
 import {
   AI_CONTENT_AGREEMENT_TITLE,
   AI_CONTENT_AGREEMENT_INTRO,
@@ -42,28 +40,36 @@ export default function AIContentResponsibilityAgreement() {
 
   const allChecked = useMemo(() => checked.every(Boolean), [checked]);
 
-  const toggle = (index) =>
-    setChecked((prev) => prev.map((v, i) => (i === index ? !v : v)));
+  const setAcknowledgment = (index, value) =>
+    setChecked((prev) => prev.map((current, i) => (i === index ? value === true : current)));
 
   const accept = async () => {
     if (!allChecked || saving) return;
     setSaving(true);
     try {
       const acceptedAt = new Date().toISOString();
-      await base44.auth.updateMe(buildAiContentAgreementAcceptance(acceptedAt));
 
-      // Durable, timestamped attestation record for compliance/audit.
-      await logAudit({
+      // Durable, timestamped attestation record for compliance/audit — written
+      // BEFORE the User flag. `logAudit` never throws, so if it were written
+      // after a successful updateMe a failed audit write would leave the gate
+      // permanently satisfied with no attestation on record. UserActivity
+      // creation throwing here aborts acceptance so the user can retry.
+      await base44.entities.UserActivity.create({
+        user_email: user?.email || "system",
+        user_name: user?.full_name || "System",
         action: "ai_content_agreement_accepted",
-        entityType: "User",
-        entityId: user?.id || null,
+        entity_type: "User",
+        entity_id: user?.id || null,
         details: {
           agreement_version: AI_CONTENT_AGREEMENT_VERSION,
           accepted_at: acceptedAt,
           acknowledgments: AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS,
+          severity: "info",
+          timestamp: acceptedAt,
         },
-        severity: "info",
       });
+
+      await base44.auth.updateMe(buildAiContentAgreementAcceptance(acceptedAt));
 
       // Other surfaces read the user via a ["currentUser"] query; keep them in
       // step, then refresh the auth context so App.jsx re-evaluates the gate.
@@ -122,11 +128,12 @@ export default function AIContentResponsibilityAgreement() {
                         htmlFor={id}
                         className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-navy-300"
                       >
-                        <Checkbox
+                        <input
                           id={id}
+                          type="checkbox"
                           checked={checked[index]}
-                          onCheckedChange={() => toggle(index)}
-                          className={`mt-0.5 ${checked[index] ? "border-navy-600 bg-navy-600 text-white" : ""}`}
+                          onChange={(event) => setAcknowledgment(index, event.target.checked)}
+                          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-navy-600"
                         />
                         <span className="text-sm leading-relaxed text-slate-700">{text}</span>
                       </label>

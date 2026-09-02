@@ -516,6 +516,28 @@ Deno.serve(async (req) => {
       saved = reusable
         ? await base44.asServiceRole.entities.Timesheet.update(reusable.id, { ...record, ...clearedReview })
         : await base44.asServiceRole.entities.Timesheet.create(record);
+      if (!reusable) {
+        // The empty-siblings check above is not atomic: two concurrent first
+        // submissions can both observe no siblings and both create a row, and
+        // the payroll export would then total BOTH once approved. Reconcile
+        // after the create — every racer deterministically keeps the same
+        // winner (earliest created, id as tiebreaker) and deletes its own
+        // loser row, so at most one sheet survives per period + service line.
+        const dupes = await siblingsForPeriod(saved.id);
+        if (dupes.length > 0) {
+          const winner = [saved, ...dupes].sort(
+            (a, b) =>
+              String(a.created_date || '').localeCompare(String(b.created_date || '')) ||
+              String(a.id).localeCompare(String(b.id))
+          )[0];
+          if (winner.id !== saved.id) {
+            await base44.asServiceRole.entities.Timesheet.delete(saved.id).catch(() => {});
+            saved = await base44.asServiceRole.entities.Timesheet
+              .update(winner.id, { ...record, ...clearedReview })
+              .catch(() => winner);
+          }
+        }
+      }
     }
 
     // Notify the approver(s) only when actually submitted (not for drafts).

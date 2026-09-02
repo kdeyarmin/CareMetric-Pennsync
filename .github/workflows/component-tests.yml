@@ -26,6 +26,9 @@ on:
       - 'vitest.config.js'
       - '.github/workflows/component-tests.yml'
 
+permissions:
+  contents: read
+
 concurrency:
   group: component-tests-${{ github.ref }}
   cancel-in-progress: true

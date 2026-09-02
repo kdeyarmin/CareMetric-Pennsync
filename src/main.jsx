@@ -9,6 +9,7 @@ import App from '@/App.jsx'
 import '@fontsource-variable/inter'
 import '@/index.css'
 import '@/styles/button-contrast.css'
+import '@/styles/ipad.css'
 import { installAlertToToastShim } from '@/lib/alert-shim'
 
 // Surface legacy window.alert() notifications as on-brand toasts.

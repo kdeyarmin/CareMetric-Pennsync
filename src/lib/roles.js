@@ -19,6 +19,10 @@
  * This builds on lib/superAdmin.js (which owns the owner-email + super_admin
  * detection) and centralizes the facility-admin vs nurse split so the sidebar,
  * command palette, routes, and route guards all agree.
+ *
+ * A second, orthogonal staff_role axis controls discipline-specific surfaces for
+ * non-admin users. Existing users default to nurse so adopting the field never
+ * removes access from legacy accounts.
  */
 
 import { isSuperAdmin, isSuperAdminEmail } from "@/lib/superAdmin";
@@ -46,6 +50,59 @@ export function isSuperAdminView(user) {
 export function isAdminView(user) {
   const view = getRoleView(user);
   return view === "super_admin" || view === "facility_admin";
+}
+
+export function isNurseView(user) {
+  return getRoleView(user) === "nurse";
+}
+
+export const STAFF_ROLES = ["nurse", "office_staff", "social_worker", "spiritual_care"];
+
+export const STAFF_ROLE_OPTIONS = [
+  { value: "nurse", label: "Nurse", description: "RN/LPN clinical staff — full patient care, OASIS, clinical notes, and care plans.", clinical: true, nursing: true },
+  { value: "office_staff", label: "Office Staff", description: "Back-office / administrative staff — learning, PTO, messaging, and resources.", clinical: false, nursing: false },
+  { value: "social_worker", label: "Social Worker", description: "Care-team member — can view patients and records; no nursing documentation tools.", clinical: true, nursing: false },
+  { value: "spiritual_care", label: "Spiritual Care", description: "Chaplain / spiritual care — can view patients and records; no nursing documentation tools.", clinical: true, nursing: false },
+];
+
+export function staffRoleLabel(value) {
+  return STAFF_ROLE_OPTIONS.find((option) => option.value === value)?.label || value || "Nurse";
+}
+
+export function getStaffRole(user) {
+  const role = user?.staff_role;
+  return STAFF_ROLES.includes(role) ? role : "nurse";
+}
+
+export function userRoleLabel(user) {
+  if (!user) return "User";
+  const view = getRoleView(user);
+  if (view === "super_admin") return "Super Admin";
+  if (view === "facility_admin") return "Admin";
+  if (user.role === "manager") return "Manager";
+  return staffRoleLabel(getStaffRole(user));
+}
+
+export function isClinicalUser(user) {
+  if (!user) return false;
+  return isAdminView(user) || getStaffRole(user) === "nurse";
+}
+
+export function canViewPatients(user) {
+  if (!user) return false;
+  if (isAdminView(user)) return true;
+  return getStaffRole(user) !== "office_staff";
+}
+
+export const ACCESS = { GENERAL: "general", PATIENT: "patient", NURSING: "nursing" };
+
+export function canAccessLevel(user, level) {
+  if (!level || level === ACCESS.GENERAL) return true;
+  if (!user) return false;
+  if (isAdminView(user)) return true;
+  if (level === ACCESS.NURSING) return getStaffRole(user) === "nurse";
+  if (level === ACCESS.PATIENT) return getStaffRole(user) !== "office_staff";
+  return false;
 }
 
 export { isSuperAdmin, isSuperAdminEmail };

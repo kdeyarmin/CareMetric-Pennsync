@@ -27,6 +27,17 @@
       ],
       "default": "home_health"
     },
+    "staff_role": {
+      "type": "string",
+      "enum": [
+        "nurse",
+        "office_staff",
+        "social_worker",
+        "spiritual_care"
+      ],
+      "default": "nurse",
+      "description": "Staff discipline assigned by the admin at invite; copied onto the User record on signup/approval. See User.staff_role."
+    },
     "phone": {
       "type": "string"
     },

@@ -114,6 +114,12 @@ are the largest body of outstanding work.
 | `User` | self | self + admin | admin / provision fn; **`personal_cell_e164` = service-role + admin only** |
 | `NotificationPreference` | `user_email` | owner(`user_email`) | owner(`user_email`) |
 
+> `User.staff_role` remains writable through the Base44 self-service `/entities/User/me`
+> path, so `UserInvitation.staff_role` is the authoritative admin-written copy. Register
+> the scheduled `enforceStaffRoleIntegrity` function in the Base44 dashboard (same
+> `x-internal-secret: <INTERNAL_FN_SECRET>` convention as `docs/LEARNING_CENTER_SCHEDULED_JOBS.md`)
+> to revert any non-admin self-write drift back to the invitation value.
+
 > `FaxLog`/`DocumentSignature` are flagged in the spec as **unsafe to owner-scope via a
 > bare `created_by` field rule** because of shared per-patient views and the external
 > signer portal. Author them in the dashboard with the relation/token exceptions, and

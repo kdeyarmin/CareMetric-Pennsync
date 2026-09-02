@@ -74,6 +74,7 @@ import { toast } from "sonner";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import UserActivityPanel from "@/components/admin/UserActivityPanel";
 import { buildOffboardInvokeArgs } from "@/components/admin/runUserOffboard";
+import { STAFF_ROLE_OPTIONS, getStaffRole, staffRoleLabel } from "@/lib/roles";
 
 export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,12 +87,12 @@ export default function UserManagement() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [resetPasswordResult, setResetPasswordResult] = useState(null);
   const [editedRole, setEditedRole] = useState("");
-  const [editForm, setEditForm] = useState({ full_name: '', phone: '', credential_type: '' });
+  const [editForm, setEditForm] = useState({ full_name: '', phone: '', credential_type: '', staff_role: 'nurse' });
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [showDeleteInvitationDialog, setShowDeleteInvitationDialog] = useState(false);
   const [selectedInvitation, setSelectedInvitation] = useState(null);
   const [showUserSetupDialog, setShowUserSetupDialog] = useState(false);
-  const [setupFormData, setSetupFormData] = useState({ email: '', full_name: '', role: 'user', staff_type: '' });
+  const [setupFormData, setSetupFormData] = useState({ email: '', full_name: '', role: 'user', staff_role: 'nurse' });
   const [expandedActivityUser, setExpandedActivityUser] = useState(null);
   const [userPage, setUserPage] = useState(1);
   const [userPageSize, setUserPageSize] = useState(25);
@@ -219,7 +220,7 @@ export default function UserManagement() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
       setShowUserSetupDialog(false);
-      setSetupFormData({ email: '', full_name: '', role: 'user', staff_type: '' });
+      setSetupFormData({ email: '', full_name: '', role: 'user', staff_role: 'nurse' });
       const manualLabel = variables?.role === 'admin' ? 'Facility Administrator Manual' : 'User Manual';
       toast.success(`Invitation sent${variables?.email ? ` to ${variables.email}` : ''}. They'll receive a branded welcome email with app-install steps and their ${manualLabel}.`);
     },
@@ -235,6 +236,7 @@ export default function UserManagement() {
       full_name: user.full_name || '',
       phone: user.phone || '',
       credential_type: user.credential_type || '',
+      staff_role: getStaffRole(user),
     });
     setShowEditDialog(true);
   };
@@ -250,6 +252,7 @@ export default function UserManagement() {
         phone: editForm.phone,
         credential_type: editForm.credential_type,
         role: editedRole,
+        staff_role: editedRole === 'user' ? editForm.staff_role : 'nurse',
       });
       logActivity(ActivityActions.USER_ROLE_CHANGED, {
         user_email: selectedUser.email,
@@ -357,10 +360,13 @@ export default function UserManagement() {
       invited_email: setupFormData.email,
       invited_name: setupFormData.full_name,
       role: setupFormData.role,
-      staff_type: setupFormData.staff_type,
+      staff_role: setupFormData.role === 'user' ? setupFormData.staff_role : 'nurse',
       entity_type: 'UserInvitation'
     });
-    createUserMutation.mutate(setupFormData);
+    createUserMutation.mutate({
+      ...setupFormData,
+      staff_role: setupFormData.role === 'user' ? setupFormData.staff_role : 'nurse',
+    });
   };
 
   const confirmDeleteUser = () => {
@@ -425,12 +431,13 @@ export default function UserManagement() {
   const stats = {
     total: allUsers.length,
     admins: allUsers.filter(u => u.role === 'admin').length,
-    nurses: allUsers.filter(u => u.role === 'user').length,
+    nurses: allUsers.filter(u => u.role === 'user' && getStaffRole(u) === 'nurse').length,
     active: allUsers.filter(u => u.is_active !== false).length,
     inactive: allUsers.filter(u => u.is_active === false).length,
   };
 
-  const getRoleBadge = (role) => {
+  const getRoleBadge = (user) => {
+    const role = user?.role;
     const colors = {
       admin: 'bg-slate-800 text-white border-slate-700 font-medium',
       user: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -438,12 +445,12 @@ export default function UserManagement() {
     };
     const labels = {
       admin: 'Admin',
-      user: 'Nurse',
+      user: 'Staff',
       manager: 'Manager'
     };
     return (
       <Badge className={colors[role] || 'bg-slate-100 text-slate-800'}>
-        {labels[role] || role}
+        {role === 'user' ? staffRoleLabel(getStaffRole(user)) : (labels[role] || role)}
       </Badge>
     );
   };
@@ -499,7 +506,7 @@ export default function UserManagement() {
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="user">Nurse</SelectItem>
+                  <SelectItem value="user">Staff</SelectItem>
                   <SelectItem value="manager">Manager</SelectItem>
                 </SelectContent>
               </Select>
@@ -562,7 +569,9 @@ export default function UserManagement() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium text-slate-900">{invitation.full_name}</p>
-                        <Badge className="text-xs">{invitation.role}</Badge>
+                        <Badge className="text-xs">
+                          {invitation.role === 'user' ? staffRoleLabel(getStaffRole(invitation)) : invitation.role}
+                        </Badge>
                         <Badge className="bg-blue-100 text-blue-800 text-xs">Pending</Badge>
                         {isExpiringSoon && (
                           <Badge className="bg-orange-100 text-orange-800 flex items-center gap-1 text-xs">
@@ -631,7 +640,9 @@ export default function UserManagement() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium text-slate-900">{invitation.full_name}</p>
-                        <Badge className="text-xs">{invitation.role}</Badge>
+                        <Badge className="text-xs">
+                          {invitation.role === 'user' ? staffRoleLabel(getStaffRole(invitation)) : invitation.role}
+                        </Badge>
                         <Badge className="bg-red-100 text-red-800 text-xs">Expired</Badge>
                       </div>
                       <p className="text-sm text-slate-600 mt-1">{invitation.email}</p>
@@ -728,7 +739,7 @@ export default function UserManagement() {
                             <span className="truncate">{user.email}</span>
                           </div>
                         </TableCell>
-                        <TableCell>{getRoleBadge(user.role)}</TableCell>
+                        <TableCell>{getRoleBadge(user)}</TableCell>
                         <TableCell>
                           <Badge className={`text-xs ${isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
                             {isActive ? 'Active' : 'Inactive'}
@@ -887,17 +898,35 @@ export default function UserManagement() {
                 </Select>
               </div>
               <div>
-                <Label>Role</Label>
+                <Label>Access Level</Label>
                 <Select value={editedRole} onValueChange={setEditedRole}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent style={{ zIndex: 9999 }}>
-                    <SelectItem value="user">Nurse</SelectItem>
+                    <SelectItem value="user">Staff Member</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              {editedRole === 'user' && (
+                <div>
+                  <Label htmlFor="edit_staff_role">Discipline / Role</Label>
+                  <Select
+                    value={editForm.staff_role}
+                    onValueChange={(staff_role) => setEditForm(prev => ({ ...prev, staff_role }))}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent style={{ zIndex: 9999 }}>
+                      {STAFF_ROLE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
@@ -1029,15 +1058,34 @@ export default function UserManagement() {
               <Input id="full_name" placeholder="John Doe" value={setupFormData.full_name} onChange={(e) => setSetupFormData({ ...setupFormData, full_name: e.target.value })} className="mt-1" />
             </div>
             <div>
-              <Label htmlFor="role">Role</Label>
+              <Label htmlFor="role">Access Level</Label>
               <Select value={setupFormData.role} onValueChange={(role) => setSetupFormData({ ...setupFormData, role })}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent style={{ zIndex: 9999 }}>
-                  <SelectItem value="user">Nurse</SelectItem>
+                  <SelectItem value="user">Staff Member</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {setupFormData.role === 'user' && (
+              <div>
+                <Label htmlFor="staff_role">Discipline / Role</Label>
+                <Select
+                  value={setupFormData.staff_role}
+                  onValueChange={(staff_role) => setSetupFormData({ ...setupFormData, staff_role })}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent style={{ zIndex: 9999 }}>
+                    {STAFF_ROLE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500 mt-1">
+                  {STAFF_ROLE_OPTIONS.find((opt) => opt.value === setupFormData.staff_role)?.description}
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowUserSetupDialog(false)}>Cancel</Button>

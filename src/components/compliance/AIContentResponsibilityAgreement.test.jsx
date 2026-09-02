@@ -8,19 +8,18 @@ import {
 
 // --- Mocks for the gate's collaborators ---------------------------------------
 const updateMe = vi.fn(() => Promise.resolve());
+const createUserActivity = vi.fn(() => Promise.resolve());
 vi.mock('@/api/base44Client', () => ({
-  base44: { auth: { updateMe: (...args) => updateMe(...args) } },
+  base44: {
+    auth: { updateMe: (...args) => updateMe(...args) },
+    entities: { UserActivity: { create: (...args) => createUserActivity(...args) } },
+  },
 }));
 
 const refreshUser = vi.fn(() => Promise.resolve());
 const logout = vi.fn();
 vi.mock('@/lib/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', email: 'nurse@example.com' }, refreshUser, logout }),
-}));
-
-const logAudit = vi.fn(() => Promise.resolve());
-vi.mock('@/components/utils/auditLogger', () => ({
-  logAudit: (...args) => logAudit(...args),
 }));
 
 const invalidateQueries = vi.fn();
@@ -33,9 +32,9 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 describe('AIContentResponsibilityAgreement', () => {
   beforeEach(() => {
     updateMe.mockClear();
+    createUserActivity.mockClear();
     refreshUser.mockClear();
     logout.mockClear();
-    logAudit.mockClear();
     invalidateQueries.mockClear();
   });
 
@@ -73,10 +72,26 @@ describe('AIContentResponsibilityAgreement', () => {
     expect(typeof patch.ai_content_agreement_accepted_at).toBe('string');
 
     await waitFor(() => expect(refreshUser).toHaveBeenCalledTimes(1));
-    expect(logAudit).toHaveBeenCalledWith(
+    expect(createUserActivity).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'ai_content_agreement_accepted' }),
     );
+    // The durable attestation must be written BEFORE the User flag: if the
+    // audit write fails, the gate must stay unsatisfied so the user retries.
+    expect(createUserActivity.mock.invocationCallOrder[0]).toBeLessThan(
+      updateMe.mock.invocationCallOrder[0],
+    );
     expect(invalidateQueries).toHaveBeenCalled();
+  });
+
+  it('does not set the acceptance flag when the attestation write fails', async () => {
+    createUserActivity.mockRejectedValueOnce(new Error('audit down'));
+    render(<AIContentResponsibilityAgreement />);
+    screen.getAllByRole('checkbox').forEach((b) => fireEvent.click(b));
+    fireEvent.click(screen.getByRole('button', { name: /i agree & continue/i }));
+
+    await waitFor(() => expect(createUserActivity).toHaveBeenCalledTimes(1));
+    expect(updateMe).not.toHaveBeenCalled();
+    expect(refreshUser).not.toHaveBeenCalled();
   });
 
   it('does not persist when the user chooses to sign out instead', () => {

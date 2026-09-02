@@ -244,28 +244,29 @@ For EACH OASIS item that can be determined from the clinical note:
    - Include surrounding context if needed for clarity
    - Identify the position in the note (beginning/middle/end section)
 
-2. **Determine Value**: Based on the evidence, suggest the most appropriate OASIS value
-   - Use clinical judgment and OASIS-E coding guidelines
-   - Consider all available documentation
-   - Match to the exact value codes provided
+2. **Do NOT determine a value**: You must NEVER state, suggest, recommend or
+   imply an OASIS response, score or code. The clinician selects every official
+   response themselves, from the wording in their EMR. Your job is to surface
+   the evidence they need in order to do that.
 
-3. **Assign Confidence**: Rate your confidence (0-100%) based on:
+3. **Assign Confidence**: Rate how completely the documentation addresses this
+   item (0-100%) — NOT confidence in an answer:
    - Explicit documentation: 90-100% (clear, unambiguous statements)
    - Strong inference: 70-89% (multiple supporting data points)
    - Moderate inference: 50-69% (some evidence, needs validation)
    - Weak inference: <50% (insufficient documentation)
 
 4. **Detect Discrepancies**: If existing OASIS data is provided:
-   - Compare your suggestion to the current value
-   - Identify functional decline/improvement
+   - Say whether the note appears to DESCRIBE something different from what is
+     recorded, quoting the note verbatim. Do not say what the value should be.
+   - Identify apparent functional decline/improvement
    - Flag critical changes (wound staging, cognitive status, mobility)
    - Determine severity: critical/high/medium/low
 
-5. **Recommend Action**:
-   - "auto_update" = Confidence >85%, clear evidence, no critical discrepancy
-   - "review" = Confidence 50-85%, or non-critical discrepancy detected
-   - "flag" = Confidence <50%, or CRITICAL discrepancy (functional decline, wound worsening)
-   - "no_change" = Current OASIS value matches note documentation
+5. **Recommend Action** — review routing only, never an automatic write:
+   - "review" = the documentation addresses this item; the clinician should read it
+   - "flag" = a possible discrepancy or a critical change the clinician must look at
+   - "insufficient" = the documentation does not address this item
 
 6. **Provide Clinical Rationale**: Explain WHY you assigned this value based on clinical reasoning
 
@@ -301,8 +302,8 @@ Return JSON with detailed mapping results:`;
               properties: {
                 item_number: { type: "string" },
                 item_description: { type: "string" },
-                suggested_value: { type: "string" },
-                suggested_value_label: { type: "string" },
+                // No suggested_value / suggested_value_label: the model does
+                // not choose an OASIS response.
                 confidence_score: { type: "number" },
                 supporting_text: { type: "string" },
                 note_location: { type: "string" },
@@ -322,7 +323,7 @@ Return JSON with detailed mapping results:`;
               high_confidence_count: { type: "number" },
               discrepancy_count: { type: "number" },
               flagged_for_review_count: { type: "number" },
-              auto_update_ready_count: { type: "number" }
+              needs_review_count: { type: "number" }
             }
           },
           missing_critical_info: {

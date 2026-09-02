@@ -46,6 +46,8 @@ export default function PhoneCenter() {
       const { fetchCallerAgencySettings } = await import("@/lib/agencySettings");
       return fetchCallerAgencySettings(user?.agency_name);
     },
+    enabled: !!user,
+    refetchOnWindowFocus: false,
   });
 
   const offNow = isOffDutyNow(user, new Date(), agencySettings);

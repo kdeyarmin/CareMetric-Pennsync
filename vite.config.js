@@ -1,6 +1,25 @@
 import base44 from "@base44/vite-plugin"
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { existsSync, readFileSync } from 'node:fs'
+
+// The Base44 runtime delivers app secrets (VITE_BASE44_APP_ID,
+// VITE_BASE44_BACKEND_URL, ...) to /run/base44/app.env — an out-of-repo file the
+// dev server's launcher does not source. Load it into process.env here so Vite
+// exposes the VITE_* values to the client via import.meta.env; without this the
+// app renders its "Base44 app settings are missing" screen. Existing process.env
+// values always win, so environments that inject these directly are unaffected,
+// and the file is absent in production builds.
+const base44EnvPath = '/run/base44/app.env'
+if (existsSync(base44EnvPath)) {
+  for (const line of readFileSync(base44EnvPath, 'utf8').split('\n')) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/)
+    if (!m || m[1] in process.env) continue
+    let v = m[2]
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1)
+    process.env[m[1]] = v
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
@@ -36,6 +55,10 @@ export default defineConfig(({ command }) => ({
         },
       },
     },
+  },
+  server: {
+    host: true,
+    allowedHosts: true,
   },
   plugins: [
     base44({

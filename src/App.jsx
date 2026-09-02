@@ -23,7 +23,7 @@ import AIContentResponsibilityAgreement from '@/components/compliance/AIContentR
 import Layout from '@/components/Layout';
 import ErrorBoundary from '@/components/utils/ErrorBoundary';
 import { ROUTES, REDIRECTS, MAIN_PAGE, ROUTER_PATHS } from '@/routes';
-import { getRoleView } from '@/lib/roles';
+import { getRoleView, canAccessLevel } from '@/lib/roles';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
 import { getRouterBasename } from '@/lib/routerBasename';
 import { isPublicTokenPath } from '@/lib/publicRoutes';
@@ -32,6 +32,9 @@ import { isPublicTokenPath } from '@/lib/publicRoutes';
 // (dev-server restart) is handled centrally by the ErrorBoundary, which wraps
 // the whole app — so plain lazy() is sufficient here.
 const JoinTelehealth = lazy(() => import('@/pages/JoinTelehealth'));
+
+// MCP OAuth consent page — public, ctx-token-gated, no app login required.
+const OAuthConsent = lazy(() => import('@/pages/OAuthConsent'));
 
 // Public privacy policy — App Store Guideline 5.1.1(i) requires it reachable
 // from within the app without signing in, and the same URL is entered in App
@@ -58,6 +61,52 @@ const ConfigurationErrorScreen = ({ message }) => (
   </div>
 );
 
+// Shown when the app IS configured but the Base44 backend refused to serve it
+// (e.g. `not_deployed` for an app that has never been published, or a network
+// / 5xx failure loading public settings). Deliberately NOT the configuration
+// screen above: that headline sends people hunting for missing env vars that
+// are actually present. Show the backend's own message with an honest title.
+//
+// The server message is only echoed when it looks like short prose: a
+// non-JSON error body (HTML error page, stack trace, proxy banner) would leak
+// internals and wreck the layout, so anything long, multi-line or markup-like
+// falls back to generic copy. React escapes the text, so this is about
+// leakage and layout, not injection.
+const MAX_SERVER_MESSAGE_LENGTH = 300;
+const presentableServerMessage = (message) => {
+  if (typeof message !== 'string') return null;
+  const trimmed = message.trim();
+  if (!trimmed || trimmed.length > MAX_SERVER_MESSAGE_LENGTH) return null;
+  if (/[<>{}]/.test(trimmed) || /\n/.test(trimmed) || /\bat\s+\S+\s*\(/.test(trimmed)) return null;
+  return trimmed;
+};
+
+const AppUnavailableScreen = ({ type, message }) => {
+  const notDeployed = type === 'not_deployed';
+  const serverMessage = presentableServerMessage(message);
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-slate-50 p-4">
+      <div className="max-w-lg rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
+        <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">
+          {notDeployed ? 'App not published' : 'App unavailable'}
+        </p>
+        <h1 className="mt-2 text-2xl font-bold text-slate-900">
+          {notDeployed ? 'This Base44 app has not been deployed yet' : 'PennSync could not load'}
+        </h1>
+        <p className="mt-3 text-sm text-slate-700">
+          {serverMessage || 'The Base44 backend did not return a usable response. Try again in a moment, or contact your administrator if this persists.'}
+        </p>
+        {notDeployed && (
+          <p className="mt-3 text-xs text-slate-500">
+            The app settings are present, but the Base44 backend has no deployment for this app ID.
+            Publish the app from its Base44 dashboard, or open the app that is already published.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const AdminOnlyFallback = ({ superAdmin = false }) => (
   <div className="flex min-h-[60vh] flex-col items-center justify-center p-8 text-center">
     <h1 className="text-2xl font-bold text-slate-900">
@@ -67,6 +116,17 @@ const AdminOnlyFallback = ({ superAdmin = false }) => (
       {superAdmin
         ? 'This is a platform-level page reserved for the super administrator.'
         : 'You don’t have permission to view this page. If you believe this is a mistake, contact your agency administrator.'}
+    </p>
+  </div>
+);
+
+const RoleAccessFallback = ({ access }) => (
+  <div className="flex min-h-[60vh] flex-col items-center justify-center p-8 text-center">
+    <h1 className="text-2xl font-bold text-slate-900">Not available for your role</h1>
+    <p className="mt-2 max-w-md text-slate-600">
+      {access === 'nursing'
+        ? 'This clinical nursing tool is available to nursing staff. If you need access, contact your agency administrator.'
+        : 'This patient-information page is not part of your role. If you need access, contact your agency administrator.'}
     </p>
   </div>
 );
@@ -127,9 +187,10 @@ const AuthenticatedApp = () => {
   // so link clicks do nothing. By keeping <Routes> fresh on every render while
   // reusing the same <Route> element references, React Router doesn't rebuild
   // its matcher (the original issue) but still re-renders on location change.
-  const routeElements = useMemo(() => ROUTES.map(({ name, Component, adminOnly, superAdminOnly }) => {
+  const routeElements = useMemo(() => ROUTES.map(({ name, Component, adminOnly, superAdminOnly, access }) => {
     const blockedSuperAdmin = superAdminOnly && !isSuperAdminUser;
     const blockedAdmin = adminOnly && !isAdmin;
+    const blockedAccess = !blockedSuperAdmin && !blockedAdmin && !canAccessLevel(user, access);
     return (
       <Route
         key={name}
@@ -140,6 +201,8 @@ const AuthenticatedApp = () => {
               ? <AdminOnlyFallback superAdmin />
               : blockedAdmin
                 ? <AdminOnlyFallback />
+                : blockedAccess
+                  ? <RoleAccessFallback access={access} />
                 : (
                   <Suspense fallback={<RoutePageLoader />}>
                     <Component />
@@ -149,7 +212,7 @@ const AuthenticatedApp = () => {
         }
       />
     );
-  }), [isSuperAdminUser, isAdmin]);
+  }), [isSuperAdminUser, isAdmin, user]);
 
   const redirectElements = useMemo(() => REDIRECTS.map(({ from, to }) => (
     <Route key={from} path={from} element={<RedirectTo to={to} />} />
@@ -171,8 +234,12 @@ const AuthenticatedApp = () => {
           <Route path="/signer/*" element={<SignerPortal />} />
           {/* Provider follow-up response portal — token-gated, no app login */}
           <Route path="/followup/*" element={<ProviderFollowUpPortal />} />
+          {/* MCP OAuth consent — ctx-token-gated, no app login */}
+          <Route path="/consent/*" element={<OAuthConsent />} />
           {/* Public privacy policy — required in-app pre-auth (App Store 5.1.1(i)) */}
           <Route path="/privacy" element={<PrivacyPolicy />} />
+          {/* MCP OAuth consent — manages its own auth redirect via ?ctx handle */}
+          <Route path="/consent" element={<OAuthConsent />} />
           {/* Catch-all so a public-segment URL that matches no inner route (e.g.
               /privacy/extra) renders the not-found page instead of a blank
               screen — this <Routes> block has no fallback otherwise. */}
@@ -207,8 +274,8 @@ const AuthenticatedApp = () => {
     // or a server-supplied reason we don't special-case) is an app-load
     // failure, NOT a missing session. Falling through to <SignInScreen /> would
     // mislead the user into trying to sign in to fix a backend outage — surface
-    // the actual error instead.
-    return <ConfigurationErrorScreen message={authError.message} />;
+    // the actual error instead, under a title that doesn't blame configuration.
+    return <AppUnavailableScreen type={authError.type} message={authError.message} />;
   }
 
   // Gate the whole app on authentication. The no-token path does NOT set an

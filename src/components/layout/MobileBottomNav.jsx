@@ -1,21 +1,14 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "react-router";
 import { createPageUrl } from "@/utils";
-import { Home, Users, Brain, Send, Mail, FileText, Pen } from "lucide-react";
+import { Home, Users, Brain, Send, Mail, FileText, Pen, GraduationCap, CalendarDays } from "lucide-react";
+import { isClinicalUser, canViewPatients } from "@/lib/roles";
 
 // Role-aware bottom bar: every employee keeps Home / Patients / Messages, but
 // the two middle slots match the role's real top tasks. Nurses chart and fax;
 // facility/super admins work referrals and documents. Driven by the same role
 // split as the sidebar (Layout passes isAdmin) so the mobile shortcuts never
 // surface a back-office task to a nurse or hide one from an admin.
-const NURSE_NAV_ITEMS = [
-  { page: "Dashboard",          Icon: Home,     label: "Home" },
-  { page: "Patients",           Icon: Users,    label: "Patients" },
-  { page: "SmartNoteAssistant", Icon: Brain,    label: "Notes" },
-  { page: "SendFax",            Icon: Send,     label: "Fax" },
-  { page: "Messages",           Icon: Mail,     label: "Messages", hasBadge: true },
-];
-
 const ADMIN_NAV_ITEMS = [
   { page: "Dashboard",      Icon: Home,     label: "Home" },
   { page: "Patients",       Icon: Users,    label: "Patients" },
@@ -23,6 +16,21 @@ const ADMIN_NAV_ITEMS = [
   { page: "DocumentHub",    Icon: Pen,      label: "Documents" },
   { page: "Messages",       Icon: Mail,     label: "Messages", hasBadge: true },
 ];
+
+function staffNavItems(currentUser) {
+  const middle = [];
+  if (canViewPatients(currentUser)) middle.push({ page: "Patients", Icon: Users, label: "Patients" });
+  if (isClinicalUser(currentUser)) middle.push({ page: "SmartNoteAssistant", Icon: Brain, label: "Notes" });
+  if (middle.length < 2) middle.push({ page: "LearningCenter", Icon: GraduationCap, label: "Learning" });
+  if (middle.length < 2) middle.push({ page: "TimeOff", Icon: CalendarDays, label: "Time Off" });
+
+  return [
+    { page: "Dashboard", Icon: Home, label: "Home" },
+    ...middle.slice(0, 2),
+    { page: "SendFax", Icon: Send, label: "Fax" },
+    { page: "Messages", Icon: Mail, label: "Messages", hasBadge: true },
+  ];
+}
 
 const TAB_STACK_KEY = "caremetric-mobile-tab-paths";
 
@@ -37,8 +45,8 @@ const readTabStack = () => {
 
 const getTabTarget = (page) => readTabStack()[page] || createPageUrl(page);
 
-export default function MobileBottomNav({ isActive, unreadMessageCount, isAdmin = false }) {
-  const items = isAdmin ? ADMIN_NAV_ITEMS : NURSE_NAV_ITEMS;
+export default function MobileBottomNav({ isActive, unreadMessageCount, isAdmin = false, currentUser = null }) {
+  const items = isAdmin ? ADMIN_NAV_ITEMS : staffNavItems(currentUser);
   const location = useLocation();
   const activeTab = items.find(({ page }) => isActive(page))?.page;
 

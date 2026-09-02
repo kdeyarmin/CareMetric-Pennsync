@@ -6,6 +6,16 @@
       "type": "string",
       "description": "Agency office ZIP code for wage index calculation"
     },
+    "oasis_response_schema_v2_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Rollout flag for CMS-aligned OASIS response entry (schema pennsync-oasis-response-v2-cms-e2). Default OFF. Gates NEW v2 WRITES only - reading both response schemas is never gated, and the refusal of legacy writes is permanent. Lives on AgencySettings rather than Agency because Agency read RLS is admin-only, and the clinicians who hit the protected write path must be able to resolve their own agency's flag."
+    },
+    "oasis_response_writes_disabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Kill switch: when true the protected OASIS write path refuses every write (423), without a deploy. Independent of the rollout flag above."
+    },
     "wage_index": {
       "type": "number",
       "default": 1.0,

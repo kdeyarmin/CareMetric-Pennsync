@@ -235,6 +235,7 @@ Deno.serve(async (req) => {
             is_approved: true,
             role: invitation.role || 'user',
             care_scope: invitation.care_scope || 'home_health',
+            staff_role: invitation.staff_role || 'nurse',
             ...(invitation.phone && { phone: invitation.phone }),
             ...(invitation.credentials && { credentials: invitation.credentials })
           });

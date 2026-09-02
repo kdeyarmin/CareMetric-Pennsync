@@ -12,6 +12,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.pnpm-store/
 dist
 dist-ssr
 *.local
@@ -33,6 +34,7 @@ dist-ssr
 # pnpm is the only supported package manager; keep npm lockfiles out
 package-lock.json
 base44/.app.jsonc
+.base44/environment.json
 test-results/
 playwright-report/
 blob-report/

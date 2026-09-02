@@ -184,6 +184,55 @@ function getAppBaseUrl() {
   return 'https://caremetricai.base44.app';
 }
 
+const STAFF_ROLES = ['nurse', 'office_staff', 'social_worker', 'spiritual_care'];
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+async function findUserInvitationByEmail(base44, email) {
+  const target = normalizeEmail(email);
+  if (!target) return null;
+  const invitations = await base44.asServiceRole.entities.UserInvitation
+    .list('-updated_date', 5000)
+    .catch(() => []);
+  return (Array.isArray(invitations) ? invitations : []).find((inv) =>
+    normalizeEmail(inv.email || inv.invited_email) === target
+  ) || null;
+}
+
+async function upsertAcceptedUserInvitationForUser(base44, currentUser, targetUser, staffRole) {
+  if (!STAFF_ROLES.includes(String(staffRole))) return null;
+  // A pending invitation is not an authority row. Only an account that has
+  // actually completed activation may create/update accepted role authority.
+  if (targetUser?.is_approved !== true) return null;
+  const now = new Date().toISOString();
+  const invitation = await findUserInvitationByEmail(base44, targetUser.email);
+  const fields = {
+    staff_role: staffRole,
+    status: 'accepted',
+    accepted_at: invitation?.accepted_at || now,
+  };
+  if (invitation?.id) {
+    await base44.asServiceRole.entities.UserInvitation.update(invitation.id, fields);
+    return invitation.id;
+  }
+  const created = await base44.asServiceRole.entities.UserInvitation.create({
+    email: targetUser.email,
+    full_name: targetUser.full_name || targetUser.email,
+    role: targetUser.role || 'user',
+    care_scope: targetUser.care_scope || 'home_health',
+    staff_role: staffRole,
+    phone: targetUser.phone || null,
+    credentials: targetUser.credentials || null,
+    invited_by: currentUser.email,
+    agency_name: targetUser.agency_name || currentUser.agency_name || null,
+    status: 'accepted',
+    expires_at: now,
+    accepted_at: now,
+    last_sent_at: now,
+    resend_count: 0,
+  });
+  return created?.id || null;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -248,17 +297,21 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     return Response.json({ error: 'Forbidden: agency_name is required to invite staff.' }, { status: 403 });
   }
 
-  const { email, full_name, role, care_scope, phone, credentials } = params;
+  const { email, full_name, role, care_scope, phone, credentials, staff_role } = params;
 
   if (!email || !full_name) {
     return Response.json({ error: 'Email and full name are required' }, { status: 400 });
   }
 
-  // Same role model as updateUser: only 'admin' (facility admin) or 'user' (nurse)
-  // may be invited; super admin is an account_type, not granted via invitation.
+  // Same role model as updateUser: only 'admin' (facility admin) or 'user' (staff
+  // member) may be invited; the discipline is carried by staff_role. super admin is
+  // an account_type, not granted via invitation.
   if (role !== undefined && !(typeof role === 'string' && ['admin', 'user'].includes(role))) {
-    return Response.json({ error: "role must be 'admin' (facility admin) or 'user' (nurse)" }, { status: 400 });
+    return Response.json({ error: "role must be 'admin' (facility admin) or 'user' (staff member)" }, { status: 400 });
   }
+
+  // Staff discipline (non-privileged, orthogonal to role). Validate + default.
+  const staffRole = STAFF_ROLES.includes(String(staff_role)) ? String(staff_role) : 'nurse';
 
   // Only a super admin may grant the privileged facility-admin role (consistent
   // with createUserWithTempPassword); a plain admin may invite nurses only.
@@ -274,6 +327,7 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     full_name,
     role: role || 'user',
     care_scope: care_scope || 'home_health',
+    staff_role: staffRole,
     phone: phone || null,
     credentials: credentials || null,
     invited_by: currentUser.email,
@@ -631,20 +685,26 @@ async function updateUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
   }
 
-  const { user_id, full_name, phone, credential_type, role } = params;
+  const { user_id, full_name, phone, credential_type, role, staff_role } = params;
   if (!user_id) {
     return Response.json({ error: 'user_id is required' }, { status: 400 });
   }
 
-  // The app's role model has three tiers: super admin, facility admin, nurse.
+  // Staff discipline is non-privileged; validate against the enum when provided.
+  if (staff_role !== undefined && !STAFF_ROLES.includes(String(staff_role))) {
+    return Response.json({ error: 'Invalid staff_role' }, { status: 400 });
+  }
+
+  // The app's role tiers are: super admin, facility admin, and staff member.
   // Super admin is an account_type (managed via SuperAdminConfig/ensureSuperAdmin),
   // NOT settable through this role field — which is exactly the privilege boundary
   // we want. So the only assignable `role` values are the two the user-management
-  // UI offers: 'admin' (facility admin) and 'user' (nurse). Reject anything else
+  // UI offers: 'admin' (facility admin) and 'user' (staff member); the staff
+  // member's discipline is carried separately by staff_role. Reject anything else
   // rather than writing an arbitrary/garbage or privilege-implying role string.
   const ASSIGNABLE_ROLES = new Set(['admin', 'user']);
   if (role !== undefined && !(typeof role === 'string' && ASSIGNABLE_ROLES.has(role))) {
-    return Response.json({ error: "role must be 'admin' (facility admin) or 'user' (nurse)" }, { status: 400 });
+    return Response.json({ error: "role must be 'admin' (facility admin) or 'user' (staff member)" }, { status: 400 });
   }
 
   // Only a super admin may promote a user to the privileged facility-admin role
@@ -695,18 +755,32 @@ async function updateUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     updates.credential_type = credential;
   }
   if (typeof role === 'string' && role) updates.role = role;
+  if (typeof staff_role === 'string' && staff_role) updates.staff_role = staff_role;
 
   if (Object.keys(updates).length === 0) {
     return Response.json({ error: 'No fields to update' }, { status: 400 });
   }
 
   await base44.asServiceRole.entities.User.update(user_id, updates);
+  let invitationId = null;
+  if (typeof updates.staff_role === 'string') {
+    invitationId = await upsertAcceptedUserInvitationForUser(
+      base44,
+      currentUser,
+      { ...targetUser, ...updates },
+      updates.staff_role,
+    );
+  }
 
   await base44.asServiceRole.entities.UserActivity.create({
     user_email: currentUser.email,
     user_name: currentUser.full_name,
     action: 'user_updated',
-    details: { target_user_id: user_id, updated_fields: Object.keys(updates) },
+    details: {
+      target_user_id: user_id,
+      updated_fields: Object.keys(updates),
+      ...(invitationId && { authoritative_invitation_id: invitationId }),
+    },
     page: 'UserManagement',
     entity_type: 'User',
     entity_id: user_id

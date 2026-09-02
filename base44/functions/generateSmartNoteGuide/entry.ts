@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(30, 58, 138);
-    doc.text('Step 1: Select Patient & Visit Information', margin + 5, yPos + 5);
+    doc.text('Step 1 (Write): Patient & Visit Type', margin + 5, yPos + 5);
     yPos += 15;
 
     doc.setFontSize(11);
@@ -87,10 +87,9 @@ Deno.serve(async (req) => {
     doc.setTextColor(60, 60, 60);
     
     const step1Items = [
-      { label: 'Patient Selection', desc: 'Search and select the patient from the dropdown. The system will auto-populate their primary diagnosis if available.' },
-      { label: 'Visit Date', desc: 'Select the date of the visit. Default is today\'s date.' },
-      { label: 'Visit Type', desc: 'Choose from Admission, Routine Visit, Recertification, Discharge, or PRN Visit.' },
-      { label: 'Diagnosis', desc: 'Select the primary diagnosis from common conditions or enter a custom diagnosis.' }
+      { label: 'Patient Selection', desc: 'Search and select the patient. Their diagnosis, medication count and fall risk appear beneath the picker. You can start writing before choosing one, but a patient is required before the note can be saved to a chart.' },
+      { label: 'Visit Type', desc: 'Choose from Admission, Routine Visit, Recertification, Discharge, or PRN Visit. This decides which elements Medicare requires for the visit.' },
+      { label: 'Visit Date', desc: 'Set automatically to today — there is nothing to enter.' }
     ];
 
     step1Items.forEach(item => {
@@ -115,7 +114,7 @@ Deno.serve(async (req) => {
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(22, 101, 52);
-    doc.text('Step 2: Enter Vital Signs', margin + 5, yPos + 5);
+    doc.text('Step 1 (Write): Vital Signs', margin + 5, yPos + 5);
     yPos += 15;
 
     doc.setFontSize(11);
@@ -153,7 +152,7 @@ Deno.serve(async (req) => {
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(126, 34, 206);
-    doc.text('Step 3: Document Your Notes', margin + 5, yPos + 5);
+    doc.text('Step 1 (Write): Your Rough Notes', margin + 5, yPos + 5);
     yPos += 15;
 
     doc.setFontSize(11);
@@ -161,7 +160,7 @@ Deno.serve(async (req) => {
     doc.setTextColor(60, 60, 60);
 
     const step3Lines = doc.splitTextToSize(
-      'Enter your clinical observations and assessments. You can type or use voice dictation. The system supports smart auto-complete - start typing trigger words like "lungs", "heart", or "wound" to get quick phrase suggestions.',
+      'The note editor sits directly under the patient card. Type or dictate your observations; vital signs, templates and the compliance checklists are in collapsible sections below it. Type / or a .shortcut to insert a saved quick phrase. If you start from a template, fill in or delete every blank it leaves behind - the readiness bar counts them and "Fill next blank" walks you through them. Review is blocked until they are gone, because an unfilled blank would otherwise be written into the note you paste into the EMR.',
       contentWidth
     );
     step3Lines.forEach(line => {
@@ -290,14 +289,14 @@ Deno.serve(async (req) => {
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(109, 40, 217);
-    doc.text('Step 4: Enhance with AI', margin + 5, yPos + 5);
+    doc.text('Step 2: Review & Generate', margin + 5, yPos + 5);
     yPos += 15;
 
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(60, 60, 60);
     const enhanceLines = doc.splitTextToSize(
-      'Once your rough notes are complete (minimum 20 characters), click "Enhance with AI" to transform them into Medicare-compliant clinical documentation.',
+      'Once your rough notes are at least 20 characters, click "Review & Complete" in the bar at the bottom of the screen. Answer the questions about anything Medicare requires that your draft did not cover, then click "Generate Final Note". The coverage meter states exactly what is still blocking; advisories such as denial risk and chart cross-check sit in collapsible sections with their counts on the header.',
       contentWidth
     );
     enhanceLines.forEach(line => {
@@ -340,7 +339,7 @@ Deno.serve(async (req) => {
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(6, 95, 70);
-    doc.text('Step 5: Review & Finalize', margin + 5, yPos + 5);
+    doc.text('Step 2 (continued): Finalize & Save', margin + 5, yPos + 5);
     yPos += 15;
 
     doc.setFontSize(11);
@@ -348,12 +347,11 @@ Deno.serve(async (req) => {
     doc.setTextColor(60, 60, 60);
 
     const finalizeItems = [
-      { label: 'Review Enhanced Note', desc: 'Read through the AI-enhanced note. Yellow highlights indicate areas that may need your attention or completion.' },
-      { label: 'Edit if Needed', desc: 'The enhanced note is fully editable. Make any necessary adjustments to ensure accuracy.' },
-      { label: 'Copy to Clipboard', desc: 'Click "Copy to Clipboard" to copy the note for pasting into your EHR system.' },
-      { label: 'Save to System', desc: 'Click "Save Note" to store the visit documentation in PennSync for future reference.' },
-      { label: 'Generate Tasks', desc: 'Optionally generate follow-up tasks based on the visit documentation.' },
-      { label: 'Generate Care Plans', desc: 'Create or update care plans based on assessment findings.' }
+      { label: 'Review the Generated Note', desc: 'Read the note through. A banner above it reports whether every value traced back to what you documented; "Show verification detail" breaks that down sentence by sentence.' },
+      { label: 'Edit if Needed', desc: 'The note is fully editable. Editing it marks the note as changed, so re-check before saving.' },
+      { label: 'Copy', desc: 'Click "Copy" (or "Copy All") to copy the note for pasting into your EHR system.' },
+      { label: 'Save to Chart', desc: 'Click "Save to chart" to store the visit documentation in PennSync. If the button is unavailable, the checklist directly above it lists every reason.' },
+      { label: 'Follow-up Tasks', desc: 'Follow-up tasks are generated from the note automatically when it is first saved.' }
     ];
 
     finalizeItems.forEach(item => {

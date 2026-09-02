@@ -34,59 +34,79 @@
 //                   unassessable (e.g. bathing "artificial opening").
 // metricField     — key on PatientOutcomeMetric.functional_improvement this
 //                   measure maps onto (null == not stored as a discrete flag).
+import {
+  partitionRowsForCms,
+  RESPONSE_SCHEMA_V2_CMS_E2,
+  resolveInstrumentForAssessment,
+} from "./responseSchema/registry.js";
+
 export const IMPROVEMENT_MEASURES = [
   {
     key: "ambulation",
     item: "m1860",
-    // M1860 Ambulation/Locomotion is a 0–6 scale (see oasisScales.js); 6 = bedfast,
-    // unable to ambulate. All 0–6 are real functional levels (no unratable code),
-    // so a documented 6 must stay in the denominator (e.g. 6→3 improves) — mirroring
-    // the m1850 treatment below.
+    // Scored ONLY from a v2 CMS-aligned response. The legacy M1860 scale inserted
+    // an "uneven surfaces" level CMS does not have, so every legacy code from 1
+    // upward names a different functional level than the same CMS code.
+    definitionId: "m1860_cms_e2",
+    // CMS response order, least to most dependent. Rank is the INDEX here — no
+    // code is ever parsed as a number.
+    ordinalCodes: ["0", "1", "2", "3", "4", "5", "6"],
     label: "Improvement in Ambulation/Locomotion",
-    startMax: 6,
-    excludeStart: [0],
-    excludeEither: [],
+    excludeStartCodes: ["0"],
+    excludeEitherCodes: [],
     metricField: "ambulation_improved",
   },
   {
     key: "bed_transfer",
     item: "m1850",
     label: "Improvement in Bed Transferring",
-    // M1850 Transferring is a 0–5 scale (see oasisScales.js); 5 = bedfast,
-    // unable to transfer/turn. All 0–5 are real functional levels (no unratable
-    // code), so a documented 5 must stay in the denominator (e.g. 5→3 improves).
-    startMax: 5,
-    excludeStart: [0],
-    excludeEither: [],
+    // M1850 is one of the five ABBREVIATED items deliberately left out of the
+    // CMS-alignment cutover, so PennSync holds no verified response set for it.
+    // With no v2 definition it can never be scored — excluded with a named
+    // reason rather than scored from a response set nobody has verified.
+    definitionId: null,
+    ordinalCodes: [],
+    excludeStartCodes: [],
+    excludeEitherCodes: [],
     metricField: "transferring_improved",
   },
   {
     key: "bathing",
     item: "m1830",
     label: "Improvement in Bathing",
-    startMax: 6,
-    excludeStart: [0],
-    // 6 = "Unable to rate — patient has artificial opening": unassessable at
-    // either end, so the change cannot be scored.
-    excludeEither: [6],
+    definitionId: "m1830_cms_e2",
+    ordinalCodes: ["0", "1", "2", "3", "4", "5", "6"],
+    excludeStartCodes: ["0"],
+    // CMS 6 is "Unable to participate effectively in bathing and is bathed
+    // totally by another person" — a real, most-dependent functional level, so
+    // it stays in the denominator (6→3 improves). It was previously excluded
+    // because the LEGACY 6 meant "unable to rate — artificial opening". Legacy
+    // rows are excluded wholesale by the schema gate, so no legacy 6 reaches
+    // this list.
+    excludeEitherCodes: [],
     metricField: "bathing_improved",
   },
   {
     key: "dyspnea",
     item: "m1400",
     label: "Improvement in Dyspnea",
-    startMax: 4,
-    excludeStart: [0],
-    excludeEither: [],
+    definitionId: "m1400_cms_e2",
+    ordinalCodes: ["0", "1", "2", "3", "4"],
+    excludeStartCodes: ["0"],
+    excludeEitherCodes: [],
     metricField: "dyspnea_improved",
   },
   {
     key: "oral_meds",
     item: "m2020",
     label: "Improvement in Management of Oral Medications",
-    startMax: 3,
-    excludeStart: [0],
-    excludeEither: [],
+    definitionId: "m2020_cms_e2",
+    // "NA" (no oral medications prescribed) is deliberately NOT in the ordinal
+    // list: it is not a point on the ability scale, so an episode carrying it is
+    // excluded rather than ranked.
+    ordinalCodes: ["0", "1", "2", "3"],
+    excludeStartCodes: ["0"],
+    excludeEitherCodes: [],
     metricField: "medication_management_improved",
   },
 ];
@@ -101,6 +121,13 @@ export const MEASURE_STATUS = {
 // CMS star eligibility: a measure needs at least this many eligible (in-
 // denominator) episodes to receive a star, and an agency needs at least 5 of the
 // reported measures to receive an overall QoPC star rating.
+/**
+ * Bumped whenever the deterministic outcome core changes meaning, so a stored
+ * metric records which rules produced it and stale records can be retired
+ * rather than silently re-read under new rules.
+ */
+export const OUTCOME_CALCULATION_VERSION = "2026-09-01.v2-cms-e2";
+
 export const STAR_MIN_EPISODES = 20;
 export const STAR_MIN_MEASURES = 5;
 
@@ -126,29 +153,94 @@ function toNum(v) {
 }
 
 /**
- * Normalize an OASISAssessment.oasis_items array into a flat answers map keyed by
- * lower-cased M-item id (e.g. { m1860: 2, m1400: 3 }). Non-numeric responses are
- * dropped so downstream coercion stays clean. Also accepts an already-flat map.
- * @param {Array<{item_number?: string, response?: string}>|Object} items
- * @returns {Object<string, number>}
+ * Extract CMS-scorable responses from a WHOLE assessment.
+ *
+ * Takes the assessment, not a bare response map, because eligibility depends on
+ * provenance the map does not carry: which response schema the answer was picked
+ * from, whether the instrument resolved, whether the item is collected at this
+ * time point, and whether a clinician actually selected it. A bare map cannot
+ * answer any of those, which is how a legacy `6` was scored as if it were the
+ * CMS one.
+ *
+ * Returns OPAQUE STRING codes. Nothing here parses a code as a number.
+ *
+ * @param {object} assessment Full OASISAssessment row.
+ * @returns {{ codes: Object<string,string>, excluded: Array<{item: string, reasons: string[]}>, schemaId: string|null }}
  */
-export function answersFromOasisItems(items) {
-  if (!items) return {};
-  if (!Array.isArray(items)) {
-    // Already a flat map — normalize keys to lower case.
-    const out = {};
-    for (const [k, v] of Object.entries(items)) {
-      const n = toNum(v);
-      if (n !== null) out[String(k).toLowerCase()] = n;
+export function scorableCodesFromAssessment(assessment) {
+  const { included, excluded } = partitionRowsForCms(assessment);
+  const codes = {};
+  for (const { row, verdict } of included) {
+    const def = verdict.definition;
+    // Only single-valued scales feed the improvement measures.
+    if (def.response_shape !== "single") continue;
+    codes[String(def.item_number).toLowerCase()] = row.response_value.code;
+  }
+  return {
+    codes,
+    excluded: excluded.map(({ row, reasons }) => ({
+      item: row?.item_number || row?.definition_id || "unknown",
+      reasons,
+    })),
+    schemaId: assessment?.response_schema_id || null,
+  };
+}
+
+/**
+ * Flat answers for the GG Discharge Function Score ONLY.
+ *
+ * GG0130/GG0170 are NOT among the 18 items whose PennSync response sets were
+ * found to conflict with CMS, so they are outside this cutover and keep their
+ * existing extraction. Gating them on a v2 definition that does not exist would
+ * silently switch the GG measure off, which is a different regression from the
+ * one this change is fixing. Their response sets have not been independently
+ * verified here and are recorded as out of scope in the migration document.
+ *
+ * @param {Array|Object} source oasis_items array, assessment, or flat map
+ */
+function ggAnswersFrom(source) {
+  const out = {};
+  const take = (key, raw) => {
+    const k = String(key).toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!GG_FUNCTION_ITEMS.includes(k)) return;
+    const n = toNum(raw);
+    if (n !== null) out[k] = n;
+  };
+  if (!source) return out;
+  const items = Array.isArray(source) ? source : source.oasis_items;
+  if (Array.isArray(items)) {
+    for (const it of items) {
+      if (!it || it.item_number == null) continue;
+      take(it.item_number, it.response_value?.code ?? it.response);
     }
     return out;
   }
+  if (!Array.isArray(source) && typeof source === "object" && !source.oasis_items) {
+    for (const [k, v] of Object.entries(source)) take(k, v);
+  }
+  return out;
+}
+
+/**
+ * LEGACY shape adapter, kept so pre-cutover callers do not silently change
+ * meaning. It no longer produces scorable values: a row that does not state the
+ * v2 response schema yields nothing, because its codes mean whatever PennSync's
+ * old option list meant.
+ *
+ * @param {Array|Object} items
+ * @returns {Object<string, string>} opaque codes, never numbers
+ */
+export function answersFromOasisItems(items) {
+  if (!Array.isArray(items)) return {};
   const out = {};
   for (const it of items) {
     if (!it || it.item_number == null) continue;
-    const key = String(it.item_number).toLowerCase().replace(/[^a-z0-9]/g, "");
-    const n = toNum(it.response);
-    if (n !== null) out[key] = n;
+    if (it.response_schema_id !== RESPONSE_SCHEMA_V2_CMS_E2) continue;
+    if (it.item_source !== "cms_item") continue;
+    if (it.response_origin !== "clinician_selected") continue;
+    const v = it.response_value;
+    if (!v || typeof v !== "object" || typeof v.code !== "string") continue;
+    out[String(it.item_number).toLowerCase().replace(/[^a-z0-9]/g, "")] = v.code;
   }
   return out;
 }
@@ -158,46 +250,44 @@ export function answersFromOasisItems(items) {
  * @returns {{key,label,item,status,start_value,discharge_value,reason}}
  */
 function evaluateMeasure(measure, startAns, dcAns) {
-  const s = toNum(startAns[measure.item]);
-  const d = toNum(dcAns[measure.item]);
+  const sCode = startAns[measure.item];
+  const dCode = dcAns[measure.item];
   const base = {
     key: measure.key,
     label: measure.label,
     item: measure.item,
-    start_value: s,
-    discharge_value: d,
+    start_value: sCode ?? null,
+    discharge_value: dCode ?? null,
   };
 
-  if (s === null || d === null) {
+  // No verified v2 response set for this item — it can never be scored.
+  if (!measure.definitionId || measure.ordinalCodes.length === 0) {
+    return { ...base, status: MEASURE_STATUS.EXCLUDED, reason: "no_verified_response_set" };
+  }
+  if (sCode === undefined || dCode === undefined) {
     return { ...base, status: MEASURE_STATUS.EXCLUDED, reason: "missing_data" };
   }
-  if (s < 0 || s > measure.startMax || d < 0 || d > measure.startMax) {
+
+  // Rank = position in the CMS response order. A code that is not a point on
+  // that ordinal scale (for example M2020 "NA") is unratable, not zero.
+  const s = measure.ordinalCodes.indexOf(sCode);
+  const d = measure.ordinalCodes.indexOf(dCode);
+  if (s === -1 || d === -1) {
     return { ...base, status: MEASURE_STATUS.EXCLUDED, reason: "unratable_code" };
   }
-  if (measure.excludeEither.includes(s) || measure.excludeEither.includes(d)) {
+  if (measure.excludeStartCodes.includes(sCode)) {
+    return { ...base, status: MEASURE_STATUS.EXCLUDED, reason: "already_independent_at_start" };
+  }
+  if (measure.excludeEitherCodes.includes(sCode) || measure.excludeEitherCodes.includes(dCode)) {
     return { ...base, status: MEASURE_STATUS.EXCLUDED, reason: "unratable_code" };
   }
-  if (measure.excludeStart.includes(s)) {
-    // Already at the most-independent level at SOC/ROC → no room to improve.
-    return { ...base, status: MEASURE_STATUS.EXCLUDED, reason: "no_room_to_improve" };
-  }
-  // Lower discharge code == more independent == improvement.
-  const improved = d < s;
   return {
     ...base,
-    status: improved ? MEASURE_STATUS.IMPROVED : MEASURE_STATUS.NOT_IMPROVED,
-    reason: improved ? "improved" : "no_improvement",
+    status: d < s ? MEASURE_STATUS.IMPROVED : MEASURE_STATUS.NOT_IMPROVED,
+    reason: null,
   };
 }
 
-/**
- * Compute the GG Discharge Function Score from a discharge answers map.
- * Returns { applicable, score, items_scored } where score is the raw summed
- * function total (higher = more independent). Not applicable when fewer than
- * half of the standard function items were coded (CMS requires the item set to
- * be substantially complete before the raw score is meaningful).
- * @param {Object<string, number>} dcAns
- */
 export function computeGGDischargeFunctionScore(dcAns) {
   let score = 0;
   let scored = 0;
@@ -247,19 +337,55 @@ function isDeceasedEpisode({ dischargeDisposition }) {
  *   gg_discharge_function: object,
  * }}
  */
-export function computeEpisodeOutcome({ start, discharge, dischargeDisposition } = {}) {
-  const startAns = answersFromOasisItems(start);
-  const dcAns = answersFromOasisItems(discharge);
+export function computeEpisodeOutcome({ start, discharge, dischargeDisposition, startAssessment, dischargeAssessment } = {}) {
+  // Prefer whole assessments; fall back to bare item arrays for callers not yet
+  // migrated. Either way, only v2 clinician-selected rows become scorable.
+  const startSrc = startAssessment || (Array.isArray(start) ? { oasis_items: start } : start);
+  const dcSrc = dischargeAssessment || (Array.isArray(discharge) ? { oasis_items: discharge } : discharge);
+
+  const startX = startAssessment
+    ? scorableCodesFromAssessment(startAssessment)
+    : { codes: answersFromOasisItems(startSrc?.oasis_items || start), excluded: [], schemaId: startSrc?.response_schema_id ?? null };
+  const dcX = dischargeAssessment
+    ? scorableCodesFromAssessment(dischargeAssessment)
+    : { codes: answersFromOasisItems(dcSrc?.oasis_items || discharge), excluded: [], schemaId: dcSrc?.response_schema_id ?? null };
+
+  const startAns = startX.codes;
+  const dcAns = dcX.codes;
+
+  // Episode-level fail-closed gates. A CMS-labeled rate may only be computed
+  // when BOTH endpoints are trustworthy and carry compatible schemas; a mixed
+  // pair is excluded with a visible reason and contributes ZERO denominator —
+  // never coerced to "no improvement".
+  const episodeExclusions = [];
+  const startSchema = startAssessment ? startAssessment.response_schema_id : startX.schemaId;
+  const dcSchema = dischargeAssessment ? dischargeAssessment.response_schema_id : dcX.schemaId;
+  if (startAssessment && !resolveInstrumentForAssessment(startAssessment).resolved) {
+    episodeExclusions.push("start_instrument_unresolved");
+  }
+  if (dischargeAssessment && !resolveInstrumentForAssessment(dischargeAssessment).resolved) {
+    episodeExclusions.push("discharge_instrument_unresolved");
+  }
+  if (startAssessment || dischargeAssessment) {
+    if (startSchema !== RESPONSE_SCHEMA_V2_CMS_E2) episodeExclusions.push("start_schema_not_v2");
+    if (dcSchema !== RESPONSE_SCHEMA_V2_CMS_E2) episodeExclusions.push("discharge_schema_not_v2");
+    if (startSchema && dcSchema && startSchema !== dcSchema) episodeExclusions.push("mixed_schema_episode");
+  }
 
   const deceased = isDeceasedEpisode({ dischargeDisposition });
 
   const measures = IMPROVEMENT_MEASURES.map((m) => {
-    if (deceased) {
-      const s = toNum(startAns[m.item]);
-      const d = toNum(dcAns[m.item]);
+    if (episodeExclusions.length) {
       return {
         key: m.key, label: m.label, item: m.item,
-        start_value: s, discharge_value: d,
+        start_value: startAns[m.item] ?? null, discharge_value: dcAns[m.item] ?? null,
+        status: MEASURE_STATUS.EXCLUDED, reason: episodeExclusions[0],
+      };
+    }
+    if (deceased) {
+      return {
+        key: m.key, label: m.label, item: m.item,
+        start_value: startAns[m.item] ?? null, discharge_value: dcAns[m.item] ?? null,
         status: MEASURE_STATUS.EXCLUDED, reason: "episode_ended_in_death",
       };
     }
@@ -273,13 +399,24 @@ export function computeEpisodeOutcome({ start, discharge, dischargeDisposition }
     : null;
 
   return {
-    eligible: !deceased && eligibleMeasures.length > 0,
-    episode_excluded_reason: deceased ? "episode_ended_in_death" : null,
+    eligible: !deceased && episodeExclusions.length === 0 && eligibleMeasures.length > 0,
+    episode_excluded_reason: episodeExclusions[0] || (deceased ? "episode_ended_in_death" : null),
+    // Every reason, and the per-row exclusions, stay visible. A consumer that
+    // shows a rate must be able to show what it left out and why.
+    episode_excluded_reasons: episodeExclusions,
+    excluded_row_count: startX.excluded.length + dcX.excluded.length,
+    excluded_rows: [...startX.excluded, ...dcX.excluded],
     measures,
     improved_count: improved.length,
     eligible_measure_count: eligibleMeasures.length,
     overall_improvement_score: overall,
-    gg_discharge_function: computeGGDischargeFunctionScore(dcAns),
+    // Schema provenance travels with the result so a derived record can record
+    // exactly which inputs produced it.
+    input_response_schema_ids: [startSchema || null, dcSchema || null],
+    calculation_version: OUTCOME_CALCULATION_VERSION,
+    gg_discharge_function: episodeExclusions.length
+      ? { applicable: false, score: null, excluded_reason: episodeExclusions[0], items_scored: 0 }
+      : computeGGDischargeFunctionScore(ggAnswersFrom(dcSrc ?? discharge)),
   };
 }
 

@@ -2,6 +2,18 @@
 
 Date: 2026-06-03
 
+> **Addendum, 2026-08-31.** A usability pass has since reworked the flow's
+> presentation, so the layout described below is historical. The enforcement this
+> document analyses is unchanged; what moved is where it appears. In the current
+> UI: the note editor sits directly under the patient card with vitals, templates
+> and the checklists collapsed beneath it; the patient picker is marked "required
+> to save" rather than optional; unfilled template blanks raise a persistent alert
+> with a "Fill next blank" walker instead of a single toast; the review step's
+> advisories are collapsed behind headers carrying their own counts; all four
+> acknowledge gates share one control; and the primary action of each step rides
+> in a sticky bar. The step indicator and the four-item tab bar are now a single
+> nav in which the three side tools are subordinate to the note flow.
+
 ## Purpose
 
 A focused deep-dive on the **Smart Note** feature: the workflow that lets a home

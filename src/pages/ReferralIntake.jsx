@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster';
 import { invokeLLM } from "@/lib/invokeLLM";
@@ -81,7 +81,8 @@ import {
 import { todayEastern } from "@/components/utils/timezone";
 import { Link, useSearchParams } from "react-router";
 import ReferralPDFSummarizer from "../components/referral/ReferralPDFSummarizer";
-import { validateReferralFile, getDocumentType } from "../components/referral/referralUploadUtils";
+import { REFERRAL_ACCEPT_ATTR } from "../components/referral/referralUploadUtils";
+import { runReferralUpload } from "../components/referral/referralUploadFlow";
 import { generateDiagnosisCodes, toPersistedCoding } from "../components/referral/diagnosisCodeGenerator";
 import { runReferralQuickScan } from "../components/referral/referralExtraction";
 import { markStartOfCareCompleted } from "../components/referral/intakeToSocTracker";
@@ -142,6 +143,10 @@ export default function ReferralIntake() {
   });
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isCreatingReferral, setIsCreatingReferral] = useState(false);
+  // Set when the document uploaded but AI pre-fill did not run, so the dropzone
+  // never claims the file was "analyzed" when it wasn't.
+  const [uploadNotice, setUploadNotice] = useState(null);
   const [extractedFormData, setExtractedFormData] = useState(null);
   // Upload-time diagnosis guard (validateIntakeDiagnoses result); null when the
   // quick scan surfaced no ICD-10 codes at all.
@@ -184,38 +189,96 @@ export default function ReferralIntake() {
     initialData: [],
   });
 
+  const BLANK_REFERRAL_FORM = {
+    patient_name: "",
+    referral_source: "",
+    referral_date: todayEastern(),
+    document_type: "pdf",
+    priority: "normal",
+    estimated_start_date: ""
+  };
+
+  // Bumped on every new upload and on every reset. An upload that is still
+  // in flight when the user picks another file or closes the dialog checks this
+  // before writing state, so a slow scan can never re-populate the form after
+  // the user moved on — which would otherwise attach one patient's extracted
+  // demographics to another patient's referral.
+  const uploadTokenRef = useRef(0);
+
+  // Clear everything derived from the currently-selected document.
+  const resetUploadedDocument = () => {
+    uploadTokenRef.current += 1;
+    setUploadedFile(null);
+    setUploadNotice(null);
+    setExtractedFormData(null);
+    setDxGuard(null);
+    setMultiReferralDetection(null);
+  };
+
+  // Full dialog reset (document + typed form). Used when the dialog closes and
+  // after a referral is created, so reopening it never shows the previous
+  // patient's pre-filled data with the Create button already enabled.
+  const resetUploadDialog = () => {
+    resetUploadedDocument();
+    setNewReferral(BLANK_REFERRAL_FORM);
+  };
+
+  const handleUploadDialogOpenChange = (open) => {
+    setUploadDialogOpen(open);
+    if (!open) resetUploadDialog();
+  };
+
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
+    // A file input fires no change event when the same file is picked twice, so
+    // clear it immediately — otherwise "try again" with the same document after
+    // a failure silently does nothing at all.
+    e.target.value = "";
     if (!file) return;
 
-    const { valid, error } = validateReferralFile(file);
-    if (!valid) {
-      toast.error(error);
-      return;
-    }
+    // Drop the previous document's extraction before starting the next one.
+    resetUploadedDocument();
+    const token = uploadTokenRef.current;
+    const isCurrent = () => uploadTokenRef.current === token;
 
     setIsUploading(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      setUploadedFile(file_url);
-      // Auto-classify the document type (pdf vs scanned image) from the file.
-      // Use the resolved type so PDFs from sources that leave file.type empty
-      // (some scanners/fax servers) still take the multi-referral path.
-      const docType = getDocumentType(file);
-      setNewReferral(prev => ({ ...prev, document_type: docType }));
+      const result = await runReferralUpload({
+        file,
+        uploadFile: (picked) => base44.integrations.Core.UploadFile({ file: picked }),
+        // Instant form pre-population + urgency triage, using the shared
+        // quick-scan definition (single source of truth) wrapped in the standard
+        // retry/timeout policy.
+        quickScan: (fileUrl) => runReferralQuickScan(invokeLLM, { fileUrl }),
+      });
 
-      // If it's a PDF, check for multiple referrals
-      if (docType === 'pdf') {
-        setMultiReferralDetection({ fileUrl: file_url, fileName: file.name });
-        setIsUploading(false);
+      if (!isCurrent()) return;
+
+      if (!result.ok) {
+        console.error(`Referral upload failed during ${result.failedAt}:`, result.error);
+        toast.error(result.message);
         return;
       }
-      
-      // Immediately extract data for instant form pre-population + urgency triage.
-      // Uses the shared quick-scan definition (single source of truth) wrapped in
-      // the standard retry/timeout policy.
-      const extracted = await runReferralQuickScan(invokeLLM, { fileUrl: file_url });
 
+      setUploadedFile(result.fileUrl);
+      setNewReferral(prev => ({ ...prev, document_type: result.documentType }));
+
+      // A PDF may bundle several patients; hand it to the split detector.
+      if (result.needsMultiReferralSplit) {
+        setMultiReferralDetection({ fileUrl: result.fileUrl, fileName: file.name });
+        return;
+      }
+
+      // The document is stored either way — only the AI pre-fill failed, so say
+      // that instead of sending the user back to re-upload a file we already have.
+      if (result.scanMessage) {
+        console.error('Referral quick scan failed:', result.scanError);
+        setUploadNotice(result.scanMessage);
+        toast.warning(result.scanMessage);
+        return;
+      }
+
+      const extracted = result.scan || {};
       setExtractedFormData(extracted);
 
       // Upload-time diagnosis guard: pre-check the scanned ICD-10 codes for
@@ -245,10 +308,22 @@ export default function ReferralIntake() {
         }));
       }
     } catch (error) {
-      console.error('Upload error:', error);
-      toast.error('Failed to upload file. Please try again.');
+      // runReferralUpload resolves rather than throws for validation, upload and
+      // scan failures, so anything landing here happened after the document was
+      // already stored (the diagnosis guard or form pre-fill).
+      console.error('Referral pre-fill failed after upload:', error);
+      if (isCurrent()) {
+        const message = 'Document uploaded, but pre-filling the form failed. Enter the referral details below and continue.';
+        setUploadNotice(message);
+        toast.warning(message);
+      }
+    } finally {
+      // Unconditional: the token only changes when the user cancels the dialog or
+      // dismisses the detector mid-flight, and leaving the flag set there would
+      // strand the dropzone on its spinner with the file input disabled. The
+      // input is disabled while uploading, so two uploads can't overlap.
+      setIsUploading(false);
     }
-    setIsUploading(false);
   };
 
   const handleMultiReferralDetectionComplete = async (analysis, selectedIndices) => {
@@ -299,16 +374,7 @@ export default function ReferralIntake() {
       }));
 
       // Reset form
-      setMultiReferralDetection(null);
-      setUploadedFile(null);
-      setNewReferral({
-        patient_name: "",
-        referral_source: "",
-        referral_date: todayEastern(),
-        document_type: "pdf",
-        priority: "normal",
-        estimated_start_date: ""
-      });
+      resetUploadDialog();
       setUploadDialogOpen(false);
 
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
@@ -329,7 +395,7 @@ export default function ReferralIntake() {
       return;
     }
 
-    setIsUploading(true);
+    setIsCreatingReferral(true);
     try {
       // Create referral with AI-enhanced categorization and suggestions
       const referral = await base44.entities.Referral.create({
@@ -371,26 +437,17 @@ export default function ReferralIntake() {
       // Automatically start processing
       setProcessingReferralId(referral.id);
       setUploadDialogOpen(false);
-      
+
       // Reset form
-      setNewReferral({
-        patient_name: "",
-        referral_source: "",
-        referral_date: todayEastern(),
-        document_type: "pdf",
-        priority: "normal",
-        estimated_start_date: ""
-      });
-      setUploadedFile(null);
-      setExtractedFormData(null);
-      setDxGuard(null);
+      resetUploadDialog();
 
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
     } catch (error) {
       console.error('Error creating referral:', error);
       toast.error('Failed to create referral. Please try again.');
+    } finally {
+      setIsCreatingReferral(false);
     }
-    setIsUploading(false);
   };
 
   const _handleStatusChange = async (referralId, newStatus) => {
@@ -1640,7 +1697,7 @@ Actions available:
       </Card>
 
       {/* Upload Dialog */}
-      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+      <Dialog open={uploadDialogOpen} onOpenChange={handleUploadDialogOpenChange}>
         <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader className="space-y-2">
             <DialogTitle className="text-xl sm:text-2xl">Upload New Referral</DialogTitle>
@@ -1866,33 +1923,48 @@ Actions available:
                   type="file"
                   id="file-upload"
                   className="hidden"
-                  accept=".pdf,image/*"
+                  accept={REFERRAL_ACCEPT_ATTR}
                   onChange={handleFileUpload}
-                  disabled={isUploading}
+                  disabled={isUploading || isCreatingReferral}
                 />
                 <label htmlFor="file-upload" className="cursor-pointer">
                   {isUploading ? (
                     <div className="space-y-2">
                       <Sparkles className="w-12 h-12 text-navy-500 mx-auto animate-pulse" />
-                      <p className="text-navy-600 font-medium">Analyzing document with AI...</p>
+                      <p className="text-navy-600 font-medium">Uploading and analyzing document...</p>
                       <p className="text-xs text-slate-500">Extracting patient information</p>
+                    </div>
+                  ) : uploadedFile && uploadNotice ? (
+                    <div className="flex items-center justify-center gap-2 text-amber-700">
+                      <AlertCircle className="w-6 h-6" />
+                      <span>Document uploaded — not analyzed</span>
                     </div>
                   ) : uploadedFile ? (
                     <div className="flex items-center justify-center gap-2 text-emerald-600">
                       <CheckCircle2 className="w-6 h-6" />
-                      <span>File uploaded & analyzed successfully</span>
+                      <span>File uploaded &amp; analyzed successfully</span>
                     </div>
                   ) : (
                     <div className="space-y-2">
                       <Upload className="w-12 h-12 text-slate-400 mx-auto" />
-                      <p className="text-slate-600">
-                        {isUploading ? 'Uploading...' : 'Click to upload or drag and drop'}
-                      </p>
-                      <p className="text-xs text-slate-500">PDF, PNG, JPG, or TIFF</p>
+                      <p className="text-slate-600">Click to upload or drag and drop</p>
+                      <p className="text-xs text-slate-500">PDF, PNG, JPG, or TIFF (max 25 MB)</p>
                     </div>
                   )}
                 </label>
               </div>
+
+              {/* The document is stored; only the AI pre-fill failed. Say so, so
+                  the user completes the form instead of re-uploading a file the
+                  server already has. */}
+              {uploadNotice && (
+                <Alert className="bg-amber-50 border-amber-300">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <AlertDescription className="text-amber-900 text-sm">
+                    {uploadNotice}
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
             {/* Multi-referral PDF flow: when an uploaded PDF may contain several
@@ -1905,23 +1977,23 @@ Actions available:
                 <MultiReferralDetector
                   fileUrl={multiReferralDetection.fileUrl}
                   onDetectionComplete={handleMultiReferralDetectionComplete}
-                  onDismiss={() => { setMultiReferralDetection(null); setUploadedFile(null); }}
+                  onDismiss={resetUploadedDocument}
                 />
               </div>
             )}
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-3 pt-5 border-t border-slate-200">
-            <Button variant="outline" onClick={() => setUploadDialogOpen(false)} className="min-h-[44px] w-full sm:w-auto order-2 sm:order-1">
+            <Button variant="outline" onClick={() => handleUploadDialogOpenChange(false)} className="min-h-[44px] w-full sm:w-auto order-2 sm:order-1">
               Cancel
             </Button>
             {!multiReferralDetection && (
               <Button
                 onClick={handleCreateReferral}
-                disabled={isUploading || !uploadedFile}
+                disabled={isUploading || isCreatingReferral || !uploadedFile}
                 className="bg-blue-600 hover:bg-blue-700 min-h-[44px] w-full sm:w-auto order-1 sm:order-2"
               >
-                {isUploading ? (
+                {isCreatingReferral ? (
                   <>
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                     Creating...

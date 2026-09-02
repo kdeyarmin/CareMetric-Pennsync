@@ -183,7 +183,14 @@
       "items": {
         "type": "object"
       },
-      "description": "Opportunities to rescore for improved reimbursement"
+      "description": "RETIRED. Held current_score → recommended_score per M-item with a dollar figure — an AI-chosen OASIS response presented as money left on the table. No longer written; kept so existing rows stay readable. Superseded by documentation_gaps."
+    },
+    "documentation_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Where the documentation and the recorded response appear to describe different things: { m_item, gap_description, question, supporting_documentation }. Carries no response code and no dollar figure — the clinician decides which side is right."
     },
     "estimated_revenue_impact": {
       "type": "number",

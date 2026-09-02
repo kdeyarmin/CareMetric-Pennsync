@@ -4,8 +4,8 @@ import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { X, LogOut, Shield } from "lucide-react";
-import FeedbackButton from "@/components/feedback/FeedbackButton";
 import { BRAND_LOGO_URL } from "@/lib/brand";
+import { userRoleLabel } from "@/lib/roles";
 
 function navItemClasses(active) {
   return `group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -40,8 +40,8 @@ export default function MobileMenu({ open, onClose, navCategories, adminItems, i
   if (!open) return null;
 
   return (
-    <div className="md:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} role="button" aria-label="Close menu" tabIndex={-1}>
-      <div className="absolute left-0 top-0 bottom-0 w-72 bg-white flex flex-col shadow-2xl" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Navigation menu">
+    <div className="md:hidden fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm" onClick={onClose} role="button" aria-label="Close menu" tabIndex={-1}>
+      <div className="absolute inset-y-0 left-0 flex w-[min(18rem,calc(100vw-2rem))] max-w-full flex-col bg-white pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Navigation menu">
         {/* Header */}
         <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -143,14 +143,13 @@ export default function MobileMenu({ open, onClose, navCategories, adminItems, i
 
         {/* Footer */}
         <div className="flex-shrink-0 border-t border-slate-200 p-3 space-y-2">
-          <FeedbackButton />
           <div className="flex items-center gap-3 pt-2">
             <div className="w-9 h-9 bg-gradient-to-br from-navy-500 to-navy-700 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
               {currentUser?.full_name?.charAt(0)?.toUpperCase() || 'U'}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-slate-900 truncate">{currentUser?.full_name}</p>
-              <p className="text-xs text-slate-500 truncate capitalize">{currentUser?.role || 'user'}</p>
+              <p className="text-xs text-slate-500 truncate">{userRoleLabel(currentUser)}</p>
             </div>
             <Button
               variant="ghost" size="icon"

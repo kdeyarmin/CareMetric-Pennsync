@@ -136,3 +136,74 @@ test("toPphOutcomeUpdate captures intervention + outcome to PatientOutcomeMetric
   assert.equal(update.pph_prevention.within_dtc_pac_window, true);
   assert.ok(Array.isArray(update.pph_prevention.interventions));
 });
+
+// ── partial functional data must not score as independent ──────────────────
+//
+// Regression: the presence gate ran its inputs through a `toNum` helper that
+// mapped a missing value to 0, so every part looked present and the gate never
+// fired. A partially extracted assessment therefore scored as if the missing
+// items were 0 — which on these scales means fully independent, i.e. LOWER risk
+// than an assessment with no functional data at all.
+
+test("a PARTIAL functional set adds no impairment points and is flagged as a gap", () => {
+  const partial = computePphRisk({
+    oasis: oasisWith({
+      admission_source: "community",
+      // m1830_bathing missing entirely.
+      functional_scores: { m1860_ambulation: 5, m1850_transferring: 4 },
+    }),
+  });
+  // Baseline only — 5 + 4 = 9 would otherwise have crossed the "moderate" (>=8)
+  // threshold and added 12 points on two-thirds of the data.
+  assert.equal(partial.score, 15);
+  assert.ok(
+    partial.factors.some((f) => /Functional status incomplete/i.test(f.factor)),
+    `the gap must be surfaced — got ${JSON.stringify(partial.factors)}`,
+  );
+  assert.ok(!partial.factors.some((f) => /impairment/i.test(f.factor)));
+});
+
+test("a partial set never scores LOWER than the same set with no functional data", () => {
+  const none = computePphRisk({ oasis: oasisWith({ admission_source: "community" }) });
+  const partial = computePphRisk({
+    oasis: oasisWith({ admission_source: "community", functional_scores: { m1860_ambulation: 6 } }),
+  });
+  assert.ok(
+    partial.score >= none.score,
+    `partial (${partial.score}) must not undercut unknown (${none.score})`,
+  );
+});
+
+test("empty-string and non-numeric functional values count as MISSING, not zero", () => {
+  for (const bad of ["", null, undefined, "n/a", "?"]) {
+    const risk = computePphRisk({
+      oasis: oasisWith({
+        admission_source: "community",
+        functional_scores: { m1860_ambulation: 5, m1850_transferring: 4, m1830_bathing: bad },
+      }),
+    });
+    assert.equal(risk.score, 15, `"${bad}" was treated as a score`);
+    assert.ok(risk.factors.some((f) => /Functional status incomplete/i.test(f.factor)), `"${bad}"`);
+  }
+});
+
+test("a COMPLETE functional set still scores as before", () => {
+  const complete = computePphRisk({
+    oasis: oasisWith({
+      admission_source: "community",
+      functional_scores: { m1860_ambulation: 5, m1850_transferring: 4, m1830_bathing: 4 },
+    }),
+  });
+  // 15 base + 20 (13 >= 12, severe) — unchanged by the gate.
+  assert.equal(complete.score, 35);
+  assert.ok(complete.factors.some((f) => /Severe functional impairment/.test(f.factor)));
+  // A zero is a real score, not a missing value.
+  const allZero = computePphRisk({
+    oasis: oasisWith({
+      admission_source: "community",
+      functional_scores: { m1860_ambulation: 0, m1850_transferring: 0, m1830_bathing: 0 },
+    }),
+  });
+  assert.equal(allZero.score, 15);
+  assert.ok(!allZero.factors.some((f) => /incomplete/i.test(f.factor)), "0 is present, not missing");
+});

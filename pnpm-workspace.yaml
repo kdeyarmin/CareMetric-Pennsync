@@ -4,7 +4,7 @@ allowBuilds:
 overrides:
   '@telnyx/video>uuid': 11.1.1
   brace-expansion@^1.1.7: 1.1.17
-  esbuild: 0.28.1
+  esbuild: 0.28.2
   quill: 2.0.3
   # GHSA-2m8v-j782-fhvr (high): Socket.IO zero-attachment memory exhaustion in
   # socket.io-parser <4.2.7, reached transitively via @base44/sdk >
@@ -13,12 +13,6 @@ overrides:
   socket.io-parser: 4.2.7
   undici: 7.28.0
   ws: 8.21.0
-# eslint-plugin-react / jsx-a11y have not widened their peer ranges to eslint 10
-# yet, but both run clean under 10.8.0 in this repo (CI lint gate).
-peerDependencyRules:
-  allowedVersions:
-    'eslint-plugin-react>eslint': '10'
-    'eslint-plugin-jsx-a11y>eslint': '10'
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.17
   - vitest@4.1.10
@@ -35,7 +29,8 @@ minimumReleaseAgeExclude:
   - globals@17.8.0
   - jsdom@30.0.0
   - typescript@7.0.2
-  - esbuild@0.28.1
+  - esbuild@0.28.2
   - framer-motion@12.43.0
   - lucide-react@1.28.0
   - pdfjs-dist@6.2.108
+  - '@base44/vite-plugin@1.0.34'

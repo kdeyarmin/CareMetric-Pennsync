@@ -19,7 +19,10 @@ targets:
       - path: PennSync
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.caremetric.pennsync
+        # Must match the existing CareMetric AI App Store record (Apple ID
+        # 6757097720). Changing this creates a different app instead of an
+        # update for current users.
+        PRODUCT_BUNDLE_IDENTIFIER: com.caremetric.ai
         INFOPLIST_FILE: PennSync/Info.plist
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"

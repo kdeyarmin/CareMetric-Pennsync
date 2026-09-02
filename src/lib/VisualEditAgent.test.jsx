@@ -78,6 +78,31 @@ describe('VisualEditAgent preview click handling', () => {
     );
   });
 
+  it('never sends DOM text even when the dynamic-content marker is absent', () => {
+    // Production patient/chart components do not set `data-dynamic-content`,
+    // so redaction must not depend on it — otherwise selecting an element
+    // containing a patient name would leak its innerText to the editor origin.
+    const postMessage = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+    render(
+      <>
+        <VisualEditAgent />
+        <div data-source-location="unmarked-phi">Jane Doe PHI</div>
+      </>
+    );
+
+    enableVisualEditMode();
+    fireEvent.click(screen.getByText('Jane Doe PHI'));
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'element-selected',
+        visualSelectorId: 'unmarked-phi',
+        content: '',
+      }),
+      expect.any(String),
+    );
+  });
+
   it('ignores a toggle from an origin outside the editor allowlist', () => {
     // The origin check was commented out while this component mounts in
     // production, so any page framing the app could enable edit mode and then

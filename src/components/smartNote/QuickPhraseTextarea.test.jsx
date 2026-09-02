@@ -88,3 +88,41 @@ describe("mergePhrases", () => {
     expect(merged.some((p) => p.id === "t1")).toBe(true);
   });
 });
+
+describe("QuickPhraseTextarea — imperative handle for the blank walker", () => {
+  function HandleHarness({ apiRef, initial }) {
+    const [value, setValue] = useState(initial);
+    return <QuickPhraseTextarea ref={apiRef} value={value} onChange={setValue} />;
+  }
+
+  it("selects a range so the next typed character replaces the blank", () => {
+    const apiRef = { current: null };
+    const draft = "Homebound due to [diagnosis] today.";
+    renderWithProviders(<HandleHarness apiRef={apiRef} initial={draft} />);
+    const ta = screen.getByRole("textbox");
+
+    const start = draft.indexOf("[diagnosis]");
+    apiRef.current.selectRange(start, start + "[diagnosis]".length);
+
+    expect(ta).toHaveFocus();
+    expect(ta.selectionStart).toBe(start);
+    expect(ta.selectionEnd).toBe(start + "[diagnosis]".length);
+  });
+
+  it("reports the caret, so the walker can advance from where the nurse is", () => {
+    const apiRef = { current: null };
+    renderWithProviders(<HandleHarness apiRef={apiRef} initial="BP _/_ and HR _" />);
+    const ta = screen.getByRole("textbox");
+
+    ta.setSelectionRange(7, 7);
+    expect(apiRef.current.getCaret()).toBe(7);
+  });
+
+  it("survives a call before the textarea is mounted", () => {
+    const apiRef = { current: null };
+    const { unmount } = renderWithProviders(<HandleHarness apiRef={apiRef} initial="x" />);
+    const api = apiRef.current;
+    unmount();
+    expect(() => api.selectRange(0, 1)).not.toThrow();
+  });
+});

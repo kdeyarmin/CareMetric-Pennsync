@@ -5,6 +5,18 @@ import {
   computeStarEligibilityGap,
 } from "./dischargeComplianceEnforcer.js";
 import { rollupMeasures, computeEpisodeOutcome, STAR_MIN_EPISODES } from "./outcomeMeasureEngine.js";
+import { v2Row, v2Assessment } from "./responseSchema/testFixtures.js";
+
+const DEF = { m1860: "m1860_cms_e2", m1830: "m1830_cms_e2", m1400: "m1400_cms_e2", m2020: "m2020_cms_e2" };
+const NUM = { m1860: "M1860", m1830: "M1830", m1400: "M1400", m2020: "M2020" };
+const end = (visitType, date, codes) => v2Assessment({
+  visitType, date, rows: Object.entries(codes).map(([k, c]) => v2Row(DEF[k], NUM[k], c)),
+});
+/** An episode built from v2 endpoints — the only inputs that are CMS-scorable. */
+const episode = (startCodes, dcCodes) => computeEpisodeOutcome({
+  startAssessment: end("Start of Care", "2026-05-01", startCodes),
+  dischargeAssessment: end("Discharge", "2026-06-01", dcCodes),
+});
 
 const patient = (over = {}) => ({ id: "p1", first_name: "Jane", last_name: "Doe", status: "active", ...over });
 const ASOF = "2026-07-01";
@@ -105,9 +117,7 @@ test("no patient id → null (defensive)", () => {
 
 test("computeStarEligibilityGap reports measures below the 20-episode floor", () => {
   // 10 improving ambulation episodes only → 1 measure with denom 10, rest 0.
-  const outcomes = Array.from({ length: 10 }, () =>
-    computeEpisodeOutcome({ start: { m1860: 3 }, discharge: { m1860: 1 } }),
-  );
+  const outcomes = Array.from({ length: 10 }, () => episode({ m1860: "3" }, { m1860: "1" }));
   const gap = computeStarEligibilityGap(rollupMeasures(outcomes));
   assert.equal(gap.at_risk, true);
   assert.equal(gap.measures_eligible, 0);
@@ -116,17 +126,25 @@ test("computeStarEligibilityGap reports measures below the 20-episode floor", ()
   assert.equal(amb.episodes_needed, STAR_MIN_EPISODES - 10);
 });
 
-test("an agency clearing 5 measures at >= 20 episodes is not at risk", () => {
+test("an agency is still at risk while a measure has no verified response set", () => {
+  // Only FOUR of the five improvement measures have a CMS-verified v2 response
+  // set: M1850 was left out of the cutover, so it can never earn a denominator.
+  // The agency therefore cannot clear the 5-measure star floor on these inputs,
+  // and the gap must SAY so rather than reporting a fifth eligible measure.
   const outcomes = Array.from({ length: STAR_MIN_EPISODES }, () =>
-    computeEpisodeOutcome({
-      start: { m1860: 3, m1850: 2, m1830: 3, m1400: 3, m2020: 2 },
-      discharge: { m1860: 1, m1850: 1, m1830: 1, m1400: 1, m2020: 1 },
-    }),
+    episode(
+      { m1860: "3", m1830: "3", m1400: "3", m2020: "2" },
+      { m1860: "1", m1830: "1", m1400: "1", m2020: "1" },
+    ),
   );
   const gap = computeStarEligibilityGap(rollupMeasures(outcomes));
-  assert.equal(gap.measures_eligible, 5);
-  assert.equal(gap.at_risk, false);
-  assert.equal(gap.measures_needed, 0);
+  assert.equal(gap.measures_eligible, 4);
+  assert.equal(gap.at_risk, true);
+  assert.equal(gap.measures_needed, 1);
+  assert.ok(
+    gap.measures_short.some((m) => m.key === "bed_transfer"),
+    "the unverified measure is named, not silently absent",
+  );
 });
 
 test("visit-type and status casing drift does not create a false missing-discharge alarm", () => {

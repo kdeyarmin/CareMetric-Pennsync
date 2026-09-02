@@ -441,10 +441,9 @@ export default function OASISAuditDashboard() {
                         <div key={idx} className="p-2 bg-green-50 rounded border border-green-200 text-sm">
                           <div className="flex items-center justify-between">
                             <Badge className="bg-green-700 text-white">{opp.m_item}</Badge>
-                            <span className="text-green-700 font-medium">{opp.revenue_impact}</span>
                           </div>
                           <p className="text-xs mt-1">
-                            Score: {opp.current_score} → {opp.recommended_score}
+                            {opp.gap_description || opp.question || ''}
                           </p>
                         </div>
                       ))}

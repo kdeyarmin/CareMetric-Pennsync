@@ -10,6 +10,7 @@
 import { computeAge } from "../../lib/age.js";
 import { formatLocalDate } from "../../lib/dateLocal.js";
 
+import { RESPONSE_SCHEMA_V2_CMS_E2 } from "./responseSchema/registry.js";
 export { computeAge };
 /** @param {any[]} uploads */
 export function aggregateDemographics(uploads = []) {
@@ -58,21 +59,61 @@ export function aggregateTopDiagnoses(uploads = [], limit = 10) {
     .slice(0, limit);
 }
 
-/** Functional scores over time (most recent `limit`). @param {any[]} uploads */
+/**
+ * Functional scores over time (most recent `limit`).
+ *
+ * NOT a CMS-labeled measure. These uploads carry AI-extracted values from an
+ * OASIS document the agency completed in its EMR, so they are evidence of what
+ * the document said — never an official response, and never CMS-scorable.
+ *
+ * Two things changed. A missing score used to become `0` via `|| 0`, which on
+ * every OASIS functional scale reads as MAXIMUM INDEPENDENCE — so an
+ * incompletely extracted upload plotted as a fully independent patient. It is
+ * now `null`, which charts as a gap. And uploads whose derived values came from
+ * a legacy or unknown response schema are excluded with a visible count rather
+ * than mixed into the same series.
+ *
+ * @param {any[]} uploads
+ * @returns {{ points: any[], excluded: number, excluded_reason: string }}
+ */
 export function aggregateFunctionalScores(uploads = [], limit = 20) {
-  return uploads
-    .filter((u) => u.assessment_date && u.pdgm_data?.functional_scores)
+  const usable = [];
+  let excluded = 0;
+  for (const u of uploads) {
+    if (!u.assessment_date || !u.pdgm_data?.functional_scores) continue;
+    // A derived value with no response schema means whatever PennSync's old
+    // option list meant; it cannot share an axis with a v2 value. ABSENT counts
+    // as unknown — per `OASISUpload.response_schema_id`, "absent means
+    // legacy/unknown" — so the check is an equality against v2, not a
+    // "present and different" test. Before cutover that empties this chart,
+    // which is the honest state: the excluded count and reason say why.
+    if (u.response_schema_id !== RESPONSE_SCHEMA_V2_CMS_E2) { excluded += 1; continue; }
+    usable.push(u);
+  }
+  const num = (v) => {
+    if (v === undefined || v === null || v === "") return null;
+    const n = typeof v === "number" ? v : Number(String(v).trim());
+    return Number.isFinite(n) ? n : null;
+  };
+  const points = usable
     .sort((a, b) => new Date(a.assessment_date) - new Date(b.assessment_date))
     .slice(-limit)
     .map((upload) => ({
       // formatLocalDate avoids the UTC-midnight day-shift for bare ISO dates
       // (the pitfall computeAge documents above).
       date: formatLocalDate(upload.assessment_date),
-      ambulation: upload.pdgm_data?.functional_scores?.m1860_ambulation || 0,
-      transferring: upload.pdgm_data?.functional_scores?.m1850_transferring || 0,
-      bathing: upload.pdgm_data?.functional_scores?.m1830_bathing || 0,
+      ambulation: num(upload.pdgm_data?.functional_scores?.m1860_ambulation),
+      transferring: num(upload.pdgm_data?.functional_scores?.m1850_transferring),
+      bathing: num(upload.pdgm_data?.functional_scores?.m1830_bathing),
       patient: upload.patient_name?.substring(0, 15) || "Unknown",
     }));
+  return {
+    points,
+    excluded,
+    excluded_reason: excluded
+      ? `${excluded} upload(s) excluded: derived values use a response set PennSync cannot verify.`
+      : "",
+  };
 }
 
 /** PDGM payment trends (most recent `limit` with a payment). @param {any[]} uploads */

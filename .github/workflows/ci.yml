@@ -50,6 +50,12 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      # BLOCKING gate. The worksheet is the artifact a clinical reviewer signs,
+      # so a drifted copy means the review on file describes item definitions the
+      # app no longer has.
+      - name: Check OASIS review worksheet is current
+        run: pnpm run check:oasis-worksheet
+
       - name: Check generated shared helpers
         run: pnpm run check:shared-helpers
 

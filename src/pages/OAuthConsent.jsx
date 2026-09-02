@@ -71,7 +71,7 @@ export default function OAuthConsent() {
           return;
         }
         setInfo(data);
-      } catch (e) {
+      } catch {
         setError("Could not load this authorization request. Please try again.");
       } finally {
         if (!redirecting) setChecking(false);

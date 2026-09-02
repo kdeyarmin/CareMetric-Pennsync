@@ -345,20 +345,21 @@ Patient Data: ${JSON.stringify(contextData)}`,
                 }
               }
             },
-            functional_optimization: {
+            // `functional_optimization` is REPLACED. It asked the model for a
+            // `recommended_score` per functional OASIS item alongside
+            // `case_mix_impact` and `revenue_impact` — i.e. which response to
+            // record in order to be paid more. What survives is the genuinely
+            // useful half: what to OBSERVE and how to DOCUMENT it. No score.
+            functional_documentation_guidance: {
               type: "array",
               items: {
                 type: "object",
                 properties: {
                   oasis_item: { type: "string" },
                   item_description: { type: "string" },
-                  current_score: { type: "string" },
-                  recommended_score: { type: "string" },
                   observational_points: { type: "array", items: { type: "string" } },
                   documentation_example: { type: "string" },
-                  clinical_indicators: { type: "array", items: { type: "string" } },
-                  case_mix_impact: { type: "string" },
-                  revenue_impact: { type: "number" }
+                  clinical_indicators: { type: "array", items: { type: "string" } }
                 }
               }
             },
@@ -436,11 +437,11 @@ Patient Data: ${JSON.stringify(contextData)}`,
                     }
                   }
                 },
-                functional_score_optimization: {
+                // `functional_score_optimization` removed: it asked for a
+                // "target_for_higher_payment" against the functional items.
+                assessment_focus: {
                   type: "object",
                   properties: {
-                    current_estimated_scores: { type: "string" },
-                    target_for_higher_payment: { type: "string" },
                     assessment_focus_areas: { type: "array", items: { type: "string" } }
                   }
                 }
@@ -776,37 +777,27 @@ Patient Data: ${JSON.stringify(contextData)}`,
           )}
 
           {/* Functional Status Optimization */}
-          {suggestions.functional_optimization?.length > 0 && (
+          {suggestions.functional_documentation_guidance?.length > 0 && (
             <Card className="border-2 border-blue-400 bg-blue-50">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-blue-900">
                   <Activity className="w-5 h-5" />
-                  Functional Status Optimization (M1800-M1860)
+                  Functional status — what to observe and document (M1800–M1860)
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Alert className="bg-blue-100 border-blue-400">
                   <AlertDescription className="text-blue-900 text-sm">
-                    <strong>Document functional status accurately:</strong> Score each item to reflect the patient's actual abilities, and document specific observations that support the level of impairment recorded.
+                    <strong>PennSync does not select OASIS responses.</strong> Choose each response yourself from the wording in your EMR, based on the patient's actual abilities. What follows is guidance on what to observe and how to write it up.
                   </AlertDescription>
                 </Alert>
-                {suggestions.functional_optimization.map((func, idx) => (
+                {suggestions.functional_documentation_guidance.map((func, idx) => (
                   <div key={idx} className="bg-white p-4 rounded-lg border-2 border-blue-300">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
                           <Badge variant="outline" className="text-xs">{func.oasis_item}</Badge>
                           <Badge className="bg-blue-600">{func.item_description}</Badge>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 mt-3">
-                          <div>
-                            <p className="text-xs text-slate-600">Current Score</p>
-                            <p className="text-lg font-bold text-slate-900">{func.current_score}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-slate-600">Recommended Score</p>
-                            <p className="text-lg font-bold text-green-600">{func.recommended_score}</p>
-                          </div>
                         </div>
                       </div>
                     </div>
@@ -835,9 +826,6 @@ Patient Data: ${JSON.stringify(contextData)}`,
                         </ul>
                       </div>
 
-                      <div className="bg-blue-100 p-2 rounded">
-                        <p className="text-xs text-blue-900"><strong>Case-Mix Impact:</strong> {func.case_mix_impact}</p>
-                      </div>
                     </div>
                   </div>
                 ))}

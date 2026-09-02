@@ -178,6 +178,17 @@
       "type": "string",
       "description": "Service line scope the user covers (home_health, hospice, both); distinct from service_type"
     },
+    "staff_role": {
+      "type": "string",
+      "enum": [
+        "nurse",
+        "office_staff",
+        "social_worker",
+        "spiritual_care"
+      ],
+      "default": "nurse",
+      "description": "Staff discipline that drives which functions are visible. 'nurse' (default) and admins see clinical + nursing tools (OASIS, clinical notes, care plans). 'social_worker' and 'spiritual_care' can view patients/records but not nursing tools. 'office_staff' sees only non-clinical functions (learning, PTO, messaging, resources). Orthogonal to admin role/account_type tiers."
+    },
     "credentials": {
       "type": "string",
       "description": "Free-text professional credentials (distinct from credential_type enum)"

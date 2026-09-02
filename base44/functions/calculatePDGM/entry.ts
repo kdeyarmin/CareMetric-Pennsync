@@ -376,46 +376,91 @@ function mapDiagnosisToClinicalGroup(primaryDiagnosis, icd10Code, icdMap = ICD10
   return 'MMTA_Other';
 }
 
-// Calculate functional impairment level with source/timing consideration
+// The seven OASIS items CMS's functional-impairment score is built from, with
+// the response codes each one actually offers. Codes are OPAQUE STRINGS: a
+// missing or unrecognised value is a REFUSAL, never a zero. Silently scoring an
+// absent item as 0 is what produced a "functional low" level — and a payment
+// estimate — for an assessment nobody had finished.
+const PDGM_FUNCTIONAL_ITEMS = [
+  { key: 'm1800_grooming', item: 'M1800', definitionId: null, codes: ['0', '1', '2', '3'] },
+  { key: 'm1810_dress_upper', item: 'M1810', definitionId: null, codes: ['0', '1', '2', '3'] },
+  { key: 'm1820_dress_lower', item: 'M1820', definitionId: null, codes: ['0', '1', '2', '3'] },
+  // CMS M1830 code 6 is "bathed totally by another person" — a real, most-
+  // dependent level that scores. It was previously treated as unratable because
+  // the LEGACY PennSync 6 meant "unable to rate — artificial opening".
+  { key: 'm1830_bathing', item: 'M1830', definitionId: 'm1830_cms_e2', codes: ['0', '1', '2', '3', '4', '5', '6'] },
+  { key: 'm1840_toilet_transfer', item: 'M1840', definitionId: 'm1840_cms_e2', codes: ['0', '1', '2', '3', '4'] },
+  { key: 'm1850_transferring', item: 'M1850', definitionId: null, codes: ['0', '1', '2', '3', '4', '5'] },
+  { key: 'm1860_ambulation', item: 'M1860', definitionId: 'm1860_cms_e2', codes: ['0', '1', '2', '3', '4', '5', '6'] },
+];
+
+// A screening answer may never stand in for an official item response.
+const PDGM_FORBIDDEN_SCREENING_KEYS = [
+  'ps_hospitalization_risk_tier', 'ps_urinary_incontinence_frequency', 'ps_ostomy_self_management',
+];
+
+/**
+ * Calculate the functional impairment level, or refuse.
+ *
+ * Returns `{ level, points }` only when EVERY functional item carries a
+ * verified, clinician-selected v2 response. Otherwise it returns
+ * `{ level: null, points: null, incomplete: true, missing: [...] }` and the
+ * caller must report an incomplete result rather than a payment estimate.
+ */
 function calculateFunctionalLevel(functionalData, sourceTimingKey, thresholdsTable = FUNCTIONAL_THRESHOLDS) {
+  const missing = [];
+
+  // A screening tier can never be an official response, whatever it is called.
+  for (const k of PDGM_FORBIDDEN_SCREENING_KEYS) {
+    if (functionalData && functionalData[k] !== undefined) {
+      missing.push(`${k} is a PennSync screening answer and cannot feed PDGM`);
+    }
+  }
+
+  // Provenance gate. Functional input must state the v2 response schema; a
+  // legacy or unversioned value means whatever PennSync's old option list meant
+  // and cannot be scored on the CMS scale.
+  const schemaId = functionalData?.response_schema_id;
+  if (schemaId !== 'pennsync-oasis-response-v2-cms-e2') {
+    missing.push(schemaId
+      ? `functional input uses response schema "${schemaId}", not the CMS-aligned v2 set`
+      : 'functional input states no response schema');
+  }
+  if (functionalData?.response_origin && functionalData.response_origin !== 'clinician_selected') {
+    missing.push('functional input was not explicitly selected by a clinician');
+  }
+
   let totalPoints = 0;
-  // Sum only ratable OASIS response codes. M1830 code 6 = "Unable to rate —
-  // artificial opening" is unassessable (see outcomeMeasureEngine excludeEither)
-  // and must NOT count as max bathing points.
-  const addRatable = (raw, { unratable = [] } = {}) => {
-    const n = parseInt(raw, 10);
-    if (!Number.isFinite(n) || unratable.includes(n)) return;
-    totalPoints += n;
-  };
+  for (const spec of PDGM_FUNCTIONAL_ITEMS) {
+    // PennSync holds no CMS-verified response set for four of the seven items
+    // (M1800/M1810/M1820/M1850 were outside the CMS-alignment cutover), so their
+    // codes cannot be scored on the official scale.
+    if (!spec.definitionId) {
+      missing.push(`${spec.item} has no CMS-verified response set in PennSync`);
+      continue;
+    }
+    const raw = functionalData?.[spec.key];
+    if (raw === undefined || raw === null || raw === '') {
+      missing.push(`${spec.item} has no response`);
+      continue;
+    }
+    const code = typeof raw === 'object' ? raw.code : String(raw);
+    if (typeof code !== 'string' || !spec.codes.includes(code)) {
+      missing.push(`${spec.item} response "${String(code)}" is not one of its CMS codes`);
+      continue;
+    }
+    // Rank = position in the CMS response order. No code is parsed as a number.
+    totalPoints += spec.codes.indexOf(code);
+  }
 
-  // M1800 - Grooming (0-3)
-  addRatable(functionalData.m1800_grooming);
+  if (missing.length) {
+    return { level: null, points: null, incomplete: true, missing };
+  }
 
-  // M1810 - Dress Upper (0-3)
-  addRatable(functionalData.m1810_dress_upper);
-
-  // M1820 - Dress Lower (0-3)
-  addRatable(functionalData.m1820_dress_lower);
-
-  // M1830 - Bathing (0-5 ratable; 6 = unratable artificial opening)
-  addRatable(functionalData.m1830_bathing, { unratable: [6] });
-
-  // M1840 - Toilet Transfer (0-4)
-  addRatable(functionalData.m1840_toilet_transfer);
-
-  // M1850 - Transferring (0-5)
-  addRatable(functionalData.m1850_transferring);
-
-  // M1860 - Ambulation (0-6)
-  addRatable(functionalData.m1860_ambulation);
-
-  // Get thresholds based on admission source and timing
   const thresholds = thresholdsTable[sourceTimingKey] || thresholdsTable.community_early || FUNCTIONAL_THRESHOLDS.community_early;
-
-  // Determine level
-  if (totalPoints >= thresholds.high) return { level: 'high', points: totalPoints };
-  if (totalPoints >= thresholds.low) return { level: 'medium', points: totalPoints };
-  return { level: 'low', points: totalPoints };
+  if (totalPoints >= thresholds.high) return { level: 'high', points: totalPoints, incomplete: false, missing: [] };
+  if (totalPoints >= thresholds.low) return { level: 'medium', points: totalPoints, incomplete: false, missing: [] };
+  return { level: 'low', points: totalPoints, incomplete: false, missing: [] };
 }
 
 // Enhanced comorbidity analysis
@@ -837,11 +882,22 @@ Deno.serve(async (req) => {
       correctedRevenue._appliedCorrections = correctedPdgmData._appliedCorrections || [];
       correctedRevenue._correctionCount = correctedPdgmData._correctionCount || 0;
 
-      revenueDifference = correctedRevenue.totalPayment - originalRevenue.totalPayment;
-      // Guard against divide-by-zero (Infinity/NaN) if base payment is 0.
-      percentageIncrease = originalRevenue.totalPayment > 0
-        ? ((revenueDifference / originalRevenue.totalPayment) * 100).toFixed(2)
-        : '0.00';
+      // Either side may be INCOMPLETE, in which case its totalPayment is null.
+      // `null - null` coerces to 0, which would present an unavailable
+      // comparison as a confident "$0 change" — the one reading that looks like
+      // a verified answer. Leave the delta null so consumers show unavailable.
+      const bothFinite = Number.isFinite(correctedRevenue.totalPayment)
+        && Number.isFinite(originalRevenue.totalPayment);
+      if (bothFinite) {
+        revenueDifference = correctedRevenue.totalPayment - originalRevenue.totalPayment;
+        // Guard against divide-by-zero (Infinity/NaN) if base payment is 0.
+        percentageIncrease = originalRevenue.totalPayment > 0
+          ? ((revenueDifference / originalRevenue.totalPayment) * 100).toFixed(2)
+          : '0.00';
+      } else {
+        revenueDifference = null;
+        percentageIncrease = null;
+      }
     }
 
     // Calculate alternative scenarios for comparison
@@ -987,8 +1043,12 @@ function calculatePDGMRevenue(data, wageIndex = 1.0, rates = DEFAULT_RATES, isOf
 
   // Calculate functional level with source/timing consideration
   const functionalResult = calculateFunctionalLevel(functionalData, sourceTimingKey, functionalThresholdsTable);
+
+
   const functionalMultipliers = functionalMultipliersTable[sourceTimingKey] || functionalMultipliersTable.community_early || FUNCTIONAL_MULTIPLIERS.community_early;
-  const functionalMultiplier = functionalMultipliers[functionalResult.level];
+  // Null when the functional level could not be established — see the
+  // incomplete return below. Never defaulted to the 'low' multiplier.
+  const functionalMultiplier = functionalResult.incomplete ? null : functionalMultipliers[functionalResult.level];
 
   // Calculate comorbidity adjustment
   const comorbidityResult = calculateComorbidityAdjustment(comorbidities, sourceTimingKey);
@@ -997,14 +1057,52 @@ function calculatePDGMRevenue(data, wageIndex = 1.0, rates = DEFAULT_RATES, isOf
 
   // Calculate total case-mix weight (clinical × functional × comorbidity)
   // Note: Source and timing are already factored into the individual weights
-  const caseMixWeight = clinicalWeight * functionalMultiplier * comorbidityMultiplier;
+  const caseMixWeight = functionalResult.incomplete
+    ? null
+    : clinicalWeight * functionalMultiplier * comorbidityMultiplier;
 
   // Apply the wage index to the LABOR SHARE only; the non-labor remainder is paid
   // unadjusted (CMS methodology). With wageIndex 1.0 this leaves base unchanged.
   const adjustedBasePayment = Math.round(basePayment * (laborShare * wageIndex + (1 - laborShare)) * 100) / 100;
 
   // Calculate payment with wage-adjusted base
-  const totalPayment = Math.round(adjustedBasePayment * caseMixWeight * 100) / 100;
+  // An unverifiable functional score does not quietly become a cheap one.
+  // Without a verified, clinician-selected v2 response for every functional
+  // item there is no CMS functional level, so no case-mix weight and no payment
+  // estimate are reported. Everything that does NOT depend on the functional
+  // level is still returned, so the caller can see how far the calculation got.
+  if (functionalResult.incomplete) {
+    return {
+      incomplete: true,
+      reason: 'functional_input_not_verifiable',
+      missing: functionalResult.missing,
+      message:
+        'PDGM cannot be calculated: the functional input does not carry verified, '
+        + 'clinician-selected CMS-aligned OASIS responses for every functional item. '
+        + 'Enter and verify these items in your EMR — PennSync does not determine PDGM.',
+      clinicalGroup,
+      clinicalWeight: Math.round(clinicalWeight * 10000) / 10000,
+      admissionSource,
+      episodeTiming,
+      sourceTimingKey,
+      basePayment,
+      wageIndex,
+      adjustedBasePayment,
+      comorbidityLevel: comorbidityResult.level,
+      comorbidityCount: comorbidityResult.count,
+      functionalLevel: null,
+      functionalPoints: null,
+      functionalMultiplier: null,
+      caseMixWeight: null,
+      totalPayment: null,
+      isEstimate: true,
+      ...(inputWarnings.length ? { inputWarnings } : {}),
+    };
+  }
+
+  const totalPayment = caseMixWeight === null
+    ? null
+    : Math.round(adjustedBasePayment * caseMixWeight * 100) / 100;
 
   return {
     // The case-mix weights / base rate come from the merged PDGMRateConfig (admin

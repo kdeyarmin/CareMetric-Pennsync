@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { describeCallerPatientScope, agencyQueryKey } from '@/lib/agencyRoster';
+import { getStaffRole } from "@/lib/roles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -68,14 +69,13 @@ export default function DataQualityDashboard() {
       ? ((patients.length - patientIssues.length) / patients.length * 100).toFixed(1)
       : 100;
 
-    // User profile quality
-    const userIssues = users.filter(u => 
-      !u.phone || 
-      u.phone === '' || 
-      !u.care_scope ||
-      !u.credential_type ||
-      u.credential_type === ''
-    );
+    const userIssues = users.filter(u => {
+      if (!u.phone || u.phone === '') return true;
+      if (getStaffRole(u) === 'nurse') {
+        return !u.care_scope || !u.credential_type || u.credential_type === '';
+      }
+      return false;
+    });
 
     const userCompleteness = users.length > 0
       ? ((users.length - userIssues.length) / users.length * 100).toFixed(1)
@@ -104,12 +104,15 @@ export default function DataQualityDashboard() {
     // surface. Intersect against the loaded roster, matching the reference
     // implementation in QuickHealthOverview.jsx. PersonnelCredential.user_id
     // holds the user's email.
-    const credentialOwners = new Set(credentials.map(c => c.user_id).filter(Boolean));
-    const coveredUsers = users.filter(u => u?.email && credentialOwners.has(u.email)).length;
-    const missingCredentials = users.length - coveredUsers;
-    const credentialCoverage = users.length > 0
-      ? ((coveredUsers / users.length) * 100).toFixed(1)
-      : 0;
+    const nurseEmails = new Set(
+      users.filter(u => getStaffRole(u) === 'nurse').map(u => u.email).filter(Boolean)
+    );
+    const credentialOwners = new Set(credentials.map(c => c.user_id).filter(id => nurseEmails.has(id)));
+    const coveredUsers = credentialOwners.size;
+    const missingCredentials = Math.max(0, nurseEmails.size - coveredUsers);
+    const credentialCoverage = nurseEmails.size > 0
+      ? ((coveredUsers / nurseEmails.size) * 100).toFixed(1)
+      : 100;
 
     return {
       patientIssues,
@@ -283,8 +286,8 @@ export default function DataQualityDashboard() {
                     <Badge variant="outline" className="text-xs">
                       Missing: {[
                         (!user.phone || user.phone === '') && 'Phone',
-                        !user.care_scope && 'Care Scope',
-                        (!user.credential_type || user.credential_type === '') && 'Credential'
+                        getStaffRole(user) === 'nurse' && !user.care_scope && 'Care Scope',
+                        getStaffRole(user) === 'nurse' && (!user.credential_type || user.credential_type === '') && 'Credential'
                       ].filter(Boolean).join(', ')}
                     </Badge>
                   </div>

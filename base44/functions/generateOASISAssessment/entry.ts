@@ -106,19 +106,24 @@ Generate:
    - Exclude M1000-M1060 administrative section
    - Focus on clinical assessment items only
 
-2. PRE-FILLED RESPONSES: For each item, provide:
+2. PREPARATION FOR EACH ITEM — evidence and questions, NEVER an answer:
    - Item number and full description (not truncated)
-   - Complete suggested response/score based on available data
-   - Confidence level (High/Medium/Low)
-   - Clear rationale for the suggestion
-   - Specific questions to ask patient/caregiver to confirm
+   - The verbatim sentence(s) from the referral/record that relate to this item
+   - Confidence that the record contains enough to answer it (High/Medium/Low)
+   - What the record does and does not establish
+   - Specific questions to ask the patient/caregiver in order to answer it
    - Documentation tips with complete sentences
 
 3. ASSESSMENT PRIORITIES: What to assess first based on clinical urgency
 
-4. PDGM OPTIMIZATION: Which responses maximize appropriate reimbursement
+4. MISSING DATA: What critical information is needed but not available
 
-5. MISSING DATA: What critical information is needed but not available
+HARD RULES — these override anything else in this prompt:
+- NEVER provide, suggest, recommend or imply an OASIS response, score or code.
+  The clinician selects every official response themselves. If you are tempted
+  to state a code, state the evidence and ask the question instead.
+- NEVER consider or mention payment, reimbursement, revenue, PDGM or case-mix
+  impact, and never suggest what would "maximize" any of them.
 
 Focus on functional status, cognitive status, medications, wounds, and clinical factors affecting care.
 Write everything clearly and completely - no truncated text.`,
@@ -133,7 +138,9 @@ Write everything clearly and completely - no truncated text.`,
                 item_number: { type: "string" },
                 item_name: { type: "string" },
                 category: { type: "string" },
-                suggested_response: { type: "string" },
+                // No `suggested_response`: the model does not choose an OASIS
+                // response. `evidence` is the verbatim quote it is grounded in.
+                evidence: { type: "string" },
                 confidence_level: { type: "string" },
                 rationale: { type: "string" },
                 questions_to_ask: {
@@ -143,8 +150,7 @@ Write everything clearly and completely - no truncated text.`,
                 documentation_tips: {
                   type: "array",
                   items: { type: "string" }
-                },
-                pdgm_impact: { type: "string" }
+                }
               }
             }
           },
@@ -163,11 +169,8 @@ Write everything clearly and completely - no truncated text.`,
             type: "array",
             items: { type: "string" }
           },
-          pdgm_optimization_notes: {
-            type: "array",
-            items: { type: "string" }
-          },
-          estimated_pdgm_group: { type: "string" },
+          // `pdgm_optimization_notes` and `estimated_pdgm_group` are removed:
+          // both asked the model to reason about payment from clinical items.
           clinical_summary: { type: "string" }
         }
       }

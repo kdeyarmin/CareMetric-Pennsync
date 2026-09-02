@@ -13,6 +13,8 @@ import { todayEastern, formatEastern } from "@/components/utils/timezone";
 import { markStartOfCareCompleted } from "@/components/referral/intakeToSocTracker";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
+import { saveLegacyScreeningDraft } from "@/components/oasis/responseSchema/oasisWriteAdapter.js";
+import { itemSourceFor } from "@/components/oasis/specs/verification.js";
 // Each OASIS-E item uses its OWN valid range (M1810/M1845 = 0–3, M1850 = 0–5,
 // M1830/M1860 = 0–6) — see oasisScales.js. A single flat list either truncated the
 // 0–6 items or offered codes that don't exist for the 0–3/0–5 items.
@@ -93,26 +95,31 @@ export default function OASISQuickUpdate({ patient }) {
       // fields, so the clinical data was silently dropped — and omitted the
       // required visit_type, so the row was empty/invalid. (Base44 records the
       // creating user automatically, so clinician identity needs no custom field.)
-      const oasisItems = QUICK_FIELDS
+      const quickAnswers = QUICK_FIELDS
         .filter((f) => values[f.key])
         .map((f) => ({
-          item_number: f.item,
-          item_name: f.label,
+          id: f.item,
+          itemNumber: f.item,
+          itemName: f.label,
+          itemSource: itemSourceFor(f.item),
           response: values[f.key],
-          ai_suggested: false,
-          manually_edited: true,
         }));
       // Record the Eastern calendar day, not the UTC one — an evening ET save
       // (after 8 PM EDT / 7 PM EST) would otherwise stamp tomorrow's date on a
       // field that drives Medicare assessment-timing windows.
       const assessmentDate = todayEastern();
-      await base44.entities.OASISAssessment.create({
-        patient_id: patient.id,
-        visit_type: visitType,
-        assessment_date: assessmentDate,
-        oasis_items: oasisItems,
-        clinical_summary: clinicalNote,
-        status: "draft",
+      // Routed through the single write adapter. It stamps
+      // `pennsync-oasis-response-v1-legacy` on every row, so a quick-update
+      // answer can never be read downstream as a CMS-aligned response.
+      await saveLegacyScreeningDraft({
+        assessment: {
+          patient_id: patient.id,
+          visit_type: visitType,
+          assessment_date: assessmentDate,
+          clinical_summary: clinicalNote,
+          status: "draft",
+        },
+        answers: quickAnswers,
       });
       if (visitType === "Start of Care") {
         // Fire-and-forget (no await): close the referral's intake→SOC clock,

@@ -85,7 +85,13 @@ test("case-mix lookup", () => {
 
 test("groupPeriod: complete when all tables resolve", () => {
   const result = groupPeriod(
-    { periodNumber: 1, hadInstitutionalStay: false, principalDiagnosis: "I50.9", secondaryDiagnoses: ["E11.9"], answers: { m1860: "2", m1830: "1" } },
+    {
+      periodNumber: 1, hadInstitutionalStay: false, principalDiagnosis: "I50.9",
+      secondaryDiagnoses: ["E11.9"], answers: { m1860: "2", m1830: "1" },
+      // Required: functional points are computed from response CODES, and a
+      // code only means something once you know which response set it came from.
+      responseSchemaId: "pennsync-oasis-response-v2-cms-e2",
+    },
     CMS
   );
   assert.equal(result.complete, true);
@@ -136,12 +142,39 @@ test("groupPeriod: functionalThresholds keyed by clinical group resolves per gro
     functionalThresholds: { "MMTA - Cardiac and Circulatory": { low: 1, medium: 4 } },
   };
   const result = groupPeriod(
-    { periodNumber: 1, principalDiagnosis: "I50.9", secondaryDiagnoses: ["E11.9"], answers: { m1860: "2", m1830: "1" } },
+    {
+      periodNumber: 1, principalDiagnosis: "I50.9", secondaryDiagnoses: ["E11.9"],
+      answers: { m1860: "2", m1830: "1" },
+      responseSchemaId: "pennsync-oasis-response-v2-cms-e2",
+    },
     cms
   );
   assert.equal(result.complete, true);
   assert.equal(result.functionalLevel, "medium");
   assert.equal(result.hipps, "1AA11");
+});
+
+test("groupPeriod: legacy or unversioned functional answers are incomplete, never grouped", () => {
+  // The functional points come from response CODES. Under the legacy set those
+  // codes name different levels, so grouping them would produce a payment
+  // number nobody can defend.
+  for (const schema of [undefined, "pennsync-oasis-response-v1-legacy", "pennsync-oasis-response-v9"]) {
+    const result = groupPeriod(
+      {
+        periodNumber: 1, principalDiagnosis: "I50.9", secondaryDiagnoses: ["E11.9"],
+        answers: { m1860: "2", m1830: "1" },
+        ...(schema ? { responseSchemaId: schema } : {}),
+      },
+      CMS,
+    );
+    assert.equal(result.complete, false, `schema ${schema} must not group`);
+    assert.equal(result.hipps, null);
+    assert.equal(result.caseMixWeight, null);
+    assert.ok(
+      result.missing.some((m) => /response schema/.test(m)),
+      `schema ${schema}: missing must name the response schema — got ${JSON.stringify(result.missing)}`,
+    );
+  }
 });
 
 test("groupPeriod: group-keyed thresholds absent for the assigned group → incomplete, not 'high'", () => {

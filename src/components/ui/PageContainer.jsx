@@ -28,11 +28,11 @@ export default function PageContainer({ children, className }) {
   // centering — re-applying them here would nest the constraints. Keep only the
   // vertical rhythm so the embedded sections stack cleanly under the hub header.
   if (embedded) {
-    return <div className={cn("space-y-6", className)}>{children}</div>;
+    return <div className={cn("min-w-0 w-full space-y-6", className)}>{children}</div>;
   }
 
   return (
-    <div className={cn("mx-auto w-full max-w-7xl space-y-6", className)}>
+    <div className={cn("mx-auto min-w-0 w-full max-w-7xl space-y-6", className)}>
       {children}
     </div>
   );

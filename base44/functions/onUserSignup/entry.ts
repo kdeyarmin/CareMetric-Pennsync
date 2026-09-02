@@ -283,6 +283,7 @@ Deno.serve(async (req) => {
           full_name: invitation.full_name || user.full_name,
           role: invitation.role,
           care_scope: invitation.care_scope,
+          staff_role: invitation.staff_role || 'nurse',
           phone: invitation.phone,
           credentials: invitation.credentials,
           is_approved: true

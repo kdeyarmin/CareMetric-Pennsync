@@ -47,10 +47,10 @@ const NON_MANIFEST_ROUTES = new Set(['Dashboard']);
  * case-insensitively, so createPageUrl()'s lowercase output still resolves here.
  */
 export const ROUTES = [
-  { name: 'Dashboard', Component: Dashboard, adminOnly: false, superAdminOnly: false },
+  { name: 'Dashboard', Component: Dashboard, adminOnly: false, superAdminOnly: false, access: 'general' },
   ...NAV_MANIFEST
     .filter((entry) => !NON_MANIFEST_ROUTES.has(entry.page))
-    .map((entry) => ({ name: entry.page, factory: factoryFor(entry.page), adminOnly: !!entry.adminOnly, superAdminOnly: !!entry.superAdminOnly }))
+    .map((entry) => ({ name: entry.page, factory: factoryFor(entry.page), adminOnly: !!entry.adminOnly, superAdminOnly: !!entry.superAdminOnly, access: entry.access || 'general' }))
     .filter((entry, index, all) => {
       // Guard against a manifest entry whose page file does not exist (lazy()
       // would crash). Surface it in dev so the mismatch is fixed at the source.
@@ -64,7 +64,7 @@ export const ROUTES = [
     // `adminOnly` mirrors the manifest so App.jsx can gate admin routes at the
     // router level (non-admins typing the URL get blocked, not just hidden from
     // the sidebar). Client-side defense in depth; server RLS is the real gate.
-    .map((entry) => ({ name: entry.name, Component: lazy(entry.factory), adminOnly: entry.adminOnly, superAdminOnly: entry.superAdminOnly })),
+    .map((entry) => ({ name: entry.name, Component: lazy(entry.factory), adminOnly: entry.adminOnly, superAdminOnly: entry.superAdminOnly, access: entry.access })),
 ];
 
 /**
@@ -220,6 +220,7 @@ export const ROUTER_PATHS = [
   '/join',
   '/signer',
   '/followup',
+  '/consent',
   '/privacy',
   ...PAGE_NAMES.map((name) => `/${name}`),
   ...REDIRECTS.map(({ from }) => from),

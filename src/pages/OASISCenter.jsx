@@ -19,6 +19,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
 import { isAdminView } from "@/lib/roles";
 import LoadingState from "@/components/ui/LoadingState";
+import OasisScopeNotice from "@/components/oasis/OasisScopeNotice";
 
 const SmartOASISAssessment = lazy(() => import("@/components/hub-tabs/SmartOASISAssessment"));
 const OASISAnalyzer = lazy(() => import("@/components/hub-tabs/OASISAnalyzer"));
@@ -87,13 +88,20 @@ export default function OASISCenter() {
 
   return (
     <PageContainer>
+      {/* PennSync is NOT the official OASIS completion or submission system. The
+          agency completes and submits OASIS in its EMR / iQIES; this centre helps
+          staff review, understand and cross-check what they entered there. The
+          title and description say so rather than describing assessment entry as
+          if this were the instrument. */}
       <PageHeader
         icon={ClipboardCheck}
         eyebrow="OASIS"
-        title="OASIS Center"
-        description="Complete, analyze, review, and optimize OASIS assessments — assessment entry, accuracy and compliance checks, clinical pathways, analytics, and audit, all in one place."
+        title="OASIS Review & Assistance Center"
+        description="Review and understand OASIS responses — item guidance, possible inconsistencies, documentation cross-checks, clinical reasoning, analytics and audit support. Complete and submit the official OASIS in your agency's EMR."
         favoritePage="OASISCenter"
       />
+
+      <OasisScopeNotice className="mb-4" />
 
       <EmbeddedPage>
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
@@ -101,7 +109,7 @@ export default function OASISCenter() {
           <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
             <TabsTrigger value="assessment" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
               <Brain className="h-4 w-4 mr-2" />
-              Assessment
+              Review Assistant
             </TabsTrigger>
             <TabsTrigger value="analyze" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
               <Search className="h-4 w-4 mr-2" />

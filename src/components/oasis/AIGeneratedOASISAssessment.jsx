@@ -1,12 +1,11 @@
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { toLocalISODate } from "@/lib/dateLocal";
 import { generateDiagnosisCodes, codeLabel } from "@/components/referral/diagnosisCodeGenerator";
+import { sanitizeAiItems, sanitizeAiText, NO_AI_PREFILL_NOTICE } from "@/components/oasis/responseSchema/aiResponseSanitizer.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Sparkles,
   ClipboardList,
@@ -17,22 +16,16 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
-  FileText,
-  Save,
-  Edit
+  FileText
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from 'sonner';
 
-export default function AIGeneratedOASISAssessment({ patientId, visitId, visitType = "Start of Care", referralData, onSaved }) {
-  const queryClient = useQueryClient();
+export default function AIGeneratedOASISAssessment({ patientId, visitType = "Start of Care", referralData }) {
   const [assessment, setAssessment] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [expandedItems, setExpandedItems] = useState([]);
   const [copiedItems, setCopiedItems] = useState([]);
-  const [editingItems, setEditingItems] = useState({});
 
   // Deterministic diagnosis sequence from the referral (codes documented in
   // the referral only, never generated). Feeds M1021/M1023 review and the
@@ -48,7 +41,10 @@ export default function AIGeneratedOASISAssessment({ patientId, visitId, visitTy
     if (!assessment?.oasis_items || !referralCoding?.primary) return null;
     const m1021 = assessment.oasis_items.find((it) => /M1021/i.test(it.item_number || ""));
     if (!m1021) return null;
-    const text = `${m1021.suggested_response || ""} ${m1021.rationale || ""}`.toUpperCase().replace(/\./g, "");
+    // Reads the surviving narrative fields. `suggested_response` no longer
+    // exists — the sanitiser strips it — and this is a DISCREPANCY check, which
+    // needs the model's reasoning, not a code.
+    const text = `${m1021.rationale || ""} ${m1021.evidence || ""}`.toUpperCase().replace(/\./g, "");
     const code = referralCoding.primary.code; // normalized, no dot
     const desc = (referralCoding.primary.description || "").toUpperCase();
     const mentions = text.includes(code) || (desc && text.includes(desc.replace(/\./g, "")));
@@ -87,6 +83,26 @@ export default function AIGeneratedOASISAssessment({ patientId, visitId, visitTy
         });
       }
       
+      // Defensive sanitisation at the boundary. Even with the prompt changed,
+      // a model can still emit a code — through a field nobody planned for, or
+      // inside prose. Stripping it here is what makes it inert: nothing below
+      // can display, copy, save or score a model-chosen response.
+      if (Array.isArray(data?.oasis_items)) {
+        // Every restored field goes through `sanitizeAiText`. Reattaching the
+        // ORIGINAL values here would have undone the sanitiser for exactly the
+        // fields a model is most likely to put an answer in: a
+        // "questions_to_ask" entry reading "Is M1830 = 6 correct?" would have
+        // reached the panel and the clipboard.
+        const original = data.oasis_items;
+        data.oasis_items = sanitizeAiItems(original).clean.map((clean, i) => ({
+          ...clean,
+          item_name: sanitizeAiText(original[i]?.item_name),
+          confidence_level: sanitizeAiText(original[i]?.confidence_level),
+          category: sanitizeAiText(original[i]?.category),
+          questions_to_ask: sanitizeAiText(original[i]?.questions_to_ask),
+          documentation_tips: sanitizeAiText(original[i]?.documentation_tips),
+        }));
+      }
       setAssessment(data);
     } catch (error) {
       console.error('Error generating OASIS assessment:', error);
@@ -96,56 +112,17 @@ export default function AIGeneratedOASISAssessment({ patientId, visitId, visitTy
     }
   };
 
-  const saveAssessment = async () => {
-    if (!assessment || !patientId) return;
-    
-    setIsSaving(true);
-    try {
-      // Apply edited values to assessment
-      const updatedItems = (assessment.oasis_items || []).map(item => ({
-        ...item,
-        response: editingItems[item.item_number] !== undefined ? editingItems[item.item_number] : item.suggested_response,
-        manually_edited: editingItems[item.item_number] !== undefined,
-        ai_suggested: true
-      }));
-
-      const completedCount = updatedItems.filter(item => item.response).length;
-      const completionPercentage = updatedItems.length
-        ? Math.round((completedCount / updatedItems.length) * 100)
-        : 0;
-
-      const oasisData = {
-        patient_id: patientId,
-        visit_id: visitId || null,
-        visit_type: visitType,
-        assessment_date: toLocalISODate(),
-        oasis_items: updatedItems,
-        clinical_summary: assessment.clinical_summary,
-        estimated_pdgm_group: assessment.estimated_pdgm_group,
-        status: completionPercentage === 100 ? 'completed' : 'in_progress',
-        completion_percentage: completionPercentage
-      };
-
-      await base44.entities.OASISAssessment.create(oasisData);
-      
-      queryClient.invalidateQueries({ queryKey: ['oasisAssessments', patientId] });
-      onSaved?.();
-      
-      toast.success('OASIS assessment saved successfully!');
-    } catch (error) {
-      console.error('Error saving OASIS assessment:', error);
-      toast.error('Failed to save OASIS assessment. Please try again.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const updateItemResponse = (itemNumber, newValue) => {
-    setEditingItems(prev => ({
-      ...prev,
-      [itemNumber]: newValue
-    }));
-  };
+  // `saveAssessment` is REMOVED.
+  //
+  // It mapped each item's `suggested_response` onto `response`, stamped
+  // `ai_suggested: true`, and called `OASISAssessment.create` — writing
+  // model-chosen values into the field every downstream consumer reads as a
+  // clinician's OASIS response, and marking the assessment "completed" when
+  // enough of them were present.
+  //
+  // Every final official OASIS response must be selected explicitly by a
+  // clinician, through the protected write path. This panel is guidance only
+  // and no longer writes anything.
 
   const toggleItemExpand = (index) => {
     setExpandedItems(prev =>
@@ -155,8 +132,9 @@ export default function AIGeneratedOASISAssessment({ patientId, visitId, visitTy
 
   const copyItemToClipboard = (item) => {
     const text = `${item.item_number}: ${item.item_name}
-Suggested Response: ${item.suggested_response}
-Rationale: ${item.rationale}
+PennSync does not select OASIS responses — answer this item from the wording in your EMR.
+${item.evidence ? `Evidence from the record: "${item.evidence}"` : ""}
+Notes: ${item.rationale || ""}
 
 Questions to Ask:
 ${item.questions_to_ask?.map(q => `• ${q}`).join('\n')}
@@ -355,9 +333,9 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
                           )}
                         </div>
                         <p className="text-xs font-semibold text-slate-900 mb-1">{item.item_name}</p>
-                        <p className="text-xs text-slate-700">
-                          <strong>Suggested:</strong> {item.suggested_response}
-                        </p>
+                        {item.evidence && (
+                          <p className="text-xs text-slate-700 italic">“{item.evidence}”</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <Button
@@ -386,22 +364,6 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
 
                   {isExpanded && (
                     <div className="border-t border-indigo-200 bg-indigo-50 p-3 space-y-3">
-                      <div>
-                        <p className="text-xs font-semibold text-slate-900 mb-2 flex items-center gap-2">
-                          <Edit className="w-3 h-3" />
-                          Edit Response:
-                        </p>
-                        <Textarea
-                          value={editingItems[item.item_number] !== undefined ? editingItems[item.item_number] : item.suggested_response}
-                          onChange={(e) => updateItemResponse(item.item_number, e.target.value)}
-                          className="text-xs min-h-[60px]"
-                          placeholder="Enter OASIS response..."
-                        />
-                        {editingItems[item.item_number] !== undefined && (
-                          <Badge className="bg-blue-600 text-white text-xs mt-1">Edited</Badge>
-                        )}
-                      </div>
-
                       <div>
                         <p className="text-xs font-semibold text-slate-900 mb-1">Rationale:</p>
                         <p className="text-xs text-slate-700">{item.rationale}</p>
@@ -456,7 +418,7 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
               return i.category?.toLowerCase().includes('functional');
             }).map((item, idx) => (
               <div key={idx} className="text-xs bg-white border border-indigo-200 rounded p-2">
-                <strong>{item.item_number}:</strong> {item.item_name} - {item.suggested_response}
+                <strong>{item.item_number}:</strong> {item.item_name}
               </div>
             ))}
           </TabsContent>
@@ -472,7 +434,7 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
               return i.category?.toLowerCase().includes('clinical');
             }).map((item, idx) => (
               <div key={idx} className="text-xs bg-white border border-indigo-200 rounded p-2">
-                <strong>{item.item_number}:</strong> {item.item_name} - {item.suggested_response}
+                <strong>{item.item_number}:</strong> {item.item_name}
               </div>
             ))}
           </TabsContent>
@@ -488,54 +450,21 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
               return i.category?.toLowerCase().includes('cognitive');
             }).map((item, idx) => (
               <div key={idx} className="text-xs bg-white border border-indigo-200 rounded p-2">
-                <strong>{item.item_number}:</strong> {item.item_name} - {item.suggested_response}
+                <strong>{item.item_number}:</strong> {item.item_name}
               </div>
             ))}
           </TabsContent>
         </Tabs>
 
-        {/* PDGM Optimization Notes */}
-        {assessment.pdgm_optimization_notes?.length > 0 && (
-          <Alert className="bg-green-50 border-green-300">
-            <TrendingUp className="w-4 h-4 text-green-600" />
-            <AlertDescription>
-              <p className="text-xs font-semibold text-green-900 mb-1">PDGM Optimization:</p>
-              <ul className="space-y-1">
-                {assessment.pdgm_optimization_notes.map((note, idx) => (
-                  <li key={idx} className="text-xs text-green-800">• {note}</li>
-                ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        )}
+        {/* The "PDGM Optimization" panel is REMOVED. It surfaced model notes on
+            how to raise the PDGM result, which is an instruction to code for
+            payment rather than for the patient. */}
 
-        <div className="flex gap-2">
-          <Button
-            onClick={saveAssessment}
-            disabled={isSaving || !patientId}
-            className="flex-1"
-          >
-            {isSaving ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Save Assessment
-              </>
-            )}
-          </Button>
-          <Button
-            onClick={generateAssessment}
-            variant="outline"
-            size="sm"
-          >
-            <Sparkles className="w-4 h-4 mr-2" />
-            Regenerate
-          </Button>
-        </div>
+        <Alert>
+          <AlertTriangle className="w-4 h-4" />
+          <AlertDescription className="text-xs">{NO_AI_PREFILL_NOTICE}</AlertDescription>
+        </Alert>
+
       </CardContent>
     </Card>
   );

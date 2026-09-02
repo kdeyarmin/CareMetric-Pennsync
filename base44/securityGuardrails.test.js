@@ -253,6 +253,7 @@ const SCHEDULER_AUTH_FILES = [
   'base44/functions/computeOutcomeMeasures/entry.ts',
   'base44/functions/dispatchScheduledSignatureReminders/entry.ts',
   'base44/functions/dispatchScheduledSms/entry.ts',
+  'base44/functions/enforceStaffRoleIntegrity/entry.ts',
   'base44/functions/monitorComplianceRisks/entry.ts',
   'base44/functions/pollFaxStatuses/entry.ts',
   'base44/functions/processAnnualEducationRenewals/entry.ts',
