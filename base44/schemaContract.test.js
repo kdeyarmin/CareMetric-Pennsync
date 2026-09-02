@@ -145,6 +145,29 @@ test('every required field exists in its properties', () => {
   assert.equal(bad.length, 0, `Required field(s) missing from properties:\n${bad.join('\n')}`);
 });
 
+test('RLS uses only Base44-supported field operators', () => {
+  const supported = new Set([
+    '$all', '$elemMatch', '$eq', '$exists', '$gt', '$gte', '$in',
+    '$lt', '$lte', '$ne', '$nin', '$size', '$and', '$or', '$nor',
+  ]);
+  const bad = [];
+
+  const visit = (value, path, file) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`, file));
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key.startsWith('$') && !supported.has(key)) bad.push(`${file}: ${path}.${key}`);
+      visit(child, `${path}.${key}`, file);
+    }
+  };
+
+  for (const [file, schema] of parsed) visit(schema.rls, 'rls', file);
+  assert.equal(bad.length, 0, `Unsupported RLS operator(s):\n${bad.join('\n')}`);
+});
+
 // ---------------------------------------------------------------------------
 // Part 2 — curated code↔schema enum cross-reference
 //

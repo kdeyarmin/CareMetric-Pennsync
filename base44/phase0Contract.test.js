@@ -19,7 +19,7 @@ const HIGH_RISK_ACCESS = [
   { entity: 'Patient', owners: ['created_by'], adminReadable: true },
   { entity: 'Visit', owners: ['created_by'], adminReadable: true },
   { entity: 'Document', owners: ['uploaded_by', 'created_by'], adminReadable: true },
-  { entity: 'Message', owners: ['created_by'], adminReadable: true, containsOwners: ['recipients'] },
+  { entity: 'Message', owners: ['created_by'], adminReadable: true, arrayOwners: ['recipients'] },
   { entity: 'TrainingAssignment', owners: ['assigned_to_user_id'], adminReadable: true },
   { entity: 'Timesheet', owners: ['employee_email'], adminReadable: true },
 ];
@@ -78,8 +78,12 @@ test('P0-01 high-risk entities define scoped read RLS for patient/document/messa
     for (const owner of item.owners) {
       assert.match(raw, new RegExp(`"${owner}"\\s*:\\s*"\\{\\{user\\.email\\}\\}"`), `${item.entity} read RLS must include ${owner}`);
     }
-    for (const owner of item.containsOwners || []) {
-      assert.match(raw, new RegExp(`"${owner}"\\s*:\\s*\\{\\s*"\\$contains"\\s*:\\s*"\\{\\{user\\.email\\}\\}"`), `${item.entity} read RLS must include ${owner}.$contains`);
+    for (const owner of item.arrayOwners || []) {
+      assert.match(
+        raw,
+        new RegExp(`"data\\.${owner}"\\s*:\\s*\\{\\s*"\\$in"\\s*:\\s*\\[\\s*"\\{\\{user\\.email\\}\\}"`),
+        `${item.entity} read RLS must include data.${owner}.$in`,
+      );
     }
     if (item.adminReadable) {
       assert.match(
@@ -172,4 +176,3 @@ test('login CSRF pending confirm path is wired for logged-out magic links', () =
   assert.match(signIn, /confirmPendingAccessToken/);
   assert.match(signIn, /Continue with this sign-in link/);
 });
-

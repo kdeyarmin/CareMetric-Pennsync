@@ -158,8 +158,10 @@
           "owner_agency_code": "{{user.agency_code}}"
         },
         {
-          "shared_with_agencies": {
-            "$contains": "{{user.agency_code}}"
+          "data.shared_with_agencies": {
+            "$in": [
+              "{{user.data.agency_code}}"
+            ]
           }
         }
       ]

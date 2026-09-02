@@ -153,8 +153,10 @@
           "created_by": "{{user.email}}"
         },
         {
-          "recipients": {
-            "$contains": "{{user.email}}"
+          "data.recipients": {
+            "$in": [
+              "{{user.email}}"
+            ]
           }
         },
         {
