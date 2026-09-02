@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   detectMissingDischargeOASIS,
-  computeStarEligibilityGap,
+  computeInternalSampleGap,
 } from "./dischargeComplianceEnforcer.js";
-import { rollupMeasures, computeEpisodeOutcome, STAR_MIN_EPISODES } from "./outcomeMeasureEngine.js";
+import { rollupMeasures, computeEpisodeOutcome, INTERNAL_SAMPLE_MIN_PAIRS } from "./outcomeMeasureEngine.js";
 import { v2Row, v2Assessment } from "./responseSchema/testFixtures.js";
 
 const DEF = { m1860: "m1860_cms_e2", m1830: "m1830_cms_e2", m1400: "m1400_cms_e2", m2020: "m2020_cms_e2" };
@@ -113,33 +113,33 @@ test("no patient id → null (defensive)", () => {
   assert.equal(detectMissingDischargeOASIS({}, { asOf: ASOF }), null);
 });
 
-// ── star-eligibility gap ──
+// ── internal sample-context gap ──
 
-test("computeStarEligibilityGap reports measures below the 20-episode floor", () => {
+test("computeInternalSampleGap reports measures below the 20-pair internal marker", () => {
   // 10 improving ambulation episodes only → 1 measure with denom 10, rest 0.
   const outcomes = Array.from({ length: 10 }, () => episode({ m1860: "3" }, { m1860: "1" }));
-  const gap = computeStarEligibilityGap(rollupMeasures(outcomes));
-  assert.equal(gap.at_risk, true);
-  assert.equal(gap.measures_eligible, 0);
+  const gap = computeInternalSampleGap(rollupMeasures(outcomes));
+  assert.equal(gap.below_internal_marker, true);
+  assert.equal(gap.measures_sample_ready, 0);
   const amb = gap.measures_short.find((m) => m.key === "ambulation");
   assert.equal(amb.denominator, 10);
-  assert.equal(amb.episodes_needed, STAR_MIN_EPISODES - 10);
+  assert.equal(amb.episodes_needed, INTERNAL_SAMPLE_MIN_PAIRS - 10);
 });
 
 test("an agency is still at risk while a measure has no verified response set", () => {
   // Only FOUR of the five improvement measures have a CMS-verified v2 response
   // set: M1850 was left out of the cutover, so it can never earn a denominator.
-  // The agency therefore cannot clear the 5-measure star floor on these inputs,
-  // and the gap must SAY so rather than reporting a fifth eligible measure.
-  const outcomes = Array.from({ length: STAR_MIN_EPISODES }, () =>
+  // The local proxy therefore cannot clear its 5-measure internal sample marker
+  // on these inputs, and the gap must say so rather than inventing a fifth.
+  const outcomes = Array.from({ length: INTERNAL_SAMPLE_MIN_PAIRS }, () =>
     episode(
       { m1860: "3", m1830: "3", m1400: "3", m2020: "2" },
       { m1860: "1", m1830: "1", m1400: "1", m2020: "1" },
     ),
   );
-  const gap = computeStarEligibilityGap(rollupMeasures(outcomes));
-  assert.equal(gap.measures_eligible, 4);
-  assert.equal(gap.at_risk, true);
+  const gap = computeInternalSampleGap(rollupMeasures(outcomes));
+  assert.equal(gap.measures_sample_ready, 4);
+  assert.equal(gap.below_internal_marker, true);
   assert.equal(gap.measures_needed, 1);
   assert.ok(
     gap.measures_short.some((m) => m.key === "bed_transfer"),

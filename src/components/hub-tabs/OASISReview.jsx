@@ -19,7 +19,9 @@ import { isAdminView } from "@/lib/roles";
 import OASISComparisonView from "@/components/oasis/OASISComparisonView";
 import OASISApprovalWorkflow from "@/components/oasis/OASISApprovalWorkflow";
 
-export default function OASISReview() {
+const OASIS_AI_REVIEW_ENABLED = false;
+
+function EnabledOASISReview() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -275,4 +277,21 @@ export default function OASISReview() {
       </Tabs>
     </div>
   );
+}
+
+export default function OASISReview() {
+  if (!OASIS_AI_REVIEW_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300">
+        <CardContent className="space-y-2 pt-6 text-sm text-slate-700">
+          <div className="flex items-center gap-2 font-semibold text-amber-950">
+            <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS AI Suggestion Review Paused
+          </div>
+          <p>This surface is unavailable while tenant-scoped access and the clinical provenance of legacy AI suggestions are being verified.</p>
+          <p>No patient roster, OASIS upload, AI suggestion, approval workflow, or record mutation is loaded from this tab.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledOASISReview />;
 }

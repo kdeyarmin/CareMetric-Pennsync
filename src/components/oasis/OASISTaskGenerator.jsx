@@ -14,7 +14,6 @@ import {
   Loader2,
   Bell,
   Target,
-  DollarSign,
   Shield
 } from "lucide-react";
 
@@ -55,7 +54,6 @@ export default function OASISTaskGenerator({
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     };
     const tomorrow = addDaysLocal(1);
-    const nextWeek = addDaysLocal(6);
 
     // Critical accuracy issues
     if (analysisResults.accuracy_score < 70) {
@@ -90,23 +88,6 @@ export default function OASISTaskGenerator({
       });
     }
 
-    // High revenue optimization opportunities
-    const highRevenueTips = analysisResults.revenue_tips?.filter(t => t.potential_impact === 'high') || [];
-    if (highRevenueTips.length > 0) {
-      tasks.push({
-        id: 'revenue_optimize',
-        title: `Revenue Optimization Opportunity - ${patientName}`,
-        description: `${highRevenueTips.length} high-impact revenue optimization opportunities identified. Review functional scores and documentation.`,
-        type: 'document',
-        priority: 'medium',
-        due_date: nextWeek,
-        source: 'ai_generated',
-        ai_reason: `Potential revenue increase: ${highRevenueTips.map(t => t.estimated_revenue_impact || 'significant').join(', ')}`,
-        category: 'revenue',
-        icon: DollarSign
-      });
-    }
-
     // Audit risk areas
     const highAuditRisks = analysisResults.audit_risk_areas?.filter(r => r.risk_level === 'high') || [];
     if (highAuditRisks.length > 0) {
@@ -135,7 +116,7 @@ export default function OASISTaskGenerator({
         priority: 'high',
         due_date: tomorrow,
         source: 'ai_generated',
-        ai_reason: 'Critical OASIS validation errors detected that may affect payment',
+        ai_reason: 'Critical OASIS validation errors require clinician review',
         category: 'validation',
         icon: AlertTriangle
       });
@@ -215,7 +196,6 @@ export default function OASISTaskGenerator({
     const colors = {
       accuracy: 'bg-yellow-100 text-yellow-800 border-yellow-300',
       compliance: 'bg-red-100 text-red-800 border-red-300',
-      revenue: 'bg-green-100 text-green-800 border-green-300',
       audit: 'bg-orange-100 text-orange-800 border-orange-300',
       validation: 'bg-navy-100 text-navy-800 border-navy-300',
       quality: 'bg-blue-100 text-blue-800 border-blue-300'

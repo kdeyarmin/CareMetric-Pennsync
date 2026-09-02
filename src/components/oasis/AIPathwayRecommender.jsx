@@ -12,11 +12,8 @@ import {
   Loader2,
   Target,
   CheckCircle2,
-  DollarSign,
   Stethoscope,
   Sparkles,
-  Activity,
-  ClipboardList,
   ChevronDown,
   ChevronUp
 } from "lucide-react";
@@ -27,7 +24,6 @@ export default function AIPathwayRecommender({
   pdgmData, 
   analysisResults, 
   patientId,
-  navigationData,
   onPathwaysActivated 
 }) {
   const ai = useAICall();
@@ -63,7 +59,7 @@ export default function AIPathwayRecommender({
     try {
       const result = await ai.run({
         model: "automatic",
-        prompt: `You are a home health clinical pathway specialist and PDGM revenue analyst. Analyze this OASIS data and recommend specific clinical pathways and interventions.
+        prompt: `You are a home health clinical pathway specialist. Analyze this OASIS data and recommend specific clinical pathways and interventions. Do not infer PDGM grouping, functional points, case-mix weights, payment, or revenue impact.
 
 OASIS DATA:
 ${JSON.stringify({
@@ -81,23 +77,12 @@ ${JSON.stringify({
 ANALYSIS FINDINGS:
 Accuracy Score: ${analysisResults.accuracy_score}
 Compliance Score: ${analysisResults.compliance_score}
-Revenue Score: ${analysisResults.revenue_optimization_score}
 Key Issues: ${JSON.stringify(analysisResults.accuracy_issues?.slice(0, 5) || [])}
-Revenue Opportunities: ${JSON.stringify(analysisResults.revenue_tips?.slice(0, 3) || [])}
-
-PDGM GROUPING (if available):
-${navigationData ? JSON.stringify({
-  clinical_group: navigationData.clinical_group?.assigned_group,
-  functional_level: navigationData.functional_level?.level,
-  comorbidity_level: navigationData.comorbidity_adjustment?.level,
-  calculated_payment: navigationData.case_mix_calculation?.calculated_payment
-}, null, 2) : 'Not yet calculated'}
 
 AVAILABLE PATHWAYS IN SYSTEM:
 ${JSON.stringify(availablePathways.map(p => ({
   name: p.pathway_name,
-  description: p.description,
-  pdgm_group: p.pdgm_clinical_group
+  description: p.description
 })), null, 2)}
 
 Recommend clinical pathways and interventions:
@@ -110,16 +95,10 @@ Recommend clinical pathways and interventions:
 
 2. INTERVENTION STRATEGIES
    - Specific clinical interventions for this patient
-   - Tie to PDGM optimization opportunities
+   - Tie each intervention to documented clinical needs
    - Include skilled nursing tasks and goals
 
-3. PDGM IMPACT ANALYSIS
-   - How each pathway affects PDGM grouping
-   - Expected revenue impact
-   - Functional level improvement potential
-   - Comorbidity adjustment opportunities
-
-4. DOCUMENTATION FOCUS AREAS
+3. DOCUMENTATION FOCUS AREAS
    - What to document to support the pathway
    - M-items that will be affected
    - CMS compliance considerations
@@ -137,16 +116,6 @@ Return JSON:
       "clinical_rationale": "why this pathway is appropriate",
       "priority": "critical/high/medium/low",
       "expected_outcomes": ["outcome 1", "outcome 2"],
-      "pdgm_impact": {
-        "affects_clinical_group": true/false,
-        "clinical_group_change": "from X to Y if applicable",
-        "affects_functional_level": true/false,
-        "functional_improvement_potential": "description",
-        "affects_comorbidity_adjustment": true/false,
-        "comorbidity_opportunities": "description",
-        "estimated_payment_impact": "$X increase/no change",
-        "payment_impact_explanation": "why and how"
-      },
       "documentation_requirements": [
         {
           "area": "what to document",
@@ -182,12 +151,7 @@ Return JSON:
       "pathway": "which pathway this supports",
       "impact": "expected benefit"
     }
-  ],
-  "revenue_optimization_summary": {
-    "current_estimated_payment": 0,
-    "optimized_payment_potential": 0,
-    "key_drivers": ["driver 1", "driver 2"]
-  }
+  ]
 }`,
         response_json_schema: {
           type: "object",
@@ -195,8 +159,7 @@ Return JSON:
             recommended_pathways: { type: "array", items: { type: "object" } },
             overall_strategy: { type: "string" },
             implementation_priority: { type: "array", items: { type: "string" } },
-            quick_wins: { type: "array", items: { type: "object" } },
-            revenue_optimization_summary: { type: "object" }
+            quick_wins: { type: "array", items: { type: "object" } }
           }
         }
       });
@@ -223,7 +186,7 @@ Return JSON:
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
-  }, [analysisResults, availablePathways, navigationData, patientId, pdgmData]);
+  }, [analysisResults, availablePathways, patientId, pdgmData]);
 
   // Wait for the ClinicalPathway query before auto-analyzing. It fired on the
   // first commit, while availablePathways was still the `[]` default, so the
@@ -297,12 +260,6 @@ Return JSON:
     return colors[priority] || colors.medium;
   };
 
-  const formatCurrency = (amount) => {
-    if (!amount) return '$0';
-    const num = parseFloat(String(amount).replace(/[^0-9.-]/g, ''));
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
-  };
-
   if (!pdgmData || !analysisResults) {
     return null;
   }
@@ -349,38 +306,6 @@ Return JSON:
                 <strong>Recommended Strategy:</strong> {recommendations.overall_strategy}
               </AlertDescription>
             </Alert>
-
-            {/* Revenue Optimization Summary */}
-            {recommendations.revenue_optimization_summary && (
-              <div className="bg-green-50 p-4 rounded-lg border-2 border-green-300">
-                <div className="flex items-center gap-2 mb-3">
-                  <DollarSign className="w-5 h-5 text-green-600" />
-                  <span className="font-semibold text-green-900">Revenue Optimization Potential</span>
-                </div>
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div className="bg-white p-2 rounded text-center">
-                    <p className="text-xs text-slate-500">Current Estimate</p>
-                    <p className="text-lg font-bold text-slate-700">
-                      {formatCurrency(recommendations.revenue_optimization_summary.current_estimated_payment)}
-                    </p>
-                  </div>
-                  <div className="bg-gradient-to-r from-green-100 to-emerald-100 p-2 rounded text-center border-2 border-green-400">
-                    <p className="text-xs text-green-600">Optimized Potential</p>
-                    <p className="text-lg font-bold text-green-700">
-                      {formatCurrency(recommendations.revenue_optimization_summary.optimized_payment_potential)}
-                    </p>
-                  </div>
-                </div>
-                <div className="bg-white p-2 rounded border">
-                  <p className="text-xs font-medium text-slate-700 mb-1">Key Drivers:</p>
-                  <div className="flex flex-wrap gap-1">
-                    {recommendations.revenue_optimization_summary.key_drivers?.map((driver, idx) => (
-                      <Badge key={idx} variant="outline" className="text-xs">{driver}</Badge>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Quick Wins */}
             {recommendations.quick_wins?.length > 0 && (
@@ -461,41 +386,6 @@ Return JSON:
                             <span className="text-xs text-slate-600">{pathway.trigger_details}</span>
                           </div>
 
-                          {/* PDGM Impact Summary */}
-                          {pathway.pdgm_impact && (
-                            <div className="bg-white p-2 rounded border border-green-200 mt-2">
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-xs font-medium text-green-800 flex items-center gap-1">
-                                  <DollarSign className="w-3 h-3" />
-                                  PDGM Impact
-                                </p>
-                                {pathway.pdgm_impact.estimated_payment_impact && (
-                                  <Badge className="bg-green-600 text-white text-xs">
-                                    {pathway.pdgm_impact.estimated_payment_impact}
-                                  </Badge>
-                                )}
-                              </div>
-                              <p className="text-xs text-slate-700">{pathway.pdgm_impact.payment_impact_explanation}</p>
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {pathway.pdgm_impact.affects_functional_level && (
-                                  <Badge variant="outline" className="text-xs">
-                                    <Activity className="w-3 h-3 mr-1" />
-                                    Functional
-                                  </Badge>
-                                )}
-                                {pathway.pdgm_impact.affects_comorbidity_adjustment && (
-                                  <Badge variant="outline" className="text-xs">
-                                    <ClipboardList className="w-3 h-3 mr-1" />
-                                    Comorbidity
-                                  </Badge>
-                                )}
-                                {pathway.pdgm_impact.affects_clinical_group && (
-                                  <Badge variant="outline" className="text-xs">Clinical Group</Badge>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
                           {/* Expand/Collapse Button */}
                           <Button
                             onClick={() => setExpandedPathway(isExpanded ? null : idx)}
@@ -574,30 +464,6 @@ Return JSON:
                                 </p>
                               </div>
                             ))}
-                          </div>
-                        )}
-
-                        {/* Detailed PDGM Impact */}
-                        {pathway.pdgm_impact && (
-                          <div className="bg-navy-50 p-3 rounded border border-navy-200">
-                            <p className="text-xs font-semibold text-navy-800 mb-2">📊 Detailed PDGM Impact:</p>
-                            <div className="space-y-2 text-xs">
-                              {pathway.pdgm_impact.clinical_group_change && (
-                                <div className="bg-white p-2 rounded">
-                                  <p className="text-slate-600">Clinical Group: {pathway.pdgm_impact.clinical_group_change}</p>
-                                </div>
-                              )}
-                              {pathway.pdgm_impact.functional_improvement_potential && (
-                                <div className="bg-white p-2 rounded">
-                                  <p className="text-slate-600">Functional: {pathway.pdgm_impact.functional_improvement_potential}</p>
-                                </div>
-                              )}
-                              {pathway.pdgm_impact.comorbidity_opportunities && (
-                                <div className="bg-white p-2 rounded">
-                                  <p className="text-slate-600">Comorbidity: {pathway.pdgm_impact.comorbidity_opportunities}</p>
-                                </div>
-                              )}
-                            </div>
                           </div>
                         )}
 

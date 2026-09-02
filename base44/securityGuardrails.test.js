@@ -10,7 +10,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -250,7 +250,6 @@ const SCHEDULER_AUTH_FILES = [
   'base44/functions/checkExpiredInvitations/entry.ts',
   'base44/functions/checkPendingSignatureRequests/entry.ts',
   'base44/functions/checkStaleFollowUpRequests/entry.ts',
-  'base44/functions/computeOutcomeMeasures/entry.ts',
   'base44/functions/dispatchScheduledSignatureReminders/entry.ts',
   'base44/functions/dispatchScheduledSms/entry.ts',
   'base44/functions/enforceStaffRoleIntegrity/entry.ts',
@@ -291,6 +290,134 @@ for (const file of SCHEDULER_AUTH_FILES) {
     );
   });
 }
+
+test('computeOutcomeMeasures is internal-secret-only and never authorizes from User or Agency claims', () => {
+  const src = read('base44/functions/computeOutcomeMeasures/entry.ts');
+  const dedicatedGate = src.slice(
+    src.indexOf('function hasValidInternalSecret'),
+    src.indexOf('// computeOutcomeMeasures'),
+  );
+  const handler = src.slice(src.indexOf('Deno.serve'));
+  assert.ok(/getOutcomeInitialAuthError\(req\)/.test(handler));
+  assert.ok(/INTERNAL_FN_SECRET/.test(dedicatedGate));
+  assert.ok(!/auth\.me\(/.test(handler));
+  assert.ok(!/account_type|admin_user_ids|admin_email/.test(dedicatedGate));
+  assert.ok(/agency_id is required/.test(handler));
+  assert.ok(/valid period_start and period_end/.test(handler));
+});
+
+test('outcome metric and KPI direct reads and writes remain service-role-only', () => {
+  for (const entity of ['PatientOutcomeMetric', 'AgencyKPI']) {
+    const src = read(`base44/entities/${entity}.jsonc`);
+    for (const operation of ['read', 'write']) {
+      const operationStart = src.indexOf(`"${operation}"`);
+      const operationBlock = src.slice(operationStart, operationStart + 150);
+      assert.ok(
+        /"user_condition"\s*:\s*\{\s*"role"\s*:\s*"__service_role_only__"/.test(operationBlock),
+        `${entity} ${operation} RLS must keep computed outcome rows behind service role.`,
+      );
+    }
+  }
+});
+
+test('browser outcome surfaces do not read outcome entities or invoke the secret-only job', () => {
+  assert.equal(
+    existsSync(join(REPO, 'src/functions/computeOutcomeMeasures.js')),
+    false,
+    'the dormant browser invoker must stay removed; the outcome job is internal-secret-only.',
+  );
+  for (const file of [
+    'src/components/oasis/OutcomeMeasuresSection.jsx',
+    'src/components/reports/KPIDashboard.jsx',
+  ]) {
+    const src = read(file);
+    assert.ok(
+      !/entities\.(AgencyKPI|PatientOutcomeMetric)/.test(src),
+      `${file} must not directly read outcome entities before hosted tenant-bound read RLS is proved.`,
+    );
+    assert.ok(
+      !/computeOutcomeMeasures|functions\.invoke\([^)]*computeOutcome/.test(src),
+      `${file} must not expose the INTERNAL_FN_SECRET-only outcome job to a browser session.`,
+    );
+  }
+});
+
+test('OASIS writes and browser KPI reporting remain paused behind server-owned tenant security', () => {
+  const oasisEntity = read('base44/entities/OASISAssessment.jsonc');
+  const oasisUploadEntity = read('base44/entities/OASISUpload.jsonc');
+  const oasisWriter = read('base44/functions/saveOasisResponses/entry.ts');
+  const dashboard = read('src/components/reports/KPIDashboard.jsx');
+  assert.ok(
+    /"write"\s*:\s*\{\s*"user_condition"\s*:\s*\{\s*"role"\s*:\s*"__service_role_only__"/.test(oasisEntity),
+    'OASISAssessment direct writes must stay service-role-only.',
+  );
+  assert.ok(
+    /"write"\s*:\s*\{\s*"user_condition"\s*:\s*\{\s*"role"\s*:\s*"__service_role_only__"/.test(oasisUploadEntity),
+    'OASISUpload direct writes must stay service-role-only.',
+  );
+  assert.ok(/const OASIS_V2_WRITES_PAUSED = true;/.test(oasisWriter));
+  const handler = oasisWriter.slice(oasisWriter.indexOf('Deno.serve'));
+  assert.ok(
+    handler.indexOf('if (OASIS_V2_WRITES_PAUSED)') < handler.indexOf('createClientFromRequest(req)'),
+    'saveOasisResponses must return 503 before client creation or any data access.',
+  );
+  assert.ok(!/base44|useQuery|useAgencyScopedQuery|useScopedPatients|\.entities\./.test(dashboard));
+  assert.match(dashboard, /paused pending tenant security validation/i);
+  const adapter = read('src/components/oasis/responseSchema/oasisWriteAdapter.js');
+  assert.ok(!/base44|functions\.invoke|OASISAssessment\.(create|update)/.test(adapter));
+  assert.match(adapter, /tenant_security_validation_pending/);
+  for (const file of [
+    'src/components/hub-tabs/SmartOASISAssessment.jsx',
+    'src/components/clinical/OASISQuickUpdate.jsx',
+  ]) {
+    const src = read(file);
+    assert.ok(!/saveLegacyScreeningDraft|saveOfficialResponses/.test(src));
+    assert.match(src, /saving is temporarily unavailable pending tenant security validation/i);
+  }
+  const uploadWidget = read('src/components/oasis/OASISUploadWidget.jsx');
+  assert.ok(!/from ["']@\/api\/base44Client|UploadFile\s*\(|OASISUpload\.create\s*\(/.test(uploadWidget));
+  assert.match(uploadWidget, /No file is uploaded from this screen/i);
+  for (const [file, gate] of [
+    ['src/components/hub-tabs/OASISAnalyzer.jsx', 'OASIS_ANALYZER_ENABLED'],
+    ['src/components/hub-tabs/OASISReview.jsx', 'OASIS_AI_REVIEW_ENABLED'],
+    ['src/components/hub-tabs/OASISAnalyticsDashboard.jsx', 'OASIS_AI_ANALYTICS_ENABLED'],
+  ]) {
+    const surface = read(file);
+    assert.match(surface, new RegExp(`const ${gate} = false;`));
+    assert.match(surface, new RegExp(`if \\(!${gate}\\)`));
+  }
+  const merge = read('src/components/patient/mergePatients.js');
+  assert.match(merge, /SERVER_MERGE_REQUIRED_ENTITIES\s*=\s*\["OASISAssessment",\s*"PatientOutcomeMetric"\]/);
+  assert.match(merge, /PATIENT_MERGE_PAUSED_MESSAGE/);
+  const mergeBoundary = merge.slice(
+    merge.indexOf('export async function mergePatientInto'),
+    merge.indexOf('// Scalar chart fields'),
+  );
+  assert.match(mergeBoundary, /throw new Error\(PATIENT_MERGE_PAUSED_MESSAGE\)/);
+  assert.ok(!/base44|\.entities\.|\.filter\(|\.update\(/.test(mergeBoundary));
+  assert.ok(!/^import .*base44Client/m.test(merge));
+  const dedupe = read('base44/functions/deduplicatePatients/entry.ts');
+  const dedupeHandler = dedupe.slice(dedupe.indexOf('Deno.serve'));
+  assert.match(dedupe, /const PATIENT_DEDUPLICATION_PAUSED = true;/);
+  assert.ok(
+    dedupeHandler.indexOf('if (PATIENT_DEDUPLICATION_PAUSED)')
+      < dedupeHandler.indexOf('createClientFromRequest(req)'),
+    'deduplicatePatients must return 503 before client creation, auth, or service-role PHI reads.',
+  );
+  assert.ok(
+    dedupeHandler.indexOf('if (confirm)') < dedupeHandler.indexOf('entities.Patient.list'),
+    'deduplicatePatients confirm mode must return 503 before service-role patient reads or writes.',
+  );
+  assert.match(dedupeHandler, /patient_merge_security_validation_pending/);
+  for (const file of [
+    'src/pages/DuplicatePatients.jsx',
+    'src/components/patient/DuplicateScanner.jsx',
+  ]) {
+    const ui = read(file);
+    assert.match(ui, /const PATIENT_DEDUPE_UI_ENABLED = false;/);
+    assert.match(ui, /if \(PATIENT_DEDUPE_UI_ENABLED\) return <EnabledDuplicate/);
+  }
+});
 
 // 12. notifySignerOfPackage is an unauthenticated entity trigger that mints a
 //     30-day signer-portal bearer token. It must claim the signer_notified_at

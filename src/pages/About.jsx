@@ -26,7 +26,7 @@ export default function About() {
     {
       icon: BarChart3,
       title: "Analytics & Insights",
-      description: "Real-time dashboards track clinical outcomes, staff performance, and PDGM reimbursement optimization."
+      description: "Real-time dashboards track clinical outcomes and staff performance. OASIS/PDGM AI guidance is paused pending verified CMS clinical content, tenant-scoped authorization, and required human review."
     },
     {
       icon: FileText,

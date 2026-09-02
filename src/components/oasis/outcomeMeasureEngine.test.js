@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import {
   answersFromOasisItems,
   computeEpisodeOutcome,
-  computeGGDischargeFunctionScore,
+  computeInternalGg18ItemRawSum,
   toPatientOutcomeMetric,
   rollupMeasures,
   toAgencyKPIs,
   IMPROVEMENT_MEASURES,
   MEASURE_STATUS,
-  STAR_MIN_EPISODES,
+  INTERNAL_SAMPLE_MIN_PAIRS,
 } from "./outcomeMeasureEngine.js";
 import { v2Row, legacyRow, unversionedRow, v2Assessment, legacyAssessment } from "./responseSchema/testFixtures.js";
 
@@ -65,6 +65,13 @@ test("an AI-originated row is never scorable", () => {
 test("empty / null input yields an empty map", () => {
   assert.deepEqual(answersFromOasisItems(null), {});
   assert.deepEqual(answersFromOasisItems([]), {});
+});
+
+test("duplicate normalized rows never use array order as a tiebreaker", () => {
+  assert.deepEqual(answersFromOasisItems([
+    v2Row(DEF.m1860, "M1860", "3"),
+    v2Row(DEF.m1860, "m-1860", "1"),
+  ]), {});
 });
 
 // ── improvement scoring (lower discharge code == improvement) ──
@@ -186,9 +193,66 @@ test("a live discharge to community is eligible", () => {
   assert.equal(outcome.eligible, true);
 });
 
-// ── GG Discharge Function Score ──
+test("duplicate normalized response rows exclude the whole episode without last-row-wins scoring", () => {
+  const duplicateStart = v2Assessment({
+    visitType: "Start of Care",
+    date: "2026-05-01",
+    rows: [
+      v2Row(DEF.m1860, "M1860", "3"),
+      v2Row(DEF.m1860, "m-1860", "2"),
+    ],
+  });
+  const outcome = computeEpisodeOutcome({
+    startAssessment: duplicateStart,
+    dischargeAssessment: dc({ m1860: "1" }),
+  });
+  assert.equal(outcome.eligible, false);
+  assert.ok(outcome.episode_excluded_reasons.includes("start_duplicate_item_response"));
+  assert.ok(outcome.excluded_rows.some((row) =>
+    row.reasons?.includes("duplicate_item_response")));
+  assert.ok(outcome.measures.every((measure) => measure.status === MEASURE_STATUS.EXCLUDED));
+});
 
-test("GG score sums coded function items when enough are present", () => {
+test("a duplicated definition id under different item numbers also excludes the episode", () => {
+  const duplicateDefinitionStart = v2Assessment({
+    visitType: "Start of Care",
+    date: "2026-05-01",
+    rows: [
+      v2Row(DEF.m1860, "M1860", "3"),
+      v2Row(DEF.m1860, "M1830", "2"),
+    ],
+  });
+  const outcome = computeEpisodeOutcome({
+    startAssessment: duplicateDefinitionStart,
+    dischargeAssessment: dc({ m1860: "1" }),
+  });
+  assert.equal(outcome.eligible, false);
+  assert.ok(outcome.episode_excluded_reasons.includes("start_duplicate_definition_response"));
+  assert.ok(outcome.excluded_rows.some((row) =>
+    row.reasons?.includes("duplicate_definition_response")));
+  assert.ok(outcome.measures.every((measure) => measure.status === MEASURE_STATUS.EXCLUDED));
+});
+
+test("a row without item_spec_version is not scoreable", () => {
+  const row = v2Row(DEF.m1860, "M1860", "3");
+  delete row.item_spec_version;
+  const start = v2Assessment({
+    visitType: "Start of Care",
+    date: "2026-05-01",
+    rows: [row],
+  });
+  const outcome = computeEpisodeOutcome({
+    startAssessment: start,
+    dischargeAssessment: dc({ m1860: "1" }),
+  });
+  assert.equal(outcome.eligible, false);
+  assert.ok(outcome.excluded_rows.some((excluded) =>
+    excluded.reasons?.includes("missing_item_spec_version")));
+});
+
+// ── internal 18-item GG raw sum (non-CMS context) ──
+
+test("internal GG raw sum adds all 18 documented items when enough are present", () => {
   const dc = {};
   // Code all 18 items at 4 → total 72.
   for (const item of [
@@ -196,28 +260,28 @@ test("GG score sums coded function items when enough are present", () => {
     "gg0170a", "gg0170b", "gg0170c", "gg0170d", "gg0170e", "gg0170f",
     "gg0170i", "gg0170j", "gg0170k", "gg0170l", "gg0170m",
   ]) dc[item] = 4;
-  const gg = computeGGDischargeFunctionScore(dc);
+  const gg = computeInternalGg18ItemRawSum(dc);
   assert.equal(gg.applicable, true);
   assert.equal(gg.score, 72);
   assert.equal(gg.items_scored, 18);
 });
 
-test('GG "activity not attempted" codes impute to most-dependent (1)', () => {
+test('internal GG raw sum maps "activity not attempted" codes to 1', () => {
   const dc = { gg0130a: 7, gg0130b: 88 }; // both not-attempted → 1 each
-  const gg = computeGGDischargeFunctionScore(dc);
+  const gg = computeInternalGg18ItemRawSum(dc);
   // Only 2 of 18 items → not applicable, but the summing rule is still exercised.
   assert.equal(gg.items_scored, 2);
 });
 
-test("GG score is not applicable when fewer than half the items are coded", () => {
-  const gg = computeGGDischargeFunctionScore({ gg0130a: 6, gg0170a: 6 });
+test("internal GG raw sum is not applicable when fewer than half the items are coded", () => {
+  const gg = computeInternalGg18ItemRawSum({ gg0130a: 6, gg0170a: 6 });
   assert.equal(gg.applicable, false);
   assert.equal(gg.score, null);
 });
 
-test("episodes with no GG items report GG as not applicable", () => {
+test("episodes with no GG items report the internal sum as not applicable", () => {
   const outcome = episode({ m1860: "2" }, { m1860: "1" });
-  assert.equal(outcome.gg_discharge_function.applicable, false);
+  assert.equal(outcome.internal_gg_18_item_raw_sum.applicable, false);
 });
 
 // ── PatientOutcomeMetric mapping ──
@@ -228,24 +292,31 @@ test("toPatientOutcomeMetric maps improvement flags onto entity fields", () => {
     { m1860: "1", m1830: "1", m2020: "1", m1400: "2" },
   );
   const rec = toPatientOutcomeMetric(
-    { patientId: "p1", episodeStart: "2026-01-01", episodeEnd: "2026-03-01", primaryDiagnosis: "CHF" },
+    { agencyId: "agency-a", patientId: "p1", episodeStart: "2026-01-01", episodeEnd: "2026-03-01", primaryDiagnosis: "CHF" },
     outcome,
   );
   assert.equal(rec.patient_id, "p1");
+  assert.equal(rec.agency_id, "agency-a");
   assert.equal(rec.functional_improvement.ambulation_improved, true);
   assert.equal(rec.functional_improvement.bathing_improved, true);
-  assert.equal(rec.functional_improvement.transferring_improved, false); // no verified response set
+  assert.ok(!Object.hasOwn(rec.functional_improvement, "transferring_improved")); // no verified response set
   assert.equal(rec.functional_improvement.medication_management_improved, true);
   assert.equal(rec.functional_improvement.dyspnea_improved, false); // no change
   assert.ok(Array.isArray(rec.measure_results));
   assert.equal(rec.measure_results.length, 5);
+  const ambulation = rec.measure_results.find((m) => m.measure === "ambulation");
+  assert.equal(ambulation.start_value, "3");
+  assert.equal(ambulation.discharge_value, "1");
+  const transfer = rec.measure_results.find((m) => m.measure === "bed_transfer");
+  assert.ok(!Object.hasOwn(transfer, "start_value"));
+  assert.ok(!Object.hasOwn(transfer, "discharge_value"));
 });
 
 // ── agency rollup ──
 
-test("rollupMeasures aggregates numerator/denominator and star eligibility", () => {
+test("rollupMeasures aggregates numerator/denominator and internal sample readiness", () => {
   const outcomes = [];
-  // 25 episodes, 20 improved on ambulation → 80%, star eligible (>=20 denom).
+  // 25 episodes, 20 improved on ambulation → 80%, internal marker met.
   for (let i = 0; i < 25; i++) {
     outcomes.push(episode({ m1860: "3" }, { m1860: i < 20 ? "1" : "3" }));
   }
@@ -254,16 +325,16 @@ test("rollupMeasures aggregates numerator/denominator and star eligibility", () 
   assert.equal(amb.denominator, 25);
   assert.equal(amb.numerator, 20);
   assert.equal(amb.rate, 80);
-  assert.equal(amb.star_eligible, true);
+  assert.equal(amb.internal_sample_ready, true);
 });
 
-test("a measure below the 20-episode threshold is not star eligible", () => {
+test("a measure below the 20-pair internal marker is not sample ready", () => {
   const outcomes = [episode({ m1860: "3" }, { m1860: "1" })];
   const rollup = rollupMeasures(outcomes);
   const amb = rollup.measures.find((m) => m.key === "ambulation");
   assert.equal(amb.denominator, 1);
-  assert.equal(amb.star_eligible, false);
-  assert.ok(rollup.star_eligible === false);
+  assert.equal(amb.internal_sample_ready, false);
+  assert.equal(rollup.internal_sample_ready, false);
 });
 
 test("excluded measures never inflate the denominator", () => {
@@ -275,16 +346,16 @@ test("excluded measures never inflate the denominator", () => {
   assert.equal(amb.rate, null);
 });
 
-test("STAR_MIN_EPISODES gate wires into rollup", () => {
-  const outcomes = Array.from({ length: STAR_MIN_EPISODES }, () => episode({ m1830: "2" }, { m1830: "1" }));
+test("the 20-pair internal sample marker wires into rollup", () => {
+  const outcomes = Array.from({ length: INTERNAL_SAMPLE_MIN_PAIRS }, () => episode({ m1830: "2" }, { m1830: "1" }));
   const rollup = rollupMeasures(outcomes);
   const t = rollup.measures.find((m) => m.key === "bathing");
-  assert.equal(t.denominator, STAR_MIN_EPISODES);
-  assert.equal(t.star_eligible, true);
+  assert.equal(t.denominator, INTERNAL_SAMPLE_MIN_PAIRS);
+  assert.equal(t.internal_sample_ready, true);
 });
 
 test("an item with no verified response set never earns a denominator", () => {
-  const outcomes = Array.from({ length: STAR_MIN_EPISODES }, () => episode({ m1830: "2" }, { m1830: "1" }));
+  const outcomes = Array.from({ length: INTERNAL_SAMPLE_MIN_PAIRS }, () => episode({ m1830: "2" }, { m1830: "1" }));
   const rollup = rollupMeasures(outcomes);
   const t = rollup.measures.find((m) => m.key === "bed_transfer");
   assert.equal(t.denominator, 0);
@@ -296,9 +367,16 @@ test("an item with no verified response set never earns a denominator", () => {
 test("toAgencyKPIs emits one quality KPI per computable measure", () => {
   const outcomes = Array.from({ length: 25 }, (_, i) => episode({ m1860: "3" }, { m1860: i < 15 ? "1" : "3" }));
   const rollup = rollupMeasures(outcomes);
-  const kpis = toAgencyKPIs(rollup, { periodStart: "2026-01-01", periodEnd: "2026-03-31", benchmark: 75 });
+  const kpis = toAgencyKPIs(rollup, {
+    agencyId: "agency-a",
+    periodStart: "2026-01-01",
+    periodEnd: "2026-03-31",
+    periodType: "quarterly",
+    benchmark: 75,
+  });
   const amb = kpis.find((k) => k.metric_name.includes("Ambulation"));
   assert.ok(amb);
+  assert.equal(amb.agency_id, "agency-a");
   assert.equal(amb.metric_category, "quality");
   assert.equal(amb.unit, "%");
   assert.equal(amb.metric_value, 60); // 15/25
@@ -308,7 +386,12 @@ test("toAgencyKPIs emits one quality KPI per computable measure", () => {
 
 test("toAgencyKPIs skips measures with an empty denominator", () => {
   const rollup = rollupMeasures([episode({ m1860: "0" }, { m1860: "0" })]);
-  const kpis = toAgencyKPIs(rollup, { periodStart: "2026-01-01", periodEnd: "2026-03-31" });
+  const kpis = toAgencyKPIs(rollup, {
+    agencyId: "agency-a",
+    periodStart: "2026-01-01",
+    periodEnd: "2026-03-31",
+    periodType: "quarterly",
+  });
   assert.ok(!kpis.some((k) => k.metric_name.includes("Ambulation")));
 });
 
@@ -317,18 +400,59 @@ test("an all-excluded episode omits overall_improvement_score instead of fabrica
   // which must NOT be written as a measured 0% improvement.
   const outcome = episode({ m1860: "0" }, { m1860: "0" });
   assert.equal(outcome.overall_improvement_score, null);
-  const rec = toPatientOutcomeMetric({ patientId: "p1" }, outcome);
+  const rec = toPatientOutcomeMetric({ agencyId: "agency-a", patientId: "p1" }, outcome);
   assert.ok(!("overall_improvement_score" in rec.functional_improvement));
+  assert.ok(!("ambulation_improved" in rec.functional_improvement));
 });
 
 test("toAgencyKPIs never claims on_target without a benchmark", () => {
-  // Regression: star_eligible (a VOLUME threshold) used to earn "on_target"
+  // Regression: an internal VOLUME marker used to earn "on_target"
   // (a PERFORMANCE status) when no benchmark was configured.
   const outcomes = Array.from({ length: 25 }, (_, i) =>
     episode({ m1860: "3" }, { m1860: i < 15 ? "1" : "3" }),
   );
-  const kpis = toAgencyKPIs(rollupMeasures(outcomes), { periodStart: "2026-01-01", periodEnd: "2026-03-31" });
+  const kpis = toAgencyKPIs(rollupMeasures(outcomes), {
+    agencyId: "agency-a",
+    periodStart: "2026-01-01",
+    periodEnd: "2026-03-31",
+    periodType: "quarterly",
+  });
   const amb = kpis.find((k) => k.metric_name.includes("Ambulation"));
   assert.equal(amb.status, "warning");
   assert.ok(amb.contributing_factors.some((f) => /no national benchmark/i.test(f)));
+});
+
+test("toAgencyKPIs refuses an unscoped payload", () => {
+  const rollup = rollupMeasures([episode({ m1860: "3" }, { m1860: "1" })]);
+  assert.throws(
+    () => toAgencyKPIs(rollup, {
+      periodStart: "2026-01-01",
+      periodEnd: "2026-03-31",
+      periodType: "quarterly",
+    }),
+    /agencyId is required/i,
+  );
+});
+
+test("toAgencyKPIs refuses an implicit or unsupported period type", () => {
+  const rollup = rollupMeasures([episode({ m1860: "3" }, { m1860: "1" })]);
+  assert.throws(
+    () => toAgencyKPIs(rollup, {
+      agencyId: "agency-a",
+      periodStart: "2026-01-01",
+      periodEnd: "2026-03-31",
+    }),
+    /periodType is required/i,
+  );
+});
+
+test("toAgencyKPIs preserves an explicitly labelled custom window", () => {
+  const rollup = rollupMeasures([episode({ m1860: "3" }, { m1860: "1" })]);
+  const [kpi] = toAgencyKPIs(rollup, {
+    agencyId: "agency-a",
+    periodStart: "2026-01-12",
+    periodEnd: "2026-02-03",
+    periodType: "custom",
+  });
+  assert.equal(kpi.period_type, "custom");
 });

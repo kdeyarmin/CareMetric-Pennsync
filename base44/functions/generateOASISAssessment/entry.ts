@@ -8,6 +8,11 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Even an evidence-only prompt can leak an OASIS response through unconstrained
+// model text when a direct caller bypasses the browser sanitizer. Keep the
+// endpoint paused until server-side output validation and tenant provenance are
+// implemented and clinically verified.
+const OASIS_ASSESSMENT_AI_ENABLED = false;
 
 
 /** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
@@ -45,6 +50,15 @@ async function assertPatientAccess(base44, user, patient) {
 }
 
 Deno.serve(async (req) => {
+  if (!OASIS_ASSESSMENT_AI_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'oasis_assessment_ai_paused',
+      message: 'AI OASIS assessment guidance is unavailable pending tenant-scoped provenance and server-side clinical validation.',
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

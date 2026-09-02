@@ -8,6 +8,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
@@ -241,14 +252,14 @@ Deno.serve(async (req) => {
     // Verify admin for most actions
     const currentUser = await base44.auth.me();
     if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
-    const isAdmin = currentUser?.role === 'admin'
-      || currentUser?.account_type === 'agency_admin'
-      || currentUser?.account_type === 'super_admin';
+    // `account_type` is self-mutable through auth.updateMe. Only Base44's
+    // protected built-in role may enter user/password-management actions.
+    const isAdmin = isProtectedAdmin(currentUser);
     // Granting the privileged 'admin' (facility admin) role requires super admin,
     // matching the hardened sibling functions (createUserWithTempPassword,
     // fixUserAccount): a plain facility admin must not be able to mint another
     // facility admin without super-admin oversight.
-    const callerIsSuperAdmin = currentUser?.account_type === 'super_admin';
+    const callerIsSuperAdmin = isProtectedSuperAdmin(currentUser);
 
     switch (action) {
       case 'invite_user':
@@ -518,9 +529,7 @@ async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuper
   // AS a super admin / peer admin — a side-door escalation the role-field guards
   // in updateUser/fixUserAccount exist to prevent). Only a super admin may reset
   // another admin's or a super admin's password.
-  const targetIsPrivileged = targetUser.account_type === 'super_admin'
-    || targetUser.account_type === 'agency_admin'
-    || targetUser.role === 'admin';
+  const targetIsPrivileged = targetUser.role === 'admin';
   if (targetIsPrivileged && !callerIsSuperAdmin) {
     return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
   }
@@ -695,13 +704,11 @@ async function updateUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     return Response.json({ error: 'Invalid staff_role' }, { status: 400 });
   }
 
-  // The app's role tiers are: super admin, facility admin, and staff member.
-  // Super admin is an account_type (managed via SuperAdminConfig/ensureSuperAdmin),
-  // NOT settable through this role field — which is exactly the privilege boundary
-  // we want. So the only assignable `role` values are the two the user-management
-  // UI offers: 'admin' (facility admin) and 'user' (staff member); the staff
-  // member's discipline is carried separately by staff_role. Reject anything else
-  // rather than writing an arbitrary/garbage or privilege-implying role string.
+  // The only assignable protected role values are those offered by the UI:
+  // 'admin' (facility admin) and 'user' (staff member). Platform-owner standing
+  // additionally requires the configured immutable email and is never granted
+  // by a custom User field. The staff discipline is carried separately by
+  // staff_role. Reject arbitrary role strings.
   const ASSIGNABLE_ROLES = new Set(['admin', 'user']);
   if (role !== undefined && !(typeof role === 'string' && ASSIGNABLE_ROLES.has(role))) {
     return Response.json({ error: "role must be 'admin' (facility admin) or 'user' (staff member)" }, { status: 400 });
@@ -721,9 +728,7 @@ async function updateUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   if (!targetUser) {
     return Response.json({ error: 'User not found' }, { status: 404 });
   }
-  const targetIsPrivileged = targetUser.account_type === 'super_admin'
-    || targetUser.account_type === 'agency_admin'
-    || targetUser.role === 'admin';
+  const targetIsPrivileged = targetUser.role === 'admin';
   if (targetIsPrivileged && !callerIsSuperAdmin && targetUser.email !== currentUser.email) {
     return Response.json({ error: 'Only a super admin can modify another administrator\'s account.' }, { status: 403 });
   }

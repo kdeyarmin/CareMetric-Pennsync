@@ -2,10 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import jsPDF from 'npm:jspdf@2.5.2';
 
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isAdminLike = (u) => !!u && (
-  u.role === 'admin' || u.account_type === 'agency_admin' ||
-  u.account_type === 'super_admin'
-);
+const isAdminLike = (u) => !!u && u.role === 'admin';
 // <<<END SHARED HELPER: isAdminLike>>>
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
@@ -16,8 +13,21 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// The dormant implementation performs platform-wide service-role reads before
+// deriving tenant scope from mutable user fields. Keep it unavailable until a
+// server-owned tenant broker and provenance-bound report projection exist.
+const COMPREHENSIVE_REPORT_ENABLED = false;
 
 Deno.serve(async (req) => {
+  if (!COMPREHENSIVE_REPORT_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'comprehensive_report_paused',
+      message: 'Comprehensive reporting is unavailable pending tenant-bound server authorization.',
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

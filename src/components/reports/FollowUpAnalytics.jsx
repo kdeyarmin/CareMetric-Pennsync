@@ -80,9 +80,9 @@ export default function FollowUpAnalytics() {
     // review of each processed referral (cheap string work).
     const gapCounts = new Map();
     let completeOnArrival = 0;
-    let atRiskTotal = 0;
-    let upsideLow = 0;
-    let upsideHigh = 0;
+    let atRiskTotal = null;
+    let upsideLow = null;
+    let upsideHigh = null;
     for (const r of processed) {
       try {
         const plan = buildFollowUpPlan(r.extracted_data, {
@@ -100,9 +100,11 @@ export default function FollowUpAnalytics() {
         // (defense-in-depth if this widget is reused on a non-admin page).
         if (adminView && r.follow_up_requests?.status !== "resolved") {
           const impact = estimateFollowUpRevenueImpact(plan, { rates: rateConfig?.rates });
-          atRiskTotal += impact.totalAtRisk;
-          upsideLow += impact.totalUpsideLow;
-          upsideHigh += impact.totalUpsideHigh;
+          if (impact.available) {
+            atRiskTotal = (atRiskTotal ?? 0) + impact.totalAtRisk;
+            upsideLow = (upsideLow ?? 0) + impact.totalUpsideLow;
+            upsideHigh = (upsideHigh ?? 0) + impact.totalUpsideHigh;
+          }
         }
       } catch {
         // A malformed extraction shouldn't break the whole report.
@@ -168,8 +170,10 @@ export default function FollowUpAnalytics() {
               <p className="text-xs font-semibold text-emerald-800 uppercase flex items-center gap-1">
                 <DollarSign className="w-3 h-3" /> Open exposure (est.)
               </p>
-              <p className="text-xl font-bold text-emerald-900">{fmtUsd(stats.atRiskTotal)}</p>
-              {stats.upsideHigh > 0 && (
+              <p className="text-xl font-bold text-emerald-900">
+                {stats.atRiskTotal === null ? "Unavailable — not $0" : fmtUsd(stats.atRiskTotal)}
+              </p>
+              {Number.isFinite(stats.upsideHigh) && stats.upsideHigh > 0 && (
                 <p className="text-xs text-emerald-800">
                   +{fmtUsd(stats.upsideLow)}–{fmtUsd(stats.upsideHigh)} upside
                 </p>

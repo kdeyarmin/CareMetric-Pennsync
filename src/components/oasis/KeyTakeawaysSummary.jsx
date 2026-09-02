@@ -2,23 +2,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Zap,
   AlertTriangle,
-  DollarSign,
   Shield,
   CheckCircle2,
   ArrowRight,
   Star,
   Target,
-  TrendingUp
 } from "lucide-react";
 
-export default function KeyTakeawaysSummary({ analysisResults, revenueData }) {
+export default function KeyTakeawaysSummary({ analysisResults }) {
   if (!analysisResults) return null;
 
   // Generate key takeaways
   const generateTakeaways = () => {
     const takeaways = {
       critical: [],
-      revenue: [],
       quality: [],
       strengths: []
     };
@@ -50,28 +47,6 @@ export default function KeyTakeawaysSummary({ analysisResults, revenueData }) {
       });
     }
 
-    // Revenue opportunities
-    const revenueTips = analysisResults.revenue_tips || [];
-    const highImpactTips = revenueTips.filter(t => t.potential_impact === 'high');
-    
-    if (highImpactTips.length > 0) {
-      takeaways.revenue.push({
-        icon: DollarSign,
-        text: `${highImpactTips.length} high-impact revenue optimization${highImpactTips.length > 1 ? 's' : ''} available`,
-        detail: highImpactTips[0]?.category + ': ' + (highImpactTips[0]?.opportunity?.substring(0, 60) || '') + '...',
-        type: 'success'
-      });
-    }
-
-    if (revenueData?.revenueDifference > 0) {
-      takeaways.revenue.push({
-        icon: TrendingUp,
-        text: `Potential revenue increase: $${revenueData.revenueDifference.toFixed(0)} per episode`,
-        detail: `${revenueData.percentageIncrease}% improvement with recommended changes`,
-        type: 'success'
-      });
-    }
-
     // Quality insights
     if (analysisResults.accuracy_score < 70) {
       takeaways.quality.push({
@@ -83,8 +58,8 @@ export default function KeyTakeawaysSummary({ analysisResults, revenueData }) {
     } else if (analysisResults.accuracy_score >= 90) {
       takeaways.strengths.push({
         icon: CheckCircle2,
-        text: `Excellent accuracy score: ${analysisResults.accuracy_score}%`,
-        detail: 'Documentation demonstrates strong clinical specificity',
+        text: `AI documentation-review accuracy signal: ${analysisResults.accuracy_score}%`,
+        detail: 'Human verification is still required; this is not official validation.',
         type: 'success'
       });
     }
@@ -99,8 +74,8 @@ export default function KeyTakeawaysSummary({ analysisResults, revenueData }) {
     } else if (analysisResults.compliance_score >= 90) {
       takeaways.strengths.push({
         icon: Shield,
-        text: `Strong compliance: ${analysisResults.compliance_score}%`,
-        detail: 'Documentation meets CMS regulatory requirements',
+        text: `AI documentation-review compliance signal: ${analysisResults.compliance_score}%`,
+        detail: 'This does not establish CMS compliance; a qualified reviewer must verify the record.',
         type: 'success'
       });
     }
@@ -122,7 +97,6 @@ export default function KeyTakeawaysSummary({ analysisResults, revenueData }) {
   const takeaways = generateTakeaways();
   const allTakeaways = [
     ...takeaways.critical,
-    ...takeaways.revenue,
     ...takeaways.quality,
     ...takeaways.strengths
   ];
@@ -149,7 +123,7 @@ export default function KeyTakeawaysSummary({ analysisResults, revenueData }) {
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
         {/* Score Summary */}
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <div className="text-center p-2 bg-slate-50 rounded-lg">
             <p className="text-2xl font-bold text-slate-800">{analysisResults.overall_score}%</p>
             <p className="text-xs text-slate-500">Overall</p>
@@ -161,10 +135,6 @@ export default function KeyTakeawaysSummary({ analysisResults, revenueData }) {
           <div className="text-center p-2 bg-navy-50 rounded-lg">
             <p className="text-2xl font-bold text-navy-700">{analysisResults.compliance_score}%</p>
             <p className="text-xs text-navy-600">Compliance</p>
-          </div>
-          <div className="text-center p-2 bg-green-50 rounded-lg">
-            <p className="text-2xl font-bold text-green-700">{analysisResults.revenue_optimization_score}%</p>
-            <p className="text-xs text-green-600">Revenue</p>
           </div>
         </div>
 
@@ -219,9 +189,6 @@ export default function KeyTakeawaysSummary({ analysisResults, revenueData }) {
             {takeaways.critical.length > 0 
               ? `⚠️ ${takeaways.critical.length} critical issue${takeaways.critical.length > 1 ? 's' : ''} • `
               : '✓ No critical issues • '}
-            {takeaways.revenue.length > 0 
-              ? `💰 Revenue optimization available • `
-              : ''}
             {takeaways.strengths.length > 0 
               ? `⭐ ${takeaways.strengths.length} strength${takeaways.strengths.length > 1 ? 's' : ''} noted`
               : ''}

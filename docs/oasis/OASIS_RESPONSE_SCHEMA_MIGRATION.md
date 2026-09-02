@@ -279,12 +279,15 @@ Specific corrections:
   Because M1800/M1810/M1820/M1850 have no CMS-verified response set in PennSync,
   the functional score is currently **not computable**; that is reported, not
   papered over.
-- New `PatientOutcomeMetric`, `AgencyKPI` and `OASISUpload` derived records carry
-  input response-schema ids, source assessment ids, instrument versions and
-  `calculation_version`.
+- New `PatientOutcomeMetric` and `AgencyKPI` derived records carry versioned
+  provenance. `OASISUpload` now has an optional `agency_id` schema destination,
+  but browser writes are service-blocked; no new upload/update/approval record
+  should be claimed until the tenant/chart broker authorizes the chart and
+  stamps its server-owned tenant identity and provenance. Existing unscoped
+  uploads require an audited backup and backfill rather than inferred tenancy.
 - **Existing derived records are not deleted or reinterpreted.** Records without
   verified source-schema provenance stay auditable but are hidden/retired from
-  current CMS-labeled aggregates; recomputation happens only from trusted v2
+  current internal proxy aggregates; recomputation happens only from trusted v2
   inputs.
 - `aggregateFunctionalScores` no longer defaults a missing score to `0`. On every
   OASIS functional scale `0` means fully independent, so an incompletely
@@ -304,9 +307,8 @@ is exactly how a legacy code would keep scoring after the UI stopped showing it.
 
 `AgencySettings.`**`oasis_response_schema_v2_enabled`**, a flat boolean,
 default **OFF**. Scoped per agency: both the frontend gate
-(`responseSchema/featureFlag.js`) and the protected writer read this field name
-off this entity, and the writer resolves the row belonging to *the caller's*
-agency through the shared `resolveAgencySettings` helper.
+(`responseSchema/featureFlag.js`) and dormant validator recognize this field.
+It is not an authorization source and cannot override the hard pause.
 
 The last part is not incidental. `AgencySettings` read RLS is open, so a
 newest-row-wins `list()` returns whichever tenant saved most recently — one
@@ -328,7 +330,7 @@ Rollout order:
 1. P0 AI/output/analytics containment
 2. Reader support for frozen v1 and v2
 3. Additive entity schema
-4. Protected centralized writer
+4. Server-owned tenant + patient/chart authorization broker (not yet built)
 5. v2 controls
 6. Schema-aware consumers and derived-data versioning
 7. Named clinical review
@@ -337,18 +339,18 @@ Rollout order:
 
 ## 10. Rollback procedure
 
-1. Set `oasis_response_schema_v2_enabled` to `false` on the affected agency's
-   own `AgencySettings` row.
-2. If an incident requires stopping writes immediately without a deploy, set
-   `oasis_response_writes_disabled` on that same row — the protected writer
-   returns 423. It is independent of the rollout flag, and it is the agency's
-   own row that is consulted, so containing one tenant neither depends on nor
-   affects another.
+1. The source-level safety gate is stronger than a tenant flag:
+   `OASISAssessment` writes are service-role-only and `saveOasisResponses`
+   returns 503 before it creates a Base44 client or reads any row.
+2. Keep `oasis_response_schema_v2_enabled` false and
+   `oasis_response_writes_disabled` true. Those fields are defense-in-depth only;
+   neither may reactivate the hard-paused endpoint.
 
-Rollback disables **new v2 writes only**. Both v1 and v2 readers keep working.
-Never down-convert a v2 row, never resume legacy writes, and never restore the
-removed AI/output behaviour. v1 is `writable: false` permanently, so legacy
-entry cannot come back by flag.
+Containment currently disables **all browser OASIS assessment/upload writes**;
+compatible read paths remain for existing data, subject to the still-open
+tenant-bound read-RLS redesign. Never down-convert a v2 row, resume legacy
+writes, or restore removed AI/output behavior. v1 is `writable: false`
+permanently, so legacy entry cannot come back by flag.
 
 ## 11. Approval status
 
@@ -363,16 +365,18 @@ These are four **separate** approvals. None of them is implied by another.
 
 ### Hosted schema / RLS status — RELEASE BLOCKER
 
-`OASISAssessment` previously had open write RLS (`"write": {}`). This change
-scopes write to the owning user and admins, matching the read rule, with
-`base44/functions/saveOasisResponses` as the sanctioned writer.
+`OASISAssessment` previously admitted owner/admin direct writes. Source now
+locks writes to service role. `base44/functions/saveOasisResponses` is dormant,
+non-activatable scaffolding: it returns 503 before data access, and its retained
+user-mode write branch cannot satisfy service-only RLS.
 
 **That is a declared contract in this repository. Whether the hosted Base44 app
 enforces it has not been verified in this environment**, and PennSync is a
 frontend-only SPA against a hosted backend — so UI-level enforcement is not
-enforcement. Until hosted enforcement is proven, and until it is confirmed that
-write-scoping does not break legitimate cross-user workflows, **v2 entry stays
-disabled**. This is recorded as a release blocker, not a warning.
+enforcement. Before any write is restored, replace the dormant branch with a
+server-owned tenant + patient/chart authorization broker, prove hosted RLS, and
+provide server-backed legacy/v2 and patient-merge workflows. **All OASIS entry
+stays disabled meanwhile.** This is a release blocker, not a warning.
 
 ## 12. Data-driven controls
 
@@ -433,7 +437,7 @@ listed so the gap is reviewable rather than implied by a green table.
 | Versioned drafts | `src/components/oasis/responseSchema/draftStorage.js` |
 | Feature flag / kill switch | `src/components/oasis/responseSchema/featureFlag.js` |
 | Independent CMS golden fixtures | `src/components/oasis/responseSchema/cmsGoldenFixtures.js` |
-| Protected backend writer | `base44/functions/saveOasisResponses/entry.ts` |
+| Hard-paused future backend writer/validator | `base44/functions/saveOasisResponses/entry.ts` |
 | Shared write validator | `base44/_shared/backendHelpers.mjs` (`oasisResponseGuard`) |
 | Migration / dry-run tool | `tools-oasis-response-migration.mjs` |
 | Schema-driven controls | `src/components/oasis/OasisResponseControl.jsx` |

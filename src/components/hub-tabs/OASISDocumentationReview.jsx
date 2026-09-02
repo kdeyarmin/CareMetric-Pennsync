@@ -6,7 +6,9 @@ import AIDocumentationGenerator from "@/components/oasis/AIDocumentationGenerato
 import AIDocumentationAssistant from "@/components/oasis/AIDocumentationAssistant";
 import InlineDocumentationAssistant from "@/components/oasis/InlineDocumentationAssistant";
 
-export default function OASISDocumentationReview() {
+const OASIS_DOCUMENTATION_REVIEW_ENABLED = false;
+
+function EnabledOASISDocumentationReview() {
   const location = useLocation();
   const { analysisResults, pdgmData, navigationData } = location.state || {};
 
@@ -50,4 +52,19 @@ export default function OASISDocumentationReview() {
       />
     </div>
   );
+}
+
+export default function OASISDocumentationReview() {
+  if (!OASIS_DOCUMENTATION_REVIEW_ENABLED) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
+        <p className="font-semibold text-amber-900">OASIS Documentation AI Review Paused</p>
+        <p className="mt-2 text-sm text-amber-800">
+          Automated OASIS scoring and documentation guidance are unavailable pending verified CMS
+          content, tenant-scoped authorization, and clinician review.
+        </p>
+      </div>
+    );
+  }
+  return <EnabledOASISDocumentationReview />;
 }

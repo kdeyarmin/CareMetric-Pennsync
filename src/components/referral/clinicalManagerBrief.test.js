@@ -5,6 +5,7 @@ import {
   buildPdgmRequestFromReferral,
   collectRevenueClarifications,
   buildClinicalManagerBrief,
+  getPdgmPaymentAvailability,
 } from "./clinicalManagerBrief.js";
 
 // ── HIPPS derivation ──
@@ -119,7 +120,7 @@ test("collectRevenueClarifications aggregates coding, PDGM, F2F, and eligibility
   assert.match(details, /W1/);
   assert.match(details, /Right hip pain/);
   assert.match(details, /M1000 suggests institutional \(M1000: 02\) — Institutional pays more/);
-  assert.match(details, /No comorbidity adjustment/);
+  assert.match(details, /does not assign a PDGM comorbidity adjustment/);
   assert.match(details, /No Face-to-Face encounter documented/);
   assert.match(details, /Insurance ID — Call hospital/);
   // No duplicate lines.
@@ -145,7 +146,61 @@ const pdgmResponse = {
   dataValidation: { discrepancies: [] },
 };
 
-test("buildClinicalManagerBrief assembles every requested section with HIPPS and the draft rate", () => {
+const blockedPdgmResponse = {
+  rateBasis: { isOfficial: false, isEstimate: true, basePayment: 2038.22 },
+  original: {
+    incomplete: true,
+    calculationStatus: "blocked",
+    paymentAvailable: false,
+    reason: "functional_engine_definitions_missing",
+    message: "PDGM payment is unavailable — this is not a $0 result.",
+    actionRequired: ["Use the official EMR/CMS-approved grouper."],
+    clinicalGroup: "MMTA_Cardiac_Circulatory",
+    admissionSource: "institutional",
+    episodeTiming: "early",
+    functionalLevel: null,
+    functionalPoints: null,
+    caseMixWeight: null,
+    totalPayment: null,
+  },
+  dataValidation: { discrepancies: [] },
+};
+
+test("global PDGM pause rejects blocked, forged, nonfinite, and zero-dollar payloads", () => {
+  assert.equal(getPdgmPaymentAvailability(blockedPdgmResponse).available, false);
+  assert.equal(getPdgmPaymentAvailability({
+    original: { paymentAvailable: true, incomplete: false, totalPayment: Number.NaN },
+  }).available, false);
+  const forgedZero = getPdgmPaymentAvailability({
+    original: { paymentAvailable: true, incomplete: false, totalPayment: 0 },
+  });
+  assert.equal(forgedZero.available, false);
+  assert.equal(forgedZero.amount, null);
+  assert.equal(forgedZero.reason, "cms_verified_pdgm_grouper_unavailable");
+  assert.match(forgedZero.message, /not a \$0 result/);
+});
+
+test("blocked PDGM brief and PDF export say Unavailable and never manufacture a $0 payment", () => {
+  const brief = buildClinicalManagerBrief({
+    referralData: referral,
+    pdgm: blockedPdgmResponse,
+    visitCosts: { SN: 95 },
+  });
+  const pdfText = brief.pdfContent.map((entry) => entry.text || "").join("\n");
+
+  assert.equal(brief.paymentAvailability.available, false);
+  assert.equal(brief.hipps.code, null);
+  assert.match(brief.emailBody, /Draft 30-day period reimbursement: Unavailable — this is not a \$0 result/);
+  assert.match(brief.emailBody, /Reason: cms_verified_pdgm_grouper_unavailable/);
+  assert.match(brief.emailBody, /Required action: Use the official EMR\/CMS-approved grouper for billing and reimbursement decisions/);
+  assert.match(brief.emailBody, /Estimated episode margin: Unavailable — no \$0 revenue assumption was used/);
+  assert.doesNotMatch(brief.emailBody, /\$0\.00/);
+  assert.doesNotMatch(brief.emailBody, /two-period 60-day episode/);
+  assert.match(pdfText, /Draft 30-day period reimbursement: Unavailable/);
+  assert.doesNotMatch(pdfText, /\$0\.00/);
+});
+
+test("buildClinicalManagerBrief keeps PDGM grouping, HIPPS, and payment unavailable", () => {
   const brief = buildClinicalManagerBrief({
     referralData: referral,
     analysis: { patient_summary: { narrative: "78yo with CHF exacerbation." } },
@@ -161,19 +216,19 @@ test("buildClinicalManagerBrief assembles every requested section with HIPPS and
   const body = brief.emailBody;
   assert.match(body, /PATIENT SUMMARY/);
   assert.match(body, /78yo with CHF exacerbation/);
-  assert.match(body, /BEST CODING FOR MAXIMUM REIMBURSEMENT/);
+  assert.match(body, /DOCUMENTED DIAGNOSES — CODING REVIEW REQUIRED/);
   assert.match(body, /M1021 Primary: I50\.9/);
-  assert.match(body, /case-mix weight/);
-  assert.match(body, /CLARIFY TO PROTECT\/INCREASE REIMBURSEMENT/);
+  assert.doesNotMatch(body, /case-mix weight \d/i);
+  assert.match(body, /CLINICAL AND CODING CLARIFICATIONS/);
   assert.match(body, /SUGGESTED VISIT FREQUENCY — MEDICARE/);
   assert.match(body, /3\/wk × 2 wks/);
-  assert.match(body, /DRAFT OASIS RESPONSES/);
+  assert.match(body, /UNVERIFIED EXTRACTED OASIS VALUES/);
   assert.match(body, /M1860 Ambulation/);
   assert.match(body, /PDGM GROUPING, HIPPS & DRAFT REIMBURSEMENT/);
-  // Derived HIPPS: early+institutional=2, Cardiac=H, high=C, low comorbidity=2.
-  assert.match(body, /HIPPS: 2HC21 \(derived from grouping variables\)/);
-  assert.match(body, /\$3021\.24/);
-  assert.match(body, /DRAFT ESTIMATE — based on approximate case-mix weights/);
+  assert.match(body, /Draft 30-day period reimbursement: Unavailable/);
+  assert.doesNotMatch(body, /HIPPS: 2HC21/);
+  assert.doesNotMatch(body, /\$3021\.24/);
+  assert.doesNotMatch(body, /DRAFT ESTIMATE — based on approximate case-mix weights/);
   assert.match(body, /Source referral document/);
 
   // PDF content mirrors the sections; OASIS renders as a table.
@@ -181,10 +236,10 @@ test("buildClinicalManagerBrief assembles every requested section with HIPPS and
   assert.ok(headings.includes("PDGM GROUPING, HIPPS & DRAFT REIMBURSEMENT"));
   const oasisTable = brief.pdfContent.find((c) => c.type === "table");
   assert.ok(oasisTable.rows.some(([label]) => label === "M1860 Ambulation"));
-  assert.equal(brief.hipps.code, "2HC21");
+  assert.equal(brief.hipps.code, null);
 });
 
-test("the official CMS table's HIPPS is preferred and a mismatch is flagged", () => {
+test("caller-supplied rate tables cannot bypass the global PDGM pause", () => {
   const stored = {
     rows: {
       // caseMixKey: timing|admissionSource|CMS group name|functional|comorbidity
@@ -192,12 +247,12 @@ test("the official CMS table's HIPPS is preferred and a mismatch is flagged", ()
     },
   };
   const brief = buildClinicalManagerBrief({ referralData: referral, pdgm: pdgmResponse, storedWeightTable: stored });
-  assert.equal(brief.hipps.official, "2HC29");
-  assert.equal(brief.hipps.code, "2HC29");
-  assert.equal(brief.hipps.mismatch, true);
-  assert.match(brief.emailBody, /official CMS case-mix table/);
-  assert.match(brief.emailBody, /disagrees with the official table/);
-  assert.match(brief.emailBody, /Official LUPA threshold for this group: 5 visits/);
+  assert.equal(brief.hipps.official, null);
+  assert.equal(brief.hipps.code, null);
+  assert.equal(brief.hipps.mismatch, false);
+  assert.match(brief.emailBody, /Draft 30-day period reimbursement: Unavailable/);
+  assert.doesNotMatch(brief.emailBody, /official CMS case-mix table/);
+  assert.doesNotMatch(brief.emailBody, /Official LUPA threshold/);
 });
 
 test("a contract payer gets the imported-table estimate and auth comparison instead of PDGM", () => {
@@ -228,14 +283,12 @@ test("a contract payer gets the imported-table estimate and auth comparison inst
   assert.match(brief.emailBody, /planned 15 vs typically approved 10 — OVER/);
 });
 
-test("a LUPA-risk period quantifies the revenue at risk against the known period payment", () => {
+test("a LUPA-risk period never reuses a forged legacy payment", () => {
   // SN 3w2, 2w2, 1w5 → period 2 lands at 4 visits (inside the 2–6 LUPA band).
   const brief = buildClinicalManagerBrief({ referralData: referral, pdgm: pdgmResponse });
-  assert.match(
-    brief.emailBody,
-    /Revenue at risk: a LUPA in period 2 forfeits the full \$3021\.24 period payment/
-  );
-  assert.match(brief.emailBody, /One added medically necessary visit may clear the threshold/);
+  assert.doesNotMatch(brief.emailBody, /Revenue at risk:.*\$3021\.24/);
+  assert.doesNotMatch(brief.emailBody, /One added medically necessary visit may clear the threshold/);
+  assert.match(brief.emailBody, /Draft 30-day period reimbursement: Unavailable/);
 });
 
 test("documented-but-uncoded comorbidity signals land in the clarification list", () => {
@@ -249,24 +302,25 @@ test("documented-but-uncoded comorbidity signals land in the clarification list"
   assert.match(brief.emailBody, /medications: "Metformin 500 mg"|medications: "Metformin"/);
 });
 
-test("a matched CBSA wage index renders its provenance line", () => {
+test("a caller-supplied wage-index match cannot bypass the global PDGM pause", () => {
   const brief = buildClinicalManagerBrief({
     referralData: referral,
     pdgm: pdgmResponse,
     wageIndexMatch: { wage_index: 0.8412, cbsa: "42540", label: "Scranton PA", matchedBy: "zip" },
   });
-  assert.match(brief.emailBody, /Wage index 0\.8412 applied for Scranton PA \(matched by zip from the patient's address\)/);
+  assert.doesNotMatch(brief.emailBody, /Wage index 0\.8412 applied/);
+  assert.match(brief.emailBody, /Draft 30-day period reimbursement: Unavailable/);
 });
 
-test("visit costs produce the episode margin in the PDGM section", () => {
-  // SN 3w2,2w2,1w5 = 15 visits; revenue ≈ 3021.24 × 2 = 6042.48.
+test("visit costs never turn unavailable PDGM revenue into a fabricated margin", () => {
   const brief = buildClinicalManagerBrief({
     referralData: referral,
     pdgm: pdgmResponse,
     visitCosts: { SN: 95 },
   });
   assert.match(brief.emailBody, /Estimated episode visit cost: \$1425\.00 \(SN 15 × \$95\.00\)/);
-  assert.match(brief.emailBody, /Estimated episode margin: \$4617\.48 \(76\.4%\) — revenue \$6042\.48 − visit cost \$1425\.00/);
+  assert.match(brief.emailBody, /Estimated episode margin: Unavailable — no \$0 revenue assumption was used/);
+  assert.doesNotMatch(brief.emailBody, /revenue \$6042\.48/);
 });
 
 test("contract payers get the margin against the contract revenue; no costs degrades to a note", () => {

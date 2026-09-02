@@ -12,7 +12,7 @@ import {
   codeLabel,
   toPersistedCoding,
 } from "./diagnosisCodeGenerator.js";
-import { DEFAULT_ICD10_CLINICAL_GROUPS, DEFAULT_PDGM_RATES } from "../pdgm/pdgmRates.js";
+import { DEFAULT_ICD10_CLINICAL_GROUPS } from "../pdgm/pdgmRates.js";
 
 // ── code recognition ──
 
@@ -174,36 +174,35 @@ test("resolveScenario: referral is always the early period; source drives the bu
   assert.equal(resolveScenario({}).bucket, "community_early");
 });
 
-// ── sequencing by the PDGM model ──
+// ── payment-neutral sequencing ──
 
-test("primary goes to the acceptable code with the highest case-mix weight", () => {
+test("preserves the documented acceptable primary without payment-based resequencing", () => {
   const result = generateDiagnosisCodes(FULL_REFERRAL);
-  // Wounds (L89.153) outweighs Cardiac (I50.9) in every default bucket.
-  assert.equal(result.primary.code, "L89153");
+  assert.equal(result.primary.code, "I509");
   assert.equal(result.sequenced[0].role, "primary");
   assert.equal(result.sequenced[0].position, 1);
   // Every sequenced code came from the referral.
   const referralCodes = new Set(["I509", "E119", "J449", "L89153"]);
   for (const dx of result.sequenced) assert.ok(referralCodes.has(dx.code));
-  // Secondaries are ordered by descending weight.
-  const weights = result.sequenced.slice(1).map((d) => d.caseMixWeight ?? -1);
-  for (let i = 1; i < weights.length; i++) assert.ok(weights[i - 1] >= weights[i]);
-  // Re-sequencing away from the documented primary is flagged for review.
-  assert.ok(result.warnings.some((w) => /documents I50\.9 as primary/.test(w)));
+  assert.ok(result.sequenced.every((dx) => dx.caseMixWeight === null));
+  assert.ok(result.sequenced.every((dx) => dx.clinicalGroupKey === null));
+  assert.equal(result.warnings.some((warning) => /re-sequenc/i.test(warning)), false);
 });
 
-test("RTP-unacceptable codes never take the primary slot", () => {
+test("an unacceptable documented primary is left unresolved, never replaced by a secondary", () => {
   const result = generateDiagnosisCodes({
     diagnoses: {
       primary_icd10: "R26.9", // symptom code — RTP as principal
       secondary_diagnoses: ["E11.9"],
     },
   });
-  assert.equal(result.primary.code, "E119");
+  assert.equal(result.primary, null);
   const r269 = result.sequenced.find((d) => d.code === "R269");
   assert.equal(r269.role, "secondary");
   assert.equal(r269.acceptablePrimary, false);
   assert.ok(r269.rtpReason);
+  assert.equal(result.sequenced.find((d) => d.code === "E119").role, "secondary");
+  assert.ok(result.warnings.some((warning) => /qualified coding review/i.test(warning)));
 });
 
 test("all-unacceptable code sets produce no primary and a warning", () => {
@@ -227,18 +226,17 @@ test("no documented codes → hasCodes false and never-fabricate warning", () =>
   assert.ok(result.warnings.some((w) => /never auto-generated/i.test(w)));
 });
 
-test("agency rate/map overrides change the sequencing model", () => {
-  // An agency override that boosts Endocrine above everything flips the primary.
+test("caller rate/map overrides cannot change documented sequencing or add grouping", () => {
   const result = generateDiagnosisCodes(FULL_REFERRAL, {
     rates: { clinicalGroupWeights: { MMTA_Endocrine: { institutional_early: 9.9 } } },
   });
-  assert.equal(result.primary.code, "E119");
-  // A replace-semantics ICD map with only one prefix leaves the rest unmapped.
+  assert.equal(result.primary.code, "I509");
   const mapped = generateDiagnosisCodes(FULL_REFERRAL, {
     icdGroups: { I50: "MMTA_Cardiac_Circulatory" },
   });
   assert.equal(mapped.primary.code, "I509");
-  assert.ok(mapped.warnings.some((w) => /not in the agency's ICD-10/i.test(w)));
+  assert.ok(mapped.sequenced.every((dx) => dx.clinicalGroupKey === null));
+  assert.ok(mapped.sequenced.every((dx) => dx.caseMixWeight === null));
 });
 
 // ── persistence shape (Referral.diagnosis_coding) ──
@@ -269,9 +267,12 @@ test("toPersistedCoding distinguishes acceptable-candidate from chosen-primary",
 test("toPersistedCoding produces the lean top-level Referral shape", () => {
   const persisted = toPersistedCoding(generateDiagnosisCodes(FULL_REFERRAL));
   assert.equal(persisted.has_acceptable_primary, true);
-  assert.equal(persisted.has_pdgm_primary, true);
+  assert.equal(persisted.has_documented_primary, true);
+  assert.equal(persisted.has_pdgm_primary, false);
   assert.equal(persisted.sequenced[0].role, "primary");
-  assert.equal(persisted.sequenced[0].code, "L89.153");
+  assert.equal(persisted.sequenced[0].code, "I50.9");
+  assert.equal(persisted.sequenced[0].clinical_group, null);
+  assert.equal(persisted.sequenced[0].case_mix_weight, null);
   assert.equal(persisted.scenario.admission_source, "institutional");
   // Evidence is reduced to paths — no verbatim quotes are persisted.
   for (const dx of persisted.sequenced) {
@@ -283,11 +284,10 @@ test("toPersistedCoding produces the lean top-level Referral shape", () => {
   assert.equal(toPersistedCoding(null), null);
 });
 
-test("uses the same default tables as the live PDGM model (drift guard)", () => {
+test("never attaches legacy estimator tables to referral coding", () => {
   const result = generateDiagnosisCodes(FULL_REFERRAL);
-  const expected =
-    DEFAULT_PDGM_RATES.clinicalGroupWeights.MMTA_Wounds.institutional_early;
-  assert.equal(result.primary.caseMixWeight, expected);
+  assert.ok(result.sequenced.every((dx) => dx.caseMixWeight === null));
+  assert.ok(result.sequenced.every((dx) => dx.clinicalGroupKey === null));
 });
 
 // ── Regression: fabricated-code guards (2026-07 review) ─────────────────────

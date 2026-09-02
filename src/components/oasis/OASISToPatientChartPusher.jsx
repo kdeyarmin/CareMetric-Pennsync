@@ -47,20 +47,6 @@ export default function OASISToPatientChartPusher({
       });
     });
 
-    // From revenue tips
-    analysisResults.revenue_tips?.forEach((tip, idx) => {
-      recs.push({
-        id: `revenue-${idx}`,
-        type: 'revenue_optimization',
-        title: `Revenue Opportunity: ${tip.category}`,
-        description: tip.opportunity,
-        priority: tip.potential_impact === 'high' ? 'high' : 'medium',
-        rationale: tip.specific_action,
-        impact: tip.potential_impact,
-        steps: [tip.specific_action]
-      });
-    });
-
     // From documentation improvements
     analysisResults.documentation_improvements?.forEach((imp, idx) => {
       recs.push({

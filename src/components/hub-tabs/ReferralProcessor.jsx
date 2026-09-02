@@ -17,8 +17,7 @@ import AIGeneratedOASISAssessment from "@/components/oasis/AIGeneratedOASISAsses
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileText, UserPlus, ArrowRight, TrendingUp, Sparkles, CheckCircle2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { FileText, UserPlus, ArrowRight, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from 'sonner';
 
 export default function ReferralProcessor() {
@@ -33,39 +32,8 @@ export default function ReferralProcessor() {
   // summarizer), embedded into the nurse briefing email when available.
   const [admissionNote, setAdmissionNote] = useState("");
   const [isCreatingPatient, setIsCreatingPatient] = useState(false);
-  const [diagnosisRanking, setDiagnosisRanking] = useState(null);
-  const [isRankingDiagnoses, setIsRankingDiagnoses] = useState(false);
-  const [selectedPrimaryDx, setSelectedPrimaryDx] = useState(null);
   const [selectedSecondaryDx, _setSelectedSecondaryDx] = useState([]);
   const [createdPatientId, setCreatedPatientId] = useState(null);
-
-  const rankDiagnoses = async () => {
-    if (!extractedData?.diagnoses) return;
-
-    setIsRankingDiagnoses(true);
-    try {
-      const diagnosesList = [
-        extractedData.diagnoses.primary_diagnosis,
-        ...(extractedData.diagnoses.secondary_diagnoses || [])
-      ].filter(Boolean);
-
-      const { data } = await base44.functions.invoke('rankDiagnosesByPDGM', {
-        diagnoses: diagnosesList,
-        patient_data: extractedData
-      });
-
-      setDiagnosisRanking(data);
-      
-      // Auto-select the optimal diagnosis
-      if (data.optimal_primary_diagnosis) {
-        setSelectedPrimaryDx(data.optimal_primary_diagnosis);
-      }
-    } catch (error) {
-      console.error('Error ranking diagnoses:', error);
-      toast.error('Failed to rank diagnoses. Please try again.');
-    }
-    setIsRankingDiagnoses(false);
-  };
 
   const createPatientFromReferral = async () => {
     if (!extractedData) return;
@@ -115,7 +83,6 @@ export default function ReferralProcessor() {
         physician_name: extractedData.demographics?.primary_care_physician || extractedData.demographics?.referring_physician || null,
         physician_phone: extractedData.demographics?.pcp_contact || extractedData.demographics?.referring_physician_contact || null,
         primary_diagnosis:
-          selectedPrimaryDx ||
           (coding?.primary ? codeLabel(coding.primary) : null) ||
           extractedData.diagnoses?.primary_diagnosis ||
           null,
@@ -188,119 +155,15 @@ export default function ReferralProcessor() {
               onAnalysisComplete={(analysis) => setReferralAnalysis(analysis)}
             />
 
-            {/* PDGM Diagnosis Ranking */}
-            <Card className="border-2 border-navy-300 bg-navy-50">
+            <Card className="border-2 border-amber-300 bg-amber-50">
               <CardContent className="p-3 sm:p-4 md:p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base sm:text-lg font-semibold text-navy-900 flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5" />
-                    PDGM Diagnosis Optimization
-                  </h3>
-                  <Button
-                    onClick={rankDiagnoses}
-                    disabled={isRankingDiagnoses}
-                    size="sm"
-                    className="bg-navy-600 hover:bg-navy-700"
-                  >
-                    {isRankingDiagnoses ? (
-                      <>
-                        <Sparkles className="w-4 h-4 mr-2 animate-spin" />
-                        Analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <TrendingUp className="w-4 h-4 mr-2" />
-                        Rank by Reimbursement
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                {diagnosisRanking && (
-                  <div className="space-y-4">
-                    <Alert className="bg-indigo-50 border-indigo-300">
-                      <AlertDescription>
-                        <p className="font-semibold text-indigo-900 mb-1">Optimal Primary Diagnosis:</p>
-                        <p className="text-sm text-indigo-800">{diagnosisRanking.optimal_primary_diagnosis}</p>
-                      </AlertDescription>
-                    </Alert>
-
-                    <div className="space-y-3">
-                      {diagnosisRanking.ranked_diagnoses?.map((dx, idx) => (
-                        <div
-                          key={idx}
-                          className={`border-2 rounded-lg p-3 cursor-pointer transition-all ${
-                            selectedPrimaryDx === dx.diagnosis
-                              ? 'border-navy-600 bg-navy-100'
-                              : 'border-navy-200 bg-white hover:border-navy-400'
-                          }`}
-                          onClick={() => setSelectedPrimaryDx(dx.diagnosis)}
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <Badge className="bg-navy-600 text-white">#{dx.rank}</Badge>
-                                <Badge className={`${
-                                  dx.reimbursement_tier === 'High' ? 'bg-green-600' :
-                                  dx.reimbursement_tier === 'Medium' ? 'bg-yellow-600' :
-                                  'bg-slate-600'
-                                } text-white`}>
-                                  {dx.reimbursement_tier}
-                                </Badge>
-                                <span className="text-xs text-slate-600">{dx.estimated_payment_range}</span>
-                              </div>
-                              <p className="font-semibold text-slate-900">{dx.diagnosis}</p>
-                            </div>
-                            {selectedPrimaryDx === dx.diagnosis && (
-                              <CheckCircle2 className="w-5 h-5 text-navy-600 flex-shrink-0" />
-                            )}
-                          </div>
-
-                          <div className="space-y-2 text-sm">
-                            <div>
-                              <p className="font-semibold text-slate-900">PDGM Group: {dx.pdgm_clinical_group}</p>
-                            </div>
-
-                            <div>
-                              <p className="font-semibold text-slate-700">Key Factors:</p>
-                              <ul className="ml-4 space-y-1">
-                                {dx.key_factors?.map((factor, fidx) => (
-                                  <li key={fidx} className="text-slate-600">• {factor}</li>
-                                ))}
-                              </ul>
-                            </div>
-
-                            {dx.documentation_requirements?.length > 0 && (
-                              <div>
-                                <p className="font-semibold text-slate-700">Documentation Required:</p>
-                                <ul className="ml-4 space-y-1">
-                                  {dx.documentation_requirements.map((req, ridx) => (
-                                    <li key={ridx} className="text-slate-600">• {req}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-
-                            <p className="text-slate-600 italic">{dx.rationale}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {diagnosisRanking.pdgm_optimization_tips?.length > 0 && (
-                      <Alert className="bg-blue-50 border-blue-300">
-                        <AlertDescription>
-                          <p className="font-semibold text-blue-900 mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4" /> PDGM Optimization Tips:</p>
-                          <ul className="space-y-1">
-                            {diagnosisRanking.pdgm_optimization_tips.map((tip, idx) => (
-                              <li key={idx} className="text-sm text-blue-800">• {tip}</li>
-                            ))}
-                          </ul>
-                        </AlertDescription>
-                      </Alert>
-                    )}
+                <div role="alert" className="flex items-start gap-3 text-sm text-amber-950">
+                  <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" aria-hidden="true" />
+                  <div>
+                    <p className="font-semibold">PDGM diagnosis ranking is unavailable.</p>
+                    <p className="mt-1">Diagnoses are not ranked or selected by reimbursement. Use documented clinical evidence and official coding review to choose the primary diagnosis.</p>
                   </div>
-                )}
+                </div>
               </CardContent>
             </Card>
           </>

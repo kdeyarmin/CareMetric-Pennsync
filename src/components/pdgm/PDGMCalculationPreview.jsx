@@ -6,6 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { calculatePDGM } from "@/functions/calculatePDGM";
+import {
+  formatPdgmCurrency,
+  formatPdgmNumber,
+  getAlternativeScenarioState,
+  getPdgmPaymentState,
+} from "./pdgmAvailability";
 
 /**
  * Runs the saved PDGM rate set through the calculatePDGM engine using a
@@ -42,7 +48,7 @@ export default function PDGMCalculationPreview({ isDirty, baseRate }) {
 
   const calcMutation = useMutation({
     mutationFn: async () => calculatePDGM({ pdgmData: REFERENCE_PATIENT, wageIndex: 1.0 }),
-    onSuccess: (data) => setResult(data),
+    onSuccess: (response) => setResult(response?.data ?? response),
     onError: (err) => {
       console.error("PDGM calculation failed:", err);
       setResult(null);
@@ -57,6 +63,8 @@ export default function PDGMCalculationPreview({ isDirty, baseRate }) {
   const original = result?.original;
   const scenarios = result?.alternativeScenarios;
   const rateBasis = result?.rateBasis;
+  const paymentState = getPdgmPaymentState(original);
+  const scenarioState = getAlternativeScenarioState(scenarios);
 
   return (
     <Card>
@@ -111,6 +119,20 @@ export default function PDGMCalculationPreview({ isDirty, baseRate }) {
           </Alert>
         )}
 
+        {original && !paymentState.available && (
+          <Alert className="border-amber-300 bg-amber-50">
+            <Info className="h-4 w-4 text-amber-700" />
+            <AlertDescription className="space-y-2 text-sm text-amber-900">
+              <p><strong>PDGM payment: Unavailable.</strong> {paymentState.message}</p>
+              {paymentState.actions.length > 0 && (
+                <ul className="list-disc space-y-1 pl-5">
+                  {paymentState.actions.map((action) => <li key={action}>{action}</li>)}
+                </ul>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
         {original && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-lg border bg-slate-50 p-4 dark:bg-slate-800">
@@ -119,10 +141,10 @@ export default function PDGMCalculationPreview({ isDirty, baseRate }) {
                 30-day period payment
               </div>
               <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">
-                ${Number(original.totalPayment ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatPdgmCurrency(paymentState.amount)}
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                Case-mix weight: {Number(original.caseMixWeight ?? 0).toFixed(4)}
+                Case-mix weight: {paymentState.available ? formatPdgmNumber(original.caseMixWeight) : "Unavailable"}
               </p>
             </div>
             <div className="rounded-lg border bg-slate-50 p-4 dark:bg-slate-800">
@@ -145,6 +167,11 @@ export default function PDGMCalculationPreview({ isDirty, baseRate }) {
             <div className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               All four admission-source × timing scenarios
             </div>
+            {!scenarioState.available && (
+              <div className="border-b bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <strong>Unavailable.</strong> {scenarioState.message}
+              </div>
+            )}
             <div className="divide-y">
               {Object.entries(scenarios.scenarios || {}).map(([key, scenario]) => (
                 <div key={key} className="flex items-center justify-between px-3 py-2 text-sm">
@@ -152,7 +179,7 @@ export default function PDGMCalculationPreview({ isDirty, baseRate }) {
                     {key.replace(/_/g, " ")}
                   </span>
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    ${Number(scenario.totalPayment ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {scenarioState.available ? formatPdgmCurrency(scenario.totalPayment) : "Unavailable"}
                   </span>
                 </div>
               ))}

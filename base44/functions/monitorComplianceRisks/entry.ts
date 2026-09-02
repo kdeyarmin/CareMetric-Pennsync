@@ -3,10 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
-  return !!user && (
-    user.role === 'admin' || user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin'
-  );
+  return !!user && user.role === 'admin';
 }
 // Constant-time string compare for the shared-secret check (mirrors
 // createTelehealthToken's timingSafeEqual). A plain === short-circuits on the
@@ -45,6 +42,12 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// This job currently performs platform-wide service-role patient/OASIS reads
+// and can write critical alerts from unverified keyword heuristics. Keep it
+// unavailable until every run is server-owned, tenant-bound, and clinically
+// validated; no browser admin or scheduler invocation may bypass this hold.
+const COMPLIANCE_RISK_MONITOR_ENABLED = false;
+
 
 // Compliance-risk monitor. COMPANION-MODE AWARE: PennSync usually runs
 // alongside the agency's EMR, so rules that fire on the ABSENCE of EMR-owned
@@ -52,15 +55,15 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // AgencySettings.pennsync_is_system_of_record (default OFF) — see the gate in
 // the handler. Rules keyed to artifacts that exist in-app always run.
 //
-// Discharge-OASIS completion enforcer (inlined mirror of the unit-tested
+// Discharge-OASIS documentation check (inlined mirror of the unit-tested
 // src/components/oasis/dischargeComplianceEnforcer.js — Deno cannot import from
 // src/). Flags episodes that ended without a completed Discharge OASIS, which
-// silently drops the patient's demonstrated improvement and erodes the
-// 20-episode / 5-measure star-rating eligibility floor. Status and visit-type
+// prevents PennSync from calculating its unadjusted internal episode proxy.
+// This is not an official CMS rate, eligibility check, or star input. Status and visit-type
 // values compare case-insensitively so casing drift in stored records never
 // creates false "missing discharge" alarms.
-const STAR_MIN_EPISODES = 20;
-const STAR_MIN_MEASURES = 5;
+const INTERNAL_SAMPLE_MIN_PAIRS = 20;
+const INTERNAL_SAMPLE_MEASURE_TARGET = 5;
 const DC_COMPLETE_STATUSES = new Set(['completed', 'submitted']);
 const DC_START_TYPES = new Set(['start of care', 'resumption of care']);
 const dcLower = (v) => String(v || '').trim().toLowerCase();
@@ -124,8 +127,8 @@ function detectMissingDischargeOASIS(ctx, opts = {}) {
   if (hasDraftDischarge) factors.push('A Discharge OASIS exists but is still in draft/in-progress');
   if (!hasBaseline) factors.push('No SOC/ROC assessment on file to pair for a change score');
   factors.push(
-    'Without a completed Discharge OASIS this episode contributes no demonstrated improvement',
-    `Missing episodes erode the ${STAR_MIN_EPISODES}-episode / ${STAR_MIN_MEASURES}-measure star eligibility floor`,
+    'Without a completed in-app Discharge OASIS, PennSync cannot calculate its internal episode proxy',
+    `Internal sample context uses ${INTERNAL_SAMPLE_MIN_PAIRS} pairs per measure and a ${INTERNAL_SAMPLE_MEASURE_TARGET}-measure marker; neither is official CMS eligibility`,
   );
 
   return {
@@ -139,7 +142,7 @@ function detectMissingDischargeOASIS(ctx, opts = {}) {
     contributing_factors: factors,
     recommended_actions: [
       hasDraftDischarge ? 'Complete and submit the in-progress Discharge OASIS' : 'Complete a Discharge OASIS assessment for this episode',
-      'Pair it with the SOC/ROC to compute the CMS change score',
+      'When the tenant-authorized outcome broker is available, pair it with SOC/ROC for the internal unadjusted proxy',
       'Verify functional items (M1860, M1850, M1830, M1400, M2020) are scored',
     ],
     risk_score: isDischargedPatient ? 88 : 72,
@@ -196,6 +199,16 @@ async function persistAlerts(base44, patientAlerts, currentDate, sink) {
 }
 
 Deno.serve(async (req) => {
+  if (!COMPLIANCE_RISK_MONITOR_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'compliance_risk_monitor_paused',
+      message: 'Automated compliance-risk monitoring is unavailable pending tenant-bound authorization and clinical validation.',
+      alerts_created: 0,
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
 
@@ -389,12 +402,11 @@ Deno.serve(async (req) => {
         }
       }
       
-      // RISK 6: Episode ended without a completed Discharge OASIS. A missing
-      // Discharge OASIS silently loses the patient's demonstrated improvement
-      // and drags the agency below the star-rating eligibility floor.
+      // RISK 6: Episode ended without a completed in-app Discharge OASIS, so
+      // PennSync cannot calculate its unadjusted internal episode proxy.
       // Absence-based (the discharge assessment most likely lives in the EMR)
       // — gated behind pennsync_is_system_of_record; incomplete pairs surface
-      // as the coverage note on the Outcome Measures dashboard instead.
+      // as a coverage gap only after a tenant-authorized broker exists.
       if (pennsyncIsSystemOfRecord) {
         const dischargeGap = detectMissingDischargeOASIS(
           { patient, oasisAssessments, visits },

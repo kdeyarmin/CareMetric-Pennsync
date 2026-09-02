@@ -2,6 +2,10 @@
   "name": "PatientOutcomeMetric",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Tenant key copied from the explicitly scoped outcome-measure run. New computeOutcomeMeasures writes and upserts require it; legacy unscoped metrics are never updated or retired by that function."
+    },
     "patient_id": {
       "type": "string"
     },
@@ -77,11 +81,15 @@
     },
     "gg_discharge_function_score": {
       "type": "number",
-      "description": "Raw GG Discharge Function Score (GG0130 self-care + GG0170 mobility) when GG items are present"
+      "description": "Legacy field name retained for stored-data compatibility. It was a PennSync 18-item sum, not the CMS HH QRP Discharge Function measure; current writers do not populate it."
+    },
+    "internal_gg_18_item_raw_sum": {
+      "type": "number",
+      "description": "Non-CMS context metric: a simple sum over PennSync's 18 documented GG0130/GG0170 items when at least half are present. It is not the CMS HH QRP Discharge Function measure and never enters improvement-proxy counts."
     },
     "measure_results": {
       "type": "array",
-      "description": "Per-measure CMS outcome results computed by the outcome-measure engine",
+      "description": "Per-measure unadjusted internal proxy results computed by the outcome engine; these are not official CMS results.",
       "items": {
         "type": "object",
         "properties": {
@@ -90,8 +98,14 @@
             "type": "string",
             "enum": ["improved", "not_improved", "excluded"]
           },
-          "start_value": { "type": "number" },
-          "discharge_value": { "type": "number" },
+          "start_value": {
+            "type": "string",
+            "description": "Opaque CMS response code at SOC/ROC. Omitted when missing; never numerically coerced."
+          },
+          "discharge_value": {
+            "type": "string",
+            "description": "Opaque CMS response code at discharge. Omitted when missing; never numerically coerced."
+          },
           "reason": { "type": "string" }
         }
       }
@@ -99,7 +113,7 @@
     "input_response_schema_ids": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "The response schema id of each episode endpoint (SOC/ROC, Discharge). A record without both endpoints on 'pennsync-oasis-response-v2-cms-e2' was computed from response meanings PennSync cannot vouch for and must be excluded from current CMS-labeled aggregates."
+      "description": "The response schema id of each episode endpoint (SOC/ROC, Discharge). A record without both endpoints on 'pennsync-oasis-response-v2-cms-e2' was computed from response meanings PennSync cannot vouch for and must be excluded from current internal proxy aggregates."
     },
     "source_assessment_ids": {
       "type": "array",
@@ -117,7 +131,7 @@
     },
     "retired_reason": {
       "type": "string",
-      "description": "Why this metric was retired from current CMS-labeled views — the episode's exclusion reasons at the time it was retired. The row is KEPT so the history stays auditable; it is not deleted."
+      "description": "Why this metric was retired from current internal proxy views — the episode's exclusion reasons at the time it was retired. The row is kept so history stays auditable; it is not deleted."
     },
     "retired_at": {
       "type": "string",
@@ -126,7 +140,7 @@
     },
     "outcome_measure_source": {
       "type": "string",
-      "description": "Provenance of the outcome metric. 'oasis_change_score' is a live metric; 'retired_unverified_schema' means the episode it came from could not be verified under the CMS-aligned response schema, so the row must be excluded from current CMS-labeled aggregates while remaining auditable."
+      "description": "Provenance of the internal outcome metric. 'oasis_change_score' is a current proxy; retired values include 'retired_unverified_schema', 'retired_ambiguous_duplicate_discharge', 'retired_missing_scoped_patient', and 'retired_duplicate_metric'. Retired rows stay auditable but are excluded from current proxy aggregates."
     },
     "pph_prevention": {
       "type": "object",
@@ -207,5 +221,17 @@
   "required": [
     "patient_id",
     "episode_start"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
+    }
+  }
 }

@@ -18,10 +18,7 @@ function agencyAdminMissingAgencyResponse(user) {
 // <<<END SHARED HELPER: requireAgencyAdminAgency>>>
 
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isAdminLike = (u) => !!u && (
-  u.role === 'admin' || u.account_type === 'agency_admin' ||
-  u.account_type === 'super_admin'
-);
+const isAdminLike = (u) => !!u && u.role === 'admin';
 // <<<END SHARED HELPER: isAdminLike>>>
 
 
@@ -1014,6 +1011,12 @@ async function reassignPatientRecords(base44, fromId, toId) {
 // function timeout. The interactive UI performs the full fuzzy/phonetic scan.
 const BACKEND_MIN_SCORE = 70;
 
+// Source-level containment until a server-owned tenant authority and atomic
+// patient merge transaction exist. Even the old "dry-run" used service-role
+// Patient.list and could expose another tenant's PHI when mutable user claims
+// failed to establish a trustworthy agency scope.
+const PATIENT_DEDUPLICATION_PAUSED = true;
+
 // Completeness score for survivor selection: when a duplicate group is merged,
 // keep the MORE COMPLETE record rather than just the newest, so a sparse stub
 // can't win over a rich chart and lose identifiers/clinical data. Strong
@@ -1043,6 +1046,13 @@ function completenessScore(p) {
 }
 
 Deno.serve(async (req) => {
+  if (PATIENT_DEDUPLICATION_PAUSED) {
+    return Response.json({
+      error: 'Patient duplicate scanning and merging are temporarily unavailable pending an authorized, atomic server broker',
+      code: 'patient_merge_security_validation_pending',
+    }, { status: 503 });
+  }
+
   const startTime = Date.now();
 
   try {
@@ -1064,6 +1074,20 @@ Deno.serve(async (req) => {
     // with no body, so parse defensively.
     const body = await req.json().catch(() => ({}));
     const confirm = body?.confirm === true;
+
+    // APPLY is intentionally unavailable. Reassigning dozens of clinical
+    // entities one record at a time and then archiving the duplicate is not
+    // atomic, and tenant authority is not yet backed by an immutable server
+    // source. In particular, OASISAssessment and PatientOutcomeMetric are now
+    // service-only and must move in the same protected transaction. Keep the
+    // non-mutating preview for review, but require a redesigned broker before
+    // any patient chart is merged.
+    if (confirm) {
+      return Response.json({
+        error: 'Patient merging is temporarily unavailable pending an authorized, atomic server merge broker',
+        code: 'patient_merge_security_validation_pending',
+      }, { status: 503 });
+    }
 
     console.log(`Starting deduplication (${confirm ? 'APPLY' : 'dry-run preview'})...`);
 

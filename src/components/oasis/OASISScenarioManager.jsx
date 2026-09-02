@@ -35,6 +35,10 @@ import {
   BarChart3
 } from "lucide-react";
 import { calculatePDGM } from "@/functions/calculatePDGM";
+import {
+  formatPdgmCurrency,
+  getPdgmPaymentState,
+} from "@/components/pdgm/pdgmAvailability";
 import { debounce } from "@/lib/debounce";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -52,7 +56,7 @@ const FUNCTIONAL_ITEMS = [
 export default function OASISScenarioManager({ 
   analysisId,
   originalPdgmData, 
-  originalPayment,
+  _originalPayment,
   patientName,
   _onScenarioSelect,
   onCreateActions
@@ -63,7 +67,8 @@ export default function OASISScenarioManager({
   const [scenarioName, setScenarioName] = useState("");
   const [scenarioDescription, setScenarioDescription] = useState("");
   const [currentScenario, setCurrentScenario] = useState(null);
-  const [scenarioPayment, setScenarioPayment] = useState(null);
+  const [originalPaymentResult, setOriginalPaymentResult] = useState(null);
+  const [scenarioPaymentResult, setScenarioPaymentResult] = useState(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [selectedScenarios, setSelectedScenarios] = useState([]);
 
@@ -120,14 +125,18 @@ export default function OASISScenarioManager({
           pdgmData: originalPdgmData,
           correctedPdgmData: scenarioData
         });
-        setScenarioPayment(response.data?.corrected?.totalPayment || 0);
+        const result = response?.data ?? response;
+        setOriginalPaymentResult(result?.original || null);
+        setScenarioPaymentResult(result?.corrected || null);
       } catch (err) {
         console.error("Calculation error:", err);
-        // Reset instead of leaving the PREVIOUS scenario's figure in state: every
-        // consumer reads `scenarioPayment || originalPayment`, so a stale value
-        // was displayed — and saved — as this scenario's payment. null falls back
-        // to the original, which is the honest "not priced" value.
-        setScenarioPayment(null);
+        setScenarioPaymentResult({
+          paymentAvailable: false,
+          incomplete: true,
+          reason: "pdgm_calculation_failed",
+          message: "PDGM payment is unavailable because this scenario could not be calculated — this is not a $0 result.",
+          actionRequired: ["Review the scenario inputs and retry the PDGM calculation."],
+        });
         toast.error("Could not price this scenario. Change a value to try again.");
       }
       setIsCalculating(false);
@@ -153,6 +162,10 @@ export default function OASISScenarioManager({
     }
     
     setCurrentScenario(updated);
+    // Do not show or save a previous scenario's payment while the new scenario
+    // is waiting for its calculation to finish.
+    setScenarioPaymentResult(null);
+    setIsCalculating(true);
     calculateScenarioPayment(updated);
   };
 
@@ -198,7 +211,13 @@ export default function OASISScenarioManager({
   // Save current scenario
   const handleSaveScenario = () => {
     const changes = getChanges();
-    const paymentDiff = (scenarioPayment || originalPayment) - originalPayment;
+    const paymentFields = paymentComparisonAvailable
+      ? {
+          original_payment: originalPaymentState.amount,
+          scenario_payment: scenarioPaymentState.amount,
+          payment_difference: paymentDiff,
+        }
+      : {};
 
     saveMutation.mutate({
       analysis_id: analysisId,
@@ -208,9 +227,7 @@ export default function OASISScenarioManager({
       original_pdgm_data: originalPdgmData,
       modified_pdgm_data: currentScenario,
       changes_made: changes,
-      original_payment: originalPayment,
-      scenario_payment: scenarioPayment || originalPayment,
-      payment_difference: paymentDiff,
+      ...paymentFields,
       status: 'saved'
     });
   };
@@ -218,7 +235,15 @@ export default function OASISScenarioManager({
   // Load a saved scenario
   const loadScenario = (scenario) => {
     setCurrentScenario(scenario.modified_pdgm_data);
-    setScenarioPayment(scenario.scenario_payment);
+    // Stored scenarios predate any provenance/version binding to a verified CMS
+    // grouper. Never reactivate their legacy dollar fields.
+    setScenarioPaymentResult({
+      paymentAvailable: false,
+      incomplete: true,
+      reason: "saved_scenario_payment_unverified",
+      message: "This saved scenario's legacy payment is unverified and unavailable — this is not a $0 result.",
+      actionRequired: ["Use the official EMR/CMS-approved grouper for billing and reimbursement decisions."],
+    });
   };
 
   // Reset to original
@@ -227,7 +252,7 @@ export default function OASISScenarioManager({
       ...originalPdgmData,
       functional_scores: { ...originalPdgmData.functional_scores }
     });
-    setScenarioPayment(originalPayment);
+    setScenarioPaymentResult(null);
   };
 
   // Toggle scenario selection for comparison/action
@@ -247,11 +272,19 @@ export default function OASISScenarioManager({
     }
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
-  };
-
-  const paymentDiff = (scenarioPayment || originalPayment) - originalPayment;
+  const originalPaymentState = getPdgmPaymentState(originalPaymentResult);
+  const scenarioPaymentState = scenarioPaymentResult
+    ? getPdgmPaymentState(scenarioPaymentResult)
+    : originalPaymentState;
+  const paymentComparisonAvailable = !isCalculating
+    && originalPaymentState.available
+    && scenarioPaymentState.available;
+  const paymentDiff = paymentComparisonAvailable
+    ? scenarioPaymentState.amount - originalPaymentState.amount
+    : null;
+  const unavailablePaymentState = !originalPaymentState.available
+    ? originalPaymentState
+    : scenarioPaymentState;
   const changes = getChanges();
 
   if (!originalPdgmData) {
@@ -287,7 +320,7 @@ export default function OASISScenarioManager({
             <Button 
               size="sm" 
               onClick={() => setShowSaveDialog(true)}
-              disabled={changes.length === 0}
+              disabled={changes.length === 0 || isCalculating}
               className="bg-navy-600 hover:bg-navy-700"
             >
               <Save className="w-4 h-4 mr-1" /> Save Scenario
@@ -296,11 +329,32 @@ export default function OASISScenarioManager({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
+        {!isCalculating && !paymentComparisonAvailable && (
+          <Alert className="bg-amber-50 border-amber-200">
+            <AlertDescription className="text-amber-900 text-sm space-y-1">
+              <p className="font-semibold">PDGM payment: Unavailable — not $0</p>
+              <p>{unavailablePaymentState.message}</p>
+              <p className="text-xs">Reason: {unavailablePaymentState.reason}</p>
+              <div className="text-xs">
+                <span className="font-semibold">Required action:</span>
+                <ul className="list-disc pl-5 mt-1">
+                  {(unavailablePaymentState.actions.length > 0
+                    ? unavailablePaymentState.actions
+                    : ["Complete the clinician-sourced PDGM inputs and recalculate the scenario."]
+                  ).map((action) => (
+                    <li key={action}>{action}</li>
+                  ))}
+                </ul>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Payment Comparison */}
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 bg-slate-50 rounded-lg border text-center">
             <p className="text-xs text-slate-500 mb-1">Original Payment</p>
-            <p className="text-lg font-bold text-slate-700">{formatCurrency(originalPayment)}</p>
+            <p className="text-lg font-bold text-slate-700">{formatPdgmCurrency(originalPaymentState.amount)}</p>
           </div>
           <div className="p-3 bg-navy-50 rounded-lg border border-navy-200 text-center">
             <p className="text-xs text-navy-600 mb-1">Scenario Payment</p>
@@ -308,21 +362,22 @@ export default function OASISScenarioManager({
               {isCalculating ? (
                 <Loader2 className="w-5 h-5 animate-spin mx-auto" />
               ) : (
-                formatCurrency(scenarioPayment || originalPayment)
+                formatPdgmCurrency(scenarioPaymentState.amount)
               )}
             </p>
           </div>
           <div className={`p-3 rounded-lg border text-center ${
-            paymentDiff > 0 ? 'bg-green-50 border-green-200' : 
-            paymentDiff < 0 ? 'bg-red-50 border-red-200' : 'bg-slate-50'
+            paymentComparisonAvailable && paymentDiff > 0 ? 'bg-green-50 border-green-200' :
+            paymentComparisonAvailable && paymentDiff < 0 ? 'bg-red-50 border-red-200' : 'bg-slate-50'
           }`}>
             <p className="text-xs text-slate-500 mb-1">Difference</p>
             <p className={`text-lg font-bold flex items-center justify-center gap-1 ${
-              paymentDiff > 0 ? 'text-green-700' : paymentDiff < 0 ? 'text-red-700' : 'text-slate-500'
+              paymentComparisonAvailable && paymentDiff > 0 ? 'text-green-700' :
+              paymentComparisonAvailable && paymentDiff < 0 ? 'text-red-700' : 'text-slate-500'
             }`}>
-              {paymentDiff > 0 ? <TrendingUp className="w-4 h-4" /> : 
-               paymentDiff < 0 ? <TrendingDown className="w-4 h-4" /> : null}
-              {paymentDiff > 0 ? '+' : ''}{formatCurrency(paymentDiff)}
+              {paymentComparisonAvailable && paymentDiff > 0 ? <TrendingUp className="w-4 h-4" /> :
+               paymentComparisonAvailable && paymentDiff < 0 ? <TrendingDown className="w-4 h-4" /> : null}
+              {paymentComparisonAvailable && paymentDiff > 0 ? '+' : ''}{formatPdgmCurrency(paymentDiff)}
             </p>
           </div>
         </div>
@@ -442,9 +497,7 @@ export default function OASISScenarioManager({
                       <p className="text-sm font-medium">{scenario.scenario_name}</p>
                       <p className="text-xs text-slate-500">
                         {scenario.changes_made?.length || 0} changes • 
-                        <span className={scenario.payment_difference > 0 ? 'text-green-600' : 'text-red-600'}>
-                          {' '}{scenario.payment_difference > 0 ? '+' : ''}{formatCurrency(scenario.payment_difference)}
-                        </span>
+                        <span className="text-amber-700"> Payment unavailable</span>
                       </p>
                     </div>
                   </div>
@@ -506,10 +559,17 @@ export default function OASISScenarioManager({
               </div>
               <div className="bg-navy-50 p-3 rounded-lg">
                 <p className="text-sm font-medium text-navy-800 mb-2">
-                  Payment Impact: <span className={paymentDiff >= 0 ? 'text-green-600' : 'text-red-600'}>
-                    {paymentDiff > 0 ? '+' : ''}{formatCurrency(paymentDiff)}
+                  Payment Impact: <span className={paymentComparisonAvailable
+                    ? (paymentDiff >= 0 ? 'text-green-600' : 'text-red-600')
+                    : 'text-amber-700'}>
+                    {paymentComparisonAvailable && paymentDiff > 0 ? '+' : ''}{formatPdgmCurrency(paymentDiff)}
                   </span>
                 </p>
+                {!paymentComparisonAvailable && (
+                  <p className="text-xs text-amber-800 mb-2">
+                    The scenario will be saved without payment fields. {unavailablePaymentState.message}
+                  </p>
+                )}
                 <p className="text-xs text-navy-600">{changes.length} modifications from original</p>
               </div>
             </div>
@@ -517,7 +577,7 @@ export default function OASISScenarioManager({
               <Button variant="outline" onClick={() => setShowSaveDialog(false)}>Cancel</Button>
               <Button 
                 onClick={handleSaveScenario}
-                disabled={!scenarioName || saveMutation.isPending}
+                disabled={!scenarioName || isCalculating || saveMutation.isPending}
                 className="bg-navy-600 hover:bg-navy-700"
               >
                 {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Save className="w-4 h-4 mr-1" />}

@@ -26,8 +26,10 @@ import { logActivity, ActivityActions } from "../utils/activityLogger";
 import { buildComprehensivePatientHistory, formatHistoryForAI, extractKeyInsights } from "../utils/patientHistoryAnalyzer";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
-export default function AIComplianceAuditor({ 
-  patientId, 
+const AI_COMPLIANCE_AUDITOR_ENABLED = false;
+
+function EnabledAIComplianceAuditor({
+  patientId,
   visitId = null,
   autoRun = false,
   onIssuesFound,
@@ -903,4 +905,21 @@ For each area, provide:
       </CardContent>
     </Card>
   );
+}
+
+export default function AIComplianceAuditor(props) {
+  if (!AI_COMPLIANCE_AUDITOR_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300 bg-amber-50">
+        <CardContent className="space-y-2 p-5 text-sm text-amber-950">
+          <div className="flex items-center gap-2 font-semibold">
+            <Shield className="h-5 w-5" /> AI Compliance Audit Paused
+          </div>
+          <p>This audit is unavailable pending tenant-scoped patient/OASIS access and a validated, human-reviewed compliance workflow.</p>
+          <p>No patient record, OASIS upload, model request, training recommendation, activity score, or compliance audit is read or written from this panel.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledAIComplianceAuditor {...props} />;
 }

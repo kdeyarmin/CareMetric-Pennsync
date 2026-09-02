@@ -2,6 +2,10 @@
   "name": "OASISUpload",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Server-verified Agency id for tenant scoping. Optional only for legacy compatibility; unscoped rows remain excluded until an audited backfill assigns them. Browser input must never be trusted for this field."
+    },
     "patient_id": {
       "type": "string",
       "description": "Reference to Patient entity"
@@ -136,12 +140,11 @@
   ],
   // PHI read-scoping: with no read rule, ANY authenticated user could bulk-
   // .list() every row (an OASIS upload carries the full assessment extract for a patient).
-  // Reads are scoped to the owning user (+ admin), matching the app's
-  // Patient/Visit/ComplianceAudit role model: non-admin staff see only their
-  // own rows on agency-wide report surfaces; admins see everything. "write": {}
-  // deliberately preserves the existing open write behavior — this change is
-  // read-scoping only (several write flows are legitimately cross-user), the
-  // same shape as the ClinicalLibraryTemplate read-scoping fix.
+  // Reads retain the existing owner/admin policy for compatibility, but hosted
+  // tenant-bound read authorization is still a release blocker. Writes are
+  // service-role-only because this entity carries a full OASIS extraction and
+  // patient identifiers; browser create/update/approval paths stay unavailable
+  // until a server-owned tenant + patient/chart authorization broker exists.
   "rls": {
     "read": {
       "$or": [
@@ -149,6 +152,10 @@
         { "user_condition": { "role": "admin" } }
       ]
     },
-    "write": {}
+    "write": {
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
+    }
   }
 }

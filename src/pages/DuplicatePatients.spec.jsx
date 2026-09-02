@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/testUtils';
 
-const { patientList, patientUpdate, visitFilter } = vi.hoisted(() => ({
+const { patientList, patientUpdate, visitList, visitFilter } = vi.hoisted(() => ({
   patientList: vi.fn(),
   patientUpdate: vi.fn(),
+  visitList: vi.fn(),
   visitFilter: vi.fn(),
 }));
 
 vi.mock('@/api/base44Client', () => {
   const patient = {
     list: patientList,
-    // mergePatientInto validates the survivor with Patient.filter({ id }) —
-    // answer from the same roster the list mock serves.
+    // Kept for page-level roster/query compatibility; paused merge controls
+    // must never reach this mutation-oriented lookup path.
     filter: vi.fn(async (query) => {
       const rows = await patientList();
       if (query && 'id' in query) return (rows || []).filter((r) => r.id === query.id);
@@ -21,7 +21,7 @@ vi.mock('@/api/base44Client', () => {
     }),
     update: patientUpdate,
   };
-  const visit = { list: vi.fn(async () => []), filter: visitFilter, update: vi.fn(async () => ({})) };
+  const visit = { list: visitList, filter: visitFilter, update: vi.fn(async () => ({})) };
   const generic = { list: vi.fn(async () => []), filter: vi.fn(async () => []), update: vi.fn(async () => ({})) };
   const entities = new Proxy(
     {},
@@ -51,40 +51,17 @@ describe('DuplicatePatients page', () => {
   beforeEach(() => {
     patientList.mockReset().mockResolvedValue(DUPLICATES);
     patientUpdate.mockReset().mockResolvedValue({});
+    visitList.mockReset().mockResolvedValue([]);
     visitFilter.mockReset().mockResolvedValue([{ id: 'v1', patient_id: 'p2' }]);
   });
 
-  it('auto-scans on load and surfaces the duplicate group without a button click', async () => {
+  it('renders a pause notice without loading patient or visit data', () => {
     renderWithProviders(<DuplicatePatients />);
-    await screen.findByText(/Duplicate Group 1/i);
-    // Archived/merged records are filtered out before scanning.
-    expect(patientList).toHaveBeenCalled();
-  });
-
-  it('really merges the group: reassigns visits to the survivor and archives the duplicate', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<DuplicatePatients />);
-    await screen.findByText(/Duplicate Group 1/i);
-
-    // Keep the first record, merge the rest in.
-    const mergeButtons = screen.getAllByRole('button', { name: /Keep & merge others/i });
-    await user.click(mergeButtons[0]);
-
-    // Confirm in the dialog.
-    await user.click(await screen.findByRole('button', { name: 'Merge' }));
-
-    await waitFor(() => {
-      // p2's visit was reassigned to the survivor p1... (fetched with an explicit
-      // page-size limit so more than the SDK's default 50 records follow the patient).
-      expect(visitFilter).toHaveBeenCalledWith({ patient_id: 'p2' }, undefined, expect.any(Number));
-      // ...and p2 was soft-archived (not hard-deleted) and pointed at p1.
-      expect(patientUpdate).toHaveBeenCalledWith(
-        'p2',
-        expect.objectContaining({ is_archived: true, status: 'merged', merged_into_id: 'p1' })
-      );
-    });
-
-    // The merged group is removed from view.
-    await waitFor(() => expect(screen.queryByText(/Duplicate Group 1/i)).not.toBeInTheDocument());
+    expect(screen.getByText(/No patient or visit data is loaded/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /merge/i })).not.toBeInTheDocument();
+    expect(patientList).not.toHaveBeenCalled();
+    expect(visitList).not.toHaveBeenCalled();
+    expect(visitFilter).not.toHaveBeenCalled();
+    expect(patientUpdate).not.toHaveBeenCalled();
   });
 });

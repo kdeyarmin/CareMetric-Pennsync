@@ -2,6 +2,10 @@
   "name": "Patient",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Explicit tenant key for service-role clinical processing. Existing ownership and assigned-nurse relationships remain authoritative for user access; legacy patients without a proven agency id stay unscoped and are excluded from agency outcome enrichment until an audited backfill."
+    },
     "first_name": {
       "type": "string"
     },

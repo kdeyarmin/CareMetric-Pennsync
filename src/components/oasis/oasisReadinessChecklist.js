@@ -34,7 +34,7 @@ const CHECKS = [
     severity: 'critical',
     fields: ['patient_name', 'patient_info.name', 'patient_id'],
     evaluate: (data) => isPresent(data.patient_name || data.patient_info?.name || data.patient_id),
-    action: 'Confirm patient identity before signing or submitting the assessment.',
+    action: 'Confirm patient identity in the official clinical workflow.',
   },
   {
     id: 'assessment-type',
@@ -79,21 +79,21 @@ const CHECKS = [
   },
   {
     id: 'admission-source',
-    category: 'PDGM timing and source',
+    category: 'Source and timing evidence',
     label: 'Admission source is reconciled',
     severity: 'high',
     fields: ['admission_source', 'm1000_from_where_admitted'],
     evaluate: (data) => isPresent(data.admission_source || data.m1000_from_where_admitted || data.admission_info?.m1000_from_where_admitted),
-    action: 'Reconcile M1000/admission source because institutional vs community source changes PDGM grouping.',
+    action: 'Reconcile the M1000/admission-source evidence with the clinician.',
   },
   {
     id: 'episode-timing',
-    category: 'PDGM timing and source',
+    category: 'Source and timing evidence',
     label: 'Episode timing is documented',
     severity: 'high',
     fields: ['episode_timing', 'm0110_episode_timing'],
     evaluate: (data) => isPresent(data.episode_timing || data.m0110_episode_timing || data.admission_info?.m0110_episode_timing),
-    action: 'Document early/late episode timing or M0110 before revenue review.',
+    action: 'Document and verify the episode-timing evidence in the official workflow.',
   },
   {
     id: 'primary-diagnosis',
@@ -123,7 +123,7 @@ const CHECKS = [
   {
     id: 'functional-items-complete',
     category: 'Functional scoring',
-    label: 'All PDGM functional M-items are complete',
+    label: 'Selected functional evidence fields are present',
     severity: 'critical',
     fields: FUNCTIONAL_ITEMS.map((item) => item.key),
     evaluate: (data) => FUNCTIONAL_ITEMS.every((item) => isPresent(data.functional_scores?.[item.key] ?? data[item.key])),
@@ -143,7 +143,7 @@ const CHECKS = [
       const value = Number(rawValue);
       return Number.isInteger(value) && value >= 0 && value <= item.max;
     }),
-    action: 'Correct out-of-range functional values before using the assessment for PDGM grouping.',
+    action: 'Correct out-of-range functional values through clinician review; do not coerce them.',
   },
   {
     id: 'quality-score-reviewed',

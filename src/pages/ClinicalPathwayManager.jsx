@@ -63,7 +63,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
-export default function ClinicalPathwayManager() {
+const CLINICAL_PATHWAY_MANAGER_ENABLED = false;
+
+function EnabledClinicalPathwayManager() {
   const queryClient = useQueryClient();
   const [showDialog, setShowDialog] = useState(false);
   const [editingPathway, setEditingPathway] = useState(null);
@@ -631,6 +633,26 @@ export default function ClinicalPathwayManager() {
       </AlertDialog>
     </PageContainer>
   );
+}
+
+export default function ClinicalPathwayManager() {
+  if (!CLINICAL_PATHWAY_MANAGER_ENABLED) {
+    return (
+      <PageContainer>
+        <PageHeader title="Clinical Pathway Manager" />
+        <Card className="border-2 border-amber-300">
+          <CardContent className="space-y-2 pt-6 text-sm text-slate-700">
+            <div className="flex items-center gap-2 font-semibold text-amber-950">
+              <Route className="h-5 w-5 text-amber-700" /> Clinical Pathway AI Paused
+            </div>
+            <p>This manager is unavailable while global pathway access, AI-authored OASIS response suggestions, PDGM grouping claims, and automated clinical writes are being tenant-scoped and clinically validated.</p>
+            <p>No pathway list, AI generator, OASIS drafter, rescore recommendation, or revenue-impact field is loaded from this page.</p>
+          </CardContent>
+        </Card>
+      </PageContainer>
+    );
+  }
+  return <EnabledClinicalPathwayManager />;
 }
 
 function PathwayForm({ pathway, onSave, onCancel, isSaving }) {

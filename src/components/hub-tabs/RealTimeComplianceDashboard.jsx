@@ -37,7 +37,9 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 import { format, subDays, startOfWeek, endOfWeek } from "date-fns";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
-export default function RealTimeComplianceDashboard() {
+const REALTIME_COMPLIANCE_ANALYTICS_ENABLED = false;
+
+function EnabledRealTimeComplianceDashboard() {
   const [dateRange, setDateRange] = useState("30");
   const [selectedFeature, setSelectedFeature] = useState("all");
   const [selectedNurse, setSelectedNurse] = useState("all");
@@ -1078,4 +1080,21 @@ export default function RealTimeComplianceDashboard() {
       </Card>
     </div>
   );
+}
+
+export default function RealTimeComplianceDashboard() {
+  if (!REALTIME_COMPLIANCE_ANALYTICS_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300 bg-amber-50">
+        <CardContent className="space-y-2 p-6 text-sm text-amber-950">
+          <div className="flex items-center gap-2 font-semibold">
+            <ShieldAlert className="h-5 w-5" /> Real-Time Compliance Analytics Paused
+          </div>
+          <p>This dashboard is unavailable pending tenant-scoped reporting access and validation of legacy AI/OASIS score fields.</p>
+          <p>No audit, activity, OASIS upload, user roster, visit, patient, or training record is loaded from this tab.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledRealTimeComplianceDashboard />;
 }

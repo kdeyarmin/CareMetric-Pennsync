@@ -7,23 +7,15 @@
 // module never maps a description to a code, because that mapping is exactly
 // where fabrication happens.
 //
-// ── Sequencing follows the app's canonical PDGM model ─────────────────────────
-// The verified codes are sequenced claim-style (M1021 principal first, then
-// M1023 secondaries) using the same tables the live `calculatePDGM` backend
-// uses: the admin-editable ICD-10 prefix → clinical-group map and case-mix
-// weights from pdgmRates.js (agency overrides via PDGMRateConfig merge over the
-// defaults). The principal slot goes to the RTP-acceptable code whose clinical
-// group carries the highest case-mix weight for this referral's admission
-// source/timing bucket; remaining codes are ordered by descending weight.
+// ── Sequencing preserves clinical documentation ───────────────────────────────
+// The documented primary remains primary when it is acceptable. This module
+// never promotes a secondary diagnosis because of grouping or payment weight.
+// If the documented primary is not acceptable, it leaves the principal slot
+// unresolved for a qualified coding review rather than silently re-sequencing.
 //
 // Pure + offline (unit-tested with `node --test`); no React, no Base44 SDK,
 // no `@/` imports so the colocated Node test resolves without Vite.
 
-import {
-  DEFAULT_PDGM_RATES,
-  mergePdgmRates,
-  effectiveIcdGroups,
-} from "../pdgm/pdgmRates.js";
 import { normalizeIcd, validatePrimaryDiagnosis } from "./intakeDiagnosisValidator.js";
 
 // Dotted ICD-10 (e.g. I50.9, C4A.10, U07.1) — safe to harvest from free text.
@@ -276,51 +268,29 @@ export function resolveScenario(referralData) {
  *   scenario: object, warnings: Array<string>, hasCodes: boolean,
  * }}
  */
-export function generateDiagnosisCodes(referralData, opts = {}) {
-  const rates = mergePdgmRates(opts.rates, opts.defaults || DEFAULT_PDGM_RATES);
-  const icdGroups = effectiveIcdGroups(opts.icdGroups);
+export function generateDiagnosisCodes(referralData, _opts = {}) {
   const scenario = resolveScenario(referralData);
   const { candidates, uncoded } = harvestDiagnosisCandidates(referralData);
   const warnings = [];
 
   const annotated = candidates.map((c) => {
     const rtp = validatePrimaryDiagnosis(c.code);
-    const clinicalGroupKey = lookupClinicalGroup(c.code, icdGroups);
-    const weight = clinicalGroupKey
-      ? rates.clinicalGroupWeights?.[clinicalGroupKey]?.[scenario.bucket]
-      : undefined;
     return {
       ...c,
       displayCode: formatIcd(c.code),
       acceptablePrimary: rtp.acceptable,
       rtpReason: rtp.acceptable ? null : rtp.reason,
-      clinicalGroupKey,
-      clinicalGroup: formatClinicalGroup(clinicalGroupKey),
-      caseMixWeight: typeof weight === "number" && Number.isFinite(weight) ? weight : null,
+      clinicalGroupKey: null,
+      clinicalGroup: "Unavailable",
+      // Reimbursement weighting is globally disabled until the verified CMS
+      // grouper is available. Never attach a legacy estimator weight here.
+      caseMixWeight: null,
     };
   });
 
-  // Principal: RTP-acceptable + grouped + weighted, highest weight first.
-  // Deterministic tie-breaks: documented-as-primary, more specific (longer)
-  // code, then code order.
-  const byPrimaryFitness = (a, b) =>
-    (b.caseMixWeight ?? -1) - (a.caseMixWeight ?? -1) ||
-    Number(b.documentedAsPrimary) - Number(a.documentedAsPrimary) ||
-    b.code.length - a.code.length ||
-    a.code.localeCompare(b.code);
-
-  const eligible = annotated
-    .filter((c) => c.acceptablePrimary && c.clinicalGroupKey && c.caseMixWeight !== null)
-    .sort(byPrimaryFitness);
-  const primary = eligible[0] || null;
-
-  const secondaries = annotated
-    .filter((c) => c !== primary)
-    .sort(
-      (a, b) =>
-        (b.caseMixWeight ?? -1) - (a.caseMixWeight ?? -1) ||
-        a.code.localeCompare(b.code)
-    );
+  const documentedPrimary = annotated.find((c) => c.documentedAsPrimary) || null;
+  const primary = documentedPrimary?.acceptablePrimary ? documentedPrimary : null;
+  const secondaries = annotated.filter((c) => c !== primary);
 
   const sequenced = (primary ? [primary, ...secondaries] : secondaries).map((c, i) => ({
     ...c,
@@ -334,21 +304,8 @@ export function generateDiagnosisCodes(referralData, opts = {}) {
     );
   } else if (!primary) {
     warnings.push(
-      "None of the documented codes is acceptable as a PDGM principal diagnosis (RTP risk). A compliant principal diagnosis is needed before billing."
+      "The documented primary diagnosis is missing or not acceptable as a principal diagnosis. A qualified coding review must resolve it; PennSync will not promote a secondary diagnosis by reimbursement weight."
     );
-  }
-  const documentedPrimary = annotated.find((c) => c.documentedAsPrimary);
-  if (primary && documentedPrimary && documentedPrimary.code !== primary.code) {
-    warnings.push(
-      `Referral documents ${documentedPrimary.displayCode} as primary, but ${primary.displayCode} sequences first under the PDGM model (higher case-mix weight, ${scenario.bucket.replace("_", "/")} period). Verify clinical appropriateness before re-sequencing.`
-    );
-  }
-  for (const c of annotated) {
-    if (!c.clinicalGroupKey) {
-      warnings.push(
-        `${c.displayCode} is not in the agency's ICD-10 → clinical-group map, so it cannot be weighted. An admin can map it on the PDGM Rate Settings page.`
-      );
-    }
   }
   if (uncoded.length > 0) {
     warnings.push(
@@ -406,7 +363,8 @@ export function toPersistedCoding(result) {
     // Two distinct facts, kept separate: an RTP-acceptable principal CANDIDATE
     // exists vs the sequencer actually CHOSE a weighted PDGM primary (a
     // candidate can exist yet be unmapped/unweighted in the agency tables).
-    has_acceptable_primary: result.sequenced.some((d) => d.acceptablePrimary),
-    has_pdgm_primary: !!result.primary,
+    has_acceptable_primary: !!result.primary,
+    has_documented_primary: !!result.primary,
+    has_pdgm_primary: false,
   };
 }

@@ -47,6 +47,29 @@ ${isAllowedDestination.toString()}`;
 }
 
 export const SHARED_HELPERS = {
+  // Global reimbursement kill switch. This deliberately remains false until
+  // PennSync uses the official CMS HHGS 432-group grouper, server-resolves
+  // protected assessment inputs, and passes CMS golden-case tests. Keep every
+  // backend financial/AI/export path on this shared source so one forgotten
+  // endpoint cannot bypass calculatePDGM's fail-closed contract.
+  pdgmReimbursementGate: `const PDGM_REIMBURSEMENT_ENABLED = false;
+const PDGM_REIMBURSEMENT_BLOCKER = 'The app does not yet use a verified CMS HHGS 432-group grouper with golden-case tests.';
+const PDGM_REIMBURSEMENT_ACTION = 'Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.';
+function pdgmUnavailablePayload(extra = {}) {
+  return {
+    featureEnabled: PDGM_REIMBURSEMENT_ENABLED,
+    calculationStatus: 'blocked',
+    paymentAvailable: false,
+    payment: null,
+    totalPayment: null,
+    caseMixWeight: null,
+    reason: 'cms_verified_pdgm_grouper_unavailable',
+    message: \`PDGM reimbursement is unavailable — this is not a $0 result. \${PDGM_REIMBURSEMENT_BLOCKER}\`,
+    actionRequired: [PDGM_REIMBURSEMENT_ACTION],
+    ...extra,
+  };
+}`,
+
   // ---------------------------------------------------------------------------
   oasisResponseGuard: `const OASIS_RESPONSE_SCHEMA_V1_LEGACY = 'pennsync-oasis-response-v1-legacy';
 const OASIS_RESPONSE_SCHEMA_V2_CMS_E2 = 'pennsync-oasis-response-v2-cms-e2';
@@ -231,7 +254,17 @@ function validateOasisResponseWrite(payload) {
   }
   const rows = Array.isArray(payload && payload.oasis_items) ? payload.oasis_items : [];
   const ctx = { instrument: instrument.instrument, timepoint };
+  const seenDefinitions = new Set();
+  const seenItems = new Set();
   rows.forEach((row, index) => {
+    const definitionKey = String(row?.definition_id || '').trim().toLowerCase();
+    const itemKey = String(row?.item_number || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if ((definitionKey && seenDefinitions.has(definitionKey)) || (itemKey && seenItems.has(itemKey))) {
+      errors.push({ index, reason: 'duplicate_item_or_definition' });
+      return;
+    }
+    if (definitionKey) seenDefinitions.add(definitionKey);
+    if (itemKey) seenItems.add(itemKey);
     const reason = validateOasisResponseRow(row, ctx);
     if (reason) errors.push({ index, reason });
   });
@@ -265,16 +298,29 @@ function isSafeFetchUrl(raw) {
   return true;
 }`,
 
-  // Admin-tier predicate. Mirrors src/lib/superAdmin.js isAdminLike — every admin
-  // surface accepts facility admin (role 'admin') and agency_admin/super_admin.
-  // Admin status is determined solely by role/account_type; there is no
-  // owner-email override (the SUPER_ADMIN_EMAIL secret was retired — use
-  // ensureSuperAdmin / account_type promotion instead). Keep in step with
-  // superAdmin.js.
-  isAdminLike: `const isAdminLike = (u) => !!u && (
-  u.role === 'admin' || u.account_type === 'agency_admin' ||
-  u.account_type === 'super_admin'
-);`,
+  // Base44 protects the built-in role from auth.updateMe; every custom User
+  // field is self-mutable. This broad admin predicate may therefore trust role
+  // only. Platform-owner-only operations additionally use protectedUserAuthz.
+  isAdminLike: `const isAdminLike = (u) => !!u && u.role === 'admin';`,
+
+  // Security boundary for operations that can change users, credentials, or
+  // platform-wide configuration. Base44 auth.updateMe allows every authenticated
+  // user to update ANY custom User-schema field; only the built-in `role` (and
+  // built-in identity fields such as email) are platform protected. Therefore
+  // account_type, agency_name, is_active, is_manager, staff_role, etc. must never
+  // grant privilege here.
+  //
+  // SUPER_ADMIN_EMAIL is a backend secret/config value, not VITE_* client config.
+  // When it is absent this deliberately fails closed: ordinary protected admins
+  // retain facility-admin operations, but no caller is treated as platform owner.
+  protectedUserAuthz: `const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}`,
 
   // Offboarding sets is_active:false but deliberately leaves role/account_type
   // intact (history and audit joins key off them), and the Base44 platform does
@@ -294,7 +340,10 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
   // agency_admin without agency_name must not fall through agency-scoped gates
   // that are written as `!== super_admin && agency_name` (empty name ⇒ platform-wide).
   // Call immediately after auth/admin checks: if (resp) return resp;
-  // Bare role:admin without agency_name remains platform-wide by design.
+  // Bare role:admin without agency_name remains platform-wide in the legacy
+  // model. This helper is only a fall-through guard, NOT a tenant boundary:
+  // agency_name/account_type are self-mutable and must be replaced by a
+  // server-owned entitlement before multi-tenant release.
   requireAgencyAdminAgency: `function agencyAdminMissingAgencyResponse(user) {
   if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
     return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
@@ -303,14 +352,11 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 }`,
 
   // Shared scheduler/internal auth for privileged cron-style functions. Base44
-  // function URLs are plain HTTP endpoints, so these jobs must require either an
-  // admin session or the configured shared secret header.
+  // function URLs are plain HTTP endpoints, so these jobs must require either a
+  // protected built-in admin role or the configured shared secret header.
   schedulerAuth: `const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
-  return !!user && (
-    user.role === 'admin' || user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin'
-  );
+  return !!user && user.role === 'admin';
 }
 // Constant-time string compare for the shared-secret check (mirrors
 // createTelehealthToken's timingSafeEqual). A plain === short-circuits on the

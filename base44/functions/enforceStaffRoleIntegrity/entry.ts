@@ -3,10 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
-  return !!user && (
-    user.role === 'admin' || user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin'
-  );
+  return !!user && user.role === 'admin';
 }
 // Constant-time string compare for the shared-secret check (mirrors
 // createTelehealthToken's timingSafeEqual). A plain === short-circuits on the
@@ -48,11 +45,10 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 const READ_LIMIT = 5000;
 const STAFF_ROLES = new Set(['nurse', 'office_staff', 'social_worker', 'spiritual_care']);
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
-const isAdminUser = (user) => !!user && (
-  user.role === 'admin' ||
-  user.account_type === 'agency_admin' ||
-  user.account_type === 'super_admin'
-);
+// Only Base44's protected built-in role may opt a row out of discipline
+// reconciliation. `account_type` is a self-mutable custom User field and must
+// not let a user preserve a spoofed staff_role indefinitely.
+const isAdminUser = (user) => !!user && user.role === 'admin';
 
 Deno.serve(async (req) => {
   try {

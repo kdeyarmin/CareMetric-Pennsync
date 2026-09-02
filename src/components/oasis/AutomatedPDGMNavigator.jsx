@@ -48,6 +48,12 @@ import {
 import PDGMAnalyticsDashboard from "./PDGMAnalyticsDashboard";
 import PDGMScenarioModeler from "./PDGMScenarioModeler";
 import AIGroupAssignmentValidator from "./AIGroupAssignmentValidator";
+import {
+  getPdgmPaymentState,
+  redactUnavailableNavigationFinancials,
+} from "@/components/pdgm/pdgmAvailability";
+
+const PDGM_AI_NAVIGATION_ENABLED = false;
 
 
 export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, revenueData, onNavigationComplete }) {
@@ -112,17 +118,24 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
   const runPDGMNavigation = useCallback(async () => {
     if (!pdgmData) return;
 
+    if (!PDGM_AI_NAVIGATION_ENABLED) {
+      setError("Automated PDGM grouping is unavailable pending a verified CMS grouper and protected assessment provenance.");
+      return;
+    }
+
     setIsAnalyzing(true);
     setError(null);
 
     try {
       const result = await invokeLLM(buildNavigationRequest({ pdgmData, analysisResults, revenueData }));
+      const paymentState = getPdgmPaymentState(revenueData?.original);
+      const safeResult = redactUnavailableNavigationFinancials(result, paymentState);
 
-      setNavigation(result);
+      setNavigation(safeResult);
       
       // Notify parent of navigation completion
       if (onNavigationComplete) {
-        onNavigationComplete(result);
+        onNavigationComplete(safeResult);
       }
     } catch (err) {
       console.error("PDGM Navigation error:", err);
@@ -134,7 +147,7 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
 
   // Auto-analyze when data is available
   useEffect(() => {
-    if (pdgmData && !navigation && !isAnalyzing && !autoAnalyzed) {
+    if (PDGM_AI_NAVIGATION_ENABLED && pdgmData && !navigation && !isAnalyzing && !autoAnalyzed) {
       runPDGMNavigation();
       setAutoAnalyzed(true);
     }
@@ -182,6 +195,18 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
 
   const getFinancialPrediction = async (item, index, type = 'discrepancy') => {
     setLoadingPrediction(index);
+    const paymentState = getPdgmPaymentState(revenueData?.original);
+    if (!paymentState.available) {
+      setFinancialPredictions(prev => ({
+        ...prev,
+        [index]: {
+          error: `Unavailable — ${paymentState.message}`,
+          actionRequired: paymentState.actions,
+        },
+      }));
+      setLoadingPrediction(null);
+      return;
+    }
     
     try {
       const result = await invokeLLM(buildFinancialPredictionRequest({ item, type, revenueData, navigation, agencyCosts }));
@@ -471,6 +496,35 @@ PREDICT:
         <CardContent className="p-6 text-center text-slate-500">
           <Navigation className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">Upload and analyze an OASIS document to use the PDGM Navigator</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!PDGM_AI_NAVIGATION_ENABLED) {
+    const paymentState = getPdgmPaymentState(revenueData?.original);
+    return (
+      <Card className="border-2 border-amber-300">
+        <CardHeader className="bg-amber-50 pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Navigation className="h-5 w-5 text-amber-700" /> Automated PDGM Navigator
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          <Alert className="border-amber-300 bg-amber-50">
+            <AlertTriangle className="h-4 w-4 text-amber-700" />
+            <AlertDescription className="space-y-2 text-sm text-amber-950">
+              <p><strong>PDGM grouping and payment guidance: Unavailable.</strong> {paymentState.message}</p>
+              <p>PennSync will not ask AI to invent functional points, clinical groups, case-mix weights, or payment impacts.</p>
+              <p>Required action: use the official EMR/CMS-approved grouper until verified 432-group logic and protected assessment provenance pass CMS golden-case tests.</p>
+            </AlertDescription>
+          </Alert>
+          <div className="rounded-lg border bg-slate-50 p-3 text-xs text-slate-700">
+            <p className="font-semibold">Source data only — not a grouping or billing determination</p>
+            <p className="mt-1">Diagnosis: {pdgmData.primary_diagnosis_code || "Not documented"} {pdgmData.primary_diagnosis_description || pdgmData.primary_diagnosis || ""}</p>
+            <p>Admission source entered: {pdgmData.admission_source || "Not documented"}</p>
+            <p>Episode timing entered: {pdgmData.episode_timing || "Not documented"}</p>
+          </div>
         </CardContent>
       </Card>
     );

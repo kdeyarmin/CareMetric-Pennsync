@@ -21,6 +21,11 @@
 // Pure + offline (unit-tested with `node --test`).
 
 import { DEFAULT_PDGM_RATES, mergePdgmRates } from "../pdgm/pdgmRates.js";
+import {
+  PDGM_REIMBURSEMENT_ACTION,
+  PDGM_REIMBURSEMENT_BLOCKER,
+  PDGM_REIMBURSEMENT_ENABLED,
+} from "../pdgm/pdgmAvailability.js";
 
 const round = (n) => Math.round(n);
 
@@ -36,6 +41,20 @@ const round = (n) => Math.round(n);
  * }} perItem is keyed by item.id; items with no defensible estimate are omitted.
  */
 export function estimateFollowUpRevenueImpact(plan, opts = {}) {
+  if (!PDGM_REIMBURSEMENT_ENABLED) {
+    return {
+      available: false,
+      isEstimate: false,
+      reason: "cms_verified_pdgm_grouper_unavailable",
+      message: `Referral revenue impact is unavailable — this is not a $0 result. ${PDGM_REIMBURSEMENT_BLOCKER}`,
+      actionRequired: [PDGM_REIMBURSEMENT_ACTION],
+      perItem: {},
+      totalAtRisk: null,
+      totalUpsideLow: null,
+      totalUpsideHigh: null,
+    };
+  }
+
   const rates = mergePdgmRates(opts.rates, opts.defaults || DEFAULT_PDGM_RATES);
   const base = rates.basePaymentRate;
   const coding = plan?.coding;
@@ -138,10 +157,10 @@ export function estimateFollowUpRevenueImpact(plan, opts = {}) {
     }
   }
 
-  return { isEstimate: true, perItem, totalAtRisk, totalUpsideLow, totalUpsideHigh };
+  return { available: true, isEstimate: true, perItem, totalAtRisk, totalUpsideLow, totalUpsideHigh };
 }
 
 /** Compact "$1,234" formatting for admin badges. */
 export function fmtUsd(n) {
-  return `$${Math.round(n).toLocaleString("en-US")}`;
+  return Number.isFinite(n) ? `$${Math.round(n).toLocaleString("en-US")}` : "Unavailable";
 }

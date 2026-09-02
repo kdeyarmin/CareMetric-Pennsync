@@ -8,12 +8,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download, FileDown, FileSpreadsheet, Loader2, CheckCircle2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
+import {
+  PDGM_REIMBURSEMENT_ACTION,
+  PDGM_REIMBURSEMENT_BLOCKER,
+} from "@/components/pdgm/pdgmAvailability";
 
 export default function OASISExportManager({ 
   analysisResults, 
   _pdgmData, 
-  revenueData,
-  navigationData,
+  _revenueData,
+  _navigationData,
   qualityScore,
   patientName 
 }) {
@@ -40,7 +44,6 @@ export default function OASISExportManager({
       csvData.push(['Overall Score', `${analysisResults.overall_score}%`]);
       csvData.push(['Accuracy Score', `${analysisResults.accuracy_score}%`]);
       csvData.push(['Compliance Score', `${analysisResults.compliance_score}%`]);
-      csvData.push(['Revenue Optimization Score', `${analysisResults.revenue_optimization_score}%`]);
       
       if (qualityScore) {
         csvData.push(['Documentation Quality Score', `${qualityScore.overall_quality_score}%`]);
@@ -49,41 +52,14 @@ export default function OASISExportManager({
       }
       csvData.push([]);
 
-      // PDGM Navigator Results
-      if (navigationData) {
-        csvData.push(['PDGM GROUPING ANALYSIS']);
-        csvData.push(['Category', 'Value']);
-        csvData.push(['Clinical Group', navigationData.clinical_group?.group_name || 'N/A']);
-        csvData.push(['Clinical Group Confidence', navigationData.clinical_group?.confidence || 'N/A']);
-        csvData.push(['Functional Level', navigationData.functional_level?.level || 'N/A']);
-        csvData.push(['Functional Points', navigationData.functional_level?.total_points || 'N/A']);
-        csvData.push(['Comorbidity Adjustment', navigationData.comorbidity_adjustment?.level || 'N/A']);
-        csvData.push(['Admission Source', navigationData.admission_timing?.admission_source || 'N/A']);
-        csvData.push(['Episode Timing', navigationData.admission_timing?.episode_timing || 'N/A']);
-        csvData.push([]);
-
-        // Payment Calculation
-        if (navigationData.case_mix_calculation) {
-          csvData.push(['PAYMENT CALCULATION']);
-          csvData.push(['Base Payment', `$${navigationData.case_mix_calculation.base_payment?.toFixed(2)}`]);
-          csvData.push(['Clinical Weight', navigationData.case_mix_calculation.clinical_weight?.toFixed(4)]);
-          csvData.push(['Functional Multiplier', navigationData.case_mix_calculation.functional_multiplier?.toFixed(2)]);
-          csvData.push(['Comorbidity Multiplier', navigationData.case_mix_calculation.comorbidity_multiplier?.toFixed(3)]);
-          csvData.push(['Final Case-Mix Weight', navigationData.case_mix_calculation.final_case_mix_weight?.toFixed(4)]);
-          csvData.push(['Calculated Payment', `$${navigationData.case_mix_calculation.calculated_payment?.toFixed(2)}`]);
-          csvData.push([]);
-        }
-      }
-
-      // Revenue Data
-      if (revenueData) {
-        csvData.push(['REVENUE ANALYSIS']);
-        csvData.push(['Original Payment', `$${revenueData.original?.totalPayment?.toFixed(2) || 0}`]);
-        csvData.push(['Optimized Payment', `$${revenueData.corrected?.totalPayment?.toFixed(2) || 0}`]);
-        csvData.push(['Revenue Difference', `$${revenueData.revenueDifference?.toFixed(2) || 0}`]);
-        csvData.push(['Percentage Increase', `${revenueData.percentageIncrease?.toFixed(1) || 0}%`]);
-        csvData.push([]);
-      }
+      // PDGM Navigator grouping and financial output is intentionally excluded.
+      // The prior navigator used LLM-derived functional points, grouping, and
+      // payments that are not a verified CMS HHGS 432-group result.
+      csvData.push(['PDGM GROUPING AND REIMBURSEMENT']);
+      csvData.push(['Status', 'Unavailable — not $0']);
+      csvData.push(['Reason', PDGM_REIMBURSEMENT_BLOCKER]);
+      csvData.push(['Required Action', PDGM_REIMBURSEMENT_ACTION]);
+      csvData.push([]);
 
       // Accuracy Issues
       if (analysisResults.accuracy_issues?.length > 0) {
@@ -115,21 +91,6 @@ export default function OASISExportManager({
         csvData.push([]);
       }
 
-      // Revenue Tips
-      if (analysisResults.revenue_tips?.length > 0) {
-        csvData.push(['REVENUE OPTIMIZATION TIPS']);
-        csvData.push(['Category', 'Impact', 'Opportunity', 'Action']);
-        analysisResults.revenue_tips.forEach(tip => {
-          csvData.push([
-            tip.category || '',
-            tip.potential_impact || '',
-            tip.opportunity || '',
-            tip.specific_action || ''
-          ]);
-        });
-        csvData.push([]);
-      }
-
       // Quality Criteria Breakdown
       if (qualityScore?.criteria_scores) {
         csvData.push(['DOCUMENTATION QUALITY CRITERIA']);
@@ -139,23 +100,6 @@ export default function OASISExportManager({
             key.charAt(0).toUpperCase() + key.slice(1),
             `${data.score}%`,
             data.findings?.join('; ') || ''
-          ]);
-        });
-        csvData.push([]);
-      }
-
-      // PDGM Discrepancies
-      if (navigationData?.discrepancies?.length > 0) {
-        csvData.push(['PDGM DISCREPANCIES']);
-        csvData.push(['Type', 'Severity', 'Finding', 'Expected', 'Actual', 'Recommendation']);
-        navigationData.discrepancies.forEach(disc => {
-          csvData.push([
-            disc.type || '',
-            disc.severity || '',
-            disc.finding || '',
-            disc.expected || '',
-            disc.actual || '',
-            disc.recommendation || ''
           ]);
         });
         csvData.push([]);
@@ -240,7 +184,7 @@ export default function OASISExportManager({
       <CardContent className="pt-4">
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            Download a comprehensive report including OASIS analysis, PDGM grouping, quality scores, and recommendations.
+            Download OASIS analysis, quality scores, and recommendations. Unverified PDGM grouping and payment are excluded.
           </p>
 
           <div className="grid grid-cols-2 gap-3">
@@ -277,9 +221,8 @@ export default function OASISExportManager({
             <p className="font-medium mb-1">Export includes:</p>
             <ul className="space-y-0.5">
               <li>✓ Overall analysis scores</li>
-              <li>✓ PDGM Navigator grouping details</li>
+              <li>✓ Explicit PDGM grouping/payment unavailable notice</li>
               <li>✓ Documentation quality assessment</li>
-              <li>✓ Revenue optimization opportunities</li>
               <li>✓ Compliance concerns and recommendations</li>
               <li>✓ Discrepancies and resolution workflows</li>
             </ul>

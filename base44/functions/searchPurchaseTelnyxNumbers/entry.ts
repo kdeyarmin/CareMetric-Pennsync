@@ -175,10 +175,9 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    const isAdmin =
-      user.role === 'admin' ||
-      user.account_type === 'super_admin' ||
-      user.account_type === 'agency_admin';
+    // Purchases can incur charges. Only Base44's protected built-in role may
+    // authorize them; account_type is a self-mutable custom User field.
+    const isAdmin = user.role === 'admin';
     if (!isAdmin) return Response.json({ error: 'Only administrators can manage numbers.' }, { status: 403 });
     // Fail closed: an agency_admin without an agency_name would resolve to no
     // agency, so a fax provision would overwrite a lone tenant's outbound fax

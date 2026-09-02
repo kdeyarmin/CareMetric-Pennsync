@@ -3,29 +3,25 @@
  * is and the helpers used to gate the super-admin-only surfaces (the Telnyx
  * integration configuration page).
  *
- * The super admin is identified two ways, and EITHER is sufficient:
- *   1. The designated super-admin email below (the platform owner). This makes
- *      the account self-bootstrapping — the very first time the owner signs in,
- *      the Super Admin page promotes their account (see ensureSuperAdmin).
- *   2. account_type === 'super_admin' on the User record (what the rest of the
- *      app — Learning Center, skill dashboards — already keys off of).
+ * Super-admin authorization requires BOTH the protected Base44 `role ===
+ * "admin"` value and the configured owner email. `account_type` and all other
+ * custom User fields are self-mutable through auth.updateMe and are never
+ * accepted as authorization evidence.
  *
- * This is the single source of truth for the owner email on the FRONTEND, and
- * it is FRONTEND-ONLY (UI gating): the Base44 backend functions determine
- * admin/super-admin standing solely from role/account_type — the backend
- * SUPER_ADMIN_EMAIL secret was retired. An email-matched owner who isn't yet
- * promoted can reach the Super Admin page, where ensureSuperAdmin promotes
- * their account (authorized by their platform 'admin' role).
+ * This is the single source of truth for the owner email on the FRONTEND and is
+ * only a UI gate. Sensitive backend functions independently require the same
+ * protected role plus the backend `SUPER_ADMIN_EMAIL` setting. Both settings
+ * fail closed when absent.
  */
 
 /**
  * The platform owner email used for the email-based super-admin override.
  *
  * OPT-IN: configured via the build-time env var `VITE_SUPER_ADMIN_EMAIL`. When
- * unset there is NO hard-coded owner email — super-admin is then determined
- * solely by `account_type === 'super_admin'` (see isSuperAdmin). This avoids
- * baking an identifier into the build and removes the unintended privilege path
- * where a missing env var would still treat a specific email as super admin.
+ * unset there is NO hard-coded owner email and no user is treated as super
+ * admin by the frontend. This avoids baking an identifier into the build and
+ * removes the unintended privilege path where a missing env var would still
+ * treat a specific email as super admin.
  * Normalized (trimmed + lower-cased) for case-insensitive comparison.
  */
 export const SUPER_ADMIN_EMAIL = (
@@ -45,25 +41,21 @@ export function isSuperAdminEmail(email) {
 }
 
 /**
- * True when `user` is the platform super admin — either by designated email or
- * by an explicit super_admin account_type.
+ * True when `user` is the platform super admin. Both signals are protected:
+ * Base44's built-in admin role and the configured owner email. Custom User
+ * fields such as account_type are writable by the current user via updateMe and
+ * must never grant privilege.
  */
 export function isSuperAdmin(user) {
   if (!user) return false;
-  return isSuperAdminEmail(user.email) || user.account_type === "super_admin";
+  return user.role === "admin" && isSuperAdminEmail(user.email);
 }
 
 /**
- * True for any administrator surface (the agency `admin` role, an agency_admin
- * or super_admin account_type, or the designated super admin). Mirrors the
- * ad-hoc checks already used across the app, in one reusable place.
+ * True for any administrator surface. Base44 protects the built-in role from
+ * updateMe; account_type and the other custom User fields are self-mutable.
  */
 export function isAdminLike(user) {
   if (!user) return false;
-  return (
-    user.role === "admin" ||
-    user.account_type === "agency_admin" ||
-    user.account_type === "super_admin" ||
-    isSuperAdminEmail(user.email)
-  );
+  return user.role === "admin";
 }

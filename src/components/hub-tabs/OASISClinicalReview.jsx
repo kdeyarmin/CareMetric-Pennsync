@@ -9,7 +9,9 @@ import OASISTaskGenerator from "@/components/oasis/OASISTaskGenerator";
 import WorkflowExecutionEngine from "@/components/oasis/WorkflowExecutionEngine";
 import PredictiveOutcomesAnalyzer from "@/components/oasis/PredictiveOutcomesAnalyzer";
 
-export default function OASISClinicalReview() {
+const OASIS_CLINICAL_AI_ENABLED = false;
+
+function EnabledOASISClinicalReview() {
   const location = useLocation();
   const { analysisResults, pdgmData, patientName, patientId } = location.state || {};
 
@@ -106,4 +108,23 @@ export default function OASISClinicalReview() {
       </Card>
     </div>
   );
+}
+
+export default function OASISClinicalReview() {
+  if (!OASIS_CLINICAL_AI_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300">
+        <CardHeader className="bg-amber-50">
+          <CardTitle className="flex items-center gap-2 text-amber-950">
+            <Stethoscope className="h-5 w-5" /> OASIS Clinical AI Review Paused
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 pt-5 text-sm text-slate-700">
+          <p>This surface is unavailable while its tenant-scoped reads, clinical predictions, response suggestions, and automated workflow writes are being verified.</p>
+          <p>No AI analysis, global data query, task creation, alert creation, or PDGM guidance runs from this tab.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledOASISClinicalReview />;
 }

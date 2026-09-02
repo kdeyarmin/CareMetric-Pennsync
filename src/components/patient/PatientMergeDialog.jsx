@@ -27,7 +27,11 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
-import { mergePatientInto } from "./mergePatients";
+import {
+  mergePatientInto,
+  PATIENT_MERGES_PAUSED,
+  PATIENT_MERGE_PAUSED_MESSAGE,
+} from "./mergePatients";
 
 export default function PatientMergeDialog({ 
   open, 
@@ -54,17 +58,13 @@ export default function PatientMergeDialog({
 
   const mergeMutation = useMutation({
     mutationFn: async () => {
+      if (PATIENT_MERGES_PAUSED) throw new Error(PATIENT_MERGE_PAUSED_MESSAGE);
       const primaryPatient = selectedPrimary === 'patient1' ? patient1 : patient2;
       const secondaryPatient = selectedPrimary === 'patient1' ? patient2 : patient1;
 
-      // Use the shared merge helper: it reassigns the secondary's clinical history
-      // to the primary and SOFT-archives the secondary (status 'merged',
-      // is_archived, merged_into_id) — mirroring the deduplicatePatients backend.
-      // The previous inline path hard-deleted the secondary after moving only
-      // visits, orphaning every other clinical record (OASIS, incidents,
-      // documents, alerts, …) and destroying the patient irrecoverably.
-      const me = await base44.auth.me().catch(() => null);
-      await mergePatientInto(primaryPatient.id, secondaryPatient.id, { mergedBy: me?.email || null });
+      // The shared helper is a fail-closed boundary until an authorized,
+      // transactional server broker can move every linked clinical record.
+      await mergePatientInto(primaryPatient.id, secondaryPatient.id);
 
       return { primaryPatient, secondaryPatient };
     },
@@ -293,6 +293,15 @@ export default function PatientMergeDialog({
           </div>
         )}
 
+        {PATIENT_MERGES_PAUSED && (
+          <Alert className="border-amber-300 bg-amber-50">
+            <AlertTriangle className="h-4 w-4 text-amber-700" />
+            <AlertDescription className="text-amber-900">
+              {PATIENT_MERGE_PAUSED_MESSAGE} No patient record will be changed.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <DialogFooter className="flex justify-between items-center">
           <div>
             {step > 1 && (
@@ -316,7 +325,7 @@ export default function PatientMergeDialog({
             ) : (
               <Button
                 onClick={() => mergeMutation.mutate()}
-                disabled={mergeMutation.isPending}
+                disabled={mergeMutation.isPending || PATIENT_MERGES_PAUSED}
                 className="bg-red-600 hover:bg-red-700"
               >
                 {mergeMutation.isPending ? 'Merging...' : 'Merge Patients'}

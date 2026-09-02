@@ -1,14 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-// The ONE protected write path for OASIS responses.
+// Dormant validator and future protected write path for OASIS responses.
 //
 // WHY THIS FUNCTION EXISTS
-// `OASISAssessment` has open write RLS (`"write": {}`), so UI-only enforcement
-// is not enforcement: any authenticated client could PUT an assessment row with
-// whatever `oasis_items[]` it liked — a legacy code, an AI-chosen code, a
-// screening answer wearing an M-number, an item at a time point where CMS does
-// not collect it. Every one of those is indistinguishable downstream from a
-// clinician-selected official response.
+// `OASISAssessment` is now source-locked to service-role writes. The former
+// browser writer derived tenant scope from mutable User fields and did not prove
+// Patient/chart access, so enabling a feature flag could have crossed the
+// tenant boundary. Until an authoritative server-owned tenant + patient-access
+// broker exists, this endpoint is HARD PAUSED before client creation, auth,
+// settings reads, validation, or writes. There is deliberately no browser,
+// admin, feature-flag, or environment-variable bypass.
 //
 // This function re-validates server-side what the frontend builder validated,
 // so a caller that skips the builder gains nothing. It refuses:
@@ -246,7 +247,17 @@ function validateOasisResponseWrite(payload) {
   }
   const rows = Array.isArray(payload && payload.oasis_items) ? payload.oasis_items : [];
   const ctx = { instrument: instrument.instrument, timepoint };
+  const seenDefinitions = new Set();
+  const seenItems = new Set();
   rows.forEach((row, index) => {
+    const definitionKey = String(row?.definition_id || '').trim().toLowerCase();
+    const itemKey = String(row?.item_number || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if ((definitionKey && seenDefinitions.has(definitionKey)) || (itemKey && seenItems.has(itemKey))) {
+      errors.push({ index, reason: 'duplicate_item_or_definition' });
+      return;
+    }
+    if (definitionKey) seenDefinitions.add(definitionKey);
+    if (itemKey) seenItems.add(itemKey);
     const reason = validateOasisResponseRow(row, ctx);
     if (reason) errors.push({ index, reason });
   });
@@ -268,10 +279,25 @@ function validateOasisResponseWrite(payload) {
 // disagreeing about whether the feature is on.
 const OASIS_V2_FLAG_FIELD = 'oasis_response_schema_v2_enabled';
 const OASIS_WRITE_KILL_SWITCH_FIELD = 'oasis_response_writes_disabled';
+// Release safety gate: this literal must remain true until the hosted,
+// server-owned tenant and patient-access boundary is implemented and proved.
+// Tests may rewrite the literal only in an isolated transpiled copy to exercise
+// the dormant validator; deployed source has no runtime override.
+const OASIS_V2_WRITES_PAUSED = true;
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
+  }
+
+  if (OASIS_V2_WRITES_PAUSED) {
+    return Response.json(
+      {
+        error: 'OASIS v2 response writes are temporarily unavailable pending tenant and patient-access security validation.',
+        reason: 'tenant_security_validation_pending',
+      },
+      { status: 503 },
+    );
   }
 
   const base44 = createClientFromRequest(req);

@@ -12,6 +12,8 @@ import {
   ACCESS,
   userRoleLabel,
   staffRoleLabel,
+  getRoleView,
+  isAdminView,
 } from "@/lib/roles";
 import { isPageAllowedForRole } from "@/lib/nav.manifest";
 
@@ -24,6 +26,18 @@ const social = { role: "user", staff_role: "social_worker" };
 const spiritual = { role: "user", staff_role: "spiritual_care" };
 const admin = { role: "admin" };
 const legacy = { role: "user" };
+
+describe("admin role trust boundary", () => {
+  it("does not elevate self-mutable account_type values", () => {
+    for (const account_type of ["agency_admin", "super_admin"]) {
+      const spoofed = { role: "user", account_type };
+      expect(getRoleView(spoofed)).toBe("nurse");
+      expect(isAdminView(spoofed)).toBe(false);
+    }
+    expect(getRoleView(admin)).toBe("facility_admin");
+    expect(isAdminView(admin)).toBe(true);
+  });
+});
 
 describe("getStaffRole", () => {
   it("defaults unknown/unset to nurse (backward compatible)", () => {

@@ -4,7 +4,6 @@ import { CHART_COLORS_6 } from "@/constants/chartColors";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -25,9 +24,7 @@ import {
   Legend,
   ResponsiveContainer,
   Area,
-  AreaChart,
-  ScatterChart,
-  Scatter
+  AreaChart
 } from 'recharts';
 import {
   TrendingUp,
@@ -45,8 +42,11 @@ import {
   Filter
 } from "lucide-react";
 import { format, subDays } from "date-fns";
+import { formatPdgmCurrency } from "@/components/pdgm/pdgmAvailability";
 
-export default function OASISAnalyticsDashboard() {
+const OASIS_AI_ANALYTICS_ENABLED = false;
+
+function EnabledOASISAnalyticsDashboard() {
   const [timeRange, setTimeRange] = useState("30");
   const [filterAssessmentType, setFilterAssessmentType] = useState("all");
   const [_sortBy, _setSortBy] = useState("date");
@@ -81,18 +81,17 @@ export default function OASISAnalyticsDashboard() {
     const avgAccuracy = filteredData.reduce((sum, d) => sum + (d.scores?.accuracy || 0), 0) / totalAnalyses;
     const avgCompliance = filteredData.reduce((sum, d) => sum + (d.scores?.compliance || 0), 0) / totalAnalyses;
     const avgOverall = filteredData.reduce((sum, d) => sum + (d.scores?.overall || 0), 0) / totalAnalyses;
-    const avgRevenue = filteredData.reduce((sum, d) => sum + (d.scores?.revenue_optimization || 0), 0) / totalAnalyses;
 
-    const totalEstimatedPayment = filteredData.reduce((sum, d) => sum + (d.estimated_payment || 0), 0);
-    const avgPayment = totalEstimatedPayment / totalAnalyses;
+    // Historical estimated_payment values came from the non-CMS factorized
+    // estimator. Do not aggregate them while the verified grouper is disabled.
+    const totalEstimatedPayment = null;
+    const avgPayment = null;
 
     // Count issues
     const totalAccuracyIssues = filteredData.reduce((sum, d) => 
       sum + (d.analysis_results?.accuracy_issues?.length || 0), 0);
     const totalComplianceIssues = filteredData.reduce((sum, d) => 
       sum + (d.analysis_results?.compliance_concerns?.length || 0), 0);
-    const totalOptimizations = filteredData.reduce((sum, d) => 
-      sum + (d.analysis_results?.revenue_tips?.length || 0), 0);
 
     // Status distribution
     const statusCounts = filteredData.reduce((acc, d) => {
@@ -123,12 +122,10 @@ export default function OASISAnalyticsDashboard() {
       avgAccuracy,
       avgCompliance,
       avgOverall,
-      avgRevenue,
       totalEstimatedPayment,
       avgPayment,
       totalAccuracyIssues,
       totalComplianceIssues,
-      totalOptimizations,
       statusCounts,
       typeCounts,
       trend
@@ -145,8 +142,7 @@ export default function OASISAnalyticsDashboard() {
         accuracy: d.scores?.accuracy || 0,
         compliance: d.scores?.compliance || 0,
         overall: d.scores?.overall || 0,
-        revenue: d.scores?.revenue_optimization || 0,
-        payment: d.estimated_payment || 0,
+        payment: null,
         patientName: d.patient_name || 'Unknown'
       }));
 
@@ -174,13 +170,7 @@ export default function OASISAnalyticsDashboard() {
     }));
 
     // Payment vs Score scatter
-    const paymentScoreData = filteredData
-      .filter(d => d.estimated_payment && d.scores?.overall)
-      .map(d => ({
-        score: d.scores.overall,
-        payment: d.estimated_payment,
-        patient: d.patient_name || 'Unknown'
-      }));
+    const paymentScoreData = [];
 
     return {
       timeSeriesData,
@@ -189,28 +179,6 @@ export default function OASISAnalyticsDashboard() {
       paymentScoreData
     };
   }, [filteredData, metrics]);
-
-  // Top opportunities
-  const topOpportunities = useMemo(() => {
-    const allOpps = [];
-    filteredData.forEach(upload => {
-      const tips = upload.analysis_results?.revenue_tips || [];
-      tips.forEach(tip => {
-        allOpps.push({
-          patient: upload.patient_name,
-          category: tip.category,
-          opportunity: tip.opportunity,
-          impact: tip.potential_impact,
-          date: upload.created_date
-        });
-      });
-    });
-    return allOpps.slice(0, 10);
-  }, [filteredData]);
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
-  };
 
   const getTrendIcon = (trend) => {
     if (trend > 2) return <TrendingUp className="w-4 h-4 text-green-600" />;
@@ -345,8 +313,8 @@ export default function OASISAnalyticsDashboard() {
                 </div>
                 <div className="flex items-end justify-between">
                   <div>
-                    <p className="text-3xl font-bold text-slate-900">{formatCurrency(metrics.totalEstimatedPayment)}</p>
-                    <p className="text-xs text-slate-500 mt-1">{formatCurrency(metrics.avgPayment)} avg</p>
+                    <p className="text-2xl font-bold text-amber-700">{formatPdgmCurrency(metrics.totalEstimatedPayment)}</p>
+                    <p className="text-xs text-slate-500 mt-1">Official CMS-approved grouper required</p>
                   </div>
                   <DollarSign className="w-8 h-8 text-green-500 opacity-20" />
                 </div>
@@ -453,93 +421,12 @@ export default function OASISAnalyticsDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <ScatterChart>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis 
-                      type="number" 
-                      dataKey="score" 
-                      name="Score" 
-                      unit="%" 
-                      domain={[0, 100]}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <YAxis 
-                      type="number" 
-                      dataKey="payment" 
-                      name="Payment"
-                      tick={{ fontSize: 11 }}
-                      tickFormatter={(value) => `$${(value / 1000).toFixed(1)}k`}
-                    />
-                    <Tooltip 
-                      cursor={{ strokeDasharray: '3 3' }}
-                      formatter={(value, name) => {
-                        if (name === 'payment') return formatCurrency(value);
-                        return `${value}%`;
-                      }}
-                      contentStyle={{ fontSize: 12 }}
-                    />
-                    <Scatter 
-                      name="OASIS Submissions" 
-                      data={chartData.paymentScoreData} 
-                      fill="#10b981"
-                      shape="circle"
-                    />
-                  </ScatterChart>
-                </ResponsiveContainer>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
+                  <strong>Unavailable — not $0.</strong> Historical estimator values are excluded until a verified CMS HHGS 432-group grouper is available.
+                </div>
               </CardContent>
             </Card>
           </div>
-
-          {/* Top Opportunities Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-600" />
-                Top Revenue Optimization Opportunities
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {topOpportunities.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Patient</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Opportunity</TableHead>
-                      <TableHead className="text-center">Impact</TableHead>
-                      <TableHead className="text-center">Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {topOpportunities.map((opp, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-slate-900">{opp.patient || 'Unknown'}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{opp.category}</Badge>
-                        </TableCell>
-                        <TableCell className="text-slate-700">{opp.opportunity}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={
-                            opp.impact === 'high' ? 'success' :
-                            opp.impact === 'medium' ? 'warning' :
-                            'info'
-                          }>
-                            {opp.impact}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center text-slate-600">
-                          {format(new Date(opp.date), 'MM/dd/yy')}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-center text-slate-500 py-8">No optimization opportunities identified yet</p>
-              )}
-            </CardContent>
-          </Card>
 
           {/* Recent Submissions */}
           <Card>
@@ -570,7 +457,7 @@ export default function OASISAnalyticsDashboard() {
                           Score: {upload.scores?.overall?.toFixed(1) || 'N/A'}%
                         </p>
                         <p className="text-xs text-slate-500">
-                          {formatCurrency(upload.estimated_payment || 0)}
+                          {formatPdgmCurrency(null)}
                         </p>
                       </div>
                       <Badge className={
@@ -600,4 +487,21 @@ export default function OASISAnalyticsDashboard() {
       )}
     </div>
   );
+}
+
+export default function OASISAnalyticsDashboard() {
+  if (!OASIS_AI_ANALYTICS_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300">
+        <CardContent className="space-y-2 pt-6 text-sm text-slate-700">
+          <div className="flex items-center gap-2 font-semibold text-amber-950">
+            <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS AI Analytics Paused
+          </div>
+          <p>This dashboard is unavailable while tenant-scoped analytics reads and legacy AI-derived quality and financial fields are being verified.</p>
+          <p>No OASIS upload list, patient detail, legacy score, payment trend, or AI recommendation is loaded from this tab.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledOASISAnalyticsDashboard />;
 }

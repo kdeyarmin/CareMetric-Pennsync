@@ -8,8 +8,21 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Arbitrary referral payloads cannot safely become clinical care plans without
+// patient/tenant provenance, source grounding, and explicit clinician review.
+const REFERRAL_CARE_PLAN_DRAFT_ENABLED = false;
 
 Deno.serve(async (req) => {
+  if (!REFERRAL_CARE_PLAN_DRAFT_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'referral_care_plan_draft_paused',
+      message: 'AI referral care-plan drafting is unavailable pending tenant-scoped provenance and clinician review.',
+      care_plans: [],
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

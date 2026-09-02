@@ -93,10 +93,9 @@ export default function Layout() {
     document.getElementById('main-content')?.scrollTo?.(0, 0);
   }, [location.pathname]);
 
-  // Match App.jsx's route guard (role === 'admin' OR the platform super admin by
-  // owner-email / super_admin account_type). Without this, an unpromoted super
-  // admin reaches admin routes by URL but gets NO admin nav — including the only
-  // link to SuperAdminConfig, defeating the ensureSuperAdmin self-bootstrap.
+  // Match App.jsx's route guard. Both admin tiers require Base44's protected
+  // role; the platform-owner tier additionally requires the configured email.
+  // Custom User fields such as account_type never elevate navigation access.
   // Three-tier role model (see lib/roles.js): super_admin sees everything
   // (incl. platform/system config), facility_admin sees the full facility surface
   // (clinical + analytics + reporting + compliance), nurse sees clinical only.
@@ -111,6 +110,8 @@ export default function Layout() {
   // flag has been observed missing from the client auth payload).
   const isTestAgent = currentUser?.is_test_agent_user === true
     || (currentUser?.email || '').toLowerCase().endsWith('@testagent.base44.com');
+  // UI state only: is_approved is a self-mutable custom User field and is not an
+  // authorization boundary. Backend/RLS must independently enforce access.
   const isApproved = currentUser?.is_approved === true || isAdmin || isTestAgent;
   // Offboarding sets is_active:false but never clears is_approved, and the
   // approval gate has an isAdmin bypass — so without an explicit check a
@@ -118,6 +119,8 @@ export default function Layout() {
   // deactivated account is locked out regardless of role/approval; the test
   // agent is exempt (its account is never approved and must stay usable).
   const isDeactivated = currentUser?.is_active === false && !isTestAgent;
+  // UI state only: is_manager is also custom/self-mutable. Approval functions
+  // must independently validate the assigned approver relationship.
   const isTimeOffApprover = isAdmin || currentUser?.is_manager === true;
 
   // One-time cleanup for the REMOVED offline feature: recover anything a device

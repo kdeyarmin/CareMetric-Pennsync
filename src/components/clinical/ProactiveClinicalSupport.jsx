@@ -28,7 +28,9 @@ import {
   Target
 } from "lucide-react";
 
-export default function ProactiveClinicalSupport({ patientId, compact = false }) {
+const PROACTIVE_CLINICAL_AI_ENABLED = false;
+
+function EnabledProactiveClinicalSupport({ patientId, compact = false }) {
   const [_expandedAlert, _setExpandedAlert] = useState(null);
 
   const { data: analysis, isLoading, refetch } = useQuery({
@@ -362,4 +364,20 @@ export default function ProactiveClinicalSupport({ patientId, compact = false })
       </CardContent>
     </Card>
   );
+}
+
+export default function ProactiveClinicalSupport(props) {
+  if (!PROACTIVE_CLINICAL_AI_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300 bg-amber-50">
+        <CardContent className="space-y-2 p-5 text-sm text-amber-950">
+          <div className="flex items-center gap-2 font-semibold">
+            <Shield className="h-5 w-5" /> Proactive Clinical AI Paused
+          </div>
+          <p>No patient, OASIS, visit, incident, medication, risk-score, or recommendation data is loaded automatically from this dashboard.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledProactiveClinicalSupport {...props} />;
 }

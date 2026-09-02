@@ -21,6 +21,11 @@ import {
   Trophy
 } from "lucide-react";
 import { calculatePDGM } from "@/functions/calculatePDGM";
+import {
+  formatPdgmCurrency,
+  getPdgmPaymentState,
+  isFinitePdgmNumber,
+} from "@/components/pdgm/pdgmAvailability";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
   ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, 
@@ -141,45 +146,62 @@ export default function EnhancedMultiReportComparison({
   };
 
   const buildMultiComparison = (reports, pdgmResults) => {
-    const reportData = reports.map((report, idx) => ({
-      ...report,
-      pdgmResult: pdgmResults[idx].data?.original || {},
-      revenue: pdgmResults[idx].data?.original?.totalPayment || 0,
-      caseMix: pdgmResults[idx].data?.original?.caseMixWeight || 0,
-      clinicalGroup: pdgmResults[idx].data?.original?.clinicalGroup || 'Unknown',
-      functionalLevel: pdgmResults[idx].data?.original?.functionalLevel || 'Unknown',
-      functionalPoints: pdgmResults[idx].data?.original?.functionalPoints || 0,
-      comorbidityLevel: pdgmResults[idx].data?.original?.comorbidityLevel || 'none',
-      admissionSource: pdgmResults[idx].data?.original?.admissionSource || 'community',
-      episodeTiming: pdgmResults[idx].data?.original?.episodeTiming || 'early'
-    }));
+    const reportData = reports.map((report, idx) => {
+      const responseData = pdgmResults[idx]?.data ?? pdgmResults[idx];
+      const pdgmResult = responseData?.original || {};
+      const paymentState = getPdgmPaymentState(pdgmResult);
 
-    // Calculate statistics
-    const revenues = reportData.map(r => r.revenue);
-    const maxRevenue = Math.max(...revenues);
-    const minRevenue = Math.min(...revenues);
-    const avgRevenue = revenues.reduce((a, b) => a + b, 0) / revenues.length;
-    const revenueRange = maxRevenue - minRevenue;
+      return {
+        ...report,
+        pdgmResult,
+        paymentState,
+        revenue: paymentState.amount,
+        caseMix: isFinitePdgmNumber(pdgmResult.caseMixWeight) ? pdgmResult.caseMixWeight : null,
+        clinicalGroup: pdgmResult.clinicalGroup || 'Unknown',
+        functionalLevel: pdgmResult.functionalLevel || 'Unknown',
+        functionalPoints: isFinitePdgmNumber(pdgmResult.functionalPoints) ? pdgmResult.functionalPoints : null,
+        comorbidityLevel: pdgmResult.comorbidityLevel || 'none',
+        admissionSource: pdgmResult.admissionSource || 'community',
+        episodeTiming: pdgmResult.episodeTiming || 'early'
+      };
+    });
 
-    // Find highest and lowest
-    const highestReport = reportData.find(r => r.revenue === maxRevenue);
-    const lowestReport = reportData.find(r => r.revenue === minRevenue);
+    const paymentUnavailableReports = reportData.filter((report) => !report.paymentState.available);
+    const paymentComparisonAvailable = paymentUnavailableReports.length === 0;
 
-    // Build comparison chart data
-    const revenueChartData = reportData.map((r, idx) => ({
-      name: r.shortLabel,
-      revenue: r.revenue,
-      fill: COLORS[idx % COLORS.length],
-      isHighest: r.revenue === maxRevenue,
-      isLowest: r.revenue === minRevenue
-    }));
+    // Payment statistics and chart data are all-or-nothing. Mixing unavailable
+    // results into a financial comparison would turn unknown payments into $0.
+    const revenues = paymentComparisonAvailable ? reportData.map((report) => report.revenue) : [];
+    const maxRevenue = paymentComparisonAvailable ? Math.max(...revenues) : null;
+    const minRevenue = paymentComparisonAvailable ? Math.min(...revenues) : null;
+    const avgRevenue = paymentComparisonAvailable
+      ? revenues.reduce((sum, revenue) => sum + revenue, 0) / revenues.length
+      : null;
+    const revenueRange = paymentComparisonAvailable ? maxRevenue - minRevenue : null;
+
+    const highestReport = paymentComparisonAvailable
+      ? reportData.find((report) => report.revenue === maxRevenue)
+      : null;
+    const lowestReport = paymentComparisonAvailable
+      ? reportData.find((report) => report.revenue === minRevenue)
+      : null;
+
+    const revenueChartData = paymentComparisonAvailable
+      ? reportData.map((report, idx) => ({
+          name: report.shortLabel,
+          revenue: report.revenue,
+          fill: COLORS[idx % COLORS.length],
+          isHighest: report.revenue === maxRevenue,
+          isLowest: report.revenue === minRevenue
+        }))
+      : [];
 
     // Case-mix component comparison
     const caseMixChartData = reportData.map(r => ({
       name: r.shortLabel,
-      Clinical: r.pdgmResult.clinicalWeight || 1,
-      Functional: r.pdgmResult.functionalMultiplier || 1,
-      Comorbidity: r.pdgmResult.comorbidityMultiplier || 1
+      Clinical: isFinitePdgmNumber(r.pdgmResult.clinicalWeight) ? r.pdgmResult.clinicalWeight : null,
+      Functional: isFinitePdgmNumber(r.pdgmResult.functionalMultiplier) ? r.pdgmResult.functionalMultiplier : null,
+      Comorbidity: isFinitePdgmNumber(r.pdgmResult.comorbidityMultiplier) ? r.pdgmResult.comorbidityMultiplier : null
     }));
 
     // Functional points comparison
@@ -195,7 +217,7 @@ export default function EnhancedMultiReportComparison({
       reportData.forEach((r, _idx) => {
         const key = metric === 'Clinical' ? 'clinicalWeight' : 
                    metric === 'Functional' ? 'functionalMultiplier' : 'comorbidityMultiplier';
-        dataPoint[r.shortLabel] = r.pdgmResult[key] || 1;
+        dataPoint[r.shortLabel] = isFinitePdgmNumber(r.pdgmResult[key]) ? r.pdgmResult[key] : null;
       });
       return dataPoint;
     });
@@ -240,18 +262,20 @@ export default function EnhancedMultiReportComparison({
     }
 
     // Revenue variance analysis
-    if (revenueRange > 500) {
+    if (paymentComparisonAvailable && revenueRange > 500) {
       keyDifferences.push({
         type: 'revenue_variance',
         severity: revenueRange > 1000 ? 'high' : 'medium',
-        title: `Revenue Variance: ${formatCurrency(revenueRange)}`,
-        description: `Payments range from ${formatCurrency(minRevenue)} to ${formatCurrency(maxRevenue)}`,
-        impact: `${highestReport?.shortLabel} generates ${formatCurrency(revenueRange)} more than ${lowestReport?.shortLabel}`
+        title: `Revenue Variance: ${formatPdgmCurrency(revenueRange)}`,
+        description: `Payments range from ${formatPdgmCurrency(minRevenue)} to ${formatPdgmCurrency(maxRevenue)}`,
+        impact: `${highestReport?.shortLabel} generates ${formatPdgmCurrency(revenueRange)} more than ${lowestReport?.shortLabel}`
       });
     }
 
     return {
       reports: reportData,
+      paymentComparisonAvailable,
+      paymentUnavailableReports,
       statistics: {
         maxRevenue,
         minRevenue,
@@ -268,13 +292,6 @@ export default function EnhancedMultiReportComparison({
       },
       keyDifferences
     };
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
   };
 
   if (availableReports.length < 2) {
@@ -393,72 +410,99 @@ export default function EnhancedMultiReportComparison({
         {/* Comparison Results */}
         {comparisonResults && (
           <div className="space-y-4 pt-2">
-            {/* Summary Stats */}
-            <div className="grid grid-cols-4 gap-2">
-              <div className="p-3 bg-green-50 rounded-lg border border-green-200 text-center">
-                <Trophy className="w-4 h-4 text-green-600 mx-auto mb-1" />
-                <p className="text-xs text-green-600">Highest</p>
-                <p className="text-sm font-bold text-green-700">
-                  {formatCurrency(comparisonResults.statistics.maxRevenue)}
-                </p>
-                <p className="text-xs text-green-600 truncate">
-                  {comparisonResults.statistics.highestReport?.shortLabel}
-                </p>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-lg border text-center">
-                <Minus className="w-4 h-4 text-slate-500 mx-auto mb-1" />
-                <p className="text-xs text-slate-500">Lowest</p>
-                <p className="text-sm font-bold text-slate-700">
-                  {formatCurrency(comparisonResults.statistics.minRevenue)}
-                </p>
-                <p className="text-xs text-slate-500 truncate">
-                  {comparisonResults.statistics.lowestReport?.shortLabel}
-                </p>
-              </div>
-              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-center">
-                <BarChart3 className="w-4 h-4 text-blue-600 mx-auto mb-1" />
-                <p className="text-xs text-blue-600">Average</p>
-                <p className="text-sm font-bold text-blue-700">
-                  {formatCurrency(comparisonResults.statistics.avgRevenue)}
-                </p>
-              </div>
-              <div className="p-3 bg-navy-50 rounded-lg border border-navy-200 text-center">
-                <TrendingUp className="w-4 h-4 text-navy-600 mx-auto mb-1" />
-                <p className="text-xs text-navy-600">Range</p>
-                <p className="text-sm font-bold text-navy-700">
-                  {formatCurrency(comparisonResults.statistics.revenueRange)}
-                </p>
-              </div>
-            </div>
-
-            {/* Revenue Comparison Chart */}
-            <div className="bg-slate-50 rounded-lg p-4 border">
-              <p className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-green-600" />
-                Revenue Comparison
-              </p>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={comparisonResults.charts.revenue}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={(v) => `$${(v/1000).toFixed(1)}k`} tick={{ fontSize: 10 }} />
-                  <Tooltip formatter={(value) => formatCurrency(value)} />
-                  <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
-                    {comparisonResults.charts.revenue.map((entry, idx) => (
-                      <Cell 
-                        key={idx} 
-                        fill={entry.isHighest ? '#22c55e' : entry.isLowest ? '#9ca3af' : entry.fill} 
-                        stroke={entry.isHighest ? '#16a34a' : 'transparent'}
-                        strokeWidth={entry.isHighest ? 2 : 0}
-                      />
+            {!comparisonResults.paymentComparisonAvailable && (
+              <Alert className="bg-amber-50 border-amber-200">
+                <AlertTriangle className="w-4 h-4 text-amber-700" />
+                <AlertDescription className="text-amber-900 text-sm space-y-2">
+                  <p className="font-semibold">PDGM payment comparison: Unavailable — not $0</p>
+                  <p>Financial totals, rankings, averages, ranges, and charts are hidden until every selected report has a verified payment.</p>
+                  <ul className="list-disc pl-5 text-xs space-y-1">
+                    {comparisonResults.paymentUnavailableReports.map((report) => (
+                      <li key={report.id}>
+                        <span className="font-semibold">{report.shortLabel}:</span>{' '}
+                        {report.paymentState.message} Reason: {report.paymentState.reason}.
+                        {' '}Required action: {report.paymentState.actions.length > 0
+                          ? report.paymentState.actions.join('; ')
+                          : 'Complete the clinician-sourced PDGM inputs and recalculate this report.'}
+                      </li>
                     ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
 
-            {/* Case-Mix Components Radar */}
-            <div className="bg-slate-50 rounded-lg p-4 border">
+            {comparisonResults.paymentComparisonAvailable && (
+              <>
+                {/* Summary Stats */}
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="p-3 bg-green-50 rounded-lg border border-green-200 text-center">
+                    <Trophy className="w-4 h-4 text-green-600 mx-auto mb-1" />
+                    <p className="text-xs text-green-600">Highest</p>
+                    <p className="text-sm font-bold text-green-700">
+                      {formatPdgmCurrency(comparisonResults.statistics.maxRevenue)}
+                    </p>
+                    <p className="text-xs text-green-600 truncate">
+                      {comparisonResults.statistics.highestReport?.shortLabel}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-lg border text-center">
+                    <Minus className="w-4 h-4 text-slate-500 mx-auto mb-1" />
+                    <p className="text-xs text-slate-500">Lowest</p>
+                    <p className="text-sm font-bold text-slate-700">
+                      {formatPdgmCurrency(comparisonResults.statistics.minRevenue)}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {comparisonResults.statistics.lowestReport?.shortLabel}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-center">
+                    <BarChart3 className="w-4 h-4 text-blue-600 mx-auto mb-1" />
+                    <p className="text-xs text-blue-600">Average</p>
+                    <p className="text-sm font-bold text-blue-700">
+                      {formatPdgmCurrency(comparisonResults.statistics.avgRevenue)}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-navy-50 rounded-lg border border-navy-200 text-center">
+                    <TrendingUp className="w-4 h-4 text-navy-600 mx-auto mb-1" />
+                    <p className="text-xs text-navy-600">Range</p>
+                    <p className="text-sm font-bold text-navy-700">
+                      {formatPdgmCurrency(comparisonResults.statistics.revenueRange)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Revenue Comparison Chart */}
+                <div className="bg-slate-50 rounded-lg p-4 border">
+                  <p className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-green-600" />
+                    Revenue Comparison
+                  </p>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={comparisonResults.charts.revenue}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={(v) => `$${(v/1000).toFixed(1)}k`} tick={{ fontSize: 10 }} />
+                      <Tooltip formatter={(value) => formatPdgmCurrency(value)} />
+                      <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
+                        {comparisonResults.charts.revenue.map((entry, idx) => (
+                          <Cell
+                            key={idx}
+                            fill={entry.isHighest ? '#22c55e' : entry.isLowest ? '#9ca3af' : entry.fill}
+                            stroke={entry.isHighest ? '#16a34a' : 'transparent'}
+                            strokeWidth={entry.isHighest ? 2 : 0}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </>
+            )}
+
+            {/* Case-mix values are payment components, so this chart follows
+                the same all-or-nothing availability gate as revenue. */}
+            {comparisonResults.paymentComparisonAvailable && (
+              <div className="bg-slate-50 rounded-lg p-4 border">
               <p className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
                 <Activity className="w-4 h-4 text-navy-600" />
                 Case-Mix Component Comparison
@@ -478,11 +522,12 @@ export default function EnhancedMultiReportComparison({
                       fillOpacity={0.2} 
                     />
                   ))}
-                  <Tooltip formatter={(value) => value.toFixed(4)} />
+                  <Tooltip formatter={(value) => isFinitePdgmNumber(value) ? value.toFixed(4) : 'Unavailable'} />
                   <Legend />
                 </RadarChart>
               </ResponsiveContainer>
-            </div>
+              </div>
+            )}
 
             {/* Detailed Report Table */}
             <Table>
@@ -506,18 +551,21 @@ export default function EnhancedMultiReportComparison({
                           style={{ backgroundColor: COLORS[idx % COLORS.length] }}
                         />
                         <span className="font-medium">{report.shortLabel}</span>
-                        {report.revenue === comparisonResults.statistics.maxRevenue && (
+                        {comparisonResults.paymentComparisonAvailable
+                          && report.revenue === comparisonResults.statistics.maxRevenue && (
                           <Star className="w-3 h-3 text-gold-500 fill-gold-500" />
                         )}
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
                       <span className={`font-bold ${
-                        report.revenue === comparisonResults.statistics.maxRevenue ? 'text-emerald-700' :
-                        report.revenue === comparisonResults.statistics.minRevenue ? 'text-slate-500' :
+                        comparisonResults.paymentComparisonAvailable
+                          && report.revenue === comparisonResults.statistics.maxRevenue ? 'text-emerald-700' :
+                        comparisonResults.paymentComparisonAvailable
+                          && report.revenue === comparisonResults.statistics.minRevenue ? 'text-slate-500' :
                         'text-slate-700'
                       }`}>
-                        {formatCurrency(report.revenue)}
+                        {formatPdgmCurrency(report.revenue)}
                       </span>
                     </TableCell>
                     <TableCell className="text-center">
@@ -527,7 +575,9 @@ export default function EnhancedMultiReportComparison({
                     </TableCell>
                     <TableCell className="text-center">
                       <span className="capitalize">{report.functionalLevel}</span>
-                      <span className="text-slate-400 ml-1">({report.functionalPoints}pts)</span>
+                      <span className="text-slate-400 ml-1">
+                        ({isFinitePdgmNumber(report.functionalPoints) ? `${report.functionalPoints}pts` : 'Unavailable'})
+                      </span>
                     </TableCell>
                     <TableCell className="text-center capitalize">{report.comorbidityLevel}</TableCell>
                     <TableCell className="text-center">
@@ -566,7 +616,7 @@ export default function EnhancedMultiReportComparison({
             )}
 
             {/* Success message if no major differences */}
-            {comparisonResults.keyDifferences.length === 0 && (
+            {comparisonResults.paymentComparisonAvailable && comparisonResults.keyDifferences.length === 0 && (
               <Alert className="bg-green-50 border-green-200">
                 <CheckCircle2 className="w-4 h-4 text-green-600" />
                 <AlertDescription className="text-green-800 text-sm">

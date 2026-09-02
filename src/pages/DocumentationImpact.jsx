@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { TrendingUp, TrendingDown, Minus, Lock, ArrowRight, Database, FileText, ChevronUp, ChevronDown, Download, Trophy } from "lucide-react";
 import { format } from "date-fns";
 import { mergePdgmRates } from "@/components/pdgm/pdgmRates";
-import { computeImpact, normalizePdgmDataToScenario } from "@/components/pdgm/reimbursementImpact";
+import { normalizePdgmDataToScenario } from "@/components/pdgm/reimbursementImpact";
 import { reconcileScenario, storedWeightTableRows } from "@/components/pdgm/caseMixReconciliation";
 import { toCsv, exportTimestamp } from "@/components/admin/csvExport";
 import { downloadCsv } from "@/lib/downloadCsv";
@@ -40,6 +40,7 @@ const ADMISSION = [["community", "Community"], ["institutional", "Institutional"
 const TIMING = [["early", "Early (first 30-day period)"], ["late", "Late (subsequent periods)"]];
 const FUNCTIONAL = [["low", "Low impairment"], ["medium", "Medium impairment"], ["high", "High impairment"]];
 const COMORBIDITY = [["none", "None"], ["low", "Low adjustment"], ["high", "High adjustment"]];
+const PDGM_PAYMENT_FEATURE_AVAILABLE = false;
 
 const money = (n) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 // Text columns default to ascending (A→Z); money/percent columns to descending
@@ -65,6 +66,36 @@ function LabeledSelect({ label, value, onChange, options }) {
 }
 
 export default function DocumentationImpact() {
+  if (!PDGM_PAYMENT_FEATURE_AVAILABLE) {
+    return (
+      <PageContainer>
+        <PageHeader
+          icon={TrendingUp}
+          eyebrow="Administration"
+          title="Documentation Impact"
+          description="OASIS/PDGM impact analysis is paused pending tenant-scoped data access and a verified CMS grouper."
+        />
+        <Card className="border-2 border-amber-300 bg-amber-50">
+          <CardContent className="space-y-3 py-6 text-sm text-amber-950">
+            <div className="flex items-center gap-2 font-semibold">
+              <Lock className="h-4 w-4" /> OASIS/PDGM documentation impact: Unavailable — not $0
+            </div>
+            <p>
+              No OASIS upload, rate configuration, agency setting, patient detail, legacy payment field, or before/after multiplier is loaded from this page.
+            </p>
+            <p>
+              Required action: use the official EMR/CMS-approved grouper until PennSync integrates the verified 432-group table/software, passes CMS golden-case tests, and proves tenant-bound reporting access.
+            </p>
+          </CardContent>
+        </Card>
+      </PageContainer>
+    );
+  }
+
+  return <DocumentationImpactEnabled />;
+}
+
+function DocumentationImpactEnabled() {
   // Shared period context — documentation enhancement typically moves the
   // functional level and comorbidity capture, holding clinical group/timing.
   const [clinicalGroup, setClinicalGroup] = useState("MMTA_Wounds");
@@ -235,12 +266,9 @@ export default function DocumentationImpact() {
     if (s.comorbidityLevel) setBeforeCo(s.comorbidityLevel);
   };
 
-  const impact = useMemo(() => computeImpact(
-    { clinicalGroup, admissionSource, timing, functionalLevel: beforeFn, comorbidityLevel: beforeCo },
-    { clinicalGroup, admissionSource, timing, functionalLevel: afterFn, comorbidityLevel: afterCo },
-    effectiveRates,
-    wageIndex,
-  ), [clinicalGroup, admissionSource, timing, beforeFn, beforeCo, afterFn, afterCo, effectiveRates, wageIndex]);
+  // The legacy factorized simulator is not a CMS HHGS 432-group grouper. Keep
+  // its historical UI code inert until the canonical verified engine exists.
+  const impact = { complete: false, paymentDelta: null, paymentPct: null };
 
   // Which rate set is in effect (shown on the estimate card so an admin can tell
   // agency-saved numbers from the built-in national defaults at a glance).

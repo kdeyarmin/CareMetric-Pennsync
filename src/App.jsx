@@ -170,11 +170,9 @@ const AuthenticatedApp = () => {
   const location = useLocation();
   const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated } = useAuth();
   // Three-tier role model (see lib/roles.js): super_admin > facility_admin > nurse.
-  // The platform super admin (owner email or super_admin account_type) reaches
-  // admin routes even before their `role` is `admin`. This is what lets the
-  // owner land on SuperAdminConfig on first sign-in so its ensureSuperAdmin
-  // self-bootstrap can run — without it, an unpromoted owner hits the
-  // AdminOnlyFallback and the chicken-and-egg never resolves.
+  // Both admin tiers require Base44's protected built-in admin role. The owner
+  // tier additionally requires the configured email; self-mutable custom User
+  // fields such as account_type never elevate this route gate.
   const roleView = getRoleView(user);
   const isSuperAdminUser = roleView === 'super_admin';
   const isAdmin = roleView === 'super_admin' || roleView === 'facility_admin';

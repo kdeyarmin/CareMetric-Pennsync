@@ -19,7 +19,9 @@ import {
 } from "lucide-react";
 import { toast } from 'sonner';
 
-export default function AIAdmissionDocumentationAssistant({ 
+const AI_ADMISSION_DOCUMENTATION_ENABLED = false;
+
+function EnabledAIAdmissionDocumentationAssistant({
   referralData, 
   oasisSuggestions, 
   patientData,
@@ -565,4 +567,21 @@ Return ONLY the enhanced documentation text.`
       )}
     </div>
   );
+}
+
+export default function AIAdmissionDocumentationAssistant(props) {
+  if (!AI_ADMISSION_DOCUMENTATION_ENABLED) {
+    return (
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="p-6">
+          <p className="font-semibold text-amber-900">AI Admission Documentation Paused</p>
+          <p className="mt-2 text-sm text-amber-800">
+            Automated clinical narrative drafting is unavailable pending source-grounding,
+            tenant-scoped authorization, and clinician review. Document only observed and verified facts.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledAIAdmissionDocumentationAssistant {...props} />;
 }

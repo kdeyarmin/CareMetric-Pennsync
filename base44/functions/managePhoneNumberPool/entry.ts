@@ -97,10 +97,7 @@ Deno.serve(async (req) => {
       const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
       if (_agencyAdminGate) return _agencyAdminGate;
     }
-    const isAdmin =
-      user.role === 'admin' ||
-      user.account_type === 'super_admin' ||
-      user.account_type === 'agency_admin';
+    const isAdmin = user.role === 'admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can manage the number pool.' }, { status: 403 });
     }

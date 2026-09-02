@@ -8,6 +8,26 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: pdgmReimbursementGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PDGM_REIMBURSEMENT_ENABLED = false;
+const PDGM_REIMBURSEMENT_BLOCKER = 'The app does not yet use a verified CMS HHGS 432-group grouper with golden-case tests.';
+const PDGM_REIMBURSEMENT_ACTION = 'Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.';
+function pdgmUnavailablePayload(extra = {}) {
+  return {
+    featureEnabled: PDGM_REIMBURSEMENT_ENABLED,
+    calculationStatus: 'blocked',
+    paymentAvailable: false,
+    payment: null,
+    totalPayment: null,
+    caseMixWeight: null,
+    reason: 'cms_verified_pdgm_grouper_unavailable',
+    message: `PDGM reimbursement is unavailable — this is not a $0 result. ${PDGM_REIMBURSEMENT_BLOCKER}`,
+    actionRequired: [PDGM_REIMBURSEMENT_ACTION],
+    ...extra,
+  };
+}
+// <<<END SHARED HELPER: pdgmReimbursementGate>>>
+
 // <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveAgencySettings(base44, agencyName) {
   let settings = [];
@@ -376,21 +396,28 @@ function mapDiagnosisToClinicalGroup(primaryDiagnosis, icd10Code, icdMap = ICD10
   return 'MMTA_Other';
 }
 
-// The seven OASIS items CMS's functional-impairment score is built from, with
-// the response codes each one actually offers. Codes are OPAQUE STRINGS: a
-// missing or unrecognised value is a REFUSAL, never a zero. Silently scoring an
-// absent item as 0 is what produced a "functional low" level — and a payment
-// estimate — for an assessment nobody had finished.
+// The seven OASIS items this legacy estimator expects. Where PennSync has a
+// source-verified v2 definition, `codes` contains its opaque response codes; a
+// null definition/codes pair is a hard configuration blocker. A missing or
+// unrecognised value is a REFUSAL, never a zero. Silently scoring an absent item
+// as 0 is what produced a "functional low" level — and a payment estimate — for
+// an assessment nobody had finished.
 const PDGM_FUNCTIONAL_ITEMS = [
-  { key: 'm1800_grooming', item: 'M1800', definitionId: null, codes: ['0', '1', '2', '3'] },
-  { key: 'm1810_dress_upper', item: 'M1810', definitionId: null, codes: ['0', '1', '2', '3'] },
-  { key: 'm1820_dress_lower', item: 'M1820', definitionId: null, codes: ['0', '1', '2', '3'] },
+  // A null definitionId is an ENGINE-CONFIGURATION blocker, not a missing
+  // patient answer. These four items have not been promoted into PennSync's
+  // CMS-aligned v2 response registry. Do not assign an id (or infer a point
+  // map from the legacy numeric labels) until a source-verified definition and
+  // its PDGM scoring treatment are added. Until then the official EMR/grouper
+  // is the only honest place to calculate the functional adjustment.
+  { key: 'm1800_grooming', item: 'M1800', definitionId: null, codes: null },
+  { key: 'm1810_dress_upper', item: 'M1810', definitionId: null, codes: null },
+  { key: 'm1820_dress_lower', item: 'M1820', definitionId: null, codes: null },
   // CMS M1830 code 6 is "bathed totally by another person" — a real, most-
   // dependent level that scores. It was previously treated as unratable because
   // the LEGACY PennSync 6 meant "unable to rate — artificial opening".
   { key: 'm1830_bathing', item: 'M1830', definitionId: 'm1830_cms_e2', codes: ['0', '1', '2', '3', '4', '5', '6'] },
   { key: 'm1840_toilet_transfer', item: 'M1840', definitionId: 'm1840_cms_e2', codes: ['0', '1', '2', '3', '4'] },
-  { key: 'm1850_transferring', item: 'M1850', definitionId: null, codes: ['0', '1', '2', '3', '4', '5'] },
+  { key: 'm1850_transferring', item: 'M1850', definitionId: null, codes: null },
   { key: 'm1860_ambulation', item: 'M1860', definitionId: 'm1860_cms_e2', codes: ['0', '1', '2', '3', '4', '5', '6'] },
 ];
 
@@ -398,6 +425,18 @@ const PDGM_FUNCTIONAL_ITEMS = [
 const PDGM_FORBIDDEN_SCREENING_KEYS = [
   'ps_hospitalization_risk_tier', 'ps_urinary_incontinence_frequency', 'ps_ostomy_self_management',
 ];
+
+// Hard release gate: CMS PDGM payment comes from the official HHGS assignment
+// into one of 432 case-mix groups and that group's verified case-mix weight.
+// PennSync's legacy factorized clinical × functional × comorbidity tables are
+// not an equivalent grouper and must never produce reimbursement dollars.
+const CMS_432_GROUPER_BLOCKER = Object.freeze({
+  code: 'cms_432_group_grouper_unavailable',
+  item: 'PDGM_PAYMENT_ENGINE',
+  field: null,
+  message: 'PennSync does not yet use a source-verified CMS HHGS 432-group payment grouper',
+  action: 'Use the official EMR/CMS-approved grouper; integrate the official HHGS 432-group table/software and pass CMS golden-case tests before enabling PennSync payment amounts',
+});
 
 /**
  * Calculate the functional impairment level, or refuse.
@@ -409,6 +448,7 @@ const PDGM_FORBIDDEN_SCREENING_KEYS = [
  */
 function calculateFunctionalLevel(functionalData, sourceTimingKey, thresholdsTable = FUNCTIONAL_THRESHOLDS) {
   const missing = [];
+  const blockers = [];
 
   // A screening tier can never be an official response, whatever it is called.
   for (const k of PDGM_FORBIDDEN_SCREENING_KEYS) {
@@ -426,17 +466,26 @@ function calculateFunctionalLevel(functionalData, sourceTimingKey, thresholdsTab
       ? `functional input uses response schema "${schemaId}", not the CMS-aligned v2 set`
       : 'functional input states no response schema');
   }
-  if (functionalData?.response_origin && functionalData.response_origin !== 'clinician_selected') {
+  if (functionalData?.response_origin !== 'clinician_selected') {
     missing.push('functional input was not explicitly selected by a clinician');
   }
 
   let totalPoints = 0;
   for (const spec of PDGM_FUNCTIONAL_ITEMS) {
-    // PennSync holds no CMS-verified response set for four of the seven items
-    // (M1800/M1810/M1820/M1850 were outside the CMS-alignment cutover), so their
-    // codes cannot be scored on the official scale.
+    // Missing definitions cannot be repaired by entering a different patient
+    // answer. Report a structured engine blocker and tell the caller what can
+    // safely be done now; never imply that a blank patient field caused it.
     if (!spec.definitionId) {
-      missing.push(`${spec.item} has no CMS-verified response set in PennSync`);
+      const message = `${spec.item} has no source-verified definition in PennSync's CMS-aligned v2 response registry`;
+      const action = `Use the official EMR/CMS-approved grouper for ${spec.item}; add and verify its v2 definition and PDGM scoring treatment before enabling PennSync payment calculations`;
+      blockers.push({
+        code: 'cms_functional_definition_unavailable',
+        item: spec.item,
+        field: spec.key,
+        message,
+        action,
+      });
+      missing.push(`${message}. ${action}.`);
       continue;
     }
     const raw = functionalData?.[spec.key];
@@ -454,13 +503,22 @@ function calculateFunctionalLevel(functionalData, sourceTimingKey, thresholdsTab
   }
 
   if (missing.length) {
-    return { level: null, points: null, incomplete: true, missing };
+    return {
+      level: null,
+      points: null,
+      incomplete: true,
+      reason: blockers.length
+        ? 'pdgm_functional_definitions_unavailable'
+        : 'functional_input_not_verifiable',
+      missing,
+      blockers,
+    };
   }
 
   const thresholds = thresholdsTable[sourceTimingKey] || thresholdsTable.community_early || FUNCTIONAL_THRESHOLDS.community_early;
-  if (totalPoints >= thresholds.high) return { level: 'high', points: totalPoints, incomplete: false, missing: [] };
-  if (totalPoints >= thresholds.low) return { level: 'medium', points: totalPoints, incomplete: false, missing: [] };
-  return { level: 'low', points: totalPoints, incomplete: false, missing: [] };
+  if (totalPoints >= thresholds.high) return { level: 'high', points: totalPoints, incomplete: false, missing: [], blockers: [] };
+  if (totalPoints >= thresholds.low) return { level: 'medium', points: totalPoints, incomplete: false, missing: [], blockers: [] };
+  return { level: 'low', points: totalPoints, incomplete: false, missing: [], blockers: [] };
 }
 
 // Enhanced comorbidity analysis
@@ -737,22 +795,74 @@ function validateEpisodeTiming(data) {
   };
 }
 
-// Financial visibility gate. MIRRORS src/lib/permissions.canViewFinancials
-// (which is isAdminLike): backend Deno modules can't import src/lib, so the
-// literal owner email and the admin checks are duplicated here. Keep in sync.
-// PDGM payment/revenue is restricted to administrators; clinical staff (nurses)
-// must never receive dollar figures, even by calling this endpoint directly.
+// Financial visibility gate. Only Base44's protected built-in role is trusted.
+// Custom User fields such as account_type, agency_id and is_active are editable
+// by the current user through auth.updateMe, so they must never grant access to
+// payment/revenue data. Clinical staff must not receive dollar figures even by
+// calling this endpoint directly.
 function canViewFinancials(user) {
-  if (!user) return false;
-  return (
-    user.role === 'admin' ||
-    user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin'
-  );
+  return user?.role === 'admin';
+}
+
+function buildDisabledPdgmResponse() {
+  const unavailable = pdgmUnavailablePayload({
+    incomplete: true,
+    blockers: [CMS_432_GROUPER_BLOCKER],
+    missing: PDGM_FUNCTIONAL_ITEMS
+      .filter((item) => !item.definitionId)
+      .map((item) => `${item.item}: no source-verified CMS-aligned definition/scoring treatment is registered`),
+    basePayment: null,
+    adjustedBasePayment: null,
+    clinicalGroup: null,
+    clinicalWeight: null,
+    functionalLevel: null,
+    functionalPoints: null,
+    functionalMultiplier: null,
+    comorbidityLevel: null,
+    comorbidityMultiplier: null,
+    calculationBreakdown: null,
+  });
+
+  return {
+    ...unavailable,
+    rateBasis: {
+      isOfficial: false,
+      isEstimate: false,
+      basePayment: null,
+      paymentAvailable: false,
+    },
+    original: unavailable,
+    corrected: null,
+    revenueDifference: null,
+    percentageIncrease: null,
+    financialImpact: null,
+    dataValidation: null,
+    alternativeScenarios: {
+      available: false,
+      reason: unavailable.reason,
+      message: unavailable.message,
+      actionRequired: unavailable.actionRequired,
+      unavailableScenarios: [],
+      scenarios: {},
+      minPayment: null,
+      maxPayment: null,
+      paymentRange: null,
+      highestScenario: null,
+      lowestScenario: null,
+    },
+    wageIndexApplied: null,
+  };
 }
 
 Deno.serve(async (req) => {
   try {
+    // Do not initialize an authenticated/service-role client or inspect caller
+    // data while this global safety gate is off. The response contains only
+    // static feature-status metadata.
+    if (!PDGM_REIMBURSEMENT_ENABLED) {
+      return Response.json(buildDisabledPdgmResponse(), { status: 409 });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 
@@ -788,7 +898,9 @@ Deno.serve(async (req) => {
     // current. When they've entered + flagged their official CMS numbers, the
     // result is marked authoritative (isEstimate:false) rather than an estimate.
     let rates = DEFAULT_RATES;
-    let isOfficial = false;
+    // No stored flag can make the legacy factorized estimator official. The
+    // endpoint stays estimate/blocked until a verified 432-group grouper exists.
+    const isOfficial = false;
     let icdMap = ICD10_CLINICAL_GROUPS;
     try {
       let rateRows = [];
@@ -807,7 +919,6 @@ Deno.serve(async (req) => {
       const rateConfig = rateRows && rateRows.length > 0 ? rateRows[0] : null;
       if (rateConfig) {
         rates = deepMergeNumbers(DEFAULT_RATES, rateConfig.rates);
-        isOfficial = rateConfig.is_official === true;
         // REPLACE-when-present so the admin can add/edit/remove prefixes.
         if (rateConfig.icd10_clinical_groups && Object.keys(rateConfig.icd10_clinical_groups).length > 0) {
           icdMap = rateConfig.icd10_clinical_groups;
@@ -905,9 +1016,10 @@ Deno.serve(async (req) => {
 
     return Response.json({
       rateBasis: {
-        isOfficial,
-        isEstimate: !isOfficial,
-        basePayment: rates.basePaymentRate,
+        isOfficial: false,
+        isEstimate: true,
+        basePayment: null,
+        paymentAvailable: false,
       },
       original: originalRevenue,
       corrected: correctedRevenue,
@@ -958,29 +1070,69 @@ function calculateAlternativeScenarios(data, wageIndex = 1.0, rates = DEFAULT_RA
       episode_timing: combo.episode_timing
     };
     const result = calculatePDGMRevenue(scenarioData, wageIndex, rates, isOfficial, icdMap);
+    const paymentAvailable = Number.isFinite(result.totalPayment) && result.incomplete !== true;
     scenarios[combo.key] = {
+      available: paymentAvailable,
+      incomplete: result.incomplete === true,
+      reason: result.reason || null,
+      message: result.incomplete ? result.message : null,
+      blockers: result.incomplete ? (result.blockers || []) : [],
       admissionSource: combo.admission_source,
       episodeTiming: combo.episode_timing,
-      totalPayment: result.totalPayment,
-      caseMixWeight: result.caseMixWeight,
+      // Keep unavailable values explicitly null. Number(null), arithmetic on
+      // null, and Math.max(null) all produce a misleading 0.
+      totalPayment: paymentAvailable ? result.totalPayment : null,
+      caseMixWeight: paymentAvailable ? result.caseMixWeight : null,
       clinicalWeight: result.clinicalWeight,
       functionalMultiplier: result.functionalMultiplier,
       comorbidityMultiplier: result.comorbidityMultiplier
     };
   }
 
-  // Find highest and lowest
-  const payments = Object.values(scenarios).map(s => s.totalPayment);
+  const entries = Object.entries(scenarios);
+  const unavailableScenarios = entries
+    .filter(([, scenario]) => !scenario.available)
+    .map(([key]) => key);
+  const comparisonAvailable = unavailableScenarios.length === 0;
+
+  // Only aggregate a COMPLETE four-way comparison. Filtering nulls and
+  // comparing the remainder would still imply that an incomplete scenario was
+  // evaluated. Most importantly, never pass null to Math.max/Math.min: both
+  // coerce it to zero.
+  if (!comparisonAvailable) {
+    const reasons = [...new Set(entries
+      .filter(([, scenario]) => !scenario.available)
+      .map(([, scenario]) => scenario.reason)
+      .filter(Boolean))];
+    return {
+      available: false,
+      reason: reasons.length === 1 ? reasons[0] : 'one_or_more_scenarios_unavailable',
+      message: 'Alternative PDGM scenario payments are unavailable, not $0. Use the official EMR/CMS-approved grouper until every required functional definition and scoring rule is source-verified in PennSync.',
+      unavailableScenarios,
+      scenarios,
+      maxPayment: null,
+      minPayment: null,
+      paymentRange: null,
+      highestScenario: null,
+      lowestScenario: null,
+    };
+  }
+
+  const payments = entries.map(([, scenario]) => scenario.totalPayment);
   const maxPayment = Math.max(...payments);
   const minPayment = Math.min(...payments);
 
   return {
+    available: true,
+    reason: null,
+    message: null,
+    unavailableScenarios: [],
     scenarios,
     maxPayment,
     minPayment,
     paymentRange: maxPayment - minPayment,
-    highestScenario: Object.entries(scenarios).find(([k, v]) => v.totalPayment === maxPayment)?.[0],
-    lowestScenario: Object.entries(scenarios).find(([k, v]) => v.totalPayment === minPayment)?.[0]
+    highestScenario: entries.find(([, scenario]) => scenario.totalPayment === maxPayment)?.[0] || null,
+    lowestScenario: entries.find(([, scenario]) => scenario.totalPayment === minPayment)?.[0] || null,
   };
 }
 
@@ -1055,91 +1207,53 @@ function calculatePDGMRevenue(data, wageIndex = 1.0, rates = DEFAULT_RATES, isOf
   const comorbidityMultipliers = comorbidityMultipliersTable[sourceTimingKey] || comorbidityMultipliersTable.community_early || COMORBIDITY_MULTIPLIERS.community_early;
   const comorbidityMultiplier = comorbidityMultipliers[comorbidityResult.level];
 
-  // Calculate total case-mix weight (clinical × functional × comorbidity)
-  // Note: Source and timing are already factored into the individual weights
-  const caseMixWeight = functionalResult.incomplete
-    ? null
-    : clinicalWeight * functionalMultiplier * comorbidityMultiplier;
-
-  // Apply the wage index to the LABOR SHARE only; the non-labor remainder is paid
-  // unadjusted (CMS methodology). With wageIndex 1.0 this leaves base unchanged.
-  const adjustedBasePayment = Math.round(basePayment * (laborShare * wageIndex + (1 - laborShare)) * 100) / 100;
-
-  // Calculate payment with wage-adjusted base
-  // An unverifiable functional score does not quietly become a cheap one.
-  // Without a verified, clinician-selected v2 response for every functional
-  // item there is no CMS functional level, so no case-mix weight and no payment
-  // estimate are reported. Everything that does NOT depend on the functional
-  // level is still returned, so the caller can see how far the calculation got.
-  if (functionalResult.incomplete) {
-    return {
-      incomplete: true,
-      reason: 'functional_input_not_verifiable',
-      missing: functionalResult.missing,
-      message:
-        'PDGM cannot be calculated: the functional input does not carry verified, '
-        + 'clinician-selected CMS-aligned OASIS responses for every functional item. '
-        + 'Enter and verify these items in your EMR — PennSync does not determine PDGM.',
-      clinicalGroup,
-      clinicalWeight: Math.round(clinicalWeight * 10000) / 10000,
-      admissionSource,
-      episodeTiming,
-      sourceTimingKey,
-      basePayment,
-      wageIndex,
-      adjustedBasePayment,
-      comorbidityLevel: comorbidityResult.level,
-      comorbidityCount: comorbidityResult.count,
-      functionalLevel: null,
-      functionalPoints: null,
-      functionalMultiplier: null,
-      caseMixWeight: null,
-      totalPayment: null,
-      isEstimate: true,
-      ...(inputWarnings.length ? { inputWarnings } : {}),
-    };
-  }
-
-  const totalPayment = caseMixWeight === null
-    ? null
-    : Math.round(adjustedBasePayment * caseMixWeight * 100) / 100;
-
+  // Fail closed on ALL reimbursement amounts. Functional-definition work alone
+  // cannot enable this path: the 432-group grouper blocker is independent and
+  // remains until verified CMS software/table parity has golden tests.
+  const blockers = [...(functionalResult.blockers || []), CMS_432_GROUPER_BLOCKER];
+  const sharedUnavailable = pdgmUnavailablePayload();
+  const actionRequired = [...new Set([
+    ...sharedUnavailable.actionRequired,
+    ...blockers.map((blocker) => blocker.action),
+  ])];
   return {
-    // The case-mix weights / base rate come from the merged PDGMRateConfig (admin
-    // values over built-in defaults). They are an ESTIMATE — not a billable
-    // amount — UNTIL the admin enters their official CMS numbers and marks the
-    // rate set official (is_official), at which point isEstimate flips to false.
-    isEstimate: !isOfficial,
-    estimateDisclaimer: isOfficial
-      ? null
-      : 'Estimate only — based on approximate case-mix weights, not confirmed official CMS PDGM rates. Set your official numbers in Admin → PDGM Rate Settings and mark them official.',
+    ...sharedUnavailable,
+    incomplete: true,
+    calculationStatus: 'blocked',
+    paymentAvailable: false,
+    reason: functionalResult.incomplete
+      ? (functionalResult.reason || 'functional_input_not_verifiable')
+      : CMS_432_GROUPER_BLOCKER.code,
+    missing: functionalResult.missing || [],
+    blockers,
+    actionRequired,
+    message:
+      `${sharedUnavailable.message} PennSync also does not yet `
+      + 'use the source-verified CMS HHGS 432-group payment grouper, and it also lacks '
+      + 'verified definitions/scoring treatment for required functional items. Changing '
+      + 'patient answers or marking a rate set official cannot clear these engine blockers. '
+      + 'Use the official EMR/CMS-approved grouper.',
+    isEstimate: true,
+    estimateDisclaimer: 'Unavailable — PennSync is not a verified CMS HHGS 432-group payment grouper.',
     ...(inputWarnings.length ? { inputWarnings } : {}),
-    basePayment: basePayment,
-    wageIndex: wageIndex,
-    adjustedBasePayment: adjustedBasePayment,
+    basePayment: null,
+    wageIndex,
+    adjustedBasePayment: null,
     clinicalGroup,
-    clinicalWeight: Math.round(clinicalWeight * 10000) / 10000,
-    functionalLevel: functionalResult.level,
-    functionalMultiplier: Math.round(functionalMultiplier * 10000) / 10000,
-    functionalPoints: functionalResult.points,
+    clinicalWeight: null,
+    functionalLevel: functionalResult.incomplete ? null : functionalResult.level,
+    functionalMultiplier: null,
+    functionalPoints: functionalResult.incomplete ? null : functionalResult.points,
     comorbidityLevel: comorbidityResult.level,
-    comorbidityMultiplier: Math.round(comorbidityMultiplier * 10000) / 10000,
+    comorbidityMultiplier: null,
     comorbidityCount: comorbidityResult.count,
     comorbidityHighValueCount: comorbidityResult.highValueCount,
     comorbidityMediumValueCount: comorbidityResult.mediumValueCount,
     admissionSource,
     episodeTiming,
     sourceTimingKey,
-    caseMixWeight: Math.round(caseMixWeight * 10000) / 10000,
-    totalPayment,
-    calculationBreakdown: {
-      formula: wageIndex !== 1.0
-        ? 'Wage-Adjusted Base (wage index applied to labor share only) × Clinical Weight × Functional Multiplier × Comorbidity Multiplier'
-        : 'Base Payment × Clinical Weight × Functional Multiplier × Comorbidity Multiplier',
-      values: wageIndex !== 1.0
-        ? `$${adjustedBasePayment} × ${clinicalWeight.toFixed(4)} × ${functionalMultiplier.toFixed(4)} × ${comorbidityMultiplier.toFixed(4)}`
-        : `$${basePayment} × ${clinicalWeight.toFixed(4)} × ${functionalMultiplier.toFixed(4)} × ${comorbidityMultiplier.toFixed(4)}`,
-      result: `$${totalPayment.toFixed(2)}`
-    }
+    caseMixWeight: null,
+    totalPayment: null,
+    calculationBreakdown: null,
   };
 }

@@ -35,8 +35,28 @@ import {
 import { format, subMonths, isWithinInterval, parseISO, endOfDay } from "date-fns";
 
 const COLORS = ['#10b981', '#3557b0', '#f59e0b', '#ef4444', '#8b5cf6'];
+const PDGM_FINANCIAL_ANALYTICS_ENABLED = false;
 
 export default function PDGMAnalyticsDashboard() {
+  if (!PDGM_FINANCIAL_ANALYTICS_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300">
+        <CardHeader className="bg-amber-50">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <AlertTriangle className="h-5 w-5 text-amber-700" /> PDGM Analytics
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4 text-sm text-amber-950">
+          <strong>Payment analytics are unavailable — not $0.</strong> Historical estimator values and AI-derived revenue impacts are excluded until a verified CMS HHGS 432-group grouper passes golden-case tests. Use the official EMR/CMS-approved grouper meanwhile.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return <PDGMAnalyticsDashboardEnabled />;
+}
+
+function PDGMAnalyticsDashboardEnabled() {
   const [dateRange, setDateRange] = useState({
     startDate: format(subMonths(new Date(), 3), 'yyyy-MM-dd'),
     endDate: format(new Date(), 'yyyy-MM-dd')

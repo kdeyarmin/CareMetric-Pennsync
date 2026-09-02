@@ -5,8 +5,8 @@
 // canViewFinancials; the dollar figures come from the server-gated
 // calculatePDGM endpoint and the agency's own imported payer table).
 //
-// Sections: patient summary → best coding for maximum reimbursement (with
-// case-mix weights) → items to clarify to protect/increase reimbursement →
+// Sections: patient summary → documented diagnosis coding review → clinical
+// and coding clarifications →
 // payer-optimized visit frequency → draft OASIS responses → PDGM grouping with
 // HIPPS code and the draft reimbursement estimate (or the contract-payer
 // estimate from the imported payer table for non-PDGM payers).
@@ -33,6 +33,11 @@ import { patientInitials, oasisItemLabel, formatOasisValue, auditGgDraft } from 
 import { collectComorbidityCapture } from "./comorbidityCapture.js";
 import { matchPayerRow, estimatePayerEpisode, estimateEpisodeMargin, plannedVisitsByDiscipline } from "../pdgm/payerRates.js";
 import { reconcileScenario } from "../pdgm/caseMixReconciliation.js";
+import {
+  PDGM_REIMBURSEMENT_ACTION,
+  PDGM_REIMBURSEMENT_BLOCKER,
+  PDGM_REIMBURSEMENT_ENABLED,
+} from "../pdgm/pdgmAvailability.js";
 
 // HIPPS position 1: timing × admission source.
 const HIPPS_TIMING_SOURCE = {
@@ -141,6 +146,73 @@ export function buildPdgmRequestFromReferral(referralData, coding = null) {
 
 const money = (n) => (Number.isFinite(n) ? `$${n.toFixed(2)}` : "—");
 
+const list = (value) => (Array.isArray(value) ? value.filter(Boolean) : value ? [value] : []);
+const stringList = (value) => list(value).map(String);
+
+/**
+ * Normalize the calculatePDGM payment contract for every referral-brief
+ * consumer. A blocked/incomplete calculation is unavailable even if an older
+ * response happens to carry a numeric fallback; conversely, a legitimate
+ * complete $0 result remains available.
+ */
+export function getPdgmPaymentAvailability(pdgm) {
+  if (!PDGM_REIMBURSEMENT_ENABLED) {
+    return {
+      available: false,
+      amount: null,
+      reason: "cms_verified_pdgm_grouper_unavailable",
+      message: `PDGM payment is unavailable — this is not a $0 result. ${PDGM_REIMBURSEMENT_BLOCKER}`,
+      actions: [PDGM_REIMBURSEMENT_ACTION],
+    };
+  }
+
+  const original = pdgm?.original || null;
+  const blockers = [
+    ...list(pdgm?.blockers),
+    ...list(original?.blockers),
+  ];
+  const actionRequired = [...new Set([
+    ...stringList(pdgm?.actionRequired),
+    ...stringList(original?.actionRequired),
+    ...blockers.map((blocker) => blocker?.action).filter(Boolean).map(String),
+  ])];
+  const incomplete = pdgm?.incomplete === true || original?.incomplete === true;
+  const explicitlyUnavailable =
+    pdgm?.paymentAvailable === false || original?.paymentAvailable === false;
+  const amount = original?.totalPayment;
+  const available = Boolean(original)
+    && !incomplete
+    && !explicitlyUnavailable
+    && original?.paymentAvailable === true
+    && Number.isFinite(amount);
+
+  const reason = available
+    ? null
+    : original?.reason
+      || pdgm?.reason
+      || (original ? "payment_not_available" : "calculation_not_run");
+  const message = available
+    ? null
+    : original?.message
+      || pdgm?.message
+      || (original
+        ? "PDGM payment is unavailable — this is not a $0 result."
+        : "The PDGM calculation did not return a payment; this is not a $0 result.");
+  const actions = available
+    ? []
+    : actionRequired.length
+      ? actionRequired
+      : ["Use the official EMR/CMS-approved grouper until the required inputs and source-verified scoring rules are available."];
+
+  return {
+    available,
+    amount: available ? amount : null,
+    reason,
+    message,
+    actions,
+  };
+}
+
 /**
  * True when this referral's payer is priced by the PDGM engine (Medicare FFS,
  * or a configured payer row whose payment_model is "pdgm"). Every other payer
@@ -181,7 +253,7 @@ export function collectRevenueClarifications({ coding, pdgm, eligibility, f2f, a
     });
   }
   if (pdgm?.original?.comorbidityLevel === "none") {
-    items.push({ area: "Comorbidities", detail: "No comorbidity adjustment is currently supported — confirm all active secondary diagnoses are documented and coded (a low/high adjustment raises the case-mix weight)." });
+    items.push({ area: "Comorbidities", detail: "Confirm all active secondary diagnoses are documented and coded; PennSync does not assign a PDGM comorbidity adjustment." });
   }
   if (f2f && f2f.status !== "valid") {
     items.push({ area: "Condition of payment", detail: `Face-to-Face: ${f2f.reasons.join(" ")}` });
@@ -242,6 +314,7 @@ export function buildClinicalManagerBrief({
   const f2f = f2fInput ? validateFaceToFace(f2fInput) : null;
   const eligibility = assessMedicareEligibility(referralData || {}, f2f);
   const original = pdgm?.original || null;
+  const paymentAvailability = getPdgmPaymentAvailability(pdgm);
 
   // ── payer pricing mode ──
   // The analyzer works for ALL payers: Medicare FFS (and any payer whose
@@ -256,11 +329,11 @@ export function buildClinicalManagerBrief({
   // ── HIPPS: PDGM-priced payers only; official table preferred over derivation ──
   const derived = !isPdgmPriced
     ? { hipps: null, reason: "Non-Medicare payer — PDGM/HIPPS does not apply; revenue comes from the payer contract table." }
-    : original
+    : paymentAvailability.available
     ? deriveHippsCode(original)
-    : { hipps: null, reason: "PDGM calculation unavailable." };
+    : { hipps: null, reason: "PDGM payment calculation unavailable." };
   let officialRecon = null;
-  if (isPdgmPriced && original && storedWeightTable) {
+  if (isPdgmPriced && paymentAvailability.available && storedWeightTable) {
     officialRecon = reconcileScenario(
       {
         clinicalGroup: original.clinicalGroup,
@@ -306,7 +379,7 @@ export function buildClinicalManagerBrief({
     }),
     coding.sequenced.length === 0 ? "No ICD-10 codes documented in the referral — codes are never auto-generated; obtain coded diagnoses before billing." : "",
     coding.primary
-      ? `Principal selected for the highest documented case-mix weight (codes only ever harvested from the referral, never invented).`
+      ? `Documented principal preserved for qualified coding review (codes are only harvested from the referral, never invented or re-sequenced for payment).`
       : "",
   ].filter(Boolean);
 
@@ -337,9 +410,9 @@ export function buildClinicalManagerBrief({
     // Revenue at risk: a LUPA replaces the FULL period payment with per-visit
     // payments. The full-period figure is known (calculatePDGM); the per-visit
     // rates are not configured, so the delta is framed against the known amount.
-    if (l.band !== "clears_all" && original?.totalPayment) {
+    if (l.band !== "clears_all" && paymentAvailability.available) {
       visitLines.push(
-        `  → Revenue at risk: a LUPA in period ${l.period} forfeits the full ${money(original.totalPayment)} period payment (replaced by per-visit payments). ${
+        `  → Revenue at risk: a LUPA in period ${l.period} forfeits the full ${money(paymentAvailability.amount)} period payment (replaced by per-visit payments). ${
           l.band === "below_all"
             ? "Add medically necessary visits to reach the threshold, or plan the discharge before the period opens."
             : "One added medically necessary visit may clear the threshold — verify against the HIPPS-specific value after coding."
@@ -372,7 +445,9 @@ export function buildClinicalManagerBrief({
   let marginRevenue = null;
   let marginHorizonNote = null;
   if (isPdgmPriced) {
-    marginRevenue = original ? Math.round(original.totalPayment * 2 * 100) / 100 : null;
+    marginRevenue = paymentAvailability.available
+      ? Math.round(paymentAvailability.amount * 2 * 100) / 100
+      : null;
   } else if (payerEstimate?.estimable) {
     marginRevenue = payerEstimate.amount;
     if (payerEstimate.model === "episodic") {
@@ -405,7 +480,17 @@ export function buildClinicalManagerBrief({
       ].filter(Boolean)
     : margin.notes;
 
-  const pdgmLines = original
+  const unavailablePdgmLines = [
+    "Draft 30-day period reimbursement: Unavailable — this is not a $0 result.",
+    `Reason: ${paymentAvailability.reason}`,
+    paymentAvailability.message && !/not a \$0 result/i.test(paymentAvailability.message)
+      ? `Details: ${paymentAvailability.message}`
+      : paymentAvailability.message,
+    ...paymentAvailability.actions.map((action) => `Required action: ${action}`),
+    ...(visitCosts ? ["Estimated episode margin: Unavailable — no $0 revenue assumption was used."] : []),
+  ].filter(Boolean);
+
+  const pdgmLines = paymentAvailability.available
     ? [
         `Clinical group: ${original.clinicalGroup} · ${original.admissionSource}/${original.episodeTiming}`,
         `Functional level: ${original.functionalLevel} (${original.functionalPoints} pts, from the draft OASIS below) · Comorbidity: ${original.comorbidityLevel}`,
@@ -416,11 +501,11 @@ export function buildClinicalManagerBrief({
         wageIndexMatch
           ? `Wage index ${wageIndexMatch.wage_index} applied for ${wageIndexMatch.label || `CBSA ${wageIndexMatch.cbsa}`} (matched by ${wageIndexMatch.matchedBy} from the patient's address).`
           : "",
-        `Draft 30-day period reimbursement: ${money(original.totalPayment)} (two-period 60-day episode if both bill: ≈ ${money(original.totalPayment * 2)} before late-period reweighting)`,
+        `Draft 30-day period reimbursement: ${money(paymentAvailability.amount)} (two-period 60-day episode if both bill: ≈ ${money(paymentAvailability.amount * 2)} before late-period reweighting)`,
         ...marginLines,
         rateBasisNote,
       ].filter(Boolean)
-    : ["PDGM estimate unavailable (calculation did not run)."];
+    : [...unavailablePdgmLines, ...marginLines].filter(Boolean);
 
   const payerLines = [];
   if (!isPdgmPriced && payerEstimate) {
@@ -460,10 +545,10 @@ export function buildClinicalManagerBrief({
 
   const sections = [
     ["PATIENT SUMMARY", summaryLines],
-    ["BEST CODING FOR MAXIMUM REIMBURSEMENT", codingLines],
-    ["CLARIFY TO PROTECT/INCREASE REIMBURSEMENT", clarificationLines],
+    ["DOCUMENTED DIAGNOSES — CODING REVIEW REQUIRED", codingLines],
+    ["CLINICAL AND CODING CLARIFICATIONS", clarificationLines],
     [`SUGGESTED VISIT FREQUENCY — ${plan.payer.label.toUpperCase()}`, visitLines],
-    ["DRAFT OASIS RESPONSES (AI pre-fill — verify at SOC)", [
+    ["UNVERIFIED EXTRACTED OASIS VALUES — CLINICIAN MUST SELECT OFFICIAL RESPONSES", [
       ...(oasisEntries.length ? oasisEntries.map(([k, v]) => `${k}: ${v}`) : ["No OASIS items pre-filled from this referral."]),
       ...ggIssues.map((i) => `VERIFY: ${i}`),
     ]],
@@ -486,7 +571,7 @@ export function buildClinicalManagerBrief({
   const pdfContent = [];
   for (const [title, lines] of sections) {
     pdfContent.push({ type: "heading", text: title });
-    if (title.startsWith("DRAFT OASIS") && oasisEntries.length) {
+    if (title.startsWith("UNVERIFIED EXTRACTED OASIS") && oasisEntries.length) {
       pdfContent.push({ type: "table", headers: ["OASIS item", "Draft response"], rows: oasisEntries });
       if (ggIssues.length) {
         pdfContent.push({ type: "text", text: ggIssues.map((i) => `VERIFY: ${i}`).join("\n") });
@@ -507,6 +592,7 @@ export function buildClinicalManagerBrief({
     pdfSubtitle: `${plan.payer.label}${preparedBy ? ` · Prepared by ${preparedBy}` : ""}`,
     pdfContent,
     hipps,
+    paymentAvailability,
     isPdgmPriced,
     payerEstimate,
     coding,

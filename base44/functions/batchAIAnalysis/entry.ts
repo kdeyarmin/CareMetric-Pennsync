@@ -26,6 +26,32 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// The mixed analysis endpoint reads patient and OASIS rows before its dormant
+// access checks and can expose AI-derived OASIS/compliance guidance. Pause the
+// whole endpoint until patient authorization is immutable and every analysis
+// type has a provenance-bound, clinically reviewed output contract.
+const BATCH_CLINICAL_AI_ENABLED = false;
+
+// <<<BEGIN SHARED HELPER: pdgmReimbursementGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PDGM_REIMBURSEMENT_ENABLED = false;
+const PDGM_REIMBURSEMENT_BLOCKER = 'The app does not yet use a verified CMS HHGS 432-group grouper with golden-case tests.';
+const PDGM_REIMBURSEMENT_ACTION = 'Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.';
+function pdgmUnavailablePayload(extra = {}) {
+  return {
+    featureEnabled: PDGM_REIMBURSEMENT_ENABLED,
+    calculationStatus: 'blocked',
+    paymentAvailable: false,
+    payment: null,
+    totalPayment: null,
+    caseMixWeight: null,
+    reason: 'cms_verified_pdgm_grouper_unavailable',
+    message: `PDGM reimbursement is unavailable — this is not a $0 result. ${PDGM_REIMBURSEMENT_BLOCKER}`,
+    actionRequired: [PDGM_REIMBURSEMENT_ACTION],
+    ...extra,
+  };
+}
+// <<<END SHARED HELPER: pdgmReimbursementGate>>>
+
 // <<<BEGIN SHARED HELPER: formatAge — generated, edit base44/_shared/backendHelpers.mjs>>>
 function parseLocalDate(value) {
   if (value == null || value === '') return null;
@@ -57,6 +83,16 @@ function formatAge(dob, now = new Date(), fallback = 'Unknown') {
 }
 // <<<END SHARED HELPER: formatAge>>>
 Deno.serve(async (req) => {
+  if (!BATCH_CLINICAL_AI_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'batch_clinical_ai_paused',
+      message: 'Batch clinical AI analysis is unavailable pending tenant-scoped authorization and clinical validation.',
+      analyses: {},
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -78,6 +114,13 @@ Deno.serve(async (req) => {
 
     if (!analysisTypes || !Array.isArray(analysisTypes)) {
       return Response.json({ error: 'analysisTypes array required' }, { status: 400 });
+    }
+
+    if (analysisTypes.length === 1 && analysisTypes[0] === 'pdgm') {
+      return Response.json({
+        success: true,
+        analyses: { pdgm: pdgmUnavailablePayload({ analysisAvailable: false }) },
+      });
     }
 
     // Fetch patient data once for all analyses
@@ -141,7 +184,9 @@ RECENT VISITS: ${recentVisits.length > 0 ? `Last visit ${recentVisits[0].visit_d
 `;
 
     // Batch all AI analyses in parallel
-    const analyses = {};
+    const analyses = analysisTypes.includes('pdgm')
+      ? { pdgm: pdgmUnavailablePayload({ analysisAvailable: false }) }
+      : {};
     const promises = [];
 
     if (analysisTypes.includes('compliance') && (roughNote || enhancedNote)) {
@@ -179,24 +224,6 @@ ${enhancedNote}
 Return ONLY valid JSON, no prose or code fences, with this shape:
 {"mappings":[{"oasis_item":"","evidence_from_note":"","what_is_established":"","what_is_missing":""}],"items_with_evidence":0,"items_needing_more_documentation":0}`
         }).then(result => { analyses.oasis = parseLLMJson(result) || {}; })
-      );
-    }
-
-    if (analysisTypes.includes('pdgm') && enhancedNote && patientData) {
-      promises.push(
-        base44.asServiceRole.integrations.Core.InvokeLLM({
-          model: "automatic",
-          prompt: `Analyze for PDGM optimization opportunities.
-
-${sharedContext}
-
-ENHANCED NOTE:
-${enhancedNote}
-
-Identify comorbidity capture, functional impairment documentation, and clinical group optimization opportunities.
-Return ONLY valid JSON, no prose or code fences, with this shape:
-{"opportunities":[{}],"revenue_impact":0,"summary":""}`
-        }).then(result => { analyses.pdgm = parseLLMJson(result) || {}; })
       );
     }
 

@@ -2,9 +2,7 @@ import { TrendingUp, AlertTriangle, Lock } from "lucide-react";
 import FinancialGate from "@/components/ui/FinancialGate";
 import {
   aggregateDocumentationGaps,
-  compareCohortRevenue,
   uploadsToClosedEpisodes,
-  ADMIN_REVENUE_NOTICE,
   MIN_COHORT_FOR_RATE,
 } from "./documentationGapAnalytics.js";
 
@@ -22,8 +20,6 @@ import {
 // information and becomes a coding target aimed at the person who has to attest
 // to it — so `documentationGapAnalytics` refuses open episodes outright rather
 // than leaving that to the caller.
-
-const money = (n) => (typeof n === "number" ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—");
 
 /**
  * @param {object} props
@@ -49,18 +45,15 @@ export default function DocumentationGapAdminPanel({ episodes = [], uploads = []
 
 function AdminBody({ episodes }) {
   const gaps = aggregateDocumentationGaps(episodes);
-  const revenue = compareCohortRevenue(episodes);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm" aria-labelledby="gap-admin-heading">
       <header className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
         <TrendingUp className="h-4 w-4 text-slate-600" aria-hidden="true" />
         <h3 id="gap-admin-heading" className="text-sm font-bold text-slate-800">
-          Documentation gaps and revenue context
+          Documentation gap patterns
         </h3>
       </header>
-
-      <p className="px-4 pt-3 text-xs text-slate-600">{ADMIN_REVENUE_NOTICE}</p>
 
       <div className="p-4">
         <p className="text-xs text-slate-500">
@@ -109,37 +102,9 @@ function AdminBody({ episodes }) {
           </p>
         )}
 
-        <h4 className="mt-5 text-xs font-bold text-slate-700">Closed-episode cohort comparison</h4>
-        {revenue.reportable ? (
-          <table className="mt-2 w-full border-collapse text-sm">
-            <caption className="sr-only">Mean payment and case mix, by whether the episode had a documentation gap</caption>
-            <thead>
-              <tr className="border-b border-slate-200">
-                <th scope="col" className="p-2 text-left text-xs font-semibold text-slate-600">Cohort</th>
-                <th scope="col" className="p-2 text-right text-xs font-semibold text-slate-600">Episodes</th>
-                <th scope="col" className="p-2 text-right text-xs font-semibold text-slate-600">Mean payment</th>
-                <th scope="col" className="p-2 text-right text-xs font-semibold text-slate-600">Mean case mix</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b border-slate-100">
-                <th scope="row" className="p-2 text-left text-xs font-normal text-slate-700">With documentation gaps</th>
-                <td className="p-2 text-right text-slate-700">{revenue.with_gaps.count}</td>
-                <td className="p-2 text-right text-slate-700">{money(revenue.with_gaps.mean_payment)}</td>
-                <td className="p-2 text-right text-slate-700">{revenue.with_gaps.mean_case_mix ?? "—"}</td>
-              </tr>
-              <tr>
-                <th scope="row" className="p-2 text-left text-xs font-normal text-slate-700">Without</th>
-                <td className="p-2 text-right text-slate-700">{revenue.without_gaps.count}</td>
-                <td className="p-2 text-right text-slate-700">{money(revenue.without_gaps.mean_payment)}</td>
-                <td className="p-2 text-right text-slate-700">{revenue.without_gaps.mean_case_mix ?? "—"}</td>
-              </tr>
-            </tbody>
-          </table>
-        ) : (
-          <p className="mt-2 text-xs text-slate-500">{revenue.not_reportable_reason}</p>
-        )}
-        <p className="mt-2 text-xs text-slate-500">{revenue.caveat}</p>
+        <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          <strong>Payment/case-mix cohort comparison is unavailable — not $0.</strong> Legacy estimator values are excluded until the verified CMS grouper is available.
+        </div>
       </div>
     </section>
   );

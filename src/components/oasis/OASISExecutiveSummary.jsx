@@ -6,9 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Sparkles,
   AlertTriangle,
-  DollarSign,
   CheckCircle2,
-  TrendingUp,
   FileText,
   Loader2,
   ChevronDown,
@@ -32,22 +30,20 @@ export default function OASISExecutiveSummary({ analysisResults, pdgmData }) {
     try {
       // Extract only essential data
       const topIssues = (analysisResults.compliance_concerns || []).slice(0, 2).map(c => c.concern || c);
-      const topRevenue = (analysisResults.revenue_tips || []).slice(0, 2).map(r => r.tip || r);
       const _topAccuracy = (analysisResults.accuracy_issues || []).slice(0, 2).map(a => a.issue || a);
 
       const result = await ai.run({
         model: "automatic",
         prompt: `Create executive summary for OASIS assessment.
 
-Scores: Overall ${analysisResults.overall_score}%, Compliance ${analysisResults.compliance_score}%, Revenue ${analysisResults.revenue_optimization_score}%
+Scores: Overall ${analysisResults.overall_score}%, Compliance ${analysisResults.compliance_score}%
 
 Top Issues:
 ${topIssues.join(', ')}
 
-Revenue Opportunities:
-${topRevenue.join(', ')}
+Do not generate OASIS response changes, PDGM grouping, payment, or revenue advice.
 
-Generate: 1 overall assessment sentence, 2-3 critical actions, 2 revenue highlights, 2 compliance risks, 1 bottom line.`,
+Generate: 1 overall assessment sentence, 2-3 critical actions, 2 compliance risks, 1 bottom line.`,
         response_json_schema: {
           type: "object",
           properties: {
@@ -60,16 +56,6 @@ Generate: 1 overall assessment sentence, 2-3 critical actions, 2 revenue highlig
                   action: { type: "string" },
                   urgency: { type: "string" },
                   impact: { type: "string" }
-                }
-              }
-            },
-            revenue_highlights: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  opportunity: { type: "string" },
-                  value: { type: "string" }
                 }
               }
             },
@@ -174,31 +160,6 @@ Generate: 1 overall assessment sentence, 2-3 critical actions, 2 revenue highlig
                           <span className="text-xs text-red-700">{item.impact}</span>
                         )}
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Revenue Highlights */}
-          {summary.revenue_highlights?.length > 0 && (
-            <div className="bg-white rounded-lg border-2 border-green-300 p-4">
-              <h3 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
-                <DollarSign className="w-4 h-4" />
-                Revenue Optimization
-              </h3>
-              <div className="space-y-2">
-                {summary.revenue_highlights.map((item, idx) => (
-                  <div key={idx} className="flex items-start gap-2 p-2 bg-green-50 rounded border border-green-200">
-                    <TrendingUp className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm text-green-900">{item.opportunity}</p>
-                      {item.value && (
-                        <Badge className="text-xs bg-green-600 text-white mt-1">
-                          {item.value}
-                        </Badge>
-                      )}
                     </div>
                   </div>
                 ))}

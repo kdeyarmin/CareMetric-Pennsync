@@ -1,20 +1,18 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Brain, CheckCircle2, Clock, FileText } from "lucide-react";
+import { AlertTriangle, Brain, CheckCircle2, Clock, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { optionsForItem, PAIN_FREQUENCY_OPTIONS } from "@/components/oasis/oasisScales";
-import { todayEastern, formatEastern } from "@/components/utils/timezone";
+import { formatEastern } from "@/components/utils/timezone";
 import { markStartOfCareCompleted } from "@/components/referral/intakeToSocTracker";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
-import { saveLegacyScreeningDraft } from "@/components/oasis/responseSchema/oasisWriteAdapter.js";
-import { itemSourceFor } from "@/components/oasis/specs/verification.js";
 // Each OASIS-E item uses its OWN valid range (M1810/M1845 = 0–3, M1850 = 0–5,
 // M1830/M1860 = 0–6) — see oasisScales.js. A single flat list either truncated the
 // 0–6 items or offered codes that don't exist for the 0–3/0–5 items.
@@ -38,6 +36,7 @@ export const VISIT_TYPES = ["Start of Care", "Resumption of Care", "Recertificat
 // declined). `active` is deliberately excluded: an active referral was already
 // admitted, so a new SOC OASIS shouldn't rewrite its SOC bookkeeping.
 const OPEN_REFERRAL_STATUSES = ["new", "pending", "processing", "awaiting_info", "ready_for_admission"];
+const OASIS_QUICK_UPDATE_ENABLED = false;
 
 /**
  * After a Start of Care OASIS is saved, close the intake→SOC clock on the
@@ -71,12 +70,10 @@ export async function completeReferralSocForPatient(patientId, socDate) {
   }
 }
 
-export default function OASISQuickUpdate({ patient }) {
-  const queryClient = useQueryClient();
+function EnabledOASISQuickUpdate({ patient }) {
   const [values, setValues] = useState({});
   const [visitType, setVisitType] = useState("");
   const [clinicalNote, setClinicalNote] = useState("");
-  const [saving, setSaving] = useState(false);
 
   const { data: recentAssessments = [] } = useQuery({
     queryKey: ["oasis-assessments", patient?.id],
@@ -86,59 +83,7 @@ export default function OASISQuickUpdate({ patient }) {
   });
 
   const handleSave = async () => {
-    if (!patient?.id || !visitType) return;
-    setSaving(true);
-    try {
-      // Persist the functional-status selections as schema-valid oasis_items and
-      // the note as clinical_summary. The previous payload wrote functional_status
-      // / clinical_note / clinician_* / source — none of which are OASISAssessment
-      // fields, so the clinical data was silently dropped — and omitted the
-      // required visit_type, so the row was empty/invalid. (Base44 records the
-      // creating user automatically, so clinician identity needs no custom field.)
-      const quickAnswers = QUICK_FIELDS
-        .filter((f) => values[f.key])
-        .map((f) => ({
-          id: f.item,
-          itemNumber: f.item,
-          itemName: f.label,
-          itemSource: itemSourceFor(f.item),
-          response: values[f.key],
-        }));
-      // Record the Eastern calendar day, not the UTC one — an evening ET save
-      // (after 8 PM EDT / 7 PM EST) would otherwise stamp tomorrow's date on a
-      // field that drives Medicare assessment-timing windows.
-      const assessmentDate = todayEastern();
-      // Routed through the single write adapter. It stamps
-      // `pennsync-oasis-response-v1-legacy` on every row, so a quick-update
-      // answer can never be read downstream as a CMS-aligned response.
-      await saveLegacyScreeningDraft({
-        assessment: {
-          patient_id: patient.id,
-          visit_type: visitType,
-          assessment_date: assessmentDate,
-          clinical_summary: clinicalNote,
-          status: "draft",
-        },
-        answers: quickAnswers,
-      });
-      if (visitType === "Start of Care") {
-        // Fire-and-forget (no await): close the referral's intake→SOC clock,
-        // never blocking or failing the quick-update save.
-        completeReferralSocForPatient(patient.id, assessmentDate);
-      }
-      toast.success("OASIS quick update saved as draft");
-      setValues({});
-      setVisitType("");
-      setClinicalNote("");
-      queryClient.invalidateQueries({ queryKey: ["oasis-assessments", patient?.id] });
-    } catch (err) {
-      // Without this, a failed save left the button stuck on "Saving…" with no
-      // feedback and the clinical draft silently lost.
-      console.error("Failed to save OASIS quick update:", err);
-      toast.error("Failed to save OASIS quick update. Please try again.");
-    } finally {
-      setSaving(false);
-    }
+    toast.error("OASIS saving is temporarily unavailable pending tenant security validation.");
   };
 
   const hasChanges = Object.keys(values).length > 0 || clinicalNote.trim().length > 0;
@@ -232,11 +177,11 @@ export default function OASISQuickUpdate({ patient }) {
           <div className="flex items-center gap-3">
             <Button
               onClick={handleSave}
-              disabled={saving || !hasChanges || !visitType}
+              disabled
               className="bg-indigo-600 hover:bg-indigo-700 min-h-[40px]"
             >
               <FileText className="w-4 h-4 mr-2" />
-              {saving ? "Saving…" : "Save as Draft"}
+              Save as Draft
             </Button>
             {hasChanges && !visitType && (
               <p className="text-xs text-amber-600 flex items-center gap-1">
@@ -253,4 +198,21 @@ export default function OASISQuickUpdate({ patient }) {
       </Card>
     </div>
   );
+}
+
+export default function OASISQuickUpdate(props) {
+  if (!OASIS_QUICK_UPDATE_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300 bg-amber-50">
+        <CardContent className="space-y-2 p-5 text-sm text-amber-950">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-5 w-5" /> OASIS Quick Update Paused
+          </div>
+          <p>Response entry is unavailable pending verified OASIS-E definitions and tenant-scoped assessment access.</p>
+          <p>No assessment history, response scale, clinical note, or draft write is loaded from this panel.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledOASISQuickUpdate {...props} />;
 }

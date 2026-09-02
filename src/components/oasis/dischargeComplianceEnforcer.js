@@ -1,15 +1,17 @@
 // Discharge-OASIS completion enforcer.
 //
-// A Discharge OASIS is what pairs with the SOC/ROC to produce a CMS change score
-// (see outcomeMeasureEngine.js). If an episode ends without one, the agency
-// SILENTLY loses that patient's demonstrated improvement and drifts below the
-// star-rating eligibility floors (>= 20 eligible episodes per measure, and >= 5
-// of the reported measures). This module flags those gaps.
+// A Discharge OASIS can pair with SOC/ROC for PennSync's unadjusted internal
+// improvement proxies (see outcomeMeasureEngine.js). Those proxies are neither
+// official CMS rates nor star inputs. This module flags an in-app documentation
+// gap only; companion-mode callers must not treat missing EMR data as absence.
 //
 // Pure and dependency-free (no Base44/Deno APIs) so it is unit-tested with
 // `node --test` and inlined by the monitorComplianceRisks cron.
 
-import { STAR_MIN_EPISODES, STAR_MIN_MEASURES } from "./outcomeMeasureEngine.js";
+import {
+  INTERNAL_SAMPLE_MIN_PAIRS,
+  INTERNAL_SAMPLE_MEASURE_TARGET,
+} from "./outcomeMeasureEngine.js";
 
 // A Discharge OASIS only "counts" as done once it is completed/submitted; a draft
 // left open is functionally missing for quality reporting. Status and visit-type
@@ -98,8 +100,8 @@ export function detectMissingDischargeOASIS(ctx, opts = {}) {
 
   if (!episodeLikelyEnded) return null;
 
-  // Deceased episodes are excluded from improvement measures anyway, so a missing
-  // discharge OASIS there is not a star-eligibility loss — skip (no false alarm).
+  // Deceased episodes are excluded from the internal improvement proxies, so a
+  // missing discharge row there should not produce this documentation signal.
   if (status === "deceased") return null;
 
   const severity = isDischargedPatient ? "critical" : "high";
@@ -119,8 +121,8 @@ export function detectMissingDischargeOASIS(ctx, opts = {}) {
   if (hasDraftDischarge) factors.push("A Discharge OASIS exists but is still in draft/in-progress");
   if (!hasBaseline) factors.push("No SOC/ROC assessment on file to pair for a change score");
   factors.push(
-    "Without a completed Discharge OASIS this episode contributes no demonstrated improvement",
-    `Missing episodes erode the ${STAR_MIN_EPISODES}-episode / ${STAR_MIN_MEASURES}-measure star eligibility floor`,
+    "Without a completed in-app Discharge OASIS, PennSync cannot calculate its internal episode proxy",
+    `Internal sample context uses ${INTERNAL_SAMPLE_MIN_PAIRS} pairs per measure and a ${INTERNAL_SAMPLE_MEASURE_TARGET}-measure marker; neither is official CMS eligibility`,
   );
 
   const alert = {
@@ -138,7 +140,7 @@ export function detectMissingDischargeOASIS(ctx, opts = {}) {
       hasDraftDischarge
         ? "Complete and submit the in-progress Discharge OASIS"
         : "Complete a Discharge OASIS assessment for this episode",
-      "Pair it with the SOC/ROC to compute the CMS change score",
+      "When the tenant-authorized outcome broker is available, pair it with SOC/ROC for the internal unadjusted proxy",
       "Verify functional items (M1860, M1850, M1830, M1400, M2020) are scored",
     ],
     risk_score: isDischargedPatient ? 88 : 72,
@@ -154,12 +156,9 @@ export function detectMissingDischargeOASIS(ctx, opts = {}) {
 }
 
 /**
- * Compute the agency-level star-eligibility gap from an outcome rollup
- * (rollupMeasures result). Surfaces which measures are short of the 20-episode
- * floor and how many more eligible episodes each needs, plus whether the agency
- * clears the minimum-measure bar. (CMS requires >= 5 of its 7 rated measures;
- * this app tracks the 5 OASIS-based ones, so every tracked measure must clear
- * the episode floor.)
+ * Compute an INTERNAL sample-context gap from an outcome rollup. This is only a
+ * local readiness marker for reviewing PennSync's unadjusted proxy; it is not a
+ * CMS reporting eligibility or star-rating calculation.
  *
  * @param {{measures: Array}} rollup
  * @returns {{
@@ -169,21 +168,21 @@ export function detectMissingDischargeOASIS(ctx, opts = {}) {
  *   measures_short: Array<{key,label,denominator,episodes_needed}>,
  * }}
  */
-export function computeStarEligibilityGap(rollup) {
+export function computeInternalSampleGap(rollup) {
   const measures = rollup?.measures || [];
-  const eligible = measures.filter((m) => m.denominator >= STAR_MIN_EPISODES);
+  const ready = measures.filter((m) => m.denominator >= INTERNAL_SAMPLE_MIN_PAIRS);
   const short = measures
-    .filter((m) => m.denominator < STAR_MIN_EPISODES)
+    .filter((m) => m.denominator < INTERNAL_SAMPLE_MIN_PAIRS)
     .map((m) => ({
       key: m.key,
       label: m.label,
       denominator: m.denominator,
-      episodes_needed: STAR_MIN_EPISODES - m.denominator,
+      episodes_needed: INTERNAL_SAMPLE_MIN_PAIRS - m.denominator,
     }));
   return {
-    at_risk: eligible.length < STAR_MIN_MEASURES,
-    measures_eligible: eligible.length,
-    measures_needed: Math.max(0, STAR_MIN_MEASURES - eligible.length),
+    below_internal_marker: ready.length < INTERNAL_SAMPLE_MEASURE_TARGET,
+    measures_sample_ready: ready.length,
+    measures_needed: Math.max(0, INTERNAL_SAMPLE_MEASURE_TARGET - ready.length),
     measures_short: short,
   };
 }

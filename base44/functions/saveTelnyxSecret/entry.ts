@@ -8,6 +8,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 
 /**
  * saveTelnyxSecret — super-admin-only. Stores the Telnyx API key (and the
@@ -49,7 +60,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
-    const isSuperAdmin = user.account_type === 'super_admin';
+    const isSuperAdmin = isProtectedSuperAdmin(user);
     if (!isSuperAdmin) {
       return Response.json({ error: 'Only the super administrator can manage integration secrets.' }, { status: 403 });
     }

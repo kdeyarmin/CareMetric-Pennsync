@@ -8,6 +8,11 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// This model-generated care-plan path includes reimbursement-oriented advice
+// and depends on mutable tenant claims. Keep it unavailable until suggestions
+// are payment-neutral, tenant-bound, and clinician-reviewed.
+const CARE_PLAN_SUGGESTIONS_AI_ENABLED = false;
+
 
 // <<<BEGIN SHARED HELPER: formatAge — generated, edit base44/_shared/backendHelpers.mjs>>>
 function parseLocalDate(value) {
@@ -76,6 +81,16 @@ async function assertPatientAccess(base44, user, patient) {
 }
 
 Deno.serve(async (req) => {
+  if (!CARE_PLAN_SUGGESTIONS_AI_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'care_plan_suggestions_ai_paused',
+      message: 'AI care-plan suggestions are unavailable pending tenant-scoped authorization and clinician review.',
+      suggestions: [],
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

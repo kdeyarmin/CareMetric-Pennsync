@@ -164,10 +164,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     // Same admin surface as the panels that invoke this (isAdminLike) — an
     // agency_admin can reach the "Test live connection" button, so accept them.
-    const isAdmin =
-      user.role === 'admin' ||
-      user.account_type === 'super_admin' ||
-      user.account_type === 'agency_admin';
+    const isAdmin = user.role === 'admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can test the Telnyx connection' }, { status: 403 });
     }

@@ -8,6 +8,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 
 // Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG
 // secret was retired). console.error/warn remain ungated for visibility.
@@ -25,7 +36,7 @@ Deno.serve(async (req) => {
     
     // Platform-wide TCPA default backfill — only super_admin. Facility admins
     // must not flip every tenant's AgencySettings via service role.
-    if (!user || user.account_type !== 'super_admin') {
+    if (!isProtectedSuperAdmin(user)) {
       return Response.json({ error: 'Super admin access required' }, { status: 403 });
     }
 

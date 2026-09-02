@@ -33,13 +33,15 @@ Disposition key — **only the first four describe work done in this change**:
 
 | Consumer | Occ. | Before | Under v2 | Disposition |
 | --- | --: | --- | --- | --- |
-| `src/components/hub-tabs/SmartOASISAssessment.jsx` | 1 | `OASISAssessment.create` with `item_source: itemSourceFor(...)` and a scalar `response` | Must route through the builder + protected writer | **gated** — export path rewritten; prefill unwired from `handleAnswer` |
-| `src/components/clinical/OASISQuickUpdate.jsx` | 3 | Direct `OASISAssessment.create` | Same | **gated** — flagged by the static writer test; must use the adapter |
+| `src/components/hub-tabs/SmartOASISAssessment.jsx` | 1 | `OASISAssessment.create` with `item_source: itemSourceFor(...)` and a scalar `response` | Must route through a server-owned tenant + chart-access broker | **paused** — save control disabled; no Patient side-write occurs |
+| `src/components/clinical/OASISQuickUpdate.jsx` | 3 | Direct `OASISAssessment.create` | Same | **paused** — save control disabled; browser adapter performs no I/O |
 | `src/components/oasis/AIGeneratedOASISAssessment.jsx` | 2 | Mapped `suggested_response` → `response`, `ai_suggested: true`, then `create` | AI may not originate a response | **removed** — `saveAssessment` deleted |
-| `src/components/hub-tabs/OASISAnalyzer.jsx` | 21 | `OASISUpload.create/update`; AI functional scores fed to PDGM | AI values are evidence, never official | **rewritten** — `onCorrection` wiring and rescore→PDGM removed |
-| `src/components/oasis/OASISComparisonView.jsx` | — | `OASISUpload.update` | Writes review metadata only, no response field | **unchanged** (approved writer); its comparison *display* is **OUTSTANDING** — not yet routed through `buildOasisOutput()` |
+| `src/components/oasis/OASISUploadWidget.jsx` | — | Browser file upload followed by `OASISUpload.create` | Must route through a server-owned tenant + chart-access broker | **paused at UI boundary** — no PDF upload or entity write runs |
+| `src/components/hub-tabs/OASISAnalyzer.jsx` | 21 | `OASISUpload.create/update`; AI functional scores fed to PDGM | AI values are evidence, never official | **paused by RLS** — dormant direct writes must be replaced by the broker; `onCorrection` wiring and rescore→PDGM removed |
+| `src/components/oasis/OASISApprovalWorkflow.jsx` | — | Browser `OASISUpload.update` | Review metadata still requires tenant + chart authorization | **paused by RLS** — direct write fails closed |
+| `src/components/oasis/OASISComparisonView.jsx` | — | `OASISUpload.update` | Review metadata still requires tenant + chart authorization | **paused by RLS** — direct write fails closed; its comparison *display* is **OUTSTANDING** |
 | `src/components/referral/referralExtraction.js` | 7 | Extracts OASIS-like fields from referrals | Extraction is evidence, not a response | **gated upstream** — its output can no longer reach a referral packet as a code (see `generateReferralOASISPacket`), and carries no `response_schema_id`, so every CMS consumer refuses it. The module itself is unedited. |
-| `base44/functions/saveOasisResponses/entry.ts` | 6 | *(new)* | The one protected write path | **new** |
+| `base44/functions/saveOasisResponses/entry.ts` | 6 | *(new)* | Future protected write path | **hard-paused** — HTTP 503 before client/data access; retained validator is non-activatable scaffolding |
 
 ## Output, print, copy, export, referral packets
 
@@ -108,8 +110,9 @@ Disposition key — **only the first four describe work done in this change**:
 
 | Consumer | Before | Under v2 | Disposition |
 | --- | --- | --- | --- |
-| `base44/entities/OASISAssessment.jsonc` | Ambiguous scalar `response`; open write RLS | Structured `response_value` + provenance; scoped write | **rewritten** (additive) |
-| `PatientOutcomeMetric`, `AgencyKPI`, `OASISUpload` | No input provenance | Schema ids, source ids, instrument versions, `calculation_version` | **rewritten** (additive) |
+| `base44/entities/OASISAssessment.jsonc` | Ambiguous scalar `response`; open write RLS | Structured `response_value` + provenance; service-only write | **rewritten** (additive); browser writers paused |
+| `PatientOutcomeMetric`, `AgencyKPI` | No input provenance | Schema ids, source ids, instrument versions, `calculation_version`; service-only access | **rewritten** (additive); UI paused |
+| `OASISUpload` | PHI/full extraction with browser write | Service-only write | **fail-closed** — upload/update/approval need a tenant-bound broker; hosted read RLS still requires redesign |
 | localStorage OASIS drafts | Keyed loosely | Keyed by patient + time point + instrument + schema | **rewritten** |
 
 ---

@@ -9,22 +9,41 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-
-// Financial visibility gate. MIRRORS src/lib/permissions.canViewFinancials
-// (which is isAdminLike): backend Deno modules can't import src/lib, so the
-// admin checks are duplicated here. Keep in sync. PDGM payment/revenue is
-// restricted to administrators; clinical staff (nurses) must never receive
-// dollar figures, even by calling this endpoint directly.
-function canViewFinancials(user) {
-  if (!user) return false;
-  return (
-    user.role === 'admin' ||
-    user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin'
-  );
+// <<<BEGIN SHARED HELPER: pdgmReimbursementGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PDGM_REIMBURSEMENT_ENABLED = false;
+const PDGM_REIMBURSEMENT_BLOCKER = 'The app does not yet use a verified CMS HHGS 432-group grouper with golden-case tests.';
+const PDGM_REIMBURSEMENT_ACTION = 'Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.';
+function pdgmUnavailablePayload(extra = {}) {
+  return {
+    featureEnabled: PDGM_REIMBURSEMENT_ENABLED,
+    calculationStatus: 'blocked',
+    paymentAvailable: false,
+    payment: null,
+    totalPayment: null,
+    caseMixWeight: null,
+    reason: 'cms_verified_pdgm_grouper_unavailable',
+    message: `PDGM reimbursement is unavailable — this is not a $0 result. ${PDGM_REIMBURSEMENT_BLOCKER}`,
+    actionRequired: [PDGM_REIMBURSEMENT_ACTION],
+    ...extra,
+  };
 }
+// <<<END SHARED HELPER: pdgmReimbursementGate>>>
+
+// This endpoint otherwise turns arbitrary caller payloads into an authoritative
+// OASIS report. Pause it until the server can resolve a tenant-bound,
+// clinician-reviewed analysis record instead of trusting request data.
+const COMPREHENSIVE_OASIS_REPORT_ENABLED = false;
 
 Deno.serve(async (req) => {
+  if (!COMPREHENSIVE_OASIS_REPORT_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'comprehensive_oasis_report_paused',
+      message: 'Comprehensive OASIS report export is unavailable pending tenant-scoped, clinician-reviewed provenance.',
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -37,11 +56,13 @@ Deno.serve(async (req) => {
     // Resolve once and gate EVERY financial block below. The revenue score and
     // revenue tips are financial content too — rendering them for a nurse put
     // dollar-driven revenue data into an exportable PDF despite the gate.
-    const allowFinancials = canViewFinancials(user);
+    // No caller-supplied financial payload has server-verifiable provenance.
+    // Keep every financial section disabled for every role.
+    const allowFinancials = false;
+    const pdgmUnavailable = pdgmUnavailablePayload();
 
     const {
       analysisResults = {},
-      pdgmData,
       revenueData,
       navigationData,
       qualityScore,
@@ -148,33 +169,13 @@ Deno.serve(async (req) => {
       addKeyValue('Audit Risk Level', qualityScore.audit_risk_level?.toUpperCase());
     }
 
-    // PDGM Navigator Results
-    if (navigationData) {
-      addSection('PDGM GROUPING ANALYSIS');
-      addKeyValue('Clinical Group', navigationData.clinical_group?.group_name || 'N/A');
-      addKeyValue('Confidence Level', navigationData.clinical_group?.confidence || 'N/A');
-      addKeyValue('Functional Level', `${navigationData.functional_level?.level || 'N/A'} (${navigationData.functional_level?.total_points || 0} points)`);
-      addKeyValue('Comorbidity Adjustment', navigationData.comorbidity_adjustment?.level || 'none');
-      addKeyValue('Admission Source', navigationData.admission_timing?.admission_source || 'N/A');
-      addKeyValue('Episode Timing', navigationData.admission_timing?.episode_timing || 'N/A');
-
-      if (navigationData.case_mix_calculation && allowFinancials) {
-        y += 3;
-        addKeyValue('Base Payment', `$${navigationData.case_mix_calculation.base_payment?.toFixed(2)}`);
-        addKeyValue('Clinical Weight', navigationData.case_mix_calculation.clinical_weight?.toFixed(4));
-        addKeyValue('Functional Multiplier', `×${navigationData.case_mix_calculation.functional_multiplier?.toFixed(2)}`);
-        addKeyValue('Comorbidity Multiplier', `×${navigationData.case_mix_calculation.comorbidity_multiplier?.toFixed(3)}`);
-        addKeyValue('Final Case-Mix Weight', navigationData.case_mix_calculation.final_case_mix_weight?.toFixed(4), { bold: true });
-        addKeyValue('Calculated Payment', `$${navigationData.case_mix_calculation.calculated_payment?.toFixed(2)}`, { bold: true });
-      }
-    }
-
-    // Revenue Analysis
-    if (revenueData && allowFinancials) {
-      addSection('REVENUE OPTIMIZATION ANALYSIS');
-      addKeyValue('Current Payment', `$${revenueData.original?.totalPayment?.toFixed(2) || 0}`);
-      addKeyValue('Optimized Payment', `$${revenueData.corrected?.totalPayment?.toFixed(2) || 0}`);
-      addKeyValue('Potential Increase', `$${revenueData.revenueDifference?.toFixed(2) || 0} (+${revenueData.percentageIncrease?.toFixed(1) || 0}%)`);
+    // Never export legacy/LLM-derived PDGM grouping, functional points, weights,
+    // or payments. Those values are not a verified CMS HHGS 432-group result.
+    if (navigationData || revenueData) {
+      addSection('PDGM NAVIGATOR');
+      addKeyValue('Grouping and Payment', 'Unavailable — not $0');
+      addKeyValue('Unavailable Reason', pdgmUnavailable.message);
+      addKeyValue('Required Action', pdgmUnavailable.actionRequired.join('; '));
     }
 
     // Key Recommendations
@@ -220,45 +221,6 @@ Deno.serve(async (req) => {
         doc.setFont('helvetica', 'normal');
         y = addText(`Issue: ${concern.issue}`, margin + 3, y, { fontSize: 8, maxWidth: contentWidth - 3 });
         y = addText(`Action: ${concern.recommendation}`, margin + 3, y, { fontSize: 8, maxWidth: contentWidth - 3, color: [34, 197, 94] });
-        y += 3;
-      });
-    }
-
-    // Revenue Tips
-    if (allowFinancials && analysisResults.revenue_tips?.length > 0) {
-      addSection('REVENUE OPTIMIZATION OPPORTUNITIES');
-      analysisResults.revenue_tips.slice(0, 10).forEach((tip, idx) => {
-        if (y > 250) {
-          doc.addPage();
-          y = 20;
-        }
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${idx + 1}. ${tip.category} - ${tip.potential_impact} impact`, margin, y);
-        y += 5;
-        doc.setFont('helvetica', 'normal');
-        y = addText(`Opportunity: ${tip.opportunity}`, margin + 3, y, { fontSize: 8, maxWidth: contentWidth - 3 });
-        y = addText(`Action: ${tip.specific_action}`, margin + 3, y, { fontSize: 8, maxWidth: contentWidth - 3, color: [59, 130, 246] });
-        y += 3;
-      });
-    }
-
-    // PDGM Discrepancies
-    if (navigationData?.discrepancies?.length > 0) {
-      addSection('PDGM DISCREPANCIES');
-      navigationData.discrepancies.forEach((disc, idx) => {
-        if (y > 250) {
-          doc.addPage();
-          y = 20;
-        }
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${idx + 1}. ${disc.type} - ${disc.severity}`, margin, y);
-        y += 5;
-        doc.setFont('helvetica', 'normal');
-        y = addText(`Finding: ${disc.finding}`, margin + 3, y, { fontSize: 8, maxWidth: contentWidth - 3 });
-        y = addText(`Expected: ${disc.expected} | Actual: ${disc.actual}`, margin + 3, y, { fontSize: 8, maxWidth: contentWidth - 3 });
-        y = addText(`Fix: ${disc.recommendation}`, margin + 3, y, { fontSize: 8, maxWidth: contentWidth - 3, color: [34, 197, 94] });
         y += 3;
       });
     }

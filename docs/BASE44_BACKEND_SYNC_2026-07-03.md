@@ -11,6 +11,16 @@
 > CareMetric AI app id. The gap analysis below is kept for the record; §5's
 > drift numbers apply to the retired PENNSync app, not production.
 
+> **SAFETY CORRECTION (2026-09-02):** the outcome/OASIS instructions below were
+> superseded. Do not register `computeOutcomeMeasures`, expose browser
+> recomputation, or treat its unadjusted proxies as CMS/star results. The
+> function is internal-secret-only and requires one `agency_id`, explicit stable
+> dates, and `period_type`. `PatientOutcomeMetric`, `AgencyKPI`, and
+> `OASISAssessment` and PHI-bearing `OASISUpload` writes are service-role-only;
+> OASIS saving/upload mutation and browser KPI reporting are paused pending a
+> server-owned tenant/patient authorization boundary.
+> `docs/REPOSITORY_CONSOLIDATION_2026-09-02.md` is authoritative.
+
 This repo is the source of truth for backend code, but the Deno functions and
 entity schemas only *run* on the hosted Base44 platform. This doc lists exactly
 what exists in the repo but **not** on the live PENNSync app, and provides a
@@ -33,8 +43,8 @@ net-new work; broader drift is called out at the end.
 | `EmployeePayrollProfile` | Timesheets/payroll | `employee_email` | admin only; reads: own row or admin |
 | `VisitPointConfig` | Timesheets/payroll | — (single active config row) | admin only; reads open |
 | `ScheduledSignatureReminder` | E-signature reminders | `document_id`, `send_at` | admin only; reads: creator, `requested_by`, admin |
-| `PatientOutcomeMetric` | CMS outcome measures | `patient_id`, `episode_start` | default |
-| `AgencyKPI` | CMS outcome measures | `metric_name`, `metric_category`, `period_start`, `period_end`, `metric_value` | default |
+| `PatientOutcomeMetric` | Unadjusted internal outcome proxies | `agency_id`, `patient_id`, `episode_start` | service-role only |
+| `AgencyKPI` | Agency-scoped internal proxy rollups | `agency_id`, `metric_name`, `metric_category`, `period_start`, `period_end`, `metric_value` | service-role only |
 
 Full JSON schemas (fields, enums, defaults, RLS) live in this repo at
 `base44/entities/<Name>.jsonc` — copy them verbatim.
@@ -93,13 +103,11 @@ Function names must match exactly — the deployed frontend already invokes them
   applies), unique `entry_id`, verify-and-retry (up to 4 attempts); mode
   `update` targets its entry by `visit_id`.
 
-**Quality / outcomes**
-- `computeOutcomeMeasures` — **cron (nightly)**; pairs each Discharge OASIS
-  with its SOC/ROC, computes CMS improvement measures (M1860/M1850/M1830/
-  M1400/M2020), GG discharge function, readmission/ER proxies; writes one
-  `PatientOutcomeMetric` per episode (idempotent upsert) and rolls up
-  `AgencyKPI` rows per measure. Cron path unauthenticated-allowed,
-  authenticated non-admin rejected.
+**Quality / outcomes — paused**
+- `computeOutcomeMeasures` computes agency-scoped, unadjusted internal proxies;
+  it is not an official CMS/star calculation. It is internal-secret-only and
+  requires `{agency_id, period_start, period_end, period_type}`. Do not schedule
+  or invoke it until the consolidation release gates pass.
 
 **E-signature reminders**
 - `dispatchScheduledSignatureReminders` — **cron (every 15 min)**; delivers due
@@ -114,7 +122,7 @@ Function names must match exactly — the deployed frontend already invokes them
 |---|---|
 | `dispatchScheduledSignatureReminders` | every 15 min |
 | `checkStaleFollowUpRequests` | daily |
-| `computeOutcomeMeasures` | nightly |
+| `computeOutcomeMeasures` | **PAUSED — no trigger** |
 
 (Existing cron roster: `docs/SECRETS-WEBHOOKS-LAUNCH-RUNBOOK.md` §5 — the
 one-fax-processor-only and single-`dispatchScheduledSms` rules still apply.)
@@ -211,13 +219,13 @@ SECTION 1 — NEW ENTITIES (8)
    sent_at, reminder_count (number), failure_reason, canceled_by, canceled_at.
    RLS: read for creator, requested_by, or admin; write admin-only.
 
-7. PatientOutcomeMetric — one row per completed episode with CMS outcome
-   results. Fields: patient_id (required), episode_start (required),
+7. PatientOutcomeMetric — one row per completed episode with an unadjusted
+   internal proxy. Fields include agency_id, patient_id, episode_start,
    episode_end, admission_source (hospital|community|snf|other),
    discharge_disposition (remained_home|hospital|snf|deceased|other),
    length_of_service (number), total_visits_provided (number),
    readmission_30_day, readmission_60_day, er_visit_30_day (booleans),
-   functional_improvement (object), gg_discharge_function_score (number),
+   functional_improvement (object), internal_gg_18_item_raw_sum (non-CMS number),
    measure_results (array of objects), outcome_measure_source (string),
    pph_prevention (object), care_plan_goals_achieved,
    care_plan_goals_total, goal_achievement_rate (numbers),
@@ -372,25 +380,13 @@ Clinical documentation:
 
 Quality / outcomes:
 
-15. computeOutcomeMeasures — scheduled job (cron auth convention; admins may
-    also invoke manually with optional {period_start, period_end,
-    benchmark}). Pairs every Discharge OASIS assessment with its matching
-    SOC/ROC for the same patient episode and computes the CMS home-health
-    outcome measures: improvement in Ambulation (M1860, 0-6 scale),
-    Bed Transferring (M1850), Bathing (M1830, exclude start-or-end 6),
-    Dyspnea (M1400), Oral Medication Management (M2020) — each excluding
-    start value 0; plus GG self-care/mobility discharge function score
-    (GG0130 a,b,c,e,f,g,h + GG0170 a-f,i-m; codes 7/9/10/88 = not attempted),
-    deceased dispositions excluded. Writes one PatientOutcomeMetric per
-    discharged episode (idempotent upsert on patient+episode so reruns don't
-    duplicate) and rolls up AgencyKPI rows per measure (star eligibility:
-    >=20 episodes and >=5 reportable measures). Returns {success,
-    discharges_evaluated, patient_outcome_metrics_written,
-    skipped_missing_episode_date, agency_kpis_written,
-    star_eligible_measure_count, star_eligible, measures}.
-    IMPORTANT: this scoring must mirror the unit-tested engine in the repo at
-    src/components/oasis/outcomeMeasureEngine.js — copy the repo's
-    base44/functions/computeOutcomeMeasures/entry.ts verbatim if possible.
+15. computeOutcomeMeasures — **PAUSED** internal-secret-only job. It requires
+    one explicit `{agency_id, period_start, period_end, period_type}` request,
+    rejects capped/invalid inputs, and writes only same-agency versioned internal
+    proxy rows. It does not emit official CMS rates, star eligibility, or the CMS
+    HH QRP Discharge Function measure; its 18-item GG value is explicitly an
+    internal raw sum. Do not register a trigger or browser invoker. Use the
+    repository implementation only after every consolidation release gate passes.
 
 E-signature reminders:
 
@@ -408,10 +404,10 @@ E-signature reminders:
 
 SECTION 3 — SCHEDULED TRIGGERS
 
-Register these scheduled triggers (POST with empty body):
+Register approved scheduled triggers (POST with their documented body):
 - dispatchScheduledSignatureReminders: every 15 minutes
 - checkStaleFollowUpRequests: daily
-- computeOutcomeMeasures: nightly (daily)
+- computeOutcomeMeasures: **DO NOT REGISTER**; an empty body is always invalid
 
 Do not add a second schedule for any existing cron, and keep the existing
 rules: only ONE of processScheduledFaxes / processScheduledFaxesByPriority

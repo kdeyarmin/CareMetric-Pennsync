@@ -273,13 +273,13 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
       'Overall Score',
       'Accuracy Score',
       'Compliance Score',
-      'Revenue Score',
       'Primary Diagnosis',
       'Clinical Group',
       'Functional Level',
-      'Estimated Payment',
+      'PDGM Payment',
+      'PDGM Payment Reason',
+      'PDGM Payment Action',
       'Critical Issues',
-      'Revenue Opportunities',
       'Status'
     ];
 
@@ -296,13 +296,13 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
         result.overall_score || 0,
         result.accuracy_score || 0,
         result.compliance_score || 0,
-        result.revenue_optimization_score || 0,
         pdgm.primary_diagnosis || 'Not specified',
-        pdgm.clinical_group || 'N/A',
-        pdgm.functional_level || 'N/A',
-        pdgm.estimated_payment || 0,
+        'Unavailable',
+        'Unavailable',
+        'Unavailable',
+        'Verified CMS HHGS 432-group grouper is not implemented; legacy estimates are excluded.',
+        'Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.',
         result.accuracy_issues?.length || 0,
-        result.revenue_tips?.length || 0,
         file.status
       ];
     });
@@ -373,7 +373,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
       const groups = {
         'Critical Issues': [],
         'Compliance Concerns': [],
-        'Revenue Opportunities': [],
         'Good Quality': []
       };
       
@@ -383,8 +382,6 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
           groups['Critical Issues'].push(file);
         } else if (result.compliance_concerns?.length > 0) {
           groups['Compliance Concerns'].push(file);
-        } else if (result.revenue_tips?.length > 0) {
-          groups['Revenue Opportunities'].push(file);
         } else {
           groups['Good Quality'].push(file);
         }

@@ -112,14 +112,13 @@ test("before cutover the series is EMPTY rather than mixing incompatible scales"
   assert.ok(res.excluded_reason.length > 0);
 });
 
-test("aggregatePaymentTrends keeps only rows with date + payment", () => {
+test("aggregatePaymentTrends excludes legacy estimator values", () => {
   const rows = aggregatePaymentTrends([
     u({ assessment_date: "2026-01-01", estimated_payment: 100, patient_name: "Amy" }),
     u({ assessment_date: "2026-02-01" }), // no payment
     u({ estimated_payment: 200 }), // no date
   ]);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].payment, 100);
+  assert.deepEqual(rows, []);
 });
 
 test("computeSummaryStats handles populated and empty inputs", () => {
@@ -129,11 +128,11 @@ test("computeSummaryStats handles populated and empty inputs", () => {
   ]);
   assert.equal(stats.totalAssessments, 2);
   assert.equal(stats.avgScore, 85);
-  assert.equal(stats.avgPayment, 2000);
-  assert.equal(stats.totalRevenue, 4000);
+  assert.equal(stats.avgPayment, null);
+  assert.equal(stats.totalRevenue, null);
 
   const empty = computeSummaryStats([]);
-  assert.deepEqual(empty, { totalAssessments: 0, avgScore: 0, avgPayment: 0, totalRevenue: 0 });
+  assert.deepEqual(empty, { totalAssessments: 0, avgScore: 0, avgPayment: null, totalRevenue: null });
 });
 
 test("aggregateDemographics routes an unparseable dob to Unknown, not 85+", () => {

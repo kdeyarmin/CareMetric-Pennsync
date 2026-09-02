@@ -1,24 +1,23 @@
-// OASIS Outcome-Measure Engine — the keystone deterministic quality engine.
+// OASIS Outcome-Proxy Engine — deterministic internal quality signals.
 //
 // Pairs a Discharge OASIS with the matching SOC/ROC assessment and computes the
-// CMS home-health OUTCOME (change) measures that feed the Quality-of-Patient-Care
-// (QoPC) star ratings and the Home Health Value-Based Purchasing (HHVBP) score:
+// app's unadjusted improvement proxies over verified response codes:
 //
 //   • Improvement in Ambulation/Locomotion        (M1860)
 //   • Improvement in Bed Transferring              (M1850)
 //   • Improvement in Bathing                       (M1830)
 //   • Improvement in Dyspnea / Shortness of Breath (M1400)
 //   • Improvement in Management of Oral Medications(M2020)
-//   • GG Discharge Function Score                  (GG0130 self-care + GG0170 mobility)
+//   • Internal 18-item GG raw sum                  (non-CMS context only)
 //
 // These are "improvement" measures: on every OASIS functional/symptom scale a
 // LOWER numeric code means MORE independent / less impaired, so a patient
 // "improved" when the discharge value is strictly LESS than the SOC/ROC value.
 //
-// The engine applies CMS-style denominators/exclusions (no room to improve,
-// unratable codes, episodes ending in death, missing data) so the rates it emits
-// mirror the CMS Home Health OASIS-Based Quality Measures specification. It is
-// pure and dependency-free (no Base44/Deno APIs) so it is unit-tested with
+// The engine applies explicit local exclusions (no room to improve, unratable
+// codes, episodes ending in death, missing data). Its rates are not official
+// CMS results: they do not implement CMS risk adjustment or the complete
+// published specifications. It is pure and dependency-free so it is tested with
 // `node --test` and inlined by the computeOutcomeMeasures edge function.
 //
 // Design deliberately mirrors oasisScoringEngine.js: a declarative table of
@@ -110,6 +109,12 @@ export const IMPROVEMENT_MEASURES = [
     metricField: "medication_management_improved",
   },
 ];
+const OUTCOME_PROVENANCE_ITEMS = new Set([
+  ...IMPROVEMENT_MEASURES
+    .filter((measure) => measure.definitionId)
+    .map((measure) => measure.item),
+  "m2420",
+]);
 
 // Per-measure result status.
 export const MEASURE_STATUS = {
@@ -118,24 +123,20 @@ export const MEASURE_STATUS = {
   EXCLUDED: "excluded",
 };
 
-// CMS star eligibility: a measure needs at least this many eligible (in-
-// denominator) episodes to receive a star, and an agency needs at least 5 of the
-// reported measures to receive an overall QoPC star rating.
 /**
  * Bumped whenever the deterministic outcome core changes meaning, so a stored
  * metric records which rules produced it and stale records can be retired
  * rather than silently re-read under new rules.
  */
-export const OUTCOME_CALCULATION_VERSION = "2026-09-01.v2-cms-e2";
+export const OUTCOME_CALCULATION_VERSION = "2026-09-02.v3-internal-proxy";
 
-export const STAR_MIN_EPISODES = 20;
-export const STAR_MIN_MEASURES = 5;
+// Internal sample-size markers only; never CMS eligibility.
+export const INTERNAL_SAMPLE_MIN_PAIRS = 20;
+export const INTERNAL_SAMPLE_MEASURE_TARGET = 5;
 
-// GG Discharge Function Score item set (CMS "Discharge Function Score" measure,
-// HH QRP FY2025). Self-care GG0130 + mobility GG0170. Each item is coded 01–06
-// on the 6-point GG scale (06 = independent). "Activity not attempted" codes
-// (07/09/10/88) are imputed to the most-dependent assessable value (01) per the
-// CMS imputation convention.
+// PennSync's legacy 18-item GG context set. This is a simple documented-item
+// sum, NOT the CMS HH QRP Discharge Function measure (which uses a different
+// activity set and methodology). The result is labeled internal everywhere.
 export const GG_FUNCTION_ITEMS = [
   "gg0130a", "gg0130b", "gg0130c", "gg0130e", "gg0130f", "gg0130g", "gg0130h",
   "gg0170a", "gg0170b", "gg0170c", "gg0170d", "gg0170e", "gg0170f",
@@ -169,25 +170,76 @@ function toNum(v) {
  */
 export function scorableCodesFromAssessment(assessment) {
   const { included, excluded } = partitionRowsForCms(assessment);
+  const allRows = Array.isArray(assessment?.oasis_items) ? assessment.oasis_items : [];
+  const normalizedItem = (row) => String(row?.item_number || "")
+    .toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normalizedDefinition = (row) => String(row?.definition_id || "")
+    .toLowerCase().replace(/[^a-z0-9]/g, "");
+  const itemCounts = new Map();
+  const definitionCounts = new Map();
+  for (const row of allRows) {
+    const key = normalizedItem(row);
+    if (key) itemCounts.set(key, (itemCounts.get(key) || 0) + 1);
+    const definitionKey = normalizedDefinition(row);
+    if (definitionKey) {
+      definitionCounts.set(definitionKey, (definitionCounts.get(definitionKey) || 0) + 1);
+    }
+  }
+  const duplicateKeys = new Set(
+    [...itemCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([key]) => key),
+  );
+  const duplicateDefinitions = new Set(
+    [...definitionCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([key]) => key),
+  );
+  const resolvedInstrument = resolveInstrumentForAssessment(assessment);
   const codes = {};
+  const additionalExcluded = [...duplicateKeys].map((key) => ({
+    item: key,
+    reasons: ["duplicate_item_response"],
+  }));
+  additionalExcluded.push(...[...duplicateDefinitions].map((key) => ({
+    item: key,
+    reasons: ["duplicate_definition_response"],
+  })));
   for (const { row, verdict } of included) {
     const def = verdict.definition;
+    const key = normalizedItem(row);
+    // Whole-assessment uniqueness is fail closed. Even two individually valid
+    // rows are ambiguous; array order must never decide which code is scored.
+    if (duplicateKeys.has(key) || duplicateDefinitions.has(normalizedDefinition(row))) continue;
+    // The shared registry accepts a missing item_spec_version for legacy
+    // display compatibility. Outcome computation is stricter: it requires the
+    // row to state and match the resolved instrument.
+    if (!row.item_spec_version || row.item_spec_version !== resolvedInstrument.instrument) {
+      additionalExcluded.push({
+        item: row?.item_number || row?.definition_id || "unknown",
+        reasons: [row.item_spec_version ? "instrument_mismatch" : "missing_item_spec_version"],
+      });
+      continue;
+    }
     // Only single-valued scales feed the improvement measures.
     if (def.response_shape !== "single") continue;
     codes[String(def.item_number).toLowerCase()] = row.response_value.code;
   }
   return {
     codes,
-    excluded: excluded.map(({ row, reasons }) => ({
-      item: row?.item_number || row?.definition_id || "unknown",
-      reasons,
-    })),
+    excluded: [
+      ...excluded.map(({ row, reasons }) => ({
+        item: row?.item_number || row?.definition_id || "unknown",
+        reasons,
+      })),
+      ...additionalExcluded,
+    ],
     schemaId: assessment?.response_schema_id || null,
   };
 }
 
 /**
- * Flat answers for the GG Discharge Function Score ONLY.
+ * Flat answers for the internal 18-item GG context sum ONLY.
  *
  * GG0130/GG0170 are NOT among the 18 items whose PennSync response sets were
  * found to conflict with CMS, so they are outside this cutover and keep their
@@ -200,9 +252,15 @@ export function scorableCodesFromAssessment(assessment) {
  */
 function ggAnswersFrom(source) {
   const out = {};
+  const counts = new Map();
   const take = (key, raw) => {
     const k = String(key).toLowerCase().replace(/[^a-z0-9]/g, "");
     if (!GG_FUNCTION_ITEMS.includes(k)) return;
+    counts.set(k, (counts.get(k) || 0) + 1);
+    if (counts.get(k) > 1) {
+      delete out[k];
+      return;
+    }
     const n = toNum(raw);
     if (n !== null) out[k] = n;
   };
@@ -233,6 +291,11 @@ function ggAnswersFrom(source) {
 export function answersFromOasisItems(items) {
   if (!Array.isArray(items)) return {};
   const out = {};
+  const counts = new Map();
+  for (const it of items) {
+    const key = String(it?.item_number || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (key) counts.set(key, (counts.get(key) || 0) + 1);
+  }
   for (const it of items) {
     if (!it || it.item_number == null) continue;
     if (it.response_schema_id !== RESPONSE_SCHEMA_V2_CMS_E2) continue;
@@ -240,7 +303,8 @@ export function answersFromOasisItems(items) {
     if (it.response_origin !== "clinician_selected") continue;
     const v = it.response_value;
     if (!v || typeof v !== "object" || typeof v.code !== "string") continue;
-    out[String(it.item_number).toLowerCase().replace(/[^a-z0-9]/g, "")] = v.code;
+    const key = String(it.item_number).toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (counts.get(key) === 1) out[key] = v.code;
   }
   return out;
 }
@@ -288,7 +352,7 @@ function evaluateMeasure(measure, startAns, dcAns) {
   };
 }
 
-export function computeGGDischargeFunctionScore(dcAns) {
+export function computeInternalGg18ItemRawSum(dcAns) {
   let score = 0;
   let scored = 0;
   for (const item of GG_FUNCTION_ITEMS) {
@@ -309,9 +373,9 @@ export function computeGGDischargeFunctionScore(dcAns) {
   };
 }
 
-// Discharge dispositions (M2420 / PatientOutcomeMetric.discharge_disposition)
-// that remove an episode from the improvement-measure denominators. Death is
-// always excluded; the numeric M2420 codes are 2=hospital, 3=rehab, 4=NH.
+// Death removes an episode from the internal improvement-proxy denominators.
+// OASIS-E2 M2420 itself has no death or inpatient-facility code: its codes 1–4
+// describe community/hospice/out-of-service-area outcomes.
 const DECEASED_DISPOSITIONS = new Set(["deceased", "died", "death", "expired"]);
 
 function isDeceasedEpisode({ dischargeDisposition }) {
@@ -334,7 +398,7 @@ function isDeceasedEpisode({ dischargeDisposition }) {
  *   improved_count: number,
  *   eligible_measure_count: number,
  *   overall_improvement_score: (number|null),
- *   gg_discharge_function: object,
+ *   internal_gg_18_item_raw_sum: object,
  * }}
  */
 export function computeEpisodeOutcome({ start, discharge, dischargeDisposition, startAssessment, dischargeAssessment } = {}) {
@@ -353,23 +417,57 @@ export function computeEpisodeOutcome({ start, discharge, dischargeDisposition, 
   const startAns = startX.codes;
   const dcAns = dcX.codes;
 
-  // Episode-level fail-closed gates. A CMS-labeled rate may only be computed
+  // Episode-level fail-closed gates. An internal proxy may only be computed
   // when BOTH endpoints are trustworthy and carry compatible schemas; a mixed
   // pair is excluded with a visible reason and contributes ZERO denominator —
   // never coerced to "no improvement".
   const episodeExclusions = [];
   const startSchema = startAssessment ? startAssessment.response_schema_id : startX.schemaId;
   const dcSchema = dischargeAssessment ? dischargeAssessment.response_schema_id : dcX.schemaId;
-  if (startAssessment && !resolveInstrumentForAssessment(startAssessment).resolved) {
+  const startInstrument = startAssessment && resolveInstrumentForAssessment(startAssessment);
+  const dischargeInstrument = dischargeAssessment && resolveInstrumentForAssessment(dischargeAssessment);
+  if (startAssessment && (
+    !startInstrument.resolved || startAssessment.instrument_version !== startInstrument.instrument
+  )) {
     episodeExclusions.push("start_instrument_unresolved");
   }
-  if (dischargeAssessment && !resolveInstrumentForAssessment(dischargeAssessment).resolved) {
+  if (dischargeAssessment && (
+    !dischargeInstrument.resolved || dischargeAssessment.instrument_version !== dischargeInstrument.instrument
+  )) {
     episodeExclusions.push("discharge_instrument_unresolved");
   }
   if (startAssessment || dischargeAssessment) {
     if (startSchema !== RESPONSE_SCHEMA_V2_CMS_E2) episodeExclusions.push("start_schema_not_v2");
     if (dcSchema !== RESPONSE_SCHEMA_V2_CMS_E2) episodeExclusions.push("discharge_schema_not_v2");
     if (startSchema && dcSchema && startSchema !== dcSchema) episodeExclusions.push("mixed_schema_episode");
+    if (startX.excluded.some((row) => row.reasons?.includes("duplicate_item_response"))) {
+      episodeExclusions.push("start_duplicate_item_response");
+    }
+    if (dcX.excluded.some((row) => row.reasons?.includes("duplicate_item_response"))) {
+      episodeExclusions.push("discharge_duplicate_item_response");
+    }
+    if (startX.excluded.some((row) => row.reasons?.includes("duplicate_definition_response"))) {
+      episodeExclusions.push("start_duplicate_definition_response");
+    }
+    if (dcX.excluded.some((row) => row.reasons?.includes("duplicate_definition_response"))) {
+      episodeExclusions.push("discharge_duplicate_definition_response");
+    }
+    const invalidIdentityReasons = new Set([
+      "unknown_definition",
+      "missing_item_spec_version",
+      "instrument_mismatch",
+    ]);
+    const hasInvalidOutcomeIdentity = (exclusions) => exclusions.some((row) => {
+      const key = String(row?.item || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return OUTCOME_PROVENANCE_ITEMS.has(key) &&
+        row.reasons?.some((reason) => invalidIdentityReasons.has(reason));
+    });
+    if (hasInvalidOutcomeIdentity(startX.excluded)) {
+      episodeExclusions.push("start_unverified_item_provenance");
+    }
+    if (hasInvalidOutcomeIdentity(dcX.excluded)) {
+      episodeExclusions.push("discharge_unverified_item_provenance");
+    }
   }
 
   const deceased = isDeceasedEpisode({ dischargeDisposition });
@@ -414,9 +512,9 @@ export function computeEpisodeOutcome({ start, discharge, dischargeDisposition, 
     // exactly which inputs produced it.
     input_response_schema_ids: [startSchema || null, dcSchema || null],
     calculation_version: OUTCOME_CALCULATION_VERSION,
-    gg_discharge_function: episodeExclusions.length
+    internal_gg_18_item_raw_sum: episodeExclusions.length
       ? { applicable: false, score: null, excluded_reason: episodeExclusions[0], items_scored: 0 }
-      : computeGGDischargeFunctionScore(ggAnswersFrom(dcSrc ?? discharge)),
+      : computeInternalGg18ItemRawSum(ggAnswersFrom(dcSrc ?? discharge)),
   };
 }
 
@@ -426,6 +524,7 @@ export function computeEpisodeOutcome({ start, discharge, dischargeDisposition, 
  * dropped by the Base44 platform).
  *
  * @param {Object} opts
+ * @param {string} opts.agencyId
  * @param {string} opts.patientId
  * @param {string} [opts.episodeStart]  ISO date (SOC assessment date)
  * @param {string} [opts.episodeEnd]    ISO date (discharge assessment date)
@@ -434,34 +533,47 @@ export function computeEpisodeOutcome({ start, discharge, dischargeDisposition, 
  * @param {object} outcome              result of computeEpisodeOutcome
  * @returns {object} PatientOutcomeMetric create payload
  */
-export function toPatientOutcomeMetric({ patientId, episodeStart, episodeEnd, dischargeDisposition, primaryDiagnosis }, outcome) {
+export function toPatientOutcomeMetric({ agencyId, patientId, episodeStart, episodeEnd, dischargeDisposition, primaryDiagnosis }, outcome) {
+  if (!agencyId) throw new Error("agencyId is required for a PatientOutcomeMetric payload");
   const byKey = Object.fromEntries(outcome.measures.map((m) => [m.key, m]));
-  const flag = (key) => byKey[key]?.status === MEASURE_STATUS.IMPROVED;
+  const flag = (key) => {
+    const status = byKey[key]?.status;
+    if (status === MEASURE_STATUS.IMPROVED) return true;
+    if (status === MEASURE_STATUS.NOT_IMPROVED) return false;
+    return undefined;
+  };
+  const maybeFlag = (key, field) => {
+    const value = flag(key);
+    return value === undefined ? {} : { [field]: value };
+  };
 
   return {
+    agency_id: agencyId,
     patient_id: patientId,
     ...(episodeStart ? { episode_start: episodeStart } : {}),
     ...(episodeEnd ? { episode_end: episodeEnd } : {}),
     ...(dischargeDisposition ? { discharge_disposition: dischargeDisposition } : {}),
     ...(primaryDiagnosis ? { primary_diagnosis: primaryDiagnosis } : {}),
     functional_improvement: {
-      ambulation_improved: flag("ambulation"),
-      bathing_improved: flag("bathing"),
-      transferring_improved: flag("bed_transfer"),
-      medication_management_improved: flag("oral_meds"),
-      dyspnea_improved: flag("dyspnea"),
+      ...maybeFlag("ambulation", "ambulation_improved"),
+      ...maybeFlag("bathing", "bathing_improved"),
+      ...maybeFlag("bed_transfer", "transferring_improved"),
+      ...maybeFlag("oral_meds", "medication_management_improved"),
+      ...maybeFlag("dyspnea", "dyspnea_improved"),
       // null (every measure excluded) means "not measurable" — recording 0
       // would fabricate a measured 0% improvement, so omit the field instead.
       ...(outcome.overall_improvement_score != null
         ? { overall_improvement_score: outcome.overall_improvement_score }
         : {}),
     },
-    gg_discharge_function_score: outcome.gg_discharge_function.score ?? undefined,
+    ...(outcome.internal_gg_18_item_raw_sum.score != null
+      ? { internal_gg_18_item_raw_sum: outcome.internal_gg_18_item_raw_sum.score }
+      : {}),
     measure_results: outcome.measures.map((m) => ({
       measure: m.key,
       status: m.status,
-      start_value: m.start_value,
-      discharge_value: m.discharge_value,
+      ...(m.start_value != null ? { start_value: m.start_value } : {}),
+      ...(m.discharge_value != null ? { discharge_value: m.discharge_value } : {}),
       reason: m.reason,
     })),
     outcome_measure_source: "oasis_change_score",
@@ -472,7 +584,7 @@ export function toPatientOutcomeMetric({ patientId, episodeStart, episodeEnd, di
  * Roll a set of episode outcomes up into agency-level measure rates.
  *
  * @param {Array} outcomes  computeEpisodeOutcome results
- * @returns {{measures: Array, star_eligible_measure_count: number, star_eligible: boolean, total_episodes: number}}
+ * @returns {{measures: Array, internal_sample_ready_measure_count: number, internal_sample_ready: boolean, total_episodes: number}}
  */
 export function rollupMeasures(outcomes = []) {
   const acc = new Map(); // key -> { numerator, denominator }
@@ -491,7 +603,7 @@ export function rollupMeasures(outcomes = []) {
   const measures = IMPROVEMENT_MEASURES.map((m) => {
     const { numerator, denominator } = acc.get(m.key);
     const rate = denominator > 0 ? Math.round((numerator / denominator) * 1000) / 10 : null;
-    const starEligible = denominator >= STAR_MIN_EPISODES;
+    const internalSampleReady = denominator >= INTERNAL_SAMPLE_MIN_PAIRS;
     return {
       key: m.key,
       label: m.label,
@@ -499,16 +611,16 @@ export function rollupMeasures(outcomes = []) {
       numerator,
       denominator,
       rate, // percentage, one decimal
-      star_eligible: starEligible,
+      internal_sample_ready: internalSampleReady,
     };
   });
 
-  const starEligibleCount = measures.filter((m) => m.star_eligible).length;
+  const internalSampleReadyCount = measures.filter((m) => m.internal_sample_ready).length;
   return {
     measures,
     total_episodes: outcomes.length,
-    star_eligible_measure_count: starEligibleCount,
-    star_eligible: starEligibleCount >= STAR_MIN_MEASURES,
+    internal_sample_ready_measure_count: internalSampleReadyCount,
+    internal_sample_ready: internalSampleReadyCount >= INTERNAL_SAMPLE_MEASURE_TARGET,
   };
 }
 
@@ -520,12 +632,16 @@ export function rollupMeasures(outcomes = []) {
  * @param {Object} opts
  * @param {string} opts.periodStart  ISO date
  * @param {string} opts.periodEnd    ISO date
- * @param {string} [opts.periodType] daily|weekly|monthly|quarterly|yearly
+ * @param {string} [opts.periodType] daily|weekly|monthly|quarterly|yearly|custom
  * @param {string} [opts.agencyId]
  * @param {number} [opts.benchmark]  national benchmark rate (%) applied to all
  * @returns {Array<object>} AgencyKPI create payloads
  */
-export function toAgencyKPIs(rollup, { periodStart, periodEnd, periodType = "quarterly", agencyId, benchmark } = {}) {
+export function toAgencyKPIs(rollup, { periodStart, periodEnd, periodType, agencyId, benchmark } = {}) {
+  if (!agencyId) throw new Error("agencyId is required for AgencyKPI payloads");
+  if (!["daily", "weekly", "monthly", "quarterly", "yearly", "custom"].includes(periodType)) {
+    throw new Error("an explicit supported periodType is required for AgencyKPI payloads");
+  }
   return (rollup?.measures || [])
     .filter((m) => m.rate !== null)
     .map((m) => {
@@ -535,7 +651,8 @@ export function toAgencyKPIs(rollup, { periodStart, periodEnd, periodType = "qua
         ? "warning"
         : (m.rate >= benchmark ? "on_target" : m.rate >= benchmark - 10 ? "warning" : "critical");
       return {
-        ...(agencyId ? { agency_id: agencyId } : {}),
+        agency_id: agencyId,
+        is_current: true,
         metric_name: m.label,
         metric_category: "quality",
         period_type: periodType,
@@ -547,9 +664,9 @@ export function toAgencyKPIs(rollup, { periodStart, periodEnd, periodType = "qua
         status,
         contributing_factors: [
           `${m.numerator} of ${m.denominator} eligible episodes improved`,
-          m.star_eligible
-            ? `Meets the ${STAR_MIN_EPISODES}-episode star-rating threshold`
-            : `Below the ${STAR_MIN_EPISODES}-episode star-rating threshold (${m.denominator})`,
+          m.internal_sample_ready
+            ? `Meets the ${INTERNAL_SAMPLE_MIN_PAIRS}-pair internal sample marker (not official CMS eligibility)`
+            : `Below the ${INTERNAL_SAMPLE_MIN_PAIRS}-pair internal sample marker (${m.denominator})`,
           ...(benchmark == null
             ? ["No national benchmark configured — performance not rated against a target"]
             : []),

@@ -20,8 +20,30 @@
 // Full clinical extraction (ReferralPDFSummarizer)
 // ---------------------------------------------------------------------------
 
-/** Build the rich extraction prompt, tailored to scanned-image vs PDF input. */
+/**
+ * Active referral prompt: extract source facts only. It must never choose or
+ * suggest an OASIS/GG response, PDGM group, case-mix value, reimbursement, or
+ * coding sequence from a referral document.
+ */
 export function buildReferralExtractionPrompt(fileType = "application/pdf") {
+  const fileTypeContext = fileType && fileType.includes("image")
+    ? "This is a scanned/faxed document image. Preserve uncertainty around OCR and handwriting."
+    : "This is a PDF document.";
+  return `You are extracting documented facts from a home-health referral. ${fileTypeContext}
+
+GROUNDING RULES:
+- Extract only facts explicitly present in the source. Use "Not documented in referral" or omit an array item when absent.
+- Preserve uncertain or illegible text as uncertain; never complete or infer identifiers, dates, diagnoses, codes, medications, measurements, or clinical findings.
+- Record ICD-10 codes only when printed in the source. Preserve the source-designated primary diagnosis; do not select, rank, or re-sequence diagnoses.
+- Capture functional narrative exactly as documented (ambulation, ADLs, cognition, vision, hearing, skin, wounds, pain, continence).
+- Do not select, suggest, infer, or output any OASIS M-item response, Section GG code, PDGM clinical group, functional level, case-mix weight, payment, revenue impact, or optimization advice.
+- Do not create a clinical risk score, submission-readiness claim, certification, order, or assessment.
+
+Return structured source facts for demographics, admission details, documented diagnoses and codes, medical/surgical history, allergies, medications, raw functional narrative, vital/lab/diagnostic facts, skilled-service orders, psychosocial/nutrition/wound facts, treatments, safety facts, face-to-face documentation, handwritten notes, document quality, and calibrated extraction confidence. Every value must be traceable to the referral.`;
+}
+
+/** Legacy prompt retained only as dormant migration reference. */
+function buildLegacyReferralExtractionPrompt(fileType = "application/pdf") {
   const fileTypeContext = fileType && fileType.includes("image")
     ? "This is a scanned/faxed document image. Extract text carefully, accounting for potential OCR errors or handwriting."
     : "This is a PDF document.";
@@ -270,8 +292,11 @@ CONFIDENCE SCORING (REQUIRED):
 - List the specific fields you are least sure about in "extraction_confidence.low_confidence_fields".`;
 }
 
+// Retained only for migration diff/history; never passed to an LLM.
+void buildLegacyReferralExtractionPrompt;
+
 /** Rich response schema for the full clinical extraction. */
-export const REFERRAL_EXTRACTION_SCHEMA = {
+const LEGACY_REFERRAL_EXTRACTION_SCHEMA = {
   type: "object",
   properties: {
     demographics: {
@@ -664,6 +689,40 @@ export const REFERRAL_EXTRACTION_SCHEMA = {
   }
 };
 
+const omitProperties = (properties, omitted) => Object.fromEntries(
+  Object.entries(properties || {}).filter(([key]) => !omitted.includes(key)),
+);
+
+const safeTopLevelProperties = omitProperties(LEGACY_REFERRAL_EXTRACTION_SCHEMA.properties, [
+  "oasis_assessment",
+  "oasis_relevant_notes",
+  "admission_note_template",
+]);
+const safeDiagnosisProperties = omitProperties(safeTopLevelProperties.diagnoses?.properties, [
+  "pdgm_clinical_group",
+  "pdgm_optimization_notes",
+  "comorbidity_adjustments",
+]);
+const safeConfidenceProperties = omitProperties(safeTopLevelProperties.extraction_confidence?.properties, [
+  "oasis_assessment",
+]);
+
+/** Active schema: source facts only; no OASIS/PDGM/risk output slots. */
+export const REFERRAL_EXTRACTION_SCHEMA = {
+  ...LEGACY_REFERRAL_EXTRACTION_SCHEMA,
+  properties: {
+    ...safeTopLevelProperties,
+    diagnoses: {
+      ...safeTopLevelProperties.diagnoses,
+      properties: safeDiagnosisProperties,
+    },
+    extraction_confidence: {
+      ...safeTopLevelProperties.extraction_confidence,
+      properties: safeConfidenceProperties,
+    },
+  },
+};
+
 /**
  * Run the full clinical extraction on a referral document.
  * @param {(params: object, options?: object) => Promise<object>} invoke - the
@@ -681,7 +740,24 @@ export function runReferralExtraction(invoke, { fileUrl, fileType = "application
     // Document extraction is a long, heavy call; give it room and retry
     // transient network/timeout/5xx failures with backoff.
     { retries: 2, timeoutMs: 120000, backoffMs: 800 }
-  );
+  ).then((result) => {
+    if (!result || typeof result !== "object") return result;
+    const safe = { ...result };
+    delete safe.oasis_assessment;
+    delete safe.oasis_relevant_notes;
+    delete safe.admission_note_template;
+    if (safe.diagnoses && typeof safe.diagnoses === "object") {
+      safe.diagnoses = { ...safe.diagnoses };
+      delete safe.diagnoses.pdgm_clinical_group;
+      delete safe.diagnoses.pdgm_optimization_notes;
+      delete safe.diagnoses.comorbidity_adjustments;
+    }
+    if (safe.extraction_confidence && typeof safe.extraction_confidence === "object") {
+      safe.extraction_confidence = { ...safe.extraction_confidence };
+      delete safe.extraction_confidence.oasis_assessment;
+    }
+    return safe;
+  });
 }
 
 // ---------------------------------------------------------------------------

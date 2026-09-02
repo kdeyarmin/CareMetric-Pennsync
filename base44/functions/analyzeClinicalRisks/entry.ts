@@ -8,6 +8,10 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Fail closed until clinical-risk inference is backed by tenant-bound reads,
+// a validated clinical model, and human-reviewed OASIS provenance.
+const CLINICAL_RISK_AI_ENABLED = false;
+
 
 // Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
 // response_json_schema, because the provider rejects deeply-nested object
@@ -93,6 +97,17 @@ async function assertPatientAccess(base44, user, patient) {
 }
 
 Deno.serve(async (req) => {
+  if (!CLINICAL_RISK_AI_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'clinical_risk_ai_paused',
+      message: 'AI clinical-risk analysis is unavailable pending tenant-scoped access and clinical validation.',
+      clinical_alerts: [],
+      recommendations: [],
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

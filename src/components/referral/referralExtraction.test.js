@@ -18,11 +18,12 @@ test("rich extraction prompt adapts to scanned-image vs PDF input", () => {
   assert.match(buildReferralExtractionPrompt(), /This is a PDF document/);
 });
 
-test("rich extraction prompt covers OASIS, PDGM, and confidence scoring", () => {
+test("active extraction prompt is source-facts only and refuses OASIS/PDGM output", () => {
   const prompt = buildReferralExtractionPrompt("application/pdf");
-  assert.match(prompt, /OASIS-E assessment/);
-  assert.match(prompt, /PDGM/);
-  assert.match(prompt, /CONFIDENCE SCORING \(REQUIRED\)/);
+  assert.match(prompt, /extracting documented facts/i);
+  assert.match(prompt, /Do not select, suggest, infer, or output any OASIS M-item response/i);
+  assert.match(prompt, /PDGM clinical group.*case-mix weight.*payment/i);
+  assert.match(prompt, /calibrated extraction confidence/i);
 });
 
 test("rich extraction schema exposes the key clinical sections", () => {
@@ -36,22 +37,22 @@ test("rich extraction schema exposes the key clinical sections", () => {
     "functional_status",
     "wound_details",
     "psychosocial",
-    "oasis_assessment",
     "extraction_confidence",
   ]) {
     assert.ok(props[section], `expected schema to define ${section}`);
   }
   // The per-section confidence object backs the real per-field confidence UI.
   assert.ok(REFERRAL_EXTRACTION_SCHEMA.properties.extraction_confidence.properties.overall);
+  assert.equal(props.oasis_assessment, undefined);
+  assert.equal(props.oasis_relevant_notes, undefined);
 });
 
 test("extraction prompts forbid invented data (anti-hallucination contract)", () => {
   const prompt = buildReferralExtractionPrompt("application/pdf");
-  assert.match(prompt, /NON-NEGOTIABLE GROUNDING RULES/);
-  assert.match(prompt, /Never invent, infer, or "complete"/);
-  assert.match(prompt, /record a code ONLY when it appears in the document/);
-  assert.match(prompt, /you do NOT pick codes or re-rank diagnoses for reimbursement/);
-  assert.match(prompt, /Never fill an item just to complete the form/);
+  assert.match(prompt, /GROUNDING RULES/);
+  assert.match(prompt, /never complete or infer identifiers/i);
+  assert.match(prompt, /ICD-10 codes only when printed in the source/i);
+  assert.match(prompt, /do not select, rank, or re-sequence diagnoses/i);
   // The invented "highest to lowest reimbursement" clinical-group ranking and
   // the revenue-driven primary re-selection instruction must be gone.
   assert.ok(!/highest to lowest reimbursement/.test(prompt), "no fabricated reimbursement ranking");
@@ -69,7 +70,9 @@ test("diagnosis schema descriptions demand verbatim capture, never invention", (
   const dx = REFERRAL_EXTRACTION_SCHEMA.properties.diagnoses.properties;
   assert.match(dx.primary_diagnosis.description, /EXACTLY as documented/);
   assert.match(dx.primary_icd10.description, /ONLY as printed in the document/);
-  assert.match(dx.pdgm_optimization_notes.description, /never invented codes/);
+  assert.equal(dx.pdgm_clinical_group, undefined);
+  assert.equal(dx.pdgm_optimization_notes, undefined);
+  assert.equal(dx.comorbidity_adjustments, undefined);
   assert.match(dx.secondary_diagnoses.description, /documented in the referral, exactly as stated/);
 });
 
@@ -103,9 +106,32 @@ test("runReferralExtraction calls invoke with the rich prompt, schema, and polic
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].params.file_urls, ["u://doc.pdf"]);
   assert.equal(calls[0].params.response_json_schema, REFERRAL_EXTRACTION_SCHEMA);
-  assert.match(calls[0].params.prompt, /home health intake coordinator/);
+  assert.match(calls[0].params.prompt, /extracting documented facts/i);
   // The heavy clinical extraction gets the longer retry/timeout budget.
   assert.deepEqual(calls[0].options, { retries: 2, timeoutMs: 120000, backoffMs: 800 });
+});
+
+test("runReferralExtraction strips provider-added OASIS and PDGM fields", async () => {
+  const result = await runReferralExtraction(async () => ({
+    demographics: { full_name: "Documented Name" },
+    oasis_assessment: { m1800_grooming: "6" },
+    oasis_relevant_notes: "suggested response",
+    admission_note_template: "generated narrative",
+    diagnoses: {
+      primary_diagnosis: "Heart failure",
+      pdgm_clinical_group: "MMTA_Cardiac_Circulatory",
+      pdgm_optimization_notes: "sequence for payment",
+      comorbidity_adjustments: ["invented"],
+    },
+    extraction_confidence: { overall: 80, oasis_assessment: 99 },
+  }), { fileUrl: "u://doc.pdf" });
+
+  assert.deepEqual(result.demographics, { full_name: "Documented Name" });
+  assert.equal(result.oasis_assessment, undefined);
+  assert.equal(result.oasis_relevant_notes, undefined);
+  assert.equal(result.admission_note_template, undefined);
+  assert.deepEqual(result.diagnoses, { primary_diagnosis: "Heart failure" });
+  assert.deepEqual(result.extraction_confidence, { overall: 80 });
 });
 
 test("runReferralQuickScan calls invoke with the quick-scan prompt, schema, and policy", async () => {

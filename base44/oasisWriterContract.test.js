@@ -23,35 +23,23 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 /** Paths allowed to write response-bearing OASIS rows, and why. */
 const APPROVED_WRITERS = new Map([
   [
-    "src/components/oasis/responseSchema/oasisWriteAdapter.js",
-    "The client-side adapter every UI writer routes through. Builds v2 rows via "
-    + "buildOfficialResponseRow() and posts them to the protected backend path; "
-    + "its legacy path stamps pennsync-oasis-response-v1-legacy by construction.",
-  ],
-  [
     "base44/functions/saveOasisResponses/entry.ts",
-    "The protected write path itself. Re-validates every row server-side.",
-  ],
-  [
-    "src/components/oasis/OASISUploadWidget.jsx",
-    "Creates the OASISUpload FILE record (name/url/status) before any analysis. "
-    + "Carries no OASIS response codes; derived values are added later and are "
-    + "marked ai_extracted, never clinician_selected.",
+    "The future protected write path. It is hard-paused before client creation; its dormant validator remains contract-tested for the eventual server-broker redesign.",
   ],
   [
     "src/components/hub-tabs/OASISAnalyzer.jsx",
-    "Writes AI-EXTRACTED document values onto OASISUpload for review. These are "
-    + "evidence, never official responses: they carry no response_schema_id, so "
-    + "every CMS-labeled consumer refuses them.",
+    "Dormant AI-extraction writer retained for redesign only. OASISUpload write "
+    + "RLS is service-role-only; restoration requires a tenant/chart broker.",
   ],
   [
     "src/components/oasis/OASISApprovalWorkflow.jsx",
-    "Updates supervisor_review_status / reviewer metadata on OASISUpload. "
-    + "Touches no response field.",
+    "Dormant review writer retained for redesign only. Service-only OASISUpload "
+    + "write RLS blocks it until authorized broker support exists.",
   ],
   [
     "src/components/oasis/OASISComparisonView.jsx",
-    "Updates comparison/review metadata on OASISUpload. Touches no response field.",
+    "Dormant comparison writer retained for redesign only. Service-only "
+    + "OASISUpload write RLS blocks it until authorized broker support exists.",
   ],
 ]);
 
@@ -88,8 +76,8 @@ test("no unapproved direct OASISAssessment/OASISUpload write exists", async () =
     [],
     "Unapproved direct OASIS write(s) found:\n"
     + unapproved.map((f) => `  ${f} → ${found.get(f).join(", ")}`).join("\n")
-    + "\n\nRoute the write through buildOfficialResponseRow() + the saveOasisResponses "
-    + "function, or add the path to APPROVED_WRITERS with a reason.",
+    + "\n\nBrowser OASIS writes are paused. Add a server-owned tenant + patient-access "
+    + "broker before registering any new writer.",
   );
 });
 

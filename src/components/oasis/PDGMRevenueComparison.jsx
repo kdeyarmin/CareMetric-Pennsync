@@ -33,6 +33,17 @@ import { Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Po
 import PDGMWhatIfBuilder from "./PDGMWhatIfBuilder";
 import TopOptimizationOpportunities from "./TopOptimizationOpportunities";
 import { debounce } from "@/lib/debounce";
+import {
+  formatPdgmCurrency,
+  formatPdgmNumber,
+  getAlternativeScenarioState,
+  getPdgmComparisonState,
+  getPdgmPaymentState,
+  isFinitePdgmNumber,
+  PDGM_REIMBURSEMENT_ACTION,
+  PDGM_REIMBURSEMENT_BLOCKER,
+  PDGM_REIMBURSEMENT_ENABLED,
+} from "@/components/pdgm/pdgmAvailability";
 
 function DataValidationWarnings({ validation }) {
   if (!validation?.hasDiscrepancies) return null;
@@ -84,7 +95,27 @@ function AlternativeScenarios({ scenarios, currentKey }) {
   if (!scenarios?.scenarios) return null;
 
   const scenarioList = Object.entries(scenarios.scenarios);
-  const formatCurrency = (amt) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amt);
+  const scenarioState = getAlternativeScenarioState(scenarios);
+
+  if (!scenarioState.available) {
+    return (
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="mb-2 flex items-center gap-2 font-semibold">
+          <GitCompare className="h-4 w-4" />
+          Payment Scenarios: Unavailable
+        </div>
+        <p>{scenarioState.message}</p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {scenarioList.map(([key]) => (
+            <div key={key} className="rounded border border-amber-200 bg-white px-3 py-2">
+              <span className="capitalize">{key.replace(/_/g, " ")}: </span>
+              <strong>Unavailable</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-200">
@@ -128,7 +159,7 @@ function AlternativeScenarios({ scenarios, currentKey }) {
                 isLowest ? 'text-slate-600' : 
                 'text-slate-800'
               }`}>
-                {formatCurrency(data.totalPayment)}
+                {formatPdgmCurrency(data.totalPayment)}
               </p>
               <div className="flex items-center gap-1 mt-1">
                 {isCurrent && <Badge className="text-xs bg-blue-600">Current</Badge>}
@@ -139,10 +170,10 @@ function AlternativeScenarios({ scenarios, currentKey }) {
           );
         })}
       </div>
-      
+
       <div className="mt-3 pt-3 border-t border-indigo-200 text-xs text-indigo-700">
-        <p>Payment range: {formatCurrency(scenarios.minPayment)} - {formatCurrency(scenarios.maxPayment)} 
-          <span className="font-semibold ml-1">(Δ {formatCurrency(scenarios.paymentRange)})</span>
+        <p>Payment range: {formatPdgmCurrency(scenarios.minPayment)} - {formatPdgmCurrency(scenarios.maxPayment)}
+          <span className="font-semibold ml-1">(Δ {formatPdgmCurrency(scenarios.paymentRange)})</span>
         </p>
       </div>
     </div>
@@ -376,7 +407,7 @@ function _CaseMixBreakdown({ original, corrected }) {
   );
 }
 
-export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPaymentCalculated, onRevenueCalculated }) {
+function EnabledPDGMRevenueComparison({ analysisResults, pdgmData, onPaymentCalculated, onRevenueCalculated }) {
   const [isCalculating, setIsCalculating] = useState(false);
   const [revenueData, setRevenueData] = useState(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -386,6 +417,7 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
   const [activeTab, setActiveTab] = useState("analysis");
   const [_whatIfScenario, setWhatIfScenario] = useState(null);
   const [whatIfRevenue, setWhatIfRevenue] = useState(null);
+  const [whatIfPaymentState, setWhatIfPaymentState] = useState(null);
   const [isCalculatingWhatIf, setIsCalculatingWhatIf] = useState(false);
   const [dataValidation, setDataValidation] = useState(null);
   const [alternativeScenarios, setAlternativeScenarios] = useState(null);
@@ -397,6 +429,7 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
       setHasAutoCalculated(false);
       setWhatIfScenario(null);
       setWhatIfRevenue(null);
+      setWhatIfPaymentState(null);
     }
   }, [pdgmData]);
 
@@ -430,7 +463,10 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
         });
 
         if (isMountedRef.current && myReqId === whatIfReqIdRef.current) {
-          setWhatIfRevenue(response.data?.corrected?.totalPayment || 0);
+          const responseData = response?.data ?? response;
+          const paymentState = getPdgmPaymentState(responseData?.corrected);
+          setWhatIfPaymentState(paymentState);
+          setWhatIfRevenue(paymentState.amount);
         }
       } catch (err) {
         console.error("What-If calculation error:", err);
@@ -468,24 +504,26 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
         correctedPdgmData: correctedPdgmData
       });
 
-      setRevenueData(response.data);
+      const responseData = response?.data ?? response;
+      setRevenueData(responseData);
 
       // Notify parent of revenue data
-      if (onRevenueCalculated && response.data) {
-        onRevenueCalculated(response.data);
+      if (onRevenueCalculated && responseData) {
+        onRevenueCalculated(responseData);
       }
 
                 // Store validation and scenarios data
-                if (response.data?.dataValidation) {
-                  setDataValidation(response.data.dataValidation);
+                if (responseData?.dataValidation) {
+                  setDataValidation(responseData.dataValidation);
                 }
-                if (response.data?.alternativeScenarios) {
-                  setAlternativeScenarios(response.data.alternativeScenarios);
+                if (responseData?.alternativeScenarios) {
+                  setAlternativeScenarios(responseData.alternativeScenarios);
                 }
 
                 // Notify parent of original payment for scenario planning
-                if (onPaymentCalculated && response.data?.original?.totalPayment) {
-                  onPaymentCalculated(response.data.original.totalPayment);
+                const originalPayment = getPdgmPaymentState(responseData?.original);
+                if (onPaymentCalculated && originalPayment.available) {
+                  onPaymentCalculated(originalPayment.amount);
                 }
               } catch (err) {
               console.error("Error calculating PDGM:", err);
@@ -692,12 +730,13 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
     setIsDownloading(false);
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  };
+  const comparisonState = getPdgmComparisonState(revenueData);
+  const originalPaymentState = comparisonState.original;
+  const correctedPaymentState = comparisonState.corrected;
+  const financialImpactAvailable = comparisonState.available
+    && isFinitePdgmNumber(revenueData?.financialImpact?.perEpisode)
+    && isFinitePdgmNumber(revenueData?.financialImpact?.annual30Episodes)
+    && isFinitePdgmNumber(revenueData?.financialImpact?.annual60Episodes);
 
   return (
     <Card className="border-2 border-green-200">
@@ -765,6 +804,8 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
                   onScenarioChange={handleScenarioChange}
                   originalRevenue={revenueData.original?.totalPayment}
                   scenarioRevenue={isCalculatingWhatIf ? null : whatIfRevenue}
+                  originalPaymentState={originalPaymentState}
+                  scenarioPaymentState={whatIfPaymentState}
                 />
                 {isCalculatingWhatIf && (
                   <div className="flex items-center justify-center gap-2 text-sm text-slate-500">
@@ -781,6 +822,19 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
 
               {/* Analysis Tab */}
               <TabsContent value="analysis" className="mt-4 space-y-4">
+                                {!comparisonState.available && (
+                                  <Alert className="border-amber-300 bg-amber-50">
+                                    <AlertTriangle className="h-4 w-4 text-amber-700" />
+                                    <AlertDescription className="space-y-2 text-sm text-amber-900">
+                                      <p><strong>PDGM payment: Unavailable.</strong> {comparisonState.message}</p>
+                                      {comparisonState.actions.length > 0 && (
+                                        <ul className="list-disc space-y-1 pl-5">
+                                          {comparisonState.actions.map((action) => <li key={action}>{action}</li>)}
+                                        </ul>
+                                      )}
+                                    </AlertDescription>
+                                  </Alert>
+                                )}
                                 {/* Data Validation Warnings */}
                                 {dataValidation?.hasDiscrepancies && (
                                   <DataValidationWarnings validation={dataValidation} />
@@ -825,10 +879,10 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
                                   <div className="p-4 bg-slate-50 rounded-lg border">
                                     <p className="text-xs text-slate-500 mb-1">Current Documentation</p>
                                     <p className="text-2xl font-bold text-slate-700">
-                                      {formatCurrency(revenueData.original?.totalPayment || 0)}
+                                      {formatPdgmCurrency(originalPaymentState.amount)}
                                     </p>
                                     <p className="text-xs text-slate-500 mt-1">
-                                      Case-Mix: {revenueData.original?.caseMixWeight?.toFixed(4)}
+                                      Case-Mix: {originalPaymentState.available ? formatPdgmNumber(revenueData.original?.caseMixWeight) : "Unavailable"}
                                     </p>
                                     {revenueData.original?.wageIndex && revenueData.original.wageIndex !== 1.0 && (
                                       <p className="text-xs text-blue-600 mt-0.5">
@@ -841,16 +895,16 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
               <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                 <p className="text-xs text-green-600 mb-1">With Improvements</p>
                 <p className="text-2xl font-bold text-green-700">
-                  {formatCurrency(revenueData.corrected?.totalPayment || 0)}
+                  {formatPdgmCurrency(correctedPaymentState.amount)}
                 </p>
                 <p className="text-xs text-green-600 mt-1">
-                  Case-Mix: {revenueData.corrected?.caseMixWeight?.toFixed(4)}
+                  Case-Mix: {correctedPaymentState.available ? formatPdgmNumber(revenueData.corrected?.caseMixWeight) : "Unavailable"}
                 </p>
               </div>
             </div>
 
             {/* Revenue Difference */}
-            {revenueData.revenueDifference !== null && (
+            {comparisonState.available && (
               <div className={`p-4 rounded-lg border-2 ${
                 revenueData.revenueDifference > 0 
                   ? 'bg-gradient-to-r from-green-100 to-emerald-100 border-green-300' 
@@ -862,7 +916,7 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
                     <p className={`text-3xl font-bold ${
                       revenueData.revenueDifference > 0 ? 'text-green-700' : 'text-slate-700'
                     }`}>
-                      {revenueData.revenueDifference > 0 ? '+' : ''}{formatCurrency(revenueData.revenueDifference)}
+                      {revenueData.revenueDifference > 0 ? '+' : ''}{formatPdgmCurrency(revenueData.revenueDifference)}
                     </p>
                   </div>
                   {revenueData.percentageIncrease > 0 && (
@@ -876,26 +930,26 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
             )}
 
             {/* Annual Impact */}
-            {revenueData.financialImpact && (
+            {financialImpactAvailable && (
               <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
                 <p className="text-sm font-semibold text-indigo-900 mb-3">Projected Annual Impact</p>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div>
                     <p className="text-xs text-indigo-600">Per Episode</p>
                     <p className="text-sm font-bold text-indigo-900">
-                      {formatCurrency(revenueData.financialImpact.perEpisode)}
+                      {formatPdgmCurrency(revenueData.financialImpact.perEpisode)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-indigo-600">30 Episodes/Year</p>
                     <p className="text-sm font-bold text-indigo-900">
-                      {formatCurrency(revenueData.financialImpact.annual30Episodes)}
+                      {formatPdgmCurrency(revenueData.financialImpact.annual30Episodes)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-indigo-600">60 Episodes/Year</p>
                     <p className="text-sm font-bold text-indigo-900">
-                      {formatCurrency(revenueData.financialImpact.annual60Episodes)}
+                      {formatPdgmCurrency(revenueData.financialImpact.annual60Episodes)}
                     </p>
                   </div>
                 </div>
@@ -1027,4 +1081,21 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
       </CardContent>
     </Card>
   );
+}
+
+export default function PDGMRevenueComparison(props) {
+  if (!PDGM_REIMBURSEMENT_ENABLED) {
+    return (
+      <Alert className="border-amber-300 bg-amber-50">
+        <AlertTriangle className="h-4 w-4 text-amber-700" />
+        <AlertDescription className="space-y-1 text-sm text-amber-900">
+          <p><strong>PDGM reimbursement is unavailable.</strong> This is not a $0 result.</p>
+          <p>{PDGM_REIMBURSEMENT_BLOCKER}</p>
+          <p>{PDGM_REIMBURSEMENT_ACTION}</p>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  return <EnabledPDGMRevenueComparison {...props} />;
 }

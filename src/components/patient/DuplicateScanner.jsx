@@ -26,7 +26,13 @@ import {
   normalizeName,
   digitsOnly,
 } from "@/components/patient/patientDuplicateUtils";
-import { mergePatientInto } from "@/components/patient/mergePatients";
+import {
+  mergePatientInto,
+  PATIENT_MERGES_PAUSED,
+  PATIENT_MERGE_PAUSED_MESSAGE,
+} from "@/components/patient/mergePatients";
+
+const PATIENT_DEDUPE_UI_ENABLED = false;
 
 // Demographic fields on Patient that count toward "how complete is this chart".
 // Used to pick the survivor of a duplicate group by completeness (not by newest),
@@ -169,7 +175,7 @@ const evaluateAdvancedMatch = (a, b, opts) => {
   return { isMatch: score >= ADVANCED_MATCH_THRESHOLD, score, reasons };
 };
 
-export default function DuplicateScanner() {
+function EnabledDuplicateScanner() {
   const [isScanning, setIsScanning] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [results, setResults] = useState(null);
@@ -191,6 +197,13 @@ export default function DuplicateScanner() {
   const { data: allPatients = [] } = useScopedPatients({ sort: '-created_date', limit: 10000, enabled: scanMode === 'advanced' });
 
   const scanAndRemoveDuplicates = async () => {
+    // Both modes are paused. Standard mode called a service-role dry-run whose
+    // tenant scope depended on mutable user claims; advanced mode could mutate
+    // survivor fields before a later merge failed. Stop before either path.
+    if (PATIENT_MERGES_PAUSED) {
+      toast.error(PATIENT_MERGE_PAUSED_MESSAGE);
+      return;
+    }
     setIsScanning(true);
     toast.info('Starting comprehensive duplicate scan...');
     
@@ -300,7 +313,7 @@ export default function DuplicateScanner() {
           for (const info of dupInfos) {
             let ok = true;
             try {
-              await mergePatientInto(survivor.id, info.patient.id, { mergedBy: null });
+              await mergePatientInto(survivor.id, info.patient.id);
             } catch (err) {
               // Best-effort per duplicate: log and continue so one failure doesn't
               // abort the whole scan (mergePatientInto is itself best-effort per record).
@@ -371,10 +384,13 @@ export default function DuplicateScanner() {
     setIsScanning(false);
   };
 
-  // Apply the previewed standard-mode merges. Calls the backend with
-  // confirm:true, which archives (soft-deletes) the duplicates rather than
-  // hard-deleting them, so a wrong merge is recoverable.
+  // Apply remains wired only to surface the explicit pause state. Both this
+  // client guard and the backend confirm:true guard reject before mutations.
   const applyStandardMerge = async () => {
+    if (PATIENT_MERGES_PAUSED) {
+      toast.error(PATIENT_MERGE_PAUSED_MESSAGE);
+      return;
+    }
     setIsApplying(true);
     toast.info('Merging the reviewed duplicates...');
     try {
@@ -567,9 +583,19 @@ export default function DuplicateScanner() {
               </div>
             )}
 
+            {PATIENT_MERGES_PAUSED && (
+              <Alert className="border-amber-300 bg-amber-50">
+                <AlertTriangle className="h-4 w-4 text-amber-700" />
+                <AlertDescription className="text-amber-900">
+                  {PATIENT_MERGE_PAUSED_MESSAGE} This scanner will not query the
+                  service-role preview or reassign, backfill, or archive charts.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <Button
               onClick={scanAndRemoveDuplicates}
-              disabled={isScanning}
+              disabled={isScanning || PATIENT_MERGES_PAUSED}
               className={`w-full ${scanMode === 'advanced' ? 'bg-navy-600 hover:bg-navy-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
               size="lg"
             >
@@ -723,13 +749,18 @@ export default function DuplicateScanner() {
                 )}
 
                 {results.dry_run && (
-                  <Button
-                    onClick={applyStandardMerge}
-                    disabled={isApplying}
-                    className="w-full"
-                  >
-                    {isApplying ? 'Merging…' : `Confirm & merge ${results.patients_to_remove} duplicate(s)`}
-                  </Button>
+                  <div className="space-y-2">
+                    {PATIENT_MERGES_PAUSED && (
+                      <p className="text-sm text-amber-800">{PATIENT_MERGE_PAUSED_MESSAGE}</p>
+                    )}
+                    <Button
+                      onClick={applyStandardMerge}
+                      disabled={isApplying || PATIENT_MERGES_PAUSED}
+                      className="w-full"
+                    >
+                      {isApplying ? 'Merging…' : `Confirm & merge ${results.patients_to_remove} duplicate(s)`}
+                    </Button>
+                  </div>
                 )}
               </>
             ) : (
@@ -753,6 +784,24 @@ export default function DuplicateScanner() {
             </Button>
           </>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function DuplicateScanner() {
+  if (PATIENT_DEDUPE_UI_ENABLED) return <EnabledDuplicateScanner />;
+  return (
+    <Card className="border-2 border-amber-300 bg-amber-50">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-amber-950">
+          <Shield className="h-5 w-5 text-amber-700" aria-hidden="true" />
+          Patient Duplicate Scanner Paused
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm leading-6 text-amber-900">
+        No patient data or service-role preview is loaded while tenant-bound
+        duplicate detection and an atomic merge broker are being validated.
       </CardContent>
     </Card>
   );

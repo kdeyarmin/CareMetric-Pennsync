@@ -25,6 +25,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
 function agencyAdminMissingAgencyResponse(user) {
   if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
@@ -48,9 +59,7 @@ Deno.serve(async (req) => {
     if (!currentUser) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const isAdmin = currentUser.role === 'admin'
-      || currentUser.account_type === 'agency_admin'
-      || currentUser.account_type === 'super_admin';
+    const isAdmin = isProtectedAdmin(currentUser);
     if (!isAdmin) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
@@ -64,7 +73,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
     }
 
-    const callerIsSuperAdmin = currentUser.account_type === 'super_admin';
+    const callerIsSuperAdmin = isProtectedSuperAdmin(currentUser);
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || 'offboard');
@@ -98,9 +107,9 @@ async function offboardUser(base44, currentUser, params, callerIsSuperAdmin) {
     return Response.json({ error: 'You cannot offboard your own account.' }, { status: 400 });
   }
 
-  const targetIsPrivileged = targetUser.account_type === 'super_admin'
-    || targetUser.account_type === 'agency_admin'
-    || targetUser.role === 'admin';
+  // Custom account_type is self-mutable and cannot shield an account from
+  // offboarding. Only Base44's protected built-in admin role is privileged.
+  const targetIsPrivileged = targetUser.role === 'admin';
   if (targetIsPrivileged && !callerIsSuperAdmin) {
     return Response.json({ error: 'Only a super admin can offboard another administrator.' }, { status: 403 });
   }
@@ -384,9 +393,7 @@ async function reactivateUser(base44, currentUser, params, callerIsSuperAdmin) {
     return Response.json({ error: 'User not found' }, { status: 404 });
   }
 
-  const targetIsPrivileged = targetUser.account_type === 'super_admin'
-    || targetUser.account_type === 'agency_admin'
-    || targetUser.role === 'admin';
+  const targetIsPrivileged = targetUser.role === 'admin';
   // No self-exemption here on purpose. Reactivating yourself is exactly the
   // move an offboarded administrator would make to undo their own offboarding,
   // and offboardUser() already refuses self-targeting for the same reason.

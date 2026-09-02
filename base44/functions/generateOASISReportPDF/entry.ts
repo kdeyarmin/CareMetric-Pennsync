@@ -9,20 +9,21 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-
-// Financial visibility gate. MIRRORS src/lib/permissions.canViewFinancials
-// (isAdminLike) / listOASISUploads' canViewFinancials — backend Deno modules
-// can't import src/lib, so the admin checks are duplicated here. Keep in sync.
-function canViewFinancials(user) {
-  if (!user) return false;
-  return (
-    user.role === 'admin' ||
-    user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin'
-  );
-}
+// Caller-supplied analysis scores and recommendations have no server-verifiable
+// OASIS provenance. Keep this export unavailable until a tenant-bound,
+// clinician-reviewed analysis record can be resolved on the server.
+const OASIS_REPORT_PDF_ENABLED = false;
 
 Deno.serve(async (req) => {
+  if (!OASIS_REPORT_PDF_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'oasis_report_pdf_paused',
+      message: 'OASIS analysis PDF export is unavailable pending tenant-scoped, clinician-reviewed provenance.',
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -31,8 +32,6 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const allowFinancials = canViewFinancials(user);
 
     const { analysisResults } = await req.json();
 
@@ -99,7 +98,6 @@ Deno.serve(async (req) => {
       { label: 'Overall', value: analysisResults.overall_score },
       { label: 'Accuracy', value: analysisResults.accuracy_score },
       { label: 'Compliance', value: analysisResults.compliance_score },
-      ...(allowFinancials ? [{ label: 'Revenue Opt.', value: analysisResults.revenue_optimization_score }] : [])
     ];
 
     const boxWidth = (contentWidth - 15) / 4;
@@ -230,32 +228,6 @@ Deno.serve(async (req) => {
         
         const issueText = doc.splitTextToSize(concern.issue || '', contentWidth - 15);
         doc.text(issueText[0], margin + 5, y + 14);
-        
-        y += 23;
-      });
-      y += 5;
-    }
-
-    // Revenue Tips - limit to top 5
-    if (allowFinancials && analysisResults.revenue_tips?.length > 0) {
-      checkNewPage(40);
-      doc.setFontSize(14);
-      doc.setTextColor(22, 163, 74);
-      doc.text(`Top Revenue Opportunities (${Math.min(5, analysisResults.revenue_tips.length)})`, margin, y);
-      y += 8;
-
-      const topTips = analysisResults.revenue_tips.slice(0, 5);
-      topTips.forEach((tip) => {
-        checkNewPage(25);
-        doc.setFillColor(240, 253, 244);
-        doc.roundedRect(margin, y, contentWidth, 20, 2, 2, 'F');
-        
-        doc.setFontSize(9);
-        doc.setTextColor(0, 0, 0);
-        doc.text(`${tip.category || 'N/A'}:`, margin + 5, y + 7);
-        
-        const oppText = doc.splitTextToSize(tip.opportunity || '', contentWidth - 15);
-        doc.text(oppText[0], margin + 5, y + 14);
         
         y += 23;
       });

@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-import { jsPDF } from 'npm:jspdf@2.5.2';
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
@@ -9,200 +8,28 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-
-// Financial visibility gate. MIRRORS src/lib/permissions.canViewFinancials
-// (which is isAdminLike): backend Deno modules can't import src/lib, so the
-// admin checks are duplicated here. Keep in sync. PDGM payment/revenue is
-// restricted to administrators; clinical staff (nurses) must never receive
-// dollar figures, even by calling this endpoint directly.
-function canViewFinancials(user) {
-  if (!user) return false;
-  return (
-    user.role === 'admin' ||
-    user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin'
-  );
+// <<<BEGIN SHARED HELPER: pdgmReimbursementGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const PDGM_REIMBURSEMENT_ENABLED = false;
+const PDGM_REIMBURSEMENT_BLOCKER = 'The app does not yet use a verified CMS HHGS 432-group grouper with golden-case tests.';
+const PDGM_REIMBURSEMENT_ACTION = 'Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.';
+function pdgmUnavailablePayload(extra = {}) {
+  return {
+    featureEnabled: PDGM_REIMBURSEMENT_ENABLED,
+    calculationStatus: 'blocked',
+    paymentAvailable: false,
+    payment: null,
+    totalPayment: null,
+    caseMixWeight: null,
+    reason: 'cms_verified_pdgm_grouper_unavailable',
+    message: `PDGM reimbursement is unavailable — this is not a $0 result. ${PDGM_REIMBURSEMENT_BLOCKER}`,
+    actionRequired: [PDGM_REIMBURSEMENT_ACTION],
+    ...extra,
+  };
 }
+// <<<END SHARED HELPER: pdgmReimbursementGate>>>
 
-Deno.serve(async (req) => {
-  try {
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (!canViewFinancials(user)) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const { navigationData, pdgmData, patientName } = await req.json();
-
-    const doc = new jsPDF();
-    let y = 20;
-
-    // Helper to add text with wrapping
-    const addText = (text, x, size = 10, maxWidth = 170) => {
-      doc.setFontSize(size);
-      const lines = doc.splitTextToSize(text, maxWidth);
-      lines.forEach(line => {
-        if (y > 280) {
-          doc.addPage();
-          y = 20;
-        }
-        doc.text(line, x, y);
-        y += size * 0.5;
-      });
-      y += 2;
-    };
-
-    // Title
-    doc.setFontSize(18);
-    doc.setFont(undefined, 'bold');
-    doc.text('PDGM Navigator Analysis Report', 20, y);
-    y += 10;
-
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
-    doc.text(`Patient: ${patientName || 'Unknown'}`, 20, y);
-    y += 6;
-    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 20, y);
-    y += 10;
-
-    // Summary Section
-    if (navigationData?.summary) {
-      if (y > 250) { doc.addPage(); y = 20; }
-      doc.setFontSize(14);
-      doc.setFont(undefined, 'bold');
-      doc.text('Summary', 20, y);
-      y += 8;
-
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
-      addText(`Estimated Payment: $${navigationData.summary.payment_amount?.toFixed(2) || '0.00'}`, 20);
-      
-      if (navigationData.summary.key_drivers?.length > 0) {
-        addText('Key Payment Drivers:', 20);
-        navigationData.summary.key_drivers.forEach(driver => {
-          addText(`  • ${driver}`, 25);
-        });
-      }
-
-      y += 5;
-    }
-
-    // Clinical Group
-    if (navigationData?.clinical_group) {
-      if (y > 250) { doc.addPage(); y = 20; }
-      doc.setFontSize(14);
-      doc.setFont(undefined, 'bold');
-      doc.text('Clinical Group', 20, y);
-      y += 8;
-
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
-      addText(`Assigned: ${navigationData.clinical_group.group_name}`, 20);
-      addText(`Confidence: ${navigationData.clinical_group.confidence}`, 20);
-      addText(`Rationale: ${navigationData.clinical_group.rationale}`, 20);
-      
-      y += 5;
-    }
-
-    // Functional Level
-    if (navigationData?.functional_level) {
-      if (y > 250) { doc.addPage(); y = 20; }
-      doc.setFontSize(14);
-      doc.setFont(undefined, 'bold');
-      doc.text('Functional Impairment', 20, y);
-      y += 8;
-
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
-      addText(`Level: ${navigationData.functional_level.level} (${navigationData.functional_level.total_points} points)`, 20);
-      addText(`Threshold: ${navigationData.functional_level.threshold_used}`, 20);
-      
-      y += 5;
-    }
-
-    // Discrepancies
-    if (navigationData?.discrepancies?.length > 0) {
-      if (y > 240) {
-        doc.addPage();
-        y = 20;
-      }
-
-      doc.setFontSize(14);
-      doc.setFont(undefined, 'bold');
-      doc.text('Discrepancies Detected', 20, y);
-      y += 8;
-
-      navigationData.discrepancies.forEach((disc, idx) => {
-        if (y > 260) {
-          doc.addPage();
-          y = 20;
-        }
-
-        doc.setFontSize(11);
-        doc.setFont(undefined, 'bold');
-        doc.text(`${idx + 1}. ${disc.type} (${disc.severity})`, 20, y);
-        y += 6;
-
-        doc.setFontSize(9);
-        doc.setFont(undefined, 'normal');
-        addText(`Finding: ${disc.finding}`, 25, 9);
-        addText(`Expected: ${disc.expected} | Actual: ${disc.actual}`, 25, 9);
-        addText(`Recommendation: ${disc.recommendation}`, 25, 9);
-        
-        y += 3;
-      });
-    }
-
-    // Optimization Opportunities
-    if (navigationData?.optimization_opportunities?.length > 0) {
-      if (y > 240) {
-        doc.addPage();
-        y = 20;
-      }
-
-      doc.setFontSize(14);
-      doc.setFont(undefined, 'bold');
-      doc.text('Optimization Opportunities', 20, y);
-      y += 8;
-
-      navigationData.optimization_opportunities.forEach((opp, idx) => {
-        if (y > 260) {
-          doc.addPage();
-          y = 20;
-        }
-
-        doc.setFontSize(11);
-        doc.setFont(undefined, 'bold');
-        doc.text(`${idx + 1}. ${opp.area}`, 20, y);
-        y += 6;
-
-        doc.setFontSize(9);
-        doc.setFont(undefined, 'normal');
-        addText(`Opportunity: ${opp.opportunity}`, 25, 9);
-        addText(`Impact: ${opp.potential_impact}`, 25, 9);
-        addText(`Action: ${opp.action_required}`, 25, 9);
-        
-        y += 3;
-      });
-    }
-
-    const pdfBytes = doc.output('arraybuffer');
-
-    return new Response(pdfBytes, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename=PDGM_Navigator_Report.pdf'
-      }
-    });
-  } catch (error) {
-    console.error('generatePDGMNavigatorPDF failed:', error);
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
-  }
-});
+Deno.serve(() => Response.json(pdgmUnavailablePayload({
+  // Caller/LLM-supplied functional points, grouping, and payment values have
+  // no server-verifiable provenance. Reject before auth or payload handling.
+  error: 'PDGM Navigator export unavailable',
+}), { status: 409 }));

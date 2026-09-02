@@ -196,19 +196,21 @@ test('submitIncidentReport persists the offline idempotency key', () => {
   );
 });
 
-test('patient-merge reassignment for Incident goes through the function', () => {
-  // Incident writes are service-role-only, so a direct entity update here would
-  // throw, be swallowed by the merge's best-effort catch, and strand incidents
-  // on the archived duplicate chart.
+test('patient merge stays paused until an atomic server broker can reassign Incident', () => {
+  // Incident and OASIS/outcome rows cannot be safely reassigned by a browser.
+  // The current contract must fail closed before any best-effort mutation can
+  // archive a duplicate and strand linked clinical history.
   const merge = readFileSync(
     join(process.cwd(), 'src/components/patient/mergePatients.js'),
     'utf8',
   );
-  assert.match(merge, /FUNCTION_BACKED_REASSIGN/, 'merge must route service-role entities via functions');
-  assert.match(merge, /Incident: \(recordId, patientId\)/, 'Incident must be in that map');
+  assert.match(merge, /PATIENT_MERGES_PAUSED\s*=\s*true/, 'browser merge must default off');
+  assert.match(merge, /"Incident"/, 'the future atomic broker scope must include Incident');
+  assert.match(merge, /throw new Error\(PATIENT_MERGE_PAUSED_MESSAGE\)/,
+    'merge must stop before reading or mutating chart data');
   assert.doesNotMatch(
     merge,
     /await api\.update\(record\.id, \{ patient_id: primaryId \}\)/,
-    'the raw per-record update must go through reassignRecordToPatient',
+    'the paused browser boundary must not retain raw per-record reassignment',
   );
 });

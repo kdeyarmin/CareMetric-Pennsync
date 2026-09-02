@@ -9,6 +9,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -145,7 +156,7 @@ Deno.serve(async (req) => {
     
     // Verify admin user
     const currentUser = await base44.auth.me();
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.account_type !== 'agency_admin' && currentUser.account_type !== 'super_admin')) {
+    if (!isProtectedAdmin(currentUser)) {
       return Response.json({ error: 'Unauthorized. Admin access required.' }, { status: 403 });
     }
     if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
@@ -182,10 +193,8 @@ Deno.serve(async (req) => {
     // privileged account's password (that would hand them a temp password and
     // let them log in AS a super admin / peer admin — a side-door escalation).
     // Only a super admin may reset another admin's or a super admin's password.
-    const callerIsSuperAdmin = currentUser.account_type === 'super_admin';
-    const targetIsPrivileged = targetUser.account_type === 'super_admin'
-      || targetUser.account_type === 'agency_admin'
-      || targetUser.role === 'admin';
+    const callerIsSuperAdmin = isProtectedSuperAdmin(currentUser);
+    const targetIsPrivileged = targetUser.role === 'admin';
     if (targetIsPrivileged && !callerIsSuperAdmin) {
       return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
     }

@@ -17,6 +17,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { calculatePDGM } from "@/functions/calculatePDGM";
+import { formatPdgmCurrency, getPdgmComparisonState } from "@/components/pdgm/pdgmAvailability";
 
 export default function PDGMImpactAnalyzer({
   currentPdgmData,
@@ -61,6 +62,23 @@ export default function PDGMImpactAnalyzer({
         pdgmData: currentPdgmData,
         correctedPdgmData: modifiedPdgmData
       });
+      const pdgmResponse = pdgmComparison?.data ?? pdgmComparison;
+      const comparisonState = getPdgmComparisonState(pdgmResponse);
+
+      // Do not ask an LLM to invent component-dollar impacts when the canonical
+      // grouper explicitly refused to calculate a payment.
+      if (!comparisonState.available) {
+        const unavailableAnalysis = {
+          unavailable: true,
+          pdgmComparison: pdgmResponse,
+          paymentState: comparisonState,
+          aiAnalysis: null,
+          rateBasis: pdgmResponse?.rateBasis || null,
+        };
+        setImpactAnalysis(unavailableAnalysis);
+        onAnalysisComplete?.(unavailableAnalysis);
+        return;
+      }
 
       // Get detailed AI analysis of the changes
       const aiAnalysis = await ai.run({
@@ -68,10 +86,10 @@ export default function PDGMImpactAnalyzer({
         prompt: `You are a PDGM reimbursement optimization expert. Analyze the impact of suggested documentation improvements on PDGM payment.
 
 CURRENT PDGM DATA:
-${JSON.stringify(pdgmComparison.data.original, null, 2)}
+${JSON.stringify(pdgmResponse.original, null, 2)}
 
 IMPROVED PDGM DATA (with suggested changes):
-${JSON.stringify(pdgmComparison.data.corrected, null, 2)}
+${JSON.stringify(pdgmResponse.corrected, null, 2)}
 
 SUGGESTED CHANGES:
 ${JSON.stringify(suggestedChanges, null, 2)}
@@ -245,16 +263,16 @@ Return detailed JSON analysis:`,
       });
 
       setImpactAnalysis({
-        pdgmComparison: pdgmComparison.data,
+        pdgmComparison: pdgmResponse,
         aiAnalysis: aiAnalysis,
-        rateBasis: pdgmComparison.data?.rateBasis || null,
+        rateBasis: pdgmResponse?.rateBasis || null,
       });
 
       if (onAnalysisComplete) {
         onAnalysisComplete({
-          pdgmComparison: pdgmComparison.data,
+          pdgmComparison: pdgmResponse,
           aiAnalysis: aiAnalysis,
-          rateBasis: pdgmComparison.data?.rateBasis || null,
+          rateBasis: pdgmResponse?.rateBasis || null,
         });
       }
     } catch (error) {
@@ -262,10 +280,6 @@ Return detailed JSON analysis:`,
       toast.error("The AI request didn't complete. Please try again.");
     }
 
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
   };
 
   const getEffortColor = (effort) => {
@@ -313,6 +327,25 @@ Return detailed JSON analysis:`,
           </div>
         ) : (
           <div className="space-y-4">
+            {impactAnalysis.unavailable ? (
+              <>
+                <Alert className="border-amber-300 bg-amber-50">
+                  <AlertTriangle className="h-4 w-4 text-amber-700" />
+                  <AlertDescription className="space-y-2 text-sm text-amber-900">
+                    <p><strong>PDGM impact: Unavailable.</strong> {impactAnalysis.paymentState.message}</p>
+                    {impactAnalysis.paymentState.actions.length > 0 && (
+                      <ul className="list-disc space-y-1 pl-5">
+                        {impactAnalysis.paymentState.actions.map((action) => <li key={action}>{action}</li>)}
+                      </ul>
+                    )}
+                  </AlertDescription>
+                </Alert>
+                <Button onClick={analyzePDGMImpact} variant="outline" size="sm" className="w-full">
+                  Re-check PDGM Availability
+                </Button>
+              </>
+            ) : (
+              <>
             {impactAnalysis.rateBasis?.isEstimate && (
               <Alert className="bg-amber-50 border-amber-300">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
@@ -328,7 +361,7 @@ Return detailed JSON analysis:`,
                 <div className="text-center">
                   <p className="text-xs text-slate-600 mb-1">Current Payment</p>
                   <p className="text-xl font-bold text-slate-700">
-                    {formatCurrency(impactAnalysis.aiAnalysis.payment_summary?.original_payment)}
+                    {formatPdgmCurrency(impactAnalysis.aiAnalysis.payment_summary?.original_payment)}
                   </p>
                 </div>
                 <div className="flex items-center justify-center">
@@ -337,21 +370,21 @@ Return detailed JSON analysis:`,
                 <div className="text-center">
                   <p className="text-xs text-slate-600 mb-1">Optimized Payment</p>
                   <p className="text-xl font-bold text-green-700">
-                    {formatCurrency(impactAnalysis.aiAnalysis.payment_summary?.optimized_payment)}
+                    {formatPdgmCurrency(impactAnalysis.aiAnalysis.payment_summary?.optimized_payment)}
                   </p>
                 </div>
               </div>
               <div className="text-center bg-white p-3 rounded border border-green-200">
                 <p className="text-sm text-slate-600">Total Increase</p>
                 <p className="text-2xl font-bold text-green-700">
-                  +{formatCurrency(impactAnalysis.aiAnalysis.payment_summary?.total_increase)}
+                  +{formatPdgmCurrency(impactAnalysis.aiAnalysis.payment_summary?.total_increase)}
                   <span className="text-sm ml-2">
                     (+{impactAnalysis.aiAnalysis.payment_summary?.percentage_increase}%)
                   </span>
                 </p>
                 {impactAnalysis.aiAnalysis.payment_summary?.annual_impact && (
                   <p className="text-xs text-slate-600 mt-1">
-                    Annual Impact: {formatCurrency(impactAnalysis.aiAnalysis.payment_summary.annual_impact)}
+                    Annual Impact: {formatPdgmCurrency(impactAnalysis.aiAnalysis.payment_summary.annual_impact)}
                   </p>
                 )}
               </div>
@@ -370,7 +403,7 @@ Return detailed JSON analysis:`,
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-semibold text-blue-900">Clinical Group Weight</p>
                     <Badge className="bg-blue-600 text-white">
-                      +{formatCurrency(impactAnalysis.aiAnalysis.case_mix_breakdown.clinical_weight_impact.dollar_impact)}
+                      +{formatPdgmCurrency(impactAnalysis.aiAnalysis.case_mix_breakdown.clinical_weight_impact.dollar_impact)}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-2 text-xs mb-2">
@@ -394,7 +427,7 @@ Return detailed JSON analysis:`,
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-semibold text-navy-900">Functional Impairment Level</p>
                     <Badge className="bg-navy-600 text-white">
-                      +{formatCurrency(impactAnalysis.aiAnalysis.case_mix_breakdown.functional_impact.dollar_impact)}
+                      +{formatPdgmCurrency(impactAnalysis.aiAnalysis.case_mix_breakdown.functional_impact.dollar_impact)}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-2 text-xs mb-2">
@@ -434,7 +467,7 @@ Return detailed JSON analysis:`,
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-semibold text-orange-900">Comorbidity Adjustment</p>
                     <Badge className="bg-orange-600 text-white">
-                      +{formatCurrency(impactAnalysis.aiAnalysis.case_mix_breakdown.comorbidity_impact.dollar_impact)}
+                      +{formatPdgmCurrency(impactAnalysis.aiAnalysis.case_mix_breakdown.comorbidity_impact.dollar_impact)}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-2 text-xs mb-2">
@@ -482,7 +515,7 @@ Return detailed JSON analysis:`,
                             <span className="text-sm font-medium text-slate-900">{change.change}</span>
                           </div>
                           <Badge className="bg-green-600 text-white">
-                            +{formatCurrency(change.payment_impact)}
+                            +{formatPdgmCurrency(change.payment_impact)}
                           </Badge>
                         </div>
                         <div className="flex items-center gap-2">
@@ -571,7 +604,7 @@ Return detailed JSON analysis:`,
                           <p className="text-xs text-slate-600">{phase.timeline}</p>
                         </div>
                         <Badge className="bg-navy-600 text-white">
-                          +{formatCurrency(phase.expected_payment_gain)}
+                          +{formatPdgmCurrency(phase.expected_payment_gain)}
                         </Badge>
                       </div>
                       <ul className="text-xs text-slate-700 space-y-1">
@@ -596,6 +629,8 @@ Return detailed JSON analysis:`,
             >
               Re-analyze Impact
             </Button>
+              </>
+            )}
           </div>
         )}
       </CardContent>

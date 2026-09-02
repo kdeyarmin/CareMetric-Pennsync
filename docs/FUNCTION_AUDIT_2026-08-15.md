@@ -143,9 +143,12 @@ These were assessed and intentionally left, with reasons:
   `AgencyKPI`) — the same net-new-entity gap already tracked in
   `docs/APP_AUDIT_RECOMMENDATIONS_2026-06-27.md`. The functions' own authorization is
   correct; the entity read policies are a separate schema task.
-- **`computeOutcomeMeasures` / `calculateDataQualityScores`** platform-global rollup and
-  cohort caps — aggregate rates only (no patient identifiers), pending a product decision
-  on per-agency KPI separation.
+- **Outcome/data-quality rollups:** `computeOutcomeMeasures` is no longer
+  platform-global. It is internal-secret-only, requires explicit agency/window/
+  period type, fails closed at query caps, and its browser surfaces are paused.
+  Hosted tenant authority, paging/checkpointing, and authorized read brokerage
+  remain release blockers; its outputs are internal proxies, not CMS/star rates.
+  `calculateDataQualityScores` needs its own tenant review before scheduling.
 - **`assignAnnualLearningPlan`** O(users×courses) serial writes — a performance/timeout
   refactor (prefetch to Sets, as `autoEnrollAnnualPlans` already does), not a
   correctness bug; deferred as a larger change.

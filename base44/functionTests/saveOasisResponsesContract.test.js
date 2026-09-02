@@ -7,7 +7,10 @@ import { pathToFileURL } from "node:url";
 import { transpileTs } from "../../tools-transpile-ts.mjs";
 
 /**
- * Behavioral contract tests for the protected OASIS write path.
+ * Behavioral contracts for the hard-paused OASIS write path and its dormant
+ * validator. Production-source tests leave the pause intact. Validator tests
+ * rewrite the literal only in a temporary transpiled copy; there is no runtime
+ * bypass in the deployed function.
  *
  * `OASISAssessment` is reachable directly, so this function is the only thing
  * standing between a client and an arbitrary `oasis_items[]`. These tests run
@@ -72,7 +75,12 @@ function agencySettingsStore(rows) {
   };
 }
 
-async function loadHandler({ settings = { [FLAG]: true }, settingsRows = null, user = DEFAULT_USER } = {}) {
+async function loadHandler({
+  settings = { [FLAG]: true },
+  settingsRows = null,
+  user = DEFAULT_USER,
+  exerciseDormantValidator = true,
+} = {}) {
   // The store is a LIST of tenant rows, and the handler must find the caller's
   // own. A single-row store cannot tell a correctly-scoped read from a
   // newest-row-wins one, which is how the cross-tenant defect survived the
@@ -81,14 +89,23 @@ async function loadHandler({ settings = { [FLAG]: true }, settingsRows = null, u
   const rows = settingsRows || (settings ? [settingsRow(user?.agency_name || AGENCY, settings)] : []);
   let src = await readFile(new URL("../functions/saveOasisResponses/entry.ts", import.meta.url), "utf8");
   src = src.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/, "const createClientFromRequest = globalThis.__soMakeClient;");
+  if (exerciseDormantValidator) {
+    src = src.replace(
+      "const OASIS_V2_WRITES_PAUSED = true;",
+      "const OASIS_V2_WRITES_PAUSED = false;",
+    );
+  }
   const js = transpileTs(src).outputText;
   const tmp = join(tmpdir(), `soctr_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(tmp, js);
 
   const written = [];
+  const runtime = { clientCreations: 0 };
   let handler;
   globalThis.Deno = { serve: (h) => { handler = h; }, env: { get: () => undefined } };
-  globalThis.__soMakeClient = () => ({
+  globalThis.__soMakeClient = () => {
+    runtime.clientCreations += 1;
+    return ({
     // `user` may legitimately be null (anonymous), so no ?? fallback here —
     // that would make the anonymous case untestable.
     auth: { me: async () => user },
@@ -104,13 +121,14 @@ async function loadHandler({ settings = { [FLAG]: true }, settingsRows = null, u
         update: async (id, rec) => { written.push({ op: "update", id, rec }); return { id, ...rec }; },
       },
     },
-  });
+    });
+  };
   try {
     await import(pathToFileURL(tmp).href);
   } finally {
     await unlink(tmp).catch(() => {});
   }
-  return { handler, written };
+  return { handler, written, runtime };
 }
 
 async function post(handler, body) {
@@ -124,7 +142,17 @@ const reasonOf = (json) => (json.errors || []).map((e) => e.reason);
 
 // ── the happy path ──────────────────────────────────────────────────────────
 
-test("a valid v2 write is accepted and the server stamps provenance", async () => {
+test("production OASIS v2 writes are hard-paused before any Base44 client or data access", async () => {
+  const { handler, written, runtime } = await loadHandler({ exerciseDormantValidator: false });
+  const { status, json } = await post(handler, payload());
+  assert.equal(status, 503);
+  assert.equal(json.reason, "tenant_security_validation_pending");
+  assert.match(json.error, /tenant and patient-access security validation/i);
+  assert.equal(runtime.clientCreations, 0, "the pause must precede auth, settings and service queries");
+  assert.deepEqual(written, []);
+});
+
+test("the dormant validator accepts a valid v2 write and stamps provenance", async () => {
   const { handler, written } = await loadHandler();
   const { status, json } = await post(handler, payload());
   assert.equal(status, 200, JSON.stringify(json));
@@ -283,6 +311,8 @@ test("the validator rejects each disallowed write, and writes nothing", async ()
     ["mixed schema metadata", payload({ oasis_items: [row({ item_spec_version: "oasis-e1" })] }), "inconsistent_instrument_version"],
     ["inconsistent item source", payload({ oasis_items: [row({ item_source: "pennsync_screening" })] }), "inconsistent_item_source"],
     ["item number mismatch", payload({ oasis_items: [row({ item_number: "M1860" })] }), "item_number_mismatch"],
+    ["duplicate normalized item", payload({ oasis_items: [row(), row({ definition_id: "m1860_cms_e2", item_number: "m-1830", response_value: { code: "5" } })] }), "duplicate_item_or_definition"],
+    ["duplicate normalized definition", payload({ oasis_items: [row(), row({ item_number: "M1860", response_value: { code: "5" } })] }), "duplicate_item_or_definition"],
     ["missing assessment date", payload({ assessment_date: undefined }), "missing_assessment_date"],
     ["invalid assessment date", payload({ assessment_date: "not-a-date" }), "invalid_assessment_date"],
     ["assessment before OASIS-E2", payload({ assessment_date: "2025-06-01" }), "assessment_predates_oasis_e2"],

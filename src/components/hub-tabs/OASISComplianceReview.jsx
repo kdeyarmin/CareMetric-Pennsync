@@ -8,7 +8,9 @@ import AuditRiskPredictor from "@/components/oasis/AuditRiskPredictor";
 import AIAuditRiskPredictor from "@/components/oasis/AIAuditRiskPredictor";
 import AdvancedComplianceAnalyzer from "@/components/oasis/AdvancedComplianceAnalyzer";
 
-export default function OASISComplianceReview() {
+const OASIS_COMPLIANCE_REVIEW_ENABLED = false;
+
+function EnabledOASISComplianceReview() {
   const location = useLocation();
   const { analysisResults, pdgmData, patientId } = location.state || {};
 
@@ -125,4 +127,21 @@ export default function OASISComplianceReview() {
       </div>
     </div>
   );
+}
+
+export default function OASISComplianceReview() {
+  if (!OASIS_COMPLIANCE_REVIEW_ENABLED) {
+    return (
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="p-6">
+          <p className="font-semibold text-amber-900">OASIS Compliance AI Review Paused</p>
+          <p className="mt-2 text-sm text-amber-800">
+            Automated OASIS compliance conclusions are unavailable pending verified CMS content,
+            tenant-scoped authorization, and clinician review.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledOASISComplianceReview />;
 }

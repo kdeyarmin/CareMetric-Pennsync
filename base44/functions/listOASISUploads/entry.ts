@@ -8,18 +8,9 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-
-// Financial visibility gate. MIRRORS src/lib/permissions.canViewFinancials
-// (isAdminLike) — backend Deno modules can't import src/lib, so the admin
-// checks are duplicated here. Keep in sync.
-function canViewFinancials(user) {
-  if (!user) return false;
-  return (
-    user.role === 'admin' ||
-    user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin'
-  );
-}
+// Fail closed until reads are brokered through immutable tenant/patient
+// authority and a source-projected response that excludes legacy OASIS/PDGM AI.
+const OASIS_UPLOAD_LIST_ENABLED = false;
 
 // Recursively drop any object key whose name implies money (revenue / payment /
 // reimbursement) so an OASISUpload returned to a non-financial user (a nurse)
@@ -44,6 +35,17 @@ function stripFinancial(value) {
 }
 
 Deno.serve(async (req) => {
+  if (!OASIS_UPLOAD_LIST_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'oasis_upload_listing_paused',
+      message: 'OASIS upload listing is unavailable pending tenant-scoped server authorization and a safe response projection.',
+      uploads: [],
+      financialsRestricted: true,
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -76,9 +78,10 @@ Deno.serve(async (req) => {
       ? await base44.entities.OASISUpload.filter(query, sort, boundedLimit)
       : await base44.entities.OASISUpload.list(sort, boundedLimit);
 
-    const allowed = canViewFinancials(user);
-    const uploads = allowed ? records : (records || []).map(stripFinancial);
-    return Response.json({ uploads, financialsRestricted: !allowed });
+    // PDGM reimbursement is globally fail-closed, so legacy estimator/revenue
+    // fields are stripped for every role, including built-in admins.
+    const uploads = (records || []).map(stripFinancial);
+    return Response.json({ uploads, financialsRestricted: true });
   } catch (error) {
     console.error('listOASISUploads failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

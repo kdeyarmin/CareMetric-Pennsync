@@ -117,24 +117,17 @@ export function aggregateFunctionalScores(uploads = [], limit = 20) {
 }
 
 /** PDGM payment trends (most recent `limit` with a payment). @param {any[]} uploads */
-export function aggregatePaymentTrends(uploads = [], limit = 15) {
-  return uploads
-    .filter((u) => u.assessment_date && u.estimated_payment)
-    .sort((a, b) => new Date(a.assessment_date) - new Date(b.assessment_date))
-    .slice(-limit)
-    .map((upload) => ({
-      date: formatLocalDate(upload.assessment_date),
-      payment: upload.estimated_payment,
-      patient: upload.patient_name?.substring(0, 15) || "Unknown",
-    }));
+export function aggregatePaymentTrends(_uploads = [], _limit = 15) {
+  // Historical estimated_payment values came from the legacy factorized
+  // estimator, not the official CMS 432-group grouper. Exclude them entirely.
+  return [];
 }
 
 /** Headline summary statistics. @param {any[]} uploads */
 export function computeSummaryStats(uploads = []) {
   const totalAssessments = uploads.length;
   const avgScore = uploads.reduce((sum, u) => sum + (u.scores?.overall || 0), 0) / totalAssessments || 0;
-  const paid = uploads.filter((u) => u.estimated_payment);
-  const avgPayment = paid.reduce((sum, u) => sum + u.estimated_payment, 0) / paid.length || 0;
-  const totalRevenue = uploads.reduce((sum, u) => sum + (u.estimated_payment || 0), 0);
+  const avgPayment = null;
+  const totalRevenue = null;
   return { totalAssessments, avgScore, avgPayment, totalRevenue };
 }

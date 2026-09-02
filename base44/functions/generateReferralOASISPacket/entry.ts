@@ -12,77 +12,36 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 Deno.serve(async (req) => {
   try {
-    const { referralData, selectedSections } = await req.json();
-
-    if (!referralData) {
-      return Response.json({ error: 'Referral data required' }, { status: 400 });
-    }
-
-    // Initialize base44 client for AI analysis
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    // AI-powered risk analysis
-    let riskAnalysis = null;
-    try {
-      const riskPrompt = `Analyze this referral for comprehensive risk factors:
-
-Patient Data:
-${JSON.stringify(referralData, null, 2)}
-
-Analyze and score (0-100) the following risks:
-1. Hospital Readmission Risk - based on diagnosis, recent hospitalizations, comorbidities, medications
-2. Fall Risk - based on mobility, cognitive status, medications, age, history
-3. Wound Development Risk - based on mobility, nutrition, existing wounds, diabetes, vascular disease
-4. Clinical Deterioration Risk - based on diagnosis, vital signs, functional decline, symptoms
-5. Medication Non-Adherence Risk - based on number of meds, cognitive status, caregiver support
-6. Infection Risk - based on wounds, catheters, immune status, recent surgery
-
-For each risk:
-- Provide risk score (0-100)
-- Risk level (low/moderate/high/critical)
-- Contributing factors (specific patient characteristics)
-- Recommended interventions
-- Priority level
-
-Also provide:
-- Overall composite risk score
-- Top 3 priority risks requiring immediate attention
-- Specific monitoring recommendations`;
-
-      riskAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
-        model: "automatic",
-        prompt: riskPrompt,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            overall_risk_score: { type: "number" },
-            overall_risk_level: { type: "string" },
-            risk_categories: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  risk_name: { type: "string" },
-                  score: { type: "number" },
-                  level: { type: "string" },
-                  contributing_factors: { type: "array", items: { type: "string" } },
-                  interventions: { type: "array", items: { type: "string" } },
-                  priority: { type: "string" }
-                }
-              }
-            },
-            top_priority_risks: { type: "array", items: { type: "string" } },
-            monitoring_recommendations: { type: "array", items: { type: "string" } }
-          }
-        }
-      });
-    } catch (error) {
-      console.error('Risk analysis failed:', error);
-      // Continue with PDF generation even if AI fails
+    const body = await req.json().catch(() => ({}));
+    const rawReferralData = body?.referralData;
+    const selectedSections = body?.selectedSections;
+    if (!rawReferralData) {
+      return Response.json({ error: 'Referral data required' }, { status: 400 });
     }
+
+    // The packet is a source-facts summary only. Ignore caller/AI-supplied
+    // OASIS responses and PDGM grouping/optimization fields; they have no
+    // protected clinical provenance. The former unvalidated 0-100 risk LLM is
+    // removed entirely rather than rendered as an assessment.
+    const {
+      oasis_assessment: _ignoredOasisAssessment,
+      oasis_relevant_notes: _ignoredOasisNotes,
+      admission_note_template: _ignoredAdmissionTemplate,
+      ...referralFacts
+    } = rawReferralData;
+    const {
+      pdgm_clinical_group: _ignoredClinicalGroup,
+      pdgm_optimization_notes: _ignoredOptimizationNotes,
+      comorbidity_adjustments: _ignoredComorbidityAdjustments,
+      ...diagnosisFacts
+    } = referralFacts.diagnoses || {};
+    const referralData = { ...referralFacts, diagnoses: diagnosisFacts };
+    const riskAnalysis = null;
 
     const doc = new jsPDF();
     let yPos = 20;
@@ -144,12 +103,26 @@ Also provide:
     doc.text('PATIENT ADMISSION PACKET', margin, 12);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text('Referral Summary & OASIS Pre-Assessment', margin, 19);
+    doc.text('Referral Source-Facts Summary', margin, 19);
     doc.setTextColor(0, 0, 0);
     yPos = 32;
 
+    // Only source-grounded referral sections may be rendered. These legacy
+    // sections contain model-selected OASIS/risk content or canned clinical
+    // assertions and must stay unreachable even when a caller explicitly
+    // requests them in selectedSections.
+    const disabledSections = new Set([
+      'ai_risk_analysis',
+      'oasis_assessment',
+      'nursing_notes',
+      'homebound_status',
+      'sample_assessment',
+      'care_plans',
+    ]);
+
     // Helper to check if section is selected
     const shouldInclude = (section) => {
+      if (disabledSections.has(section)) return false;
       if (!selectedSections || selectedSections.length === 0) return true;
       return selectedSections.includes(section);
     };
@@ -297,11 +270,11 @@ Also provide:
     yPos += 5;
     }
 
-    // FUNCTIONAL STATUS - OASIS RELEVANT
+    // FUNCTIONAL STATUS — source facts only
     if (shouldInclude('functional_status')) {
       doc.addPage();
       yPos = 20;
-      addSectionHeader('FUNCTIONAL STATUS (OASIS-E RELEVANT)', [168, 85, 247]);
+      addSectionHeader('DOCUMENTED FUNCTIONAL STATUS', [168, 85, 247]);
     addKeyValue('Ambulation', func.ambulation);
     addKeyValue('ADL Status', func.adl_status);
     addKeyValue('Fall Risk', func.fall_risk);

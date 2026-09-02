@@ -38,8 +38,33 @@ import { toCsvRows } from "@/components/admin/csvExport";
 import { endOfDay, parseISO, startOfDay } from "date-fns";
 
 const COLORS = ['#3557b0', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#0d9488', '#06b6d4', '#84cc16'];
+const PDGM_FINANCIAL_TRENDS_ENABLED = false;
 
 export default function PDGMTrendDashboard() {
+  if (!PDGM_FINANCIAL_TRENDS_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300">
+        <CardHeader className="bg-amber-50">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <TrendingUp className="h-5 w-5 text-amber-700" /> PDGM Trends
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <Alert className="border-amber-300 bg-amber-50">
+            <AlertTriangle className="h-4 w-4 text-amber-700" />
+            <AlertDescription className="text-sm text-amber-950">
+              <strong>Payment trends, forecasts, and exports are unavailable — not $0.</strong> Historical factorized-estimator values are excluded. Use the official EMR/CMS-approved grouper until the verified HHGS 432-group integration passes CMS golden-case tests.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return <PDGMTrendDashboardEnabled />;
+}
+
+function PDGMTrendDashboardEnabled() {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [selectedGroup, setSelectedGroup] = useState('all');
   const [selectedDiagnosis, setSelectedDiagnosis] = useState('all');

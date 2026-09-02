@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/api/base44Client', () => ({
   base44: {
+    functions: {
+      invoke: vi.fn(),
+    },
     entities: {
       AgencySettings: {
         filter: vi.fn(),
@@ -69,11 +72,11 @@ describe('fetchCallerPdgmRateConfig / FollowUpRuleConfig', () => {
     vi.clearAllMocks();
   });
 
-  it('prefers agency_name match for PDGM rates', async () => {
-    base44.entities.PDGMRateConfig.filter
-      .mockResolvedValueOnce([{ id: 'rate-a', agency_name: 'Acme' }]);
+  it('keeps browser PDGM rate reads paused without invoking any backend or entity path', async () => {
     const row = await fetchCallerPdgmRateConfig('Acme');
-    expect(row?.id).toBe('rate-a');
+    expect(row).toBeNull();
+    expect(base44.functions.invoke).not.toHaveBeenCalled();
+    expect(base44.entities.PDGMRateConfig.filter).not.toHaveBeenCalled();
     expect(base44.entities.PDGMRateConfig.list).not.toHaveBeenCalled();
   });
 
@@ -86,21 +89,11 @@ describe('fetchCallerPdgmRateConfig / FollowUpRuleConfig', () => {
     expect(row).toBeNull();
   });
 
-  it('does not adopt another agency row on keyed PDGM miss', async () => {
-    base44.entities.PDGMRateConfig.filter.mockResolvedValueOnce([]);
-    base44.entities.PDGMRateConfig.list.mockResolvedValueOnce([
-      { id: 'foreign', agency_name: 'OtherAgency' },
-    ]);
-    const row = await fetchCallerPdgmRateConfig('Acme');
+  it('ignores caller-controlled agency hints while the broker is unavailable', async () => {
+    const row = await fetchCallerPdgmRateConfig('other-tenant');
     expect(row).toBeNull();
-  });
-
-  it('may adopt a single unscoped legacy PDGM row on keyed miss', async () => {
-    base44.entities.PDGMRateConfig.filter.mockResolvedValueOnce([]);
-    base44.entities.PDGMRateConfig.list.mockResolvedValueOnce([
-      { id: 'legacy', agency_name: '' },
-    ]);
-    const row = await fetchCallerPdgmRateConfig('Acme');
-    expect(row?.id).toBe('legacy');
+    expect(base44.functions.invoke).not.toHaveBeenCalled();
+    expect(base44.entities.PDGMRateConfig.filter).not.toHaveBeenCalled();
+    expect(base44.entities.PDGMRateConfig.list).not.toHaveBeenCalled();
   });
 });

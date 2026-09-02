@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     }
     // Admin = role 'admin' or an admin account_type (agency/super), matching the
     // app's role model (src/lib/roles.js) and other backend admin gates.
-    const isAdmin = user.role === 'admin' || user.account_type === 'super_admin' || user.account_type === 'agency_admin';
+    const isAdmin = user.role === 'admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can manage payroll profiles.' }, { status: 403 });
     }

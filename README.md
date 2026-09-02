@@ -25,7 +25,8 @@ Copy `.env.example` to `.env` and set the required values:
 
 - `VITE_BASE44_APP_ID` — Base44 application ID.
 - `VITE_BASE44_BACKEND_URL` — Base44 backend origin used by the SDK and auth bootstrap requests.
-- `VITE_SUPER_ADMIN_EMAIL` — optional email override that enables the frontend super-admin view for that account.
+- `VITE_SUPER_ADMIN_EMAIL` — platform-owner email for frontend UI gating; super-admin UI also requires Base44's protected `role=admin`.
+- `SUPER_ADMIN_EMAIL` — matching backend function setting for platform-owner-only operations; missing configuration fails closed.
 - `BASE44_LEGACY_SDK_IMPORTS` — optional build toggle for legacy SDK import compatibility.
 
 ## Project structure (high level)

@@ -1,5 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -178,7 +189,7 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     // Same gate as saveTelnyxSecret: these ids belong to the integration secret.
-    if (user.account_type !== 'super_admin') {
+    if (!isProtectedSuperAdmin(user)) {
       return Response.json({ error: 'Only the super administrator can manage integration secrets.' }, { status: 403 });
     }
 

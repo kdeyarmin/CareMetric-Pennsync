@@ -8,8 +8,21 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Arbitrary referral payloads cannot safely become chart-ready clinical notes
+// without patient/tenant provenance, source grounding, and clinician review.
+const REFERRAL_ADMISSION_NOTE_AI_ENABLED = false;
 
 Deno.serve(async (req) => {
+  if (!REFERRAL_ADMISSION_NOTE_AI_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'referral_admission_note_ai_paused',
+      message: 'AI referral admission-note drafting is unavailable pending tenant-scoped provenance and clinician review.',
+      admission_note: null,
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

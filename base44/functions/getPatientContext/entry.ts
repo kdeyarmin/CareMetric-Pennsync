@@ -45,7 +45,7 @@ async function assertPatientAccess(base44, user, patient) {
 /**
  * getPatientContext — returns the core datasets the PatientDetails page needs for
  * a single patient (the patient record, visits, incidents, tasks, active alerts,
- * care plans and PennSync's own OASIS assessment copies) in ONE round-trip
+ * and care plans) in ONE round-trip
  * instead of the page firing several independent entity queries from the
  * browser. Care plans and OASIS rows feed the deterministic pre-visit briefing
  * (src/components/visit/visitPrep.js) — the goals and the most recent assessment
@@ -58,9 +58,9 @@ async function assertPatientAccess(base44, user, patient) {
  *
  * The client seeds the per-entity React Query caches (['patient',id],
  * ['patientVisits',id], …) from this payload so the page's child components get
- * cache hits. OASIS uploads are intentionally NOT included — that cache key is
- * shape-inconsistent across components (financial-stripped function result vs.
- * raw entity), so it's left to each component's own query.
+ * cache hits. OASIS assessment/upload rows are intentionally NOT included while
+ * the OASIS feature is paused: the browser needs neither exact responses nor
+ * legacy PDGM metadata, and tenant-bound read authority is not yet available.
  */
 Deno.serve(async (req) => {
   try {
@@ -89,23 +89,18 @@ Deno.serve(async (req) => {
     if (denied) return denied;
 
     const HISTORY = 1000;
-    const [visits, incidents, tasks, activeAlerts, carePlans, oasisAssessments] = await Promise.all([
+    const [visits, incidents, tasks, activeAlerts, carePlans] = await Promise.all([
       e.Visit.filter({ patient_id: patientId }, '-visit_date', HISTORY),
       e.Incident.filter({ patient_id: patientId }, '-incident_date', HISTORY),
       e.Task.filter({ patient_id: patientId }, undefined, HISTORY),
       e.PatientAlert.filter({ patient_id: patientId, status: 'active' }, '-created_date', 500),
-      // Small, bounded reads: the briefing needs current goals and the most
-      // recent assessment date, not the full history.
+      // Small, bounded read: the briefing needs current goals.
       e.CarePlan.filter({ patient_id: patientId }, '-updated_date', 20),
-      // Sorted by assessment_date, the CLINICAL chronology. Ordering by
-      // created_date meant a backfilled older assessment entered after a newer
-      // one would be picked as "most recent", and with enough late-created
-      // backfills the actual latest assessment could fall outside the page.
-      e.OASISAssessment.filter({ patient_id: patientId }, '-assessment_date', 10),
     ]);
 
     return Response.json({
-      patient, visits, incidents, tasks, activeAlerts, carePlans, oasisAssessments,
+      patient, visits, incidents, tasks, activeAlerts, carePlans,
+      oasisAssessments: [],
     });
   } catch (error) {
     console.error('getPatientContext error:', error?.message);

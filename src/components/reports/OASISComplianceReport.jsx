@@ -3,12 +3,14 @@ import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { AlertTriangle, Download } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { exportToPDF } from "../utils/pdfExporter";
 import { format } from "date-fns";
 
-export default function OASISComplianceReport({ dateRange }) {
+const OASIS_COMPLIANCE_REPORT_ENABLED = false;
+
+function EnabledOASISComplianceReport({ dateRange }) {
   // Without a limit Base44 caps at 50, truncating the compliance rates below.
   const { data: oasisAssessments = [] } = useAgencyScopedQuery({
     queryKey: ['allOASISAssessments'],
@@ -217,4 +219,21 @@ export default function OASISComplianceReport({ dateRange }) {
       </Card>
     </div>
   );
+}
+
+export default function OASISComplianceReport({ dateRange }) {
+  if (!OASIS_COMPLIANCE_REPORT_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300 bg-amber-50">
+        <CardContent className="space-y-2 p-6 text-sm text-amber-950">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-5 w-5" /> OASIS Compliance Report Paused
+          </div>
+          <p>This report is unavailable pending a tenant-bound reporting broker and a verified OASIS compliance-measure contract.</p>
+          <p>No OASIS assessment, compliance audit, score, chart, or PDF export is loaded from this tab.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledOASISComplianceReport dateRange={dateRange} />;
 }

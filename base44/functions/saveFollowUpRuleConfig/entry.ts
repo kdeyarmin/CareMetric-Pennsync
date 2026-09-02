@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    const isAdmin = user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
+    const isAdmin = user?.role === 'admin';
     if (!user || !isAdmin) {
       return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }

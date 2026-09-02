@@ -3,10 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
-  return !!user && (
-    user.role === 'admin' || user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin'
-  );
+  return !!user && user.role === 'admin';
 }
 // Constant-time string compare for the shared-secret check (mirrors
 // createTelehealthToken's timingSafeEqual). A plain === short-circuits on the

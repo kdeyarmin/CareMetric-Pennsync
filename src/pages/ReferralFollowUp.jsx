@@ -728,9 +728,13 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                         <div>
                           <p className="text-xs font-semibold text-emerald-800 uppercase">Est. exposure (admin)</p>
                           <p className="text-lg font-bold text-emerald-900">
-                            {revenue.totalAtRisk > 0 ? `${fmtUsd(revenue.totalAtRisk)} at risk` : "—"}
+                            {!revenue.available
+                              ? "Unavailable — not $0"
+                              : revenue.totalAtRisk > 0
+                                ? `${fmtUsd(revenue.totalAtRisk)} at risk`
+                                : "—"}
                           </p>
-                          {revenue.totalUpsideHigh > 0 && (
+                          {revenue.available && revenue.totalUpsideHigh > 0 && (
                             <p className="text-xs text-emerald-800">
                               +{fmtUsd(revenue.totalUpsideLow)}–{fmtUsd(revenue.totalUpsideHigh)} upside
                             </p>
@@ -785,7 +789,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                               {it.source === "ai" && <Badge variant="gold">AI-suggested — verify</Badge>}
                               {it.source === "agency" && <Badge variant="info">agency rule</Badge>}
                               {/* Dollar figures: admin eyes only, by policy */}
-                              {adminView && revenue?.perItem[it.id] && (
+                              {adminView && revenue?.available && revenue.perItem[it.id] && (
                                 <Badge className="bg-emerald-100 text-emerald-800">
                                   {revenue.perItem[it.id].type === "at_risk"
                                     ? `${fmtUsd(revenue.perItem[it.id].high)} at risk`

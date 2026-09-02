@@ -42,7 +42,9 @@ import { format } from "date-fns";
 import OASISAuditReportGenerator from "@/components/oasis/OASISAuditReportGenerator";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
-export default function OASISAuditDashboard() {
+const OASIS_AUDIT_AI_ENABLED = false;
+
+function EnabledOASISAuditDashboard() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -563,4 +565,21 @@ export default function OASISAuditDashboard() {
       )}
     </div>
   );
+}
+
+export default function OASISAuditDashboard() {
+  if (!OASIS_AUDIT_AI_ENABLED) {
+    return (
+      <Card className="border-2 border-amber-300">
+        <CardContent className="space-y-2 pt-6 text-sm text-slate-700">
+          <div className="flex items-center gap-2 font-semibold text-amber-950">
+            <AlertTriangle className="h-5 w-5 text-amber-700" /> OASIS AI Audit Dashboard Paused
+          </div>
+          <p>Legacy rescore, reimbursement, and AI report fields are unavailable pending tenant-scoped audit access and a verified clinical review contract.</p>
+          <p>No audit list, staff roster, legacy dollar value, or report generator is loaded from this tab.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledOASISAuditDashboard />;
 }

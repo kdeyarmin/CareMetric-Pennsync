@@ -163,7 +163,7 @@ test("searchPurchaseTelnyxNumbers posts the Telnyx number-order contract", async
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest" },
-    makeClient: () => makeBase44({ user: { email: "a@x.com", account_type: "super_admin" }, data: { IntegrationSecret: [{ api_key: "KEYtest" }] } }),
+    makeClient: () => makeBase44({ user: { email: "a@x.com", role: "admin", account_type: "super_admin" }, data: { IntegrationSecret: [{ api_key: "KEYtest" }] } }),
     fetchImpl: impl,
   });
   await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
@@ -175,6 +175,25 @@ test("searchPurchaseTelnyxNumbers posts the Telnyx number-order contract", async
   assert.deepEqual(call.body.phone_numbers, [{ phone_number: "+12155550177" }]);
 });
 
+test("a self-asserted super_admin account_type cannot purchase a Telnyx number", async () => {
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_denied" } } }) },
+  ]);
+  const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
+    env: { TELNYX_API_KEY: "KEYtest" },
+    makeClient: () => makeBase44({
+      user: { email: "attacker@x.com", role: "user", account_type: "super_admin" },
+      data: { IntegrationSecret: [{ api_key: "KEYtest" }] },
+    }),
+    fetchImpl: impl,
+  });
+  const res = await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
+    method: "POST", body: JSON.stringify({ action: "purchase", e164: "2155550177" }),
+  }));
+  assert.equal(res.status, 403);
+  assert.equal(calls.some((c) => c.url.includes("/v2/number_orders")), false);
+});
+
 test("a nurse-line purchase auto-enrolls the number in the saved A2P campaign", async () => {
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_3", phone_numbers: [{ id: "np_2", phone_number: "+12155550188" }] } } }) },
@@ -183,7 +202,7 @@ test("a nurse-line purchase auto-enrolls the number in the saved A2P campaign", 
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: {},
     makeClient: () => makeBase44({
-      user: { email: "a@x.com", account_type: "super_admin" },
+      user: { email: "a@x.com", role: "admin", account_type: "super_admin" },
       data: {
         IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }],
         AgencySettings: [{ id: "as_1", a2p_campaign_id: "CAMP1" }],
@@ -211,7 +230,7 @@ test("a nurse-line purchase with NO saved campaign warns instead of enrolling", 
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: {},
     makeClient: () => makeBase44({
-      user: { email: "a@x.com", account_type: "super_admin" },
+      user: { email: "a@x.com", role: "admin", account_type: "super_admin" },
       data: { IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }] },
     }),
     fetchImpl: impl,
@@ -227,7 +246,7 @@ test("a nurse-line purchase with NO saved campaign warns instead of enrolling", 
 
 // A minimal spy-able client: like makeBase44 but with stable per-entity objects
 // so update/create calls can be recorded, and per-entity overrides.
-function makeSpyBase44({ user = { email: "a@x.com", account_type: "super_admin", full_name: "Ada" }, data = {}, writes = [] } = {}) {
+function makeSpyBase44({ user = { email: "a@x.com", role: "admin", account_type: "super_admin", full_name: "Ada" }, data = {}, writes = [] } = {}) {
   const cache = {};
   const entity = (name) => {
     if (!cache[name]) {

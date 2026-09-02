@@ -13,10 +13,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  */
 
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isAdminLike = (u) => !!u && (
-  u.role === 'admin' || u.account_type === 'agency_admin' ||
-  u.account_type === 'super_admin'
-);
+const isAdminLike = (u) => !!u && u.role === 'admin';
 // <<<END SHARED HELPER: isAdminLike>>>
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
@@ -26,6 +23,10 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
   { status: 403 },
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
+
+// Financial configuration stays immutable while PDGM/reimbursement features
+// are globally paused and tenant ownership is not server-bound.
+const PAYER_RATE_CONFIG_ENABLED = false;
 
 const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
@@ -76,6 +77,17 @@ function sanitizePayer(raw) {
 }
 
 Deno.serve(async (req) => {
+  if (!PAYER_RATE_CONFIG_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'payer_rate_configuration_paused',
+      message: 'Payer-rate configuration is unavailable pending tenant-scoped financial authorization.',
+      saved_count: 0,
+      dropped_count: 0,
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
 

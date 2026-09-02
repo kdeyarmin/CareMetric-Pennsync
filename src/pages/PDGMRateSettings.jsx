@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
-import { isAdminLike } from "@/lib/superAdmin";
 import { DEFAULT_PDGM_RATES, mergePdgmRates, DEFAULT_ICD10_CLINICAL_GROUPS, effectiveIcdGroups } from "@/components/pdgm/pdgmRates";
 import { validateRateNumbers, validateIcdMappings } from "@/components/pdgm/rateSettingsValidation";
 import CaseMixWeightsUpload from "@/components/pdgm/CaseMixWeightsUpload";
@@ -23,7 +22,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
-import { PieChart, Save, RotateCcw, Info, ShieldCheck, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { PieChart, Save, RotateCcw, Info, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 // Stable per-row key (not persisted — rowsToMap reads only prefix/group) so
@@ -50,6 +49,7 @@ const prettify = (k) =>
   String(k).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 const INITIAL_META = { label: "", effective_year: "", is_official: false, notes: "" };
+const PDGM_RATE_EDITOR_ENABLED = false;
 
 // Canonical serialization of everything the Save button persists, used for the
 // dirty-state guard. Row _keys are editor-local and excluded so re-keying a row
@@ -142,7 +142,7 @@ function RateTable({ title, help, table, onCell }) {
 export default function PDGMRateSettings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const canEdit = isAdminLike(user);
+  const canEdit = user?.role === "admin";
 
   const { data: config, isLoading, isFetching: configFetching, isError: configError } = useQuery({
     queryKey: ["pdgm-rate-config", user?.agency_name || null],
@@ -150,7 +150,7 @@ export default function PDGMRateSettings() {
       const { fetchCallerPdgmRateConfig } = await import("@/lib/agencySettings");
       return fetchCallerPdgmRateConfig(user?.agency_name);
     },
-    enabled: canEdit,
+    enabled: canEdit && PDGM_RATE_EDITOR_ENABLED,
     initialData: null,
   });
 
@@ -170,7 +170,9 @@ export default function PDGMRateSettings() {
       const seededMeta = {
         label: config.label || "",
         effective_year: config.effective_year || "",
-        is_official: config.is_official === true,
+        // Legacy flags are display-only. The factorized estimator is not an
+        // official CMS 432-group grouper and cannot be activated.
+        is_official: false,
         notes: config.notes || "",
       };
       setForm(seededForm);
@@ -220,14 +222,14 @@ export default function PDGMRateSettings() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       // PDGMRateConfig is service-role-write only, so writes go through the
-      // savePDGMRateConfig function, which gates on isAdminLike (so an account_type
-      // admin / the owner — whose `role` may not be literally 'admin' — can still
-      // save) and stamps updated_by_email from the authenticated caller.
+      // savePDGMRateConfig function, which requires the protected built-in admin
+      // role plus the server-configured platform owner and verified Agency row.
       // case_mix_weight_table is deliberately omitted: the function preserves the
       // stored reference table unless the field is explicitly sent (see the
       // dedicated upload card below).
       const payload = {
         ...meta,
+        is_official: false,
         rates: formToRates(form),
         icd10_clinical_groups: rowsToMap(icdRows),
       };
@@ -236,7 +238,7 @@ export default function PDGMRateSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pdgm-rate-config"] });
       setSavedSnapshot(snapshotOf(form, icdRows, meta));
-      toast.success("PDGM rates saved. New estimates use these numbers.");
+      toast.success("PDGM reference rates saved. Payment calculations remain unavailable.");
     },
     onError: (err) => {
       console.error("Failed to save PDGM rates:", err);
@@ -260,8 +262,8 @@ export default function PDGMRateSettings() {
         : "";
       const ok = await confirm({
         title: "Overwrite official CMS rates?",
-        description: `The saved rate set is marked as OFFICIAL CMS rates — last edited by ${editor}${when}. Saving replaces it and applies to every PDGM payment estimate immediately.`,
-        confirmText: "Overwrite official rates",
+        description: `This legacy row was marked official — last edited by ${editor}${when}. Saving replaces it as a reference-only estimate; PDGM payment remains unavailable.`,
+        confirmText: "Save as reference only",
         destructive: true,
       });
       if (!ok) return;
@@ -281,7 +283,7 @@ export default function PDGMRateSettings() {
       const payload = {
         label: config?.label ?? "",
         effective_year: config?.effective_year ?? "",
-        is_official: config?.is_official === true,
+        is_official: false,
         notes: config?.notes ?? "",
         rates: config?.rates ?? {},
         icd10_clinical_groups: config?.icd10_clinical_groups ?? {},
@@ -306,7 +308,7 @@ export default function PDGMRateSettings() {
       const payload = {
         label: config?.label ?? "",
         effective_year: config?.effective_year ?? "",
-        is_official: config?.is_official === true,
+        is_official: false,
         notes: config?.notes ?? "",
         rates: config?.rates ?? {},
         icd10_clinical_groups: config?.icd10_clinical_groups ?? {},
@@ -335,6 +337,25 @@ export default function PDGMRateSettings() {
 
   const effectivePreview = useMemo(() => formToRates(form), [form]);
 
+  if (!PDGM_RATE_EDITOR_ENABLED) {
+    return (
+      <PageContainer>
+        <PageHeader
+          icon={PieChart}
+          eyebrow="Configuration"
+          title="PDGM Rate Settings"
+          description="Rate editing is paused until tenant authority and the official CMS grouper are verified."
+        />
+        <Card className="border-2 border-amber-300 bg-amber-50">
+          <CardContent className="space-y-3 py-6 text-sm text-amber-950">
+            <p><strong>PDGM rate configuration: Unavailable.</strong> No browser-loaded defaults are presented as saved configuration, and no rate set can be marked official.</p>
+            <p>Required action: establish immutable tenant-bound hosted authorization, then integrate the official CMS HHGS 432-group grouper with golden-case tests. Use the official EMR/CMS-approved grouper meanwhile.</p>
+          </CardContent>
+        </Card>
+      </PageContainer>
+    );
+  }
+
   if (!canEdit) {
     return <AccessDeniedState description="PDGM rate settings are restricted to administrators." />;
   }
@@ -345,15 +366,13 @@ export default function PDGMRateSettings() {
         icon={PieChart}
         eyebrow="Configuration"
         title="PDGM Rate Settings"
-        description="Enter and update your case-mix weights, base rate, and multipliers. Saved numbers are applied to every PDGM payment estimate immediately."
+        description="Maintain reference rate inputs while the verified CMS HHGS 432-group payment grouper is being implemented. These values do not produce PennSync payment amounts."
       />
 
-      <Alert className={meta.is_official ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}>
-        {meta.is_official ? <ShieldCheck className="h-4 w-4 text-emerald-600" /> : <Info className="h-4 w-4 text-amber-600" />}
+      <Alert className="border-amber-300 bg-amber-50">
+        <Info className="h-4 w-4 text-amber-700" />
         <AlertDescription className="text-sm">
-          {meta.is_official
-            ? "Marked as official CMS rates — PDGM results are treated as authoritative (not labeled an estimate)."
-            : "These weights are treated as an ESTIMATE until you enter your official CMS numbers and toggle “Official CMS rates” below. They are not billable amounts."}
+          <strong>PDGM payment is unavailable — not $0.</strong> These factorized tables are reference-only and cannot be marked official. Use the official EMR/CMS-approved grouper until PennSync integrates the verified 432-group HHGS table/software and passes CMS golden-case tests.
         </AlertDescription>
       </Alert>
 
@@ -381,9 +400,8 @@ export default function PDGMRateSettings() {
                   onChange={(e) => setForm({ ...form, basePaymentRate: e.target.value })} className="mt-1 w-40" />
               </div>
               <div className="flex items-center gap-3 pt-6">
-                <Switch id="is-official" checked={meta.is_official}
-                  onCheckedChange={(v) => setMeta({ ...meta, is_official: v })} />
-                <Label htmlFor="is-official" className="cursor-pointer">These are official CMS rates</Label>
+                <Switch id="is-official" checked={false} disabled />
+                <Label htmlFor="is-official" className="text-slate-500">Official activation unavailable pending verified CMS grouper</Label>
               </div>
               <div className="sm:col-span-2">
                 <Label htmlFor="rate-notes">Notes</Label>
@@ -458,7 +476,7 @@ export default function PDGMRateSettings() {
 
           <PDGMCalculationPreview
             isDirty={isDirty}
-            isOfficial={meta.is_official}
+            isOfficial={false}
             baseRate={effectivePreview.basePaymentRate ?? DEFAULT_PDGM_RATES.basePaymentRate}
           />
 

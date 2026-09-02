@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
 import { useConfirm } from "@/components/ui/confirm-dialog";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,11 +22,17 @@ import {
   buildVisitsByPatient,
   findDuplicateGroups,
 } from "@/components/patient/patientDuplicateUtils";
-import { mergePatientGroup } from "@/components/patient/mergePatients";
+import {
+  mergePatientGroup,
+  PATIENT_MERGES_PAUSED,
+  PATIENT_MERGE_PAUSED_MESSAGE,
+} from "@/components/patient/mergePatients";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 
-export default function DuplicatePatients() {
+const PATIENT_DEDUPE_UI_ENABLED = false;
+
+function EnabledDuplicatePatients() {
   const confirm = useConfirm();
   const [isScanning, setIsScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
@@ -34,11 +40,6 @@ export default function DuplicatePatients() {
   const [mergingKey, setMergingKey] = useState(null);
   const [isMergingAll, setIsMergingAll] = useState(false);
   const queryClient = useQueryClient();
-
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
 
   const { data: patients = [], isLoading } = useScopedPatients({
     sort: '-created_date',
@@ -88,6 +89,10 @@ export default function DuplicatePatients() {
   // clinical history onto the survivor and archive the rest. `survivor` is the
   // record the admin chose to keep (defaults to the group's primary).
   const handleMergeGroup = async (group, groupKey, survivor) => {
+    if (PATIENT_MERGES_PAUSED) {
+      toast.error(PATIENT_MERGE_PAUSED_MESSAGE);
+      return;
+    }
     const others = [group.primary, ...group.duplicates.map((d) => d.patient)].filter(
       (p) => p.id !== survivor.id
     );
@@ -106,8 +111,7 @@ export default function DuplicatePatients() {
     try {
       const { patientsMerged, reassigned } = await mergePatientGroup(
         survivor.id,
-        others.map((p) => p.id),
-        { mergedBy: currentUser?.email }
+        others.map((p) => p.id)
       );
       const moved = Object.values(reassigned).reduce((a, b) => a + b, 0);
       toast.success(
@@ -132,6 +136,10 @@ export default function DuplicatePatients() {
   // merge the rest into it. Same per-group logic as the manual button, just run
   // across all groups so the admin doesn't have to do it one at a time.
   const handleMergeAll = async () => {
+    if (PATIENT_MERGES_PAUSED) {
+      toast.error(PATIENT_MERGE_PAUSED_MESSAGE);
+      return;
+    }
     const totalExtra = duplicateGroups.reduce((sum, g) => sum + g.duplicates.length, 0);
     const ok = await confirm({
       title: "Merge all duplicates?",
@@ -158,8 +166,7 @@ export default function DuplicatePatients() {
       try {
         const { patientsMerged } = await mergePatientGroup(
           survivor.id,
-          others.map((p) => p.id),
-          { mergedBy: currentUser?.email }
+          others.map((p) => p.id)
         );
         mergedGroups += 1;
         mergedRecords += patientsMerged;
@@ -258,11 +265,13 @@ export default function DuplicatePatients() {
           {hasScanned && !isScanning && duplicateGroups.length > 0 && (
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
               <p className="text-sm text-orange-900 flex-1">
-                If these are the same patient, you can combine all of their records into one with a single click.
+                Patient merge is temporarily unavailable while an authorized,
+                atomic server merge broker is completed. No duplicate will be
+                archived or partially reassigned from this page.
               </p>
               <Button
                 onClick={handleMergeAll}
-                disabled={isMergingAll}
+                disabled={isMergingAll || PATIENT_MERGES_PAUSED}
                 className="whitespace-nowrap"
               >
                 {isMergingAll ? (
@@ -405,7 +414,7 @@ export default function DuplicatePatients() {
                             <Button
                               size="sm"
                               onClick={() => handleMergeGroup(group, groupKey, patient)}
-                              disabled={isMerging}
+                              disabled={isMerging || PATIENT_MERGES_PAUSED}
                               className="whitespace-nowrap"
                             >
                               {isMerging ? (
@@ -426,6 +435,30 @@ export default function DuplicatePatients() {
           })}
         </div>
       )}
+    </PageContainer>
+  );
+}
+
+export default function DuplicatePatients() {
+  if (PATIENT_DEDUPE_UI_ENABLED) return <EnabledDuplicatePatients />;
+  return (
+    <PageContainer>
+      <PageHeader
+        title="Duplicate Patients"
+        description="Patient duplicate scanning and merging are temporarily unavailable."
+      />
+      <Card className="border-2 border-amber-300 bg-amber-50">
+        <CardContent className="flex items-start gap-3 p-6">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+          <div className="space-y-1 text-sm leading-6 text-amber-900">
+            <p className="font-semibold text-amber-950">Patient duplicate tools are paused</p>
+            <p>
+              No patient or visit data is loaded by this page while tenant-bound
+              access and an atomic server merge broker are being validated.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </PageContainer>
   );
 }

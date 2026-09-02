@@ -1,27 +1,19 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { toLocalISODate } from "@/lib/dateLocal";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import PageContainer from "@/components/ui/PageContainer";
 import { useIsEmbedded } from "@/components/ui/embeddedPage";
 import {
-  ChevronDown, ChevronUp, Users, Search, Save, CheckCircle2, History,
+  ChevronDown, ChevronUp, Users, Search, CheckCircle2, History,
   Loader2, AlertCircle, AlertTriangle, Brain, Activity, ShieldAlert, Lightbulb, Printer
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToPDF } from "@/components/utils/pdfExporter";
-import { todayEastern } from "@/components/utils/timezone";
 import { evaluateOASIS, computeCareScope } from "@/components/oasis/oasisScoringEngine";
-import { itemSourceFor } from "@/components/oasis/specs/verification.js";
 import { buildLegacyFormOutput } from "@/components/oasis/responseSchema/legacyFormOutput.js";
-import { saveLegacyScreeningDraft } from "@/components/oasis/responseSchema/oasisWriteAdapter.js";
 import OasisItemNotice from "@/components/oasis/OasisItemNotice.jsx";
 import OASISSuggestionPanel from "@/components/oasis/OASISSuggestionPanel";
 import OASISComplianceWarnings, { getComplianceIssues } from "@/components/oasis/OASISComplianceWarnings";
@@ -30,7 +22,7 @@ import OASISQuestionGuidance from "@/components/oasis/OASISQuestionGuidance";
 import { OASIS_GUIDANCE } from "@/components/oasis/oasisGuidanceData";
 import NoteToOasisPrefill from "@/components/oasis/NoteToOasisPrefill";
 import { OASIS_SECTIONS } from "@/components/oasis/oasisQuestions";
-import { VISIT_TYPES, completeReferralSocForPatient } from "@/components/clinical/OASISQuickUpdate";
+import { VISIT_TYPES } from "@/components/clinical/OASISQuickUpdate";
 import { AssessmentSkeleton } from "@/components/ui/PageSkeleton";
 import { debounce } from "@/lib/debounce";
 import { LOCAL_PHI_KEYS } from "@/lib/localPhiKeys";
@@ -60,6 +52,7 @@ function isAnswered(question, answers) {
 // idle timeout mid-assessment would be silent loss of documented care; see
 // src/lib/localPhiKeys.js).
 const DRAFT_AUTOSAVE_DEBOUNCE_MS = 1000;
+const SMART_OASIS_ASSESSMENT_ENABLED = false;
 
 function draftStorageKey(patientId, visitType) {
   const typeSlug = String(visitType).toLowerCase().replace(/[^a-z0-9]+/g, "_");
@@ -272,7 +265,7 @@ function RightPanel({ suggestions, complianceIssues, reasoningIssues }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
-export default function SmartOASISAssessment() {
+function EnabledSmartOASISAssessment() {
   // When rendered as the "Assessment" tab of the OASIS Center hub, drop the
   // standalone PageContainer and shrink the fixed full-screen height to fit under
   // the hub's header + tab strip (otherwise the split-pane overflows the viewport).
@@ -284,8 +277,6 @@ export default function SmartOASISAssessment() {
   // visit_type must reflect the visit actually being documented.
   const [visitType, setVisitType] = useState("Start of Care");
   const [draftPrompt, setDraftPrompt] = useState(null); // matching saved draft awaiting restore/discard
-  const [missingItems, setMissingItems] = useState(null); // non-null → pre-save blank-items dialog open
-  const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [guidanceOpen, setGuidanceOpen] = useState(false);
   const [currentGuidance, setCurrentGuidance] = useState({ questionId: null, questionLabel: "" });
@@ -373,81 +364,8 @@ export default function SmartOASISAssessment() {
   const totalQuestions = OASIS_SECTIONS.reduce((sum, s) => sum + s.questions.length, 0);
   const completionPct = Math.round((answeredTotal / totalQuestions) * 100);
 
-  const handleSaveAssessment = async () => {
-    if (!selectedPatientId) { toast.error("Please select a patient first."); return; }
-    setSaving(true);
-    try {
-      // care_type drives the whole app's regulatory frame (hospice 42 CFR 418
-      // vs home-health 484 — required note elements, framing, PDGM). It is set
-      // explicitly at referral/admission; only FILL it here when the chart has
-      // none. The old unconditional write silently flipped a hospice patient
-      // to home_health whenever an assessment's heuristic said otherwise.
-      const chartPatient = patients.find((p) => p.id === selectedPatientId);
-      if (!chartPatient?.care_type) {
-        await base44.entities.Patient.update(selectedPatientId, {
-          care_type: careScope === "hospice" ? "hospice" : "home_health",
-        });
-      }
-      // Eastern calendar day (matches OASISQuickUpdate) — this date drives
-      // Medicare assessment-timing windows and the referral SOC clock below.
-      const assessmentDate = todayEastern();
-      // Routed through the single write adapter, never straight at the entity.
-      // `item_number` here is PennSync's own FORM id, not necessarily a CMS item
-      // number — several of this form's ids are retired CMS items or appear in
-      // no CMS manual (see specs/verification.js). The adapter stamps
-      // `pennsync-oasis-response-v1-legacy` on every row, so a screening answer
-      // is not merely distinguishable from a CMS response: every CMS-labeled
-      // consumer refuses it by name.
-      await saveLegacyScreeningDraft({
-        assessment: {
-          patient_id: selectedPatientId,
-          visit_type: visitType,
-          assessment_date: assessmentDate,
-          status: "completed",
-          completed_date: new Date().toISOString(),
-        },
-        answers: Object.entries(answers).map(([item_number, response]) => ({
-          id: item_number,
-          itemNumber: item_number,
-          itemSource: itemSourceFor(item_number),
-          response,
-        })),
-      });
-      // The assessment now lives server-side — the local draft is obsolete.
-      // Cancel any pending debounced write first so it can't resurrect it.
-      writeDraft.cancel();
-      if (draftKey) {
-        try { localStorage.removeItem(draftKey); } catch { /* storage unavailable */ }
-      }
-      if (visitType === "Start of Care") {
-        // Fire-and-forget (no await): close the referral's intake→SOC clock,
-        // never blocking or failing the OASIS save.
-        completeReferralSocForPatient(selectedPatientId, assessmentDate);
-      }
-      // Clear the form: the assessment is committed, and leaving the responses
-      // on screen is what let them be re-saved onto the next patient selected.
-      setAnswers({});
-      toast.success("OASIS assessment saved successfully.");
-    } catch (err) {
-      // Don't leave the Save button stuck on the spinner with the completed
-      // assessment silently unsaved.
-      console.error("Failed to save OASIS assessment:", err);
-      toast.error("Failed to save assessment. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Pre-save gate: list every OASIS item still blank and let the clinician go
-  // back (or knowingly save anyway) before the assessment is committed.
   const handleSaveClick = () => {
-    if (!selectedPatientId) { toast.error("Please select a patient first."); return; }
-    const blanks = OASIS_SECTIONS.flatMap(s => s.questions.filter(q => !isAnswered(q, answers)));
-    if (blanks.length > 0) {
-      setMissingItems(blanks.map(q => ({ id: q.id, label: q.label })));
-      return;
-    }
-    handleSaveAssessment();
+    toast.error("OASIS saving is temporarily unavailable pending tenant security validation.");
   };
 
   const careScopeBadge = {
@@ -644,9 +562,9 @@ export default function SmartOASISAssessment() {
             {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Printer className="w-3.5 h-3.5 mr-1.5" />}
             Print Guide
           </Button>
-          <Button size="sm" onClick={handleSaveClick} disabled={saving || answeredTotal === 0 || !selectedPatientId}>
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
-            Save Assessment
+          <Button size="sm" onClick={handleSaveClick} disabled>
+            <ShieldAlert className="w-3.5 h-3.5 mr-1.5" />
+            Saving Paused
           </Button>
         </div>
       </div>
@@ -699,31 +617,6 @@ export default function SmartOASISAssessment() {
       </div>
 
       {/* Pre-save checklist: OASIS items still blank */}
-      <AlertDialog open={missingItems !== null} onOpenChange={(open) => { if (!open) setMissingItems(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
-              {missingItems?.length} OASIS item{missingItems?.length !== 1 ? "s" : ""} still blank
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              The following items have no response. Go back to complete them, or save the assessment as-is.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
-            {(missingItems ?? []).map(item => (
-              <p key={item.id} className="px-3 py-2 text-sm text-slate-700">{item.label}</p>
-            ))}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Go back</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setMissingItems(null); handleSaveAssessment(); }}>
-              Save anyway
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* Question Guidance Dialog */}
       <OASISQuestionGuidance
         questionId={currentGuidance.questionId}
@@ -735,4 +628,21 @@ export default function SmartOASISAssessment() {
   );
 
   return embedded ? shell : <PageContainer>{shell}</PageContainer>;
+}
+
+export default function SmartOASISAssessment() {
+  if (!SMART_OASIS_ASSESSMENT_ENABLED) {
+    return (
+      <PageContainer>
+        <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-6 text-sm text-amber-950">
+          <div className="flex items-center gap-2 font-semibold">
+            <ShieldAlert className="h-5 w-5" /> Smart OASIS Assessment Paused
+          </div>
+          <p className="mt-2">This assessment is unavailable pending verified OASIS-E definitions, a protected response schema, and tenant-scoped persistence.</p>
+          <p className="mt-2">No patient list, saved assessment, response scale, compliance rule, clinical recommendation, autosaved PHI, or export guide is loaded from this tab.</p>
+        </div>
+      </PageContainer>
+    );
+  }
+  return <EnabledSmartOASISAssessment />;
 }

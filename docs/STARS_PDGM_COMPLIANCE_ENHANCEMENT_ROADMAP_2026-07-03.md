@@ -1,5 +1,12 @@
 # PennSync — Star Rating · PDGM Revenue · CMS Compliance Enhancement Roadmap
 
+> **Safety correction (2026-09-02):** this July roadmap is historical planning,
+> not an activation runbook. Outcome computation, OASIS saving, direct outcome
+> reads, and browser KPI reporting are paused pending tenant-security staging.
+> PennSync's current outcome math is an unadjusted internal proxy—not an official
+> CMS rate, star input, or HH QRP Discharge Function calculation. Do not schedule
+> or expose it from the browser. See `REPOSITORY_CONSOLIDATION_2026-09-02.md`.
+
 **Date:** 2026-07-03 (revised same day — see the revision note below)
 **Type:** Full-app feature review + prioritized enhancement roadmap.
 **Business goals (agency-stated):** (1) increase the Medicare Quality of Patient Care star rating,
@@ -43,15 +50,15 @@ PennSync already captures nearly all the raw material the three goals need — t
 extraction pulls F2F, insurance, SDOH, and OASIS pre-fill from the uploaded packet; diagnosis
 sequencing is PDGM-aware at intake; the OASIS/PDGM analytics suite is deep; the Smart Note
 compliance scrubber is genuinely strong. **The core finding of this review is that the last mile
-never landed:** several flagship engines are fully built and unit-tested but are wired into
-nothing, so the app computes (or could compute) the exact numbers that drive stars, revenue, and
-compliance — and then discards them.
+never landed:** several engines were built but not safely production-wired. They
+must not be described as exact star/revenue/CMS calculations without source,
+clinical, tenant-security, and hosted-platform proof.
 
 | Built-but-unwired engine | File | What it would deliver | Goal |
 |---|---|---|---|
 | Intake-to-SOC turnaround tracker | `src/components/referral/intakeToSocTracker.js` | Referral aging board + intake turnaround metric | ⭐✅ |
-| Outcome-measure computation | `base44/functions/computeOutcomeMeasures/entry.ts` | 5 improvement measures + GG discharge function score → `AgencyKPI` | ⭐ |
-| Star-metric display | *(no consumer exists)* | Nothing anywhere reads `AgencyKPI` or `PatientOutcomeMetric` | ⭐ |
+| Outcome-proxy computation | `base44/functions/computeOutcomeMeasures/entry.ts` | Paused; agency-scoped unadjusted proxies + non-CMS 18-item GG raw sum | Internal review only |
+| Outcome-proxy display | `OutcomeMeasuresSection` / `KPIDashboard` | Intentionally paused; browser loads no outcome/reporting entities | Internal review only |
 | Denial guardrail | `src/components/compliance/denialGuardrailEngine.js` | Pre-save check on the top denial clusters | ✅💰 |
 | F2F persistence | `toFaceToFaceEncounter` in `faceToFaceValidator.js` | An auditable `FaceToFaceEncounter` record (validation today is in-memory only) | ✅💰 |
 | HIPPS / case-mix grouper | `src/components/pdgm/pdgmGrouper.js` + `caseMixWeightsLoader.js` | HIPPS codes + official case-mix weights for revenue analysis (needs the CMS weight CSV) | 💰 |
@@ -113,14 +120,12 @@ remains the system of record for scheduling, billing, and official CMS reporting
 scoring engine (`oasisScoringEngine.js`), validation stack; PPH rehospitalization-prevention
 worklist (`pphWorklistEngine.js`, wired into `PredictiveAnalytics.jsx`).
 
-**Built but dead:** `computeOutcomeMeasures` pairs Discharge↔SOC/ROC OASIS and computes the five
-QoPC improvement measures (M1860 ambulation, M1850 bed transfer, M1830 bathing, M1400 dyspnea,
-M2020 oral meds) plus the GG discharge function score, with CMS-style exclusions and the
-20-episode / 5-of-7-measure star-eligibility floors (`STAR_MIN_EPISODES`, `STAR_MIN_MEASURES` in
-`outcomeMeasureEngine.js`). It writes `PatientOutcomeMetric` and `AgencyKPI` rows — but its
-frontend invoker (`src/functions/computeOutcomeMeasures.js`) has zero callers, no platform schedule
-is documented for it, and **no frontend file reads `AgencyKPI` or `PatientOutcomeMetric`**. The
-same is true of the intake-to-SOC tracker.
+**Built but intentionally paused:** `computeOutcomeMeasures` pairs verified in-app
+Discharge↔SOC/ROC rows for one explicit agency and stable period. Four measures currently have a
+verified v2 response set; M1850 remains unscorable. Rates are unadjusted internal proxies, and the
+18-item GG raw sum is not the CMS HH QRP Discharge Function measure. Direct entity reads, browser
+recompute, and platform scheduling are disabled until the server-owned tenant boundary, hosted
+RLS, writer/backfill, paging, and clinical-review gates pass.
 
 **Not built (and, post-revision, intentionally so):** HHCAHPS capture beyond an import hook
 (surveys are vendor-administered; see §6); a hospitalization/ED data feed (EMR/claims-owned).
@@ -196,11 +201,12 @@ stays with the EMR.
   branch, ~line 1326): dialog with SOC-date picker (defaults today) + optional first-visit date,
   calling `Referral.update(id, markStartOfCareCompleted(referral, { socDate, by: user.email }))`.
   Add `soc_completed` to the status filter (~line 1113) and `getStatusColor` (line 1024).
-- **Auto-complete hooks (positive evidence only):** after a Start-of-Care `OASISAssessment.create`
-  in `SmartOASISAssessment.jsx:247` and `OASISQuickUpdate.jsx:64`, look up the open referral by
-  `patient_id` and apply the same update, non-blocking try/catch (mirror the diagnosis-coding
-  pattern at `ReferralIntake.jsx:483–493`). These fire on work actually done in-app — never on
-  absence.
+- **Former auto-complete proposal — do not implement in the browser:** direct
+  `OASISAssessment.create` is now service-blocked and both cited save controls
+  are paused. Any later Start-of-Care → referral completion must be one
+  authorized server transaction under the future tenant/chart broker; a
+  non-blocking browser follow-up can split state and is not an acceptable write
+  boundary.
 - **Aging board:** new `src/components/referral/ReferralAgingBoard.jsx` rendering
   `buildAgingBoard(referrals)` (on-track / due-soon / overdue, oldest first); mount below the
   StatCards on the intake tab and as a sidebar card on `ReferralFollowUp.jsx` (already loads the
@@ -211,33 +217,15 @@ stays with the EMR.
   always with the denominator shown ("of N referrals closed in PennSync").
 - **Ship 2.7 in the same sprint** (it is S) so triage-path admissions stop bypassing the queue.
 
-### 1.2 Outcome measures in the existing Quality tab + schedule `computeOutcomeMeasures` — ⭐ · M
+### 1.2 Outcome proxy staging — **PAUSED / BLOCKED**
 
-**Companion-mode framing:** a **dashboard, not an alert stream**, computed over episodes that have
-both SOC and Discharge OASIS **documented in PennSync**. It is an early-warning and coaching view
-of the same improvement measures CMS builds the QoPC star from — not a replica of the official
-star, which CMS computes from the EMR's submissions. Coverage labeling is a first-class design
-element, not a footnote.
-
-- **Trigger:** register a nightly platform schedule for `computeOutcomeMeasures` on the Base44
-  dashboard (the `x-internal-secret` pattern documented in
-  [`LEARNING_CENTER_SCHEDULED_JOBS.md`](./LEARNING_CENTER_SCHEDULED_JOBS.md); add it to that doc's
-  table). Add an admin "Recompute now" button using the existing
-  `src/functions/computeOutcomeMeasures.js` invoker. The function only *reads* in-app OASIS rows
-  and writes metric rows — it alerts no one, so partial coverage cannot create false alarms.
-- **Dashboard — inside the existing Quality tab, not a new tab:** `OASISCenter.jsx`'s Quality tab
-  (lines 168–183) already renders two titled sections ("Compliance Review", "Documentation
-  Review"); add an admin-gated third section, **"Outcome Measures"**, above them. Content: the
-  five improvement measures + GG discharge function score from `AgencyKPI`
-  (`metric_category: 'quality'`); episode counts front and center ("based on N complete episode
-  pairs documented in PennSync"); the 20-episode / 5-measure floors shown as context for how CMS
-  reads the same math; intake turnaround from 1.1; per-measure trend vs `benchmark_value`.
-  Secondary surface: summary card in the existing `KPIDashboard.jsx` linking to
-  `/OASISCenter?tab=quality`.
-- **Incomplete pairs** (SOC here, no discharge here) appear as a **data-coverage note on the
-  dashboard** — never as patient-level alerts, since the discharge assessment most likely lives
-  in the EMR.
-- Verify `AgencyKPI`/`PatientOutcomeMetric` RLS read rules admit admins before shipping.
+Do not register a schedule or restore a recompute button. The function requires the internal
+secret plus `{agency_id, period_start, period_end, period_type}` and remains paused. OASIS Quality
+and KPI reporting show tenant-security notices and load no outcome/reporting entities in the
+browser. Restore them only through a staged server broker with immutable tenant authority,
+patient/chart authorization, hosted service-only RLS proof, agency-stamped/backfilled inputs,
+current-version/lifecycle filters, paging/checkpointing, and clinical validation. Any future UI
+must label rates as unadjusted internal proxies with explicit coverage; never as CMS/star results.
 
 ### 1.3 Denial guardrail in the Smart Note save path — ✅💰 · M
 
@@ -299,7 +287,7 @@ alert bell with false open items:
 - RISK 4 (LUPA) is doubly wrong: absence-based *and* built on the pre-PDGM "4 visits per 60-day
   episode" rule (`entry.ts:218`). **Remove the alert**; LUPA economics live in the admin analysis
   view (1.7) as reference information instead.
-- The missing-Discharge-OASIS rule (star-eligibility enforcer) assumes discharge assessments are
+- The missing-Discharge-OASIS documentation rule assumes discharge assessments are
   done here — surface this as the **coverage note on the 1.2 dashboard**, not as patient alerts.
 
 What remains schedulable is anything keyed to in-app artifacts only; if nothing qualifies after
@@ -376,7 +364,7 @@ directly serves the three goals — all of them changes **inside screens staff a
 
 | Backlog item (existing surface) | Why it matters here | Goals | Effort |
 |---|---|---|---|
-| **Assessment-reason (RFA) selector in `SmartOASISAssessment.jsx`** — save currently hardcodes `visit_type: 'Start of Care'` (line 248) | **Load-bearing for 1.2:** outcome measures pair SOC↔Discharge assessments; if every in-app assessment saves as SOC, `computeOutcomeMeasures` can never pair an episode. Fix before or with 1.2 | ⭐✅ | S |
+| **Assessment-reason (RFA) selector in `SmartOASISAssessment.jsx`** | Saving is now paused. Preserve the selected reason in the future server-authorized writer; do not reactivate the former browser path. | ✅ | S after broker |
 | **OASIS draft autosave + "required items still blank" pre-save checklist** (`SmartOASISAssessment.jsx`) | Fewer abandoned/incomplete assessments → more complete episode pairs for the measures; less rework | ⭐✅ | M |
 | **Carry the "not documented" gap list into the saved note + exported PDF** (Smart Note; `findings: []` dead code today) | A faxed/printed note shows exactly which Medicare-required elements are missing — the denial-prevention story on paper, where reviewers actually read it | ✅ | M |
 | **Critical-vital alerting on structured grid vitals in Step 1** (Smart Note) | Grid-entered critical BP/O2/HR currently bypasses the notify-physician prompt that note text triggers | ✅ | M |
@@ -447,9 +435,9 @@ draft of this document (git history) contains their full implementation sketches
 | 5+ | 3.1 → 3.3 → 3.4 | HHCAHPS import; QAPI evidence exports; survey-readiness reports |
 
 Rationale: Sprints 1–2 finish already-tested engines (lowest risk, immediate ⭐/✅ movement,
-starting from the referral process — the workflow PennSync fully owns). The RFA selector rides
-ahead of 1.2 because outcome measures cannot pair episodes while every assessment saves as
-"Start of Care." Everything downstream deepens existing screens — no new pages or entities
+starting from the referral process — the workflow PennSync fully owns). OASIS
+reason persistence and outcome pairing stay behind the server-authorized broker;
+they are not browser-wiring tasks. Everything downstream deepens existing screens — no new pages or entities
 anywhere in Sprints 1–4.
 
 ## 9. Do not rebuild

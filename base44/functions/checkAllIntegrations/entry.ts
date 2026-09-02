@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const isAdmin = user.role === 'admin' || user.account_type === 'agency_admin' || user.account_type === 'super_admin';
+    const isAdmin = user.role === 'admin';
     if (!isAdmin) {
       return Response.json({ error: 'Administrator access required.' }, { status: 403 });
     }

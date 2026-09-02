@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     // Admin = role 'admin' or an admin account_type (agency/super), matching the
     // app's role model (src/lib/roles.js) and other backend admin gates.
-    const isAdmin = user.role === 'admin' || user.account_type === 'super_admin' || user.account_type === 'agency_admin';
+    const isAdmin = user.role === 'admin';
     if (!isAdmin) {
       return Response.json({ error: 'Only administrators can set visit point values.' }, { status: 403 });
     }

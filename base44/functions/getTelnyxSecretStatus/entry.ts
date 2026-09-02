@@ -45,9 +45,7 @@ Deno.serve(async (req) => {
     // agency_admin who can open the provisioning UI can also READ (never see) the
     // config presence flags. Saving credentials stays super-admin-only in
     // saveTelnyxSecret; this endpoint returns no secret values.
-    const isAdmin = user.role === 'admin'
-      || user.account_type === 'agency_admin'
-      || user.account_type === 'super_admin';
+    const isAdmin = user.role === 'admin';
     if (!isAdmin) {
       return Response.json({ error: 'Administrator access required.' }, { status: 403 });
     }

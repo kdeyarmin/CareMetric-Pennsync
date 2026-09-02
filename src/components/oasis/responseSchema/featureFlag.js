@@ -20,9 +20,10 @@
 // `writesAreKilled()` permanently false — an incident kill switch that cannot
 // fire, which is the failure direction that actually costs something.
 //
-// THE SERVER IS THE ENFORCING GATE. `saveOasisResponses` re-checks both fields
-// against the caller's own agency and refuses independently. These functions
-// exist so the UI can say why before a round trip, not to be trusted.
+// THESE FLAGS DO NOT AUTHORIZE A WRITE. Source now hard-pauses
+// `saveOasisResponses` before data access and locks OASISAssessment writes to
+// service role. These helpers remain display/rollout metadata only; a future
+// server-owned tenant + patient-access broker must authorize any write.
 
 /** AgencySettings field: rollout flag for CMS-aligned entry. Default OFF. */
 export const OASIS_RESPONSE_SCHEMA_V2_FLAG = "oasis_response_schema_v2_enabled";

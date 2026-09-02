@@ -22,6 +22,10 @@ Deno.serve(async (req) => {
 
     const { guide_type } = await req.json();
 
+    const oasisPdgmPauseNotice = 'Smart OASIS AI suggestions, automated OASIS response selection, ' +
+      'PDGM grouping, case-mix and payment optimization, and reimbursement calculations are paused ' +
+      'pending verified CMS clinical content, tenant-bound authorization, and required clinician review.';
+
     // Define guide prompts
     const guidePrompts = {
       referral_intake: `
@@ -80,7 +84,7 @@ Create detailed instructions for staff entering and uploading referrals:
 
 8. AI FEATURES AVAILABLE
    - AI-generated admission note
-   - OASIS pre-assessment
+   - OASIS/PDGM feature status and approved clinician workflow
    - Care plan suggestions
    - How to use each feature
 
@@ -149,7 +153,7 @@ Create detailed instructions for nurses completing admission visits:
    - Real-time suggestions while typing
    - Compliance checker feedback
    - Missing element alerts
-   - OASIS alignment indicators
+   - OASIS/PDGM feature status and approved clinician workflow
 
 6. DOCUMENTING IN SOAP FORMAT
    - Subjective: Patient complaints, history
@@ -167,7 +171,7 @@ Create detailed instructions for nurses completing admission visits:
    - Compliance score (aim for 85%+)
    - Missing elements highlighted
    - Vague language suggestions
-   - PDGM optimization tips
+   - OASIS/PDGM guidance pause notice
    - Quick wins to address
 
 9. ADDRESSING DOCUMENTATION GAPS
@@ -176,11 +180,11 @@ Create detailed instructions for nurses completing admission visits:
    - Include homebound justification
    - Document skilled need clearly
 
-10. COMPLETING OASIS ASSESSMENT
-    - Use AI OASIS pre-assessment
-    - Verify each item against actual findings
-    - Review confidence scores
-    - Flag items needing clarification
+10. USING THE OFFICIAL OASIS WORKFLOW
+    - Smart OASIS AI suggestions and automated response selection are paused
+    - Complete each item in the official clinician-led workflow
+    - Require clinician review of all assessment content
+    - Use only verified CMS clinical content and the official EMR/CMS-approved grouper
 
 11. FINALIZING CARE PLANS
     - Review AI-suggested care plans
@@ -244,19 +248,21 @@ Comprehensive guide for using AI-powered documentation tools:
 
       oasis_assessment: `OASIS ASSESSMENT GUIDE
 
-Complete guide for OASIS documentation with AI assistance:
+Smart OASIS AI suggestions, automated response selection, PDGM grouping, case-mix and payment
+optimization, and reimbursement calculations are paused pending verified CMS clinical content,
+tenant-bound authorization, and required clinician review.
 
 **SECTIONS:**
-1. OASIS overview and requirements
-2. Starting a new OASIS assessment
-3. Using AI pre-assessment features
-4. Completing OASIS items
-5. Confidence scores and validation
-6. PDGM case mix optimization
-7. Documentation alignment
-8. Quality review process
-9. Submitting assessments
-10. Common errors and solutions`,
+1. Current OASIS/PDGM feature status
+2. OASIS overview and official requirements
+3. Clinician-led OASIS item completion
+4. Required clinician review
+5. Verified CMS clinical content requirements
+6. Tenant-bound authorization requirements
+7. Official EMR/CMS-approved grouper workflow
+8. Why PennSync does not calculate reimbursement while paused
+9. Submitting assessments through the approved workflow
+10. Support and escalation`,
 
       care_plans: `CARE PLAN MANAGEMENT GUIDE
 
@@ -393,12 +399,12 @@ Comprehensive guide covering all features of the PennSync Healthcare platform:
 - Offline mode
 
 5. OASIS ASSESSMENT
-- Creating assessments
-- AI pre-assessment
-- Item-by-item completion
-- Validation
-- PDGM optimization
-- Submission
+- OASIS/PDGM feature status (paused)
+- Clinician-led item completion
+- Required clinician review
+- Verified CMS content requirements
+- Tenant-bound authorization requirements
+- Official submission and CMS-approved grouper workflow
 
 6. CARE PLANS
 - Creating care plans
@@ -452,7 +458,7 @@ Comprehensive guide covering all features of the PennSync Healthcare platform:
 - Custom reports
 - Performance analytics
 - Compliance reports
-- PDGM analysis
+- PDGM feature status and official grouper guidance
 - Quality indicators
 
 13. ADMIN FEATURES (Admin Only)
@@ -501,6 +507,13 @@ Comprehensive guide covering all features of the PennSync Healthcare platform:
     // claude_sonnet_4_6 hits on the large all_features prompt.
     const guideContent = await base44.integrations.Core.InvokeLLM({
       prompt: `Generate a comprehensive, step-by-step user guide for healthcare staff.
+
+MANDATORY PRODUCT STATUS: Include this notice verbatim near the beginning of the guide:
+"${oasisPdgmPauseNotice}"
+Do not describe Smart OASIS AI suggestions, automated OASIS response selection or completion,
+PDGM grouping, case-mix/payment optimization, M-item financial-impact guidance, or reimbursement
+calculations as available. Direct users to the official clinician-led OASIS workflow and the
+official EMR/CMS-approved grouper instead.
 
 ${promptText}
 

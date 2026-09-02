@@ -57,8 +57,12 @@ export async function fetchCallerScopedConfig(entityName, agencyName) {
 }
 
 /** @param {string | null | undefined} agencyName */
-export function fetchCallerPdgmRateConfig(agencyName) {
-  return fetchCallerScopedConfig('PDGMRateConfig', agencyName);
+export function fetchCallerPdgmRateConfig(_agencyName) {
+  // The browser read path is paused until Base44 provides a tenant authority
+  // that callers cannot edit through auth.updateMe / Agency-row writes. Do not
+  // silently seed an editor from defaults or call a broker whose membership
+  // claims are not immutable.
+  return Promise.resolve(null);
 }
 
 /** @param {string | null | undefined} agencyName */

@@ -6,7 +6,10 @@ Status: **source candidate only — not approved for production deployment**.
 
 - GitHub repository: `kdeyarmin/CareMetric-Pennsync`
 - Protected preparation branch: `consolidation/pennsync-unified-2026-09-02`
-- Destination baseline: `b95b567ea9487e2841e438777b12d65796c34f69`
+- Initial destination baseline: `b95b567ea9487e2841e438777b12d65796c34f69`
+- Current `main` safety baseline: `c5457299630b02aea790a97e5bb2353011ad0d69`
+  (`Repair lockfile after Base44 package update`); the draft branch must retain
+  this commit as a merge parent before CI can be evaluated.
 - Feature source: `kdeyarmin/pennsync2` at `3e73ea75bd37ef2819dad952cbd5343c179bccb1`
 - `kdeyarmin/pennsync` is already an ancestor of the PennSync2 feature history;
   it does not require a second code merge.
@@ -14,7 +17,8 @@ Status: **source candidate only — not approved for production deployment**.
 The PennSync2 feature tree was squash-integrated so its current functionality is
 retained without attaching its 2,579-commit experimental history or 35,062
 accidentally tracked `.pnpm-store` cache files. The original repositories and
-local pre-consolidation tags preserve their histories.
+remote `archive/pre-consolidation-2026-09-02` branches preserve their exact
+pre-consolidation histories.
 
 ## Production identity anchors
 
@@ -58,13 +62,89 @@ functions, or upload a native binary until all of these are complete:
    functions, authentication, uploads, and shared-patient workflows there.
 2. Keep `oasis_response_schema_v2_enabled` false. Complete named clinical SME
    review, patient-access enforcement, remaining consumer wiring, and hosted RLS
-   proof before any agency activation.
-3. Pause and redesign `computeOutcomeMeasures` before function deployment. Its
-   imported implementation is platform-global, can retire existing metrics on
-   its nightly run, and lacks tenant-safe KPI scoping.
-4. Deliberately review `calculatePDGM`; the safer imported implementation refuses
-   unverifiable legacy inputs and can return `null` estimates where production
-   previously returned values.
+   proof before any agency activation. Source now locks `OASISAssessment` and
+   PHI-bearing `OASISUpload` writes to service role, hard-pauses
+   `saveOasisResponses` with HTTP 503 before client creation/data access, and
+   disables both browser legacy/v2 save adapters. The quick-upload widget is
+   static so a PHI PDF cannot be stored before entity creation fails; dormant
+   analyzer-update and supervisor-approval writers fail closed under the RLS
+   rule and must not be restored directly. First build and stage a server-owned
+   tenant + patient/chart authorization broker, including duplicate response
+   rejection and upload/update/approval operations. Browser
+   patient merge controls are now hard-paused before browser data access or
+   mutation, and `deduplicatePatients` rejects every preview/apply request with
+   HTTP 503 before client creation, authentication, or service-role patient
+   reads. The old "dry-run" also depended on mutable claims and could expose
+   cross-tenant PHI. A tenant-authoritative transactional server broker must
+   atomically identify and move OASIS/outcome and every other linked row before
+   either scanning or merging can return.
+3. Keep `computeOutcomeMeasures` paused in production. The candidate source is
+   internal-secret-only; it requires one explicit `agency_id`, stable
+   `period_start`/`period_end`, and explicit supported `period_type` (including
+   `custom` for non-calendar windows), scopes every service-role query, write, and
+   retirement to that agency, and rejects foreign rows returned by the backend.
+   Browser outcome reads/recompute and the Reports outcome summary are disabled
+   meanwhile. The emitted rates are unadjusted internal proxies, not official
+   CMS results. Deployment is still blocked until all of the following are
+   proved in the nonproduction Base44 app:
+   - hosted schemas accept the new optional tenant keys on `Patient`,
+     `OASISAssessment`, `OASISUpload`, and `PatientOutcomeMetric`, the AgencyKPI
+     lifecycle fields, and `internal_gg_18_item_raw_sum` (an explicitly non-CMS
+     context value); stage and validate compatibility/migration for the existing
+     `measure_results[].start_value`/`discharge_value` number-to-string change;
+   - every Patient/OASIS assessment/upload create path stamps a server-verified
+     agency id, and an audited backup + backfill assigns existing rows without
+     guessing (legacy unscoped rows deliberately remain excluded and untouched);
+   - every assessment writer rejects duplicate normalized item/definition rows,
+     stamps verified definition/instrument provenance, and cannot be bypassed by
+     a direct owner/admin entity update;
+   - source read/write RLS for `PatientOutcomeMetric` and `AgencyKPI` is now
+     service-role-only; prove it is enforced when hosted, then add an authorized
+     server broker before restoring any tenant outcome UI;
+   - replace self-mutable User `agency_id`/`account_type` and globally
+     admin-writable Agency membership with a server-owned tenant authority;
+     Patient/OASIS admin-like RLS must also become tenant-bound;
+   - replace the old global nightly invocation (`{}`) with secret-authenticated,
+     one-agency requests carrying `{ agency_id, period_start, period_end, period_type }` for
+     stable windows, including a defined rerun/retirement policy for windows
+     whose discharges were removed or reassigned;
+   - add pagination/checkpoint/time-budget handling for the serial N+1 sweep.
+     Source now fails closed with HTTP 409 if the 5,000-discharge cap is reached
+     and reports a 50-prior-row pairing-cap skip, but it cannot complete those
+     cohorts until paging/checkpointing exists;
+   - add datastore-enforced uniqueness or an atomic idempotency/lease strategy
+     for patient-episode metrics and agency/measure/period KPIs. The source
+     reconciles already-visible duplicates but concurrent query-then-create
+     invocations can still race. Add run-level atomicity/reconciliation as well:
+     a later read/write failure can leave earlier idempotent episode writes in
+     place even though the run returns 500;
+   - define explicit unset/retirement semantics for reruns whose partial source
+     episode no longer supplies optional `discharge_disposition`,
+     `primary_diagnosis`, or `internal_gg_18_item_raw_sum`. A partial merge must
+     not silently retain a stale value from an earlier calculation; and
+   - restore the OASIS Quality section and Reports outcome summary only through
+     the proved tenant authorization boundary, with current calculation-version
+     and lifecycle filters. They intentionally perform no direct entity reads now.
+4. Keep all PennSync PDGM reimbursement amounts disabled. The candidate now
+   fails closed with `paymentAvailable:false`, `totalPayment:null`,
+   `caseMixWeight:null`, and an actionable **Unavailable — not $0** result in
+   every active UI/export consumer. A stored `is_official` flag cannot re-enable
+   the legacy estimator, and rate-config writes cannot set it. Payment may be
+   enabled only after all of the following are complete:
+   - replace the factorized clinical × functional × comorbidity estimator with
+     the source-verified CMS HHGS assignment into one of the official 432 groups
+     and that group's official case-mix weight;
+   - add CMS golden-case tests that prove grouping and payment parity for the
+     applicable payment year, including wage-index and adjustment behavior;
+   - add source-verified v2 definitions and scoring treatment for M1800, M1810,
+     M1820, and M1850 (do not infer them from legacy numeric labels);
+   - resolve clinician-selected responses server-side from an authorized,
+     tenant-scoped v2 OASIS assessment with protected provenance rather than
+     trusting caller-supplied `response_schema_id` / `response_origin`; and
+   - establish immutable hosted tenant authority for PDGM rate configuration.
+     `PDGMRateConfig` is source-locked to service-role reads and platform-owner
+     writes meanwhile; hosted Agency membership/RLS still requires proof before
+     facility-admin rate editing can be restored.
 5. Reconcile Apple/Google privacy disclosures with the clinical data actually
    handled by the app.
 6. Recover and verify the original iOS and Android signing/build projects,

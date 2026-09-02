@@ -122,7 +122,7 @@ export default function UserGuides() {
         'Using Smart Note Assistant',
         'SOAP documentation format',
         'AI quality review',
-        'OASIS assessment completion',
+        'OASIS/PDGM feature status (paused)',
         'Medicare compliance checklist'
       ]
     },
@@ -144,17 +144,17 @@ export default function UserGuides() {
     {
       type: 'oasis_assessment',
       title: 'OASIS Assessment Guide',
-      description: 'Complete OASIS documentation with AI pre-assessment and PDGM optimization',
+      description: 'Automated OASIS response guidance and PDGM optimization are paused pending verified CMS clinical content, tenant-scoped authorization, and required human review',
       icon: FileText,
       color: 'green',
       audience: 'Clinical Nurses',
       topics: [
-        'OASIS overview',
-        'AI pre-assessment',
-        'Item completion',
-        'PDGM case mix',
-        'Quality validation',
-        'Submission process'
+        'OASIS/PDGM feature status',
+        'Verified CMS clinical content',
+        'Tenant-scoped authorization',
+        'Required human review',
+        'Clinician-led official workflow',
+        'Approved submission process'
       ]
     },
     {

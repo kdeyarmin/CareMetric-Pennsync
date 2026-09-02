@@ -8,7 +8,21 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Fail closed until note evidence can be brokered through the protected OASIS
+// response schema without model-selected responses or cross-tenant reads.
+const NOTE_TO_OASIS_MAPPING_ENABLED = false;
+
 Deno.serve(async (req) => {
+  if (!NOTE_TO_OASIS_MAPPING_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'note_to_oasis_mapping_paused',
+      message: 'AI note-to-OASIS mapping is unavailable pending verified response definitions, provenance, and tenant-scoped access.',
+      oasis_suggestions: [],
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

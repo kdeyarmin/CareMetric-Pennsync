@@ -6,6 +6,19 @@
       "type": "string",
       "description": "Reference to Agency if multi-agency"
     },
+    "is_current": {
+      "type": "boolean",
+      "description": "Whether this row is the current result for its agency, measure, and period. Outcome dashboards read only true; a no-denominator rerun marks a prior row false without deleting its audit history."
+    },
+    "retired_reason": {
+      "type": "string",
+      "description": "Why a previously current outcome KPI was made non-current."
+    },
+    "retired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When a previously current outcome KPI was made non-current."
+    },
     "metric_name": {
       "type": "string",
       "description": "Name of KPI metric"
@@ -28,9 +41,10 @@
         "weekly",
         "monthly",
         "quarterly",
-        "yearly"
+        "yearly",
+        "custom"
       ],
-      "description": "Reporting period"
+      "description": "Explicit reporting-window classification; use custom when the supplied dates do not match a standard calendar period"
     },
     "period_start": {
       "type": "string",
@@ -81,7 +95,7 @@
     "input_response_schema_ids": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Response schema ids contributing to this KPI. A KPI without verified v2 provenance stays auditable but is excluded from current CMS-labeled views."
+      "description": "Response schema ids contributing to this internal KPI. A KPI without verified v2 provenance stays auditable but is excluded from current proxy views."
     },
     "calculation_version": {
       "type": "string",
@@ -110,5 +124,17 @@
     "period_start",
     "period_end",
     "metric_value"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
+    }
+  }
 }

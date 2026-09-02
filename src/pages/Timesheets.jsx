@@ -25,8 +25,8 @@ export default function Timesheets() {
     queryFn: () => base44.auth.me(),
   });
 
-  // Match the app's role model: facility admins (role 'admin' or agency_admin
-  // account type) and the super admin all see the admin workflow.
+  // Match the app's protected-role model; self-mutable account_type values do
+  // not unlock the admin workflow.
   const isAdmin = isAdminView(currentUser);
   const isApprover = isAdmin || currentUser?.is_manager === true;
 

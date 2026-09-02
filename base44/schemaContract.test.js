@@ -239,7 +239,7 @@ const FIELD_USAGE = {
     'signer_name', 'signer_email', 'signature_hash', 'signature_hash_alg',
     'signature_hash_at', 'archived', 'admin_notified',
   ],
-  Patient: ['merged_into_id', 'merged_at', 'merged_by', 'validation_overrides'],
+  Patient: ['agency_id', 'merged_into_id', 'merged_at', 'merged_by', 'validation_overrides'],
   // ComplianceAudit.rule_versions — the smart-note save path stamps which
   // agency-configured MedicareComplianceRule versions judged the note.
   ComplianceAudit: ['rule_versions'],
@@ -261,17 +261,22 @@ const FIELD_USAGE = {
   PatientAlert: ['contributing_factors', 'recommended_actions', 'risk_score'],
   // oasis_items rows now carry their classification and the spec version it was
   // made against.
-  OASISAssessment: ['oasis_items[].item_source', 'oasis_items[].item_spec_version'],
-  // PatientOutcomeMetric — written by computeOutcomeMeasures (the keystone
-  // outcome-measure cron). These fields were added alongside the CMS change-score
-  // engine; without them the platform would silently drop the per-measure
-  // results, GG score, and dyspnea-improvement flag.
+  OASISAssessment: ['agency_id', 'oasis_items[].item_source', 'oasis_items[].item_spec_version'],
+  // OASISUpload is PHI-bearing. Its optional tenant key exists only so a
+  // future server-owned upload broker and audited legacy backfill have a
+  // schema-supported destination; browser input is never authoritative.
+  OASISUpload: ['agency_id'],
+  // PatientOutcomeMetric — written by the secret-only outcome-proxy job.
+  // Without these fields the platform would silently drop per-measure results,
+  // the explicitly non-CMS GG context sum, or dyspnea-improvement flags.
   PatientOutcomeMetric: [
-    'functional_improvement', 'gg_discharge_function_score', 'measure_results',
+    'agency_id', 'functional_improvement', 'internal_gg_18_item_raw_sum', 'measure_results',
+    'measure_results[].start_value', 'measure_results[].discharge_value',
     'outcome_measure_source',
     // PPH worklist captures intervention + outcome here.
     'pph_prevention', 'readmission_30_day', 'er_visit_30_day',
   ],
+  AgencyKPI: ['agency_id', 'is_current', 'retired_reason', 'retired_at'],
   // OASISFeedback is written by two paths: the patient-match writers
   // (feedback_type/extracted_name + match fields) and the AI-suggestion
   // OASISFeedbackPanel (the fields below). The panel fields were historically

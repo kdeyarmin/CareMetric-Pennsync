@@ -4,7 +4,6 @@ import { base44 } from "@/api/base44Client";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { uploadFailureMessage, MISSING_FILE_URL_MESSAGE } from "@/lib/uploadError";
 import { runReferralExtraction } from "./referralExtraction";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +17,6 @@ import {
   REFERRAL_ACCEPT_ATTR,
 } from "./referralUploadUtils";
 import { isSafeExternalUrl } from "@/components/utils/security";
-import { isAdminView } from "@/lib/roles";
 import {
   FileText,
   UploadCloud,
@@ -32,7 +30,6 @@ import {
   AlertCircle,
   AlertTriangle,
   Download,
-  Brain,
   RefreshCw,
   ShieldAlert,
   XCircle,
@@ -40,7 +37,6 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import AISmartOASISAssistant from "../oasis/AISmartOASISAssistant";
 import AIAdmissionNoteGenerator from "./AIAdmissionNoteGenerator";
 import AdmissionPacketCustomizer from "./AdmissionPacketCustomizer";
 import {
@@ -83,7 +79,6 @@ export default function ReferralPDFSummarizer({
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState(null);
   // OASIS suggestions applied via the assistant below; retained as state so the
   // assistant's onApplySuggestion has a sink and resets cleanly between documents.
-  const [_oasisResults, setOasisResults] = useState(null);
   const [showPreview, setShowPreview] = useState(true);
   const fileInputRef = useRef(null);
   const progressIntervalRef = useRef(null);
@@ -105,14 +100,6 @@ export default function ReferralPDFSummarizer({
   const previewMime = lastProcessedRef.current?.mime || "";
   const previewIsImage =
     previewMime.startsWith("image/") || /\.(png|jpe?g|tiff?|gif|webp)(\?|$)/i.test(fileUrl || "");
-
-  // Check if current user is admin
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-
-  const isAdmin = isAdminView(currentUser);
 
   // Clear the progress interval if the component unmounts mid-processing.
   React.useEffect(() => () => {
@@ -184,7 +171,6 @@ export default function ReferralPDFSummarizer({
     setFileUrl(null);
     setFileName(null);
     setGeneratedPdfUrl(null);
-    setOasisResults(null);
     lastProcessedRef.current = { url: null, mime: "application/pdf" };
   };
 
@@ -629,9 +615,6 @@ export default function ReferralPDFSummarizer({
                   <Stethoscope className="w-4 h-4 text-red-600" />
                   <span className="font-semibold">Diagnoses & Medical History</span>
                   <AIFieldIndicator confidence={getConfidence('diagnoses', 92)} source="AI" showValue />
-                  {isAdmin && extractedData.diagnoses?.pdgm_clinical_group && (
-                    <Badge className="bg-green-600 text-white">PDGM: {extractedData.diagnoses.pdgm_clinical_group}</Badge>
-                  )}
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-4 py-3 bg-white border-x border-b rounded-b-lg">
@@ -642,17 +625,7 @@ export default function ReferralPDFSummarizer({
                     {extractedData.diagnoses?.primary_icd10 && (
                       <Badge className="mt-1">{extractedData.diagnoses.primary_icd10}</Badge>
                     )}
-                    {isAdmin && extractedData.diagnoses?.pdgm_clinical_group && (
-                      <p className="text-xs text-green-700 font-semibold mt-1">PDGM Group: {extractedData.diagnoses.pdgm_clinical_group}</p>
-                    )}
                   </div>
-                  
-                  {isAdmin && extractedData.diagnoses?.pdgm_optimization_notes && (
-                    <div className="bg-green-50 p-3 rounded border-l-4 border-green-500">
-                      <p className="text-xs font-semibold text-green-900 mb-1">💰 PDGM Optimization Notes</p>
-                      <p className="text-sm text-slate-900 whitespace-pre-wrap">{extractedData.diagnoses.pdgm_optimization_notes}</p>
-                    </div>
-                  )}
                   
                   {extractedData.diagnoses?.secondary_diagnoses?.length > 0 && (
                     <div className="bg-orange-50 p-3 rounded">
@@ -665,17 +638,6 @@ export default function ReferralPDFSummarizer({
                     </div>
                   )}
                   
-                  {isAdmin && extractedData.diagnoses?.comorbidity_adjustments?.length > 0 && (
-                    <div className="bg-blue-50 p-3 rounded border-l-4 border-blue-500">
-                      <p className="text-xs font-semibold text-blue-900 mb-1">💵 Case-Mix Comorbidities</p>
-                      <p className="text-xs text-blue-800 mb-2">These comorbidities increase PDGM reimbursement:</p>
-                      <ul className="list-disc list-inside text-sm text-slate-900">
-                        {extractedData.diagnoses.comorbidity_adjustments.map((comorb, i) => (
-                          <li key={i}>{comorb}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                   {extractedData.diagnoses?.allergies && extractedData.diagnoses.allergies !== "Not documented in referral." && (
                     <Alert className="bg-yellow-50 border-yellow-300">
                       <AlertCircle className="w-4 h-4 text-yellow-600" />
@@ -1314,29 +1276,6 @@ export default function ReferralPDFSummarizer({
             autoGenerate={true}
             onNoteGenerated={onNoteGenerated || (() => {})}
           />
-
-          {/* AI OASIS Assistant */}
-          <Card className="border-2 border-navy-300">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="w-5 h-5 text-navy-600" />
-                AI OASIS Pre-Assessment
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-slate-600 mb-4">
-                Based on the extracted referral data, our AI has analyzed and pre-populated relevant OASIS items with confidence scores and verification flags.
-              </p>
-              <AISmartOASISAssistant
-                patientData={extractedData}
-                referralData={extractedData}
-                autoAnalyze={true}
-                onApplySuggestion={(item) => {
-                  setOasisResults(item);
-                }}
-              />
-            </CardContent>
-          </Card>
 
           {/* Admission Packet Customizer */}
           <AdmissionPacketCustomizer 

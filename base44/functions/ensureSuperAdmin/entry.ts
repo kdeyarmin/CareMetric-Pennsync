@@ -8,22 +8,31 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 /**
  * ensureSuperAdmin — promotes the calling administrator to the super
  * administrator account so the rest of the app recognizes them:
  * account_type = 'super_admin', role = 'admin', approved.
  *
- * This is self-bootstrapping and safe to call repeatedly (idempotent). It only
- * ever promotes the caller's own account, and is authorized two ways:
- *   - an existing super_admin (self-repair of role/approval), or
- *   - a platform admin (role 'admin' — which Base44 grants the app owner)
- *     while NO super_admin exists yet (the one-time first-boot bootstrap).
- * There is no owner-email override (the SUPER_ADMIN_EMAIL secret was retired);
- * super-admin status is carried entirely by account_type.
+ * This is idempotent and only ever stamps the configured platform owner's own
+ * account. Authorization requires BOTH Base44's protected built-in admin role
+ * and an exact match to the backend SUPER_ADMIN_EMAIL setting. `account_type`
+ * is a custom User field that any authenticated user can change through
+ * auth.updateMe, so it is display/compatibility metadata and is never accepted
+ * as proof of privilege.
  *
- * Keeping this server-side (with the service role) means the very first visit
- * by the owner (whose platform role is 'admin') can establish their elevated
- * account without anyone having to hand-edit the database.
+ * Keeping the stamp server-side preserves existing UI compatibility without
+ * creating a self-promotion path. Missing SUPER_ADMIN_EMAIL fails closed.
  */
 
 Deno.serve(async (req) => {
@@ -33,26 +42,11 @@ Deno.serve(async (req) => {
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(caller)) return DEACTIVATED_USER_RESPONSE();
 
-    // An existing super_admin may always run this (self-repair). A plain
-    // platform admin may claim super-admin ONLY while no super_admin exists yet
-    // (the first-boot bootstrap) — otherwise any facility admin could silently
-    // self-escalate to the tier that manages integration secrets.
-    const callerIsSuper = caller.account_type === 'super_admin';
-    if (!callerIsSuper) {
-      if (caller.role !== 'admin') {
-        return Response.json(
-          { error: 'Only a platform administrator can run this.' },
-          { status: 403 },
-        );
-      }
-      const existingSupers = await base44.asServiceRole.entities.User
-        .filter({ account_type: 'super_admin' }, '-created_date', 1).catch(() => []);
-      if ((existingSupers || []).length > 0) {
-        return Response.json(
-          { error: 'A super administrator already exists; only they can run this.' },
-          { status: 403 },
-        );
-      }
+    if (!isProtectedSuperAdmin(caller)) {
+      return Response.json(
+        { error: 'Only the configured platform administrator can run this.' },
+        { status: 403 },
+      );
     }
 
     const already = caller.account_type === 'super_admin' && caller.role === 'admin' && caller.is_approved === true;
@@ -63,19 +57,10 @@ Deno.serve(async (req) => {
       is_approved: true,
     });
 
-    // role is a platform-managed field; set it best-effort so the owner gains
-    // admin-gated surfaces. If the platform rejects a direct role change, the
-    // account_type promotion above still stands and the app's super-admin
-    // checks (which key off account_type) keep working.
-    let roleUpdated = caller.role === 'admin';
-    if (!roleUpdated) {
-      try {
-        await base44.asServiceRole.entities.User.update(caller.id, { role: 'admin' });
-        roleUpdated = true;
-      } catch (err) {
-        console.error('ensureSuperAdmin: could not set role=admin directly:', err.message);
-      }
-    }
+    // isProtectedSuperAdmin already proves the protected role; never write it
+    // from this function. That keeps a custom-field spoof from becoming a
+    // service-role promotion into Base44's protected role.
+    const roleUpdated = true;
 
     await base44.asServiceRole.entities.SecurityLog.create({
       timestamp: new Date().toISOString(),

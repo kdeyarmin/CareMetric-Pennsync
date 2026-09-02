@@ -31,7 +31,9 @@ import PopulationRiskOverview from "../components/predictive/PopulationRiskOverv
 import PredictiveInsightsPanel from "../components/predictive/PredictiveInsightsPanel";
 import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
-export default function PredictiveAnalytics() {
+const PREDICTIVE_OASIS_ANALYTICS_ENABLED = false;
+
+function EnabledPredictiveAnalytics() {
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [riskFilter, setRiskFilter] = useState("all");
@@ -185,4 +187,27 @@ export default function PredictiveAnalytics() {
       </Tabs>
     </PageContainer>
   );
+}
+
+export default function PredictiveAnalytics() {
+  if (!PREDICTIVE_OASIS_ANALYTICS_ENABLED) {
+    return (
+      <PageContainer>
+        <PageHeader
+          icon={TrendingUp}
+          eyebrow="Analytics"
+          title="Predictive Analytics Paused"
+          description="Clinical prediction is unavailable pending tenant-scoped data access and a validated model contract."
+          favoritePage="PredictiveAnalytics"
+        />
+        <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-6 text-sm text-amber-950">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-5 w-5" /> Predictive OASIS analysis unavailable
+          </div>
+          <p className="mt-2">No patient roster, OASIS upload, visit, alert, risk score, or AI prediction is loaded from this page.</p>
+        </div>
+      </PageContainer>
+    );
+  }
+  return <EnabledPredictiveAnalytics />;
 }

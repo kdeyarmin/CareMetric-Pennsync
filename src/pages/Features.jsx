@@ -216,56 +216,62 @@ export default function FeaturesPage() {
         {
           name: "PDF Upload & Data Extraction",
           icon: FileCheck,
-          description: "Upload OASIS PDFs and AI automatically extracts all data with intelligent patient matching",
-          timeSaved: "20-30 min/OASIS",
+          description: "Paused: OASIS PDF upload, AI extraction, and patient matching are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
+          timeSaved: "Unavailable",
           impact: "critical",
-          details: "Fuzzy matching, confidence scoring, dispute resolution workflow",
-          howToUse: "Upload OASIS PDF, AI extracts data and matches to patient, confirm or dispute match."
+          details: "No OASIS file is uploaded, matched, or analyzed from this workflow",
+          howToUse: "Use the approved clinical record workflow until a tenant-scoped service is authorized and verified.",
+          paused: true
         },
         {
           name: "PDGM Revenue Analysis",
           icon: DollarSign,
-          description: "Complete PDGM grouping analysis with payment calculation and optimization opportunities",
-          timeSaved: "15-20 min/OASIS",
+          description: "Paused: PDGM grouping, case-mix, payment, and optimization guidance are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
+          timeSaved: "Unavailable",
           impact: "critical",
-          details: "Clinical group, functional level, comorbidity analysis, case-mix calculation",
-          howToUse: "After OASIS upload, view automated PDGM analysis with payment breakdown and optimization tips."
+          details: "No PDGM group, case-mix result, payment estimate, or optimization tip is produced",
+          howToUse: "Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.",
+          paused: true
         },
         {
           name: "Documentation Quality Scoring",
           icon: Target,
-          description: "AI scores OASIS accuracy, completeness, and compliance with detailed issue identification",
-          timeSaved: "10-15 min/OASIS",
+          description: "Paused: automated OASIS accuracy, completeness, compliance scoring, and response guidance are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
+          timeSaved: "Unavailable",
           impact: "critical",
-          details: "Accuracy score, completeness score, compliance flags, specific improvement suggestions",
-          howToUse: "Review quality scores in analysis results, click issues for detailed explanations and fixes."
+          details: "No automated OASIS quality score, clinical fix, or response recommendation is produced",
+          howToUse: "Complete and review OASIS responses in the official clinician-led workflow.",
+          paused: true
         },
         {
           name: "Revenue Optimization Recommendations",
           icon: TrendingUp,
-          description: "Identify missed revenue opportunities with specific M-item corrections and PDGM impact analysis",
-          timeSaved: "Increases reimbursement",
+          description: "Paused: M-item correction, PDGM impact, and reimbursement recommendations are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
+          timeSaved: "Unavailable",
           impact: "critical",
-          details: "Rescore opportunities, documentation gaps, projected payment increases",
-          howToUse: "Review revenue tips section, implement suggested M-item changes, see projected payment impact."
+          details: "No M-item change, rescore opportunity, or projected payment increase is generated",
+          howToUse: "Record clinician-observed responses and use the official EMR/CMS-approved grouper.",
+          paused: true
         },
         {
           name: "Clinical Pathway Triggering",
           icon: Layers,
-          description: "Automatically identifies relevant clinical pathways based on diagnosis and functional status",
-          timeSaved: "5-10 min/admission",
+          description: "Paused: OASIS-derived pathway triggering is unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
+          timeSaved: "Unavailable",
           impact: "high",
-          details: "Evidence-based documentation prompts, rescore opportunities, recommended tasks",
-          howToUse: "System auto-identifies pathways, review documentation prompts and create recommended tasks."
+          details: "No OASIS-derived pathway, rescore prompt, or follow-up task is generated",
+          howToUse: "Use clinician-approved agency pathways outside the paused OASIS workflow.",
+          paused: true
         },
         {
           name: "Predictive Revenue Forecasting",
           icon: LineChart,
-          description: "AI forecasts financial impact of documentation improvements with multiple scenarios",
-          timeSaved: "Strategic planning",
+          description: "Paused: AI financial-impact and PDGM reimbursement forecasting are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review",
+          timeSaved: "Unavailable",
           impact: "high",
-          details: "Quick wins, comprehensive optimization, 12-month trajectory, breakeven analysis",
-          howToUse: "View forecaster section for baseline vs optimized payment scenarios and implementation roadmap."
+          details: "No baseline, optimized-payment, trajectory, or breakeven scenario is generated",
+          howToUse: "Use verified financial systems and the official EMR/CMS-approved grouper.",
+          paused: true
         }
       ]
     },
@@ -280,7 +286,7 @@ export default function FeaturesPage() {
           description: "Automatic pathway activation based on diagnosis codes, keywords, and clinical conditions",
           timeSaved: "8-12 min/admission",
           impact: "critical",
-          details: "Condition-specific assessments, documentation prompts, rescore opportunities",
+          details: "Condition-specific assessments and documentation prompts",
           howToUse: "Pathways trigger automatically on patient admission based on diagnosis. Review and implement recommendations."
         },
         {
@@ -289,7 +295,7 @@ export default function FeaturesPage() {
           description: "Condition-specific prompts ensure comprehensive documentation of all relevant clinical factors",
           timeSaved: "5-8 min/visit",
           impact: "high",
-          details: "M-item-specific guidance, priority flagging, evidence-based assessments",
+          details: "General documentation guidance, priority flagging, evidence-based assessments",
           howToUse: "Review pathway documentation prompts during visits to ensure complete clinical capture."
         },
         {
@@ -307,7 +313,7 @@ export default function FeaturesPage() {
           description: "Admin interface to create, edit, and manage evidence-based clinical pathways",
           timeSaved: "Standardizes care",
           impact: "high",
-          details: "Customizable triggers, documentation templates, rescore opportunity library",
+          details: "Customizable triggers, documentation templates, clinical guidance library",
           howToUse: "Admins: Navigate to Clinical Pathway Manager to create and customize pathways for your agency."
         }
       ]
@@ -553,7 +559,7 @@ export default function FeaturesPage() {
   <div class="logo-header">
   </div>
   <h1>PennSync Features Guide</h1>
-  <p class="header-info">AI-Powered Home Health Documentation & OASIS Analytics<br>Generated: ${new Date().toLocaleDateString()}</p>
+  <p class="header-info">AI-Powered Home Health Documentation<br>OASIS/PDGM clinical guidance is currently paused<br>Generated: ${new Date().toLocaleDateString()}</p>
   
   <div class="impact-summary">
     <h2 style="color: white; margin-top: 0;">The PennSync Impact</h2>
@@ -587,7 +593,7 @@ export default function FeaturesPage() {
             <span class="badge ${feature.impact}">${feature.impact.toUpperCase()}</span>
           </div>
           <p>${feature.description}</p>
-          <p class="time-saved">⏱️ Time Saved: ${feature.timeSaved}</p>
+          <p class="time-saved">${feature.paused ? '⏸️ Status' : '⏱️ Time Saved'}: ${feature.timeSaved}</p>
           <p><strong>Details:</strong> ${feature.details}</p>
           <div class="how-to">
             <strong>📋 How to Use:</strong><br>
@@ -675,7 +681,7 @@ export default function FeaturesPage() {
     <div class="toc-section">Part 1: Nurse User Guide</div>
     <div class="toc-item">1. Getting Started</div>
     <div class="toc-item">2. Smart Note Assistant</div>
-    <div class="toc-item">3. OASIS Documentation</div>
+    <div class="toc-item">3. OASIS/PDGM Feature Status</div>
     <div class="toc-item">4. Patient Care Management</div>
     <div class="toc-item">5. Incident Reporting</div>
     <div class="toc-item">6. Training & Development</div>
@@ -826,55 +832,28 @@ export default function FeaturesPage() {
   </div>
 
   <div class="section">
-    <h2>3. OASIS Documentation</h2>
+    <h2>3. OASIS/PDGM Feature Status</h2>
     <p><span class="role-badge nurse-badge">NURSE</span>For SOC, ROC, and Discharge OASIS assessments</p>
 
-    <h3>3.1 Uploading OASIS PDF</h3>
-    <div class="step">
-      <span class="step-number">1</span>Navigate to <strong>"OASIS Analyzer"</strong>
-    </div>
-    <div class="step">
-      <span class="step-number">2</span>Click <strong>"Upload OASIS PDF"</strong>
-    </div>
-    <div class="step">
-      <span class="step-number">3</span>Select your completed OASIS PDF file
-    </div>
-    <div class="step">
-      <span class="step-number">4</span>AI extracts all data and matches to patient
-    </div>
-    <div class="step">
-      <span class="step-number">5</span>Confirm or dispute the patient match
+    <h3>3.1 Smart OASIS and PDF Analysis</h3>
+    <div class="warning">
+      <span class="warning-icon">⚠️ PAUSED:</span> Smart OASIS AI suggestions, PDF upload and extraction, patient matching, automated response selection, and OASIS quality scoring are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review.
     </div>
 
-    <h3>3.2 Reviewing PDGM Analysis</h3>
-    <div class="step">
-      <span class="step-number">1</span>After upload, view the automated PDGM analysis
-    </div>
-    <div class="step">
-      <span class="step-number">2</span>Review clinical grouping, functional level, and comorbidity adjustments
-    </div>
-    <div class="step">
-      <span class="step-number">3</span>Check projected payment amount
-    </div>
-    <div class="step">
-      <span class="step-number">4</span>Review flagged documentation issues
+    <h3>3.2 PDGM Grouping and Payment</h3>
+    <div class="warning">
+      <span class="warning-icon">⚠️ PAUSED:</span> PDGM grouping, case-mix guidance, payment optimization, M-item financial-impact recommendations, and reimbursement calculations are unavailable under the same safeguards.
     </div>
 
-    <h3>3.3 Revenue Optimization Tips</h3>
+    <h3>3.3 Approved Workflow</h3>
     <div class="step">
-      <span class="step-number">1</span>Scroll to "Revenue Optimization Opportunities"
+      <span class="step-number">1</span>Record and review OASIS responses in the official clinician-led workflow.
     </div>
     <div class="step">
-      <span class="step-number">2</span>Review suggested M-item changes
-    </div>
-    <div class="step">
-      <span class="step-number">3</span>Each tip shows potential payment increase
-    </div>
-    <div class="step">
-      <span class="step-number">4</span>Implement clinically appropriate suggestions
+      <span class="step-number">2</span>Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.
     </div>
     <div class="warning">
-      <span class="warning-icon">⚠️ IMPORTANT:</span> Only implement suggestions that accurately reflect the patient's clinical condition. Never inflate scores.
+      <span class="warning-icon">⚠️ IMPORTANT:</span> Do not use PennSync to select OASIS responses or estimate reimbursement while this functionality is paused.
     </div>
   </div>
 
@@ -991,8 +970,8 @@ export default function FeaturesPage() {
       <span class="step-number">2</span>Configure agency information:
       <ul>
         <li>Agency name and contact information</li>
-        <li>Average episodes per year (for PDGM forecasting)</li>
-        <li>Wage index (for payment calculations)</li>
+        <li>OASIS/PDGM forecasting settings (paused)</li>
+        <li>Payment calculation settings (paused)</li>
         <li>Default visit types and care types</li>
       </ul>
     </div>
@@ -1029,10 +1008,10 @@ export default function FeaturesPage() {
       </ul>
     </div>
     <div class="step">
-      <span class="step-number">5</span>Add documentation prompts with affected M-items
+      <span class="step-number">5</span>Add clinician-authored documentation prompts without automated M-item guidance
     </div>
     <div class="step">
-      <span class="step-number">6</span>Configure rescore opportunities
+      <span class="step-number">6</span>Configure non-financial follow-up tasks
     </div>
     <div class="step">
       <span class="step-number">7</span>Add recommended tasks
@@ -1088,21 +1067,9 @@ export default function FeaturesPage() {
       <span class="step-number">4</span>Assign training to nurses with low compliance scores
     </div>
 
-    <h3>9.3 OASIS Auditing</h3>
-    <div class="step">
-      <span class="step-number">1</span>Navigate to <strong>"OASIS Audit Dashboard"</strong>
-    </div>
-    <div class="step">
-      <span class="step-number">2</span>Review all uploaded OASIS assessments
-    </div>
-    <div class="step">
-      <span class="step-number">3</span>Filter by nurse, quality score, or date range
-    </div>
-    <div class="step">
-      <span class="step-number">4</span>Click assessments to review detailed analysis
-    </div>
-    <div class="step">
-      <span class="step-number">5</span>Mark assessments for detailed audit review
+    <h3>9.3 OASIS Auditing (Paused)</h3>
+    <div class="warning">
+      <span class="warning-icon">⚠️ PAUSED:</span> Automated OASIS auditing and quality scoring are unavailable pending verified CMS clinical content, tenant-scoped authorization, and required human review. Use the approved clinician audit workflow.
     </div>
   </div>
 
@@ -1120,7 +1087,7 @@ export default function FeaturesPage() {
         <li>Total notes enhanced</li>
         <li>Average time savings per visit</li>
         <li>Compliance score trends</li>
-        <li>OASIS quality metrics</li>
+        <li>OASIS quality metrics (paused)</li>
       </ul>
     </div>
     <div class="step">
@@ -1209,7 +1176,7 @@ export default function FeaturesPage() {
     <p>• System not responding or errors</p>
     <p>• Cannot access patient records</p>
     <p>• AI enhancement producing inaccurate results</p>
-    <p>• OASIS upload failing</p>
+    <p>• Questions about paused OASIS/PDGM workflows</p>
     <p>• Questions about features or functionality</p>
   </div>
 
@@ -1294,7 +1261,7 @@ export default function FeaturesPage() {
         icon={Zap}
         eyebrow="PennSync by CareMetric"
         title="PennSync Features"
-        description="AI-powered home health documentation, OASIS analytics, and clinical decision support"
+        description="AI-powered home health documentation and clinical decision support; OASIS/PDGM clinical guidance is currently paused"
         favoritePage="Features"
         actions={
           <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
@@ -1511,7 +1478,7 @@ export default function FeaturesPage() {
                         <div className="flex items-center gap-2 p-2 bg-emerald-50 rounded-lg border border-emerald-200">
                           <Clock className="w-4 h-4 text-emerald-600" />
                           <span className="text-sm font-semibold text-emerald-900">
-                            Saves: {feature.timeSaved}
+                            {feature.paused ? "Status" : "Saves"}: {feature.timeSaved}
                           </span>
                         </div>
                         

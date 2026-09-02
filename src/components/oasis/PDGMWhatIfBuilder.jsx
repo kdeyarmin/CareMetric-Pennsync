@@ -17,6 +17,7 @@ import {
   Clock
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
+import { formatPdgmCurrency, isFinitePdgmNumber } from "@/components/pdgm/pdgmAvailability";
 
 const FUNCTIONAL_ITEMS = [
   { key: 'm1800_grooming', label: 'M1800 Grooming', max: 3 },
@@ -45,7 +46,9 @@ export default function PDGMWhatIfBuilder({
   originalPdgmData, 
   onScenarioChange, 
   originalRevenue,
-  scenarioRevenue 
+  scenarioRevenue,
+  originalPaymentState,
+  scenarioPaymentState,
 }) {
   const [scenarioData, setScenarioData] = useState(null);
   const [newComorbidity, setNewComorbidity] = useState('');
@@ -108,28 +111,28 @@ export default function PDGMWhatIfBuilder({
     }
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount || 0);
-  };
-
-  const revenueDiff = (scenarioRevenue || 0) - (originalRevenue || 0);
+  const revenueAvailable = originalPaymentState?.available === true
+    && scenarioPaymentState?.available === true
+    && isFinitePdgmNumber(originalRevenue)
+    && isFinitePdgmNumber(scenarioRevenue);
+  const revenueDiff = revenueAvailable ? scenarioRevenue - originalRevenue : null;
+  const unavailableMessage = scenarioPaymentState?.message
+    || originalPaymentState?.message
+    || "PDGM scenario payment is unavailable — this is not a $0 result.";
 
   // Chart data for comparison
-  const comparisonChartData = [
+  const comparisonChartData = revenueAvailable ? [
     {
       name: 'Original',
-      revenue: originalRevenue || 0,
+      revenue: originalRevenue,
       fill: '#9ca3af'
     },
     {
       name: 'What-If',
-      revenue: scenarioRevenue || 0,
+      revenue: scenarioRevenue,
       fill: revenueDiff > 0 ? '#22c55e' : revenueDiff < 0 ? '#ef4444' : '#3557b0'
     }
-  ];
+  ] : [];
 
   // Functional score impact chart
   const functionalImpactData = FUNCTIONAL_ITEMS.map(item => {
@@ -171,7 +174,8 @@ export default function PDGMWhatIfBuilder({
 
       <CardContent className="space-y-4 pt-4">
         {/* Real-time Revenue Impact Banner */}
-        <div className={`p-4 rounded-lg border-2 ${
+        {revenueAvailable ? (
+          <div className={`p-4 rounded-lg border-2 ${
           revenueDiff > 0 ? 'bg-green-50 border-green-300' :
           revenueDiff < 0 ? 'bg-red-50 border-red-300' :
           'bg-slate-50 border-slate-300'
@@ -184,27 +188,34 @@ export default function PDGMWhatIfBuilder({
                 revenueDiff < 0 ? 'text-red-700' :
                 'text-slate-700'
               }`}>
-                {revenueDiff > 0 ? '+' : ''}{formatCurrency(revenueDiff)}
+                {revenueDiff > 0 ? '+' : ''}{formatPdgmCurrency(revenueDiff)}
               </p>
             </div>
             <div className="text-right">
               <p className="text-xs text-slate-500">Per Episode</p>
               <p className="text-lg font-semibold text-navy-700">
-                {formatCurrency(scenarioRevenue)}
+                {formatPdgmCurrency(scenarioRevenue)}
               </p>
             </div>
           </div>
-        </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">Scenario Revenue Impact: Unavailable</p>
+            <p className="mt-1">{unavailableMessage}</p>
+          </div>
+        )}
 
         {/* Revenue Comparison Chart */}
-        <div className="bg-slate-50 rounded-lg p-3">
+        {revenueAvailable && (
+          <div className="bg-slate-50 rounded-lg p-3">
           <p className="text-xs font-medium text-slate-600 mb-2">Revenue Comparison</p>
           <ResponsiveContainer width="100%" height={120}>
             <BarChart data={comparisonChartData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" horizontal={false} />
               <XAxis type="number" tickFormatter={(v) => `$${(v/1000).toFixed(1)}k`} fontSize={10} />
               <YAxis type="category" dataKey="name" fontSize={10} width={60} />
-              <Tooltip formatter={(value) => formatCurrency(value)} />
+              <Tooltip formatter={(value) => formatPdgmCurrency(value)} />
               <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
                 {comparisonChartData.map((entry, index) => (
                   <Cell key={index} fill={entry.fill} />
@@ -212,7 +223,8 @@ export default function PDGMWhatIfBuilder({
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
+          </div>
+        )}
 
         {isExpanded && (
           <>

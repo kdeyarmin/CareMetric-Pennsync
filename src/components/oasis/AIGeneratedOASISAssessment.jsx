@@ -21,7 +21,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 
-export default function AIGeneratedOASISAssessment({ patientId, visitType = "Start of Care", referralData }) {
+const AI_OASIS_ASSESSMENT_ENABLED = false;
+
+function EnabledAIGeneratedOASISAssessment({ patientId, visitType = "Start of Care", referralData }) {
   const [assessment, setAssessment] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [expandedItems, setExpandedItems] = useState([]);
@@ -468,4 +470,21 @@ ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
       </CardContent>
     </Card>
   );
+}
+
+export default function AIGeneratedOASISAssessment(props) {
+  if (!AI_OASIS_ASSESSMENT_ENABLED) {
+    return (
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="p-6">
+          <p className="font-semibold text-amber-900">AI OASIS Assessment Guidance Paused</p>
+          <p className="mt-2 text-sm text-amber-800">
+            Automated OASIS item guidance is unavailable pending verified CMS definitions,
+            tenant-scoped authorization, and clinician review. Use the official assessment workflow.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return <EnabledAIGeneratedOASISAssessment {...props} />;
 }

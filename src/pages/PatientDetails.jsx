@@ -58,6 +58,7 @@ import VitalSignsTrendDashboard from "../components/patient/VitalSignsTrendDashb
 import PatientTelehealthPanel from "../components/telehealth/PatientTelehealthPanel";
 import CareTeamMessaging from "../components/messaging/CareTeamMessaging";
 import PatientContactActions from "../components/voice/PatientContactActions";
+import { PDGM_REIMBURSEMENT_ENABLED } from "@/components/pdgm/pdgmAvailability";
 
 // [Force recompile: 2026-06-29 12:15:00 UTC]
 export default function PatientDetails() {
@@ -694,7 +695,7 @@ export default function PatientDetails() {
                 patient={patient}
                 noteText={latestNoteText}
               />
-              {oasisTriggerVisit && (
+              {PDGM_REIMBURSEMENT_ENABLED && oasisTriggerVisit && (
                 <AIGeneratedOASISAssessment
                   patientId={patientId}
                   visitId={oasisTriggerVisit.id}
@@ -705,7 +706,9 @@ export default function PatientDetails() {
                   }}
                 />
               )}
-              <AIProactiveOASISAssistant patientId={patientId} autoAnalyze={false} />
+              {PDGM_REIMBURSEMENT_ENABLED && (
+                <AIProactiveOASISAssistant patientId={patientId} autoAnalyze={false} />
+              )}
               <AIComplianceAuditor
                 patientId={patientId}
                 autoRun={false}
@@ -785,7 +788,7 @@ export default function PatientDetails() {
       </Tabs>
 
       {/* OASIS Generation Prompt */}
-      {showOASISPrompt && oasisTriggerVisit && (
+      {PDGM_REIMBURSEMENT_ENABLED && showOASISPrompt && oasisTriggerVisit && (
         <Alert className="mb-6 bg-navy-50 border-navy-300">
           <Sparkles className="w-4 h-4 text-navy-600" />
           <AlertDescription>

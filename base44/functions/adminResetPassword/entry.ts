@@ -10,11 +10,19 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isAdminLike = (u) => !!u && (
-  u.role === 'admin' || u.account_type === 'agency_admin' ||
-  u.account_type === 'super_admin'
-);
+const isAdminLike = (u) => !!u && u.role === 'admin';
 // <<<END SHARED HELPER: isAdminLike>>>
+
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
 
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
@@ -152,9 +160,10 @@ Deno.serve(async (req) => {
 
     // Only an admin-tier account may force a password reset for another account.
     // Previously unauthenticated — anyone could trigger reset invites for any user.
-    // Uses the canonical isAdminLike tier (admin / agency_admin / super_admin).
+    // Custom User fields are self-mutable, so only Base44's protected role is
+    // accepted here.
     const currentUser = await base44.auth.me();
-    if (!isAdminLike(currentUser)) {
+    if (!isProtectedAdmin(currentUser)) {
       return Response.json({ error: 'Unauthorized. Admin access required.' }, { status: 403 });
     }
     if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
@@ -176,10 +185,8 @@ Deno.serve(async (req) => {
     // hand them a fresh set-password link for a super admin / peer admin and
     // let them take that account over. Only a super admin may reset another
     // administrator's password.
-    const callerIsSuperAdmin = currentUser.account_type === 'super_admin';
-    const targetIsPrivileged = targetUser.account_type === 'super_admin'
-      || targetUser.account_type === 'agency_admin'
-      || targetUser.role === 'admin';
+    const callerIsSuperAdmin = isProtectedSuperAdmin(currentUser);
+    const targetIsPrivileged = targetUser.role === 'admin';
     if (targetIsPrivileged && !callerIsSuperAdmin) {
       return Response.json({ error: 'Only a super admin can reset another administrator\'s password.' }, { status: 403 });
     }

@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, TrendingUp, Activity, AlertTriangle, Target, Brain, Calendar, Clock, Shield } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { Loader2, Activity, AlertTriangle, Target, Brain, Calendar, Clock, Shield } from "lucide-react";
 import { formatAge } from "@/lib/age";
 
 export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, patientId, onPredictionsComplete }) {
@@ -105,7 +104,7 @@ export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, 
 
     return {
       similar_case_count: similarCases.length,
-      avg_payment: similarCases.reduce((sum, p) => sum + (p.estimated_payment || 0), 0) / similarCases.length,
+      payment_status: 'unavailable',
       avg_compliance: similarCases.reduce((sum, p) => sum + (p.scores?.compliance || 0), 0) / similarCases.length,
       clinical_group: currentPdgm.clinical_group
     };
@@ -178,10 +177,9 @@ PREDICT THE FOLLOWING WITH EVIDENCE-BASED REASONING:
    - Estimate discharge functional status
    - Identify barriers to improvement
 
-4. REVENUE FORECAST
-   - Predict next assessment period payment
-   - Forecast 6-month revenue trend for this patient
-   - Identify risk of payment denials or appeals
+4. PDGM PAYMENT SAFETY
+   - Do not calculate, estimate, forecast, or imply any payment, case-mix weight, denial value, or revenue impact
+   - PDGM reimbursement is unavailable until a verified CMS HHGS 432-group grouper passes golden-case tests
 
 5. COMPLIANCE RISK PROJECTION
    - Predict likelihood of audit flags in next assessment
@@ -244,28 +242,6 @@ Provide SPECIFIC, ACTIONABLE predictions with clinical reasoning.`,
                   }
                 },
                 barriers_to_improvement: { type: "array", items: { type: "string" } }
-              }
-            },
-            revenue_forecast: {
-              type: "object",
-              properties: {
-                next_period_payment: { type: "number" },
-                six_month_projection: { type: "number" },
-                payment_trend: { type: "string", enum: ["increasing", "stable", "decreasing"] },
-                denial_risk: { type: "string", enum: ["low", "moderate", "high"] },
-                appeal_likelihood: { type: "number" },
-                revenue_optimization_potential: { type: "string" },
-                forecasted_monthly_payments: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      month: { type: "string" },
-                      predicted_payment: { type: "number" },
-                      confidence: { type: "string" }
-                    }
-                  }
-                }
               }
             },
             compliance_risk_projection: {
@@ -613,76 +589,15 @@ Provide SPECIFIC, ACTIONABLE predictions with clinical reasoning.`,
             </CardContent>
           </Card>
 
-          {/* Revenue Forecast */}
-          <Card className="border-2 border-green-300">
-            <CardHeader className="bg-green-50">
+          <Card className="border-2 border-amber-300">
+            <CardHeader className="bg-amber-50">
               <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-600" />
-                Revenue Forecast & Risk
+                <Shield className="w-5 h-5 text-amber-700" />
+                PDGM Payment Forecast
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-4">
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="text-center p-3 bg-white rounded border-2">
-                  <p className="text-xs text-slate-600">Next Period</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    ${predictions.revenue_forecast?.next_period_payment?.toLocaleString()}
-                  </p>
-                </div>
-                <div className="text-center p-3 bg-white rounded border-2">
-                  <p className="text-xs text-slate-600">6-Month Total</p>
-                  <p className="text-2xl font-bold text-green-700">
-                    ${predictions.revenue_forecast?.six_month_projection?.toLocaleString()}
-                  </p>
-                </div>
-                <div className="text-center p-3 bg-white rounded border-2">
-                  <p className="text-xs text-slate-600">Trend</p>
-                  <Badge className={
-                    predictions.revenue_forecast?.payment_trend === 'increasing' ? 'bg-green-600' :
-                    predictions.revenue_forecast?.payment_trend === 'decreasing' ? 'bg-red-600' :
-                    'bg-blue-600'
-                  } size="lg">
-                    {predictions.revenue_forecast?.payment_trend}
-                  </Badge>
-                </div>
-              </div>
-
-              {predictions.revenue_forecast?.forecasted_monthly_payments?.length > 0 && (
-                <div className="mb-4">
-                  <ResponsiveContainer width="100%" height={200}>
-                    <LineChart data={predictions.revenue_forecast.forecasted_monthly_payments}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => `$${(value ?? 0).toLocaleString()}`} />
-                      <Line type="monotone" dataKey="predicted_payment" stroke="#10b981" strokeWidth={2} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className={`p-3 rounded border ${
-                  predictions.revenue_forecast?.denial_risk === 'high' ? 'bg-red-100 border-red-300' :
-                  predictions.revenue_forecast?.denial_risk === 'moderate' ? 'bg-yellow-100 border-yellow-300' :
-                  'bg-green-100 border-green-300'
-                }`}>
-                  <p className="text-xs font-semibold mb-1">Denial Risk:</p>
-                  <p className="text-sm font-bold">{predictions.revenue_forecast?.denial_risk}</p>
-                </div>
-                <div className="bg-blue-50 p-3 rounded border border-blue-200">
-                  <p className="text-xs font-semibold mb-1">Appeal Likelihood:</p>
-                  <p className="text-sm font-bold">{predictions.revenue_forecast?.appeal_likelihood}%</p>
-                </div>
-              </div>
-
-              {predictions.revenue_forecast?.revenue_optimization_potential && (
-                <Alert className="bg-green-50 border-green-200 mt-3">
-                  <AlertDescription className="text-sm text-green-900">
-                    <strong>Optimization Potential:</strong> {predictions.revenue_forecast.revenue_optimization_potential}
-                  </AlertDescription>
-                </Alert>
-              )}
+            <CardContent className="pt-4 text-sm text-amber-950">
+              <strong>Unavailable — not $0.</strong> AI-generated reimbursement forecasts are excluded. Use the official EMR/CMS-approved grouper until the verified CMS HHGS 432-group integration passes golden-case tests.
             </CardContent>
           </Card>
 

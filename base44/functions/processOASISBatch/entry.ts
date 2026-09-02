@@ -10,20 +10,24 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Fail closed until document extraction and quality scoring have tenant-bound
+// authorization, verified OASIS definitions, and a human-review contract.
+const OASIS_BATCH_AI_ENABLED = false;
 
-// Financial visibility gate. MIRRORS src/lib/permissions.canViewFinancials
-// (isAdminLike) — backend Deno modules can't import src/lib, so the admin
-// checks are duplicated here. Keep in sync (see listOASISUploads).
-function canViewFinancials(user) {
-  if (!user) return false;
-  return (
-    user.role === 'admin' ||
-    user.account_type === 'agency_admin' ||
-    user.account_type === 'super_admin'
-  );
-}
 
 Deno.serve(async (req) => {
+  if (!OASIS_BATCH_AI_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'oasis_batch_ai_paused',
+      message: 'Batch OASIS AI analysis is unavailable pending tenant-scoped access and clinical validation.',
+      results: [],
+      successCount: 0,
+      errorCount: 0,
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -33,12 +37,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // The batch results and generated PDFs embed revenue_optimization_score /
-    // revenue_tips — the financial data the FinancialGate hides from non-financial
-    // users (the UI already wraps this in <FinancialGate>). Enforce it server-side
-    // so the endpoint can't be called directly to read that data.
-    if (!canViewFinancials(user)) {
-      return Response.json({ error: 'Forbidden: financial access required' }, { status: 403 });
+    if (user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const { fileUrls, fileNames } = await req.json();
@@ -111,18 +111,16 @@ OASIS Document Content:
 ${oasisTextContent.substring(0, 15000)}
 """
 
-Provide comprehensive analysis including accuracy issues, compliance concerns, revenue optimization tips, and audit risks.
+Provide documentation-quality analysis including accuracy issues, compliance concerns, and audit risks. Do not calculate, estimate, or suggest OASIS response changes, PDGM grouping, payment, revenue, or reimbursement optimization.
 
 Return JSON:
 {
   "overall_score": 0-100,
   "accuracy_score": 0-100,
   "compliance_score": 0-100,
-  "revenue_optimization_score": 0-100,
   "summary": "Brief summary",
   "accuracy_issues": [{"item": "code", "issue": "description", "severity": "high|medium|low", "recommendation": "fix"}],
   "compliance_concerns": [{"area": "area", "issue": "description", "severity": "high|medium|low", "cms_reference": "ref", "recommendation": "fix"}],
-  "revenue_tips": [{"category": "category", "current_documentation": "current", "opportunity": "opportunity", "potential_impact": "high|medium|low", "specific_action": "action"}],
   "audit_risk_areas": [{"area": "area", "risk_level": "high|medium|low", "explanation": "explanation", "mitigation": "mitigation"}],
   "strengths": ["strength1", "strength2"],
   "key_recommendations": ["rec1", "rec2"]
@@ -133,11 +131,9 @@ Return JSON:
               overall_score: { type: "number" },
               accuracy_score: { type: "number" },
               compliance_score: { type: "number" },
-              revenue_optimization_score: { type: "number" },
               summary: { type: "string" },
               accuracy_issues: { type: "array", items: { type: "object" } },
               compliance_concerns: { type: "array", items: { type: "object" } },
-              revenue_tips: { type: "array", items: { type: "object" } },
               audit_risk_areas: { type: "array", items: { type: "object" } },
               strengths: { type: "array", items: { type: "string" } },
               key_recommendations: { type: "array", items: { type: "string" } }
@@ -243,7 +239,7 @@ function generatePDF(analysisResults, documentName) {
   doc.setTextColor(0, 0, 0);
   doc.text(`Overall Score: ${analysisResults.overall_score}%`, margin, y);
   y += 6;
-  doc.text(`Accuracy: ${analysisResults.accuracy_score}% | Compliance: ${analysisResults.compliance_score}% | Revenue Opt: ${analysisResults.revenue_optimization_score}%`, margin, y);
+  doc.text(`Accuracy: ${analysisResults.accuracy_score}% | Compliance: ${analysisResults.compliance_score}%`, margin, y);
   y += 10;
 
   // Summary
@@ -320,23 +316,6 @@ function generatePDF(analysisResults, documentName) {
       y += 5;
     });
     y += 5;
-  }
-
-  // Revenue Tips
-  if (analysisResults.revenue_tips?.length > 0) {
-    checkNewPage(20);
-    doc.setFontSize(12);
-    doc.setTextColor(22, 163, 74);
-    doc.text(`Revenue Tips (${analysisResults.revenue_tips.length})`, margin, y);
-    y += 7;
-    
-    doc.setFontSize(9);
-    analysisResults.revenue_tips.forEach(tip => {
-      checkNewPage(12);
-      doc.setTextColor(0, 0, 0);
-      doc.text(`• ${tip.category}: ${tip.specific_action}`, margin + 3, y);
-      y += 5;
-    });
   }
 
   // Footer

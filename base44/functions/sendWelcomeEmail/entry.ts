@@ -131,10 +131,7 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isAdminLike = (u) => !!u && (
-  u.role === 'admin' || u.account_type === 'agency_admin' ||
-  u.account_type === 'super_admin'
-);
+const isAdminLike = (u) => !!u && u.role === 'admin';
 // <<<END SHARED HELPER: isAdminLike>>>
 
 

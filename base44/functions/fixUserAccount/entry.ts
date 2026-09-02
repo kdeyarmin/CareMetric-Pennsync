@@ -20,11 +20,19 @@ function agencyAdminMissingAgencyResponse(user) {
 
 
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isAdminLike = (u) => !!u && (
-  u.role === 'admin' || u.account_type === 'agency_admin' ||
-  u.account_type === 'super_admin'
-);
+const isAdminLike = (u) => !!u && u.role === 'admin';
 // <<<END SHARED HELPER: isAdminLike>>>
+
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
 
 Deno.serve(async (req) => {
   try {
@@ -33,9 +41,10 @@ Deno.serve(async (req) => {
     // Privileged operation: only an admin / super-admin may mutate User records.
     // Previously this was unauthenticated, so any caller could self-escalate via
     // { userId: <self>, updates: { role: 'admin', account_type: 'super_admin' } }.
-    // Uses the canonical admin triad (a legitimate agency_admin was denied before).
+    // Custom User fields are self-mutable, so only Base44's protected role is
+    // accepted here.
     const currentUser = await base44.auth.me();
-    if (!isAdminLike(currentUser)) {
+    if (!isProtectedAdmin(currentUser)) {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
     if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
@@ -55,7 +64,7 @@ Deno.serve(async (req) => {
     // 'super_admin' } } and self-escalate (unlocking the Telnyx secret surface).
     // Only an existing super_admin may change the privilege fields; for everyone
     // else strip them so the rest of the repair still works.
-    const isSuperAdmin = currentUser.account_type === 'super_admin';
+    const isSuperAdmin = isProtectedSuperAdmin(currentUser);
     const safeUpdates = { ...updates };
     if (!isSuperAdmin) {
       for (const field of ['account_type', 'role']) {
@@ -72,11 +81,7 @@ Deno.serve(async (req) => {
     // a super admin may edit another privileged account.
     const targetList = await base44.asServiceRole.entities.User.filter({ id: userId }, undefined, 5000).catch(() => []);
     const targetUser = Array.isArray(targetList) ? targetList[0] : null;
-    const targetIsPrivileged = targetUser && (
-      targetUser.account_type === 'super_admin' ||
-      targetUser.account_type === 'agency_admin' ||
-      targetUser.role === 'admin'
-    );
+    const targetIsPrivileged = targetUser?.role === 'admin';
     if (targetIsPrivileged && !isSuperAdmin && targetUser.id !== currentUser.id) {
       return Response.json({ error: 'Only a super admin can modify another administrator account.' }, { status: 403 });
     }

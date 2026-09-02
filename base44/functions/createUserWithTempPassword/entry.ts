@@ -1,5 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Branded onboarding email
 //
@@ -275,7 +286,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     const user = await base44.auth.me();
-    if (!user || (user.role !== 'admin' && user.account_type !== 'agency_admin' && user.account_type !== 'super_admin')) {
+    if (!isProtectedAdmin(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
     if (user.is_active === false) {
@@ -316,7 +327,7 @@ Deno.serve(async (req) => {
     // is_approved: true) by onUserSignup / autoApproveInvitedUser. Without this, any
     // admin could mint another admin. Only a super_admin may
     // invite a user into a privileged role — mirrors the guard in fixUserAccount.
-    const callerIsSuperAdmin = user.account_type === 'super_admin';
+    const callerIsSuperAdmin = isProtectedSuperAdmin(user);
     const PRIVILEGED_ROLES = ['admin', 'super_admin'];
     if (PRIVILEGED_ROLES.includes(String(userRole)) && !callerIsSuperAdmin) {
       return Response.json(

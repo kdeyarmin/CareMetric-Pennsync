@@ -8,6 +8,10 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Fail closed until generated plans have immutable tenant authority, explicit
+// clinician review provenance, and a non-active draft workflow.
+const REFERRAL_CARE_PLAN_AI_ENABLED = false;
+
 /** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
 async function assertPatientAccess(base44, user, patient) {
   if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
@@ -43,6 +47,17 @@ async function assertPatientAccess(base44, user, patient) {
 }
 
 Deno.serve(async (req) => {
+  if (!REFERRAL_CARE_PLAN_AI_ENABLED) {
+    return Response.json({
+      success: false,
+      available: false,
+      reason: 'referral_care_plan_ai_paused',
+      message: 'AI-generated care plans are unavailable pending tenant-scoped authorization and clinician review controls.',
+      care_plans_created: 0,
+      care_plans: [],
+    }, { status: 409 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

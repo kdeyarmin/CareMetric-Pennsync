@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
       { num: '2', title: 'Patient Management', page: 5 },
       { num: '3', title: 'Smart Notes & AI Documentation', page: 10 },
       { num: '4', title: 'Visit Scribe & Voice Documentation', page: 15 },
-      { num: '5', title: 'OASIS Assessment Tools', page: 18 },
+      { num: '5', title: 'OASIS/PDGM Feature Status', page: 18 },
       { num: '6', title: 'Care Plan Management', page: 22 },
       { num: '7', title: 'Fax Management', page: 25 },
       { num: '8', title: 'Document Management', page: 28 },
@@ -618,7 +618,7 @@ Deno.serve(async (req) => {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text('5. OASIS Assessment Tools', 15, yPos + 8);
+    doc.text('5. OASIS/PDGM Feature Status', 15, yPos + 8);
     yPos += 20;
     
     doc.setTextColor(...textGray);
@@ -626,57 +626,48 @@ Deno.serve(async (req) => {
     doc.setFont('helvetica', 'normal');
     
     const oasisIntro = doc.splitTextToSize(
-      'PennSync provides multiple OASIS tools: Smart OASIS Assessment with AI suggestions, ' +
-      'PDF upload analyzer, compliance checker, and PDGM analyzer. These tools ensure accurate, ' +
-      'compliant assessments while maximizing reimbursement.',
+      'Smart OASIS AI suggestions, PDF upload and analysis, automated OASIS response selection, ' +
+      'PDGM grouping, case-mix and payment optimization, M-item financial-impact guidance, and ' +
+      'reimbursement calculations are paused pending verified CMS clinical content, tenant-bound ' +
+      'authorization, and required clinician review.',
       pageWidth - 40
     );
     doc.text(oasisIntro, 20, yPos);
     yPos += oasisIntro.length * 5 + 12;
 
-    // Smart OASIS Workflow
+    // OASIS/PDGM paused status and approved workflow
     doc.setFillColor(...yellow);
     doc.rect(20, yPos, 5, 5, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text('Smart OASIS Assessment Workflow', 30, yPos + 4);
+    doc.text('OASIS/PDGM Functions - Paused', 30, yPos + 4);
     yPos += 12;
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     
     const oasisSteps = [
-      '1. Select patient from dropdown',
-      '2. Choose assessment type (Start of Care, Recert, Discharge, etc.)',
-      '3. Begin answering OASIS questions in guided format',
-      '4. AI provides real-time suggestions based on:',
-      '   • Patient history and previous assessments',
-      '   • Recent visit notes and clinical observations',
-      '   • Diagnosis-specific best practices',
-      '   • CMS compliance requirements',
-      '5. Review compliance warnings if any items are flagged',
-      '6. Complete all required sections',
-      '7. Generate PDGM analysis to see case mix impact',
-      '8. Save or export completed assessment',
+      'CURRENT STATUS:',
+      '• No OASIS PDF is uploaded, matched, or analyzed from this workflow.',
+      '• No Smart OASIS AI suggestion or automated response selection runs.',
+      '• No OASIS quality score, M-item correction, or rescore guidance is generated.',
+      '• No PDGM group, case-mix result, payment estimate, or reimbursement calculation is produced.',
       '',
-      'KEY FEATURES:',
-      '• Auto-population from patient chart data',
-      '• Real-time compliance checking',
-      '• Suggested responses based on clinical context',
-      '• PDGM case mix calculator',
-      '• Gap identification (missing high-value items)',
+      'APPROVED WORKFLOW:',
+      '1. Record clinician-observed OASIS responses in the official clinical record workflow.',
+      '2. Complete required clinician review before submission.',
+      '3. Use only verified CMS clinical content and the official EMR/CMS-approved grouper.',
+      '4. Contact the agency clinical or compliance lead with OASIS or reimbursement questions.',
       '',
-      'BEST PRACTICE: Review AI suggestions but always verify they match your',
-      'clinical observations. The AI learns from patient history but you are the',
-      'clinical expert. Use the compliance warnings to catch common errors before',
-      'submission. Run PDGM analysis before finalizing to optimize reimbursement.'
+      'BEST PRACTICE: Do not use PennSync to select OASIS responses, calculate',
+      'PDGM reimbursement, or estimate financial impact while these functions are paused.'
     ];
     
     oasisSteps.forEach(step => {
       checkPageBreak();
       if (step === '') {
         yPos += 4;
-      } else if (step.startsWith('KEY FEATURES:')) {
+      } else if (step.startsWith('CURRENT STATUS:') || step.startsWith('APPROVED WORKFLOW:')) {
         doc.setFont('helvetica', 'bold');
         doc.setFillColor(...lightGray);
         doc.rect(20, yPos - 3, pageWidth - 40, 7, 'F');
@@ -1166,8 +1157,8 @@ Deno.serve(async (req) => {
       '3. Review AI Notes: Check AI-generated notes for accuracy and completeness',
       '   before clicking Save. Edit any details that need refinement.',
       '',
-      '4. OASIS Same-Day: Complete OASIS assessments same day as visit using the',
-      '   AI assistance tools to ensure all required items are addressed.',
+      '4. OASIS Same-Day: Complete OASIS assessments in the official clinician-led',
+      '   workflow; Smart OASIS AI suggestions and response selection are paused.',
       '',
       '5. End-of-Day Check: Review compliance dashboard to catch any flagged',
       '   notes that need strengthening before submission.',
@@ -1219,8 +1210,8 @@ Deno.serve(async (req) => {
       '  > 24-Hour Flag Response: Address any flagged notes within 24 hours while',
       '    visit details are still fresh.',
       '',
-      '  > OASIS Verification: Always verify AI-generated OASIS responses match',
-      '    your actual clinical assessment. AI suggests but you decide.',
+      '  > OASIS Verification: Record clinician-observed responses in the official',
+      '    workflow; PennSync AI response guidance is unavailable while paused.',
       '',
       '  > Care Plan Currency: Update care plans whenever visit findings indicate',
       '    new problems or changes in patient status.',

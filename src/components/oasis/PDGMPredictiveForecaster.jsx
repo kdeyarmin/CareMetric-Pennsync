@@ -21,6 +21,11 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart as RechartsLineChart, Line } from 'recharts';
 import { calculatePDGM } from "@/functions/calculatePDGM";
+import {
+  formatPdgmCurrency,
+  getPdgmComparisonState,
+  isFinitePdgmNumber,
+} from "@/components/pdgm/pdgmAvailability";
 
 export default function PDGMPredictiveForecaster({ pdgmData, analysisResults, currentPayment, triggeredPathways }) {
   const [isPredicting, setIsPredicting] = useState(false);
@@ -29,6 +34,7 @@ export default function PDGMPredictiveForecaster({ pdgmData, analysisResults, cu
   const [simulationMode, setSimulationMode] = useState(false);
   const [simulatedScores, setSimulatedScores] = useState(null);
   const [simulationResults, setSimulationResults] = useState(null);
+  const [simulationUnavailable, setSimulationUnavailable] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
 
   const { data: agencySettings } = useQuery({
@@ -41,7 +47,7 @@ export default function PDGMPredictiveForecaster({ pdgmData, analysisResults, cu
   });
 
   const generatePredictions = useCallback(async () => {
-    if (!pdgmData || !analysisResults) return;
+    if (!pdgmData || !analysisResults || !isFinitePdgmNumber(currentPayment)) return;
 
     setIsPredicting(true);
 
@@ -61,7 +67,7 @@ ${JSON.stringify({
   clinical_items: pdgmData.clinical_items
 }, null, 2)}
 
-CURRENT PAYMENT: $${currentPayment || 'Not yet calculated'}
+CURRENT PAYMENT: ${formatPdgmCurrency(currentPayment)}
 
 ANALYSIS FINDINGS:
 - Accuracy Issues: ${analysisResults.accuracy_issues?.length || 0}
@@ -177,15 +183,11 @@ Return JSON:
   }, [pdgmData, analysisResults, currentPayment, triggeredPathways, agencySettings]);
 
   useEffect(() => {
-    if (pdgmData && analysisResults && !predictions && !isPredicting && !hasAutoPredicted) {
+    if (pdgmData && analysisResults && isFinitePdgmNumber(currentPayment) && !predictions && !isPredicting && !hasAutoPredicted) {
       generatePredictions();
       setHasAutoPredicted(true);
     }
-  }, [pdgmData, analysisResults, predictions, isPredicting, hasAutoPredicted, generatePredictions]);
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
-  };
+  }, [pdgmData, analysisResults, currentPayment, predictions, isPredicting, hasAutoPredicted, generatePredictions]);
 
   const initSimulationScores = () => {
     if (!pdgmData?.functional_scores) return;
@@ -217,6 +219,14 @@ Return JSON:
         pdgmData: pdgmData,
         correctedPdgmData: modifiedPdgmData
       });
+      const responseData = response?.data ?? response;
+      const paymentState = getPdgmComparisonState(responseData);
+      if (!paymentState.available) {
+        setSimulationResults(null);
+        setSimulationUnavailable(paymentState);
+        return;
+      }
+      setSimulationUnavailable(null);
 
       // Get AI analysis of the grouping changes
       const analysis = await invokeLLM({
@@ -230,10 +240,10 @@ SIMULATED SCORES:
 ${JSON.stringify(simulatedScores, null, 2)}
 
 ORIGINAL PAYMENT DATA:
-${JSON.stringify(response.data?.original, null, 2)}
+${JSON.stringify(responseData?.original, null, 2)}
 
 NEW PAYMENT DATA:
-${JSON.stringify(response.data?.corrected, null, 2)}
+${JSON.stringify(responseData?.corrected, null, 2)}
 
 Provide detailed analysis:
 
@@ -316,7 +326,7 @@ Return JSON:
       });
 
       setSimulationResults({
-        paymentData: response.data,
+        paymentData: responseData,
         analysis: analysis
       });
     } catch (err) {
@@ -357,6 +367,26 @@ Return JSON:
 
   if (!pdgmData) return null;
 
+  if (!isFinitePdgmNumber(currentPayment)) {
+    return (
+      <Card className="border-2 border-amber-300">
+        <CardHeader className="pb-3 bg-amber-50">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Sparkles className="h-5 w-5 text-amber-700" />
+            PDGM Predictive Forecaster
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <Alert className="border-amber-300 bg-amber-50">
+            <AlertDescription className="text-sm text-amber-900">
+              <strong>Payment forecasts: Unavailable.</strong> A verified PDGM payment is not available, and this is not a $0 result. Use the official EMR/CMS-approved grouper; PennSync will not ask AI to invent payment projections.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const mItemConfig = {
     m1800_grooming: { label: "M1800 Grooming", max: 3, icon: Activity },
     m1810_dress_upper: { label: "M1810 Dress Upper", max: 3, icon: Activity },
@@ -376,9 +406,9 @@ Return JSON:
             PDGM Predictive Forecaster
           </div>
           <div className="flex items-center gap-2">
-            {currentPayment && (
+            {isFinitePdgmNumber(currentPayment) && (
               <Badge className="bg-slate-600 text-white text-lg px-3">
-                Current: {formatCurrency(currentPayment)}
+                Current: {formatPdgmCurrency(currentPayment)}
               </Badge>
             )}
             <Button
@@ -471,6 +501,18 @@ Return JSON:
             </Button>
 
             {/* Simulation Results */}
+            {simulationUnavailable && (
+              <Alert className="border-amber-300 bg-amber-50">
+                <AlertDescription className="space-y-2 text-sm text-amber-900">
+                  <p><strong>Simulation payment: Unavailable.</strong> {simulationUnavailable.message}</p>
+                  {simulationUnavailable.actions.length > 0 && (
+                    <ul className="list-disc space-y-1 pl-5">
+                      {simulationUnavailable.actions.map((action) => <li key={action}>{action}</li>)}
+                    </ul>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
             {simulationResults && (
               <div className="space-y-3 mt-4 pt-4 border-t border-orange-300">
                 {/* Summary */}
@@ -485,7 +527,7 @@ Return JSON:
                   <div className="bg-white p-3 rounded text-center border">
                     <p className="text-xs text-slate-500 mb-1">Original</p>
                     <p className="text-lg font-bold text-slate-700">
-                      {formatCurrency(simulationResults.analysis.payment_breakdown?.original_payment)}
+                      {formatPdgmCurrency(simulationResults.analysis.payment_breakdown?.original_payment)}
                     </p>
                   </div>
                   <div className="bg-white p-3 rounded text-center border">
@@ -506,7 +548,7 @@ Return JSON:
                         ? 'text-green-700' 
                         : 'text-red-700'
                     }`}>
-                      {formatCurrency(simulationResults.analysis.payment_breakdown?.new_payment)}
+                      {formatPdgmCurrency(simulationResults.analysis.payment_breakdown?.new_payment)}
                     </p>
                   </div>
                 </div>
@@ -698,7 +740,7 @@ Return JSON:
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(value) => formatCurrency(value)} />
+                  <Tooltip formatter={(value) => formatPdgmCurrency(value)} />
                   <Legend wrapperStyle={{ fontSize: '11px' }} />
                   <Bar dataKey="Payment" fill="#8b5cf6" />
                   <Bar dataKey="Increase" fill="#10b981" />
@@ -735,20 +777,20 @@ Return JSON:
                     <div className="bg-white p-2 rounded text-center">
                       <p className="text-xs text-slate-500">Payment</p>
                       <p className="text-lg font-bold text-navy-700">
-                        {formatCurrency(scenario.projected_payment)}
+                        {formatPdgmCurrency(scenario.projected_payment)}
                       </p>
                     </div>
                     <div className="bg-white p-2 rounded text-center">
                       <p className="text-xs text-slate-500">Increase</p>
                       <p className="text-lg font-bold text-green-700">
-                        +{formatCurrency(scenario.payment_increase)}
+                        +{formatPdgmCurrency(scenario.payment_increase)}
                       </p>
                       <p className="text-xs text-green-600">+{scenario.percentage_increase}%</p>
                     </div>
                     <div className="bg-white p-2 rounded text-center">
                       <p className="text-xs text-slate-500">Annual</p>
                       <p className="text-lg font-bold text-indigo-700">
-                        {formatCurrency(scenario.annual_impact)}
+                        {formatPdgmCurrency(scenario.annual_impact)}
                       </p>
                     </div>
                   </div>
@@ -806,7 +848,7 @@ Return JSON:
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                    <Tooltip formatter={(value) => formatPdgmCurrency(value)} />
                     <Legend wrapperStyle={{ fontSize: '10px' }} />
                     <Bar dataKey="Conservative" fill="#6b7280" />
                     <Bar dataKey="Realistic" fill="#3557b0" />
@@ -834,7 +876,7 @@ Return JSON:
                         {data.episodes_to_breakeven} episodes
                       </p>
                       <p className="text-xs text-slate-600">{data.time_to_breakeven}</p>
-                      <p className="text-xs text-slate-500 mt-1">Cost: {formatCurrency(data.cost)}</p>
+                      <p className="text-xs text-slate-500 mt-1">Cost: {formatPdgmCurrency(data.cost)}</p>
                     </div>
                   ))}
                 </div>

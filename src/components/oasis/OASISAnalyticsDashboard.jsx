@@ -4,7 +4,6 @@ import {
   aggregateDemographics,
   aggregateTopDiagnoses,
   aggregateFunctionalScores,
-  aggregatePaymentTrends,
   computeSummaryStats,
 } from "@/components/oasis/oasisAnalytics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +21,8 @@ import { BarChart3 } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 import DocumentationGapAdminPanel from "@/components/oasis/DocumentationGapAdminPanel";
-// Analytics Dashboard Component — payment trends & revenue stats.
+// Analytics Dashboard Component — clinical/documentation trends. PDGM payment
+// analytics remain fail-closed until the verified CMS grouper is available.
 // Extracted from OASISAnalyzer.jsx; pure aggregation logic lives in oasisAnalytics.js (unit-tested).
 export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
   const COLORS = CHART_COLORS;
@@ -31,7 +31,6 @@ export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
   const diagnosesData = React.useMemo(() => aggregateTopDiagnoses(savedOASISUploads), [savedOASISUploads]);
   const functionalScores = React.useMemo(() => aggregateFunctionalScores(savedOASISUploads), [savedOASISUploads]);
   const functionalScoresData = functionalScores.points;
-  const paymentTrendsData = React.useMemo(() => aggregatePaymentTrends(savedOASISUploads), [savedOASISUploads]);
   const summaryStats = React.useMemo(() => computeSummaryStats(savedOASISUploads), [savedOASISUploads]);
 
   if (savedOASISUploads.length === 0) {
@@ -77,7 +76,8 @@ export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-navy-600 font-medium">Avg Payment</p>
-                <p className="text-3xl font-bold text-navy-700">${summaryStats.avgPayment.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                <p className="text-2xl font-bold text-amber-700">Unavailable</p>
+                <p className="mt-1 text-xs text-navy-600">Not a $0 result</p>
               </div>
               <DollarSign className="w-10 h-10 text-navy-400" />
             </div>
@@ -89,7 +89,8 @@ export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-orange-600 font-medium">Total Revenue</p>
-                <p className="text-3xl font-bold text-orange-700">${summaryStats.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                <p className="text-2xl font-bold text-amber-700">Unavailable</p>
+                <p className="mt-1 text-xs text-orange-600">Official CMS grouper required</p>
               </div>
               <TrendingUp className="w-10 h-10 text-orange-400" />
             </div>
@@ -208,29 +209,6 @@ export default function OASISAnalyticsDashboard({ savedOASISUploads }) {
           The panel gates itself; it is not relying on this placement. */}
       <DocumentationGapAdminPanel uploads={savedOASISUploads} />
 
-      {/* PDGM Payment Trends */}
-      {paymentTrendsData.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-green-600" />
-              PDGM Payment Trends
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={350}>
-              <LineChart data={paymentTrendsData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" angle={-45} textAnchor="end" height={80} />
-                <YAxis label={{ value: 'Payment ($)', angle: -90, position: 'insideLeft' }} />
-                <Tooltip formatter={(value) => `$${value.toLocaleString()}`} />
-                <Legend />
-                <Line type="monotone" dataKey="payment" stroke="#10b981" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

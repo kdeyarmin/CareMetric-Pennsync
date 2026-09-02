@@ -99,16 +99,16 @@ export default function OASISValidationPanel({ pdgmData, analysisResults }) {
         </div>
 
 
-        {/* Pre-submit OASIS Readiness Checklist */}
+        {/* Limited internal OASIS cross-check */}
         <div className="bg-white p-4 rounded-lg border border-navy-100">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-3">
             <div>
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-navy-600" />
-                <h3 className="font-semibold text-slate-900">Pre-submit Readiness Checklist</h3>
+                <h3 className="font-semibold text-slate-900">Limited Internal Cross-Check</h3>
               </div>
               <p className="text-sm text-slate-600 mt-1">
-                Confirms required OASIS data, PDGM-critical fields, quality review, and reviewer sign-off before submission.
+                Highlights selected local consistency checks. It does not validate the full CMS instrument, establish regulatory compliance, or determine submission readiness.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -117,10 +117,10 @@ export default function OASISValidationPanel({ pdgmData, analysisResults }) {
                 readinessChecklist.summary.status === 'needs_review' ? 'bg-yellow-600' :
                 'bg-red-600'
               } text-white`}>
-                {readinessChecklist.summary.readinessScore}% ready
+                {readinessChecklist.summary.readinessScore}% of local checks complete
               </Badge>
-              <Badge variant="outline">{readinessChecklist.summary.blockingItems} blocking</Badge>
-              <Badge variant="outline">{readinessChecklist.summary.highPriorityItems} high-priority</Badge>
+              <Badge variant="outline">{readinessChecklist.summary.blockingItems} unresolved</Badge>
+              <Badge variant="outline">{readinessChecklist.summary.highPriorityItems} needs review</Badge>
             </div>
           </div>
 
@@ -272,7 +272,7 @@ export default function OASISValidationPanel({ pdgmData, analysisResults }) {
           <Alert className="bg-green-50 border-green-200">
             <CheckCircle2 className="w-4 h-4 text-green-600" />
             <AlertDescription className="text-green-800">
-              <strong>Excellent!</strong> All validation checks passed. This OASIS assessment is ready for submission.
+              <strong>Limited internal cross-check complete.</strong> No issue was found by these local checks. This is not CMS instrument validation or submission readiness; a clinician must complete the official workflow.
             </AlertDescription>
           </Alert>
         ) : (
@@ -281,12 +281,12 @@ export default function OASISValidationPanel({ pdgmData, analysisResults }) {
             <AlertDescription className="text-orange-800">
               {criticalIssues > 0 && (
                 <p className="mb-1">
-                  <strong>{criticalIssues} critical issue{criticalIssues > 1 ? 's' : ''}</strong> must be resolved before submission.
+                  <strong>{criticalIssues} critical issue{criticalIssues > 1 ? 's' : ''}</strong> require clinician review in the official workflow.
                 </p>
               )}
               {warningIssues > 0 && (
                 <p>
-                  {warningIssues} warning{warningIssues > 1 ? 's' : ''} detected that may affect PDGM payment accuracy.
+                  {warningIssues} warning{warningIssues > 1 ? 's' : ''} detected for clinician review.
                 </p>
               )}
             </AlertDescription>
@@ -403,7 +403,7 @@ function validateAdmissionSourceTiming(data) {
           actual: admissionSource
         },
         recommendation: `Review M1000 response and update admission source to ${expectedSource} if appropriate`,
-        impact: `${expectedSource === 'institutional' ? 'Institutional' : 'Community'} admission affects PDGM payment by 5-10%`
+        impact: 'Admission-source evidence is inconsistent and requires clinician review.'
       });
     }
   }
@@ -421,7 +421,7 @@ function validateAdmissionSourceTiming(data) {
         actual: 'community'
       },
       recommendation: 'If patient was discharged from inpatient facility, change admission source to institutional',
-      impact: 'This could result in significant payment undercoding (10-15% revenue loss)'
+      impact: 'The documented source and available facility evidence do not agree.'
     });
   }
   
@@ -448,7 +448,7 @@ function validateAdmissionSourceTiming(data) {
           actual: episodeTiming
         },
         recommendation: `Verify episode timing - late episodes typically occur after day 30`,
-        impact: 'Episode timing affects payment by approximately 8%'
+        impact: 'The documented episode timing requires clinician verification.'
       });
     }
   }
@@ -470,7 +470,7 @@ function validateDiagnosis(data) {
       message: 'No primary diagnosis code or description found',
       fields: ['primary_diagnosis_code', 'primary_diagnosis'],
       recommendation: 'Document the primary diagnosis with valid ICD-10-CM code',
-      impact: 'Primary diagnosis is required for PDGM clinical grouping'
+      impact: 'The diagnosis documentation is incomplete and requires coding review.'
     });
   }
   
@@ -493,7 +493,7 @@ function validateDiagnosis(data) {
           actual: diagnosisCode
         },
         recommendation: 'Verify and correct the ICD-10-CM code format',
-        impact: 'Invalid codes may be rejected by Medicare or affect clinical grouping'
+        impact: 'The code format requires qualified coding review.'
       });
     }
   }
@@ -506,8 +506,8 @@ function validateDiagnosis(data) {
       title: 'No Comorbidities Documented',
       message: 'No secondary diagnoses or comorbidities found',
       fields: ['comorbidities'],
-      recommendation: 'Review patient chart and document all relevant comorbidities - they can increase PDGM payment',
-      impact: 'Comorbidities can increase payment by 2-8%'
+      recommendation: 'Review the patient chart and document clinically relevant comorbidities supported by evidence.',
+      impact: 'Missing clinically relevant conditions can make the assessment incomplete.'
     });
   }
   
@@ -555,7 +555,7 @@ function validateFunctionalStatus(data) {
       message: `${missingItems.length} required functional items are missing`,
       fields: missingItems,
       recommendation: 'Complete all required ADL assessment items (M1800-M1860)',
-      impact: 'Functional status is critical for PDGM payment calculation'
+      impact: 'Functional status responses are incomplete.'
     });
   }
   
@@ -566,7 +566,7 @@ function validateFunctionalStatus(data) {
       message: `${invalidScores.length} functional items have out-of-range scores`,
       fields: invalidScores.map(i => i.item),
       recommendation: 'Review and correct functional assessment scores to valid ranges',
-      impact: 'Invalid scores will be rejected or defaulted to 0'
+      impact: 'Invalid responses must be corrected; they are not coerced or defaulted.'
     });
   }
   
@@ -595,7 +595,7 @@ function validateClinicalConsistency(data) {
       message: 'High functional impairment detected but no therapy services documented',
       fields: ['therapy_services', 'M1860', 'M1850'],
       recommendation: 'Consider if patient would benefit from PT/OT services',
-      impact: 'Therapy needs can affect clinical grouping and payment'
+      impact: 'The documented functional needs and service plan may be inconsistent.'
     });
   }
   

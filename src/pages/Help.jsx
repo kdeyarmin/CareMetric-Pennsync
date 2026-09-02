@@ -73,9 +73,9 @@ export default function Help() {
     },
     {
       title: "OASIS Tools",
-      description: "Smart assessment with AI assistance",
+      description: "OASIS/PDGM AI guidance is paused pending verified CMS clinical content, tenant-scoped authorization, and required human review",
       icon: ClipboardList,
-      topics: ["Smart OASIS", "PDF upload", "Compliance check", "PDGM analysis"]
+      topics: ["Feature status", "CMS content verification", "Tenant-scoped access", "Human review"]
     },
     {
       title: "Fax Management",
@@ -123,8 +123,8 @@ export default function Help() {
       a: "Yes! Use Clinical Library to create quick phrases that expand into full documentation. Support both generic and patient-specific templates with variables."
     },
     {
-      q: "How do OASIS suggestions work?",
-      a: "AI analyzes patient history, recent visit notes, and diagnosis to suggest appropriate OASIS responses. It highlights compliance risks and optimizes for PDGM case mix."
+      q: "Are AI OASIS and PDGM suggestions available?",
+      a: "No. Automated OASIS response guidance, PDGM reimbursement optimization, and M-item financial-impact recommendations are paused pending verified CMS clinical content, tenant-scoped authorization, and required human review. Use the official clinician OASIS workflow and CMS-approved grouper."
     },
     {
       q: "What happens to flagged compliance issues?",

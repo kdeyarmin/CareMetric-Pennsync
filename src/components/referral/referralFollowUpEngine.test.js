@@ -101,9 +101,9 @@ test("acceptable-but-unmapped primary is an agency note, not a provider request"
     { icdGroups: { Q99: "MMTA_Other" } }
   );
   assert.ok(!ids(plan).includes("no_acceptable_primary"), JSON.stringify(ids(plan)));
-  assert.equal(plan.internal_notes.length, 1);
-  assert.match(plan.internal_notes[0], /PDGM Rate Settings/);
-  assert.match(plan.internal_notes[0], /I69\.354/);
+  assert.equal(plan.internal_notes.length, 0);
+  assert.equal(plan.coding.primary?.displayCode, "I69.354");
+  assert.equal(plan.coding.primary?.clinicalGroupKey, null);
 });
 
 test("uncoded diagnoses become a comorbidity-capture request naming each dx", () => {
