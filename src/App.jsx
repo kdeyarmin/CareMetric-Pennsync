@@ -236,6 +236,8 @@ const AuthenticatedApp = () => {
           <Route path="/consent/*" element={<OAuthConsent />} />
           {/* Public privacy policy — required in-app pre-auth (App Store 5.1.1(i)) */}
           <Route path="/privacy" element={<PrivacyPolicy />} />
+          {/* Hyphenated alias used by public privacy/compliance links. */}
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           {/* Compatibility URL currently registered in App Store Connect. */}
           <Route path="/privacypolicy" element={<PrivacyPolicy />} />
           {/* MCP OAuth consent — manages its own auth redirect via ?ctx handle */}
