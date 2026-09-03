@@ -43,14 +43,11 @@
 	<false/>
 
 	<!--
-	  App-Bound Domains. Opting in (together with
-	  limitsNavigationsToAppBoundDomains = true on the
-	  WKWebViewConfiguration) is what enables Service Workers inside the
-	  WKWebView. Main-frame navigation is limited to these domains, which is
-	  safe because WebViewController already sends external main-frame links
-	  to Safari; cross-origin subframes (Supabase previews) are unaffected.
-	  Bare domains cover their subdomains (caremetricai.base44.app, the
-	  base44.com auth/API endpoints).
+	  App-Bound Domains used by WebViewController's main-frame navigation
+	  containment. The current frontend intentionally registers no service
+	  worker and provides no offline app shell. Bare domains cover their
+	  subdomains, including caremetricai.base44.app and the Base44 auth/API
+	  endpoints.
 	-->
 	<key>WKAppBoundDomains</key>
 	<array>
