@@ -394,10 +394,18 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
     assert.match(surface, new RegExp(`if \\(!${gate}\\)`));
   }
   const merge = read('src/components/patient/mergePatients.js');
-  assert.match(
-    merge,
-    /SERVER_MERGE_REQUIRED_ENTITIES\s*=\s*\[\s*"OASISAssessment",\s*"PatientNoteHistoryEntry",\s*"PatientOutcomeMetric",?\s*\]/,
+  const serverMergeRequired = merge.match(
+    /SERVER_MERGE_REQUIRED_ENTITIES\s*=\s*\[([\s\S]*?)\]/,
   );
+  assert.ok(serverMergeRequired, 'server-only patient references must stay explicit');
+  for (const entity of [
+    'DocumentTenantBinding',
+    'OASISAssessment',
+    'PatientNoteHistoryEntry',
+    'PatientOutcomeMetric',
+  ]) {
+    assert.match(serverMergeRequired[1], new RegExp(`"${entity}"`));
+  }
   assert.match(merge, /PATIENT_MERGE_PAUSED_MESSAGE/);
   const mergeBoundary = merge.slice(
     merge.indexOf('export async function mergePatientInto'),
