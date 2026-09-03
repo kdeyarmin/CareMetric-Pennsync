@@ -1,7 +1,7 @@
 # CareMetric production mixed-release containment runbook
 
 Date: 2026-09-03  
-Status: **P0 containment prepared; no live action authorized or performed**
+Status: **P0 frontend containment deployed and technically verified; device and log follow-up remains**
 
 ## Purpose
 
@@ -27,7 +27,7 @@ production records as part of containment.
 
 ## Immediate operational hold
 
-Until the matching frontend is published and validated, do not use:
+Following the site-only containment, continue to keep these deliberately fail-closed workflows on hold until their separate release gates pass:
 
 - Patient duplicate scanning or merge;
 - OASIS save, upload, analyzer-review, comparison, or approval;
@@ -44,14 +44,18 @@ to defaults.
 - Production source worktree: clean at `67d9d5e`.
 - Production hosted metadata exposes fields/RLS added by that merge across 14
   changed entity schemas.
-- Published CareMetric origins: HTTP 200, title `CareMetric AI`, entry asset
-  `index-BQUjg8kG.js`.
-- `pennsync.com`: HTTP 200, title `PENNSync`, entry asset
-  `index--wkWNhXC.js`; no domain cutover occurred.
-- Production manifest: `PennSync by CareMetric`, a pre-existing branding blob
-  last changed before consolidation; relative PWA identity remains intact.
-- Production backend-function revision and post-sync error history: **unverified
-  until authenticated read-only CLI checks complete**.
+- Published CareMetric origins: HTTP 200 and entry asset
+  `index-egZIJufH.js`; the live asset SHA-256 exactly matches the verified
+  forward artifact.
+- `pennsync.com`: HTTP 200, entry asset `index--wkWNhXC.js`; no domain
+  cutover occurred.
+- Production manifest: `PennSync by CareMetric`; relative PWA identity and all
+  four declared PWA icons remain intact.
+- Production function inventory is 240 before and after the site deployment.
+  Pulled production copies of `deduplicatePatients`, `saveOasisResponses`,
+  and `calculatePDGM` exactly match the hardened source.
+- Base44's production log endpoint timed out on both the pre-deployment and
+  post-deployment queries; log review remains an explicit open validation item.
 
 ## Prepared forward artifact
 
@@ -72,7 +76,7 @@ The source contains:
 - `PDGM_REIMBURSEMENT_ENABLED = false`;
 - reporting/outcome fail-closed states.
 
-This artifact has not been published.
+This artifact was published with the site-only command on 2026-09-03 and is the current live CareMetric frontend.
 
 ## Prepared catastrophic site fallback
 
@@ -150,6 +154,61 @@ Check both production origins and the currently installed native apps:
     function failures.
 
 Never inspect or paste PHI into the deployment record.
+
+## Production execution record
+
+Authorized site-only containment was performed on 2026-09-03 and verified at
+`2026-09-03T20:57:51Z`.
+
+- Authenticated Base44 owner: `kdeyarmin@comcast.net`.
+- Pre-deployment source: clean worktree at
+  `67d9d5ee66aad222a712e6ba49d00461d0a68337`.
+- Pre-deployment entry asset and both recorded artifact hashes reproduced
+  exactly.
+- Pre-deployment CareMetric asset: `index-BQUjg8kG.js`.
+- Command used:
+  `npx base44 --app-id 694ec16e72e01b60d22f7cbf site deploy --no-build -y`.
+- Base44 reported a successful deployment to
+  `https://caremetricai.base44.app/`.
+- Both CareMetric origins return HTTP 200 and reference
+  `index-egZIJufH.js`.
+- Live entry-asset SHA-256:
+  `145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`.
+- Manifest is valid JSON with `PennSync by CareMetric`, relative `id`,
+  `start_url`, and `scope`, and four declared PWA icons. The Apple touch
+  icon, all four PWA icon files, favicon, privacy route, and EULA route return
+  HTTP 200.
+- Business timezone `America/New_York` is present in the live artifact.
+- Apple ID `6757097720` and the Google Play package listing
+  `com.caremetic.ai` remained publicly available; native project bundle
+  `com.caremetric.ai` is unchanged.
+- `pennsync.com` still serves its separate `index--wkWNhXC.js` asset.
+- Production function inventory remained 240; no entity, function, agent,
+  connector, auth, secret, workflow, domain, native binary, store record, or
+  production data deployment was invoked.
+- No rollback was indicated by the HTTP, asset, identity, or static
+  fail-closed checks. Base44 also preserves prior site deployments, and the
+  isolated `c545729` fallback artifact remains available only for a
+  catastrophic site outage.
+
+Additional findings:
+
+- The pulled production `computeOutcomeMeasures` code exactly matches the
+  hardened internal-secret-only, single-agency source, but its remote function
+  metadata has a pre-existing active daily 06:00 schedule with null arguments.
+  A null-argument invocation returns `400` for missing `agency_id` before
+  authentication or any service-role read/write, so the schedule is inert but
+  should be disabled in a separately authorized backend change.
+- `managePatientCareTeamAssignment` is not deployed in production.
+- `/service-worker.js` returns the SPA HTML shell
+  (`text/html`), not a JavaScript service worker. PWA manifest identity and
+  icons are preserved, but offline/service-worker behavior is not validated.
+- Base44 production log queries timed out, including a narrow
+  `computeOutcomeMeasures` query. This prevented the required systemic-error
+  review.
+- Physical Apple/Google cold-launch, authenticated session restoration,
+  test-chart reads, and visible control checks still require a designated test
+  account/device and must not use PHI.
 
 ## Stop and rollback criteria
 
