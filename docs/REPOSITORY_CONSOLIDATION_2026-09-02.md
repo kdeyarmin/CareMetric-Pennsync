@@ -1,6 +1,6 @@
 # PennSync repository consolidation
 
-Status: **P0 mixed-release containment required — staging candidate validated; production remains blocked**.
+Status: **Production frontend containment verified; staging hardening continues; merge/production release remains blocked**.
 
 ## Canonical destination
 
@@ -37,43 +37,36 @@ The installed mobile apps continue to use their existing store records. Adding
 PennSync domains later must point those domains at the same CareMetric Base44
 app; it must not change the permanent origin embedded in the iOS shell.
 
-## Immediate production containment (P0, identified 2026-09-03)
+## Production frontend containment (completed 2026-09-03)
 
-Operational procedure and stop/rollback gates:
+Operational record and stop/rollback gates:
 [`PRODUCTION_MIXED_RELEASE_CONTAINMENT_2026-09-03.md`](./PRODUCTION_MIXED_RELEASE_CONTAINMENT_2026-09-03.md).
 
-Read-only comparison of the live old frontend baseline (`c545729`) with the
-hosted schemas auto-synced by `67d9d5e` found a real compatibility incident.
-The 14 entity-schema changes contain no field deletion and add no required
-field, but eight change RLS behavior. No production record was inspected, so the
-analysis establishes reachable risk, not proof that a user already triggered it.
+Read-only comparison had identified a real compatibility incident between the
+older browser bundle and the 14 hosted entity-schema changes auto-synced by
+`67d9d5e`. An explicitly approved site-only publish contained that risk without
+deploying backend resources.
 
-| Area | Live mixed-release risk |
-| --- | --- |
-| Patient merge — P0 | The old browser merge can fail to reassign now-service-only OASISAssessment, OASISUpload, and PatientOutcomeMetric rows, swallow those errors, then archive the duplicate Patient. This can strand protected rows on an archived chart |
-| OASIS saves/reviews — high | Old direct OASIS creates/updates now fail closed. Some paths perform another action first, so a failed save can leave changed Patient care type, an unbound uploaded PDF/LLM cost, or an audit entry claiming an approval/edit that did not persist |
-| PDGM configuration — high/medium | The old browser catches the now-denied PDGMRateConfig read and silently treats it as no config, causing at least eight consumers to use built-in defaults. If the old save function is live, a save could overwrite configuration; the `67d9d5e` function hard-pauses that write, but hosted function revision remains unverified |
-| KPI/outcome display — medium | Direct AgencyKPI and PatientOutcomeMetric reads now fail closed. The outcome view shows an error and the KPI dashboard degrades to missing values; this is availability loss rather than a write-corruption path |
-| New Patient rows — migration debt | Patient creation still works because `agency_id` is optional and Patient RLS is unchanged, but the old frontend does not stamp it, so new charts created during the mixed window require audited tenant backfill |
+- Both CareMetric origins now return HTTP 200 and serve
+  `index-egZIJufH.js`.
+- The live entry-asset SHA-256 is
+  `145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`,
+  exactly matching the prepared fail-closed `67d9d5e` artifact.
+- Production function inventory remained 240. Pulled
+  `deduplicatePatients`, `saveOasisResponses`, and `calculatePDGM` source
+  matched the hardened baseline.
+- Focused production logs returned no retained `computeOutcomeMeasures`
+  entries for the 2026-09-03 06:00 UTC schedule window or post-deployment
+  period. The historical schedule remains active but data-inert; disabling it
+  is a separate backend action requiring explicit authorization.
+- No production-data migration, function/schema deployment, secret change,
+  domain move, native upload, or Apple/Google record change was performed.
+  `pennsync.com` continues to serve its separate `index--wkWNhXC.js` bundle.
 
-Until containment is complete, operators must not use production patient merge,
-OASIS save/upload/review, PDGM rate settings, or rate-dependent decisions. A
-blanket schema rollback is not recommended because it would reopen PHI-sensitive
-writes and formerly unrestricted reads. The safest technical containment is an
-urgent, explicitly approved roll-forward of the matching `67d9d5e` fail-closed
-frontend (or equivalent route-level maintenance), followed by logs, smoke tests,
-and rollback monitoring.
-
-A no-publish containment build of exact production source `67d9d5e` succeeded
-with the production app id. It contains 507 files / 18,160,451 bytes, references
-`index-egZIJufH.js` (SHA-256
-`145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`),
-has aggregate sorted-file hash
-`e014a239fb3a0bb0a34949e2e8360c3570debdc106b253aef0d6db949958e2f3`,
-contains the production app id and no staging app id, and includes the
-fail-closed merge/reporting controls. The source worktree remains clean. This
-build is prepared evidence only: no production roll-forward or rollback has
-been performed by this staging work.
+Patient merge, OASIS write/upload/review, PDGM reimbursement/rate editing, and
+outcome/KPI publication remain held until their separate release gates pass.
+Service-worker retirement is intentional; the SPA fallback at
+`/service-worker.js` is not a deployment defect.
 
 ## Nonproduction hosted-validation evidence (updated 2026-09-03)
 
@@ -88,7 +81,7 @@ targeted the CareMetric production app.
 | --- | --- |
 | Base44 app | `caremetric-pennsync-staging-2026-09-02`, `6a9881683dc68a0bd54f1ef7` |
 | Staging URL | `https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/` |
-| Runtime candidate | Draft PR `#143` code baseline `655624f749c1c94542e6eb616a31b1c9c1135eef`; merged canonical `main` baseline remains `67d9d5ee66aad222a712e6ba49d00461d0a68337` |
+| Runtime candidate | Hosted functional baseline `655624f749c1c94542e6eb616a31b1c9c1135eef`; latest non-backend staging checkpoint `d1d3d4431459f34018c4ca454464c15eea4436fc`; GitHub head `10868f84d58f0755c290a2ec8a7615a863b00550` additionally source-controls the deliberately unhosted `computeOutcomeMeasures` pause |
 | Frontend | The complete canonical candidate is synchronized with staging-specific app configuration; frozen install, staging-ID build, and the managed Vite root all pass |
 | PWA/native identity | Relative manifest `id`, `start_url`, and `scope`; four manifest icons retained; Apple bundle `com.caremetric.ai`; Google package `com.caremetic.ai`; iOS WebView origin `https://caremetricai.base44.app/` |
 | Entities | All 241 source schemas are hosted and semantically exact; `PatientCareTeamAssignment`, `DocumentTenantBinding`, and the required `OutcomeComputationRun.transition_version` / `result_summary_hash` fields are present; direct CRUD remains denied on the new authority/binding schemas |
@@ -99,15 +92,15 @@ targeted the CareMetric production app.
 | Time zone | `America/New_York` is the default business/agency clock, giving Eastern Standard or Daylight Time as seasonally appropriate |
 | Validation | 2,077 core, 34 schema/contract, 414 security, 47 deduplication, and 1,005 component tests pass (3,577 package checks); a broader 616-test function/security sweep, all 260 function transpiles, all 244 shared-helper comparisons, type diagnostics, ESLint, actionlint, OASIS worksheet, and staging build also pass |
 | Production auto-sync | PR `#142` auto-fast-forwarded the CareMetric Base44 source workspace to merged `main` `67d9d5ee66aad222a712e6ba49d00461d0a68337` at 2026-09-02 19:58:30 UTC, and the workspace remains clean there. Read-only hosted metadata also exposes fields/RLS introduced by that merge; the git diff changed 14 entity schemas. This was a production source and hosted-schema change, not a source-only event |
-| Production function status | Whether the PR `#142` sync also deployed backend function revisions is not yet verified; production CLI log/function inventory requires a fresh authenticated device session. Do not infer either deployment or non-deployment until that read-only check completes |
-| Live production surfaces | On 2026-09-03, `caremetricai.base44.app` and `app.caremetricai.com` both returned HTTP 200 and the same existing `CareMetric AI` bundle `index-BQUjg8kG.js`; staging returned its distinct `PennSync by CareMetric` bundle `index-DoqEmZdz.js`; `pennsync.com` still returned the separate `PENNSync` bundle `index--wkWNhXC.js`, so no production bundle publish or domain cutover occurred |
-| Manifest nuance | The production-facing manifest already says `PennSync by CareMetric` and is byte-identical to staging. Git history traces that manifest branding to 2026-06-30 and its blob did not change in PR `#142` or today's staging work; its relative PWA identity and four icons remain intact, but the mixed old HTML bundle/newer manifest branding must be explicitly reconciled at release |
-| Current safety boundary | Today's isolated staging work made no additional production data/schema API mutation, secret/scheduler change, bundle publication, domain move, native upload, or Apple/Google record change. The earlier PR `#142` production source/schema auto-sync is recorded separately above; both store listings were still live on 2026-09-03 |
+| Production function status | Inventory verified at 240. Pulled `deduplicatePatients`, `saveOasisResponses`, and `calculatePDGM` match the hardened baseline. Focused logs contained no retained outcome-computation entries in the checked schedule/post-deploy windows |
+| Live production surfaces | On 2026-09-03, `caremetricai.base44.app` and `app.caremetricai.com` returned HTTP 200 and the verified `index-egZIJufH.js` asset after the site-only containment publish; `pennsync.com` still returned separate `index--wkWNhXC.js`, so no domain cutover occurred |
+| Manifest/PWA | The production-facing manifest says `PennSync by CareMetric`; its relative `id`, `start_url`, and `scope`, four icons, and historical branding remain intact. The contained frontend and manifest are now on the same verified source baseline |
+| Current safety boundary | The authorized containment changed only the production site bundle. Staging work made no additional production data/schema API mutation, backend-function/secret/scheduler change, domain move, native upload, or Apple/Google record change. Both store listings remained live on 2026-09-03 |
 
 The initial entity deployment exposed unsupported `$contains` array-membership
 RLS in Message and SharedDocument. Draft PR `#143` replaces it with Base44's
 accepted `data.<array>.$in` form and adds a repository-wide operator contract.
-Both PR workflows pass.
+All four PR workflows pass.
 
 Hosted anonymous-write probes then proved that Base44 does not enforce the
 legacy top-level `rls.write` key as a create rule: synthetic rows could be
@@ -637,16 +630,12 @@ functions, or upload a native binary until all of these are complete:
    apps against the staged web release: cold launch, login, Smart Note,
    camera/microphone, uploads, downloads, telehealth, session persistence, and
    subscriptions.
-8. Treat the current production app as a mixed release: PR `#142` already
-   auto-synced source and hosted schema metadata, the old `CareMetric AI`
-   JavaScript bundle remains live, and the pre-existing manifest says
-   `PennSync by CareMetric`. Complete read-only production error-log and function
-   inventory checks before any further production action. Then back up production
-   data, document rollback, deploy frontend/functions/schema in one coordinated
-   window, and smoke-test both permanent and custom origins. Verify that HTML,
-   manifest, service worker, icons, backend function revisions, and asset hashes
-   all resolve to the intended release before observing installed clients through
-   rollback.
+8. Frontend mixed-release containment is complete and verified. Keep backend
+   release work staged and separately reviewed. Disable the historical
+   production outcome schedule only with explicit authorization, then complete
+   hosted two-agency, tenant/CAS, outcome, PDGM, Document, native-device,
+   privacy, signing/IAP, backup, and rollback gates before any domain or store
+   step.
 
 Only after those gates pass should `pennsync.com` and `app.pennsync.com` be moved
 from the old Base44 app to the CareMetric app. Keep the old repositories and old
