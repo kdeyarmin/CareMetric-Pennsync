@@ -46,9 +46,10 @@ changes.
 
 `Info.plist` declares `WKAppBoundDomains` (`base44.app`, `base44.com` — bare
 domains cover their subdomains, including `caremetricai.base44.app`) and
-`WebViewController` sets `limitsNavigationsToAppBoundDomains = true` on the
-`WKWebViewConfiguration`. **This is what enables Service Workers inside
-WKWebView** — WebKit only exposes them to app-bound web views.
+`WebViewController` sets `limitsNavigationsToAppBoundDomains = true`. This is
+retained as a main-frame navigation boundary. The current web frontend
+intentionally registers no service worker and has no offline app shell; network
+failures are handled by the wrapper's native retry screen.
 
 The trade-off is that *main-frame* navigation is limited to the listed
 domains. That is safe here because the navigation policy already opens
