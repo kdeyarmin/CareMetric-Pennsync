@@ -317,6 +317,28 @@ test('computeOutcomeMeasures is internal-secret-only and never authorizes from U
   assert.ok(/valid period_start and period_end/.test(handler));
 });
 
+test('computeOutcomeMeasures remains hard-paused and scheduled default-off', () => {
+  const src = read('base44/functions/computeOutcomeMeasures/entry.ts');
+  const config = JSON5.parse(read('base44/functions/computeOutcomeMeasures/function.jsonc'));
+  const gate = src.indexOf('if (!OUTCOME_COMPUTATION_ENABLED)');
+  const client = src.indexOf('createClientFromRequest(req)');
+
+  assert.match(src, /const OUTCOME_COMPUTATION_ENABLED = false;/);
+  assert.ok(gate > 0 && gate < client, 'hard pause must return before SDK client creation');
+  assert.equal(config.name, 'computeOutcomeMeasures');
+  assert.equal(config.entry, 'entry.ts');
+  assert.equal(config.automations.length, 1);
+  assert.equal(config.automations[0].name, 'Nightly Outcome Measure Computation');
+  assert.equal(config.automations[0].is_active, false);
+  assert.equal(config.automations[0].function_args, null);
+  assert.equal(config.automations[0].type, 'scheduled');
+  assert.equal(config.automations[0].schedule_mode, 'recurring');
+  assert.equal(config.automations[0].schedule_type, 'simple');
+  assert.equal(config.automations[0].repeat_unit, 'days');
+  assert.equal(config.automations[0].repeat_interval, 1);
+  assert.equal(config.automations[0].start_time, '06:00');
+});
+
 test('computed outcome and PDGM rows use hosted operation-specific service-role-only RLS', () => {
   for (const entity of ['PatientOutcomeMetric', 'AgencyKPI', 'PDGMRateConfig']) {
     const src = read(`base44/entities/${entity}.jsonc`);
