@@ -140,7 +140,7 @@ Check both production origins and the currently installed native apps:
 
 1. `caremetricai.base44.app` and `app.caremetricai.com` return HTTP 200.
 2. Both origins reference `index-egZIJufH.js`, not the old bundle.
-3. Manifest, service worker, four icons, privacy routes, and EULA route resolve.
+3. Manifest, four icons, privacy routes, and EULA route resolve; no new service worker is registered, and the retired worker/cache cleanup remains present.
 4. Login, logout, session restoration, navigation, ordinary Patient read, and
    ordinary Visit read work with a designated nonproduction/test chart.
 5. Patient merge controls are visibly unavailable and cannot invoke a mutation.
@@ -200,9 +200,12 @@ Additional findings:
   authentication or any service-role read/write, so the schedule is inert but
   should be disabled in a separately authorized backend change.
 - `managePatientCareTeamAssignment` is not deployed in production.
-- `/service-worker.js` returns the SPA HTML shell
-  (`text/html`), not a JavaScript service worker. PWA manifest identity and
-  icons are preserved, but offline/service-worker behavior is not validated.
+- `/service-worker.js` returns the SPA HTML fallback because the offline
+  service worker was intentionally retired. The source and hosted-path tests
+  require no service-worker registration, and `retiredOfflineQueue.js`
+  unregisters legacy workers and deletes their caches after safely draining
+  stranded clinical work. This is the expected online-only/PHI-safe posture,
+  not a deployment defect.
 - Base44 production log queries timed out, including a narrow
   `computeOutcomeMeasures` query. This prevented the required systemic-error
   review.
