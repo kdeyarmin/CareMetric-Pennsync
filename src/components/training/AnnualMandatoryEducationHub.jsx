@@ -10,6 +10,7 @@ import { assignAnnualLearningPlan } from "@/functions/assignAnnualLearningPlan";
 import { duplicateInService } from "@/functions/duplicateInService";
 import { seedYearlyRequiredInServices } from "@/functions/seedYearlyRequiredInServices";
 import { autoEnrollAnnualPlans } from "@/functions/autoEnrollAnnualPlans";
+import { recordTrainingAuditEvent } from "@/functions/recordTrainingAuditEvent";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -141,22 +142,14 @@ export default function AnnualMandatoryEducationHub() {
       employee_audience: 'annual mandatory education audience',
       learning_objectives: [],
       ai_generated: false,
+      created_by: currentUser?.email,
       requires_attestation: true,
       enable_certificate: true,
       recurrence_rule: 'annual',
       short_description: manualDraft.description,
       test_settings_json: { show_correct_answers_after_completion: false }
     });
-    await base44.entities.TrainingAuditLog.create({
-      actor_id: currentUser?.email,
-      actor_name: currentUser?.full_name,
-      action: 'course_created',
-      entity_type: 'TrainingCourse',
-      entity_id: created.id,
-      after_json: { title: created.title, training_type: 'annual_mandatory', annual_cycle_year: year, status: 'draft' },
-      reason: 'created',
-      severity: 'info'
-    });
+    await recordTrainingAuditEvent({ action: 'course_created', courseId: created.id });
     queryClient.invalidateQueries({ queryKey: ["annual-courses"] });
     setManualDraft({ title: "", description: "", category: "compliance", business_line_scope: "all", passing_score: 80 });
   };
@@ -234,15 +227,9 @@ export default function AnnualMandatoryEducationHub() {
 
   const updateCourseStatus = async (course, status) => {
     await base44.entities.TrainingCourse.update(course.id, { status, archived_status: status === 'archived', published_by: status === 'published' ? currentUser?.email : course.published_by, published_date: status === 'published' ? new Date().toISOString() : course.published_date });
-    await base44.entities.TrainingAuditLog.create({
-      actor_id: currentUser?.email,
-      actor_name: currentUser?.full_name,
+    await recordTrainingAuditEvent({
       action: status === 'published' ? 'course_published' : 'course_archived',
-      entity_type: 'TrainingCourse',
-      entity_id: course.id,
-      after_json: { status, annual_cycle_year: course.annual_cycle_year || year },
-      reason: status === 'published' ? 'published' : 'archived',
-      severity: 'info'
+      courseId: course.id,
     });
     queryClient.invalidateQueries({ queryKey: ["annual-courses"] });
   };

@@ -21,7 +21,6 @@ import {
   BookOpen,
   ChevronRight
 } from "lucide-react";
-import { trackRecommendation } from "../training/RecommendationTracker";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
 import { buildComprehensivePatientHistory, formatHistoryForAI, extractKeyInsights } from "../utils/patientHistoryAnalyzer";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
@@ -452,24 +451,9 @@ For each area, provide:
 
       setAuditResults(result);
 
-      // Track findings for training
-      if (currentUser?.email && result.critical_findings?.length > 0) {
-        result.critical_findings.forEach(finding => {
-          trackRecommendation({
-            nurseEmail: currentUser.email,
-            type: 'compliance',
-            text: `${finding.category}: ${finding.issue}`,
-            source: 'compliance_checker',
-            severity: finding.risk_level === 'critical' ? 'critical' : finding.risk_level === 'high' ? 'high' : 'medium',
-            patientId: patientId,
-            contextData: {
-              regulation: finding.regulation,
-              required_state: finding.required_state,
-              actionable_steps: finding.actionable_steps
-            }
-          });
-        });
-      }
+      // Client-side AI findings are displayed and stored in ComplianceAudit
+      // below, but are not copied into integrity-sensitive training evidence.
+      // TrainingRecommendation writers must derive findings server-side.
 
       // Log audit activity
       logActivity(ActivityActions.NOTE_COMPLIANCE_CHECK, {

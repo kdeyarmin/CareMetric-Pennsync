@@ -1,0 +1,84 @@
+{
+  "name": "AgencyMembership",
+  "type": "object",
+  "description": "Server-owned tenant authorization binding between an immutable Base44 User id and an Agency. User profile custom fields are not authorization inputs.",
+  "properties": {
+    "membership_key": {
+      "type": "string",
+      "description": "Canonical agency_id:user_id key used for idempotency and duplicate detection. Code must still detect duplicates because schema-level uniqueness is not assumed."
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Base44 Agency id for this tenant membership."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Immutable built-in Base44 User id. Never substitute an email or a custom User field."
+    },
+    "user_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Lowercase trimmed built-in User email retained as an integrity check; user_id remains the primary identity."
+    },
+    "tenant_role": {
+      "type": "string",
+      "enum": [
+        "agency_admin",
+        "manager",
+        "clinician",
+        "office_staff",
+        "social_worker",
+        "spiritual_care"
+      ],
+      "description": "Agency-scoped authorization role. The Base44 built-in admin role is reserved for the protected platform owner."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "suspended",
+        "revoked"
+      ],
+      "default": "pending"
+    },
+    "invitation_id": {
+      "type": "string",
+      "description": "UserInvitation id that established this membership, when applicable."
+    },
+    "created_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in User id of the protected actor that created the membership."
+    },
+    "activated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revocation_reason": {
+      "type": "string"
+    },
+    "version": {
+      "type": "number",
+      "default": 1,
+      "description": "Monotonic membership revision maintained by server-owned membership workflows."
+    }
+  },
+  "required": [
+    "membership_key",
+    "agency_id",
+    "user_id",
+    "user_email_normalized",
+    "tenant_role",
+    "status"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

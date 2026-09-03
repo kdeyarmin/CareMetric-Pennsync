@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { distributePolicyAcknowledgment } from "@/functions/distributePolicyAcknowledgment";
 import { policyAcknowledgment } from "@/functions/policyAcknowledgment";
+import { listPolicyLibrary } from "@/functions/listPolicyLibrary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,16 +28,26 @@ export default function PolicyAcknowledgmentManager() {
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const isAdminUser = currentUser?.role === "admin" || currentUser?.account_type === "agency_admin" || currentUser?.account_type === "super_admin";
+  // Base44 protects the built-in role; custom account_type fields are
+  // self-editable and cannot authorize access to draft/archived policies.
+  const isProtectedAdmin = currentUser?.role === "admin";
 
   const { data: users = [] } = useQuery({ queryKey: ["policy-users", agencyQueryKey(currentUser)], queryFn: async () => {
       const _rows = await base44.entities.User.list("-created_date", 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     }, initialData: [], enabled: isAdminUser });
-  const { data: policies = [] } = useQuery({ queryKey: ["policy-library"], queryFn: () => base44.entities.PolicyLibrary.list("-created_date", 200), initialData: [], enabled: isAdminUser });
-  // Read org-wide acknowledgments through the service-role `list` action so
-  // account_type admins (agency_admin/super_admin) see all rows, not just their
-  // own (the entity read RLS follows the codebase `role: admin` convention).
+  const { data: policies = [] } = useQuery({
+    queryKey: ["policy-library", isProtectedAdmin ? "all" : "active"],
+    queryFn: async () => {
+      const response = await listPolicyLibrary({ mode: isProtectedAdmin ? "all" : "active" });
+      return (response?.data || response)?.policies || [];
+    },
+    initialData: [],
+    enabled: isAdminUser,
+  });
+  // Full policy history is returned only to the protected built-in admin role;
+  // the existing agency-admin view remains usable with active policies only.
   const { data: acks = [] } = useQuery({
     queryKey: ["policy-acks"],
     queryFn: async () => {

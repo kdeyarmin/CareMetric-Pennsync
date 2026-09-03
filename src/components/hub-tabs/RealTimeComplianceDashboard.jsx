@@ -36,6 +36,7 @@ import { severityBadgeClass } from "@/lib/severityStyles";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { format, subDays, startOfWeek, endOfWeek } from "date-fns";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { listTenantTrainingIntegrityRecords } from '@/functions/listTenantTrainingIntegrityRecords';
 
 const REALTIME_COMPLIANCE_ANALYTICS_ENABLED = false;
 
@@ -71,7 +72,13 @@ function EnabledRealTimeComplianceDashboard() {
 
   const { data: trainingRecommendations = [] } = useQuery({
     queryKey: ['trainingRecommendations'],
-    queryFn: () => base44.entities.TrainingRecommendation.list('-created_date', 500),
+    queryFn: async () => {
+      const response = await listTenantTrainingIntegrityRecords({
+        resource: 'training_recommendations',
+        limit: 500,
+      });
+      return (response?.data || response)?.records || [];
+    },
   });
 
   const { data: allUsers = [] } = useQuery({

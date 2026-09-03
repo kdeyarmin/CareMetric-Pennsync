@@ -73,5 +73,11 @@
     "actor_id",
     "action",
     "entity_type"
-  ]
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
 }

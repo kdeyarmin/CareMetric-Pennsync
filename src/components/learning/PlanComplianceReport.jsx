@@ -5,12 +5,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Download, Award, Loader2, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import ReportFilters from './ReportFilters';
 import { toCsv, exportTimestamp } from '../admin/csvExport';
 import { toast } from 'sonner';
 import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
+import { listTenantTrainingIntegrityRecords } from '@/functions/listTenantTrainingIntegrityRecords';
 
 const formatDate = (value) => formatLocalDate(value) || '—';
 
@@ -42,7 +42,13 @@ export default function PlanComplianceReport() {
 
   const { data: enrollments = [], isLoading } = useQuery({
     queryKey: ['plan-compliance-enrollments'],
-    queryFn: () => base44.entities.PlanEnrollment.list('-enrolled_at', 2000),
+    queryFn: async () => {
+      const response = await listTenantTrainingIntegrityRecords({
+        resource: 'plan_enrollments',
+        limit: 2000,
+      });
+      return (response?.data || response)?.records || [];
+    },
     initialData: [],
   });
 

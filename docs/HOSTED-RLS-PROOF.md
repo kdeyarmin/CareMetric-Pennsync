@@ -299,6 +299,62 @@ This is real hosted negative evidence for anonymous access. It is not LR-01:
 the authenticated multi-user/multi-agency matrix in sections 1–4 still needs
 separate test identities and tokens.
 
+## 5e. Isolated service-role bypass proof (updated 2026-09-03)
+
+The application also relies on authenticated backend functions using
+`base44.asServiceRole.entities` to broker entities whose four direct RLS rules
+are `false`. That positive path was tested in the same nonproduction app with a
+temporary function using the repository's deployed SDK version (`0.8.31`) and
+a random, staging-only secret.
+
+Against `SupplyPrediction` (direct create/read/update/delete all denied), the
+hosted function successfully performed an exact create, read, update, and
+delete through `asServiceRole`. Its final response was:
+
+```json
+{"success":true,"entity":"SupplyPrediction","rls":"all operations false","operations":["create","read","update","delete"],"residue":0}
+```
+
+The transient record was deleted, then the temporary function and secret were
+removed. A subsequent hosted function inventory contained no verification
+function, `secrets list` reported no configured secret, and a privileged entity
+query found no residue. This is positive evidence that the exact hosted SDK can
+broker an all-false entity in this staging app; it does not prove that any
+particular broker has correct tenant authorization. Those brokers still require
+the authenticated actor matrix in sections 1–4.
+
+## 5f. Tenant/outcome/training staging checkpoint (updated 2026-09-03)
+
+Before the second schema push, an exact local/hosted name comparison reported
+236 hosted schemas, 238 local schemas, no hosted-only schema, and exactly two
+local additions: `AgencyMembership` and `OutcomeComputationRun`. The push
+therefore had no schema deletion target. The hosted inventory afterward reports
+238 schemas and 249 functions.
+
+The new authority, outcome-publication, training-evidence, and reference-catalog
+surfaces were checked against the hosted staging app:
+
+- anonymous calls to `getMyTenantContext`, `getMyTrainingGamification`,
+  `listCompetencies`, `listPolicyLibrary`,
+  `listTenantTrainingIntegrityRecords`, `recordTrainingAuditEvent`, and
+  `submitScenarioAttempt` returned HTTP 401;
+- a validly shaped `computeOutcomeMeasures` request returned HTTP 500 because
+  `INTERNAL_FN_SECRET` is deliberately not configured, before any service-role
+  data access;
+- anonymous lists for `AgencyMembership`, `OutcomeComputationRun`,
+  `Competency`, `PolicyLibrary`, `ScenarioAttempt`, and `TrainingAuditLog`
+  returned HTTP 200 with `[]`, while direct creates returned HTTP 403; and
+- privileged post-probe queries found zero rows in every changed
+  authority/outcome/training evidence entity.
+
+`SUPER_ADMIN_EMAIL` is the only current staging secret. It binds the protected
+platform-owner fallback to the exact built-in admin identity and does not grant
+anonymous access or enable any scheduler. No Agency or AgencyMembership row has
+been provisioned, so this checkpoint does not satisfy the authenticated
+two-agency actor matrix in sections 1–4. It proves the new surfaces fail closed
+on an empty isolated staging app; operational membership provisioning,
+revocation, agency stamping/backfill, and cross-tenant tests remain required.
+
 ---
 
 ## 6. Sign-off

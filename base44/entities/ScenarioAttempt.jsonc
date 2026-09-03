@@ -61,5 +61,13 @@
     "scenario_id",
     "user_id",
     "started_at"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "data.user_id": "{{user.email}}"
+    },
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

@@ -38,3 +38,13 @@ base44/.app.jsonc
 test-results/
 playwright-report/
 blob-report/
+
+# Native distribution credentials and private signing material
+*.p12
+*.p8
+*.mobileprovision
+*.jks
+*.keystore
+key.properties
+android/keystore.properties
+android/signing.properties

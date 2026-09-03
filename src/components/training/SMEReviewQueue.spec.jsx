@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   courseUpdate: vi.fn(),
   moduleFilter: vi.fn(),
   questionFilter: vi.fn(),
-  auditCreate: vi.fn(),
+  auditRecord: vi.fn(),
   notificationCreate: vi.fn(),
 }));
 
@@ -27,10 +27,13 @@ vi.mock("@/api/base44Client", () => ({
       },
       TrainingModule: { filter: mocks.moduleFilter },
       TrainingQuestion: { filter: mocks.questionFilter },
-      TrainingAuditLog: { create: mocks.auditCreate },
       Notification: { create: mocks.notificationCreate },
     },
   },
+}));
+
+vi.mock("@/functions/recordTrainingAuditEvent", () => ({
+  recordTrainingAuditEvent: mocks.auditRecord,
 }));
 
 import SMEReviewQueue from "./SMEReviewQueue";
@@ -52,7 +55,7 @@ describe("SMEReviewQueue", () => {
     mocks.moduleFilter.mockResolvedValue([]);
     mocks.questionFilter.mockResolvedValue([]);
     mocks.courseUpdate.mockResolvedValue({});
-    mocks.auditCreate.mockResolvedValue({});
+    mocks.auditRecord.mockResolvedValue({});
     mocks.notificationCreate.mockResolvedValue({});
   });
 
@@ -77,7 +80,7 @@ describe("SMEReviewQueue", () => {
       expect(mocks.questionFilter).toHaveBeenCalled();
     });
     expect(mocks.courseUpdate).not.toHaveBeenCalled();
-    expect(mocks.auditCreate).not.toHaveBeenCalled();
+    expect(mocks.auditRecord).not.toHaveBeenCalled();
   });
 
   it("records human approval metadata for a complete course", async () => {
@@ -100,11 +103,10 @@ describe("SMEReviewQueue", () => {
         })
       );
     });
-    expect(mocks.auditCreate).toHaveBeenCalledWith(
+    expect(mocks.auditRecord).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "course_published",
-        entity_id: "course-1",
-        reason: "sme_approved",
+        courseId: "course-1",
       })
     );
   });

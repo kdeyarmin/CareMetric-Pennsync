@@ -10,11 +10,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Sparkles, BookOpen, AlertTriangle, CheckCircle2, Loader2, Brain } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import { useQuery } from '@tanstack/react-query';
 import { generateTrainingCourseStepwise } from '@/functions/generateTrainingCourse';
+import { listPolicyLibrary } from '@/functions/listPolicyLibrary';
 import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 
@@ -36,7 +36,10 @@ export default function AITrainingGenerator() {
 
   const { data: policies = [] } = useQuery({
     queryKey: ['active-policies'],
-    queryFn: () => base44.entities.PolicyLibrary.filter({ status: 'active' }, 'title', 100),
+    queryFn: async () => {
+      const response = await listPolicyLibrary({ mode: 'active' });
+      return (response?.data || response)?.policies || [];
+    },
     initialData: []
   });
 

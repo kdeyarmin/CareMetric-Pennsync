@@ -69,6 +69,7 @@ async function loadHandler({
   patients = [],
   outcomeMetrics = [],
   agencyKpis = [],
+  outcomeRuns = [],
   agencies = [
     { id: AGENCY_A, admin_user_ids: ["u1"], admin_email: "admin@agency-a.test" },
     { id: AGENCY_B, admin_user_ids: ["u2"], admin_email: "admin@agency-b.test" },
@@ -77,7 +78,11 @@ async function loadHandler({
   internalSecret = "scheduler-secret",
   ignoreFilters = false,
   filterFailures = [],
+  createFailures = [],
+  unpersistedCreates = [],
+  noOpRunUpdateStatuses = [],
   updateFailures = [],
+  onQuery = null,
 } = {}) {
   let src = await readFile(new URL("../functions/computeOutcomeMeasures/entry.ts", import.meta.url), "utf8");
   src = src.replace(
@@ -88,14 +93,33 @@ async function loadHandler({
   const tmp = join(tmpdir(), `omctr_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(tmp, js);
 
-  const written = { metrics: [], metricCreates: [], metricUpdates: [], kpis: [], kpiCreates: [], kpiUpdates: [] };
+  const written = {
+    metrics: [], metricCreates: [], metricUpdates: [],
+    kpis: [], kpiCreates: [], kpiUpdates: [],
+    runs: [], runCreates: [], runUpdates: [],
+    events: [],
+  };
+  const runRows = outcomeRuns.map((row) => ({ ...row }));
+  const metricRows = outcomeMetrics.map((row) => ({ ...row }));
+  const kpiRows = agencyKpis.map((row) => ({ ...row }));
   const queries = [];
   const matching = (rows, q) => {
     if (ignoreFilters) return rows;
-    return rows.filter((row) => Object.entries(q || {}).every(([key, value]) => row?.[key] === value));
+    return rows.filter((row) => Object.entries(q || {}).every(([key, value]) => {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const rowValue = row?.[key];
+        if (rowValue === undefined || rowValue === null) return false;
+        const comparable = String(rowValue);
+        if (value.$gte !== undefined && comparable < String(value.$gte)) return false;
+        if (value.$lte !== undefined && comparable > String(value.$lte)) return false;
+        return true;
+      }
+      return row?.[key] === value;
+    }));
   };
   const queried = (entity, rows, q, sort, limit, skip = 0) => {
     queries.push({ entity, q: { ...(q || {}) }, sort, limit, skip });
+    onQuery?.({ entity, rows, q, sort, limit, skip, queries });
     if (filterFailures.includes(entity)) throw new Error(`${entity} filter failed`);
     const scoped = matching(rows, q);
     return Number.isFinite(limit) ? scoped.slice(skip, skip + limit) : scoped;
@@ -115,11 +139,15 @@ async function loadHandler({
         },
         Patient: { filter: async (q, sort, limit, skip) => queried("Patient", patients, q, sort, limit, skip) },
         PatientOutcomeMetric: {
-          filter: async (q, sort, limit, skip) => queried("PatientOutcomeMetric", outcomeMetrics, q, sort, limit, skip),
+          filter: async (q, sort, limit, skip) => queried("PatientOutcomeMetric", metricRows, q, sort, limit, skip),
           create: async (payload) => {
+            if (createFailures.includes("PatientOutcomeMetric")) throw new Error("metric create failed");
+            written.events.push("metric:create");
             written.metrics.push(payload);
             written.metricCreates.push(payload);
-            return { id: `m${written.metrics.length}` };
+            const row = { id: `m${metricRows.length + 1}`, ...payload };
+            if (!unpersistedCreates.includes("PatientOutcomeMetric")) metricRows.push(row);
+            return row;
           },
           update: async (id, payload) => {
             if (updateFailures.includes("PatientOutcomeMetric")) throw new Error("metric update failed");
@@ -129,17 +157,45 @@ async function loadHandler({
           },
         },
         AgencyKPI: {
-          filter: async (q, sort, limit, skip) => queried("AgencyKPI", agencyKpis, q, sort, limit, skip),
+          filter: async (q, sort, limit, skip) => queried("AgencyKPI", kpiRows, q, sort, limit, skip),
           create: async (payload) => {
+            if (createFailures.includes("AgencyKPI")) throw new Error("KPI create failed");
+            written.events.push("kpi:create");
             written.kpis.push(payload);
             written.kpiCreates.push(payload);
-            return { id: `k${written.kpis.length}` };
+            const row = { id: `k${kpiRows.length + 1}`, ...payload };
+            if (!unpersistedCreates.includes("AgencyKPI")) kpiRows.push(row);
+            return row;
           },
           update: async (id, payload) => {
             if (updateFailures.includes("AgencyKPI")) throw new Error("KPI update failed");
             written.kpis.push(payload);
             written.kpiUpdates.push({ id, payload });
             return { id };
+          },
+        },
+        OutcomeComputationRun: {
+          filter: async (q, sort, limit, skip) => queried("OutcomeComputationRun", runRows, q, sort, limit, skip),
+          create: async (payload) => {
+            if (createFailures.includes("OutcomeComputationRun")) throw new Error("run create failed");
+            written.events.push("run:create");
+            const row = { id: `r${runRows.length + 1}`, ...payload };
+            runRows.push(row);
+            written.runs.push(payload);
+            written.runCreates.push(payload);
+            return row;
+          },
+          update: async (id, payload) => {
+            if (updateFailures.includes("OutcomeComputationRun")) throw new Error("run update failed");
+            written.events.push(`run:update:${payload.status || "metadata"}`);
+            const index = runRows.findIndex((row) => row.id === id);
+            written.runs.push(payload);
+            written.runUpdates.push({ id, payload });
+            if (noOpRunUpdateStatuses.includes(payload.status)) {
+              return index === -1 ? { id } : runRows[index];
+            }
+            if (index !== -1) runRows[index] = { ...runRows[index], ...payload };
+            return index === -1 ? { id, ...payload } : runRows[index];
           },
         },
       },
@@ -150,7 +206,12 @@ async function loadHandler({
   } finally {
     await unlink(tmp).catch(() => {});
   }
-  return { handler, written, queries };
+  return {
+    handler,
+    written,
+    queries,
+    stored: { runRows, metricRows, kpiRows },
+  };
 }
 
 async function run(
@@ -162,6 +223,7 @@ async function run(
     period_start: "2026-06-01",
     period_end: "2026-06-01",
     period_type: "daily",
+    idempotency_key: "outcome-test-run-0001",
     ...body,
   };
   const res = await handler(new Request("http://local/computeOutcomeMeasures", {
@@ -181,6 +243,28 @@ function pair({ startCodes, dcCodes, startSchema = V2, dcSchema = V2, startRowsR
     assessment({ id: `dc-${agencyId}-${patientId}`, patientId, agencyId, visitType: "Discharge", date: "2026-06-01", rows: dcRowsRaw || mk(dcCodes), schema: dcSchema }),
   ];
 }
+
+test("outcome run and derived-row schemas make the server-only publication gate explicit", async () => {
+  const loadSchema = async (name) => JSON.parse(await readFile(
+    new URL(`../entities/${name}.jsonc`, import.meta.url),
+    "utf8",
+  ));
+  const [runSchema, metricSchema, kpiSchema] = await Promise.all([
+    loadSchema("OutcomeComputationRun"),
+    loadSchema("PatientOutcomeMetric"),
+    loadSchema("AgencyKPI"),
+  ]);
+  for (const schema of [runSchema, metricSchema, kpiSchema]) {
+    assert.deepEqual(schema.rls, { create: false, read: false, update: false, delete: false });
+  }
+  assert.deepEqual(runSchema.properties.status.enum, ["building", "published", "failed", "superseded"]);
+  assert.ok(runSchema.required.includes("run_key"));
+  assert.ok(runSchema.required.includes("window_key"));
+  assert.ok(runSchema.required.includes("attempt_id"));
+  assert.equal(metricSchema.properties.outcome_computation_run_id.type, "string");
+  assert.equal(metricSchema.properties.optional_fields_present.type, "array");
+  assert.equal(kpiSchema.properties.outcome_computation_run_id.type, "string");
+});
 
 // ── tenant scope and authorization ──────────────────────────────────────────
 
@@ -279,6 +363,32 @@ test("an explicit supported period_type is mandatory before any service-role que
   assert.deepEqual(written.kpis, []);
 });
 
+test("a stable idempotency key is mandatory before any service-role query", async () => {
+  const { handler, written, queries } = await loadHandler();
+  const { status, json } = await run(handler, {
+    agency_id: AGENCY_A,
+    idempotency_key: null,
+  });
+  assert.equal(status, 400);
+  assert.match(json.error, /idempotency_key is required/i);
+  assert.deepEqual(queries, []);
+  assert.deepEqual(written.runCreates, []);
+  assert.deepEqual(written.metrics, []);
+  assert.deepEqual(written.kpis, []);
+});
+
+test("an invalid benchmark is rejected before any service-role query", async () => {
+  const { handler, written, queries } = await loadHandler();
+  const { status, json } = await run(handler, {
+    agency_id: AGENCY_A,
+    benchmark: 101,
+  });
+  assert.equal(status, 400);
+  assert.match(json.error, /finite percentage from 0 through 100/i);
+  assert.deepEqual(queries, []);
+  assert.deepEqual(written.runCreates, []);
+});
+
 test("an explicitly labelled custom stable window is preserved honestly", async () => {
   const { handler } = await loadHandler();
   const { status, json } = await run(handler, {
@@ -291,17 +401,223 @@ test("an explicitly labelled custom stable window is preserved honestly", async 
   assert.equal(json.period_type, "custom");
 });
 
-test("a failed metric lookup returns 500 and never falls through to create", async () => {
+test("a published idempotency key replays the saved summary without creating another generation", async () => {
   const { handler, written } = await loadHandler({
     assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
     patients: [{ id: "p1", agency_id: AGENCY_A }],
-    filterFailures: ["PatientOutcomeMetric"],
+  });
+  const first = await run(handler);
+  assert.equal(first.status, 200);
+  assert.equal(first.json.idempotent_replay, false);
+  assert.match(first.json.generation_fingerprint, /^[a-f0-9]{64}$/);
+  const firstKpiCount = written.kpiCreates.length;
+
+  const replay = await run(handler);
+  assert.equal(replay.status, 200);
+  assert.equal(replay.json.idempotent_replay, true);
+  assert.equal(replay.json.outcome_computation_run_id, first.json.outcome_computation_run_id);
+  assert.equal(replay.json.generation_fingerprint, first.json.generation_fingerprint);
+  assert.equal(written.runCreates.length, 1);
+  assert.match(written.runCreates[0].run_key, /^[a-f0-9]{64}$/);
+  assert.ok(!Object.hasOwn(written.runCreates[0], "idempotency_key"));
+  assert.equal(written.metricCreates.length, 1);
+  assert.equal(written.kpiCreates.length, firstKpiCount);
+  assert.ok(!Object.hasOwn(replay.json, "skip_reasons"), "the persisted replay summary stays non-PHI");
+});
+
+test("replay rejects an extra same-attempt row carrying the wrong generation fingerprint", async () => {
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+  });
+  const first = await run(fixture.handler);
+  assert.equal(first.status, 200);
+  const valid = fixture.stored.metricRows.find((row) =>
+    row.outcome_computation_run_id === first.json.outcome_computation_run_id);
+  assert.ok(valid);
+  fixture.stored.metricRows.push({
+    ...valid,
+    id: "malformed-extra-metric",
+    generation_fingerprint: "0".repeat(64),
+  });
+
+  const replay = await run(fixture.handler);
+  assert.equal(replay.status, 409);
+  assert.equal(replay.json.success, false);
+  assert.match(replay.json.error, /mismatched fingerprint/i);
+  assert.equal(fixture.written.runCreates.length, 1);
+});
+
+test("replay rejects a second published run for the same window under another key", async () => {
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+  });
+  const first = await run(fixture.handler);
+  assert.equal(first.status, 200);
+  const original = fixture.stored.runRows.find((row) => row.id === first.json.outcome_computation_run_id);
+  assert.ok(original);
+  fixture.stored.runRows.push({
+    ...original,
+    id: "conflicting-published-window-run",
+    run_key: "f".repeat(64),
+    attempt_id: "conflicting-attempt",
+  });
+
+  const replay = await run(fixture.handler);
+  assert.equal(replay.status, 409);
+  assert.equal(replay.json.success, false);
+  assert.match(replay.json.error, /multiple or conflicting published runs/i);
+});
+
+test("a second idempotency key cannot ambiguously publish the same logical window", async () => {
+  const { handler, written } = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+  });
+  const first = await run(handler, { agency_id: AGENCY_A, benchmark: 80 });
+  const second = await run(handler, { agency_id: AGENCY_A, benchmark: 90 });
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 409);
+  assert.equal(first.json.idempotent_replay, false);
+  assert.match(second.json.error, /atomic supersession is not available/i);
+  assert.equal(written.runCreates.length, 1);
+  assert.equal(written.runCreates[0].benchmark_value, 80);
+});
+
+test("the final claim rejects multiple competing window publications instead of choosing one", async () => {
+  let windowQueryCount = 0;
+  const { handler, written } = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    onQuery: ({ entity, rows, q }) => {
+      if (entity !== "OutcomeComputationRun" || !q?.window_key) return;
+      windowQueryCount += 1;
+      if (windowQueryCount !== 2) return;
+      const building = rows.find((row) => row.status === "building" && row.window_key === q.window_key);
+      assert.ok(building);
+      rows.push(
+        { ...building, id: "competing-published-a", status: "published" },
+        { ...building, id: "competing-published-b", status: "published" },
+      );
+    },
+  });
+  const { status, json } = await run(handler);
+  assert.equal(status, 409);
+  assert.equal(json.success, false);
+  assert.match(json.error, /multiple published runs exist for this reporting window/i);
+  assert.ok(written.runUpdates.some(({ payload }) => payload.status === "superseded"));
+  assert.ok(!written.runUpdates.some(({ payload }) => payload.status === "published"));
+});
+
+test("append-only output cannot inherit optional values from an older metric", async () => {
+  const { handler, written } = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    outcomeMetrics: [{
+      id: "old-generation",
+      agency_id: AGENCY_A,
+      patient_id: "p1",
+      episode_start: "2026-05-01",
+      episode_end: "2026-06-01",
+      primary_diagnosis: "stale diagnosis",
+      discharge_disposition: "hospital",
+      internal_gg_18_item_raw_sum: 72,
+    }],
+  });
+  const { status } = await run(handler);
+  assert.equal(status, 200);
+  assert.deepEqual(written.metricUpdates, []);
+  assert.equal(written.metricCreates.length, 1);
+  const fresh = written.metricCreates[0];
+  assert.deepEqual(fresh.optional_fields_present, []);
+  assert.ok(!Object.hasOwn(fresh, "primary_diagnosis"));
+  assert.ok(!Object.hasOwn(fresh, "discharge_disposition"));
+  assert.ok(!Object.hasOwn(fresh, "internal_gg_18_item_raw_sum"));
+});
+
+test("staged-row readback blocks publication when a create response was not durably visible", async () => {
+  const { handler, written } = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    unpersistedCreates: ["PatientOutcomeMetric"],
+  });
+  const { status, json } = await run(handler);
+  assert.equal(status, 500);
+  assert.equal(json.success, false);
+  assert.equal(written.metricCreates.length, 1, "the mocked API still returned a create result");
+  assert.equal(written.runUpdates.at(-1).payload.status, "failed");
+  assert.equal(written.runUpdates.at(-1).payload.failure_stage, "reconcile_staged_generation");
+  assert.ok(!written.runUpdates.some(({ payload }) => payload.status === "published"));
+});
+
+test("generation fingerprints are deterministic when service rows arrive in a different order", async () => {
+  const p1 = pair({
+    startCodes: { M1860: "3" },
+    dcCodes: { M1860: "1" },
+    patientId: "p1",
+  });
+  const p2 = pair({
+    startCodes: { M1860: "5" },
+    dcCodes: { M1860: "2" },
+    patientId: "p2",
+  });
+  const options = {
+    patients: [
+      { id: "p1", agency_id: AGENCY_A },
+      { id: "p2", agency_id: AGENCY_A },
+    ],
+  };
+  const first = await loadHandler({ ...options, assessments: [...p1, ...p2] });
+  const second = await loadHandler({ ...options, assessments: [...p2, ...p1] });
+  const firstResult = await run(first.handler);
+  const secondResult = await run(second.handler);
+  assert.equal(firstResult.status, 200);
+  assert.equal(secondResult.status, 200);
+  assert.equal(firstResult.json.generation_fingerprint, secondResult.json.generation_fingerprint);
+});
+
+test("an ambiguous publication response never returns false success", async () => {
+  const { handler, written } = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    updateFailures: ["OutcomeComputationRun"],
+  });
+  const { status, json } = await run(handler);
+  assert.equal(status, 500);
+  assert.equal(json.success, false);
+  assert.equal(written.metricCreates.length, 1);
+  assert.ok(written.kpiCreates.length > 0);
+  assert.ok(!written.runUpdates.some(({ payload }) => payload.status === "published"));
+});
+
+test("a nonthrowing no-op publication update is caught by run readback", async () => {
+  const { handler, written, stored } = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    noOpRunUpdateStatuses: ["published"],
+  });
+  const { status, json } = await run(handler);
+  assert.equal(status, 500);
+  assert.equal(json.success, false);
+  assert.equal(written.runUpdates.at(-1).payload.status, "published", "the update was attempted");
+  assert.equal(stored.runRows[0].status, "building", "the mocked datastore did not apply it");
+});
+
+test("a failed metric stage marks the run failed and never publishes a partial generation", async () => {
+  const { handler, written } = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    createFailures: ["PatientOutcomeMetric"],
   });
   const { status, json } = await run(handler);
   assert.equal(status, 500);
   assert.equal(json.success, false);
   assert.deepEqual(written.metricCreates, []);
   assert.deepEqual(written.kpis, []);
+  assert.equal(written.runUpdates.at(-1).payload.status, "failed");
+  assert.equal(written.runUpdates.at(-1).payload.failure_stage, "stage_patient_outcome_metrics");
+  assert.ok(!written.runUpdates.some(({ payload }) => payload.status === "published"));
 });
 
 test("a failed patient lookup cannot be treated as a non-deceased patient", async () => {
@@ -316,33 +632,24 @@ test("a failed patient lookup cannot be treated as a non-deceased patient", asyn
   assert.deepEqual(written.kpis, []);
 });
 
-test("a failed retirement update returns 500 instead of reporting a false retirement", async () => {
-  const legacy = pair({
-    startSchema: V1,
-    dcSchema: V1,
-    startRowsRaw: [legacyRow("M1860", "3")],
-    dcRowsRaw: [legacyRow("M1860", "1")],
-  });
+test("a failed KPI stage leaves metric rows unpublished and marks the run failed", async () => {
   const { handler, written } = await loadHandler({
-    assessments: legacy,
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
     patients: [{ id: "p1", agency_id: AGENCY_A }],
-    outcomeMetrics: [{
-      id: "stale",
-      agency_id: AGENCY_A,
-      patient_id: "p1",
-      episode_start: "2026-05-01",
-      episode_end: "2026-06-01",
-      outcome_measure_source: "oasis_change_score",
-    }],
-    updateFailures: ["PatientOutcomeMetric"],
+    createFailures: ["AgencyKPI"],
   });
   const { status, json } = await run(handler);
   assert.equal(status, 500);
   assert.equal(json.success, false);
+  assert.equal(written.metricCreates.length, 1, "the completed metric stage remains audit debris");
+  assert.deepEqual(written.kpiCreates, []);
   assert.deepEqual(written.metricUpdates, []);
+  assert.equal(written.runUpdates.at(-1).payload.status, "failed");
+  assert.equal(written.runUpdates.at(-1).payload.failure_stage, "stage_agency_kpis");
+  assert.ok(!written.runUpdates.some(({ payload }) => payload.status === "published"));
 });
 
-test("missing patient, date, and start-assessment skips are reported explicitly", async () => {
+test("in-period missing patient and start-assessment skips are reported explicitly", async () => {
   const missingPatient = assessment({
     id: "dc-no-patient",
     patientId: "",
@@ -390,18 +697,19 @@ test("missing patient, date, and start-assessment skips are reported explicitly"
   const { status, json } = await run(handler);
   assert.equal(status, 200);
   assert.equal(json.skipped_missing_patient_id, 1);
-  assert.equal(json.skipped_missing_episode_date, 2);
-  assert.equal(json.skipped_missing_discharge_date, 1);
+  assert.equal(json.skipped_missing_episode_date, 1);
+  assert.equal(json.skipped_missing_discharge_date, 0);
   assert.equal(json.skipped_missing_start_date, 1);
   assert.equal(json.skipped_missing_start_assessment, 1);
-  assert.equal(json.skip_reasons.length, 4);
+  assert.equal(json.skip_reasons.length, 3);
+  assert.equal(json.unscoped_discharge_date_quality_not_scanned, true);
   assert.ok(json.skip_reasons.some((skip) =>
     skip.reasons.includes("missing_start_assessment_date")));
   assert.deepEqual(written.metrics, []);
   assert.deepEqual(written.kpiCreates, []);
 });
 
-test("invalid discharge and start dates are reported instead of silently dropped", async () => {
+test("invalid in-scope start dates are reported while invalid discharge dates stay outside the provider range", async () => {
   const invalidDischarge = assessment({
     id: "dc-invalid-date",
     patientId: "p-invalid-dc",
@@ -428,9 +736,10 @@ test("invalid discharge and start dates are reported instead of silently dropped
   });
   const { status, json } = await run(handler);
   assert.equal(status, 200);
-  assert.equal(json.skipped_invalid_discharge_date, 1);
+  assert.equal(json.skipped_invalid_discharge_date, 0);
   assert.equal(json.skipped_invalid_start_date, 1);
-  assert.ok(json.skip_reasons.some((skip) =>
+  assert.equal(json.unscoped_discharge_date_quality_not_scanned, true);
+  assert.ok(!json.skip_reasons.some((skip) =>
     skip.reasons.includes("invalid_discharge_assessment_date")));
   assert.ok(json.skip_reasons.some((skip) =>
     skip.reasons.includes("invalid_start_assessment_date")));
@@ -480,11 +789,42 @@ test("discharge reads paginate beyond the first 500 rows", async () => {
   assert.equal(json.discharge_query_may_be_truncated, false);
   const dischargeQueries = queries.filter(({ entity, q }) =>
     entity === "OASISAssessment" && q.visit_type === "Discharge");
+  assert.deepEqual(dischargeQueries[0].q.assessment_date, {
+    $gte: "2026-06-01",
+    $lte: "2026-06-01T23:59:59.999",
+  });
   assert.deepEqual(dischargeQueries.map(({ limit, skip }) => ({ limit, skip })), [
     { limit: 500, skip: 0 },
     { limit: 500, skip: 500 },
   ]);
   assert.deepEqual(written.metrics, []);
+});
+
+test("more than 50,000 lifetime discharges do not block a small provider-scoped period", async () => {
+  const historical = Array.from({ length: 50_001 }, (_, index) => ({
+    id: `historical-dc-${index}`,
+    agency_id: AGENCY_A,
+    patient_id: "",
+    visit_type: "Discharge",
+    assessment_date: "2026-05-31",
+    oasis_items: [],
+  }));
+  const current = assessment({
+    id: "current-period-dc",
+    patientId: "",
+    visitType: "Discharge",
+    date: "2026-06-01T18:30:00.000Z",
+    rows: [],
+  });
+  const { handler, queries } = await loadHandler({ assessments: [...historical, current] });
+  const { status, json } = await run(handler);
+  assert.equal(status, 200);
+  assert.equal(json.discharge_provider_period_scoped, true);
+  assert.equal(json.discharge_rows_returned, 1);
+  assert.equal(json.discharges_in_period, 1);
+  const dischargeQueries = queries.filter(({ entity, q }) =>
+    entity === "OASISAssessment" && q.visit_type === "Discharge");
+  assert.equal(dischargeQueries.length, 1, "the out-of-period lifetime rows never consume paging capacity");
 });
 
 test("patient history pagination can find a start assessment beyond row 500", async () => {
@@ -564,7 +904,7 @@ test("cross-tenant rows leaked by a service response are rejected in memory", as
   assert.ok(written.kpiCreates.every((row) => row.agency_id === AGENCY_A));
 });
 
-test("retirement can update only a stale metric carrying the requested agency_id", async () => {
+test("an excluded generation supersedes stale metrics without mutating any historical row", async () => {
   const legacy = pair({
     startSchema: V1,
     dcSchema: V1,
@@ -589,10 +929,11 @@ test("retirement can update only a stale metric carrying the requested agency_id
   });
   const { status, json } = await run(handler);
   assert.equal(status, 200);
-  assert.equal(json.patient_outcome_metrics_retired, 1);
-  assert.deepEqual(written.metricUpdates.map((u) => u.id), ["metric-a"]);
-  assert.equal(written.metricUpdates[0].payload.agency_id, AGENCY_A);
-  assert.equal(written.metricUpdates[0].payload.outcome_measure_source, "retired_unverified_schema");
+  assert.equal(json.patient_outcome_metrics_retired, 0);
+  assert.deepEqual(written.metricUpdates, []);
+  assert.deepEqual(written.metricCreates, []);
+  assert.equal(json.publication_status, "published");
+  assert.equal(written.runUpdates.at(-1).payload.patient_outcome_metric_count, 0);
 });
 
 test("duplicate discharge rows are excluded as one ambiguous episode and never double-counted", async () => {
@@ -616,12 +957,31 @@ test("duplicate discharge rows are excluded as one ambiguous episode and never d
   assert.equal(json.skipped_duplicate_episode_rows, 2);
   assert.equal(json.patient_outcome_metrics_written, 0);
   assert.deepEqual(written.metricCreates, []);
-  assert.deepEqual(written.metricUpdates.map((u) => u.id), ["ambiguous-metric"]);
-  assert.equal(
-    written.metricUpdates[0].payload.outcome_measure_source,
-    "retired_ambiguous_duplicate_discharge",
-  );
+  assert.deepEqual(written.metricUpdates, [], "the prior generation remains immutable audit history");
+  assert.equal(written.runUpdates.at(-1).payload.patient_outcome_metric_count, 0);
   for (const measure of json.measures) assert.equal(measure.denominator, 0);
+});
+
+test("duplicate latest SOC or ROC rows exclude the episode instead of choosing by array order", async () => {
+  const [soc, dc] = pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } });
+  const duplicateLatestStart = {
+    ...soc,
+    id: "roc-same-latest-date",
+    visit_type: "Resumption of Care",
+    oasis_items: [v2Row("M1860", "m1860_cms_e2", "6")],
+  };
+  const { handler, written } = await loadHandler({
+    assessments: [soc, duplicateLatestStart, dc],
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+  });
+  const { status, json } = await run(handler);
+  assert.equal(status, 200);
+  assert.equal(json.skipped_ambiguous_start_assessment, 1);
+  assert.equal(json.excluded_episode_count, 1);
+  assert.equal(json.patient_outcome_metrics_written, 0);
+  assert.ok(json.skip_reasons[0].reasons.includes("ambiguous_latest_start_assessment"));
+  assert.deepEqual(written.metricCreates, []);
+  assert.deepEqual(written.kpiCreates, []);
 });
 
 test("conflicting duplicate response rows exclude the episode without array-order scoring", async () => {
@@ -682,7 +1042,7 @@ test("a mismatched item definition fails provenance validation", async () => {
   assert.deepEqual(written.metrics, []);
 });
 
-test("a no-denominator rerun retires only the matching agency's stale KPI", async () => {
+test("a no-denominator run publishes an empty KPI generation without mutating stale rows", async () => {
   const legacy = pair({
     startSchema: V1,
     dcSchema: V1,
@@ -709,14 +1069,13 @@ test("a no-denominator rerun retires only the matching agency's stale KPI", asyn
   const { status, json } = await run(handler);
   assert.equal(status, 200);
   assert.equal(json.agency_kpis_written, 0);
-  assert.equal(json.agency_kpis_retired, 1);
-  assert.deepEqual(written.kpiUpdates.map((u) => u.id), ["kpi-a"]);
-  assert.equal(written.kpiUpdates[0].payload.agency_id, AGENCY_A);
-  assert.equal(written.kpiUpdates[0].payload.is_current, false);
-  assert.equal(written.kpiUpdates[0].payload.retired_reason, "no_current_eligible_episodes");
+  assert.equal(json.agency_kpis_retired, 0);
+  assert.deepEqual(written.kpiUpdates, []);
+  assert.equal(written.runUpdates.at(-1).payload.agency_kpi_count, 0);
+  assert.equal(written.runUpdates.at(-1).payload.status, "published");
 });
 
-test("a zero-discharge run retires current KPIs only in the explicit stable period", async () => {
+test("a zero-discharge run publishes an empty stable window and preserves KPI audit history", async () => {
   const currentWindow = {
     metric_name: "Improvement in Ambulation/Locomotion",
     metric_category: "quality",
@@ -752,11 +1111,12 @@ test("a zero-discharge run retires current KPIs only in the explicit stable peri
   const { status, json } = await run(handler);
   assert.equal(status, 200);
   assert.equal(json.discharges_evaluated, 0);
-  assert.equal(json.agency_kpis_retired, 1);
-  assert.deepEqual(written.kpiUpdates.map((update) => update.id), ["target-period"]);
+  assert.equal(json.agency_kpis_retired, 0);
+  assert.deepEqual(written.kpiUpdates, []);
+  assert.equal(written.runUpdates.at(-1).payload.agency_kpi_count, 0);
 });
 
-test("a positive rerun keeps one current KPI and retires same-period duplicates", async () => {
+test("a positive run appends one gated KPI generation without rewriting same-period duplicates", async () => {
   const row = {
     agency_id: AGENCY_A,
     metric_name: "Improvement in Ambulation/Locomotion",
@@ -773,12 +1133,12 @@ test("a positive rerun keeps one current KPI and retires same-period duplicates"
   });
   const { status, json } = await run(handler);
   assert.equal(status, 200);
-  assert.equal(json.agency_kpis_retired, 1);
-  const updated = written.kpiUpdates.find((update) => update.id === "newest");
-  const retired = written.kpiUpdates.find((update) => update.id === "duplicate");
-  assert.equal(updated.payload.is_current, true);
-  assert.equal(retired.payload.is_current, false);
-  assert.equal(retired.payload.retired_reason, "duplicate_agency_period_kpi");
+  assert.equal(json.agency_kpis_retired, 0);
+  assert.deepEqual(written.kpiUpdates, []);
+  const staged = written.kpiCreates.find((kpi) => kpi.metric_name === row.metric_name);
+  assert.ok(staged);
+  assert.equal(staged.is_current, false);
+  assert.equal(staged.outcome_computation_run_id, json.outcome_computation_run_id);
 });
 
 test("a retired metric remains audit history and is never merge-reactivated", async () => {
@@ -804,7 +1164,7 @@ test("a retired metric remains audit history and is never merge-reactivated", as
   assert.deepEqual(written.metricUpdates, [], "the retired row is not partially reactivated");
 });
 
-test("a retired KPI remains audit history and gets a fresh current successor", async () => {
+test("a retired KPI remains audit history and gets a fresh publication-gated successor", async () => {
   const row = {
     id: "retired-kpi",
     agency_id: AGENCY_A,
@@ -825,8 +1185,9 @@ test("a retired KPI remains audit history and gets a fresh current successor", a
   const { status } = await run(handler);
   assert.equal(status, 200);
   const successor = written.kpiCreates.find((kpi) => kpi.metric_name === row.metric_name);
-  assert.ok(successor, "a fresh current KPI succeeds retired history");
-  assert.equal(successor.is_current, true);
+  assert.ok(successor, "a fresh staged KPI succeeds retired history");
+  assert.equal(successor.is_current, false);
+  assert.equal(successor.outcome_computation_run_id, written.runUpdates.at(-1).id);
   assert.ok(!Object.hasOwn(successor, "retired_reason"));
   assert.ok(!Object.hasOwn(successor, "retired_at"));
   assert.ok(!written.kpiUpdates.some((update) => update.id === row.id));
@@ -854,6 +1215,10 @@ test("a trusted v2 pair writes a versioned, agency-scoped PatientOutcomeMetric a
   assert.deepEqual(m.source_assessment_ids, [`soc-${AGENCY_A}-p1`, `dc-${AGENCY_A}-p1`]);
   assert.deepEqual(m.instrument_versions, ["oasis-e2", "oasis-e2"]);
   assert.equal(m.calculation_version, FE_VERSION, "the metric records which rules produced it");
+  assert.equal(m.outcome_measure_source, "outcome_run_staged");
+  assert.equal(m.outcome_computation_run_id, json.outcome_computation_run_id);
+  assert.equal(m.outcome_computation_attempt_id, json.outcome_computation_attempt_id);
+  assert.deepEqual(m.optional_fields_present, ["primary_diagnosis"]);
   assert.equal(m.functional_improvement.ambulation_improved, true);
   assert.equal(m.functional_improvement.bathing_improved, true);
   const ambulationResult = m.measure_results.find((result) => result.measure === "ambulation");
@@ -867,12 +1232,23 @@ test("a trusted v2 pair writes a versioned, agency-scoped PatientOutcomeMetric a
   assert.ok(written.kpis.length > 0);
   for (const k of written.kpis) {
     assert.equal(k.agency_id, AGENCY_A);
-    assert.equal(k.is_current, true);
+    assert.equal(k.is_current, false, "a row-level flag must not publish a partial run");
+    assert.equal(k.outcome_computation_run_id, json.outcome_computation_run_id);
+    assert.equal(k.outcome_computation_attempt_id, json.outcome_computation_attempt_id);
     assert.deepEqual(k.input_response_schema_ids, [V2]);
     assert.equal(k.calculation_version, FE_VERSION);
   }
 
-  const tenantEntities = new Set(["OASISAssessment", "Patient", "PatientOutcomeMetric", "AgencyKPI"]);
+  assert.equal(written.runUpdates.at(-1).payload.status, "published");
+  assert.equal(written.runUpdates.at(-1).payload.patient_outcome_metric_count, 1);
+  assert.equal(written.runUpdates.at(-1).payload.agency_kpi_count, written.kpis.length);
+  const publishIndex = written.events.lastIndexOf("run:update:published");
+  assert.ok(publishIndex > written.events.lastIndexOf("metric:create"));
+  assert.ok(publishIndex > written.events.lastIndexOf("kpi:create"));
+
+  const tenantEntities = new Set([
+    "OASISAssessment", "Patient", "PatientOutcomeMetric", "AgencyKPI", "OutcomeComputationRun",
+  ]);
   for (const { entity, q } of queries.filter((query) => tenantEntities.has(query.entity))) {
     assert.equal(q.agency_id, AGENCY_A, `${entity} query was not tenant-scoped`);
   }

@@ -86,5 +86,13 @@
     "recommendation_type",
     "recommendation_text",
     "source"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "data.nurse_email": "{{user.email}}"
+    },
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

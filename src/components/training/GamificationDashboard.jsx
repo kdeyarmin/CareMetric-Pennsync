@@ -9,29 +9,21 @@ import {
   Crown,
   Target
 } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { getMyTrainingGamification } from '@/functions/getMyTrainingGamification';
 
 export default function GamificationDashboard({ userId }) {
-  const { data: leaderboard } = useQuery({
-    queryKey: ['leaderboard-entry', userId],
+  const { data: gamification = { leaderboard: null, badges: [], team_rank_available: false } } = useQuery({
+    queryKey: ['my-training-gamification', userId],
     queryFn: async () => {
-      const entries = await base44.entities.Leaderboard.filter({ user_id: userId });
-      return entries[0] || null;
-    }
+      const response = await getMyTrainingGamification({});
+      return response?.data || response;
+    },
+    enabled: !!userId,
+    initialData: { leaderboard: null, badges: [], team_rank_available: false },
   });
-
-  const { data: badges = [] } = useQuery({
-    queryKey: ['user-badges', userId],
-    queryFn: () => base44.entities.UserBadge.filter({ user_id: userId, displayed: true }, '-earned_at', 50),
-    initialData: []
-  });
-
-  const { data: topPerformers = [] } = useQuery({
-    queryKey: ['top-performers'],
-    queryFn: () => base44.entities.Leaderboard.list('-total_points', 10),
-    initialData: []
-  });
+  const leaderboard = gamification?.leaderboard || null;
+  const badges = gamification?.badges || [];
 
   const rarityColors = {
     common: 'bg-slate-400',
@@ -40,9 +32,6 @@ export default function GamificationDashboard({ userId }) {
     epic: 'bg-navy-500',
     legendary: 'bg-yellow-500'
   };
-
-  const userRankIdx = topPerformers.findIndex(p => p.user_id === userId);
-  const userRank = userRankIdx >= 0 ? userRankIdx + 1 : null;
 
   return (
     <div className="space-y-6">
@@ -88,8 +77,8 @@ export default function GamificationDashboard({ userId }) {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600">Rank</p>
-                <p className="text-2xl font-bold text-navy-600">#{userRank || 'N/A'}</p>
+                <p className="text-sm text-slate-600">Courses Completed</p>
+                <p className="text-2xl font-bold text-navy-600">{leaderboard?.courses_completed || 0}</p>
               </div>
               <Crown className="w-8 h-8 text-navy-500" />
             </div>
@@ -119,55 +108,6 @@ export default function GamificationDashboard({ userId }) {
                 </Badge>
               </div>
             ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Leaderboard */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-yellow-600" />
-            Top Performers
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {topPerformers.map((performer, idx) => {
-              const isCurrentUser = performer.user_id === userId;
-              return (
-                <div
-                  key={performer.id}
-                  className={`flex items-center justify-between p-4 rounded-lg border-2 transition ${
-                    isCurrentUser ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${
-                      idx === 0 ? 'bg-yellow-500' :
-                      idx === 1 ? 'bg-slate-400' :
-                      idx === 2 ? 'bg-orange-600' :
-                      'bg-blue-600'
-                    }`}>
-                      {idx + 1}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-900">
-                        {performer.user_name}
-                        {isCurrentUser && <Badge className="ml-2 bg-blue-500">You</Badge>}
-                      </p>
-                      <p className="text-sm text-slate-600">
-                        {performer.courses_completed} courses • {performer.badges_earned} badges
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-slate-900">{performer.total_points}</p>
-                    <p className="text-xs text-slate-600">points</p>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </CardContent>
       </Card>

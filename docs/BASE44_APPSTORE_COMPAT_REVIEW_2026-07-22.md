@@ -224,8 +224,13 @@ Findings to address:
 - **Sign in with Apple (4.8): not currently triggered** (first-party email/password only), but
   verify the production hosted `/login` fallback page shows no Google button; if it does, 4.8
   applies and the OAuth redirect would also break in the shell.
-- **IAP (3.1.1): clean** — no payment SDKs; all billing code is Medicare PDGM analytics, nothing
-  sold to app users.
+- **IAP (3.1.1): BLOCKED — corrected 2026-09-03.** The live Apple listing has four
+  in-app purchases (Monthly, Quarterly, Semi Annual, and Annual), while this repository
+  contains no StoreKit/RevenueCat client, product identifiers, receipt validation, or
+  restore-purchase flow. The earlier "clean" conclusion described only the repository and
+  missed the existing listing. Recover the original entitlement implementation and App Store
+  Connect product mapping before any native upload; do not infer that a hosted web-only update
+  can recreate native purchase handling.
 - **Review access (2.1):** supply a seeded non-PHI demo account; note the 15-minute idle timeout.
 - Privacy nutrition labels must declare Health & Fitness data, identifiers, and audit data,
   linked to identity. `ITSAppUsesNonExemptEncryption=false` is correct.

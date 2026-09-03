@@ -15,6 +15,13 @@ export const PUBLIC_ACCESSIBILITY_SMOKE_ROUTES = Object.freeze([
     requiredChecks: ['document-title', 'main-landmark', 'heading-order', 'keyboard-scroll', 'color-contrast'],
   },
   {
+    route: '/privacypolicy',
+    page: 'PrivacyPolicyCompatibility',
+    requiresAuth: false,
+    expectedNoCredentialState: 'policy_content',
+    requiredChecks: ['document-title', 'main-landmark', 'heading-order', 'keyboard-scroll', 'color-contrast'],
+  },
+  {
     route: '/join',
     page: 'JoinTelehealth',
     requiresAuth: false,

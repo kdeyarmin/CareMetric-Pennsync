@@ -1,8 +1,14 @@
 # Apple App Store Submission Checklist — PennSync iOS
 
 Companion to `docs/BASE44_APPSTORE_COMPAT_REVIEW_2026-07-22.md` (§5) and `ios/README.md`.
-Code-side items are implemented in the repo; the items below are the App Store Connect /
-process steps that cannot be done from code.
+Some code-side foundations are present; the items below include the repository gaps and App
+Store Connect/process steps that must be resolved before another native submission.
+
+> Existing-listing correction (verified 2026-09-03): CareMetric AI is already live as
+> Apple ID `6757097720` with four in-app purchases. This repository does not contain the
+> original purchase-entitlement implementation or complete signing projects. Do not generate
+> or upload a replacement IPA/AAB until those assets and the existing store configuration are
+> recovered and verified.
 
 ## Before first submission
 
@@ -20,9 +26,17 @@ process steps that cannot be done from code.
       Apple must be added. (Checked 2026-07-22 from the app origin: `/login` serves the SPA
       itself, no third-party buttons — but re-verify on the real backend origin before
       submitting.)
-- [ ] **Privacy policy URL.** The in-app policy now lives at `/privacy` (public route,
-      `src/pages/PrivacyPolicy.jsx`). Enter `https://<app-domain>/privacy` as the Privacy Policy
-      URL in App Store Connect. **Have counsel review the draft text before submission.**
+- [ ] **Privacy policy URL.** The canonical in-app policy lives at `/privacy`, and the app also
+      serves the already-registered `/privacypolicy` compatibility URL without authentication.
+      Verify both on the staged permanent origin before release. **Have counsel review the draft
+      text before submission.**
+- [ ] **EULA URL.** The live store metadata currently points at `/eula`, but this repository has
+      no approved EULA page. Add a public route only after the governing terms are supplied and
+      approved; until then, do not claim this link is ready.
+- [ ] **Existing IAP continuity.** Reconcile the four live products (Monthly `$29.99`, Quarterly
+      `$79.99`, Semi Annual `$149.99`, Annual `$264.99`) with their product IDs, receipt/entitlement
+      validation, restore-purchase flow, and server-side subscription state. None of that native
+      implementation is present in this repository.
 - [ ] **Privacy nutrition labels.** Declare (all "linked to identity", none used for tracking):
   - Health & Fitness → Health (patient clinical data processed in-app)
   - Contact Info → Name, Email Address

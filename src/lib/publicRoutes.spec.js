@@ -15,13 +15,15 @@ describe('isPublicTokenPath', () => {
   it('is case-insensitive, matching the router', () => {
     expect(isPublicTokenPath('/Join/abc')).toBe(true);
     expect(isPublicTokenPath('/SIGNER')).toBe(true);
+    expect(isPublicTokenPath('/PrivacyPolicy')).toBe(true);
   });
 
   it('does NOT treat a longer look-alike segment as public', () => {
     // The previous startsWith() test sent these into the public branch, where no
     // inner route matches — the user got a blank screen instead of a 404.
     expect(isPublicTokenPath('/joinsomething')).toBe(false);
-    expect(isPublicTokenPath('/privacypolicy')).toBe(false);
+    expect(isPublicTokenPath('/privacy-policy')).toBe(false);
+    expect(isPublicTokenPath('/privacypolicysomething')).toBe(false);
     expect(isPublicTokenPath('/signerportal')).toBe(false);
     expect(isPublicTokenPath('/followups')).toBe(false);
   });

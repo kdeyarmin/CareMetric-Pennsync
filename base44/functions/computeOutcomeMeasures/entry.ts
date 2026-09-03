@@ -64,8 +64,10 @@ function getOutcomeInitialAuthError(req) {
 //
 // Pairs in-app Discharge OASIS rows with matching SOC/ROC assessments, computes
 // unadjusted internal improvement proxies, writes a PatientOutcomeMetric per
-// episode, and rolls the results up into AgencyKPI rows. These values are not
-// official CMS rates, eligibility determinations, star inputs, or HHVBP results.
+// episode, and rolls the results up into AgencyKPI rows. Each attempt is
+// append-only and a single OutcomeComputationRun status transition gates the
+// complete generation. These values are not official CMS rates, eligibility
+// determinations, star inputs, or HHVBP results.
 //
 // The scoring below is a verbatim mirror of the unit-tested pure engine in
 // src/components/oasis/outcomeMeasureEngine.js. The edge function runs on Deno
@@ -118,7 +120,10 @@ const INTERNAL_SAMPLE_MEASURE_TARGET = 5;
 const ENTITY_PAGE_SIZE = 500;
 const MAX_DISCHARGE_ROWS = 50_000;
 const MAX_PRIOR_ROWS_PER_PATIENT = 10_000;
-const MAX_MATCHING_DERIVED_ROWS = 5_000;
+const MAX_UNEXPECTED_STAGED_ROWS = 5_000;
+const MAX_MATCHING_RUN_ROWS = 100;
+const OUTCOME_RUN_PUBLICATION_MODE = 'single_run_record_gate_v1';
+const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/;
 const GG_FUNCTION_ITEMS = [
   'gg0130a', 'gg0130b', 'gg0130c', 'gg0130e', 'gg0130f', 'gg0130g', 'gg0130h',
   'gg0170a', 'gg0170b', 'gg0170c', 'gg0170d', 'gg0170e', 'gg0170f',
@@ -126,6 +131,14 @@ const GG_FUNCTION_ITEMS = [
 ];
 const GG_NOT_ATTEMPTED = new Set([7, 9, 10, 88]);
 const DECEASED_DISPOSITIONS = new Set(['deceased', 'died', 'death', 'expired']);
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(String(value)),
+  );
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 function toNum(v) {
   if (v === undefined || v === null || v === '') return null;
@@ -490,6 +503,9 @@ function dispositionFromAnswers(dcAns, patient) {
 }
 
 Deno.serve(async (req) => {
+  let activeRunClient = null;
+  let activeRunId = null;
+  let failureStage = 'request_validation';
   try {
     const base44 = createClientFromRequest(req);
 
@@ -520,6 +536,28 @@ Deno.serve(async (req) => {
     if (!allowedPeriodTypes.has(periodType)) {
       return Response.json(
         { error: 'period_type is required and must be daily, weekly, monthly, quarterly, yearly, or custom' },
+        { status: 400 },
+      );
+    }
+    const benchmarkProvided = body.benchmark !== undefined && body.benchmark !== null;
+    if (benchmarkProvided && (
+      typeof body.benchmark !== 'number' ||
+      !Number.isFinite(body.benchmark) ||
+      body.benchmark < 0 ||
+      body.benchmark > 100
+    )) {
+      return Response.json(
+        { error: 'benchmark must be a finite percentage from 0 through 100 when provided' },
+        { status: 400 },
+      );
+    }
+    const benchmark = benchmarkProvided ? body.benchmark : undefined;
+    const idempotencyKey = String(body.idempotency_key || '').trim();
+    if (!IDEMPOTENCY_KEY_RE.test(idempotencyKey)) {
+      return Response.json(
+        {
+          error: 'idempotency_key is required and must be 16-128 characters using letters, numbers, dot, underscore, colon, or hyphen',
+        },
         { status: 400 },
       );
     }
@@ -574,63 +612,263 @@ Deno.serve(async (req) => {
       if (!Array.isArray(overflow)) throw new Error('Base44 entity overflow check returned a non-array page');
       return { rows, truncated: overflow.length > 0 };
     };
-    const findScopedMetrics = async (patientId, episodeStart, episodeEnd) => {
-      const page = await fetchAllPages(base44.asServiceRole.entities.PatientOutcomeMetric, {
-        agency_id: agencyId,
-        patient_id: patientId,
-        episode_start: episodeStart,
-        episode_end: episodeEnd,
-      }, '-created_date', { maxRows: MAX_MATCHING_DERIVED_ROWS });
-      if (page.truncated) throw new Error('PatientOutcomeMetric exact-key query exceeded the safety cap');
-      return page.rows.filter((row) =>
-        belongsToAgency(row) &&
-        row.patient_id === patientId &&
-        row.episode_start === episodeStart &&
-        row.episode_end === episodeEnd);
-    };
-    const retireScopedMetrics = async (
-      patientId,
-      episodeStart,
-      episodeEnd,
-      outcomeMeasureSource,
-      retiredReason,
-    ) => {
-      const metrics = await findScopedMetrics(patientId, episodeStart, episodeEnd);
-      let retired = 0;
-      for (const metric of metrics) {
-        if (metric.outcome_measure_source === outcomeMeasureSource) continue;
-        await base44.asServiceRole.entities.PatientOutcomeMetric.update(metric.id, {
-          agency_id: agencyId,
-          outcome_measure_source: outcomeMeasureSource,
-          retired_reason: retiredReason,
-          retired_at: new Date().toISOString(),
-          calculation_version: OUTCOME_CALCULATION_VERSION,
-        });
-        retired += 1;
+    // The raw idempotency key is caller-controlled and never stored. Its hash
+    // is scoped to one tenant/window/version, so a retry can safely replay only
+    // the exact logical computation it named.
+    const windowKey = await sha256Hex(JSON.stringify([
+      agencyId,
+      periodType,
+      periodStart,
+      periodEnd,
+    ]));
+    const runKey = await sha256Hex(JSON.stringify([
+      agencyId,
+      periodType,
+      periodStart,
+      periodEnd,
+      OUTCOME_CALCULATION_VERSION,
+      benchmark ?? null,
+      idempotencyKey,
+    ]));
+    failureStage = 'run_claim';
+    const existingRunPage = await fetchAllPages(
+      base44.asServiceRole.entities.OutcomeComputationRun,
+      { agency_id: agencyId, run_key: runKey },
+      '-created_date',
+      { maxRows: MAX_MATCHING_RUN_ROWS },
+    );
+    if (existingRunPage.truncated) {
+      throw new Error('OutcomeComputationRun idempotency query exceeded the safety cap');
+    }
+    const matchingRuns = existingRunPage.rows.filter((row) =>
+      belongsToAgency(row) &&
+      row.run_key === runKey &&
+      row.period_type === periodType &&
+      row.period_start === periodStart &&
+      row.period_end === periodEnd &&
+      row.calculation_version === OUTCOME_CALCULATION_VERSION);
+    const publishedRunValidationError = async (row) => {
+      const summary = row?.result_summary;
+      if (row?.status !== 'published' ||
+          row?.run_key !== runKey ||
+          row?.publication_mode !== OUTCOME_RUN_PUBLICATION_MODE ||
+          typeof row?.attempt_id !== 'string' || !row.attempt_id.trim() ||
+          row?.window_key !== windowKey ||
+          !/^[a-f0-9]{64}$/.test(String(row?.generation_fingerprint || '')) ||
+          !Number.isFinite(Date.parse(String(row?.published_at || ''))) ||
+          !Number.isInteger(row?.patient_outcome_metric_count) || row.patient_outcome_metric_count < 0 ||
+          !Number.isInteger(row?.agency_kpi_count) || row.agency_kpi_count < 0 ||
+          !summary || typeof summary !== 'object' || summary.success !== true ||
+          summary.agency_id !== agencyId ||
+          summary.period_type !== periodType ||
+          summary.period_start !== periodStart ||
+          summary.period_end !== periodEnd ||
+          summary.calculation_version !== OUTCOME_CALCULATION_VERSION ||
+          summary.generation_fingerprint !== row.generation_fingerprint) {
+        return 'published run metadata is incomplete or inconsistent';
       }
-      return retired;
+      const cohorts = [
+        {
+          entity: base44.asServiceRole.entities.PatientOutcomeMetric,
+          count: row.patient_outcome_metric_count,
+          label: 'PatientOutcomeMetric',
+          keyOf: (item) => JSON.stringify([
+            item.agency_id, item.patient_id, item.episode_start, item.episode_end,
+          ]),
+        },
+        {
+          entity: base44.asServiceRole.entities.AgencyKPI,
+          count: row.agency_kpi_count,
+          label: 'AgencyKPI',
+          keyOf: (item) => JSON.stringify([
+            item.agency_id,
+            item.metric_name,
+            item.metric_category,
+            item.period_start,
+            item.period_end,
+          ]),
+        },
+      ];
+      for (const cohort of cohorts) {
+        const page = await fetchAllPages(cohort.entity, {
+          agency_id: agencyId,
+          outcome_computation_run_id: row.id,
+          outcome_computation_attempt_id: row.attempt_id,
+        }, '-created_date', {
+          maxRows: Math.max(cohort.count + MAX_UNEXPECTED_STAGED_ROWS, 1),
+        });
+        if (page.truncated) return `${cohort.label} published cohort exceeded its recorded count`;
+        const scopedRows = page.rows.filter((item) =>
+          belongsToAgency(item) &&
+          item.outcome_computation_run_id === row.id &&
+          item.outcome_computation_attempt_id === row.attempt_id);
+        if (scopedRows.some((item) =>
+          item.generation_fingerprint !== row.generation_fingerprint)) {
+          return `${cohort.label} published cohort contains a mismatched fingerprint`;
+        }
+        const keys = scopedRows.map(cohort.keyOf);
+        if (scopedRows.length !== cohort.count || new Set(keys).size !== keys.length) {
+          return `${cohort.label} published cohort failed reconciliation`;
+        }
+      }
+      return null;
     };
-    const benchmark = typeof body.benchmark === 'number' ? body.benchmark : undefined;
+    const windowRunPage = await fetchAllPages(
+      base44.asServiceRole.entities.OutcomeComputationRun,
+      { agency_id: agencyId, window_key: windowKey },
+      '-created_date',
+      { maxRows: MAX_MATCHING_RUN_ROWS },
+    );
+    if (windowRunPage.truncated) {
+      throw new Error('OutcomeComputationRun window query exceeded the safety cap');
+    }
+    const liveWindowRuns = windowRunPage.rows.filter((row) =>
+      belongsToAgency(row) &&
+      row.window_key === windowKey &&
+      (row.status === 'published' || row.status === 'building'));
 
+    const publishedRuns = matchingRuns.filter((row) => row.status === 'published');
+    if (publishedRuns.length > 1) {
+      return Response.json({
+        success: false,
+        error: 'Multiple published runs exist for this idempotency key; operator review is required',
+      }, { status: 409 });
+    }
+    const publishedRun = publishedRuns[0];
+    if (publishedRun) {
+      const publishedWindowRuns = liveWindowRuns.filter((row) => row.status === 'published');
+      if (publishedWindowRuns.length !== 1 || publishedWindowRuns[0].id !== publishedRun.id) {
+        return Response.json({
+          success: false,
+          error: 'Multiple or conflicting published runs exist for this reporting window',
+          requires_operator_review: true,
+        }, { status: 409 });
+      }
+      const validationError = await publishedRunValidationError(publishedRun);
+      if (validationError) {
+        return Response.json({
+          success: false,
+          error: `Published outcome run is not replayable: ${validationError}`,
+          requires_operator_review: true,
+        }, { status: 409 });
+      }
+      const savedSummary = publishedRun.result_summary && typeof publishedRun.result_summary === 'object'
+        ? publishedRun.result_summary
+        : {};
+      return Response.json({
+        ...savedSummary,
+        success: true,
+        idempotent_replay: true,
+        outcome_computation_run_id: publishedRun.id,
+        outcome_computation_attempt_id: publishedRun.attempt_id,
+        publication_status: 'published',
+        publication_mode: OUTCOME_RUN_PUBLICATION_MODE,
+      });
+    }
+    if (matchingRuns.some((row) => row.status === 'building')) {
+      return Response.json({
+        success: false,
+        error: 'An unpublished attempt already holds this idempotency key',
+        retry_with_same_key_after_operator_review: true,
+      }, { status: 409 });
+    }
+
+    if (liveWindowRuns.length > 0) {
+      return Response.json({
+        success: false,
+        error: 'This reporting window already has a live publication; atomic supersession is not available',
+        requires_operator_review: true,
+      }, { status: 409 });
+    }
+
+    const attemptId = crypto.randomUUID();
+    const startedAt = new Date().toISOString();
+    const createdRun = await base44.asServiceRole.entities.OutcomeComputationRun.create({
+      agency_id: agencyId,
+      run_key: runKey,
+      window_key: windowKey,
+      attempt_id: attemptId,
+      status: 'building',
+      publication_mode: OUTCOME_RUN_PUBLICATION_MODE,
+      period_type: periodType,
+      period_start: periodStart,
+      period_end: periodEnd,
+      calculation_version: OUTCOME_CALCULATION_VERSION,
+      ...(benchmark != null ? { benchmark_value: benchmark } : {}),
+      started_at: startedAt,
+    });
+    const runId = String(createdRun?.id || '').trim();
+    if (!runId) throw new Error('OutcomeComputationRun create did not return an id');
+    activeRunClient = base44;
+    activeRunId = runId;
+
+    // Best-effort duplicate-claim election. Base44 does not currently expose a
+    // datastore uniqueness constraint or compare-and-swap API, so the strict
+    // production gate remains blocked on that platform guarantee. This check
+    // still catches overlapping claims visible after creation and lets only
+    // the lexically first run id continue.
+    const contenderPage = await fetchAllPages(
+      base44.asServiceRole.entities.OutcomeComputationRun,
+      { agency_id: agencyId, run_key: runKey },
+      '-created_date',
+      { maxRows: MAX_MATCHING_RUN_ROWS },
+    );
+    if (contenderPage.truncated) {
+      throw new Error('OutcomeComputationRun contender query exceeded the safety cap');
+    }
+    const buildingContenders = contenderPage.rows
+      .filter((row) => belongsToAgency(row) && row.run_key === runKey && row.status === 'building')
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    if (buildingContenders[0] && buildingContenders[0].id !== runId) {
+      await base44.asServiceRole.entities.OutcomeComputationRun.update(runId, {
+        agency_id: agencyId,
+        status: 'superseded',
+        failure_stage: 'duplicate_run_claim',
+      });
+      activeRunId = null;
+      return Response.json({
+        success: false,
+        error: 'A concurrent attempt won this idempotency-key claim',
+        retry_with_same_key: true,
+      }, { status: 409 });
+    }
+    failureStage = 'source_read';
+    const periodStartMs = Date.parse(`${periodStart}T00:00:00.000Z`);
+    const periodEndExclusiveMs = Date.parse(`${periodEnd}T00:00:00.000Z`) + 86_400_000;
     const inPeriod = (dateStr) => {
-      if (!periodStart && !periodEnd) return true;
       if (!dateStr) return false;
       const t = new Date(dateStr).getTime();
       if (Number.isNaN(t)) return false;
-      if (periodStart && t < new Date(periodStart).getTime()) return false;
-      if (periodEnd && t > new Date(periodEnd).getTime()) return false;
-      return true;
+      return t >= periodStartMs && t < periodEndExclusiveMs;
     };
 
     // Discharges for ONE explicit agency; each is paired with the latest
-    // same-agency SOC/ROC before it for the same patient. Never list the entity.
+    // same-agency SOC/ROC before it for the same patient. The stable date range
+    // must be part of the provider query: fetching 50,000 lifetime rows and
+    // filtering locally would make the documented "split the period" recovery
+    // ineffective for a large tenant.
+    const dischargeQuery = {
+      agency_id: agencyId,
+      visit_type: 'Discharge',
+      assessment_date: {
+        $gte: periodStart,
+        $lte: `${periodEnd}T23:59:59.999`,
+      },
+    };
     const dischargePage = await fetchAllPages(
       base44.asServiceRole.entities.OASISAssessment,
-      { agency_id: agencyId, visit_type: 'Discharge' },
+      dischargeQuery,
       '-assessment_date',
       { maxRows: MAX_DISCHARGE_ROWS },
     );
     if (dischargePage.truncated) {
+      await base44.asServiceRole.entities.OutcomeComputationRun.update(runId, {
+        agency_id: agencyId,
+        status: 'failed',
+        failed_at: new Date().toISOString(),
+        failure_stage: 'source_discharge_cap',
+      });
+      activeRunId = null;
       return Response.json({
         success: false,
         error: 'Discharge query exceeded the 50,000-row safety cap; split the requested period before computing a rollup',
@@ -651,10 +889,11 @@ Deno.serve(async (req) => {
     let skippedInvalidStartDate = 0;
     let skippedMissingPatientId = 0;
     let skippedMissingStartAssessment = 0;
+    let skippedAmbiguousStartAssessment = 0;
     let skippedPriorQueryCap = 0;
     let skippedNotScorable = 0;
     let skippedDuplicateEpisodeRows = 0;
-    let metricsRetired = 0;
+    const metricPayloads = [];
     const skipReasons = [];
     const candidates = [];
     const candidateCounts = new Map();
@@ -697,6 +936,13 @@ Deno.serve(async (req) => {
         { maxRows: MAX_PRIOR_ROWS_PER_PATIENT },
       );
       if (priorPage.truncated) {
+        await base44.asServiceRole.entities.OutcomeComputationRun.update(runId, {
+          agency_id: agencyId,
+          status: 'failed',
+          failed_at: new Date().toISOString(),
+          failure_stage: 'source_patient_history_cap',
+        });
+        activeRunId = null;
         return Response.json({
           success: false,
           error: 'Patient assessment history exceeded the 10,000-row safety cap; no derived writes were attempted',
@@ -707,10 +953,28 @@ Deno.serve(async (req) => {
       }
       const priors = priorPage.rows.filter((row) =>
         belongsToAgency(row) && row.patient_id === dc.patient_id);
-      const start = priors.find((a) =>
-        (a.visit_type === 'Start of Care' || a.visit_type === 'Resumption of Care') &&
-        a.assessment_date &&
-        new Date(a.assessment_date) <= new Date(dc.assessment_date));
+      const dischargeTime = Date.parse(String(dc.assessment_date));
+      const qualifyingStarts = priors.filter((a) => {
+        if (a.visit_type !== 'Start of Care' && a.visit_type !== 'Resumption of Care') return false;
+        const startTime = Date.parse(String(a.assessment_date || ''));
+        return Number.isFinite(startTime) && startTime <= dischargeTime;
+      });
+      const latestStartTime = qualifyingStarts.reduce(
+        (latest, row) => Math.max(latest, Date.parse(String(row.assessment_date))),
+        Number.NEGATIVE_INFINITY,
+      );
+      const latestStarts = qualifyingStarts.filter((row) =>
+        Date.parse(String(row.assessment_date)) === latestStartTime);
+      if (latestStarts.length > 1) {
+        skippedAmbiguousStartAssessment += 1;
+        skipReasons.push({
+          patient_id: dc.patient_id,
+          episode_end: dc.assessment_date,
+          reasons: ['ambiguous_latest_start_assessment'],
+        });
+        continue;
+      }
+      const start = latestStarts[0];
       if (!start) {
         const hasInvalidStart = priors.some((a) =>
           (a.visit_type === 'Start of Care' || a.visit_type === 'Resumption of Care') &&
@@ -764,16 +1028,9 @@ Deno.serve(async (req) => {
             episode_end: dc.assessment_date,
             reasons: ['duplicate_discharge_assessments'],
           });
-          // A duplicate discharge makes the episode ambiguous. Retire only an
-          // exactly matching, same-agency metric; never pick one discharge and
-          // silently preserve a previously calculated result.
-          metricsRetired += await retireScopedMetrics(
-            dc.patient_id,
-            start.assessment_date,
-            dc.assessment_date,
-            'retired_ambiguous_duplicate_discharge',
-            'duplicate_discharge_assessments',
-          );
+          // The published run is a complete generation. Omitting this
+          // ambiguous episode from the generation supersedes any prior result
+          // without mutating previously published audit history.
         }
         continue;
       }
@@ -790,13 +1047,6 @@ Deno.serve(async (req) => {
           episode_end: dc.assessment_date,
           reasons: ['patient_not_found_in_agency_scope'],
         });
-        metricsRetired += await retireScopedMetrics(
-          dc.patient_id,
-          start.assessment_date,
-          dc.assessment_date,
-          'retired_missing_scoped_patient',
-          'patient_not_found_in_agency_scope',
-        );
         continue;
       }
       const dischargeDisposition = dispositionFromAnswers(dcAns, patient);
@@ -819,19 +1069,9 @@ Deno.serve(async (req) => {
           : [outcome.episode_excluded_reason].filter(Boolean);
         skipReasons.push({ patient_id: dc.patient_id, episode_end: dc.assessment_date, reasons });
 
-        // Skipping is not enough. An episode that was scored under the old
-        // rules already HAS a PatientOutcomeMetric, and consumers query all
-        // `oasis_change_score` rows without filtering on the new provenance
-        // fields — so a silent skip leaves the stale, unverified quality result
-        // visible and counted. Mark it retired instead, which keeps it
-        // auditable while taking it out of current internal proxy views.
-        metricsRetired += await retireScopedMetrics(
-          dc.patient_id,
-          start.assessment_date,
-          dc.assessment_date,
-          'retired_unverified_schema',
-          reasons.join(', ') || 'not_proxy_scorable',
-        );
+        // No mutation of an older generation is needed. A consumer must read
+        // only rows belonging to one published OutcomeComputationRun, so an
+        // omitted episode is absent atomically when this run is published.
         continue;
       }
 
@@ -844,45 +1084,27 @@ Deno.serve(async (req) => {
         primaryDiagnosis: patient?.primary_diagnosis,
       }, outcome);
 
-      // Idempotent upsert keyed on patient + episode window.
-      const existingMetrics = await findScopedMetrics(
-        dc.patient_id,
-        start.assessment_date,
-        dc.assessment_date,
-      );
-      // Base44 entity updates are partial merges. Never reactivate a retired
-      // row by overwriting only outcome_measure_source: its retired_reason /
-      // retired_at would remain attached to a seemingly current metric. Reuse
-      // only a pristine current row; otherwise create a new current row and
-      // leave already-retired audit history untouched.
-      const existingMetric = existingMetrics.find((metric) =>
-        metric.outcome_measure_source === 'oasis_change_score' &&
-        !metric.retired_reason &&
-        !metric.retired_at);
-      if (existingMetric) {
-        await base44.asServiceRole.entities.PatientOutcomeMetric.update(existingMetric.id, payload);
-      } else {
-        await base44.asServiceRole.entities.PatientOutcomeMetric.create(payload);
-      }
-      const duplicateMetrics = existingMetrics.filter((metric) =>
-        metric.id !== existingMetric?.id &&
-        metric.outcome_measure_source === 'oasis_change_score');
-      for (const duplicateMetric of duplicateMetrics) {
-        await base44.asServiceRole.entities.PatientOutcomeMetric.update(duplicateMetric.id, {
-          agency_id: agencyId,
-          outcome_measure_source: 'retired_duplicate_metric',
-          retired_reason: 'duplicate_patient_episode_metric',
-          retired_at: new Date().toISOString(),
-          calculation_version: OUTCOME_CALCULATION_VERSION,
-        });
-        metricsRetired += 1;
-      }
-      metricsWritten += 1;
+      const optionalFieldsPresent = [
+        'discharge_disposition',
+        'primary_diagnosis',
+        'internal_gg_18_item_raw_sum',
+      ].filter((field) => Object.hasOwn(payload, field));
+      metricPayloads.push({
+        ...payload,
+        // This value intentionally never becomes `oasis_change_score` on the
+        // row itself. Publication is the one status transition on the run;
+        // legacy consumers cannot accidentally treat a partially staged row
+        // as current.
+        outcome_measure_source: 'outcome_run_staged',
+        outcome_computation_run_id: runId,
+        outcome_computation_attempt_id: attemptId,
+        optional_fields_present: optionalFieldsPresent,
+      });
     }
 
-    // Stable, explicit windows are mandatory. Deriving a period from whatever
-    // discharges happen to be returned would strand prior current KPI rows when
-    // a discharge is deleted, reassigned, or falls outside a capped query.
+    // Stable, explicit windows are mandatory. They are part of the publication
+    // key, so a deleted, reassigned, or newly excluded discharge produces a
+    // complete replacement generation for the same named window.
     const targetPeriodStart = periodStart;
     const targetPeriodEnd = periodEnd;
     // Count excluded EPISODES in the requested period exactly once. A missing
@@ -892,6 +1114,7 @@ Deno.serve(async (req) => {
     const excludedEpisodeCount =
       skippedMissingPatientId +
       skippedMissingStartAssessment +
+      skippedAmbiguousStartAssessment +
       skippedMissingStartDate +
       skippedInvalidStartDate +
       skippedNotScorable +
@@ -905,96 +1128,126 @@ Deno.serve(async (req) => {
       agencyId,
       excludedEpisodeCount,
     });
+    const metricPlanKey = (payload) => JSON.stringify([
+      payload.agency_id,
+      payload.patient_id,
+      payload.episode_start,
+      payload.episode_end,
+    ]);
+    metricPayloads.sort((a, b) => metricPlanKey(a).localeCompare(metricPlanKey(b)));
+    const metricKeys = metricPayloads.map(metricPlanKey);
+    if (new Set(metricKeys).size !== metricKeys.length) {
+      throw new Error('Outcome plan contains duplicate patient episode keys');
+    }
+    const stagedKpis = kpis.map((kpi) => ({
+      ...kpi,
+      // `is_current` is a legacy publication hint. Run-scoped output stays
+      // false forever; only the referenced run's status can publish it.
+      is_current: false,
+      outcome_computation_run_id: runId,
+      outcome_computation_attempt_id: attemptId,
+    }));
+    const kpiPlanKey = (payload) => JSON.stringify([
+      payload.agency_id,
+      payload.metric_name,
+      payload.metric_category,
+      payload.period_start,
+      payload.period_end,
+    ]);
+    stagedKpis.sort((a, b) => kpiPlanKey(a).localeCompare(kpiPlanKey(b)));
+    const kpiKeys = stagedKpis.map(kpiPlanKey);
+    if (new Set(kpiKeys).size !== kpiKeys.length) {
+      throw new Error('Outcome plan contains duplicate agency KPI keys');
+    }
+    const withoutExecutionIdentity = (payload) => {
+      const stablePayload = { ...payload };
+      delete stablePayload.outcome_computation_run_id;
+      delete stablePayload.outcome_computation_attempt_id;
+      return stablePayload;
+    };
+    const generationFingerprint = await sha256Hex(JSON.stringify({
+      metrics: metricPayloads.map(withoutExecutionIdentity),
+      kpis: stagedKpis.map(withoutExecutionIdentity),
+      excluded_episode_count: excludedEpisodeCount,
+      measures: rollup.measures,
+    }));
+    for (const payload of metricPayloads) payload.generation_fingerprint = generationFingerprint;
+    for (const payload of stagedKpis) payload.generation_fingerprint = generationFingerprint;
+
+    // All source reads and calculations finish before any derived row is
+    // written. Rows are append-only and permanently staged; a failure halfway
+    // through cannot mix them into a prior published generation.
+    failureStage = 'stage_patient_outcome_metrics';
+    for (const payload of metricPayloads) {
+      const created = await base44.asServiceRole.entities.PatientOutcomeMetric.create(payload);
+      if (!created?.id) throw new Error('PatientOutcomeMetric create did not return an id');
+      metricsWritten += 1;
+    }
     let kpisWritten = 0;
-    let kpisRetired = 0;
-    for (const kpi of kpis) {
-      // Idempotent upsert so a retry / scheduled rerun for the same period does
-      // not create duplicate AgencyKPI rows (dashboards would double-count).
-      const kpiFilter = {
-        agency_id: agencyId,
-        metric_name: kpi.metric_name,
-        metric_category: kpi.metric_category,
-        period_start: kpi.period_start,
-        period_end: kpi.period_end,
-      };
-      const existingKpiPage = await fetchAllPages(
-        base44.asServiceRole.entities.AgencyKPI,
-        kpiFilter,
-        '-created_date',
-        { maxRows: MAX_MATCHING_DERIVED_ROWS },
-      );
-      if (existingKpiPage.truncated) throw new Error('AgencyKPI exact-key query exceeded the safety cap');
-      const matchingKpis = existingKpiPage.rows.filter((row) =>
-        belongsToAgency(row) &&
-        row.metric_name === kpi.metric_name &&
-        row.metric_category === kpi.metric_category &&
-        row.period_start === kpi.period_start &&
-        row.period_end === kpi.period_end);
-      // As above, do not merge an active payload into retired audit history.
-      // A retired KPI gets a new current successor because optional retirement
-      // fields have no source-proved hosted "unset" operation yet.
-      const matchingKpi = matchingKpis.find((row) =>
-        row.is_current !== false && !row.retired_reason && !row.retired_at);
-      if (matchingKpi) {
-        await base44.asServiceRole.entities.AgencyKPI.update(matchingKpi.id, kpi);
-      } else {
-        await base44.asServiceRole.entities.AgencyKPI.create(kpi);
-      }
-      const duplicateKpis = matchingKpis.filter((row) =>
-        row.id !== matchingKpi?.id && row.is_current !== false);
-      for (const duplicateKpi of duplicateKpis) {
-        await base44.asServiceRole.entities.AgencyKPI.update(duplicateKpi.id, {
-          agency_id: agencyId,
-          is_current: false,
-          retired_reason: 'duplicate_agency_period_kpi',
-          retired_at: new Date().toISOString(),
-          calculation_version: OUTCOME_CALCULATION_VERSION,
-        });
-        kpisRetired += 1;
-      }
+    failureStage = 'stage_agency_kpis';
+    for (const payload of stagedKpis) {
+      const created = await base44.asServiceRole.entities.AgencyKPI.create(payload);
+      if (!created?.id) throw new Error('AgencyKPI create did not return an id');
       kpisWritten += 1;
     }
 
-    // A rerun can legitimately yield no denominator (for example after legacy
-    // or duplicate episodes are retired). Mark same-agency, same-period KPI
-    // rows non-current so an older positive value cannot remain visible. The
-    // numeric value is retained for audit history; no row is deleted.
-    const emptyMeasures = rollup.measures.filter((measure) => measure.rate === null);
-    for (const measure of emptyMeasures) {
-      const stalePage = await fetchAllPages(base44.asServiceRole.entities.AgencyKPI, {
+    // Read back the exact staged cohort before publishing. A create response is
+    // not enough evidence that every row was durably stored under the intended
+    // tenant/run/attempt. The generation tag plus exact logical-key set makes a
+    // missing, duplicated, or cross-run row fail closed.
+    failureStage = 'reconcile_staged_generation';
+    const reconcileStagedRows = async (entity, expectedPayloads, keyOf, label) => {
+      const page = await fetchAllPages(entity, {
         agency_id: agencyId,
-        metric_name: measure.label,
-        metric_category: 'quality',
-        period_start: targetPeriodStart,
-        period_end: targetPeriodEnd,
-      }, '-created_date', { maxRows: MAX_MATCHING_DERIVED_ROWS });
-      if (stalePage.truncated) throw new Error('AgencyKPI stale-row query exceeded the safety cap');
-      const scopedStaleRows = stalePage.rows.filter((row) =>
+        outcome_computation_run_id: runId,
+        outcome_computation_attempt_id: attemptId,
+      }, '-created_date', {
+        maxRows: Math.max(expectedPayloads.length + MAX_UNEXPECTED_STAGED_ROWS, 1),
+      });
+      if (page.truncated) throw new Error(`${label} staged-row readback exceeded the expected count`);
+      const rows = page.rows.filter((row) =>
         belongsToAgency(row) &&
-        row.metric_name === measure.label &&
-        row.metric_category === 'quality' &&
-        row.period_start === targetPeriodStart &&
-        row.period_end === targetPeriodEnd &&
-        row.is_current !== false);
-      for (const staleKpi of scopedStaleRows) {
-        await base44.asServiceRole.entities.AgencyKPI.update(staleKpi.id, {
-          agency_id: agencyId,
-          is_current: false,
-          retired_reason: 'no_current_eligible_episodes',
-          retired_at: new Date().toISOString(),
-          calculation_version: OUTCOME_CALCULATION_VERSION,
-          excluded_episode_count: excludedEpisodeCount,
-        });
-        kpisRetired += 1;
+        row.outcome_computation_run_id === runId &&
+        row.outcome_computation_attempt_id === attemptId);
+      if (rows.length !== expectedPayloads.length) {
+        throw new Error(`${label} staged-row count did not match the outcome plan`);
       }
-    }
+      if (rows.some((row) => row.generation_fingerprint !== generationFingerprint)) {
+        throw new Error(`${label} staged-row fingerprint did not match the outcome plan`);
+      }
+      const expectedKeys = expectedPayloads.map(keyOf).sort();
+      const actualKeys = rows.map(keyOf).sort();
+      if (new Set(actualKeys).size !== actualKeys.length ||
+          JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) {
+        throw new Error(`${label} staged-row logical keys did not match the outcome plan`);
+      }
+    };
+    await Promise.all([
+      reconcileStagedRows(
+        base44.asServiceRole.entities.PatientOutcomeMetric,
+        metricPayloads,
+        metricPlanKey,
+        'PatientOutcomeMetric',
+      ),
+      reconcileStagedRows(
+        base44.asServiceRole.entities.AgencyKPI,
+        stagedKpis,
+        kpiPlanKey,
+        'AgencyKPI',
+      ),
+    ]);
 
-    return Response.json({
+    // Keep this saved replay summary free of patient identifiers. The live
+    // first-attempt response may include skip_reasons for operator diagnosis;
+    // an idempotent replay returns only this non-PHI summary.
+    const resultSummary = {
       success: true,
       agency_id: agencyId,
       discharge_rows_returned: discharges.length,
       discharges_in_period: dischargesInPeriod,
       discharge_query_may_be_truncated: false,
+      discharge_provider_period_scoped: true,
+      unscoped_discharge_date_quality_not_scanned: true,
       discharges_evaluated: outcomes.length,
       patient_outcome_metrics_written: metricsWritten,
       skipped_missing_episode_date: skippedNoDate,
@@ -1004,24 +1257,155 @@ Deno.serve(async (req) => {
       skipped_invalid_start_date: skippedInvalidStartDate,
       skipped_missing_patient_id: skippedMissingPatientId,
       skipped_missing_start_assessment: skippedMissingStartAssessment,
+      skipped_ambiguous_start_assessment: skippedAmbiguousStartAssessment,
       skipped_prior_query_cap: skippedPriorQueryCap,
       skipped_duplicate_episode_rows: skippedDuplicateEpisodeRows,
       // Excluded episodes are REPORTED, never silently dropped: a rate that
       // covers fewer episodes than the reader assumes is a false quality claim.
       skipped_not_proxy_scorable: skippedNotScorable,
-      patient_outcome_metrics_retired: metricsRetired,
-      skip_reasons: skipReasons,
+      patient_outcome_metrics_retired: 0,
       calculation_version: OUTCOME_CALCULATION_VERSION,
       period_type: periodType,
+      period_start: periodStart,
+      period_end: periodEnd,
       excluded_episode_count: excludedEpisodeCount,
       agency_kpis_written: kpisWritten,
-      agency_kpis_retired: kpisRetired,
+      agency_kpis_retired: 0,
       internal_sample_ready_measure_count: rollup.internal_sample_ready_measure_count,
       internal_sample_ready: rollup.internal_sample_ready,
       measures: rollup.measures,
+      generation_fingerprint: generationFingerprint,
+    };
+    // Re-elect immediately before publication. This catches a contender that
+    // became visible while source reads or staged writes were in progress.
+    // A uniqueness/CAS guarantee is still required before production because
+    // no application-level recheck can close every datastore race window.
+    failureStage = 'publish_claim_recheck';
+    const finalClaimPage = await fetchAllPages(
+      base44.asServiceRole.entities.OutcomeComputationRun,
+      { agency_id: agencyId, window_key: windowKey },
+      '-created_date',
+      { maxRows: MAX_MATCHING_RUN_ROWS },
+    );
+    if (finalClaimPage.truncated) {
+      throw new Error('OutcomeComputationRun final claim query exceeded the safety cap');
+    }
+    const finalClaims = finalClaimPage.rows.filter((row) =>
+      belongsToAgency(row) && row.window_key === windowKey);
+    const competingPublishedRuns = finalClaims.filter((row) =>
+      row.status === 'published' && row.id !== runId);
+    const finalBuildingWinner = finalClaims
+      .filter((row) => row.status === 'building')
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)))[0];
+    if (competingPublishedRuns.length > 0 ||
+        (finalBuildingWinner && finalBuildingWinner.id !== runId)) {
+      await base44.asServiceRole.entities.OutcomeComputationRun.update(runId, {
+        agency_id: agencyId,
+        status: 'superseded',
+        failure_stage: 'lost_final_publication_claim',
+      });
+      activeRunId = null;
+      if (competingPublishedRuns.length > 1) {
+        return Response.json({
+          success: false,
+          error: 'Multiple published runs exist for this reporting window',
+          requires_operator_review: true,
+        }, { status: 409 });
+      }
+      const competingPublished = competingPublishedRuns[0];
+      if (competingPublished) {
+        if (competingPublished.run_key !== runKey) {
+          return Response.json({
+            success: false,
+            error: 'A different idempotency key published this reporting window',
+            requires_operator_review: true,
+          }, { status: 409 });
+        }
+        const validationError = await publishedRunValidationError(competingPublished);
+        if (validationError) {
+          return Response.json({
+            success: false,
+            error: `Competing published outcome run is not replayable: ${validationError}`,
+            requires_operator_review: true,
+          }, { status: 409 });
+        }
+        const savedSummary = competingPublished.result_summary &&
+          typeof competingPublished.result_summary === 'object'
+          ? competingPublished.result_summary
+          : {};
+        return Response.json({
+          ...savedSummary,
+          success: true,
+          idempotent_replay: true,
+          outcome_computation_run_id: competingPublished.id,
+          outcome_computation_attempt_id: competingPublished.attempt_id,
+          publication_status: 'published',
+          publication_mode: OUTCOME_RUN_PUBLICATION_MODE,
+        });
+      }
+      return Response.json({
+        success: false,
+        error: 'A concurrent attempt won the final publication claim',
+        retry_with_same_key: true,
+      }, { status: 409 });
+    }
+
+    failureStage = 'publish_run';
+    await base44.asServiceRole.entities.OutcomeComputationRun.update(runId, {
+      agency_id: agencyId,
+      status: 'published',
+      published_at: new Date().toISOString(),
+      patient_outcome_metric_count: metricsWritten,
+      agency_kpi_count: kpisWritten,
+      generation_fingerprint: generationFingerprint,
+      result_summary: resultSummary,
+    });
+    const publicationReadback = await fetchAllPages(
+      base44.asServiceRole.entities.OutcomeComputationRun,
+      { agency_id: agencyId, id: runId },
+      '-created_date',
+      { maxRows: MAX_MATCHING_RUN_ROWS },
+    );
+    if (publicationReadback.truncated) {
+      throw new Error('OutcomeComputationRun publication readback exceeded the safety cap');
+    }
+    const exactPublishedRuns = publicationReadback.rows.filter((row) =>
+      belongsToAgency(row) && row.id === runId);
+    if (exactPublishedRuns.length !== 1) {
+      throw new Error('OutcomeComputationRun publication readback was missing or ambiguous');
+    }
+    const publicationValidationError = await publishedRunValidationError(exactPublishedRuns[0]);
+    if (publicationValidationError) {
+      throw new Error(`OutcomeComputationRun publication readback failed: ${publicationValidationError}`);
+    }
+    activeRunId = null;
+
+    return Response.json({
+      ...resultSummary,
+      idempotent_replay: false,
+      outcome_computation_run_id: runId,
+      outcome_computation_attempt_id: attemptId,
+      publication_status: 'published',
+      publication_mode: OUTCOME_RUN_PUBLICATION_MODE,
+      skip_reasons: skipReasons,
     });
   } catch (error) {
     console.error('Error computing outcome measures:', error);
+    // Do not perform a second status write when the publish response itself is
+    // ambiguous: the first update may have committed even if its response was
+    // lost. Every earlier failure is safely marked failed; its staged rows stay
+    // invisible because no published run references them.
+    if (activeRunClient && activeRunId && failureStage !== 'publish_run') {
+      try {
+        await activeRunClient.asServiceRole.entities.OutcomeComputationRun.update(activeRunId, {
+          status: 'failed',
+          failed_at: new Date().toISOString(),
+          failure_stage: failureStage,
+        });
+      } catch (runError) {
+        console.error('Failed to mark outcome computation run failed:', runError);
+      }
+    }
     return Response.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 });

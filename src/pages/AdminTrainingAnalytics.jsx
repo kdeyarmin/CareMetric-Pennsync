@@ -34,7 +34,8 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/stat-card";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
-import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { ALL_ROWS } from '@/lib/queryLimits';
+import { listTenantTrainingIntegrityRecords } from '@/functions/listTenantTrainingIntegrityRecords';
 
 export default function AdminTrainingAnalytics() {
   const [_selectedModule, _setSelectedModule] = useState('all');
@@ -71,7 +72,13 @@ export default function AdminTrainingAnalytics() {
 
   const { data: recommendations = [] } = useQuery({
     queryKey: ['allRecommendations'],
-    queryFn: () => base44.entities.TrainingRecommendation.list(undefined, PATIENT_HISTORY_ROWS),
+    queryFn: async () => {
+      const response = await listTenantTrainingIntegrityRecords({
+        resource: 'training_recommendations',
+        limit: 500,
+      });
+      return (response?.data || response)?.records || [];
+    },
     enabled: isAdminView(currentUser)
   });
 

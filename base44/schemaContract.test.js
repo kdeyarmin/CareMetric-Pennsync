@@ -329,9 +329,9 @@ test('known RLS debt cannot grow or change without explicit review', () => {
     if (isOpen(schema.rls?.read)) inventories.openRead.push(name);
   }
   const expected = {
-    noRls: [29, 'bf42ea124dd879667023c27731f762615c690a9420bd3d499779e654a8f6892d'],
-    openMutation: [36, 'd356358b8a223c383fe00614d22af5bd110ed32b7486b4fd46a543c749da7219'],
-    openRead: [56, 'b07abf6ec3812d6f9fe83dc908c03fed89653e7f5613258111a2f9dcc47338e0'],
+    noRls: [20, '49ecafee8efec9044a7656d905e510995c226aed839edf0e1fa19cc62b25d2af'],
+    openMutation: [27, '27bbb098f21caa3b92b31035abb0ada91dac88940204e9ccab60fafec3497c03'],
+    openRead: [47, 'd1c024d06afcbb9e930f218aec3ef0ac6b8a9cfbc62227f147a5454be2ade4d6'],
   };
   const bad = [];
   for (const [kind, names] of Object.entries(inventories)) {
