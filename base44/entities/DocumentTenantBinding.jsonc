@@ -1,0 +1,118 @@
+{
+  "name": "DocumentTenantBinding",
+  "type": "object",
+  "description": "Immutable, server-owned authority record binding one uploaded Document to the exact tenant, optional Patient, authenticated creator, and idempotent upload request that produced it.",
+  "properties": {
+    "binding_key": {
+      "type": "string",
+      "description": "SHA-256 idempotency key scoped to Agency, immutable User id, and caller request id. Code must still detect duplicates because schema-level uniqueness is not assumed."
+    },
+    "document_id": {
+      "type": "string",
+      "description": "Exact Document id created by the authorized upload broker."
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id proven from the creator's exact active AgencyMembership."
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Optional exact Patient id proven to belong to the same Agency before upload."
+    },
+    "created_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in Base44 User id of the authenticated creator."
+    },
+    "created_by_user_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Normalized built-in User email retained as an integrity check."
+    },
+    "membership_id": {
+      "type": "string",
+      "description": "Exact AgencyMembership id that authorized the original upload."
+    },
+    "membership_version": {
+      "type": "number",
+      "description": "AgencyMembership revision that authorized the original upload."
+    },
+    "document_created_by_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Exact normalized email stamped into Document.created_by and Document.uploaded_by."
+    },
+    "file_url": {
+      "type": "string",
+      "description": "Exact public UploadFile URL stamped into the bound Document. Private-file migration remains a release blocker."
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Bounded sanitized original filename verified from the multipart File."
+    },
+    "file_type": {
+      "type": "string",
+      "description": "Exact allowlisted MIME type verified from the multipart File."
+    },
+    "file_size": {
+      "type": "number",
+      "description": "Exact byte size verified from the multipart File."
+    },
+    "content_sha256": {
+      "type": "string",
+      "description": "SHA-256 of the exact uploaded bytes, used to reject conflicting retries."
+    },
+    "client_request_id": {
+      "type": "string",
+      "description": "Bounded caller retry id. It is never used as authority without server-side Agency and User scoping."
+    },
+    "purpose": {
+      "type": "string",
+      "enum": [
+        "patient_document",
+        "referral"
+      ],
+      "description": "Finite reviewed upload workflow. The server maps this to a Document category."
+    },
+    "version": {
+      "type": "number",
+      "default": 1,
+      "description": "Immutable binding format version."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server time when the binding was created."
+    },
+    "last_verified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server time of the initial successful Document and binding readback verification."
+    }
+  },
+  "required": [
+    "binding_key",
+    "document_id",
+    "agency_id",
+    "created_by_user_id",
+    "created_by_user_email_normalized",
+    "membership_id",
+    "membership_version",
+    "document_created_by_email_normalized",
+    "file_url",
+    "file_name",
+    "file_type",
+    "file_size",
+    "content_sha256",
+    "client_request_id",
+    "purpose",
+    "version",
+    "created_at",
+    "last_verified_at"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

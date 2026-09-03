@@ -13,6 +13,7 @@
  * reassigned with a direct browser entity update.
  */
 export const SERVER_MERGE_REQUIRED_ENTITIES = [
+  "DocumentTenantBinding",
   "OASISAssessment",
   "PatientNoteHistoryEntry",
   "PatientOutcomeMetric",
@@ -48,12 +49,13 @@ export const PATIENT_RELATED_ENTITIES = [
 /**
  * Fail-closed browser boundary for merging one duplicate patient.
  *
- * OASISAssessment and PatientOutcomeMetric are service-write-only. The browser
- * cannot prove that a duplicate has no such rows and cannot reassign them in the
- * same transaction as all other chart data. Archiving anyway would strand
- * clinical history and break later tenant-scoped episode computations. Keep
- * this operation unavailable until a server-owned tenant/patient authorization
- * source and transactional merge broker exist.
+ * DocumentTenantBinding, OASISAssessment, PatientNoteHistoryEntry, and
+ * PatientOutcomeMetric are service-write-only. The browser cannot prove that a
+ * duplicate has no such rows and cannot reassign them in the same transaction
+ * as all other chart data. Archiving anyway would strand clinical history and
+ * break later tenant-scoped episode computations. Keep this operation
+ * unavailable until a server-owned tenant/patient authorization source and
+ * transactional merge broker exist.
  *
  * @param {string} primaryId    surviving patient id
  * @param {string} duplicateId  patient id that would be merged

@@ -2,7 +2,8 @@ import { base44 } from '@/api/base44Client';
 
 const MAX_IDENTIFIER_LENGTH = 200;
 const MAX_BATCH_IDS = 25;
-const MAX_PAGE_OFFSET = 5_000;
+const CURSOR_VERSION = 1;
+const PAGE_SORT = 'id_asc';
 const PURPOSE_FIELDS = Object.freeze({
   roster: new Set([
     'id', 'first_name', 'middle_name', 'last_name', 'medical_record_number',
@@ -24,8 +25,12 @@ const PURPOSE_MAX_PAGE_SIZE = Object.freeze({
   contact: 25,
   identity_match: 25,
 });
+const PURPOSE_ROLES = Object.freeze({
+  roster: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']),
+  contact: new Set(['platform_owner', 'agency_admin', 'manager']),
+  identity_match: new Set(['platform_owner', 'agency_admin', 'manager']),
+});
 const STATUSES = new Set(['active', 'hospitalized', 'discharged']);
-const SORTS = new Set(['updated_desc', 'name_asc']);
 
 function exactIdentifier(value) {
   return typeof value === 'string'
@@ -35,8 +40,14 @@ function exactIdentifier(value) {
     && !value.startsWith('$');
 }
 
-function validScope(scope, agencyId) {
-  if (!scope || scope.agency_id !== agencyId) return false;
+function validScope(scope, agencyId, purpose) {
+  if (
+    !exactKeys(scope, ['agency_id', 'membership_id', 'membership_version', 'tenant_role'])
+    || scope.agency_id !== agencyId
+    || !PURPOSE_ROLES[purpose]?.has(scope.tenant_role)
+  ) {
+    return false;
+  }
   if (scope.tenant_role === 'platform_owner') {
     return scope.membership_id === null && scope.membership_version === null;
   }
@@ -62,8 +73,62 @@ function validPatients(patients, purpose, maximumCount, requestedIds = null) {
   });
 }
 
+function exactKeys(value, keys) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const actual = Object.keys(value);
+  return actual.length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+
+const CURSOR_KEYS = [
+  'version',
+  'after_id',
+  'agency_id',
+  'purpose',
+  'status',
+  'sort',
+  'page_size',
+  'subject_user_id',
+  'membership_id',
+  'membership_version',
+  'tenant_role',
+];
+
+// This is an unsigned context echo, not a credential or integrity token.
+// The backend re-authorizes every call and derives the tenant query itself.
+function validCursor(cursor, context, scope = null) {
+  if (!exactKeys(cursor, CURSOR_KEYS)) return false;
+  if (
+    cursor.version !== CURSOR_VERSION
+    || !exactIdentifier(cursor.after_id)
+    || cursor.agency_id !== context.agency_id
+    || cursor.purpose !== context.purpose
+    || cursor.status !== context.status
+    || cursor.sort !== PAGE_SORT
+    || cursor.page_size !== context.page_size
+    || !exactIdentifier(cursor.subject_user_id)
+    || (context.subject_user_id !== undefined
+      && cursor.subject_user_id !== context.subject_user_id)
+    || !PURPOSE_ROLES[context.purpose]?.has(cursor.tenant_role)
+  ) {
+    return false;
+  }
+  const ownerCursor = cursor.tenant_role === 'platform_owner';
+  if (ownerCursor
+    ? cursor.membership_id !== null || cursor.membership_version !== null
+    : !exactIdentifier(cursor.membership_id)
+      || !Number.isSafeInteger(cursor.membership_version)
+      || cursor.membership_version < 1) {
+    return false;
+  }
+  return scope === null || (
+    cursor.membership_id === scope.membership_id
+    && cursor.membership_version === scope.membership_version
+    && cursor.tenant_role === scope.tenant_role
+  );
+}
+
 function pagePayload(options) {
-  const allowed = ['agencyId', 'mode', 'purpose', 'status', 'sort', 'pageSize', 'offset'];
+  const allowed = ['agencyId', 'mode', 'purpose', 'status', 'sort', 'pageSize', 'cursor'];
   if (Object.keys(options).some((key) => !allowed.includes(key))) {
     throw new Error('Patient list contains unsupported options');
   }
@@ -71,12 +136,12 @@ function pagePayload(options) {
     agencyId,
     purpose,
     status = null,
-    sort = 'updated_desc',
+    sort = PAGE_SORT,
     pageSize = 25,
-    offset = 0,
+    cursor = null,
   } = options;
   if (status !== null && !STATUSES.has(status)) throw new Error('status is invalid');
-  if (!SORTS.has(sort)) throw new Error('sort is invalid');
+  if (sort !== PAGE_SORT) throw new Error('sort is invalid');
   if (
     !Number.isSafeInteger(pageSize)
     || pageSize < 1
@@ -84,23 +149,20 @@ function pagePayload(options) {
   ) {
     throw new Error('pageSize is invalid');
   }
-  if (
-    !Number.isSafeInteger(offset)
-    || offset < 0
-    || offset > MAX_PAGE_OFFSET
-    || offset + pageSize > MAX_PAGE_OFFSET
-  ) {
-    throw new Error('offset is invalid');
-  }
-  return {
+  const payload = {
     agency_id: agencyId,
     mode: 'page',
     purpose,
     ...(status === null ? {} : { status }),
     sort,
     page_size: pageSize,
-    offset,
+    cursor,
   };
+  const cursorContext = { ...payload, status };
+  if (cursor !== null && !validCursor(cursor, cursorContext)) {
+    throw new Error('cursor is invalid');
+  }
+  return payload;
 }
 
 function idsPayload(options) {
@@ -126,19 +188,34 @@ function idsPayload(options) {
   };
 }
 
-function validPage(page, payload) {
-  if (!page || typeof page !== 'object' || Array.isArray(page)) return false;
+function validPage(page, payload, patients, scope) {
+  if (!exactKeys(page, ['page_size', 'sort', 'after_id', 'has_more', 'next_cursor'])) {
+    return false;
+  }
+  const status = payload.status ?? null;
+  const expectedAfterId = payload.cursor?.after_id ?? null;
   if (
     page.page_size !== payload.page_size
-    || page.offset !== payload.offset
+    || page.sort !== PAGE_SORT
+    || page.after_id !== expectedAfterId
     || typeof page.has_more !== 'boolean'
   ) {
     return false;
   }
-  return page.has_more
-    ? page.next_offset === payload.offset + payload.page_size
-      && page.next_offset + payload.page_size <= MAX_PAGE_OFFSET
-    : page.next_offset === null;
+  if (!page.has_more) return page.next_cursor === null;
+  if (patients.length === 0 || page.next_cursor?.after_id !== patients[patients.length - 1].id) {
+    return false;
+  }
+  return validCursor(page.next_cursor, {
+    agency_id: payload.agency_id,
+    purpose: payload.purpose,
+    status,
+    sort: PAGE_SORT,
+    page_size: payload.page_size,
+    ...(payload.cursor
+      ? { subject_user_id: payload.cursor.subject_user_id }
+      : {}),
+  }, scope);
 }
 
 export async function listAuthorizedPatients(options = {}) {
@@ -153,18 +230,24 @@ export async function listAuthorizedPatients(options = {}) {
   const payload = mode === 'page' ? pagePayload(options) : idsPayload(options);
   const response = await base44.functions.invoke('listAuthorizedPatients', payload);
   const result = response?.data ?? response;
+  const resultKeys = mode === 'page'
+    ? ['success', 'mode', 'purpose', 'patients', 'scope', 'page']
+    : ['success', 'mode', 'purpose', 'patients', 'scope'];
   if (
-    result?.success !== true
+    !exactKeys(result, resultKeys)
+    || result.success !== true
     || result.mode !== mode
     || result.purpose !== purpose
-    || !validScope(result.scope, agencyId)
+    || !validScope(result.scope, agencyId, purpose)
     || !validPatients(
       result.patients,
       purpose,
       mode === 'page' ? payload.page_size : options.patientIds.length,
       mode === 'ids' ? options.patientIds : null,
     )
-    || (mode === 'page' ? !validPage(result.page, payload) : result.page !== undefined)
+    || (mode === 'page'
+      ? !validPage(result.page, payload, result.patients, result.scope)
+      : result.page !== undefined)
   ) {
     throw new Error(result?.error || 'Patient list failed');
   }

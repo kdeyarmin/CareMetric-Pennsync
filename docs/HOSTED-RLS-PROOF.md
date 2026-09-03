@@ -520,6 +520,16 @@ isolated staging app: `getAuthorizedPatient` for one exact chart and
 hosted schema inventory remains 239 and hosted function inventory increased
 from 256 to 258.
 
+The list broker was later redeployed in place after replacing offset and
+mutable-field ordering with a single context-bound `id` keyset. It sends
+`{ id: { $gt: after_id } }`, actual Base44 sort `"id"`, and `page_size + 1`,
+and it re-resolves exact tenant authority on every continuation request. The
+cursor's `id_asc` value is only an internal finite-mode label, not a Base44 sort
+field. A privileged empty-entity probe accepted this exact query shape. Because
+the app has no Patient rows, that result does not prove hosted collation,
+strictly increasing multi-row traversal, absence of gaps/duplicates, concurrent
+insert behavior, or cross-agency isolation.
+
 Shaped anonymous POST probes recorded:
 
 | Function | Hosted result |
@@ -531,22 +541,47 @@ Post-probe privileged connector queries again reported zero Agency,
 AgencyMembership, Patient, Visit, Document, PatientNoteHistoryEntry,
 OutcomeComputationRun, PatientOutcomeMetric, and AgencyKPI rows.
 
-The source checkpoint passes 3,511 package checks: 2,065 core, 34
-schema/contracts, 379 security, 47 deduplication, and 986 component checks.
-ESLint, `typecheck:signal`, transpilation of all 258 backend functions, all 244
-shared-helper consumers, the staging-bound build, dependency audit with one low
-and no high-severity finding, and `git diff --check` also pass.
+The source checkpoint passes 3,530 package checks: 2,065 core, 34
+schema/contracts, 392 security, 47 deduplication, and 992 component checks.
+ESLint, `typecheck:signal`, transpilation of all 259 local backend functions,
+all 244 shared-helper consumers, the staging-bound build, dependency audit with
+one low and no high-severity finding, and `git diff --check` also pass. Hosted
+inventory remains 239 schemas and 258 functions because the Patient redeploy
+replaced an existing function and the later Document work was not deployed.
 
 This does not close the Patient read boundary. The brokers are deliberately
 unwired, direct `Patient.rls.read` remains broad rather than false, and current
 SPA consumers still use direct reads plus client-side filtering. Production
-cutover remains blocked until every Patient read is migrated, bounded/offset
-paging is proved, care-team assignment uses immutable user ids, tenant and
-provenance backfill is complete, and the authenticated two-agency matrix passes.
-Direct Document entity RLS and the previously recorded outcome, official PDGM,
-OASIS, physical-device, signing, privacy/store, and rollback gates also remain
-open. No production app, data/schema, domain, native binary, or app-store record
-was changed.
+cutover remains blocked until every Patient read is migrated, authenticated
+multi-row hosted keyset paging is proved without gaps or duplicates, care-team
+assignment uses immutable user ids, tenant and provenance backfill is complete,
+and the authenticated two-agency matrix passes. Direct Document entity RLS and
+the previously recorded outcome, official PDGM, OASIS, physical-device,
+signing, privacy/store, and rollback gates also remain open. No production app,
+data/schema, domain, native binary, or app-store record was changed.
+
+## 5k. Document authority foundation (source-only, updated 2026-09-03)
+
+The source tree now contains an additive `DocumentTenantBinding` schema with all
+four direct RLS operations false and an unwired `createAuthorizedDocument`
+broker. The broker accepts only reviewed patient-document or referral purposes,
+validates finite PDF/JPEG/PNG multipart input up to 25 MiB, resolves exact
+immutable actor/membership/Agency and optional Patient authority, binds replay
+to that authority and content hash, and exact-reads both created rows before
+returning a finite projection. On failure it attempts to compensate only the
+Document created by that request and logs no PHI-bearing details.
+
+The new schema and function were deliberately **not** deployed. This foundation
+still lacks datastore-enforced uniqueness or a transaction, orphan-object and
+binding reconciliation, private/signed file delivery and a storage-host
+allowlist, full file parsing plus malware/CDR scanning, existing Document
+backfill, and migration of every legacy Document writer/reader. Direct legacy
+Document RLS remains unchanged. Patient merges now explicitly classify
+`DocumentTenantBinding` as server-broker-only so an archived duplicate cannot
+silently strand a binding.
+
+This checkpoint made no production, domain, data, native-binary, scheduler,
+OASIS-v2, PDGM, or app-store change.
 
 ---
 

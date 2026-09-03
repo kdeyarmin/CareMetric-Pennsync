@@ -140,14 +140,18 @@ async function loadBroker(kind, {
   const matches = (row, query) => Object.entries(query || {}).every(([field, value]) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       if (Array.isArray(value.$in)) return value.$in.includes(row?.[field]);
+      if (typeof value.$gt === 'string') return row?.[field] > value.$gt;
       return false;
     }
     return row?.[field] === value;
   });
-  const filterRows = (rows, query, limit, offset = 0) => {
+  const filterRows = (rows, query, limit, offset = 0, sort = undefined) => {
     if (!Array.isArray(rows)) return rows;
     const matching = ignoreFilters ? rows : rows.filter((row) => matches(row, query));
-    return matching.slice(offset, Number.isFinite(limit) ? offset + limit : undefined);
+    const ordered = sort === 'id'
+      ? [...matching].sort((left, right) => String(left?.id).localeCompare(String(right?.id)))
+      : matching;
+    return ordered.slice(offset, Number.isFinite(limit) ? offset + limit : undefined);
   };
 
   const serviceRole = {
@@ -170,7 +174,7 @@ async function loadBroker(kind, {
         filter: async (query, sort, limit, offset, fields) => {
           calls.patients.push({ query: clone(query), sort, limit, offset, fields: clone(fields) });
           const rows = selected(patientResponses, patientIndex++, patients);
-          return filterRows(clone(rows), query, limit, offset);
+          return filterRows(clone(rows), query, limit, offset, sort);
         },
       },
     },
@@ -217,8 +221,22 @@ const pageBody = (overrides = {}) => ({
   mode: 'page',
   purpose: 'roster',
   page_size: 25,
-  offset: 0,
-  sort: 'updated_desc',
+  sort: 'id_asc',
+  ...overrides,
+});
+
+const pageCursor = (overrides = {}) => ({
+  version: 1,
+  after_id: 'patient-a',
+  agency_id: 'agency-a',
+  purpose: 'roster',
+  status: null,
+  sort: 'id_asc',
+  page_size: 25,
+  subject_user_id: 'user-1',
+  membership_id: 'membership-a',
+  membership_version: 2,
+  tenant_role: 'clinician',
   ...overrides,
 });
 
@@ -314,8 +332,12 @@ test('read brokers expose finite projections and contain no read bypass or Patie
   assert.match(getSource, /patientReadFields\(purpose\)/);
   assert.match(listSource, /patientReadFields\(input\.purpose\)/);
   assert.match(listSource, /entities\.Patient\.filter\(/);
+  assert.match(listSource, /query\.id\s*=\s*\{\s*\$gt:\s*input\.cursor\.after_id\s*\}/);
+  assert.match(listSource, /['"]id['"],\s*\n\s*input\.pageSize \+ 1,\s*\n\s*undefined,/);
+  assert.doesNotMatch(listSource, /MAX_PAGE_OFFSET|next_offset|updated_desc|name_asc/);
   assert.doesNotMatch(getWrapper, /\.entities\./);
   assert.doesNotMatch(listWrapper, /\.entities\./);
+  assert.doesNotMatch(listWrapper, /MAX_PAGE_OFFSET|next_offset|updated_desc|name_asc/);
   assert.match(getWrapper, /functions\.invoke\('getAuthorizedPatient'/);
   assert.match(listWrapper, /functions\.invoke\('listAuthorizedPatients'/);
 
@@ -478,7 +500,7 @@ test('list page applies tenant and creator scope before paging and returns a fin
   const { response, json } = await invoke(
     handler,
     'listAuthorizedPatients',
-    pageBody({ page_size: 1, offset: 0 }),
+    pageBody({ page_size: 1 }),
   );
   assert.equal(response.status, 200);
   assert.equal(json.patients.length, 1);
@@ -489,9 +511,10 @@ test('list page applies tenant and creator scope before paging and returns a fin
   ]);
   assert.deepEqual(json.page, {
     page_size: 1,
-    offset: 0,
+    sort: 'id_asc',
+    after_id: null,
     has_more: true,
-    next_offset: 1,
+    next_cursor: pageCursor({ page_size: 1 }),
   });
   assert.equal(calls.patients.length, 2);
   for (const call of calls.patients) {
@@ -499,10 +522,77 @@ test('list page applies tenant and creator scope before paging and returns a fin
     assert.equal(call.query.created_by_user_id, 'user-1');
     assert.equal(call.query.created_by_user_email_normalized, 'clinician@agency.test');
     assert.equal(call.limit, 2);
-    assert.equal(call.offset, 0);
+    assert.equal(call.sort, 'id');
+    assert.equal(call.offset, undefined);
     assert.equal(call.fields.includes('clinical_notes'), false);
     assert.equal(call.fields.includes('active_alerts'), false);
   }
+});
+
+test('list continuation is context-bound and applies an immutable id keyset before the limit', async () => {
+  const rows = [
+    patient({ id: 'patient-a', client_request_id: 'request-a' }),
+    patient({ id: 'patient-b', client_request_id: 'request-b' }),
+    patient({ id: 'patient-c', client_request_id: 'request-c' }),
+  ];
+  const { handler, calls } = await loadBroker('list', { patients: rows });
+  const cursor = pageCursor({ page_size: 1 });
+  const { response, json } = await invoke(
+    handler,
+    'listAuthorizedPatients',
+    pageBody({ page_size: 1, cursor }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(json.patients.map((row) => row.id), ['patient-b']);
+  assert.deepEqual(json.page, {
+    page_size: 1,
+    sort: 'id_asc',
+    after_id: 'patient-a',
+    has_more: true,
+    next_cursor: pageCursor({ after_id: 'patient-b', page_size: 1 }),
+  });
+  assert.equal(calls.patients.length, 2);
+  for (const call of calls.patients) {
+    assert.deepEqual(call.query, {
+      agency_id: 'agency-a',
+      is_sample: false,
+      is_archived: false,
+      created_by_user_id: 'user-1',
+      created_by_user_email_normalized: 'clinician@agency.test',
+      id: { $gt: 'patient-a' },
+    });
+    assert.equal(call.sort, 'id');
+    assert.equal(call.limit, 2);
+    assert.equal(call.offset, undefined);
+  }
+});
+
+test('list rejects legacy paging, malformed cursors, and changed cursor authority', async () => {
+  for (const body of [
+    pageBody({ offset: 25 }),
+    pageBody({ sort: 'updated_desc' }),
+    pageBody({ cursor: { ...pageCursor(), extra: true } }),
+    pageBody({ cursor: pageCursor({ purpose: 'contact' }) }),
+    pageBody({ cursor: pageCursor({ status: 'active' }) }),
+    pageBody({ cursor: pageCursor({ page_size: 10 }) }),
+  ]) {
+    const invalid = await loadBroker('list');
+    const result = await invoke(invalid.handler, 'listAuthorizedPatients', body);
+    assert.equal(result.response.status, 400);
+    assert.equal(invalid.calls.auth, 0);
+    assert.deepEqual(invalid.calls.patients, []);
+  }
+
+  const changed = await loadBroker('list');
+  const changedResult = await invoke(
+    changed.handler,
+    'listAuthorizedPatients',
+    pageBody({ cursor: pageCursor({ membership_version: 1 }) }),
+  );
+  assert.equal(changedResult.response.status, 409);
+  assert.match(changedResult.json.error, /continuation context changed/);
+  assert.equal(changed.calls.auth, 1);
+  assert.deepEqual(changed.calls.patients, []);
 });
 
 test('manager page is agency-wide while contact and identity purposes remain role-gated', async () => {

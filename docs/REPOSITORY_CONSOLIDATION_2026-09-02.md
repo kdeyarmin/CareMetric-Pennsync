@@ -298,27 +298,43 @@ store, and rollback gates below also remain open.
 The subsequent Patient read-broker checkpoint explicitly deployed two reviewed,
 read-only functions to the same isolated staging app:
 `getAuthorizedPatient` for one exact chart and `listAuthorizedPatients` for a
-bounded authorized roster. Both shaped anonymous POST probes returned HTTP 401
-with `{"error":"Unauthorized"}`. Hosted function inventory increased from 256
-to 258 while the schema inventory remained 239. Post-probe connector queries
-again reported zero Agency, AgencyMembership, Patient, Visit, Document,
-PatientNoteHistoryEntry, OutcomeComputationRun, PatientOutcomeMetric, and
-AgencyKPI rows.
+bounded authorized roster. The list broker was subsequently redeployed in place
+after removing unstable offset and mutable-field sorting; continuation now uses
+one context-bound `id` keyset and re-resolves authority on every request. Base44
+accepts the exact `$gt` plus `sort: "id"` query shape, but the empty app cannot
+prove multi-row ordering or collation. Shaped anonymous POST probes returned
+HTTP 401 with `{"error":"Unauthorized"}` before privileged access. Hosted
+function inventory remains 258 and schema inventory remains 239. Post-probe
+connector queries again reported zero Agency, AgencyMembership, Patient, Visit,
+Document, PatientNoteHistoryEntry, OutcomeComputationRun,
+PatientOutcomeMetric, and AgencyKPI rows.
+
+Source also now contains an unwired, undeployed `DocumentTenantBinding` schema
+with all direct operations denied and a purpose-bound
+`createAuthorizedDocument` upload/create broker. It validates finite multipart
+files, resolves exact immutable actor/membership/Agency/optional-Patient
+authority, binds idempotency to that authority, verifies exact readback, and
+compensates only the request-created Document on failure. This is foundation,
+not a production-ready Document cutover: datastore uniqueness/transactions,
+orphan upload reconciliation, private or signed delivery, storage-host
+allowlisting, full parsing and malware scanning, existing-row backfill, and all
+legacy read/write migrations remain open. Neither the schema nor function was
+deployed to staging.
 
 The two brokers are intentionally not wired into the SPA yet, and direct
 `Patient.rls.read` remains broad rather than false. Cutover still requires
-migrating every Patient read consumer, proving bounded/offset paging behavior,
-replacing email-based assignment with immutable user-id authority, completing
-tenant/provenance backfill, and running the authenticated two-agency matrix.
-The deployment changed no production app, data or schema, domain, native binary,
-or app-store record.
+migrating every Patient read consumer, proving authenticated multi-row hosted
+keyset traversal without gaps or duplicates, replacing email-based assignment
+with immutable user-id authority, completing tenant/provenance backfill, and
+running the authenticated two-agency matrix. The deployment changed no
+production app, data or schema, domain, native binary, or app-store record.
 
-Latest full validation passes 2,065 core tests, 34 schema/contracts, 379
-security tests, 47 deduplication tests, and 986 component tests (3,511 checks
-across the package groups). All 258 backend functions transpile and all 244
-shared-helper consumers match. ESLint, `typecheck:signal`, the staging-bound
-build, dependency audit with one low and no high-severity finding, and `git diff
---check` pass.
+Latest full validation passes 2,065 core tests, 34 schema/contracts, 392
+security tests, 47 deduplication tests, and 992 component tests (3,530 checks
+across the package groups). All 259 local backend functions transpile and all
+244 shared-helper consumers match. ESLint, `typecheck:signal`, the
+staging-bound build, dependency audit with one low and no high-severity finding,
+and `git diff --check` pass.
 
 The staging pass also removed mutable `account_type`/agency-profile privilege
 from the highest-risk service-role paths: dashboard and alert reads/mutations,
@@ -367,9 +383,10 @@ functions, or upload a native binary until all of these are complete:
    legacy broad Patient writers are paused before access. Reviewed chart and
    roster read brokers are deployed to staging but intentionally unwired;
    Patient read RLS remains broad and consumers still use direct entity access
-   plus client filtering. Migrate every read consumer, prove bounded/offset
-   paging, add immutable user-id care-team assignments, complete the remaining
-   subtractive service-role maintenance review, and remove the
+   plus client filtering. Migrate every read consumer, prove authenticated
+   multi-row hosted keyset traversal and concurrency behavior, add immutable
+   user-id care-team assignments, complete the remaining subtractive
+   service-role maintenance review, and remove the
    global-admin/sample read bypass only after a reviewed tenant/provenance
    backfill and authenticated two-agency proof.
 2. Keep `oasis_response_schema_v2_enabled` false. Complete named clinical SME

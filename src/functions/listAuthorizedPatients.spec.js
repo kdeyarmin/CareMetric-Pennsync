@@ -14,17 +14,38 @@ const scope = {
   tenant_role: 'manager',
 };
 
+const cursor = (overrides = {}) => ({
+  version: 1,
+  after_id: 'patient-a',
+  agency_id: 'agency-a',
+  purpose: 'roster',
+  status: 'active',
+  sort: 'id_asc',
+  page_size: 20,
+  subject_user_id: 'user-1',
+  membership_id: 'membership-a',
+  membership_version: 2,
+  tenant_role: 'manager',
+  ...overrides,
+});
+
 describe('listAuthorizedPatients wrapper', () => {
   beforeEach(() => invoke.mockReset());
 
-  it('invokes a bounded page with explicit purpose and tenant scope', async () => {
+  it('invokes an id-keyset continuation with explicit purpose and tenant scope', async () => {
     invoke.mockResolvedValue({
       data: {
         success: true,
         mode: 'page',
         purpose: 'roster',
-        patients: [{ id: 'patient-a', first_name: 'Ada', status: 'active' }],
-        page: { page_size: 20, offset: 40, has_more: true, next_offset: 60 },
+        patients: [{ id: 'patient-b', first_name: 'Ada', status: 'active' }],
+        page: {
+          page_size: 20,
+          sort: 'id_asc',
+          after_id: 'patient-a',
+          has_more: true,
+          next_cursor: cursor({ after_id: 'patient-b' }),
+        },
         scope,
       },
     });
@@ -33,20 +54,20 @@ describe('listAuthorizedPatients wrapper', () => {
       mode: 'page',
       purpose: 'roster',
       status: 'active',
-      sort: 'name_asc',
+      sort: 'id_asc',
       pageSize: 20,
-      offset: 40,
+      cursor: cursor(),
     });
     expect(invoke).toHaveBeenCalledWith('listAuthorizedPatients', {
       agency_id: 'agency-a',
       mode: 'page',
       purpose: 'roster',
       status: 'active',
-      sort: 'name_asc',
+      sort: 'id_asc',
       page_size: 20,
-      offset: 40,
+      cursor: cursor(),
     });
-    expect(result.page.next_offset).toBe(60);
+    expect(result.page.next_cursor.after_id).toBe('patient-b');
   });
 
   it('invokes a capped id batch and accepts only requested ids', async () => {
@@ -76,8 +97,14 @@ describe('listAuthorizedPatients wrapper', () => {
       agencyId: 'agency-a', mode: 'page', purpose: 'contact', pageSize: 26,
     })).rejects.toThrow(/pageSize/);
     await expect(listAuthorizedPatients({
-      agencyId: 'agency-a', mode: 'page', purpose: 'roster', pageSize: 25, offset: 4990,
-    })).rejects.toThrow(/offset/);
+      agencyId: 'agency-a', mode: 'page', purpose: 'roster', pageSize: 25, offset: 25,
+    })).rejects.toThrow(/unsupported/);
+    await expect(listAuthorizedPatients({
+      agencyId: 'agency-a', mode: 'page', purpose: 'roster', sort: 'name_asc',
+    })).rejects.toThrow(/sort/);
+    await expect(listAuthorizedPatients({
+      agencyId: 'agency-a', mode: 'page', purpose: 'roster', cursor: { ...cursor(), extra: true },
+    })).rejects.toThrow(/cursor/);
     await expect(listAuthorizedPatients({
       agencyId: 'agency-a', mode: 'ids', purpose: 'roster', patientIds: ['patient-a', 'patient-a'],
     })).rejects.toThrow(/patientIds/);
@@ -112,7 +139,13 @@ describe('listAuthorizedPatients wrapper', () => {
         mode: 'page',
         purpose: 'roster',
         patients: [{ id: 'patient-a' }, { id: 'patient-a' }],
-        page: { page_size: 25, offset: 0, has_more: false, next_offset: 25 },
+        page: {
+          page_size: 25,
+          sort: 'id_asc',
+          after_id: null,
+          has_more: false,
+          next_cursor: null,
+        },
         scope,
       },
     });
@@ -128,7 +161,13 @@ describe('listAuthorizedPatients wrapper', () => {
         mode: 'page',
         purpose: 'roster',
         patients: [{ id: 'patient-a' }, { id: 'patient-b' }],
-        page: { page_size: 1, offset: 0, has_more: true, next_offset: 1 },
+        page: {
+          page_size: 1,
+          sort: 'id_asc',
+          after_id: null,
+          has_more: true,
+          next_cursor: cursor({ after_id: 'patient-b', status: null, page_size: 1 }),
+        },
         scope,
       },
     });
@@ -147,6 +186,33 @@ describe('listAuthorizedPatients wrapper', () => {
     });
     await expect(listAuthorizedPatients({
       agencyId: 'agency-a', mode: 'ids', purpose: 'roster', patientIds: ['patient-a'],
+    })).rejects.toThrow(/list failed/);
+  });
+
+  it('rejects a next cursor whose query or authority context changed', async () => {
+    invoke.mockResolvedValue({
+      data: {
+        success: true,
+        mode: 'page',
+        purpose: 'roster',
+        patients: [{ id: 'patient-b' }],
+        page: {
+          page_size: 20,
+          sort: 'id_asc',
+          after_id: 'patient-a',
+          has_more: true,
+          next_cursor: cursor({ after_id: 'patient-b', membership_version: 3 }),
+        },
+        scope,
+      },
+    });
+    await expect(listAuthorizedPatients({
+      agencyId: 'agency-a',
+      mode: 'page',
+      purpose: 'roster',
+      status: 'active',
+      pageSize: 20,
+      cursor: cursor(),
     })).rejects.toThrow(/list failed/);
   });
 });

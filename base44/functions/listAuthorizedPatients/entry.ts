@@ -3,10 +3,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 /**
  * Bounded, purpose-bound Patient list broker.
  *
- * Every service query is tenant-scoped before limit/offset are applied. This
- * first slice supports a small page or a capped id batch only; it deliberately
- * omits arbitrary filters, field selection, full exports, and search scans.
- * Mutable assigned_nurses email values are not treated as authority.
+ * Every service query is tenant-scoped before the keyset continuation is
+ * applied. This first slice supports a small page or a capped id batch only;
+ * it deliberately omits arbitrary filters, field selection, full exports,
+ * and search scans. Mutable assigned_nurses email values are not treated as
+ * authority.
  */
 
 const MAX_BODY_BYTES = 20_000;
@@ -14,8 +15,8 @@ const MAX_IDENTIFIER_LENGTH = 200;
 const MEMBERSHIP_SCAN_LIMIT = 100;
 const EXACT_ROW_LIMIT = 10;
 const MAX_PAGE_SIZE = 50;
-const MAX_PAGE_OFFSET = 5_000;
 const MAX_BATCH_IDS = 25;
+const CURSOR_VERSION = 1;
 
 const MEMBERSHIP_STATUSES = new Set(['pending', 'active', 'suspended', 'revoked']);
 const TENANT_ROLES = new Set([
@@ -29,10 +30,7 @@ const TENANT_ROLES = new Set([
 const ENABLED_AGENCY_STATUSES = new Set(['active', 'trial']);
 const VISIBLE_PATIENT_STATUSES = new Set(['active', 'hospitalized', 'discharged']);
 const AGENCY_WIDE_ROLES = new Set(['agency_admin', 'manager', 'platform_owner']);
-const SORTS: Record<string, string> = {
-  updated_desc: '-updated_date',
-  name_asc: 'last_name',
-};
+const PAGE_SORT = 'id_asc';
 
 // <<<BEGIN AUTHORIZED PATIENT LIST PURPOSE POLICY>>>
 const PURPOSE_FIELDS: Record<string, readonly string[]> = {
@@ -187,6 +185,99 @@ function sameValue(left: unknown, right: unknown) {
   return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right));
 }
 
+/**
+ * The continuation is deliberately an unsigned, untrusted context echo. It
+ * is not an authorization credential and does not claim tamper resistance.
+ * Re-resolved authority and a server-built tenant query remain the security
+ * boundary; changing after_id can only seek within that already-authorized
+ * scope.
+ */
+function parsePageCursor(
+  value: unknown,
+  expected: {
+    agencyId: string;
+    purpose: string;
+    status: string | null;
+    sort: string;
+    pageSize: number;
+  },
+) {
+  if (value === undefined || value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new PublicError(400, 'cursor is invalid');
+  }
+  const cursor = value as Record<string, unknown>;
+  const required = [
+    'version',
+    'after_id',
+    'agency_id',
+    'purpose',
+    'status',
+    'sort',
+    'page_size',
+    'subject_user_id',
+    'membership_id',
+    'membership_version',
+    'tenant_role',
+  ];
+  const keys = Object.keys(cursor);
+  if (keys.length !== required.length || required.some((key) => !Object.hasOwn(cursor, key))) {
+    throw new PublicError(400, 'cursor is invalid');
+  }
+  const afterId = exactIdentifier(cursor.after_id);
+  const agencyId = exactIdentifier(cursor.agency_id);
+  const subjectUserId = exactIdentifier(cursor.subject_user_id);
+  const membershipId = cursor.membership_id === null
+    ? null
+    : exactIdentifier(cursor.membership_id);
+  const membershipVersion = cursor.membership_version;
+  const tenantRole = typeof cursor.tenant_role === 'string' ? cursor.tenant_role : '';
+  const status = cursor.status === null ? null : String(cursor.status);
+  if (
+    cursor.version !== CURSOR_VERSION
+    || !afterId
+    || !agencyId
+    || !subjectUserId
+    || !Object.hasOwn(PURPOSE_FIELDS, String(cursor.purpose || ''))
+    || (status !== null && !VISIBLE_PATIENT_STATUSES.has(status))
+    || cursor.sort !== PAGE_SORT
+    || !Number.isSafeInteger(cursor.page_size)
+    || Number(cursor.page_size) < 1
+    || Number(cursor.page_size) > MAX_PAGE_SIZE
+    || !PURPOSE_ROLES[expected.purpose]?.has(tenantRole)
+    || (tenantRole === 'platform_owner'
+      ? membershipId !== null || membershipVersion !== null
+      : !membershipId
+        || !Number.isSafeInteger(membershipVersion)
+        || Number(membershipVersion) < 1)
+  ) {
+    throw new PublicError(400, 'cursor is invalid');
+  }
+  const normalized = {
+    version: CURSOR_VERSION,
+    after_id: afterId,
+    agency_id: agencyId,
+    purpose: String(cursor.purpose),
+    status,
+    sort: PAGE_SORT,
+    page_size: Number(cursor.page_size),
+    subject_user_id: subjectUserId,
+    membership_id: membershipId,
+    membership_version: membershipVersion === null ? null : Number(membershipVersion),
+    tenant_role: tenantRole,
+  };
+  if (
+    normalized.agency_id !== expected.agencyId
+    || normalized.purpose !== expected.purpose
+    || normalized.status !== expected.status
+    || normalized.sort !== expected.sort
+    || normalized.page_size !== expected.pageSize
+  ) {
+    throw new PublicError(400, 'cursor does not match the Patient list request');
+  }
+  return normalized;
+}
+
 async function parseRequest(req: Request) {
   const contentLength = Number(req.headers.get('content-length'));
   if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
@@ -218,18 +309,17 @@ async function parseRequest(req: Request) {
   if (!Object.hasOwn(PURPOSE_FIELDS, purpose)) throw new PublicError(400, 'purpose is invalid');
 
   if (mode === 'page') {
-    const allowed = ['agency_id', 'mode', 'purpose', 'status', 'sort', 'page_size', 'offset'];
+    const allowed = ['agency_id', 'mode', 'purpose', 'status', 'sort', 'page_size', 'cursor'];
     if (Object.keys(record).some((key) => !allowed.includes(key))) {
       throw new PublicError(400, 'Request contains unsupported fields');
     }
     const status = record.status === undefined ? null : String(record.status);
-    const sort = record.sort === undefined ? 'updated_desc' : String(record.sort);
+    const sort = record.sort === undefined ? PAGE_SORT : String(record.sort);
     const pageSize = record.page_size === undefined ? 25 : Number(record.page_size);
-    const offset = record.offset === undefined ? 0 : Number(record.offset);
     if (status !== null && !VISIBLE_PATIENT_STATUSES.has(status)) {
       throw new PublicError(400, 'status is invalid');
     }
-    if (!Object.hasOwn(SORTS, sort)) throw new PublicError(400, 'sort is invalid');
+    if (sort !== PAGE_SORT) throw new PublicError(400, 'sort is invalid');
     if (
       !Number.isSafeInteger(pageSize)
       || pageSize < 1
@@ -238,15 +328,14 @@ async function parseRequest(req: Request) {
     ) {
       throw new PublicError(400, 'page_size is invalid');
     }
-    if (
-      !Number.isSafeInteger(offset)
-      || offset < 0
-      || offset > MAX_PAGE_OFFSET
-      || offset + pageSize > MAX_PAGE_OFFSET
-    ) {
-      throw new PublicError(400, 'offset is invalid');
-    }
-    return { agencyId, mode, purpose, status, sort, pageSize, offset, patientIds: [] };
+    const cursor = parsePageCursor(record.cursor, {
+      agencyId,
+      purpose,
+      status,
+      sort,
+      pageSize,
+    });
+    return { agencyId, mode, purpose, status, sort, pageSize, cursor, patientIds: [] };
   }
 
   if (mode === 'ids') {
@@ -270,9 +359,9 @@ async function parseRequest(req: Request) {
       mode,
       purpose,
       status: null,
-      sort: 'updated_desc',
+      sort: PAGE_SORT,
       pageSize: 0,
-      offset: 0,
+      cursor: null,
       patientIds: patientIds as string[],
     };
   }
@@ -424,6 +513,37 @@ function requirePurposeRole(authority: Record<string, any>, purpose: string) {
   }
 }
 
+function pageCursorContext(
+  input: Record<string, any>,
+  authority: Record<string, any>,
+  afterId: string,
+) {
+  return {
+    version: CURSOR_VERSION,
+    after_id: afterId,
+    agency_id: authority.agencyId,
+    purpose: input.purpose,
+    status: input.status,
+    sort: PAGE_SORT,
+    page_size: input.pageSize,
+    subject_user_id: authority.userId,
+    membership_id: authority.membership?.id ?? null,
+    membership_version: authority.membership?.version ?? null,
+    tenant_role: authority.tenantRole,
+  };
+}
+
+function requireCursorAuthority(
+  cursor: Record<string, any> | null,
+  input: Record<string, any>,
+  authority: Record<string, any>,
+) {
+  if (!cursor) return;
+  if (!sameValue(cursor, pageCursorContext(input, authority, cursor.after_id))) {
+    throw new PublicError(409, 'Patient list continuation context changed');
+  }
+}
+
 function patientScope(authority: Record<string, any>) {
   const scope: Record<string, any> = {
     agency_id: authority.agencyId,
@@ -515,12 +635,13 @@ async function loadPage(
 ) {
   const query: Record<string, any> = patientScope(authority);
   if (input.status !== null) query.status = input.status;
+  if (input.cursor) query.id = { $gt: input.cursor.after_id };
   const rawRows = requireRows(
     await entities.Patient.filter(
       query,
-      SORTS[input.sort],
+      'id',
       input.pageSize + 1,
-      input.offset,
+      undefined,
       patientReadFields(input.purpose),
     ),
     'Patient.filter',
@@ -532,10 +653,17 @@ async function loadPage(
     throw new PublicError(409, 'Patient result scope check failed');
   }
   const ids = new Set<string>();
+  let previousId = input.cursor?.after_id ?? null;
   const rows = rawRows.map((row) => {
     const validated = validatePatientIntegrity(row, authority);
-    if (ids.has(validated.id)) throw new PublicError(409, 'Patient page is ambiguous');
+    if (
+      ids.has(validated.id)
+      || (previousId !== null && validated.id <= previousId)
+    ) {
+      throw new PublicError(409, 'Patient page is ambiguous');
+    }
     ids.add(validated.id);
+    previousId = validated.id;
     return validated;
   });
   return rows;
@@ -605,6 +733,7 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const initialAuthority = await loadAuthority(base44, input.agencyId);
     requirePurposeRole(initialAuthority, input.purpose);
+    requireCursorAuthority(input.cursor, input, initialAuthority);
     const entities = base44.asServiceRole.entities;
     const initialRows = await loadPatients(entities, input, initialAuthority);
     const initialRowsSnapshot = patientRowsSnapshot(initialRows);
@@ -615,6 +744,7 @@ Deno.serve(async (req) => {
       initialAuthority.snapshot,
     );
     requirePurposeRole(finalAuthority, input.purpose);
+    requireCursorAuthority(input.cursor, input, finalAuthority);
     const finalRows = await loadPatients(entities, input, finalAuthority);
     if (!sameValue(patientRowsSnapshot(finalRows), initialRowsSnapshot)) {
       throw new PublicError(409, 'Patient read authority changed during request');
@@ -637,15 +767,18 @@ Deno.serve(async (req) => {
     };
     if (input.mode === 'page') {
       const hasMore = finalRows.length > input.pageSize;
-      const nextOffset = input.offset + input.pageSize;
-      if (hasMore && nextOffset + input.pageSize > MAX_PAGE_OFFSET) {
-        throw new PublicError(409, 'Patient page exceeds the bounded window');
+      const nextAfterId = hasMore ? visibleRows[visibleRows.length - 1]?.id : null;
+      if (hasMore && !exactIdentifier(nextAfterId)) {
+        throw new PublicError(409, 'Patient page is ambiguous');
       }
       response.page = {
         page_size: input.pageSize,
-        offset: input.offset,
+        sort: PAGE_SORT,
+        after_id: input.cursor?.after_id ?? null,
         has_more: hasMore,
-        next_offset: hasMore ? nextOffset : null,
+        next_cursor: hasMore
+          ? pageCursorContext(input, finalAuthority, nextAfterId)
+          : null,
       };
     }
     return Response.json(response);
