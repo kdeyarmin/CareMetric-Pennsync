@@ -51,7 +51,7 @@ none of these operations targeted the CareMetric production app above:
 | PWA | hosted manifest preserves relative `id`, `start_url`, and `scope`; all four manifest icons and the Apple touch icon return HTTP 200 |
 | Entities | all `236 / 236` local entity names match staging; hosted deployment accepted the candidate schemas, including operation-specific service-role-only OASIS/outcome/PDGM contracts |
 | Time zone | `America/New_York` is the default business/agency clock, giving Eastern Standard or Daylight Time as seasonally appropriate |
-| Data | only the staging owner account exists; anonymous lists and privileged connector queries confirm zero rows across the 51-entity negative-probe cohort |
+| Data | only the staging owner account exists; anonymous lists and privileged connector queries confirm zero rows across the 58-entity negative-probe cohort |
 | Functions | all `242 / 242` local functions are deployed; exact local/hosted inventory reconciliation found no missing or extra functions |
 | Feature gates | no AgencySettings row exists; `oasis_response_schema_v2_enabled` therefore remains absent/default-off, the writer remains hard-paused, PDGM reimbursement remains source-disabled, and no outcome schedule was added |
 
@@ -77,19 +77,29 @@ tests. That syntax migration deliberately preserves each policy's effective
 access while the actual authorization model is redesigned. A reviewed
 fail-closed pass then locked unused, service-only, disabled OASIS, inbound-fax,
 parallel-message, and dormant clinical PHI entities without breaking a live
-client path. The remaining inventory is `36 / 236` schemas with no RLS,
-`43 / 236` permitting unrestricted mutations, and `63 / 236` permitting
+client path. `CertificatePacketCache` is now service-role-only and its private
+file references are available only through the authorized packet function. The
+service-only PDGM case-mix, supply inventory/usage/prediction, low-stock alert,
+and skill-badge definitions are now fail-closed as well. Their backend consumers
+use service-role access; no browser consumer reads them directly. The remaining
+inventory is `29 / 236` schemas with no RLS, `36 / 236` permitting unrestricted
+mutations, and `56 / 236` permitting
 unrestricted reads. Those exact cohorts are hash-pinned so the debt
 cannot change without explicit review. Per-operation integrity, tenant-owned
 authority, and hosted authenticated workflow proofs remain production blockers.
-The complete staging schema push succeeded. All 51 shaped anonymous POST probes
-returned HTTP 403: the 40 fully fail-closed entities, Message, TrainingQuestion,
+The complete staging schema push succeeded. All 58 shaped anonymous POST probes
+returned HTTP 403: the prior 51-entity cohort plus CertificatePacketCache,
+PDGMCaseMix, SkillBadge, SupplyItem, SupplyLowStockAlert, SupplyPrediction, and
+SupplyUsageLog. The original cohort includes the 40 previously fail-closed
+entities, Message, TrainingQuestion,
 FaxLog, FaxContact, FaxTemplate, and the five critical OASIS/outcome/PDGM
 entities, plus the owner-only PDFIndex. Every anonymous list returned an empty
 array, and privileged connector queries confirmed `count: 0` for the same
-cohort, so no probe row was created. The hosted staging site and all five PWA
-icons return HTTP 200. Local release validation passes 2,040 core tests, 33
-schema/contracts, 179 security tests, 47 deduplication tests, and 950 component
+58-entity cohort, so no probe row was created. Anonymous calls to the hardened
+certificate packet and cleanup functions return HTTP 401 and 403 respectively.
+The hosted staging site and all five PWA icons return HTTP 200. Local release
+validation passes 2,040 core tests, 33 schema/contracts, 188 security tests, 47
+deduplication tests, and 950 component
 tests; all 242 backend functions transpile and the staging-bound frontend builds.
 
 The staging pass also removed mutable `account_type`/agency-profile privilege
@@ -125,8 +135,8 @@ functions, or upload a native binary until all of these are complete:
 1. Continue validation in the separate nonproduction Base44 app. Exact entity
    and function inventory is now hosted, and anonymous-write denial is proved
    for the five critical OASIS/outcome/PDGM entities. The ignored legacy
-   mutation-key syntax is fully migrated, but `36` no-RLS schemas, `43`
-   mutation-open schemas, and `63` read-open schemas remain explicitly tracked
+   mutation-key syntax is fully migrated, but `29` no-RLS schemas, `36`
+   mutation-open schemas, and `56` read-open schemas remain explicitly tracked
    debt. Before production, replace those permissive policies with reviewed
    per-operation tenant rules and prove authenticated multi-user isolation,
    uploads, shared-patient workflows, and negative cross-tenant cases with at

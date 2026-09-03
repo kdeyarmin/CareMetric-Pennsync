@@ -9,11 +9,22 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     
     if (!user) {
@@ -27,22 +38,33 @@ Deno.serve(async (req) => {
     if (!employeeId || typeof employeeId !== 'string') {
       return Response.json({ error: 'employeeId is required' }, { status: 400 });
     }
+    if (certificateIds !== undefined && (
+      !Array.isArray(certificateIds)
+      || certificateIds.length > 5000
+      || certificateIds.some((id) => typeof id !== 'string' || !id.trim() || id.length > 200)
+    )) {
+      return Response.json({ error: 'certificateIds must be an array of valid IDs' }, { status: 400 });
+    }
+    const isIsoDate = (value) => {
+      if (value === undefined || value === null || value === '') return true;
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const parsed = new Date(`${value}T00:00:00.000Z`);
+      return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    };
+    if (!isIsoDate(dateRangeStart) || !isIsoDate(dateRangeEnd)
+        || (dateRangeStart && dateRangeEnd && dateRangeStart > dateRangeEnd)) {
+      return Response.json({ error: 'date range must contain valid ordered YYYY-MM-DD dates' }, { status: 400 });
+    }
 
-    // Authorization: only admins can generate for others, users can only generate for themselves
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyAdmin = user.account_type === 'agency_admin';
-    if (employeeId !== user.email && !isAgencyAdmin && !isSuperAdmin) {
+    // Every user may export only their own packet. Cross-user export remains a
+    // platform-owner operation until tenant membership is server-owned. Custom
+    // account_type / agency fields are self-editable through auth.updateMe and
+    // are therefore never authorization inputs here.
+    const isSelf = normalizeProtectedEmail(employeeId) === normalizeProtectedEmail(user.email);
+    if (!isSelf && !isProtectedSuperAdmin(user)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    // Agency admins are scoped to their OWN agency — they must not pull certificate
-    // packets for employees of other agencies. Super admins are cross-agency.
-    if (employeeId !== user.email && isAgencyAdmin && !isSuperAdmin) {
-      const targets = await base44.asServiceRole.entities.User.filter({ email: employeeId }, '-created_date', 1);
-      const target = targets?.[0];
-      if (!target || !user.agency_name || target.agency_name !== user.agency_name) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    }
+    const targetEmployeeId = isSelf ? String(user.email) : employeeId.trim();
 
     // Check for existing valid cache. The cache key only tracks user_id + date
     // range, so a request that pins a specific set of certificateIds must NOT
@@ -50,14 +72,21 @@ Deno.serve(async (req) => {
     // regenerate) whenever explicit certificateIds are supplied.
     const hasExplicitIds = Array.isArray(certificateIds) && certificateIds.length > 0;
     const cacheQuery = {
-      user_id: employeeId,
+      user_id: targetEmployeeId,
       date_range_start: dateRangeStart || null,
       date_range_end: dateRangeEnd || null
     };
 
     const existingCache = hasExplicitIds
       ? []
-      : await base44.entities.CertificatePacketCache.filter(cacheQuery, undefined, 5000);
+      : (await base44.asServiceRole.entities.CertificatePacketCache
+        .filter(cacheQuery, '-created_date', 5000))
+        // Re-check every key in memory. A service-role response must never be
+        // trusted merely because its query carried a filter.
+        .filter((cache) =>
+          normalizeProtectedEmail(cache?.user_id) === normalizeProtectedEmail(targetEmployeeId)
+          && (cache?.date_range_start || null) === (dateRangeStart || null)
+          && (cache?.date_range_end || null) === (dateRangeEnd || null));
     
     if (existingCache && existingCache.length > 0) {
       const cache = existingCache[0];
@@ -67,7 +96,7 @@ Deno.serve(async (req) => {
       // If cache is still valid, return it
       if (expiresAt > now) {
         // Update download tracking
-        await base44.entities.CertificatePacketCache.update(cache.id, {
+        await base44.asServiceRole.entities.CertificatePacketCache.update(cache.id, {
           download_count: (cache.download_count || 0) + 1,
           last_downloaded: now.toISOString()
         });
@@ -93,16 +122,17 @@ Deno.serve(async (req) => {
     // caller's — so resolve `employee` to the target record rather than reusing
     // the authenticated caller (auth.me()).
     let employee = user;
-    if (employeeId !== user.email) {
-      const employees = await base44.asServiceRole.entities.User.filter({ email: employeeId }, undefined, 5000);
-      if (!employees || employees.length === 0) {
+    if (!isSelf) {
+      const employees = await base44.asServiceRole.entities.User.filter({ email: targetEmployeeId }, undefined, 5000);
+      employee = (employees || []).find((candidate) =>
+        normalizeProtectedEmail(candidate?.email) === normalizeProtectedEmail(targetEmployeeId));
+      if (!employee) {
         return Response.json({ error: 'Employee not found' }, { status: 404 });
       }
-      employee = employees[0];
     }
 
     // Fetch certificates
-    let query = { user_id: employeeId, revoked: false };
+    let query = { user_id: targetEmployeeId, revoked: false };
     if (certificateIds && certificateIds.length > 0) {
       query.id = { $in: certificateIds };
     } else if (dateRangeStart || dateRangeEnd) {
@@ -111,11 +141,21 @@ Deno.serve(async (req) => {
       if (dateRangeEnd) query.issued_at.$lte = `${dateRangeEnd}T23:59:59Z`;
     }
 
-    const certificates = await base44.asServiceRole.entities.TrainingCertificate.filter(
+    const certificates = (await base44.asServiceRole.entities.TrainingCertificate.filter(
       query,
       '-issued_at',
       5000,
-    );
+    )).filter((certificate) =>
+      normalizeProtectedEmail(certificate?.user_id) === normalizeProtectedEmail(targetEmployeeId));
+
+    if (hasExplicitIds) {
+      const requestedIds = new Set(certificateIds.map((id) => String(id || '').trim()).filter(Boolean));
+      const returnedIds = new Set(certificates.map((certificate) => String(certificate?.id || '').trim()));
+      if (requestedIds.size !== certificateIds.length ||
+          [...requestedIds].some((id) => !returnedIds.has(id))) {
+        return Response.json({ error: 'One or more certificates were not found for this employee' }, { status: 404 });
+      }
+    }
 
     // Generate PDF server-side
     const doc = new jsPDF();
@@ -129,7 +169,7 @@ Deno.serve(async (req) => {
 
     doc.setFontSize(14);
     doc.setTextColor(80, 80, 80);
-    doc.text(employee.full_name || employeeId, pageWidth / 2, 60, { align: 'center' });
+    doc.text(employee.full_name || targetEmployeeId, pageWidth / 2, 60, { align: 'center' });
 
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
@@ -172,7 +212,7 @@ Deno.serve(async (req) => {
 
       doc.setFontSize(10);
       doc.setTextColor(80, 80, 80);
-      doc.text(`Presented to: ${employee.full_name || employeeId}`, pageWidth / 2, 100, { align: 'center' });
+      doc.text(`Presented to: ${employee.full_name || targetEmployeeId}`, pageWidth / 2, 100, { align: 'center' });
       doc.text(`Date Earned: ${new Date(cert.issued_at).toLocaleDateString()}`, pageWidth / 2, 120, { align: 'center' });
       
       if (cert.expiration_date) {
@@ -207,8 +247,8 @@ Deno.serve(async (req) => {
     // pinned-subset packet here would let a later all-certs / date-range request
     // for the same employee read it back. Generate + return without caching.
     if (!hasExplicitIds) {
-      await base44.entities.CertificatePacketCache.create({
-        user_id: employeeId,
+      await base44.asServiceRole.entities.CertificatePacketCache.create({
+        user_id: targetEmployeeId,
         certificate_ids_json: certificates.map(c => c.id),
         date_range_start: dateRangeStart || null,
         date_range_end: dateRangeEnd || null,

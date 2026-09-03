@@ -124,5 +124,11 @@
     "patient_id",
     "clinical_grouping",
     "functional_impairment_level"
-  ]
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
 }

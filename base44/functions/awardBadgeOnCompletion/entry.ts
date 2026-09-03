@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
     const leaderboardEntry = leaderboard[0];
 
     // Get all available badges
-    const allBadges = await base44.entities.SkillBadge.filter({ active: true }, undefined, 5000);
+    const allBadges = await base44.asServiceRole.entities.SkillBadge.filter({ active: true }, undefined, 5000);
 
     // Resolve the assignment and whether this attempt actually PASSED up front, so
     // achievement badges (high score, early completion, streak) and the

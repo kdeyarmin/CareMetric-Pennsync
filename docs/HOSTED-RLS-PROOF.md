@@ -281,12 +281,19 @@ negative proofs are still required before production.
 Against nonproduction app `6a9881683dc68a0bd54f1ef7`, after the complete
 236-schema push:
 
-- all 51 shaped anonymous POST probes returned HTTP 403, including the 40
-  fully fail-closed entities, Message, TrainingQuestion, FaxLog, FaxContact,
-  FaxTemplate, the five critical OASIS/outcome/PDGM entities, and PDFIndex;
-- all 51 anonymous list requests returned HTTP 200 with an empty array; and
-- privileged connector queries reported `count: 0` for all 51 entities, so no
+- all 58 shaped anonymous POST probes returned HTTP 403, including the prior
+  51-entity cohort and newly fail-closed CertificatePacketCache, PDGMCaseMix,
+  SkillBadge, SupplyItem, SupplyLowStockAlert, SupplyPrediction, and
+  SupplyUsageLog;
+- all 58 anonymous list requests returned HTTP 200 with an empty array; and
+- privileged connector queries reported `count: 0` for all 58 entities, so no
   probe row was created.
+
+Anonymous hosted calls to `generateAndCacheCertificatePacket` and
+`cleanupExpiredCertificateCache` return HTTP 401 and 403. Private cached-file
+references are therefore available only after the function's server-side
+authorization; self-editable `account_type` and agency profile fields cannot
+grant cross-user packet access or a platform-wide cleanup sweep.
 
 This is real hosted negative evidence for anonymous access. It is not LR-01:
 the authenticated multi-user/multi-agency matrix in sections 1–4 still needs
