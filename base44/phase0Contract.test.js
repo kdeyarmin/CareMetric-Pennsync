@@ -168,6 +168,44 @@ test('hosted RLS proof worksheet exists and refuses to fake local proof', () => 
   assert.match(checklist, /HOSTED-RLS-PROOF\.md/);
 });
 
+test('tenant-isolation documentation keeps the immutable authority model', () => {
+  const proof = source('docs/HOSTED-RLS-PROOF.md');
+  assert.match(proof, /Authority invariant/i);
+  assert.match(proof, /Platform-Owner/);
+  assert.match(proof, /Admin-A \| Agency A \| `user` \| active `agency_admin`/);
+  assert.match(proof, /Clinician-A \| Agency A \| `user` \| active `clinician`/);
+  assert.match(proof, /PatientCareTeamAssignment/);
+  assert.match(proof, /direct entity list\/get response as positive tenant\s+evidence/i);
+  assert.doesNotMatch(proof, /Admin-A \| Agency A \| admin \/ agency_admin/);
+  assert.doesNotMatch(proof, /Patient B1 \| Agency A/);
+
+  const template = JSON.parse(source('docs/audits/live-readiness-evidence.template.json'));
+  const lr01 = template.evidence['LR-01'];
+  assert.match(lr01.credentials_or_sandbox.summary, /built-in user plus active agency_admin\/clinician memberships/i);
+  assert.match(lr01.test_evidence.summary, /no direct entity reads or mutable claims/i);
+});
+
+test('native-store release documentation remains fail closed', () => {
+  const checklist = source('docs/APP_STORE_SUBMISSION_CHECKLIST.md');
+
+  assert.match(checklist, /No-native-upload gate/i);
+  assert.match(checklist, /No new IPA or AAB may be uploaded/i);
+  assert.match(checklist, /Apple and Google privacy disclosures/i);
+  assert.match(checklist, /Signing\/distribution continuity/i);
+  assert.match(checklist, /IAP\/billing continuity/i);
+  assert.match(checklist, /Physical iOS and Android devices/i);
+  assert.match(checklist, /\/privacy-policy/);
+  assert.match(checklist, /no approved in-app EULA route/i);
+  assert.match(checklist, /https:\/\/caremetricai\.com\/eula/);
+  assert.match(checklist, /remains unverified as\s+approved governing terms/i);
+
+  const historical = source('docs/BASE44_APPSTORE_COMPAT_REVIEW_2026-07-22.md');
+  assert.match(historical, /Partial supersession notice/i);
+  assert.match(historical, /Only its service-worker\/offline-shell passages/i);
+  assert.match(historical, /intentionally registers no service worker/i);
+  assert.match(historical, /findings below remain point-in-time July evidence/i);
+});
+
 test('true CAS remains a platform ask; in-repo uses claim+re-read not decorative row_version', () => {
   const cas = source('docs/PLATFORM-CAS.md');
   assert.match(cas, /If-Match/i);

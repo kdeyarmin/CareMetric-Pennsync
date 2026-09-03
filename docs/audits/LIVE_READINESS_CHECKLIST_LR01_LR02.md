@@ -45,15 +45,16 @@ with real references and reviewer approvals.**
 ### Preconditions
 
 - [ ] Staging (or pilot) Base44 app exists and is distinct from any production tenant
-- [ ] At least two test users: **Admin** and **Nurse** (non-admin)
-- [ ] Nurse is assigned to **Patient A only** (email in `Patient.assigned_nurses`)
-- [ ] Patient B exists and is **not** assigned to the nurse
+- [ ] Protected **Platform-Owner** exists only for setup/recovery (`User.role=admin` and exact `SUPER_ADMIN_EMAIL`) and is excluded from tenant assertions
+- [ ] Four tenant users exist with built-in `User.role=user`: **Admin-A**, **Clinician-A**, **Clinician-A-empty**, and **Admin-B**
+- [ ] Admin-A/Admin-B have active server-owned `AgencyMembership.tenant_role=agency_admin` in Agencies A/B; both clinicians have active Agency A `clinician` memberships
+- [ ] Fictional patients A1/A2 belong to Agency A and B1 belongs to Agency B; only Clinician-A has an active server-owned `PatientCareTeamAssignment` to A1
 - [ ] `INTERNAL_FN_SECRET`, `SIGNATURE_HMAC_SECRET` set in the platform (never `VITE_*`)
 
 ### Configuration steps
 
-1. [ ] Apply entity RLS matrix from `docs/SECURITY-RLS-CHECKLIST.md` §2
-2. [ ] Apply relation-based “by patient access” rules from `docs/RLS-REMEDIATION-SPEC-2026-06-19.md` for entities without in-repo RLS blocks (e.g. `DocumentSignature`, `FaxLog`, `Referral`, `PatientAlert`, …)
+1. [ ] Apply the deny-by-default entity RLS matrix from `docs/SECURITY-RLS-CHECKLIST.md` §2
+2. [ ] Route positive tenant reads through reviewed brokers that validate immutable membership and care-team assignment; direct PHI/authority entity reads are not positive evidence
 3. [ ] Lock training attestation writes to **service-role only** (`TrainingCertificate`, `TrainingCompletion`, attempt score/status) so clients cannot forge completions
 4. [ ] Confirm scheduled/internal functions require admin session **or** `x-internal-secret: <INTERNAL_FN_SECRET>` (fail-closed if secret unset)
 5. [ ] Enable **exactly one** scheduled-fax processor and **exactly one** `dispatchScheduledSms` schedule
@@ -62,10 +63,10 @@ with real references and reviewer approvals.**
 
 | # | Test | Pass criteria | Evidence ref |
 |---|---|---|---|
-| V1 | Nurse, no assigned patients | Dashboard / alerts / SMS / call history return empty lists; no other patients’ PHI in response bodies | |
-| V2 | Nurse assigned to A only | Sees A; does **not** see B in UI **or** network payloads | |
-| V3 | Admin | Agency-wide reads still work for expected admin surfaces | |
-| V4 | IDOR probe | `getScopedPatientAlerts` / chart / risk / PDF helpers with B’s id → 403/404/empty | |
+| V1 | Clinician-A-empty | `getMyTenantContext` proves active Agency A clinician membership; brokered roster is empty | |
+| V2 | Clinician-A | Brokered exact read permits A1 and denies A2/B1 in raw network responses | |
+| V3 | Admin-A and Admin-B | Brokered rosters are agency-wide only: Admin-A sees A1/A2, Admin-B sees B1 | |
+| V4 | IDOR probe | Reviewed brokers reject spoofed foreign-agency and B1 ids with 403/404/empty | |
 | V5 | Training forge | Direct non-admin `issueCertificate` / completion write without passing attempt → rejected | |
 | V6 | Audit hygiene | `UserActivity` / `SecurityLog` samples contain no message bodies or full phone numbers | |
 
@@ -85,11 +86,11 @@ with real references and reviewer approvals.**
 | Field | What to record |
 |---|---|
 | `owner` | Engineering + security owners |
-| `product_approval` | Product sign-off that staging isolation matches intended agency model |
-| `security_approval` | Security sign-off on RLS matrix + V1–V6 |
+| `product_approval` | Product sign-off that immutable membership/care-team authority matches the intended agency model |
+| `security_approval` | Security sign-off on secure-broker V1–V6 and cross-tenant T1–T4 evidence |
 | `hosted_environment` | Base44 app id / staging URL (no secrets) |
-| `credentials_or_sandbox` | Confirmation test users exist (no passwords in the packet) |
-| `test_evidence` | Links/IDs for V1–V6 artifacts (screenshots of network panels, ticket IDs) |
+| `credentials_or_sandbox` | Confirmation the canonical five actors and A1/A2/B1 fixtures exist (no passwords in the packet) |
+| `test_evidence` | Links/IDs for raw secure-broker V1–V6/T1–T4 artifacts (screenshots of network panels, ticket IDs) |
 | `rollback_plan` | Summary + link to runbook section |
 | `monitoring_plan` | Summary + log/alert destinations |
 | `reviewers` | `product` / `security` / `qa` / `release` → `approved` when done |
@@ -112,8 +113,8 @@ with real references and reviewer approvals.**
 
 | # | Flow | Pass criteria | Evidence ref |
 |---|---|---|---|
-| S1 | Login | Admin and nurse can sign in; wrong password fails cleanly | |
-| S2 | Patient list / chart | Nurse sees only assigned patients; chart opens | |
+| S1 | Login | Tenant admin and clinician can sign in; wrong password fails cleanly | |
+| S2 | Patient list / chart | Clinician sees only actively assigned patients through reviewed brokers; chart opens | |
 | S3 | Referral intake (or triage) | Create/accept path completes without client error; record visible | |
 | S4 | Smart Note or Visit Scribe | Save online path creates Visit + compliance artifacts | |
 | S5 | Offline note (optional but recommended) | Save offline → reconnect → single visit (no duplicate CREATE) | |

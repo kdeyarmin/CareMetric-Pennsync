@@ -1,5 +1,15 @@
 # Base44 + Apple App Store Compatibility Review — 2026-07-22
 
+> **Partial supersession notice (2026-09-03):** This remains a point-in-time
+> July audit. Only its service-worker/offline-shell passages and any native/store
+> readiness conclusion that conflicts with the current checklist are superseded.
+> Current source intentionally registers no service worker and has retired
+> `public/sw.js` and `public/offline.html`; `src/lib/hostedPaths.spec.js` guards
+> that state. Use `docs/APP_STORE_SUBMISSION_CHECKLIST.md` and
+> `docs/REPOSITORY_CONSOLIDATION_2026-09-02.md` for current release gates. Other
+> findings below remain point-in-time July evidence unless a later record
+> expressly changes them.
+
 Full-codebase review verifying that PennSync works correctly as a Base44-hosted app and as an
 Apple App Store (iOS WKWebView wrapper) app. The review combined:
 

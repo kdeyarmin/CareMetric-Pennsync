@@ -12,11 +12,11 @@
         "references": ["docs/SECURITY-RLS-CHECKLIST.md", "docs/RLS-LAUNCH-RUNBOOK.md", "docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md"]
       },
       "product_approval": {
-        "summary": "FILL_ME: Product confirmed agency access model matches RLS matrix (nurse sees assigned patients only; admin agency-wide)",
+        "summary": "FILL_ME: Product confirmed server-owned membership and care-team authority; platform owner excluded from tenant assertions",
         "references": []
       },
       "security_approval": {
-        "summary": "FILL_ME: Security reviewed RLS matrix and multi-role tests V1-V6",
+        "summary": "FILL_ME: Security reviewed secure-broker, two-agency, immutable-membership, and cross-tenant tests",
         "references": []
       },
       "hosted_environment": {
@@ -24,16 +24,16 @@
         "references": []
       },
       "credentials_or_sandbox": {
-        "summary": "FILL_ME: Admin test user + Nurse test user provisioned; nurse assigned to Patient A only; Patient B exists and is NOT assigned to nurse. Confirm INTERNAL_FN_SECRET and SIGNATURE_HMAC_SECRET set (never VITE_*).",
+        "summary": "FILL_ME: Admin-A/Admin-B and Clinician-A/Clinician-A-empty use built-in user plus active agency_admin/clinician memberships; A1 assigned, A2 unassigned, B1 foreign; platform owner reserved and excluded. Confirm INTERNAL_FN_SECRET and SIGNATURE_HMAC_SECRET set (never VITE_*).",
         "references": []
       },
       "test_evidence": {
-        "summary": "FILL_ME: V1-V6 multi-role RLS checks against raw network responses (not UI alone). Attach ticket IDs or external screenshot links (no PHI in repo).",
+        "summary": "FILL_ME: V1-V6 and T1-T4 against raw secure-broker responses; no direct entity reads or mutable claims. Attach ticket IDs or external screenshot links (no PHI in repo).",
         "references": [
-          "V1: Nurse with no assigned patients — dashboard/alerts/SMS/call history empty; no other patients PHI in response bodies",
-          "V2: Nurse assigned to A only — sees A; does not see B in UI or network payloads",
-          "V3: Admin — agency-wide reads still work",
-          "V4: IDOR probe — getScopedPatientAlerts/chart/risk/PDF with B id returns 403/404/empty",
+          "V1: Clinician-A-empty — active Agency A clinician context; brokered patient roster empty",
+          "V2: Clinician-A — broker permits A1 and rejects unassigned A2 and foreign B1",
+          "V3: Admin-A/Admin-B — brokered rosters remain isolated to Agencies A/B",
+          "V4: Secure-broker IDOR — spoofed foreign-agency or B1 ids return 403/404/empty",
           "V5: Training forge — non-admin issueCertificate/completion write without passing attempt rejected",
           "V6: Audit hygiene — UserActivity/SecurityLog samples contain no message bodies or full phone numbers"
         ]
@@ -71,14 +71,14 @@
         "references": []
       },
       "credentials_or_sandbox": {
-        "summary": "FILL_ME: Authenticated test accounts (admin + nurse); CI secrets staging-only if used",
+        "summary": "FILL_ME: Authenticated tenant-admin and clinician test accounts; CI secrets staging-only if used",
         "references": []
       },
       "test_evidence": {
         "summary": "FILL_ME: S1-S8 authenticated smoke results. Attach external evidence links (no PHI).",
         "references": [
-          "S1: Login — admin and nurse can sign in; wrong password fails cleanly",
-          "S2: Patient list / chart — nurse sees only assigned patients; chart opens",
+          "S1: Login — tenant admin and clinician can sign in; wrong password fails cleanly",
+          "S2: Patient list / chart — clinician sees only actively assigned patients through reviewed brokers; chart opens",
           "S3: Referral intake (or triage) — create/accept path completes; record visible",
           "S4: Smart Note or Visit Scribe — save online creates Visit + compliance artifacts",
           "S5: OASIS path (if in scope) — assessment open/save does not crash",

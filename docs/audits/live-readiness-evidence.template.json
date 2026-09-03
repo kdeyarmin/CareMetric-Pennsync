@@ -12,11 +12,11 @@
         "references": ["https://example.com/ticket-or-doc"]
       },
       "product_approval": {
-        "summary": "Product confirmed agency access model matches RLS matrix",
+        "summary": "Product confirmed server-owned membership and care-team authority; platform owner excluded from tenant assertions",
         "references": []
       },
       "security_approval": {
-        "summary": "Security reviewed RLS matrix and multi-role tests",
+        "summary": "Security reviewed secure-broker, two-agency, immutable-membership, and cross-tenant tests",
         "references": []
       },
       "hosted_environment": {
@@ -24,11 +24,11 @@
         "references": []
       },
       "credentials_or_sandbox": {
-        "summary": "Admin + nurse test users provisioned; nurse assigned to Patient A only",
+        "summary": "Admin-A/Admin-B and Clinician-A/Clinician-A-empty use built-in user plus active agency_admin/clinician memberships; A1 assigned, A2 unassigned, B1 foreign; platform owner reserved and excluded",
         "references": []
       },
       "test_evidence": {
-        "summary": "V1–V6 multi-role RLS checks against raw network responses",
+        "summary": "V1–V6 and T1–T4 against raw secure-broker responses; no direct entity reads or mutable claims",
         "references": []
       },
       "rollback_plan": {

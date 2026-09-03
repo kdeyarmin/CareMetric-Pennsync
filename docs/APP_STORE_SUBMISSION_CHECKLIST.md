@@ -10,7 +10,28 @@ Store Connect/process steps that must be resolved before another native submissi
 > or upload a replacement IPA/AAB until those assets and the existing store configuration are
 > recovered and verified.
 
-## Before first submission
+## No-native-upload gate
+
+> **STOP:** No new IPA or AAB may be uploaded to App Store Connect or Google
+> Play, including TestFlight or Play testing tracks, until every gate below has
+> current evidence.
+
+- [ ] **Apple and Google privacy disclosures.** Reconcile App Store privacy
+      labels, Google Play Data safety, and `ios/PennSync/PrivacyInfo.xcprivacy`
+      with the app's actual web and native data handling.
+- [ ] **Signing/distribution continuity.** Recover and verify the original Apple
+      signing/provisioning assets for `com.caremetric.ai` and Google signing/Play
+      App Signing continuity for `com.caremetic.ai`; do not substitute a new
+      identity or signing key.
+- [ ] **IAP/billing continuity.** Reconcile the existing Apple in-app purchases
+      and any Google billing configuration with product IDs, purchase/receipt
+      validation, restore behavior, entitlements, and server state.
+- [ ] **Physical iOS and Android devices.** Using non-PHI test data, verify
+      permanent-origin launch and login, deep links, camera/microphone,
+      downloads/sharing, idle timeout and logout, network loss/recovery, and
+      purchase/restore behavior.
+
+## Before next native submission
 
 - [ ] **Distribution route decision (Guideline 4.2).** PennSync is a workforce clinical tool.
       Recommended: distribute via **Apple Business Manager** (unlisted app or custom app for the
@@ -26,13 +47,17 @@ Store Connect/process steps that must be resolved before another native submissi
       Apple must be added. (Checked 2026-07-22 from the app origin: `/login` serves the SPA
       itself, no third-party buttons — but re-verify on the real backend origin before
       submitting.)
-- [ ] **Privacy policy URL.** The canonical in-app policy lives at `/privacy`, and the app also
-      serves the already-registered `/privacypolicy` compatibility URL without authentication.
-      Verify both on the staged permanent origin before release. **Have counsel review the draft
-      text before submission.**
-- [ ] **EULA URL.** The live store metadata currently points at `/eula`, but this repository has
-      no approved EULA page. Add a public route only after the governing terms are supplied and
-      approved; until then, do not claim this link is ready.
+- [ ] **Privacy policy URLs.** The canonical in-app policy lives at `/privacy`.
+      The source now defines public no-login aliases at `/privacy-policy` (the
+      intended hyphenated compatibility route) and `/privacypolicy` (the existing
+      store-linked route). Verify all three on the staged permanent origin before
+      release. **Have counsel review the draft text before submission.**
+- [ ] **EULA URL.** The live Apple metadata currently points at `/eula`, but this
+      repository has no approved in-app EULA route. A separate external page is
+      present at `https://caremetricai.com/eula`, but it remains unverified as
+      approved governing terms for the installed apps. Do not copy, route, or
+      submit it until the owner and counsel approve its exact text and
+      applicability.
 - [ ] **Existing IAP continuity.** Reconcile the four live products (Monthly `$29.99`, Quarterly
       `$79.99`, Semi Annual `$149.99`, Annual `$264.99`) with their product IDs, receipt/entitlement
       validation, restore-purchase flow, and server-side subscription state. None of that native

@@ -31,13 +31,28 @@
 
 Provision **non-production** users and patients. Never use real PHI.
 
-| Actor | Agency | Role | Assigned patients |
-|---|---|---|---|
-| Admin-A | Agency A | admin / agency_admin | all A |
-| Nurse-A | Agency A | nurse (non-admin) | Patient A1 only |
-| Nurse-A-empty | Agency A | nurse | none |
-| Admin-B | Agency B (if multi-tenant) | admin | all B |
-| Patient B1 | Agency A | n/a | not assigned to Nurse-A |
+**Authority invariant:** the sole platform owner has Base44 built-in
+`User.role === "admin"` and an exact match to backend `SUPER_ADMIN_EMAIL`.
+The platform owner is setup/recovery authority only and is excluded from every
+tenant-isolation assertion. Every tenant actor has built-in `User.role ===
+"user"` plus one valid, active, server-owned `AgencyMembership` bound to the
+immutable Base44 `user_id`; tenant authorization never comes from mutable User
+profile fields, `account_type`, `agency_*`, `staff_role`,
+`Patient.assigned_nurses`, or built-in role alone.
+
+| Actor | Agency | Built-in role | Authoritative membership | Patient scope |
+|---|---|---|---|---|
+| Platform-Owner | none | `admin` | exact `SUPER_ADMIN_EMAIL`; no tenant membership used | excluded from tenant assertions |
+| Admin-A | Agency A | `user` | active `agency_admin` | agency-wide through reviewed brokers |
+| Clinician-A | Agency A | `user` | active `clinician` | A1 through one active, server-owned `PatientCareTeamAssignment` |
+| Clinician-A-empty | Agency A | `user` | active `clinician` | none |
+| Admin-B | Agency B | `user` | active `agency_admin` | agency-wide through reviewed brokers |
+
+| Patient | Server-owned agency | Assignment |
+|---|---|---|
+| A1 | Agency A | assigned only to Clinician-A |
+| A2 | Agency A | unassigned; no active care-team assignment |
+| B1 | Agency B | foreign to every Agency A actor |
 
 Record app id, backend origin, and user emails in the **private** evidence file
 (`tmp/live-readiness-evidence.json` — gitignored). Do not commit tokens.
@@ -53,28 +68,21 @@ After each actor signs in, copy the bearer token from Application → Local Stor
 # Example env for curl probes (export locally; never commit)
 export B44_ORIGIN="https://<backend-host>"   # VITE_BASE44_BACKEND_URL origin
 export B44_APP_ID="<app-id>"
-export TOKEN_NURSE_A="<nurse-a-access-token>"
-export TOKEN_NURSE_EMPTY="<nurse-empty-access-token>"
+export TOKEN_CLINICIAN_A="<clinician-a-access-token>"
+export TOKEN_CLINICIAN_EMPTY="<clinician-empty-access-token>"
 export TOKEN_ADMIN_A="<admin-a-access-token>"
 export TOKEN_ADMIN_B="<admin-b-access-token>"   # multi-tenant only
 export PATIENT_A1_ID="<id>"
+export PATIENT_A2_ID="<id>"
 export PATIENT_B1_ID="<id>"
-export PATIENT_AGENCY_B_ID="<id>"               # multi-tenant only
 ```
 
-Entity list shape (adjust path if the SDK uses a different prefix):
-
-```bash
-api_list () {
-  local token="$1" entity="$2"
-  curl -sS -o /tmp/rls-body.json -w "%{http_code}" \
-    -H "Authorization: Bearer ${token}" \
-    -H "X-App-Id: ${B44_APP_ID}" \
-    "${B44_ORIGIN}/api/apps/${B44_APP_ID}/entities/${entity}"
-  echo
-  head -c 2000 /tmp/rls-body.json; echo
-}
-```
+Positive LR-01 reads must use only reviewed authenticated brokers:
+`getMyTenantContext`, `listAuthorizedPatients`, `getAuthorizedPatient`, and
+reviewed patient-child brokers. Capture their raw network requests and
+responses. Never use a direct entity list/get response as positive tenant
+evidence. A tenant actor receiving PHI or authority rows directly from an
+entity endpoint is an LR-01 failure.
 
 ---
 
@@ -84,11 +92,11 @@ Run against **response bodies**, not the UI.
 
 | # | Probe | Expect |
 |---|---|---|
-| P1 | `api_list "$TOKEN_NURSE_EMPTY" Patient` | `[]` or no foreign patients |
-| P2 | `api_list "$TOKEN_NURSE_A" Patient` | includes A1; **excludes** B1 |
-| P3 | `api_list "$TOKEN_ADMIN_A" Patient` | agency-wide A as designed |
-| P4 | Nurse-A `GET` Visit / OASIS / Document filtered or listed — bodies must not contain B1 `patient_id` | |
-| P5 | Invoke `getScopedPatientAlerts` / chart PDF / risk helpers with **B1** id as Nurse-A | `403` / `404` / empty |
+| P1 | Clinician-A-empty: `getMyTenantContext`, then `listAuthorizedPatients` | context is built-in `user` + active Agency A `clinician`; roster is empty |
+| P2 | Clinician-A: `getAuthorizedPatient` for A1, A2, and B1 | A1 succeeds; A2 and B1 return `403` / `404` / empty |
+| P3 | Admin-A: `listAuthorizedPatients` | contains A1 and A2; excludes B1 |
+| P4 | Clinician-A: reviewed Visit / OASIS / Document child brokers | expose A1 only; if any broker is unavailable, LR-01 remains blocked |
+| P5 | Clinician-A: spoof Agency B or B1 identifiers across reviewed brokers | `403` / `404` / empty |
 | P6 | Direct non-admin forge of `TrainingCompletion` / `issueCertificate` | rejected when lockdown active |
 
 Save redacted HAR or status+body snippets under private storage; put **references
@@ -100,9 +108,9 @@ only** in the LR-01 `test_evidence.references` array.
 
 | # | Probe | Expect |
 |---|---|---|
-| T1 | `api_list "$TOKEN_ADMIN_A" Patient` | no Agency B patients |
-| T2 | `api_list "$TOKEN_ADMIN_B" Patient` | no Agency A patients |
-| T3 | Admin-A `GET` entity by Agency-B id | `403`/`404`/empty — never 200 with B PHI |
+| T1 | Admin-A `listAuthorizedPatients` | A1 and A2 only; no Agency B patients |
+| T2 | Admin-B `listAuthorizedPatients` | B1 only; no Agency A patients |
+| T3 | Admin-A `getAuthorizedPatient` with B1 | `403`/`404`/empty — never 200 with B PHI |
 | T4 | Service-role / scheduled jobs only touch intended agency scope (spot-check logs) | |
 
 If the product is single-agency per Base44 app, document that architecture in
@@ -117,25 +125,26 @@ Field-owner RLS alone is **not** enough for shared clinical charts. Confirm
 dashboard relation rules (or server-scoped functions) from
 `docs/RLS-REMEDIATION-SPEC-2026-06-19.md`:
 
-- Nurse on a shared patient sees colleague rows for that patient.
-- Nurse does **not** see other patients via those entities.
+- Clinician with an active immutable assignment sees colleague rows for that patient.
+- Clinician without that assignment sees none.
+- Tenant admin sees only the intended agency-wide scope through reviewed brokers.
 
 ---
 
-## 5b. Residual: bare `role:admin` is platform-wide in-repo
+## 5b. Bare `role:admin` is platform-owner-only, never tenant authority
 
-The entity DSL in `base44/entities/*.jsonc` can match `user_condition.role`,
-`user_condition.account_type`, and row fields to `{{user.*}}` templates. It
-**cannot** express “facility admin for this agency only”
-(`role:admin` ∧ `agency_name === {{user.agency_name}}`) or patient access via
-care-team membership (cross-entity join).
+The entity DSL in `base44/entities/*.jsonc` cannot prove immutable
+`AgencyMembership` or care-team authority across entities. The built-in
+`role:admin` is reserved for the exact protected platform owner. Any tenant
+fixture carrying built-in `admin` is a configuration failure, not an agency
+administrator.
 
 Consequences that remain until the **hosted** Base44 dashboard gains richer
 rules (or each app is single-tenant):
 
 | Pattern in `.jsonc` | Effective scope today |
 |---|---|
-| `user_condition: { role: "admin" }` | **Every** user with `role:admin`, including agency-scoped facility admins — platform-wide read/write for that entity |
+| `user_condition: { role: "admin" }` | Protected platform-owner path only; tenant actors must never receive this role |
 | `data.agency_id: "{{user.agency_id}}"` (etc.) | Tenant-scoped **only after** both sides are server-owned and backfilled; current custom User tenant fields are self-editable and are not authority |
 | `account_type: "super_admin"` / `"agency_admin"` arms | Prohibited by the repository contract because these custom User fields are mutable |
 
@@ -146,9 +155,10 @@ agency through RLS. Keep service-role + function gates
 until hosted relation/`$and` rules exist. `User.agency_name` is declared in
 schema for honesty with runtime fields; it is not a substitute for hosted RLS.
 
-Probe T1–T3 specifically with a **facility admin who has `role:admin` and a
-non-empty `agency_name`** — if they can list another agency’s PHI via the
-entity API, LR-01 fails regardless of function-layer gates.
+Probe T1–T3 with Admin-A and Admin-B as built-in `user` identities carrying
+active, server-owned `agency_admin` memberships. Every positive PHI read must
+flow through a reviewed broker; any tenant actor reading PHI or authority rows
+directly from an entity endpoint fails LR-01.
 
 ---
 

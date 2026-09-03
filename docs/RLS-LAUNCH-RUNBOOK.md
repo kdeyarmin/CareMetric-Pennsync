@@ -8,17 +8,20 @@
 ## 0. Before you start
 
 - **Where:** Base44 dashboard → each entity → Security / Row-Level Security. The repo
-  `.jsonc` RLS DSL can only match a field on the row to `{{user.email}}` or a role; it
-  has **no cross-entity join**, so the patient-scoped rules below must be authored in
-  the dashboard (relation rules) or enforced by a server-scoped function. Do **not**
-  try to express the `byPatient` rule as a `created_by` field rule — that hides a
-  colleague's entries from an assigned nurse and breaks shared clinical views.
-- **Two rule primitives used below:**
-  - `owner(field)` = `{ $or: [ { field: "{{user.email}}" }, { user_condition: { role: "admin" } } ] }`
-  - `byPatient` = caller is admin **OR** caller's email ∈ the referenced patient's
-    `Patient.assigned_nurses`. Author as a dashboard relation rule; where a shared view
-    needs it server-side, the app already does this in `getScopedPatientAlerts` /
-    `getDashboardData`.
+  `.jsonc` RLS DSL cannot prove immutable membership or care-team authority across
+  entities. Sensitive positive reads must use reviewed server brokers; direct entity
+  access remains denied unless a narrower rule is separately proved.
+- **Authority primitives used below:**
+  - `platformOwner` = built-in `User.role === "admin"` **and** exact backend
+    `SUPER_ADMIN_EMAIL`; setup/recovery only, excluded from tenant assertions.
+  - `tenantMember(role)` = built-in `User.role === "user"` plus one active,
+    server-owned `AgencyMembership` bound to immutable `user_id` and the requested
+    tenant role.
+  - `byPatient` = valid tenant membership plus an active, server-owned
+    `PatientCareTeamAssignment` (or reviewed agency-wide tenant-admin policy),
+    evaluated inside a broker. `Patient.assigned_nurses` and mutable User claims are
+    defense-in-depth only.
+  - `owner(field)` is only an additional narrowing check; it is never tenant authority.
 - **service-role** = clients cannot write directly; the write happens only inside a
   backend function running `asServiceRole`.
 - **Default deny:** if an entity is not listed here and holds anything non-public, lock
@@ -52,11 +55,12 @@ reflects them; no new work unless the dashboard disagrees.
 
 ---
 
-## 2. Patient-clinical entities — author `byPatient` (the bulk of the work)
+## 2. Patient-clinical entities — broker `byPatient`; deny direct client access
 
-For every entity below: **Read = `byPatient`**, **Write = clinician-on-own-patient +
-admin** (or service-role where noted). These currently have **no in-repo block** and
-are the largest body of outstanding work.
+For every entity below, positive tenant reads must be served by a reviewed broker
+that resolves `tenantMember` and `byPatient`; direct client reads stay denied.
+Table references to “admin” mean tenant `agency_admin` authority inside that broker,
+never Base44 built-in `role:admin`. Writes remain service-role/brokered as noted.
 
 > **2026-07-02 update — interim in-repo read floor.** Seven of these now ship an
 > in-repo `rls.read` owner rule (+ admin): `OASISUpload`, `OASISAssessment`,
@@ -158,16 +162,16 @@ write them directly today). Route writes through `gradeTrainingAttempt` /
 Run against **raw network responses** (browser devtools / API), not just the rendered
 UI — the UI filters client-side and will look correct even when RLS is open.
 
-1. **Non-admin, no assigned patients:** Dashboard, Patient Alerts, SMS inbox, fax
-   history, signatures all return **empty** — and the raw responses contain no other
-   patients' rows.
-2. **Non-admin assigned to patient A only:** sees A's rows, **not** B's, in raw
-   responses (Visit, OASIS, alerts, faxes, signatures).
-3. **Admin:** agency-wide data unchanged.
-4. **IDOR probe:** call `predictPatientRisks`, `analyzeClinicalRisks`,
-   `generatePatientChartPDF`, `getScopedPatientAlerts`, `enhanceNoteOptimized`,
-   `searchPDFs`, `extractReferralDataForSmartNote` with **another** patient's id →
-   expect `403`/`404`/empty.
+1. **Clinician-A-empty:** built-in `user` + active Agency A `clinician` context;
+   brokered roster and child-record reads are empty.
+2. **Clinician-A:** one active immutable assignment permits A1 and denies unassigned
+   A2 and foreign B1 in raw Patient/Visit/OASIS/Document broker responses.
+3. **Admin-A/Admin-B:** built-in `user` + active tenant `agency_admin`; brokered
+   rosters contain only Agency A's A1/A2 and Agency B's B1, respectively. The
+   protected platform owner is excluded from this evidence.
+4. **IDOR/cross-tenant probe:** spoof B1 and Agency B identifiers through every
+   reviewed broker; expect `403`/`404`/empty. Direct entity reads by tenant actors
+   must not return PHI or authority rows.
 5. **Don't-break checks:** a Message recipient can still mark it read (`read_by`
    update); a signer can still sign via the `/signer` portal; the admin fax dashboard
    and the **DocumentSignatures** hub tab / **SignatureTracking** (the reachable,
