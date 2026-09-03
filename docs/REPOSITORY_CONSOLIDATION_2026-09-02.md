@@ -59,8 +59,18 @@ blanket schema rollback is not recommended because it would reopen PHI-sensitive
 writes and formerly unrestricted reads. The safest technical containment is an
 urgent, explicitly approved roll-forward of the matching `67d9d5e` fail-closed
 frontend (or equivalent route-level maintenance), followed by logs, smoke tests,
-and rollback monitoring. No production roll-forward or rollback has been
-performed by this staging work.
+and rollback monitoring.
+
+A no-publish containment build of exact production source `67d9d5e` succeeded
+with the production app id. It contains 507 files / 18,160,451 bytes, references
+`index-egZIJufH.js` (SHA-256
+`145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`),
+has aggregate sorted-file hash
+`e014a239fb3a0bb0a34949e2e8360c3570debdc106b253aef0d6db949958e2f3`,
+contains the production app id and no staging app id, and includes the
+fail-closed merge/reporting controls. The source worktree remains clean. This
+build is prepared evidence only: no production roll-forward or rollback has
+been performed by this staging work.
 
 ## Nonproduction hosted-validation evidence (updated 2026-09-03)
 
