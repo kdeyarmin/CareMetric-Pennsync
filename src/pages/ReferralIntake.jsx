@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster';
 import { sendMessage } from '@/functions/sendMessage';
+import { createAuthorizedPatient } from '@/functions/createAuthorizedPatient';
+import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -840,7 +842,7 @@ Actions available:
         const lastName = readiness.last_name;
         const middleName = '';
 
-        const newPatient = await base44.entities.Patient.create({
+        const newPatient = await createAuthorizedPatient({
           first_name: firstName,
           middle_name: middleName,
           last_name: lastName,
@@ -883,7 +885,7 @@ Actions available:
           care_type: extractedData.admission_details?.care_type || 'home_health',
           clinical_notes: `Referral received from ${extractedData.demographics.referring_physician || 'physician'} on ${extractedData.admission_details?.referral_date || 'unknown date'}.\n\nReason: ${extractedData.admission_details?.referral_reason || 'Not specified'}`,
           goals_of_care: extractedData.skilled_needs?.goals_of_care ? [extractedData.skilled_needs.goals_of_care] : []
-        });
+        }, { clientRequestId: `referral:${referralId}` });
 
         updates.patient_id = newPatient.id;
         existingPatient = newPatient;
@@ -917,7 +919,12 @@ Actions available:
         }
         
         // Update patient with new information
-        await base44.entities.Patient.update(existingPatient.id, updateData);
+        await updatePatientFields({
+          patientId: existingPatient.id,
+          agencyId: existingPatient.agency_id,
+          expectedUpdatedDate: existingPatient.updated_date,
+          changes: updateData,
+        });
         updates.patient_id = existingPatient.id;
       }
 
@@ -1194,7 +1201,7 @@ Actions available:
         return;
       }
       
-      const newPatient = await base44.entities.Patient.create({
+      const newPatient = await createAuthorizedPatient({
         first_name: readiness.first_name,
         middle_name: '',
         last_name: readiness.last_name,
@@ -1221,7 +1228,7 @@ Actions available:
         past_medical_history: data.diagnoses?.past_medical_history || [],
         status: 'active',
         care_type: data.admission_details?.care_type || 'home_health'
-      });
+      }, { clientRequestId: `referral:${referralToUpdate.id}` });
 
       await base44.entities.Referral.update(referralToUpdate.id, {
         patient_id: newPatient.id,

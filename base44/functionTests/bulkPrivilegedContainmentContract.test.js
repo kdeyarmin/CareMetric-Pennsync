@@ -12,6 +12,10 @@ const FUNCTION_NAMES = [
   'generateFollowUpPortalToken',
 ];
 
+const STATICALLY_PAUSED_FUNCTIONS = new Set([
+  'processDischargeReport',
+]);
+
 function makeClient({
   user,
   referralRows = [],
@@ -178,7 +182,11 @@ test('bulk and bearer-link handlers reject forged mutable privilege before body 
         referral_id: 'referral-1',
       });
 
-      assert.equal(response.status, 403, `${functionName}: ${user.email}/${user.role}`);
+      assert.equal(
+        response.status,
+        STATICALLY_PAUSED_FUNCTIONS.has(functionName) ? 503 : 403,
+        `${functionName}: ${user.email}/${user.role}`,
+      );
       assert.equal(calls.bodyReads, 0, `${functionName} must authorize before parsing input`);
       assert.equal(privilegedCallCount(calls), 0, `${functionName} must not touch service resources`);
     }
@@ -203,14 +211,18 @@ test('missing platform-owner configuration and deactivated sessions fail closed 
       const handler = await loadHandler(functionName, client, configuredEmail);
       const { response } = await invoke(handler, calls, { referral_id: 'referral-1' });
 
-      assert.equal(response.status, 403, functionName);
+      assert.equal(
+        response.status,
+        STATICALLY_PAUSED_FUNCTIONS.has(functionName) ? 503 : 403,
+        functionName,
+      );
       assert.equal(calls.bodyReads, 0, functionName);
       assert.equal(privilegedCallCount(calls), 0, functionName);
     }
   }
 });
 
-test('the configured protected admin reaches input validation in all three handlers', async () => {
+test('the configured protected admin reaches each handler safe input boundary', async () => {
   const user = { email: 'Platform-Owner@Example.com', role: 'admin', is_active: true };
 
   for (const functionName of FUNCTION_NAMES) {
@@ -218,8 +230,14 @@ test('the configured protected admin reaches input validation in all three handl
     const handler = await loadHandler(functionName, client, 'platform-owner@example.com');
     const { response } = await invoke(handler, calls, {});
 
-    assert.equal(response.status, 400, functionName);
-    assert.equal(calls.bodyReads, 1, functionName);
+    assert.equal(
+      response.status,
+      functionName === 'processPatientFileUpdate' || STATICALLY_PAUSED_FUNCTIONS.has(functionName)
+        ? 503
+        : 400,
+      functionName,
+    );
+    assert.equal(calls.bodyReads, STATICALLY_PAUSED_FUNCTIONS.has(functionName) ? 0 : 1, functionName);
     assert.equal(privilegedCallCount(calls), 0, functionName);
   }
 });

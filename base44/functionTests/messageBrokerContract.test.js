@@ -104,6 +104,26 @@ const authorizedPatient = {
   assigned_nurses: [sender.email, recipient.email],
 };
 
+test('sendMessage normalizes an anonymous hosted auth rejection before service-role access', async () => {
+  const fixture = makeClient({ user: null });
+  fixture.client.auth.me = async () => {
+    throw new Error('not authenticated');
+  };
+  let serviceRoleTouched = false;
+  Object.defineProperty(fixture.client, 'asServiceRole', {
+    get() {
+      serviceRoleTouched = true;
+      throw new Error('must not access service role');
+    },
+  });
+  const handler = await loadHandler('sendMessage', fixture.client);
+  const response = await handler(request({}));
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: 'Unauthorized' });
+  assert.equal(serviceRoleTouched, false);
+});
+
 test('sendMessage derives identity and creates an immutable participant message', async () => {
   const { client, state } = makeClient({
     user: sender,

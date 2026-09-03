@@ -27,8 +27,12 @@ import FacilityRequirementsChecklist from "../components/smartNote/FacilityRequi
 import ConstrainedNoteReviewer from "../components/smartNote/ConstrainedNoteReviewer";
 import NoteReadinessBar from "../components/smartNote/NoteReadinessBar";
 import { persistVisitNote, OfflineSaveError } from "../components/smartNote/persistVisitNote";
-import { advanceHandoffStatus, buildReviewAcknowledgement } from "../components/smartNote/emrHandoff";
-import { getPriorNote } from "../components/smartNote/noteHelpers";
+import {
+  advanceHandoffStatus,
+  buildReviewAcknowledgement,
+  EMR_HANDOFF_STATUSES,
+} from "../components/smartNote/emrHandoff";
+import { getPriorNote, mergePatientNoteHistory } from "../components/smartNote/noteHelpers";
 import { evaluateFacilityRules, summarizeFacilityRules } from "../components/smartNote/compliance/facilityDocRules";
 import { describePlaceholders, countPlaceholders, findPlaceholders } from "../components/smartNote/compliance/placeholderGuard";
 import { claimDictation, releaseDictation } from "@/components/smartNote/dictationController";
@@ -37,6 +41,11 @@ import { analyzeVisitForSupplyUsage } from "@/functions/analyzeVisitForSupplyUsa
 import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { HOME_HEALTH_VISIT_TYPES, HOSPICE_VISIT_TYPES } from "@/components/visit/visitTypes";
+import {
+  advanceVisitHandoff,
+  setVisitReviewAcknowledgement,
+} from '@/functions/updateAuthorizedVisit';
+import { getAuthorizedPatientNoteHistory } from '@/functions/getAuthorizedPatientNoteHistory';
 
 const getVisitTypes = (careScope) => {
   if (careScope === "hospice") return HOSPICE_VISIT_TYPES;
@@ -45,6 +54,19 @@ const getVisitTypes = (careScope) => {
 };
 
 const draftKeyFor = (pid) => `smart_note_draft_v2:${pid || "unassigned"}`;
+
+// The server accepts only immediate, forward-only EMR handoff transitions. The
+// UI intentionally lets a nurse report a later state in one tap, so bridge that
+// gesture through every intermediate state instead of trusting a client-shaped
+// history array or asking the broker to accept a jump.
+async function advancePersistedHandoffTo(visitId, fromStatus, toStatus) {
+  const fromIndex = Math.max(0, EMR_HANDOFF_STATUSES.findIndex((s) => s.id === fromStatus));
+  const toIndex = EMR_HANDOFF_STATUSES.findIndex((s) => s.id === toStatus);
+  if (toIndex <= fromIndex) return;
+  for (let index = fromIndex + 1; index <= toIndex; index += 1) {
+    await advanceVisitHandoff({ visitId, nextStatus: EMR_HANDOFF_STATUSES[index].id });
+  }
+}
 
 const buildExportFindings = (result) => {
   if (!result) return [];
@@ -181,7 +203,16 @@ export default function SmartNoteAssistant({ visitId = null }) {
     queryFn: () => base44.entities.Patient.get(patientId),
     enabled: !!patientId,
   });
-  const effectiveCareType = (patientDetail || patient)?.care_type || careScope;
+  const { data: noteHistoryResult } = useQuery({
+    queryKey: ["authorizedPatientNoteHistory", patientId],
+    queryFn: () => getAuthorizedPatientNoteHistory({ patientId }),
+    enabled: !!patientId && !!currentUser?.id,
+  });
+  const chartPatient = useMemo(
+    () => mergePatientNoteHistory(patientDetail || patient, noteHistoryResult?.entries),
+    [patientDetail, patient, noteHistoryResult?.entries],
+  );
+  const effectiveCareType = chartPatient?.care_type || careScope;
   const isHospice = effectiveCareType === "hospice";
   const serviceLine = isHospice ? "hospice" : "home_health";
   const VISIT_TYPES = getVisitTypes(effectiveCareType);
@@ -355,7 +386,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     }
     const facilityResults = evaluateFacilityRules({
       rules: facilityDocRules,
-      patient: patientDetail || patient,
+      patient: chartPatient,
       noteText: note,
       visitType,
     });
@@ -432,14 +463,23 @@ export default function SmartNoteAssistant({ visitId = null }) {
     // existed was held in component state; attach it to the record now so the
     // office sees the same trail the nurse saw. Best-effort: a failure here must
     // never surface as "the note didn't save", because it did.
-    if (out.visitId && (handoff.status !== "not_started" || reviewAck)) {
-      const trail = {};
-      if (handoff.status !== "not_started") {
-        trail.emr_handoff_status = handoff.status;
-        trail.emr_handoff_history = handoff.history;
-      }
-      if (reviewAck) trail.documentation_review_ack = reviewAck;
-      base44.entities.Visit.update(out.visitId, trail).catch((err) => {
+    if (!savedVisitId && out.visitId && (handoff.status !== "not_started" || reviewAck)) {
+      const persistedStart = boundVisit?.id === out.visitId
+        ? (boundVisit.emr_handoff_status || 'not_started')
+        : 'not_started';
+      Promise.resolve().then(async () => {
+        if (handoff.status !== persistedStart) {
+          await advancePersistedHandoffTo(out.visitId, persistedStart, handoff.status);
+        }
+        if (reviewAck) {
+          await setVisitReviewAcknowledgement({
+            visitId: out.visitId,
+            acknowledged: reviewAck.acknowledged === true,
+            nurseEdited: reviewAck.nurse_edited === true,
+            noteText: out.finalText,
+          });
+        }
+      }).catch((err) => {
         console.error("Failed to attach the EMR handoff trail to the saved visit:", err);
         setHandoffError("Your note saved, but the EMR handoff steps didn't sync. Re-report them to try again.");
       });
@@ -510,10 +550,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
       return;
     }
     try {
-      await base44.entities.Visit.update(savedVisitId, {
-        emr_handoff_status: next.status,
-        emr_handoff_history: next.history,
-      });
+      await advancePersistedHandoffTo(savedVisitId, handoff.status, next.status);
     } catch (err) {
       console.error("Failed to sync EMR handoff status:", err);
       setHandoffError("Couldn't sync this step to the server. It is recorded on this device — try again.");
@@ -542,7 +579,12 @@ export default function SmartNoteAssistant({ visitId = null }) {
     setReviewAck(ack);
     if (!savedVisitId) return;
     try {
-      await base44.entities.Visit.update(savedVisitId, { documentation_review_ack: ack });
+      await setVisitReviewAcknowledgement({
+        visitId: savedVisitId,
+        acknowledged: ack?.acknowledged === true,
+        nurseEdited: ack?.nurse_edited === true,
+        noteText: finalText,
+      });
     } catch (err) {
       console.error("Failed to persist the documentation review acknowledgement:", err);
       toast.error("Couldn't sync your review record to the server. Try again.");
@@ -636,11 +678,11 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const step1Facility = useMemo(
     () => summarizeFacilityRules(evaluateFacilityRules({
       rules: facilityDocRules,
-      patient: patientDetail || patient,
+      patient: chartPatient,
       noteText: note,
       visitType,
     })),
-    [facilityDocRules, patientDetail, patient, note, visitType],
+    [facilityDocRules, chartPatient, note, visitType],
   );
 
   return (
@@ -848,7 +890,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                   defaultOpen={step1Facility.missing > 0}
                 >
                   <FacilityRequirementsChecklist
-                    patient={patientDetail || patient}
+                    patient={chartPatient}
                     noteText={note}
                     visitType={visitType}
                   />
@@ -873,8 +915,8 @@ export default function SmartNoteAssistant({ visitId = null }) {
               serviceLine={serviceLine}
               visitType={visitType}
               vitals={vitals}
-              priorNote={getPriorNote(patientDetail || patient)}
-              patient={patientDetail || patient}
+              priorNote={getPriorNote(chartPatient)}
+              patient={chartPatient}
               currentUser={currentUser}
               complianceRules={complianceRules}
               onEscalate={escalateToTasks}
@@ -882,7 +924,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
               renderFinalNote={(api) => {
                 const facilityResults = evaluateFacilityRules({
                   rules: facilityDocRules,
-                  patient: patientDetail || patient,
+                  patient: chartPatient,
                   noteText: api.finalNote,
                   visitType,
                 });
@@ -903,7 +945,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                   )}
 
                   <FacilityRequirementsChecklist
-                    patient={patientDetail || patient}
+                    patient={chartPatient}
                     noteText={api.finalNote}
                     visitType={visitType}
                   />
@@ -948,7 +990,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                       }
                     }}
                     copied={copied}
-                    patient={patient}
+                    patient={chartPatient}
                     visitType={visitType}
                     analysisScore={api.coverage}
                     analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: buildExportFindings(api.result) }}

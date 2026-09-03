@@ -4,6 +4,7 @@ import { migrateLegacyOfflineQueues } from '@/lib/offlineMigration';
 import { OFFLINE_RETIRED_FLAG } from '@/lib/localPhiKeys';
 import { saveDraftNoteLocally, getDraftNoteLocally } from '@/lib/draftNotes';
 import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
+import { recoverLegacyVisitUpdate } from '@/functions/updateAuthorizedVisit';
 
 /**
  * ONE-TIME migration for the retired offline feature. DELETE AFTER ONE RELEASE.
@@ -227,8 +228,11 @@ async function flushItem(item, entities, functions) {
       return;
     }
     case 'UPDATE_VISIT': {
-      if (!visitId) return; // malformed; nothing to target
-      await entities.Visit.update(visitId, fields);
+      // A malformed update may still contain the only copy of clinical work.
+      // Fail the drain so its stores and retirement flag remain untouched for
+      // supervised recovery; treating it as a no-op would silently delete it.
+      if (!visitId) throw new Error('Legacy Visit update is missing visit_id');
+      await recoverLegacyVisitUpdate({ visitId, fields, functions });
       await reconcileAudit(visitId, fields.patient_id);
       await applyHistory(visitId);
       return;

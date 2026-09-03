@@ -100,12 +100,21 @@ function assertReferralAccess(user, referral, patientWasAuthorized) {
   return errorResponse('Forbidden', 403);
 }
 
-function assertDocumentAccess(user, document, patientWasAuthorized) {
+function optionalStoredIdentifier(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') return null;
+  if (!value || value.length > 200 || value.trim() !== value || value.startsWith('$')) return null;
+  return value;
+}
+
+function hasStoredIdentifier(value) {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function assertDocumentAccess(user, document) {
   if (!document) return errorResponse('Document not found', 404);
   const caller = normalizeEmail(user.email);
   if (normalizeEmail(document.created_by) === caller
-    || normalizeEmail(document.uploaded_by) === caller
-    || patientWasAuthorized
     || isProtectedSuperAdmin(user)) {
     return null;
   }
@@ -201,7 +210,11 @@ function validateAttachments(attachments, allowedUrls) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    // The hosted SDK rejects (rather than returning null) for an anonymous
+    // request. Normalize that expected authentication failure before the outer
+    // operational-error handler so callers receive 401 and no service-role
+    // entity is touched.
+    const user = await base44.auth.me().catch(() => null);
     if (!user?.email) return errorResponse('Unauthorized', 401);
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
@@ -279,25 +292,36 @@ Deno.serve(async (req) => {
     if (referralId && !referral) return errorResponse('Referral not found', 404);
     if (documentId && !document) return errorResponse('Document not found', 404);
 
-    const linkedPatientId = referral?.patient_id || document?.patient_id || null;
+    const referralPatientId = optionalStoredIdentifier(referral?.patient_id);
+    const documentPatientId = optionalStoredIdentifier(document?.patient_id);
+    if (referral && hasStoredIdentifier(referral.patient_id) && !referralPatientId) {
+      return errorResponse('Referral patient linkage is invalid', 409);
+    }
+    if (document && hasStoredIdentifier(document.patient_id) && !documentPatientId) {
+      return errorResponse('Document patient linkage is invalid', 409);
+    }
+    if (documentId && patientId && !documentPatientId) {
+      return errorResponse('Document is not linked to the requested patient', 409);
+    }
+    const linkedPatientId = referralPatientId || documentPatientId;
     if (patientId && linkedPatientId && patientId !== linkedPatientId) {
       return errorResponse('Related record belongs to a different patient', 409);
     }
     patientId = patientId || linkedPatientId;
     const patient = await getById(entities.Patient, patientId);
-    let patientWasAuthorized = false;
+    let authorizedPatientId = null;
     if (patientId) {
       const denied = assertPatientAccess(user, patient);
       if (denied) return denied;
-      patientWasAuthorized = true;
+      authorizedPatientId = patient.id;
     }
 
     if (referralId) {
-      const denied = assertReferralAccess(user, referral, patientWasAuthorized);
+      const denied = assertReferralAccess(user, referral, !!authorizedPatientId);
       if (denied) return denied;
     }
     if (documentId) {
-      const denied = assertDocumentAccess(user, document, patientWasAuthorized);
+      const denied = assertDocumentAccess(user, document);
       if (denied) return denied;
     }
 
@@ -337,7 +361,10 @@ Deno.serve(async (req) => {
       addParticipants(allowedParticipants, [referral.created_by, referral.assigned_to]);
     }
     if (document) {
-      addParticipants(allowedParticipants, [document.created_by, document.uploaded_by]);
+      // uploaded_by is a legacy client-writable data field and cannot confer
+      // authorization or recipient membership. Base44's immutable created_by
+      // provenance and an exact authorized Document→Patient link can.
+      addParticipants(allowedParticipants, [document.created_by]);
     }
     for (const message of thread.messages) {
       addParticipants(allowedParticipants, [

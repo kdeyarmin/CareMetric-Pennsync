@@ -8,76 +8,323 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
-async function resolveAgencySettings(base44, agencyName) {
-  let settings = [];
-  const key = String(agencyName || '').trim();
-  if (key) {
-    settings = await base44.asServiceRole.entities.AgencySettings
-      .filter({ agency_code: key }, '-created_date', 1)
-      .catch(() => []);
-    if (!settings?.length) {
-      settings = await base44.asServiceRole.entities.AgencySettings
-        .filter({ office_name: key }, '-created_date', 1)
-        .catch(() => []);
-    }
-  }
-  if (!settings?.length) {
-    // Fail closed when the agency hint missed (or no hint but multiple tenant
-    // rows exist). Newest-row-wins would silently apply another agency's fax
-    // line / dial allowlist / wage index / quiet-hour timezone.
-    if (key) return null;
-    const newest = await base44.asServiceRole.entities.AgencySettings
-      .list('-created_date', 5)
-      .catch(() => []);
-    if ((newest || []).length > 1) return null;
-    settings = (newest || []).slice(0, 1);
-  }
-  return settings?.[0] || null;
-}
-// <<<END SHARED HELPER: resolveAgencySettings>>>
+const MAX_IDENTIFIER_LENGTH = 200;
+const MAX_BODY_BYTES = 100_000;
+const EXACT_ROW_LIMIT = 10;
+const MEMBERSHIP_SCAN_LIMIT = 100;
+const ACTIVE_AGENCY_STATUSES = new Set(['active', 'trial']);
+const MEMBERSHIP_STATUSES = new Set(['pending', 'active', 'suspended', 'revoked']);
+const TENANT_ROLES = new Set([
+  'agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care',
+]);
+const AGENCY_WIDE_FAX_ROLES = new Set(['agency_admin', 'manager', 'office_staff']);
+const FAX_COVER_FIELDS = new Set([
+  'patient_id',
+  'document_id',
+  'recipient_number',
+  'recipient_name',
+  'recipient_organization',
+  'sender_name',
+  'sender_number',
+  'subject',
+  'notes',
+  'urgency',
+  'page_count',
+]);
 
-/** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
+class PublicError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'PublicError';
+    this.status = status;
+  }
+}
+
+const normalizeEmail = (value: unknown) =>
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+function canonicalEmail(value: unknown) {
+  const email = normalizeEmail(value);
+  return email && email.length <= 320 && email.includes('@') && !/\s/.test(email)
+    ? email
+    : null;
+}
+
+function exactIdentifier(value: unknown) {
+  if (typeof value !== 'string') return null;
+  if (!value || value.length > MAX_IDENTIFIER_LENGTH || value.trim() !== value) return null;
+  if (value.startsWith('$')) return null;
+  return value;
+}
+
+function validInstant(value: unknown) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function boundedReason(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const reason = value.trim();
+  return reason && reason.length <= 500 ? reason : null;
+}
+
+function requireRows(value: unknown, label: string) {
+  if (!Array.isArray(value)) throw new Error(`${label} returned a non-array result`);
+  return value as Array<Record<string, any>>;
+}
+
+async function parseBody(req: Request) {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    throw new PublicError(400, 'Invalid JSON body');
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new PublicError(400, 'Request body must be an object');
+  }
+  if (JSON.stringify(body).length > MAX_BODY_BYTES) {
+    throw new PublicError(413, 'Fax cover request is too large');
+  }
+  const record = body as Record<string, unknown>;
+  if (Object.keys(record).some((field) => !FAX_COVER_FIELDS.has(field))) {
+    throw new PublicError(400, 'Request contains unsupported fields');
+  }
+  for (const field of ['patient_id', 'document_id']) {
+    const value = record[field];
+    if (value !== undefined && value !== null && value !== '' && !exactIdentifier(value)) {
+      throw new PublicError(400, `${field} is invalid`);
+    }
+  }
+  return record;
+}
+
+function validateMembershipRows(
+  rows: Array<Record<string, any>>,
+  userId: string,
+  email: string,
+) {
+  if (rows.length >= MEMBERSHIP_SCAN_LIMIT) {
+    throw new PublicError(409, 'Tenant membership is ambiguous');
+  }
+  const validated: Array<Record<string, any>> = [];
+  const ids = new Set<string>();
+  const keys = new Set<string>();
+  const agencies = new Set<string>();
+  for (const row of rows.filter((candidate) => candidate?.user_id === userId)) {
+    const id = exactIdentifier(row.id);
+    const agencyId = exactIdentifier(row.agency_id);
+    const key = exactIdentifier(row.membership_key);
+    const storedEmail = canonicalEmail(row.user_email_normalized);
+    const transitionEmail = canonicalEmail(row.last_transition_by_email_normalized);
+    const status = typeof row.status === 'string' ? row.status : '';
+    if (
+      !id || !agencyId || !key || key !== `${agencyId}:${userId}`
+      || !storedEmail || row.user_email_normalized !== storedEmail || storedEmail !== email
+      || !TENANT_ROLES.has(String(row.tenant_role || '')) || !MEMBERSHIP_STATUSES.has(status)
+      || !Number.isSafeInteger(row.version) || row.version < 1
+      || !exactIdentifier(row.created_by_user_id)
+      || !exactIdentifier(row.last_transition_by_user_id)
+      || !transitionEmail || row.last_transition_by_email_normalized !== transitionEmail
+      || !validInstant(row.last_transition_at) || !boundedReason(row.last_transition_reason)
+      || ((status === 'active' || status === 'suspended') && !validInstant(row.activated_at))
+      || (status === 'revoked' && (
+        !validInstant(row.revoked_at) || !boundedReason(row.revocation_reason)
+      ))
+    ) {
+      throw new PublicError(409, 'Tenant membership integrity check failed');
+    }
+    if (ids.has(id) || keys.has(key) || agencies.has(agencyId)) {
+      throw new PublicError(409, 'Tenant membership is ambiguous');
+    }
+    ids.add(id);
+    keys.add(key);
+    agencies.add(agencyId);
+    validated.push(row);
+  }
+  return validated;
+}
+
+async function loadExactAgency(entities: Record<string, any>, agencyId: string) {
+  const rows = requireRows(
+    await entities.Agency.filter({ id: agencyId }, undefined, EXACT_ROW_LIMIT),
+    'Agency.filter',
+  );
+  if (rows.length >= EXACT_ROW_LIMIT) throw new PublicError(409, 'Agency is ambiguous');
+  const exact = rows.filter((row) => row?.id === agencyId);
+  if (exact.length === 0) throw new PublicError(403, 'Agency is unavailable');
+  if (exact.length !== 1) throw new PublicError(409, 'Agency is ambiguous');
+  if (!ACTIVE_AGENCY_STATUSES.has(String(exact[0].status || ''))) {
+    throw new PublicError(403, 'Agency is unavailable');
+  }
+  return exact[0];
+}
+
+async function loadTenantAuthority(
+  entities: Record<string, any>,
+  userId: string,
+  email: string,
+  requestedAgencyId: string | null,
+) {
+  const active = validateMembershipRows(
+    requireRows(
+      await entities.AgencyMembership.filter(
+        { user_id: userId },
+        '-updated_date',
+        MEMBERSHIP_SCAN_LIMIT,
+      ),
+      'AgencyMembership.filter',
+    ),
+    userId,
+    email,
+  ).filter((row) => row.status === 'active');
+  if (active.length === 0) throw new PublicError(403, 'No active tenant membership');
+  if (!requestedAgencyId && active.length !== 1) {
+    throw new PublicError(409, 'Fax tenant is ambiguous');
+  }
+  const membership = requestedAgencyId
+    ? active.find((row) => row.agency_id === requestedAgencyId)
+    : active[0];
+  if (!membership) throw new PublicError(403, 'No active membership for fax agency');
+  const agencyId = exactIdentifier(membership.agency_id);
+  if (!agencyId) throw new PublicError(409, 'Tenant membership integrity check failed');
+  const agency = await loadExactAgency(entities, agencyId);
+  return { membership, agency, agencyId };
+}
+
+async function exactRow(
+  entity: Record<string, any>,
+  id: string,
+  label: string,
+  missingStatus: number,
+) {
+  const rows = requireRows(
+    await entity.filter({ id }, undefined, EXACT_ROW_LIMIT),
+    `${label}.filter`,
+  );
+  if (rows.length >= EXACT_ROW_LIMIT) throw new PublicError(409, `${label} is ambiguous`);
+  const exact = rows.filter((row) => row?.id === id);
+  if (exact.length === 0) throw new PublicError(missingStatus, `${label} not found`);
+  if (exact.length !== 1) throw new PublicError(409, `${label} is ambiguous`);
+  return exact[0];
+}
+
+function validatePatientProvenance(patient: Record<string, any>) {
+  const agencyId = exactIdentifier(patient.agency_id);
+  const creatorId = exactIdentifier(patient.created_by_user_id);
+  const creatorEmail = canonicalEmail(patient.created_by_user_email_normalized);
+  if (
+    !agencyId || !creatorId || !creatorEmail
+    || patient.created_by_user_email_normalized !== creatorEmail
+    || canonicalEmail(patient.created_by) !== creatorEmail
+    || patient.is_sample !== false || patient.is_archived !== false
+  ) {
+    throw new PublicError(409, 'Patient tenant provenance is unavailable');
+  }
+  const assignments = Array.isArray(patient.assigned_nurses)
+    ? patient.assigned_nurses.map(canonicalEmail)
+    : [];
+  if (assignments.some((value) => !value)) {
+    throw new PublicError(409, 'Patient assignment integrity check failed');
+  }
+  return { agencyId, creatorId, creatorEmail, assignments: assignments as string[] };
+}
+
 async function assertPatientAccess(base44, user, patient) {
-  if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-  const isSuperAdmin = user.account_type === 'super_admin';
-  const isAgencyScopedAdmin =
-    user.account_type === 'agency_admin'
-    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-  const isAssigned = Array.isArray(patient.assigned_nurses)
-    && patient.assigned_nurses.includes(user.email);
-  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  if (!patient) throw new PublicError(403, 'Patient is unavailable');
+  const userId = exactIdentifier(user.id);
+  const email = canonicalEmail(user.email);
+  if (!userId || !email) throw new PublicError(403, 'Forbidden');
+  const provenance = validatePatientProvenance(patient);
+  const authority = await loadTenantAuthority(
+    base44.asServiceRole.entities,
+    userId,
+    email,
+    provenance.agencyId,
+  );
+  const role = String(authority.membership.tenant_role || '');
+  const isCreator = provenance.creatorId === userId && provenance.creatorEmail === email;
+  const isAssigned = provenance.assignments.includes(email);
+  if (!AGENCY_WIDE_FAX_ROLES.has(role) && !isCreator && !isAssigned) {
+    throw new PublicError(403, 'Patient is unavailable');
   }
-  if (isAgencyScopedAdmin) {
-    if (!user.agency_name) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    const agencyUsers = await base44.asServiceRole.entities.User
-      .list('-created_date', 5000).catch(() => []);
-    const agencyEmails = new Set(
-      (agencyUsers || [])
-        .filter((u) => u.agency_name === user.agency_name && u.email)
-        .map((u) => u.email),
-    );
-    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
-      || (Array.isArray(patient.assigned_nurses)
-        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
-    if (!inAgency) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  return authority;
+}
+
+async function loadFaxContext(
+  base44: Record<string, any>,
+  user: Record<string, any>,
+  requestedPatientId: string | null,
+  requestedDocumentId: string | null,
+) {
+  const entities = base44.asServiceRole.entities;
+  const userId = exactIdentifier(user.id);
+  const email = canonicalEmail(user.email);
+  if (!userId || !email) throw new PublicError(403, 'Forbidden');
+
+  const document = requestedDocumentId
+    ? await exactRow(entities.Document, requestedDocumentId, 'Document', 404)
+    : null;
+  // Legacy Document relation fields are still browser-mutable. The immutable
+  // built-in creator must match before document metadata can enter an external
+  // AI prompt; patient/agency links only corroborate that owner boundary.
+  if (document && canonicalEmail(document.created_by) !== email) {
+    throw new PublicError(403, 'Document is unavailable');
   }
-  return null;
+  const storedAgencyId = document?.agency_id === undefined
+    || document?.agency_id === null
+    || document?.agency_id === ''
+    ? null
+    : exactIdentifier(document.agency_id);
+  if (document && document.agency_id !== undefined && document.agency_id !== null
+    && document.agency_id !== '' && !storedAgencyId) {
+    throw new PublicError(409, 'Document tenant linkage is invalid');
+  }
+  const storedPatientId = document?.patient_id === undefined
+    || document?.patient_id === null
+    || document?.patient_id === ''
+    ? null
+    : exactIdentifier(document.patient_id);
+  const hasStoredPatientId = !!document
+    && document.patient_id !== undefined
+    && document.patient_id !== null
+    && document.patient_id !== '';
+  if (hasStoredPatientId && !storedPatientId) {
+    throw new PublicError(409, 'Document patient linkage is invalid');
+  }
+  if (requestedPatientId && document && storedPatientId !== requestedPatientId) {
+    throw new PublicError(409, 'Document is not linked to the requested patient');
+  }
+
+  const patientId = requestedPatientId || storedPatientId;
+  const patient = patientId
+    ? await exactRow(entities.Patient, patientId, 'Patient', 403)
+    : null;
+  if (patient) {
+    const authority = await assertPatientAccess(base44, user, patient);
+    if (document?.agency_id !== undefined && document?.agency_id !== null
+      && document.agency_id !== authority.agencyId) {
+      throw new PublicError(409, 'Document tenant linkage is inconsistent');
+    }
+    return { patient, document, ...authority };
+  }
+
+  const authority = await loadTenantAuthority(entities, userId, email, storedAgencyId);
+  return { patient: null, document, ...authority };
 }
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (user.disabled === true || user.is_service === true || user.is_verified === false) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
+    const body = await parseBody(req);
     const {
       patient_id,
       document_id,
@@ -90,36 +337,24 @@ Deno.serve(async (req) => {
       notes,
       urgency = 'routine',
       page_count = 1
-    } = await req.json();
+    } = body;
+
+    const context = await loadFaxContext(
+      base44,
+      user,
+      exactIdentifier(patient_id),
+      exactIdentifier(document_id),
+    );
+    const { patient, document } = context;
 
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!anthropicKey) return Response.json({ error: 'Anthropic API key not configured' }, { status: 500 });
 
-    // Fetch patient + document in parallel.
-    // Reads are scoped to the authenticated user (RLS, NOT asServiceRole) so the
-    // caller cannot embed another patient's PHI into a cover sheet via a guessed id.
-    // Agency-scoped admins still need assertPatientAccess: bare role:admin RLS
-    // is platform-wide (HOSTED-RLS-PROOF §5b).
-    const [patientResults, documentResults] = await Promise.all([
-      patient_id ? base44.entities.Patient.filter({ id: patient_id }, undefined, 5000) : Promise.resolve([]),
-      document_id ? base44.entities.Document.filter({ id: document_id }, undefined, 5000) : Promise.resolve([])
-    ]);
-
-    const patient = patientResults[0] || null;
-    const document = documentResults[0] || null;
-    if (patient_id) {
-      const denied = await assertPatientAccess(base44, user, patient);
-      if (denied) return denied;
-    }
-
-    // Default the sender fax to the OFFICE fax machine (AgencySettings) so the
-    // cover sheet tells recipients to reply to the office — never the blind
-    // outbound line the fax actually transmits from.
-    let senderFax = (sender_number || '').toString().trim();
-    if (!senderFax) {
-      const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
-      senderFax = (agencySettings?.office_fax_number_e164 || '').toString().trim();
-    }
+    // AgencySettings does not yet carry an immutable agency_id, so this broker
+    // must not select a row by mutable User claims or a non-unique agency name.
+    // Until that schema is tenant-stamped, callers may supply an explicit
+    // office reply number or let the generated cover sheet say "See letterhead".
+    const senderFax = (sender_number || '').toString().trim();
 
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -213,7 +448,10 @@ Generate a professional cover sheet with a HIPAA confidentiality disclaimer. Ret
     return Response.json({ success: true, cover_page_data: coverData });
 
   } catch (error) {
-    console.error('Cover page generation error:', error);
+    if (error instanceof PublicError) {
+      return Response.json({ error: error.message }, { status: error.status });
+    }
+    console.error('Cover page generation error:', error?.message);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

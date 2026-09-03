@@ -37,7 +37,7 @@ export default function SwipeablePatientCard({
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
     
-    if (isLeftSwipe) {
+    if (isLeftSwipe && typeof onDelete === 'function') {
       setSwiped(true);
     } else if (isRightSwipe) {
       setSwiped(false);
@@ -51,7 +51,7 @@ export default function SwipeablePatientCard({
   return (
     <div className="relative overflow-hidden">
       {/* Swipe Actions Background */}
-      {swiped && (
+      {swiped && typeof onDelete === 'function' && (
         <div className="absolute inset-0 bg-red-500 flex items-center justify-end pr-4 rounded-xl">
           <Button
             variant="ghost"

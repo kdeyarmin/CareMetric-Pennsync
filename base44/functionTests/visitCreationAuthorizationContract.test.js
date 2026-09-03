@@ -277,11 +277,11 @@ test('Visit provenance fields exist, direct create is disabled, and the wrapper 
   assert.equal(schema.properties.created_by_user_id.type, 'string');
   assert.equal(schema.properties.created_by_user_email_normalized.format, 'email');
   assert.equal(schema.rls.create, false);
-  for (const operation of ['read', 'update', 'delete']) {
-    assert.deepEqual(schema.rls[operation].$or[0], {
-      'data.created_by_user_email_normalized': '{{user.email}}',
-    });
-  }
+  assert.deepEqual(schema.rls.read.$or[0], {
+    'data.created_by_user_email_normalized': '{{user.email}}',
+  });
+  assert.equal(schema.rls.update, false);
+  assert.equal(schema.rls.delete, false);
 
   const wrapper = await readFile(wrapperUrl, 'utf8');
   assert.match(wrapper, /base44\.functions\.invoke\('createAuthorizedVisit', payload\)/);

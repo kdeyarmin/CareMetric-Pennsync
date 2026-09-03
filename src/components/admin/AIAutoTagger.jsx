@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Brain, Tag, Loader2, CheckCircle2 } from "lucide-react";
 import { hasSemanticTags, mergeAiTags } from "@/components/smartNote/compliance/reportingFields";
+import { setVisitAiTags } from '@/functions/updateAuthorizedVisit';
 
 export default function AIAutoTagger() {
   const [isTagging, setIsTagging] = useState(false);
@@ -32,7 +33,7 @@ export default function AIAutoTagger() {
   });
 
   const updateVisitMutation = useMutation({
-    mutationFn: ({ id, tags }) => base44.entities.Visit.update(id, { ai_tags: tags }),
+    mutationFn: ({ id, tags }) => setVisitAiTags({ visitId: id, tags }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allVisitsForTagging'] }),
   });
 

@@ -12,7 +12,11 @@
  * Entities whose writes are service-role-only and therefore cannot be
  * reassigned with a direct browser entity update.
  */
-export const SERVER_MERGE_REQUIRED_ENTITIES = ["OASISAssessment", "PatientOutcomeMetric"];
+export const SERVER_MERGE_REQUIRED_ENTITIES = [
+  "OASISAssessment",
+  "PatientNoteHistoryEntry",
+  "PatientOutcomeMetric",
+];
 
 export const PATIENT_MERGES_PAUSED = true;
 export const PATIENT_MERGE_PAUSED_MESSAGE =

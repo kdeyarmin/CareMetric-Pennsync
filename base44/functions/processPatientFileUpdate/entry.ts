@@ -362,6 +362,17 @@ Deno.serve(async (req) => {
     // anything, so an admin can review which patients would be added vs.
     // matched to existing records before committing the import.
     const dryRun = body.dry_run === true || body.mode === 'preview';
+    // Source/staging containment: preview remains available to the protected
+    // owner, but apply mode cannot safely create or mutate Patient rows until
+    // it requires one exact AgencyMembership-backed agency and stamps the same
+    // immutable provenance as createAuthorizedPatient. Refuse before reading a
+    // supplied file or enumerating any Patient data.
+    if (!dryRun) {
+      return Response.json({
+        success: false,
+        error: 'Patient import commit is paused pending tenant-safe agency stamping',
+      }, { status: 503 });
+    }
     let fileContent = cleanValue(body.file_content);
 
     if (!fileContent && body.file_url) {

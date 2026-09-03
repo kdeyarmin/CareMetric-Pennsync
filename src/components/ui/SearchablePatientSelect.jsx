@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { Check, ChevronsUpDown, Clock, Star, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
 import { useQueryClient } from "@tanstack/react-query";
+import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 
 export default function SearchablePatientSelect({
   patients = [],
@@ -45,6 +46,7 @@ export default function SearchablePatientSelect({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newPatient, setNewPatient] = useState({ first_name: "", last_name: "" });
   const [creating, setCreating] = useState(false);
+  const patientCreateRequestId = useRef(null);
   const [currentUserEmail, setCurrentUserEmail] = useState("");
   const queryClient = useQueryClient();
   const [localPatients, setLocalPatients] = useState(Array.isArray(patients) ? patients : []);
@@ -134,12 +136,15 @@ export default function SearchablePatientSelect({
     
     setCreating(true);
     try {
-      const created = await base44.entities.Patient.create(newPatient);
+      const created = await createAuthorizedPatient(newPatient, {
+        clientRequestId: patientCreateRequestId.current ||= createPatientRequestId(),
+      });
       setLocalPatients((current) => [created, ...current]);
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       handleSelect(created.id);
       setCreateDialogOpen(false);
       setNewPatient({ first_name: "", last_name: "" });
+      patientCreateRequestId.current = null;
     } catch (error) {
       // Surface the failure (the dialog stays open so the entry isn't lost).
       toast.error(error?.message || 'Failed to create patient. Please try again.');
@@ -149,6 +154,7 @@ export default function SearchablePatientSelect({
 
   // Pre-fill new patient with search term
   const openCreateDialog = () => {
+    patientCreateRequestId.current = createPatientRequestId();
     const names = search.trim().split(' ');
     setNewPatient({
       first_name: names[0] || "",

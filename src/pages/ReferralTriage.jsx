@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toLocalISODate } from '@/lib/dateLocal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -11,6 +11,7 @@ import ReferralTriageAnalyzer from '../components/referral/ReferralTriageAnalyze
 import { todayEastern } from '@/components/utils/timezone';
 import { toast } from 'sonner';
 import { buildIncompleteReferralFromTriage, referralPatientReadiness } from '@/components/referral/referralPatientReadiness';
+import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 
 // Triage urgency levels → Referral.priority enum (low/normal/high/urgent).
 const URGENCY_TO_PRIORITY = { CRITICAL: 'urgent', HIGH: 'high', MEDIUM: 'normal', LOW: 'low' };
@@ -21,6 +22,7 @@ const URGENCY_TO_TASK_PRIORITY = { CRITICAL: 'high', HIGH: 'high', MEDIUM: 'medi
  * Parse incoming unstructured clinical data to triage and onboard referrals.
  */
 export default function ReferralTriage() {
+  const patientCreateRequestId = useRef(null);
   const queryClient = useQueryClient();
   const [lastAnalysis, setLastAnalysis] = useState(null);
   const [showCreatePatient, setShowCreatePatient] = useState(false);
@@ -31,6 +33,7 @@ export default function ReferralTriage() {
   });
 
   const handleTriageComplete = (analysis) => {
+    patientCreateRequestId.current = createPatientRequestId();
     setLastAnalysis(analysis);
     setShowCreatePatient(true);
   };
@@ -96,7 +99,9 @@ export default function ReferralTriage() {
         clinical_notes: lastAnalysis.clinical_summary,
       };
 
-      const patient = await base44.entities.Patient.create(patientData);
+      const patient = await createAuthorizedPatient(patientData, {
+        clientRequestId: patientCreateRequestId.current ||= createPatientRequestId(),
+      });
 
       // Create the linked Referral record so triage admissions appear in the
       // referral queue / QA / metrics (same payload shape as

@@ -1,0 +1,630 @@
+import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
+import test from 'node:test';
+import { transpileTs } from '../../tools-transpile-ts.mjs';
+
+const brokers = {
+  get: new URL('../functions/getAuthorizedPatient/entry.ts', import.meta.url),
+  list: new URL('../functions/listAuthorizedPatients/entry.ts', import.meta.url),
+};
+const wrappers = {
+  get: new URL('../../src/functions/getAuthorizedPatient.js', import.meta.url),
+  list: new URL('../../src/functions/listAuthorizedPatients.js', import.meta.url),
+};
+
+const USER = {
+  id: 'user-1',
+  email: 'Clinician@Agency.test',
+  role: 'user',
+  is_active: true,
+  is_verified: true,
+};
+
+const membership = (overrides = {}) => ({
+  id: 'membership-a',
+  membership_key: 'agency-a:user-1',
+  agency_id: 'agency-a',
+  user_id: 'user-1',
+  user_email_normalized: 'clinician@agency.test',
+  tenant_role: 'clinician',
+  status: 'active',
+  created_by_user_id: 'owner-1',
+  last_transition_by_user_id: 'owner-1',
+  last_transition_by_email_normalized: 'owner@platform.test',
+  last_transition_at: '2026-09-03T11:00:00.000Z',
+  last_transition_reason: 'Approved tenant membership',
+  activated_at: '2026-09-03T11:00:00.000Z',
+  version: 2,
+  ...overrides,
+});
+
+const agency = (overrides = {}) => ({
+  id: 'agency-a',
+  status: 'active',
+  ...overrides,
+});
+
+function patient(overrides = {}) {
+  const row = {
+    id: 'patient-a',
+    agency_id: 'agency-a',
+    created_by_user_id: 'user-1',
+    created_by_user_email_normalized: 'clinician@agency.test',
+    created_by: 'clinician@agency.test',
+    client_request_id: 'create-request-a',
+    first_name: 'Ada',
+    middle_name: '',
+    last_name: 'Lovelace',
+    medical_record_number: 'MRN-1',
+    date_of_birth: '1815-12-10',
+    phone: '555-0100',
+    email: 'ada@example.test',
+    address: '1 Computing Way',
+    primary_diagnosis: 'I10',
+    secondary_diagnoses: ['E11.9'],
+    status: 'active',
+    care_type: 'home_health',
+    admission_date: '2026-09-01',
+    assigned_nurses: ['clinician@agency.test'],
+    active_alerts: [{ id: 'hidden' }],
+    clinical_notes: 'hidden',
+    is_sample: false,
+    is_archived: false,
+    updated_date: '2026-09-03T12:00:00.000Z',
+    ...overrides,
+  };
+  row.patient_creation_key = overrides.patient_creation_key
+    ?? `${row.agency_id}:${row.created_by_user_id}:${row.client_request_id}`;
+  return row;
+}
+
+async function importHandler(kind, makeClient, superAdminEmail = null) {
+  let source = await readFile(brokers[kind], 'utf8');
+  const globalName = `__patientReadMakeClient_${kind}_${Math.random().toString(36).slice(2)}`;
+  source = source.replace(
+    /import\s+\{\s*createClientFromRequest\s*\}\s+from\s+'npm:[^']+';/,
+    `const createClientFromRequest = globalThis.${globalName};`,
+  );
+  const temporaryModule = join(
+    tmpdir(),
+    `patient_read_${kind}_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`,
+  );
+  await writeFile(temporaryModule, transpileTs(source).outputText);
+
+  let handler;
+  globalThis[globalName] = makeClient;
+  globalThis.Deno = {
+    serve: (candidate) => { handler = candidate; },
+    env: { get: (name) => name === 'SUPER_ADMIN_EMAIL' ? superAdminEmail : null },
+  };
+  try {
+    await import(pathToFileURL(temporaryModule).href);
+  } finally {
+    await unlink(temporaryModule).catch(() => {});
+    delete globalThis[globalName];
+  }
+  assert.equal(typeof handler, 'function');
+  return handler;
+}
+
+async function loadBroker(kind, {
+  caller = USER,
+  callers = null,
+  memberships = [membership()],
+  membershipResponses = null,
+  agencies = [agency()],
+  agencyResponses = null,
+  patients = [patient()],
+  patientResponses = null,
+  ignoreFilters = false,
+  superAdminEmail = null,
+} = {}) {
+  const clone = (value) => structuredClone(value);
+  const calls = {
+    auth: 0,
+    serviceRole: 0,
+    memberships: [],
+    agencies: [],
+    patients: [],
+  };
+  let membershipIndex = 0;
+  let agencyIndex = 0;
+  let patientIndex = 0;
+
+  const selected = (responses, index, fallback) => (
+    responses ? responses[Math.min(index, responses.length - 1)] : fallback
+  );
+  const matches = (row, query) => Object.entries(query || {}).every(([field, value]) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (Array.isArray(value.$in)) return value.$in.includes(row?.[field]);
+      return false;
+    }
+    return row?.[field] === value;
+  });
+  const filterRows = (rows, query, limit, offset = 0) => {
+    if (!Array.isArray(rows)) return rows;
+    const matching = ignoreFilters ? rows : rows.filter((row) => matches(row, query));
+    return matching.slice(offset, Number.isFinite(limit) ? offset + limit : undefined);
+  };
+
+  const serviceRole = {
+    entities: {
+      AgencyMembership: {
+        filter: async (query, sort, limit) => {
+          calls.memberships.push({ query: clone(query), sort, limit });
+          const rows = selected(membershipResponses, membershipIndex++, memberships);
+          return filterRows(clone(rows), query, limit);
+        },
+      },
+      Agency: {
+        filter: async (query, sort, limit) => {
+          calls.agencies.push({ query: clone(query), sort, limit });
+          const rows = selected(agencyResponses, agencyIndex++, agencies);
+          return filterRows(clone(rows), query, limit);
+        },
+      },
+      Patient: {
+        filter: async (query, sort, limit, offset, fields) => {
+          calls.patients.push({ query: clone(query), sort, limit, offset, fields: clone(fields) });
+          const rows = selected(patientResponses, patientIndex++, patients);
+          return filterRows(clone(rows), query, limit, offset);
+        },
+      },
+    },
+  };
+  const client = {
+    auth: {
+      me: async () => {
+        const value = callers
+          ? callers[Math.min(calls.auth, callers.length - 1)]
+          : caller;
+        calls.auth += 1;
+        if (value instanceof Error) throw value;
+        return clone(value);
+      },
+    },
+    get asServiceRole() {
+      calls.serviceRole += 1;
+      return serviceRole;
+    },
+  };
+  const handler = await importHandler(kind, () => client, superAdminEmail);
+  return { handler, calls };
+}
+
+async function invoke(handler, path, body, method = 'POST') {
+  const request = new Request(`http://local/${path}`, {
+    method,
+    headers: { 'content-type': 'application/json' },
+    ...(method === 'GET' || method === 'HEAD' ? {} : { body: JSON.stringify(body) }),
+  });
+  const response = await handler(request);
+  return { response, json: await response.json() };
+}
+
+const getBody = (overrides = {}) => ({
+  agency_id: 'agency-a',
+  patient_id: 'patient-a',
+  purpose: 'display',
+  ...overrides,
+});
+
+const pageBody = (overrides = {}) => ({
+  agency_id: 'agency-a',
+  mode: 'page',
+  purpose: 'roster',
+  page_size: 25,
+  offset: 0,
+  sort: 'updated_desc',
+  ...overrides,
+});
+
+const EXACT_PURPOSE_FIELDS = {
+  display: ['id', 'first_name', 'middle_name', 'last_name'],
+  selector: [
+    'id', 'first_name', 'middle_name', 'last_name', 'medical_record_number',
+    'status', 'care_type', 'primary_diagnosis', 'updated_date',
+  ],
+  alert_analysis: [
+    'id', 'first_name', 'middle_name', 'last_name', 'primary_diagnosis',
+    'secondary_diagnoses', 'care_type', 'status', 'allergies',
+  ],
+  education_context: [
+    'id', 'first_name', 'middle_name', 'last_name', 'primary_diagnosis',
+    'physician_name', 'allergies',
+  ],
+  visit_summary: [
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'primary_diagnosis',
+  ],
+  health_history_write_base: [
+    'id', 'past_medical_history', 'past_hospitalizations', 'updated_date',
+  ],
+};
+const EXACT_PURPOSE_ROLES = {
+  display: ['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care'],
+  selector: ['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care'],
+  alert_analysis: ['platform_owner', 'agency_admin', 'manager', 'clinician'],
+  education_context: ['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care'],
+  visit_summary: ['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care'],
+  health_history_write_base: ['platform_owner', 'agency_admin', 'manager', 'clinician'],
+};
+const LIST_PURPOSE_FIELDS = {
+  roster: [
+    'id', 'first_name', 'middle_name', 'last_name', 'medical_record_number',
+    'status', 'care_type', 'admission_date', 'primary_diagnosis', 'updated_date',
+  ],
+  contact: [
+    'id', 'first_name', 'middle_name', 'last_name', 'phone', 'email',
+    'emergency_contact_name', 'emergency_contact_phone',
+    'emergency_contact_relationship', 'physician_name', 'physician_phone',
+    'physician_email', 'caregiver_name', 'caregiver_email', 'caregiver_phone',
+  ],
+  identity_match: [
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'medical_record_number', 'phone', 'address',
+  ],
+};
+const LIST_PURPOSE_ROLES = {
+  roster: ['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care'],
+  contact: ['platform_owner', 'agency_admin', 'manager'],
+  identity_match: ['platform_owner', 'agency_admin', 'manager'],
+};
+
+function markedSection(source, start, end) {
+  const from = source.indexOf(start);
+  const to = source.indexOf(end, from);
+  assert.notEqual(from, -1, `${start} is required`);
+  assert.notEqual(to, -1, `${end} is required`);
+  return source.slice(from, to);
+}
+
+function quotedValues(body) {
+  return [...body.matchAll(/'([^']+)'/g)].map((match) => match[1]);
+}
+
+function fieldsFor(policy, purpose, usesSet = false) {
+  const prefix = usesSet ? 'new\\s+Set\\s*\\(\\s*\\[' : '\\[';
+  const suffix = usesSet ? '\\]\\s*\\)' : '\\]';
+  const match = policy.match(new RegExp(
+    `(?:^|\\n)\\s*${purpose}:\\s*${prefix}([\\s\\S]*?)${suffix}\\s*,`,
+  ));
+  assert.ok(match, `${purpose} policy is required`);
+  return quotedValues(match[1]);
+}
+
+test('read brokers expose finite projections and contain no read bypass or Patient write', async () => {
+  const getSource = await readFile(brokers.get, 'utf8');
+  const listSource = await readFile(brokers.list, 'utf8');
+  const getWrapper = await readFile(wrappers.get, 'utf8');
+  const listWrapper = await readFile(wrappers.list, 'utf8');
+
+  assert.match(getSource, /BEGIN AUTHORIZED PATIENT EXACT PURPOSE POLICY/);
+  assert.match(listSource, /BEGIN AUTHORIZED PATIENT LIST PURPOSE POLICY/);
+  for (const source of [getSource, listSource]) {
+    assert.doesNotMatch(source, /entities\.Patient\.(?:list|get|create|bulkCreate|update|updateMany|delete)\s*\(/);
+    assert.doesNotMatch(source, /assigned_nurses\s*\.(?:includes|some)/);
+    assert.match(source, /created_by_user_id/);
+    assert.match(source, /patient_creation_key/);
+    assert.ok((source.match(/await loadAuthority\s*\(/g) || []).length >= 2);
+  }
+  assert.match(getSource, /patientReadFields\(purpose\)/);
+  assert.match(listSource, /patientReadFields\(input\.purpose\)/);
+  assert.match(listSource, /entities\.Patient\.filter\(/);
+  assert.doesNotMatch(getWrapper, /\.entities\./);
+  assert.doesNotMatch(listWrapper, /\.entities\./);
+  assert.match(getWrapper, /functions\.invoke\('getAuthorizedPatient'/);
+  assert.match(listWrapper, /functions\.invoke\('listAuthorizedPatients'/);
+
+  const getPolicy = markedSection(
+    getSource,
+    '// <<<BEGIN AUTHORIZED PATIENT EXACT PURPOSE POLICY>>>',
+    '// <<<END AUTHORIZED PATIENT EXACT PURPOSE POLICY>>>',
+  );
+  const listPolicy = markedSection(
+    listSource,
+    '// <<<BEGIN AUTHORIZED PATIENT LIST PURPOSE POLICY>>>',
+    '// <<<END AUTHORIZED PATIENT LIST PURPOSE POLICY>>>',
+  );
+  for (const [purpose, fields] of Object.entries(EXACT_PURPOSE_FIELDS)) {
+    assert.deepEqual(fieldsFor(getPolicy, purpose), fields);
+    assert.deepEqual(fieldsFor(getWrapper, purpose, true), fields);
+    assert.deepEqual(fieldsFor(getPolicy.slice(getPolicy.indexOf('const PURPOSE_ROLES')), purpose, true), EXACT_PURPOSE_ROLES[purpose]);
+  }
+  for (const [purpose, fields] of Object.entries(LIST_PURPOSE_FIELDS)) {
+    assert.deepEqual(fieldsFor(listPolicy, purpose), fields);
+    assert.deepEqual(fieldsFor(listWrapper, purpose, true), fields);
+    assert.deepEqual(fieldsFor(listPolicy.slice(listPolicy.indexOf('const PURPOSE_ROLES')), purpose, true), LIST_PURPOSE_ROLES[purpose]);
+  }
+
+  const getAuthority = markedSection(
+    getSource,
+    '// <<<BEGIN SHARED PATIENT READ TENANT AUTHORITY>>>',
+    '// <<<END SHARED PATIENT READ TENANT AUTHORITY>>>',
+  );
+  const listAuthority = markedSection(
+    listSource,
+    '// <<<BEGIN SHARED PATIENT READ TENANT AUTHORITY>>>',
+    '// <<<END SHARED PATIENT READ TENANT AUTHORITY>>>',
+  );
+  assert.equal(listAuthority, getAuthority, 'tenant authority core must remain identical');
+});
+
+test('both brokers reject unsupported methods and operator-shaped input before privileged reads', async () => {
+  for (const kind of ['get', 'list']) {
+    const { handler, calls } = await loadBroker(kind);
+    const getResult = await invoke(handler, kind, {}, 'GET');
+    assert.equal(getResult.response.status, 405);
+    assert.equal(getResult.response.headers.get('allow'), 'POST');
+
+    const body = kind === 'get'
+      ? getBody({ patient_id: { $in: ['patient-a'] } })
+      : pageBody({ where: { agency_id: 'agency-b' } });
+    const invalid = await invoke(handler, kind, body);
+    assert.equal(invalid.response.status, 400);
+    assert.equal(calls.auth, 0);
+    assert.deepEqual(calls.memberships, []);
+    assert.deepEqual(calls.patients, []);
+  }
+});
+
+test('anonymous, disabled, service, and unverified callers fail before service-role reads', async () => {
+  const deniedCallers = [
+    { caller: null, status: 401 },
+    { caller: { ...USER, disabled: true }, status: 403 },
+    { caller: { ...USER, is_service: true }, status: 403 },
+    { caller: { ...USER, is_verified: false }, status: 403 },
+  ];
+  for (const kind of ['get', 'list']) {
+    for (const scenario of deniedCallers) {
+      const { handler, calls } = await loadBroker(kind, { caller: scenario.caller });
+      const result = await invoke(
+        handler,
+        kind,
+        kind === 'get' ? getBody() : pageBody(),
+      );
+      assert.equal(result.response.status, scenario.status);
+      assert.equal(calls.serviceRole, 0);
+      assert.deepEqual(calls.memberships, []);
+      assert.deepEqual(calls.agencies, []);
+      assert.deepEqual(calls.patients, []);
+    }
+  }
+});
+
+test('exact display read uses immutable creator scope, rechecks authority, and projects no protected fields', async () => {
+  const { handler, calls } = await loadBroker('get');
+  const { response, json } = await invoke(handler, 'getAuthorizedPatient', getBody());
+  assert.equal(response.status, 200);
+  assert.deepEqual(Object.keys(json.patient).sort(), [
+    'first_name', 'id', 'last_name', 'middle_name',
+  ]);
+  assert.equal(json.patient.active_alerts, undefined);
+  assert.equal(json.patient.created_by_user_id, undefined);
+  assert.equal(calls.auth, 2);
+  assert.equal(calls.memberships.length, 2);
+  assert.equal(calls.agencies.length, 2);
+  assert.equal(calls.patients.length, 2);
+  assert.deepEqual(calls.patients[0], {
+    query: {
+      id: 'patient-a',
+      agency_id: 'agency-a',
+      is_sample: false,
+      is_archived: false,
+      created_by_user_id: 'user-1',
+      created_by_user_email_normalized: 'clinician@agency.test',
+    },
+    sort: undefined,
+    limit: 10,
+    offset: undefined,
+    fields: [
+      'id', 'agency_id', 'created_by_user_id', 'created_by_user_email_normalized',
+      'created_by', 'client_request_id', 'patient_creation_key', 'is_sample',
+      'is_archived', 'status', 'updated_date', 'first_name', 'middle_name', 'last_name',
+    ],
+  });
+});
+
+test('missing, foreign, and mutable-email-only assigned exact charts are indistinguishable', async () => {
+  const missingBroker = await loadBroker('get', { patients: [] });
+  const missing = await invoke(missingBroker.handler, 'getAuthorizedPatient', getBody());
+
+  const foreignBroker = await loadBroker('get', {
+    patients: [patient({ agency_id: 'agency-b' })],
+    ignoreFilters: true,
+  });
+  const foreign = await invoke(foreignBroker.handler, 'getAuthorizedPatient', getBody());
+
+  const assignedOnlyBroker = await loadBroker('get', {
+    patients: [patient({
+      created_by_user_id: 'user-2',
+      created_by_user_email_normalized: 'other@agency.test',
+      created_by: 'other@agency.test',
+      client_request_id: 'create-request-other',
+      assigned_nurses: ['clinician@agency.test'],
+    })],
+  });
+  const assignedOnly = await invoke(assignedOnlyBroker.handler, 'getAuthorizedPatient', getBody());
+
+  assert.equal(missing.response.status, 404);
+  assert.equal(foreign.response.status, 404);
+  assert.equal(assignedOnly.response.status, 404);
+  assert.equal(missing.json.error, 'Patient unavailable');
+  assert.equal(foreign.json.error, missing.json.error);
+  assert.equal(assignedOnly.json.error, missing.json.error);
+});
+
+test('exact read fails closed when membership authority changes during the request', async () => {
+  const { handler } = await loadBroker('get', {
+    membershipResponses: [
+      [membership()],
+      [membership({ tenant_role: 'manager', version: 3 })],
+    ],
+  });
+  const { response, json } = await invoke(handler, 'getAuthorizedPatient', getBody());
+  assert.equal(response.status, 409);
+  assert.match(json.error, /authority changed/);
+});
+
+test('list page applies tenant and creator scope before paging and returns a finite roster', async () => {
+  const ownRows = [
+    patient({ id: 'patient-a', client_request_id: 'request-a' }),
+    patient({ id: 'patient-b', client_request_id: 'request-b', first_name: 'Grace' }),
+  ];
+  const { handler, calls } = await loadBroker('list', { patients: ownRows });
+  const { response, json } = await invoke(
+    handler,
+    'listAuthorizedPatients',
+    pageBody({ page_size: 1, offset: 0 }),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(json.patients.length, 1);
+  assert.deepEqual(Object.keys(json.patients[0]).sort(), [
+    'admission_date', 'care_type', 'first_name', 'id', 'last_name',
+    'medical_record_number', 'middle_name', 'primary_diagnosis', 'status',
+    'updated_date',
+  ]);
+  assert.deepEqual(json.page, {
+    page_size: 1,
+    offset: 0,
+    has_more: true,
+    next_offset: 1,
+  });
+  assert.equal(calls.patients.length, 2);
+  for (const call of calls.patients) {
+    assert.equal(call.query.agency_id, 'agency-a');
+    assert.equal(call.query.created_by_user_id, 'user-1');
+    assert.equal(call.query.created_by_user_email_normalized, 'clinician@agency.test');
+    assert.equal(call.limit, 2);
+    assert.equal(call.offset, 0);
+    assert.equal(call.fields.includes('clinical_notes'), false);
+    assert.equal(call.fields.includes('active_alerts'), false);
+  }
+});
+
+test('manager page is agency-wide while contact and identity purposes remain role-gated', async () => {
+  const managerMembership = membership({ tenant_role: 'manager' });
+  const otherCreator = patient({
+    created_by_user_id: 'user-2',
+    created_by_user_email_normalized: 'other@agency.test',
+    created_by: 'other@agency.test',
+    client_request_id: 'other-request',
+  });
+  const { handler, calls } = await loadBroker('list', {
+    memberships: [managerMembership],
+    patients: [otherCreator],
+  });
+  const result = await invoke(handler, 'listAuthorizedPatients', pageBody());
+  assert.equal(result.response.status, 200);
+  assert.equal(result.json.patients.length, 1);
+  assert.equal(calls.patients[0].query.created_by_user_id, undefined);
+
+  const clinician = await loadBroker('list');
+  const denied = await invoke(
+    clinician.handler,
+    'listAuthorizedPatients',
+    pageBody({ purpose: 'contact', page_size: 25 }),
+  );
+  assert.equal(denied.response.status, 403);
+  assert.deepEqual(clinician.calls.patients, []);
+});
+
+test('only the configured built-in admin receives membership-free platform-owner scope', async () => {
+  const owner = { ...USER, role: 'admin', email: 'owner@platform.test' };
+  const otherCreator = patient({
+    created_by_user_id: 'user-2',
+    created_by_user_email_normalized: 'other@agency.test',
+    created_by: 'other@agency.test',
+    client_request_id: 'owner-read-target',
+  });
+  for (const kind of ['get', 'list']) {
+    const authorized = await loadBroker(kind, {
+      caller: owner,
+      memberships: [],
+      patients: [otherCreator],
+      superAdminEmail: 'owner@platform.test',
+    });
+    const result = await invoke(
+      authorized.handler,
+      kind,
+      kind === 'get' ? getBody() : pageBody(),
+    );
+    assert.equal(result.response.status, 200);
+    assert.deepEqual(result.json.scope, {
+      agency_id: 'agency-a',
+      membership_id: null,
+      membership_version: null,
+      tenant_role: 'platform_owner',
+    });
+
+    const bareAdmin = await loadBroker(kind, {
+      caller: owner,
+      memberships: [],
+      patients: [otherCreator],
+      superAdminEmail: null,
+    });
+    const denied = await invoke(
+      bareAdmin.handler,
+      kind,
+      kind === 'get' ? getBody() : pageBody(),
+    );
+    assert.equal(denied.response.status, 403);
+    assert.deepEqual(bareAdmin.calls.patients, []);
+  }
+});
+
+test('id batches are capped, tenant-pinned, ordered, and omit missing or foreign ids identically', async () => {
+  const managerMembership = membership({ tenant_role: 'manager' });
+  const sameAgency = patient({ id: 'patient-a', client_request_id: 'same-request' });
+  const foreign = patient({
+    id: 'patient-b',
+    agency_id: 'agency-b',
+    client_request_id: 'foreign-request',
+  });
+  const { handler, calls } = await loadBroker('list', {
+    memberships: [managerMembership],
+    patients: [foreign, sameAgency],
+    ignoreFilters: true,
+  });
+  const body = {
+    agency_id: 'agency-a',
+    mode: 'ids',
+    purpose: 'roster',
+    patient_ids: ['patient-b', 'patient-a', 'patient-missing'],
+  };
+  const { response, json } = await invoke(handler, 'listAuthorizedPatients', body);
+  assert.equal(response.status, 200);
+  assert.deepEqual(json.patients.map((row) => row.id), ['patient-a']);
+  assert.equal(json.missing_ids, undefined);
+  assert.deepEqual(calls.patients[0].query, {
+    agency_id: 'agency-a',
+    is_sample: false,
+    is_archived: false,
+    id: { $in: ['patient-b', 'patient-a', 'patient-missing'] },
+  });
+
+  const invalid = await loadBroker('list');
+  const duplicate = await invoke(invalid.handler, 'listAuthorizedPatients', {
+    agency_id: 'agency-a',
+    mode: 'ids',
+    purpose: 'roster',
+    patient_ids: ['patient-a', 'patient-a'],
+  });
+  assert.equal(duplicate.response.status, 400);
+  assert.equal(invalid.calls.auth, 0);
+  assert.deepEqual(invalid.calls.patients, []);
+});
+
+test('list read fails closed when Patient authority drifts between bounded reads', async () => {
+  const initial = patient();
+  const changed = patient({ updated_date: '2026-09-03T12:01:00.000Z' });
+  const { handler } = await loadBroker('list', {
+    patientResponses: [[initial], [changed]],
+  });
+  const { response, json } = await invoke(handler, 'listAuthorizedPatients', pageBody());
+  assert.equal(response.status, 409);
+  assert.match(json.error, /authority changed/);
+});

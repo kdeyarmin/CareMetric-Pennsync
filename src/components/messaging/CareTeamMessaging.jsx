@@ -148,26 +148,6 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
     }
   });
 
-  const saveToChartMutation = useMutation({
-    mutationFn: async () => {
-      if (!patientId || !selectedThread) return;
-      const patient = await base44.entities.Patient.get(patientId);
-      
-      const logHeader = `\n\n--- Clinical Communication Log: ${selectedThread.subject} (${format(new Date(), 'MMM d, yyyy')}) ---\n`;
-      const logBody = selectedThread.messages.map(m => `[${format(new Date(m.created_date), 'h:mm a')}] ${m.sender_name} (${m.priority}): ${m.message_text}`).join('\n');
-      
-      const newNotes = (patient.clinical_notes || "") + logHeader + logBody;
-      
-      return base44.entities.Patient.update(patientId, { clinical_notes: newNotes });
-    },
-    onSuccess: () => {
-      toast.success("Thread saved to patient chart");
-    },
-    onError: (err) => {
-      toast.error(err?.message || "Couldn't save the thread to the chart. Please try again.");
-    }
-  });
-
   const markAsReadMutation = useMutation({
     mutationFn: async (messageId) => {
       const message = messages.find(m => m.id === messageId);
@@ -329,11 +309,11 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => saveToChartMutation.mutate()}
-                  disabled={saveToChartMutation.isPending}
+                  disabled
+                  title="Chart append is paused until the append-only communication-log workflow is available"
                 >
                   <Save className="w-4 h-4 mr-1" />
-                  Save to Chart
+                  Chart Append Paused
                 </Button>
                 <Button
                   size="sm"

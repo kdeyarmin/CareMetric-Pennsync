@@ -394,7 +394,10 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
     assert.match(surface, new RegExp(`if \\(!${gate}\\)`));
   }
   const merge = read('src/components/patient/mergePatients.js');
-  assert.match(merge, /SERVER_MERGE_REQUIRED_ENTITIES\s*=\s*\["OASISAssessment",\s*"PatientOutcomeMetric"\]/);
+  assert.match(
+    merge,
+    /SERVER_MERGE_REQUIRED_ENTITIES\s*=\s*\[\s*"OASISAssessment",\s*"PatientNoteHistoryEntry",\s*"PatientOutcomeMetric",?\s*\]/,
+  );
   assert.match(merge, /PATIENT_MERGE_PAUSED_MESSAGE/);
   const mergeBoundary = merge.slice(
     merge.indexOf('export async function mergePatientInto'),

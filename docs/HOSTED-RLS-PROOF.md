@@ -408,6 +408,146 @@ clinical tenant provenance, make outcome rows immutable, complete the CMS PDGM
 grouper, or validate native devices/stores. No production app, production data,
 domain, scheduler, OASIS-v2 flag, native binary, or app-store record was changed.
 
+## 5h. Patient-create and hard-delete checkpoint (updated 2026-09-03)
+
+The next reviewed batch was deployed only to nonproduction app
+`6a9881683dc68a0bd54f1ef7`. Pre-deployment connector queries returned zero
+Patient, Agency, and AgencyMembership rows. The schema push retained the exact
+238-entity inventory, `createAuthorizedPatient` was added, and only the
+tenant-unsafe `processPatientFileUpdate` function was updated. Hosted function
+inventory is now 253.
+
+The hosted Patient schema exposes the four new provenance/idempotency fields
+`created_by_user_id`, `created_by_user_email_normalized`, `client_request_id`,
+and `patient_creation_key`. Direct Patient create and delete are both false.
+All eight production browser creates use the broker, and the sole hard-delete
+UI path is gone. The bulk-import apply path returns HTTP 503 before file or
+Patient access; protected-owner preview remains available.
+
+Hosted negative probes recorded:
+
+| Probe | Hosted result |
+| --- | --- |
+| anonymous `createAuthorizedPatient` | HTTP 401 `Unauthorized` before service-role access |
+| anonymous `processPatientFileUpdate` | HTTP 401 before input/data access |
+| anonymous Patient list | HTTP 200 with `[]` |
+| anonymous direct Patient create | HTTP 403 permission denied |
+
+Post-probe connector queries again returned zero Patient, Agency, and
+AgencyMembership rows. Root, `/privacy`, `/privacypolicy`, `manifest.json`, and
+all four manifest icons return HTTP 200; the manifest retains relative `id`,
+`start_url`, and `scope`. The staging-bound bundle contains no production app
+id and uses `America/New_York`.
+
+This proves the empty-staging anonymous boundary and zero residue. It does not
+prove an authorized happy path or two-agency isolation because staging still
+has no Agency/membership/test-user matrix. Direct Patient update and broad read
+RLS, legacy provenance and care-team assignment backfill, service-role Patient
+maintenance paths, datastore uniqueness/CAS, native-device/store checks, and
+the previously recorded outcome/PDGM/OASIS blockers remain open. No production
+app, data, domain, scheduled job, feature flag, native binary, or app-store
+record was changed.
+
+## 5i. Patient mutation, append-only note, and Document checkpoint (updated 2026-09-03)
+
+The latest reviewed batch was deployed only to nonproduction app
+`6a9881683dc68a0bd54f1ef7` at
+`https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/`.
+Immediately before the schema push, hosted staging contained 238 schemas and
+the only local-only addition was `PatientNoteHistoryEntry`; there was no
+hosted-only schema and therefore no schema deletion or rename target. Hosted
+inventory after deployment contains 239 schemas and 256 functions.
+
+`Patient` and `Visit` now deny direct create, update, and delete. Patient
+updates are brokered by `updateAuthorizedPatient`; note history is written to
+the all-operation-denied append-only `PatientNoteHistoryEntry` entity by
+`appendPatientNoteHistory` and read through
+`getAuthorizedPatientNoteHistory`. Existing embedded Patient note history is
+retained and merged into the authorized projection; this checkpoint did not
+rewrite existing Patient rows.
+
+Eight legacy Patient writers return static HTTP 503 before parsing caller data,
+creating a client, authenticating, invoking AI, or touching an entity:
+
+`calculateDataQualityScores`, `deletePatientsMissingFirstName`,
+`enforceDataCompleteness`, `migrateExistingData`,
+`monitorClinicalDataForCarePlanUpdates`, `predictPatientRisks`,
+`predictiveRiskAnalysis`, and `processDischargeReport`.
+
+`analyzeDocument`, `generateFaxCoverPage`, and `sendMessage` were redeployed
+with exact Document, Patient, membership, Agency, and immutable-actor boundary
+checks. The initial anonymous `sendMessage` probe returned HTTP 500 because its
+auth rejection was not normalized. The defect was caught, fixed, covered, and
+only that function was redeployed before the probe was repeated successfully.
+
+Hosted negative probes recorded:
+
+| Probe | Hosted result |
+| --- | --- |
+| anonymous `updateAuthorizedPatient` | HTTP 401 before service-role access |
+| anonymous `appendPatientNoteHistory` | HTTP 401 before service-role access |
+| anonymous `getAuthorizedPatientNoteHistory` | HTTP 401 before service-role access |
+| anonymous `analyzeDocument` | HTTP 401 before Document or Patient access |
+| anonymous `generateFaxCoverPage` | HTTP 401 before Document or Patient access |
+| anonymous `sendMessage` after the fix | HTTP 401 before service-role access |
+| anonymous direct Patient create | HTTP 403 permission denied |
+| anonymous direct PatientNoteHistoryEntry create | HTTP 403 permission denied |
+| anonymous Patient list | HTTP 200 with `[]` |
+| anonymous PatientNoteHistoryEntry list | HTTP 200 with `[]` |
+
+Privileged connector queries before and after the probes reported zero Agency,
+AgencyMembership, Patient, Visit, Document, PatientNoteHistoryEntry,
+OutcomeComputationRun, PatientOutcomeMetric, and AgencyKPI rows. The staging
+root, both privacy routes, relative manifest, and icons return HTTP 200. The
+manifest retains relative `id`, `start_url`, and `scope`, and the staging build
+uses `America/New_York` as the default business clock.
+
+This is hosted anonymous-denial and zero-residue evidence on an empty isolated
+app. It is not authenticated tenant-isolation proof. Direct Document entity RLS
+remains open, Patient reads have not been migrated to an authorized server
+boundary, no two-agency users or data exist, and tenant/provenance backfill plus
+datastore uniqueness/CAS are unproved. Outcome computation, official PDGM,
+OASIS, physical-device, signing, privacy/store, and rollback gates remain open.
+The CareMetric production app, production data/schema, domains, schedules,
+secrets, OASIS-v2 and PDGM gates, native binaries, and app-store records were
+unchanged.
+
+## 5j. Patient read-broker checkpoint (updated 2026-09-03)
+
+Two reviewed read-only Patient brokers were explicitly deployed to the same
+isolated staging app: `getAuthorizedPatient` for one exact chart and
+`listAuthorizedPatients` for a bounded authorized roster. No schema was pushed;
+hosted schema inventory remains 239 and hosted function inventory increased
+from 256 to 258.
+
+Shaped anonymous POST probes recorded:
+
+| Function | Hosted result |
+| --- | --- |
+| `getAuthorizedPatient` | HTTP 401 with `{"error":"Unauthorized"}` |
+| `listAuthorizedPatients` | HTTP 401 with `{"error":"Unauthorized"}` |
+
+Post-probe privileged connector queries again reported zero Agency,
+AgencyMembership, Patient, Visit, Document, PatientNoteHistoryEntry,
+OutcomeComputationRun, PatientOutcomeMetric, and AgencyKPI rows.
+
+The source checkpoint passes 3,511 package checks: 2,065 core, 34
+schema/contracts, 379 security, 47 deduplication, and 986 component checks.
+ESLint, `typecheck:signal`, transpilation of all 258 backend functions, all 244
+shared-helper consumers, the staging-bound build, dependency audit with one low
+and no high-severity finding, and `git diff --check` also pass.
+
+This does not close the Patient read boundary. The brokers are deliberately
+unwired, direct `Patient.rls.read` remains broad rather than false, and current
+SPA consumers still use direct reads plus client-side filtering. Production
+cutover remains blocked until every Patient read is migrated, bounded/offset
+paging is proved, care-team assignment uses immutable user ids, tenant and
+provenance backfill is complete, and the authenticated two-agency matrix passes.
+Direct Document entity RLS and the previously recorded outcome, official PDGM,
+OASIS, physical-device, signing, privacy/store, and rollback gates also remain
+open. No production app, data/schema, domain, native binary, or app-store record
+was changed.
+
 ---
 
 ## 6. Sign-off

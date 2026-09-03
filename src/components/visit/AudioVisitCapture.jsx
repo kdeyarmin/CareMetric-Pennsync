@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from "@/hooks/useScopedPatients";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -11,13 +11,14 @@ import VitalSignsForm from "./VitalSignsForm";
 import ConstrainedNoteReviewer from "../smartNote/ConstrainedNoteReviewer";
 import FinalNoteDisplay from "../smartNote/FinalNoteDisplay";
 import { persistVisitNote } from "../smartNote/persistVisitNote";
-import { getPriorNote } from "../smartNote/noteHelpers";
+import { getPriorNote, mergePatientNoteHistory } from "../smartNote/noteHelpers";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
 import { todayEastern } from "../utils/timezone";
 import { toast } from "sonner";
 import { validateFileUpload } from "@/components/utils/security";
 import { HOME_HEALTH_VISIT_TYPES, HOSPICE_VISIT_TYPES } from "@/components/visit/visitTypes";
+import { getAuthorizedPatientNoteHistory } from '@/functions/getAuthorizedPatientNoteHistory';
 
 /**
  * AudioVisitCapture — the "Visit Scribe" choice in the Clinical Notes hub.
@@ -61,6 +62,15 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     queryFn: () => base44.entities.Patient.get(patientId),
     enabled: !!patientId,
   });
+  const { data: noteHistoryResult } = useQuery({
+    queryKey: ["authorizedPatientNoteHistory", patientId],
+    queryFn: () => getAuthorizedPatientNoteHistory({ patientId }),
+    enabled: !!patientId && !!currentUser?.id,
+  });
+  const chartPatient = useMemo(
+    () => mergePatientNoteHistory(patientDetail || patient, noteHistoryResult?.entries),
+    [patientDetail, patient, noteHistoryResult?.entries],
+  );
 
   const { data: boundVisit } = useQuery({
     queryKey: ["visit", visitId],
@@ -85,7 +95,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- boundVisit intentionally omitted; this should only reset state on a patient switch, not on every boundVisit refetch
   }, [patientId]);
 
-  const careScope = patient?.care_type || currentUser?.care_scope;
+  const careScope = chartPatient?.care_type || currentUser?.care_scope;
   const serviceLine = careScope === "hospice" ? "hospice" : "home_health";
   const visitTypes = careScope === "hospice" ? HOSPICE_VISIT_TYPES : HOME_HEALTH_VISIT_TYPES;
 
@@ -325,8 +335,8 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
           roughNote={roughNote}
           serviceLine={serviceLine}
           visitType={visitType}
-          priorNote={getPriorNote(patientDetail || patient)}
-          patient={patientDetail || patient}
+          priorNote={getPriorNote(chartPatient)}
+          patient={chartPatient}
           currentUser={currentUser}
           renderFinalNote={(api) => (
             <FinalNoteDisplay
@@ -342,7 +352,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
                 }
               }}
               copied={copied}
-              patient={patient}
+              patient={chartPatient}
               visitType={visitType}
               analysisScore={api.coverage}
               analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: [] }}

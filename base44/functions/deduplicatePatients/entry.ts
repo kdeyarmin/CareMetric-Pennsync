@@ -955,7 +955,7 @@ const PATIENT_RELATED_ENTITIES = [
   'PDGMCaseMix', 'PatientAlert', 'PatientBillingInfo', 'PatientDocument',
   'PatientEducationAssignment', 'PatientEducationDelivery',
   'PatientEducationDraft', 'PatientEducationEngagement', 'PatientMessage',
-  'PatientOutcome', 'PatientOutcomeMetric', 'PatientPathwayAssignment',
+  'PatientNoteHistoryEntry', 'PatientOutcome', 'PatientOutcomeMetric', 'PatientPathwayAssignment',
   'PatientRecommendation', 'PatientRiskAssessment', 'Payment', 'PaymentRecord',
   'PendingPatientUpdate', 'ProviderPatientAssignment', 'Referral', 'RiskAlert',
   'RiskAnalysis', 'ScheduledFax', 'ScheduledSms', 'SentEducationMaterial',

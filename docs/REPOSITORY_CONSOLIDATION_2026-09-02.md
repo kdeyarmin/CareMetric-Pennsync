@@ -1,6 +1,6 @@
 # PennSync repository consolidation
 
-Status: **third isolated staging hardening checkpoint complete — not approved for production deployment**.
+Status: **latest isolated staging hardening checkpoint complete — production remains blocked**.
 
 ## Canonical destination
 
@@ -49,10 +49,10 @@ none of these operations targeted the CareMetric production app above:
 | Source baseline | merged canonical `main` at `67d9d5ee66aad222a712e6ba49d00461d0a68337` plus draft staging PR `#143` |
 | Frontend | deployed from a successful staging-id build using the `https://base44.app` backend origin; hosted root returns HTTP 200 |
 | PWA | hosted manifest preserves relative `id`, `start_url`, and `scope`; all four manifest icons and the Apple touch icon return HTTP 200 |
-| Entities | all `238 / 238` local entity names match staging; the latest pre-push comparison proved `0` staging-only and `0` local-only schemas, so the push had no schema deletion or rename target |
+| Entities | staging now contains 239 schemas after the additive `PatientNoteHistoryEntry` push; the pre-push comparison found no staging-only schema and exactly that one local-only addition, so there was no deletion or rename target |
 | Time zone | `America/New_York` is the default business/agency clock, giving Eastern Standard or Daylight Time as seasonally appropriate |
-| Data | only the staging owner account exists; privileged connector queries confirm zero Agencies, Patients, Visits, memberships, computation runs, outcome/KPI rows, and every newly locked dormant entity after the probes |
-| Functions | all `252 / 252` local functions are deployed; the latest explicit deployment added the membership-lifecycle, published-outcome, and authorized-Visit brokers and updated only four reviewed functions |
+| Data | only the staging owner account exists; privileged connector queries confirm zero Agencies, AgencyMemberships, Patients, Visits, Documents, PatientNoteHistoryEntries, computation runs, and outcome/KPI rows after the probes |
+| Functions | hosted inventory contains 258 functions at the latest checkpoint; the two newest explicit deployments are the reviewed, read-only `getAuthorizedPatient` and `listAuthorizedPatients` brokers |
 | Secrets | `SUPER_ADMIN_EMAIL` is the only staging secret; `INTERNAL_FN_SECRET` is deliberately absent, so a validly shaped outcome-job request stops with HTTP 500 before any privileged read or write |
 | Feature gates | no AgencySettings row exists; `oasis_response_schema_v2_enabled` therefore remains absent/default-off, the writer remains hard-paused, PDGM reimbursement remains source-disabled, and no outcome schedule was added |
 
@@ -203,6 +203,123 @@ shared-helper consumers match. ESLint, dependency audit, actionlint for all four
 workflows, the 36-item OASIS worksheet, the staging build, and `git diff
 --check` pass.
 
+The fourth staging checkpoint closes the new-chart creation and hard-delete
+boundary without touching existing Patient rows:
+
+- all eight browser Patient-create paths now use `createAuthorizedPatient`;
+  there is no direct production `Patient.create` or `Patient.delete` call under
+  `src`;
+- the broker accepts only an explicit initial-chart allowlist, requires one
+  exact active all-status-validated `AgencyMembership` (or an exact agency
+  selector when the caller has multiple memberships), and permits initial chart
+  creation only to `agency_admin`, `manager`, and `clinician` tenant roles;
+- the server stamps `agency_id`, immutable built-in creator id and normalized
+  email, `created_by`, active/non-sample/non-archived lifecycle defaults, and a
+  scoped agency:user:request idempotency key. It rechecks membership and Agency
+  state before and after the privileged write, verifies exact readback, and
+  removes only its just-created row on a failed authority proof;
+- `Patient.rls.create` and `Patient.rls.delete` are now false. The mobile hard-
+  delete control was removed; a retention-aware archive workflow must be built
+  before deletion can return; and
+- `processPatientFileUpdate` remains available for protected-owner preview, but
+  every commit/apply request returns HTTP 503 before reading the supplied file,
+  enumerating Patients, or writing. It must receive an exact target agency and
+  identical server-owned provenance before apply mode can be restored.
+
+Before this deployment, connector queries again reported zero Patient, Agency,
+and AgencyMembership rows. The 238-schema push completed, only
+`createAuthorizedPatient` and `processPatientFileUpdate` were explicitly
+deployed, and hosted function inventory is now 253. Anonymous calls to both
+functions return HTTP 401; direct anonymous Patient list returns `[]`; direct
+Patient create returns HTTP 403; and post-probe connector counts remain zero.
+The staging root, both privacy paths, relative manifest, and four manifest icons
+return HTTP 200. The build contains the staging app id, contains no production
+CareMetric app id, and preserves `America/New_York`.
+
+Current validation now passes 2,065 core tests, 34 schema/contracts, 310
+security tests, 47 deduplication tests, and 950 component tests (3,406 checks
+across the package groups). All 253 backend functions transpile and all 243
+shared-helper consumers match; ESLint, the staging build, and `git diff --check`
+pass. Direct Patient update and broad read authorization, legacy provenance and
+assignment backfill, service-role Patient maintenance functions, and hosted
+two-agency positive/cross-tenant tests remain production blockers.
+
+The latest isolated staging checkpoint closes the remaining direct Patient
+mutation boundary and moves note history to a service-owned append-only
+projection:
+
+- `Patient` and `Visit` now deny direct create, update, and delete operations.
+  All nine production browser Patient-update paths use
+  `updateAuthorizedPatient`, which accepts a bounded canonical action set,
+  validates exact immutable membership and chart authority, checks the projected
+  combined lifecycle before one write, and verifies the readback. Chart creation
+  remains brokered and hard deletion remains unavailable;
+- `PatientNoteHistoryEntry` is an additive 239th schema with all four direct RLS
+  operations denied. `appendPatientNoteHistory` derives its immutable patient,
+  tenant, Visit, note, and fingerprint provenance server-side, while
+  `getAuthorizedPatientNoteHistory` exposes the authorized projection. Both the
+  new projection and retained legacy embedded history are merged for current
+  readers without rewriting existing Patient rows;
+- `calculateDataQualityScores`, `deletePatientsMissingFirstName`,
+  `enforceDataCompleteness`, `migrateExistingData`,
+  `monitorClinicalDataForCarePlanUpdates`, `predictPatientRisks`,
+  `predictiveRiskAnalysis`, and `processDischargeReport` now return static HTTP
+  503 before request parsing, client creation, authentication, AI, entity reads,
+  or writes; and
+- `analyzeDocument`, `generateFaxCoverPage`, and `sendMessage` now validate the
+  exact Document-to-Patient-to-tenant boundary and immutable actor authority.
+  The first anonymous `sendMessage` probe exposed an uncaught failure as HTTP
+  500; that path was corrected and redeployed, and the repeated probe returned
+  HTTP 401.
+
+Immediately before the schema push, staging contained 238 schemas and the only
+local-only addition was `PatientNoteHistoryEntry`; there was no staging-only
+schema and therefore no deletion or rename target. After deployment, staging
+contains 239 schemas and 256 functions. Connector queries before and after the
+probes reported zero Agency, AgencyMembership, Patient, Visit, Document,
+PatientNoteHistoryEntry, outcome-run, and outcome/KPI rows. Anonymous calls to
+`updateAuthorizedPatient`, `appendPatientNoteHistory`,
+`getAuthorizedPatientNoteHistory`, `analyzeDocument`,
+`generateFaxCoverPage`, and the corrected `sendMessage` return HTTP 401. Direct
+anonymous Patient and PatientNoteHistoryEntry creates return HTTP 403 and lists
+return `[]`. The staging root, privacy routes, manifest, and icons return HTTP
+200; the manifest keeps relative `id`, `start_url`, and `scope`, and the build
+keeps the `America/New_York` default.
+
+This checkpoint did not change the CareMetric production Base44 app, production
+data or schema, either custom domain, any scheduler or secret, the OASIS-v2 or
+PDGM gates, a native binary, or an App Store/Google Play record. Production is
+still blocked: direct Document entity RLS remains open, Patient reads have not
+yet been migrated to a server-authorized boundary, staging has no two-agency
+data/user matrix, and tenant backfill plus datastore uniqueness/CAS are
+unproved. The outcome, official PDGM, OASIS, physical-device, signing, privacy,
+store, and rollback gates below also remain open.
+
+The subsequent Patient read-broker checkpoint explicitly deployed two reviewed,
+read-only functions to the same isolated staging app:
+`getAuthorizedPatient` for one exact chart and `listAuthorizedPatients` for a
+bounded authorized roster. Both shaped anonymous POST probes returned HTTP 401
+with `{"error":"Unauthorized"}`. Hosted function inventory increased from 256
+to 258 while the schema inventory remained 239. Post-probe connector queries
+again reported zero Agency, AgencyMembership, Patient, Visit, Document,
+PatientNoteHistoryEntry, OutcomeComputationRun, PatientOutcomeMetric, and
+AgencyKPI rows.
+
+The two brokers are intentionally not wired into the SPA yet, and direct
+`Patient.rls.read` remains broad rather than false. Cutover still requires
+migrating every Patient read consumer, proving bounded/offset paging behavior,
+replacing email-based assignment with immutable user-id authority, completing
+tenant/provenance backfill, and running the authenticated two-agency matrix.
+The deployment changed no production app, data or schema, domain, native binary,
+or app-store record.
+
+Latest full validation passes 2,065 core tests, 34 schema/contracts, 379
+security tests, 47 deduplication tests, and 986 component tests (3,511 checks
+across the package groups). All 258 backend functions transpile and all 244
+shared-helper consumers match. ESLint, `typecheck:signal`, the staging-bound
+build, dependency audit with one low and no high-severity finding, and `git diff
+--check` pass.
+
 The staging pass also removed mutable `account_type`/agency-profile privilege
 from the highest-risk service-role paths: dashboard and alert reads/mutations,
 message and fax writes, training questions/badges, chart-PDF export, PDF
@@ -245,6 +362,16 @@ functions, or upload a native binary until all of these are complete:
    and offboarding writes are intentionally restrictive but are still sequential
    rather than transactional; add datastore CAS/uniqueness, partial-failure
    audit/reconciliation, exact User-update readback, and a terminal rehire path.
+   Patient creation and bounded updates are now broker-only, and hard deletion
+   is disabled; direct Patient create/update/delete all fail closed. The eight
+   legacy broad Patient writers are paused before access. Reviewed chart and
+   roster read brokers are deployed to staging but intentionally unwired;
+   Patient read RLS remains broad and consumers still use direct entity access
+   plus client filtering. Migrate every read consumer, prove bounded/offset
+   paging, add immutable user-id care-team assignments, complete the remaining
+   subtractive service-role maintenance review, and remove the
+   global-admin/sample read bypass only after a reviewed tenant/provenance
+   backfill and authenticated two-agency proof.
 2. Keep `oasis_response_schema_v2_enabled` false. Complete named clinical SME
    review, patient-access enforcement, remaining consumer wiring, and hosted RLS
    proof before any agency activation. Source now locks `OASISAssessment` and
@@ -279,9 +406,11 @@ functions, or upload a native binary until all of these are complete:
      existing-row compatibility and the
      `measure_results[].start_value`/`discharge_value` number-to-string change
      still need representative hosted migration tests;
-   - every Patient/OASIS assessment/upload create path stamps a server-verified
-     agency id, and an audited backup + backfill assigns existing rows without
-     guessing (legacy unscoped rows deliberately remain excluded and untouched);
+   - every browser Patient create is now brokered and server-stamped, while the
+     legacy bulk Patient apply mode is paused. OASIS assessment/upload creation
+     must receive the same server-verified agency authority, and an audited
+     backup + backfill must assign existing rows without guessing (legacy
+     unscoped rows deliberately remain excluded and untouched);
    - every assessment writer rejects duplicate normalized item/definition rows,
      stamps verified definition/instrument provenance, and cannot be bypassed by
      a direct owner/admin entity update;
@@ -320,10 +449,10 @@ functions, or upload a native binary until all of these are complete:
      the proved tenant authorization boundary, with current calculation-version
      and lifecycle filters. They intentionally perform no direct entity reads now;
      and
-   - route Visit updates/deletes through a server broker that makes
-     `patient_id`, `agency_id`, and creator provenance immutable; backfill legacy
-     Visit provenance and prove the full Visit lifecycle under the two-agency
-     hosted matrix before any production publish.
+   - keep direct Visit create/update/delete disabled and use the authorized
+     create/update brokers; deletion remains unavailable. Backfill legacy Visit
+     provenance and prove the full Visit lifecycle under the two-agency hosted
+     matrix before any production publish.
 4. Keep all PennSync PDGM reimbursement amounts disabled. The candidate now
    fails closed with `paymentAvailable:false`, `totalPayment:null`,
    `caseMixWeight:null`, and an actionable **Unavailable — not $0** result in

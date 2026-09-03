@@ -194,19 +194,14 @@ const patient = {
   last_name: 'Patient',
 };
 
-test('both functions use only protected role plus configured email for cross-owner access', () => {
-  for (const [name, source] of [
-    ['searchPDFs', SEARCH_SOURCE],
-    ['predictiveRiskAnalysis', RISK_SOURCE],
-  ]) {
-    assert.doesNotMatch(
-      source,
-      /user\??\.(?:account_type|agency_name|agency_id)\b/,
-      `${name} must not authorize from self-mutable account or agency claims`,
-    );
-    assert.match(source, /Deno\.env\.get\('SUPER_ADMIN_EMAIL'\)/, name);
-    assert.match(source, /user\.role === 'admin'/, name);
-  }
+test('PDF search uses only protected role plus configured email for cross-owner access', () => {
+  assert.doesNotMatch(
+    SEARCH_SOURCE,
+    /user\??\.(?:account_type|agency_name|agency_id)\b/,
+    'searchPDFs must not authorize from self-mutable account or agency claims',
+  );
+  assert.match(SEARCH_SOURCE, /Deno\.env\.get\('SUPER_ADMIN_EMAIL'\)/);
+  assert.match(SEARCH_SOURCE, /user\.role === 'admin'/);
 });
 
 test('PDF indexing is broker-only, owner-stamped, and does not trust mutable profile claims', () => {
@@ -242,20 +237,6 @@ test('missing caller email fails before request parsing or privileged reads', as
     assert.deepEqual(calls.pdfQueries, []);
   }
 
-  {
-    const { client, calls } = makeRiskClient({
-      user: { role: 'admin', account_type: 'super_admin', agency_id: 'victim' },
-      patient,
-    });
-    const handler = await loadHandler('predictiveRiskAnalysis', client, 'owner@example.com');
-    const bodyReads = { count: 0 };
-    const { response } = await invoke(handler, { patient_id: 'patient-1' }, bodyReads);
-    assert.equal(response.status, 403);
-    assert.equal(bodyReads.count, 0);
-    assert.deepEqual(calls.patientQueries, []);
-    assert.deepEqual(calls.patientUpdates, []);
-    assert.deepEqual(calls.llm, []);
-  }
 });
 
 test('operator-shaped patient ids are rejected before service-role reads', async () => {
@@ -268,12 +249,6 @@ test('operator-shaped patient ids are rejected before service-role reads', async
   assert.deepEqual(search.calls.patientQueries, []);
   assert.deepEqual(search.calls.pdfQueries, []);
 
-  const risk = makeRiskClient({ user: { email: 'owner@example.com', role: 'user' }, patient });
-  const riskHandler = await loadHandler('predictiveRiskAnalysis', risk.client);
-  const riskResult = await invoke(riskHandler, { patient_id: attack });
-  assert.equal(riskResult.response.status, 400);
-  assert.deepEqual(risk.calls.patientQueries, []);
-  assert.deepEqual(risk.calls.patientUpdates, []);
 });
 
 test('patient-scoped PDF search preserves owner/assigned access and drops mismatched rows', async () => {
@@ -353,7 +328,7 @@ test('unscoped PDF search is immutable-creator-only and re-filters backend resul
   assert.doesNotMatch(JSON.stringify(json), /FOREIGN UNBOUND PHI|OWNERLESS LEGACY PHI/);
 });
 
-test('mutable claims cannot grant cross-patient PDF or risk access', async () => {
+test('mutable claims cannot grant cross-patient PDF access', async () => {
   const callers = [
     {
       email: 'attacker@example.com',
@@ -389,21 +364,10 @@ test('mutable claims cannot grant cross-patient PDF or risk access', async () =>
     assert.equal(searchResult.response.status, 403, user.email);
     assert.deepEqual(search.calls.pdfQueries, [], user.email);
 
-    const risk = makeRiskClient({ user, patient });
-    const riskHandler = await loadHandler(
-      'predictiveRiskAnalysis',
-      risk.client,
-      'platform-owner@example.com',
-    );
-    const riskResult = await invoke(riskHandler, { patient_id: 'patient-1' });
-    assert.equal(riskResult.response.status, 403, user.email);
-    assert.deepEqual(risk.calls.patientUpdates, [], user.email);
-    assert.deepEqual(risk.calls.visitQueries, [], user.email);
-    assert.deepEqual(risk.calls.llm, [], user.email);
   }
 });
 
-test('risk analysis preserves assigned access and excludes foreign service responses', async () => {
+test('risk analysis is contained before request, service-role, PHI, or AI activity', async () => {
   const { client, calls } = makeRiskClient({
     user: { email: 'Assigned@Example.com', role: 'user' },
     patient,
@@ -469,22 +433,26 @@ test('risk analysis preserves assigned access and excludes foreign service respo
     },
   });
   const handler = await loadHandler('predictiveRiskAnalysis', client);
-  const { response, json } = await invoke(handler, { patient_id: 'patient-1' });
+  const bodyReads = { count: 0 };
+  const { response, json } = await invoke(handler, { patient_id: 'patient-1' }, bodyReads);
 
-  assert.equal(response.status, 200);
-  assert.equal(json.success, true);
-  assert.equal(json.alerts_created, 1);
-  assert.deepEqual(calls.visitQueries[0], [{ patient_id: 'patient-1' }, '-visit_date', 10]);
-  assert.deepEqual(calls.incidentQueries[0], [{ patient_id: 'patient-1' }, '-incident_date', 5]);
-  assert.deepEqual(
-    calls.alertQueries[0],
-    [{ patient_id: 'patient-1', status: 'active' }, undefined, 5000],
-  );
-  assert.match(calls.llm[0].prompt, /Authorized clinical note|Authorized incident report/);
-  assert.doesNotMatch(calls.llm[0].prompt, /FOREIGN VISIT SECRET|FOREIGN INCIDENT SECRET/);
-  assert.equal(calls.alertCreates[0].patient_id, 'patient-1');
-  assert.equal(calls.alertCreates[0].data_sources.recent_visits, 1);
-  assert.equal(calls.alertCreates[0].data_sources.incidents, 1);
+  assert.equal(response.status, 503);
+  assert.deepEqual(json, {
+    error: 'Legacy Patient service-role writer is temporarily unavailable',
+    code: 'legacy_patient_service_writer_paused',
+    reason: 'immutable_tenant_authorization_and_atomic_write_broker_required',
+    endpoint: 'predictiveRiskAnalysis',
+  });
+  assert.equal(bodyReads.count, 0);
+  assert.deepEqual(calls.patientQueries, []);
+  assert.deepEqual(calls.patientUpdates, []);
+  assert.deepEqual(calls.visitQueries, []);
+  assert.deepEqual(calls.incidentQueries, []);
+  assert.deepEqual(calls.alertQueries, []);
+  assert.deepEqual(calls.alertCreates, []);
+  assert.deepEqual(calls.llm, []);
+  assert.match(RISK_SOURCE, /last-write-wins/);
+  assert.match(RISK_SOURCE, /datastore-enforced unique idempotency key/);
 });
 
 test('mismatched patient rows fail closed before downstream PHI reads', async () => {
@@ -506,20 +474,9 @@ test('mismatched patient rows fail closed before downstream PHI reads', async ()
   assert.equal(searchResult.response.status, 404);
   assert.deepEqual(search.calls.pdfQueries, []);
 
-  const risk = makeRiskClient({
-    user: { email: 'owner@example.com', role: 'user' },
-    patient,
-    patientRowsByCall: [[wrongPatient]],
-  });
-  const riskHandler = await loadHandler('predictiveRiskAnalysis', risk.client);
-  const riskResult = await invoke(riskHandler, { patient_id: 'patient-1' });
-  assert.equal(riskResult.response.status, 404);
-  assert.deepEqual(risk.calls.patientUpdates, []);
-  assert.deepEqual(risk.calls.visitQueries, []);
-  assert.deepEqual(risk.calls.llm, []);
 });
 
-test('configured protected superadmin is the sole cross-owner bypass', async () => {
+test('configured protected superadmin is the sole cross-owner PDF bypass', async () => {
   const superadmin = { email: 'Platform-Owner@Example.com', role: 'admin' };
 
   const search = makeSearchClient({
@@ -541,14 +498,4 @@ test('configured protected superadmin is the sole cross-owner bypass', async () 
   assert.deepEqual(search.calls.pdfQueries[0], [{}, '-created_date', 100]);
   assert.deepEqual(searchResult.json.results.map((row) => row.id), ['foreign-index']);
 
-  const risk = makeRiskClient({ user: superadmin, patient });
-  const riskHandler = await loadHandler(
-    'predictiveRiskAnalysis',
-    risk.client,
-    'platform-owner@example.com',
-  );
-  const riskResult = await invoke(riskHandler, { patient_id: 'patient-1' });
-  assert.equal(riskResult.response.status, 200);
-  assert.equal(riskResult.json.success, true);
-  assert.equal(risk.calls.llm.length, 1);
 });

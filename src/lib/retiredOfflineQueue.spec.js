@@ -15,7 +15,7 @@ vi.mock('@/lib/offlineMigration', () => ({
 
 import { flushAndRetireOfflineQueue } from './retiredOfflineQueue';
 
-function harness(queue = [], { online = true } = {}) {
+function harness(queue = [], { online = true, legacyRecoveryEnabled = false } = {}) {
   const created = { Visit: [], Task: [], Incident: [], NoteConversion: [], ComplianceAudit: [] };
   const order = [];
   const entities = {
@@ -43,6 +43,18 @@ function harness(queue = [], { online = true } = {}) {
         const visit = { id: `visit-${created.Visit.length + 1}`, ...payload };
         created.Visit.push(visit);
         return { data: { created: true, visit } };
+      }
+      if (name === 'updateAuthorizedVisit') {
+        if (payload.action === 'legacy_recovery' && !legacyRecoveryEnabled) {
+          throw new Error('Legacy Visit recovery is paused');
+        }
+        return {
+          data: {
+            updated: true,
+            action: payload.action,
+            visit: { id: payload.visit_id, patient_id: 'p1', agency_id: 'agency-1' },
+          },
+        };
       }
       return { data: {} };
     }),
@@ -138,13 +150,57 @@ describe('flushAndRetireOfflineQueue', () => {
     expect(h.created.NoteConversion).toHaveLength(0);
   });
 
-  it('updates — never duplicates — a visit that already exists server-side', async () => {
+  it('keeps a bounded legacy update while server-side recovery is paused', async () => {
     const h = harness([{ action: 'UPDATE_VISIT', payload: { visit_id: 'visit-7', nurse_notes: 'edited offline' } }]);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await flushAndRetireOfflineQueue(h);
+    const result = await flushAndRetireOfflineQueue(h);
 
-    expect(h.entities.Visit.update).toHaveBeenCalledWith('visit-7', expect.objectContaining({ nurse_notes: 'edited offline' }));
+    expect(h.functions.invoke).toHaveBeenCalledWith('updateAuthorizedVisit', {
+      visit_id: 'visit-7',
+      action: 'legacy_recovery',
+      nurse_notes: 'edited offline',
+    });
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.entities.Visit.update).not.toHaveBeenCalled();
     expect(h.entities.Visit.create).not.toHaveBeenCalled();
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    expect(localStorage.getItem('pennsync_offline_retired')).toBeNull();
+    error.mockRestore();
+  });
+
+  it('keeps a tenant-bearing legacy update and leaves retirement incomplete', async () => {
+    mig.actions = [[
+      'UPDATE_VISIT',
+      { visit_id: 'visit-7', patient_id: 'p1', nurse_notes: 'edited offline' },
+    ]];
+    const h = harness([]);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.functions.invoke).not.toHaveBeenCalledWith('updateAuthorizedVisit', expect.anything());
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    expect(mig.cleared).toBe(0);
+    expect(localStorage.getItem('pennsync_offline_retired')).toBeNull();
+    error.mockRestore();
+  });
+
+  it('keeps a malformed legacy update instead of treating it as flushed', async () => {
+    const h = harness([{
+      action: 'UPDATE_VISIT',
+      payload: { nurse_notes: 'only copy of the note' },
+    }]);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.functions.invoke).not.toHaveBeenCalled();
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    expect(localStorage.getItem('pennsync_offline_retired')).toBeNull();
+    error.mockRestore();
   });
 
   it('routes a queued incident through the backend, which owns that write', async () => {

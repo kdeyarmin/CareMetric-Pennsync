@@ -47,6 +47,15 @@ function mrnNameConflict(row, rec) {
 const debugLog = (..._args) => {};
 
 Deno.serve(async (req) => {
+  // SECURITY CONTAINMENT: keep the legacy bulk Patient writer unreachable
+  // until an immutable tenant-authorized, atomic replacement is available.
+  return Response.json({
+    error: 'Legacy Patient service-role writer is temporarily unavailable',
+    code: 'legacy_patient_service_writer_paused',
+    reason: 'immutable_tenant_authorization_and_atomic_write_broker_required',
+    endpoint: 'processDischargeReport',
+  }, { status: 503 });
+
   try {
     debugLog('Starting discharge report processing...');
     const base44 = createClientFromRequest(req);

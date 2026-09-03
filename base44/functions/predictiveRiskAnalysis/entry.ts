@@ -85,6 +85,19 @@ function assertPatientAccess(user, patient) {
 }
 
 Deno.serve(async (req) => {
+  // SECURITY CONTAINMENT: the current Patient claim is a normal last-write-wins
+  // update and PatientAlert has no datastore-enforced unique idempotency key.
+  // Two requests can therefore each observe their own claim and create the same
+  // clinical alert. Keep this endpoint unreachable before request, client,
+  // auth, entity, service-role, PHI, or AI activity until Base44 supplies a
+  // hosted-verified conditional claim and unique/atomic alert write boundary.
+  return Response.json({
+    error: 'Legacy Patient service-role writer is temporarily unavailable',
+    code: 'legacy_patient_service_writer_paused',
+    reason: 'immutable_tenant_authorization_and_atomic_write_broker_required',
+    endpoint: 'predictiveRiskAnalysis',
+  }, { status: 503 });
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

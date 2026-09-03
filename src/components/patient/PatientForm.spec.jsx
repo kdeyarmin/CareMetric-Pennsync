@@ -25,7 +25,14 @@ vi.mock('@/api/base44Client', () => {
   return {
     base44: {
       entities: new Proxy({}, { get: () => entityStub }),
-      functions: new Proxy({}, { get: () => async () => ({ data: {} }) }),
+      functions: {
+        invoke: async (name, payload) => {
+          if (name === 'createAuthorizedPatient') {
+            return { data: { patient: await createMock(payload) } };
+          }
+          return { data: {} };
+        },
+      },
       auth: { me: async () => ({ role: 'nurse' }) },
     },
   };
