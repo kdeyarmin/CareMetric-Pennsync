@@ -197,12 +197,10 @@ Authorized site-only containment was performed on 2026-09-03 and verified at
 Additional findings:
 
 - The pulled production `computeOutcomeMeasures` code exactly matches the
-  hardened internal-secret-only, single-agency source, but its remote function
-  metadata has a pre-existing active daily 06:00 schedule with null arguments.
-  Empty or missing arguments return `400` for missing `agency_id`; a literal
-  JSON `null` body returns `500`. Both paths stop before authentication or any
-  service-role read/write, so the schedule is data-inert but should still be
-  disabled in a separately authorized backend change.
+  hardened internal-secret-only, single-agency source. Its historical daily
+  06:00 UTC schedule had null arguments and was data-inert; a separately
+  approved targeted function revision has now set that existing schedule to
+  `is_active: false` without changing the function code.
 - `managePatientCareTeamAssignment` is not deployed in production.
 - `/service-worker.js` returns the SPA HTML fallback because the offline
   service worker was intentionally retired. The source and hosted-path tests
@@ -215,13 +213,39 @@ Additional findings:
   06:00 UTC window and the post-deployment period. No new systemic function
   error pattern was observed in the queried windows; log retention limits mean
   this does not prove the scheduler never attempted to fire.
-- PR #143 now source-controls the complete legacy schedule as
+- PR #143 source-controls the complete legacy schedule as
   `is_active: false` and adds a literal code gate before SDK client creation.
-  That branch remains draft and unmerged; neither safeguard has been deployed
-  to production.
+  Production now has the inactive scheduler metadata, while the PR's additional
+  code gate remains draft, unmerged, and undeployed.
 - Physical Apple/Google cold-launch, authenticated session restoration,
   test-chart reads, and visible control checks still require a designated test
   account/device and must not use PHI.
+
+## Production outcome schedule containment
+
+A separately authorized, targeted production change was completed and verified
+at `2026-09-03T22:28Z`.
+
+- Authenticated owner: `kdeyarmin@comcast.net`.
+- Target: only `computeOutcomeMeasures` in production app
+  `694ec16e72e01b60d22f7cbf`; no `--force` option was used.
+- Preflight pulled the exact deployed function. Entry-file SHA-256 was
+  `2c2a37bf3f61e93511978ee52050fb93ac0be69680eca9ea87d3f8cf3e2c7190`.
+- Normalized configuration differed only by the intended
+  `is_active: true` to `is_active: false` change. The schedule name,
+  description, null arguments, daily recurrence, 06:00 UTC start, and
+  never-ending definition were preserved.
+- Immediate pull-back confirmed `is_active: false` and the identical entry-file
+  SHA-256 above. Production still reports exactly 240 functions.
+- No production logs were returned for `computeOutcomeMeasures` in the
+  post-change window.
+- Both CareMetric origins remained HTTP 200, continued serving
+  `index-egZIJufH.js`, and retained the verified asset SHA-256
+  `145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`.
+  `pennsync.com` remained separate on `index--wkWNhXC.js`.
+- This action did not deploy the site, schemas, other functions, agents,
+  connectors, auth, secrets, production data, domains, native binaries, or
+  Apple/Google store records.
 
 ## Stop and rollback criteria
 
