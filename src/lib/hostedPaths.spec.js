@@ -14,8 +14,10 @@ describe('hosted deployment path guards', () => {
     // Offline mode was removed along with public/sw.js. A worker registered here
     // would control the page and serve a cached shell with nothing to update it;
     // retiredOfflineQueue.js unregisters the one previous versions installed.
-    expect(readRepoFile('src/main.jsx')).not.toContain('serviceWorker.register');
+    expect(readRepoFile('src/main.jsx')).not.toMatch(/serviceWorker\s*\.\s*register\s*\(/);
+    expect(readRepoFile('index.html')).not.toContain('service-worker');
     expect(() => readRepoFile('public/sw.js')).toThrow();
+    expect(() => readRepoFile('public/service-worker.js')).toThrow();
     expect(() => readRepoFile('public/offline.html')).toThrow();
   });
 
