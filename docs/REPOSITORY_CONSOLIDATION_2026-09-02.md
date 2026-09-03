@@ -81,7 +81,7 @@ targeted the CareMetric production app.
 | --- | --- |
 | Base44 app | `caremetric-pennsync-staging-2026-09-02`, `6a9881683dc68a0bd54f1ef7` |
 | Staging URL | `https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/` |
-| Runtime candidate | Hosted functional baseline `655624f749c1c94542e6eb616a31b1c9c1135eef`; latest non-backend staging checkpoint `d1d3d4431459f34018c4ca454464c15eea4436fc`; The current draft PR head additionally source-controls the deliberately unhosted `computeOutcomeMeasures` pause |
+| Runtime candidate | Hosted functional baseline `655624f749c1c94542e6eb616a31b1c9c1135eef`; the latest non-backend staging checkpoint is recorded in PR `#143`; The current draft PR head additionally source-controls the deliberately unhosted `computeOutcomeMeasures` pause |
 | Frontend | The complete canonical candidate is synchronized with staging-specific app configuration; frozen install, staging-ID build, and the managed Vite root all pass |
 | PWA/native identity | Relative manifest `id`, `start_url`, and `scope`; four manifest icons retained; Apple bundle `com.caremetric.ai`; Google package `com.caremetic.ai`; iOS WebView origin `https://caremetricai.base44.app/` |
 | Entities | All 241 source schemas are hosted and semantically exact; `PatientCareTeamAssignment`, `DocumentTenantBinding`, and the required `OutcomeComputationRun.transition_version` / `result_summary_hash` fields are present; direct CRUD remains denied on the new authority/binding schemas |
