@@ -92,6 +92,34 @@ describe('listAuthorizedPatients wrapper', () => {
     });
   });
 
+  it('accepts an assignment-authorized clinician roster without exposing assignment evidence', async () => {
+    const clinicianScope = { ...scope, tenant_role: 'clinician' };
+    invoke.mockResolvedValue({
+      data: {
+        success: true,
+        mode: 'page',
+        purpose: 'roster',
+        patients: [{ id: 'patient-a', first_name: 'Assigned', status: 'active' }],
+        page: {
+          page_size: 25,
+          sort: 'id_asc',
+          after_id: null,
+          has_more: false,
+          next_cursor: null,
+        },
+        scope: clinicianScope,
+      },
+    });
+    const result = await listAuthorizedPatients({
+      agencyId: 'agency-a',
+      mode: 'page',
+      purpose: 'roster',
+    });
+    expect(result.patients.map((patient) => patient.id)).toEqual(['patient-a']);
+    expect(result.scope).toEqual(clinicianScope);
+    expect(result).not.toHaveProperty('assignments');
+  });
+
   it('rejects invalid caps, modes, ids, and purpose before invocation', async () => {
     await expect(listAuthorizedPatients({
       agencyId: 'agency-a', mode: 'page', purpose: 'contact', pageSize: 26,

@@ -22,7 +22,15 @@ export default function PatientEducationPortal() {
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [expandedMaterialId, setExpandedMaterialId] = useState(null);
 
-  const { data: patients = [] } = useScopedPatients({ status: "active", sort: "first_name", limit: 100 });
+  // This selector needs only the broker's finite roster projection, so it is
+  // the first UI consumer migrated off direct Patient reads. Full-chart views
+  // remain on the explicit legacy mode until they have reviewed projections.
+  const { data: patients = [] } = useScopedPatients({
+    status: "active",
+    sort: "first_name",
+    limit: 100,
+    readMode: "authorized-roster",
+  });
 
   const { data: materials = [] } = useQuery({
     queryKey: ["patient-education", selectedPatientId],

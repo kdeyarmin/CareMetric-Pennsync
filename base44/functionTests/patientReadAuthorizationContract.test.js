@@ -118,6 +118,32 @@ function assignment(overrides = {}) {
   return row;
 }
 
+function assignmentFor(patientId, overrides = {}) {
+  const agencyId = overrides.agency_id ?? 'agency-a';
+  const userId = overrides.user_id ?? 'user-1';
+  const requestId = overrides.last_transition_request_id ?? `assignment-request-${patientId}`;
+  const key = overrides.assignment_key ?? `${agencyId}:${patientId}:${userId}`;
+  return assignment({
+    id: overrides.id ?? `assignment-${patientId}`,
+    patient_id: patientId,
+    assignment_key: key,
+    last_transition_request_id: requestId,
+    last_transition_request_key: overrides.last_transition_request_key ?? `${key}:${requestId}`,
+    ...overrides,
+  });
+}
+
+function nonCreatorPatient(id, overrides = {}) {
+  return patient({
+    id,
+    created_by_user_id: 'user-2',
+    created_by_user_email_normalized: 'other@agency.test',
+    created_by: 'other@agency.test',
+    client_request_id: `other-create-${id}`,
+    ...overrides,
+  });
+}
+
 async function importHandler(kind, makeClient, superAdminEmail = null) {
   let source = await readFile(brokers[kind], 'utf8');
   const globalName = `__patientReadMakeClient_${kind}_${Math.random().toString(36).slice(2)}`;
@@ -189,8 +215,11 @@ async function loadBroker(kind, {
   const filterRows = (rows, query, limit, offset = 0, sort = undefined) => {
     if (!Array.isArray(rows)) return rows;
     const matching = ignoreFilters ? rows : rows.filter((row) => matches(row, query));
-    const ordered = sort === 'id'
-      ? [...matching].sort((left, right) => String(left?.id).localeCompare(String(right?.id)))
+    const ascendingField = typeof sort === 'string' && !sort.startsWith('-') ? sort : null;
+    const ordered = ascendingField
+      ? [...matching].sort((left, right) => (
+        String(left?.[ascendingField]).localeCompare(String(right?.[ascendingField]))
+      ))
       : matching;
     return ordered.slice(offset, Number.isFinite(limit) ? offset + limit : undefined);
   };
@@ -396,7 +425,14 @@ test('read brokers expose finite projections and contain no read bypass or Patie
     /entities\.PatientCareTeamAssignment\.(?:create|bulkCreate|update|updateMany|delete)\s*\(/,
   );
   assert.match(listSource, /patientReadFields\(input\.purpose\)/);
-  assert.doesNotMatch(listSource, /PatientCareTeamAssignment/);
+  assert.match(listSource, /entities\.PatientCareTeamAssignment\.filter\(/);
+  assert.doesNotMatch(
+    listSource,
+    /entities\.PatientCareTeamAssignment\.(?:create|bulkCreate|update|updateMany|delete)\s*\(/,
+  );
+  assert.match(listSource, /ASSIGNMENT_AUTHORITY_FIELDS/);
+  assert.match(listSource, /query\.patient_id\s*=\s*\{\s*\$gt:\s*scanAfter\s*\}/);
+  assert.match(listSource, /'patient_id',\s*\n\s*limit,\s*\n\s*undefined,\s*\n\s*ASSIGNMENT_AUTHORITY_FIELDS/);
   assert.match(listSource, /entities\.Patient\.filter\(/);
   assert.match(listSource, /query\.id\s*=\s*\{\s*\$gt:\s*input\.cursor\.after_id\s*\}/);
   assert.match(listSource, /['"]id['"],\s*\n\s*input\.pageSize \+ 1,\s*\n\s*undefined,/);
@@ -787,6 +823,211 @@ test('list page applies tenant and creator scope before paging and returns a fin
   }
 });
 
+test('list page merges creator and exact active assignment streams in immutable patient-id order', async () => {
+  const rows = [
+    nonCreatorPatient('patient-a'),
+    patient({ id: 'patient-b', client_request_id: 'creator-request-b' }),
+    nonCreatorPatient('patient-c'),
+  ];
+  const assignments = [assignmentFor('patient-c'), assignmentFor('patient-a')];
+  const { handler, calls } = await loadBroker('list', { patients: rows, assignments });
+  const { response, json } = await invoke(
+    handler,
+    'listAuthorizedPatients',
+    pageBody({ page_size: 2 }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(json.patients.map((row) => row.id), ['patient-a', 'patient-b']);
+  assert.deepEqual(json.page, {
+    page_size: 2,
+    sort: 'id_asc',
+    after_id: null,
+    has_more: true,
+    next_cursor: pageCursor({ after_id: 'patient-b', page_size: 2 }),
+  });
+  const discoveryCalls = calls.assignments.filter((call) => call.sort === 'patient_id');
+  const exactCalls = calls.assignments.filter((call) => call.sort === '-updated_date');
+  assert.equal(discoveryCalls.length, 2);
+  assert.equal(exactCalls.length, 4);
+  for (const call of discoveryCalls) {
+    assert.deepEqual(call.query, {
+      agency_id: 'agency-a',
+      user_id: 'user-1',
+      user_email_normalized: 'clinician@agency.test',
+      assignee_membership_id: 'membership-a',
+      status: 'active',
+    });
+    assert.equal(call.limit, 51);
+    assert.equal(call.offset, undefined);
+    assert.ok(call.fields.includes('assignee_membership_version_at_enablement'));
+    assert.ok(call.fields.includes('last_transition_request_key'));
+    assert.equal(call.fields.includes('first_name'), false);
+  }
+  assert.deepEqual(
+    exactCalls.map((call) => call.query.patient_id),
+    ['patient-a', 'patient-c', 'patient-a', 'patient-c'],
+  );
+});
+
+test('assigned roster continuation applies the same patient-id keyset to both streams', async () => {
+  const rows = [
+    nonCreatorPatient('patient-a'),
+    patient({ id: 'patient-b', client_request_id: 'creator-request-b' }),
+    nonCreatorPatient('patient-c'),
+  ];
+  const assignments = [assignmentFor('patient-a'), assignmentFor('patient-c')];
+  const { handler, calls } = await loadBroker('list', { patients: rows, assignments });
+  const { response, json } = await invoke(
+    handler,
+    'listAuthorizedPatients',
+    pageBody({ page_size: 1, cursor: pageCursor({ page_size: 1 }) }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(json.patients.map((row) => row.id), ['patient-b']);
+  assert.equal(json.page.has_more, true);
+  assert.deepEqual(json.page.next_cursor, pageCursor({ after_id: 'patient-b', page_size: 1 }));
+  const creatorCalls = calls.patients.filter((call) => call.sort === 'id');
+  const discoveryCalls = calls.assignments.filter((call) => call.sort === 'patient_id');
+  assert.equal(creatorCalls.length, 2);
+  assert.equal(discoveryCalls.length, 2);
+  for (const call of creatorCalls) assert.deepEqual(call.query.id, { $gt: 'patient-a' });
+  for (const call of discoveryCalls) assert.deepEqual(call.query.patient_id, { $gt: 'patient-a' });
+});
+
+test('status-filtered assignment discovery advances by patient id until a complete bounded result', async () => {
+  const patientIds = Array.from({ length: 52 }, (_, index) => (
+    `patient-${String(index).padStart(3, '0')}`
+  ));
+  const patients = patientIds.map((id, index) => nonCreatorPatient(id, {
+    status: index === patientIds.length - 1 ? 'active' : 'hospitalized',
+  }));
+  const assignments = patientIds.map((id) => assignmentFor(id));
+  const { handler, calls } = await loadBroker('list', { patients, assignments });
+  const { response, json } = await invoke(
+    handler,
+    'listAuthorizedPatients',
+    pageBody({ page_size: 1, status: 'active' }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(json.patients.map((row) => row.id), ['patient-051']);
+  assert.equal(json.page.has_more, false);
+  const discoveryCalls = calls.assignments.filter((call) => call.sort === 'patient_id');
+  assert.equal(discoveryCalls.length, 4);
+  assert.equal(discoveryCalls[0].query.patient_id, undefined);
+  assert.deepEqual(discoveryCalls[1].query.patient_id, { $gt: 'patient-050' });
+  assert.equal(discoveryCalls[2].query.patient_id, undefined);
+  assert.deepEqual(discoveryCalls[3].query.patient_id, { $gt: 'patient-050' });
+});
+
+test('suspended, revoked, wrong-agency, and wrong-user assignments return no roster PHI', async () => {
+  const target = nonCreatorPatient('patient-a');
+  const deniedAssignments = [
+    assignmentFor('patient-a', { status: 'suspended' }),
+    assignmentFor('patient-a', { status: 'revoked' }),
+    assignmentFor('patient-a', { agency_id: 'agency-b' }),
+    assignmentFor('patient-a', { user_id: 'user-2' }),
+  ];
+  for (const deniedAssignment of deniedAssignments) {
+    const { handler } = await loadBroker('list', {
+      patients: [target],
+      assignments: [deniedAssignment],
+    });
+    const { response, json } = await invoke(
+      handler,
+      'listAuthorizedPatients',
+      pageBody(),
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(json.patients, []);
+    assert.equal(json.page.has_more, false);
+  }
+});
+
+test('malformed or duplicate active assignment discovery fails closed with no roster PHI', async () => {
+  const target = nonCreatorPatient('patient-a');
+  const cases = [
+    [assignmentFor('patient-a', { last_transition_at: 'not-an-instant' })],
+    [assignmentFor('patient-a', { assignee_membership_version_at_enablement: 3 })],
+    [assignmentFor('patient-a', { source: 'mutable_email' })],
+    [assignmentFor('patient-a'), assignmentFor('patient-a', { id: 'assignment-b' })],
+  ];
+  for (const assignments of cases) {
+    const { handler } = await loadBroker('list', { patients: [target], assignments });
+    const { response, json } = await invoke(
+      handler,
+      'listAuthorizedPatients',
+      pageBody(),
+    );
+    assert.equal(response.status, 409);
+    assert.equal(json.patients, undefined);
+  }
+});
+
+test('assignment revocation during roster read fails closed before returning PHI', async () => {
+  const active = assignmentFor('patient-a');
+  const revoked = assignmentFor('patient-a', {
+    status: 'revoked',
+    version: 2,
+    last_transition_at: '2026-09-03T12:30:00.000Z',
+    last_transition_request_id: 'revoke-request-a',
+    last_transition_request_key: 'agency-a:patient-a:user-1:revoke-request-a',
+  });
+  const { handler } = await loadBroker('list', {
+    patients: [nonCreatorPatient('patient-a')],
+    assignmentResponses: [[active], [active], [revoked]],
+  });
+  const { response, json } = await invoke(
+    handler,
+    'listAuthorizedPatients',
+    pageBody(),
+  );
+  assert.equal(response.status, 409);
+  assert.match(json.error, /authority changed/);
+  assert.equal(json.patients, undefined);
+});
+
+test('active assignment version drift during roster read fails closed before returning PHI', async () => {
+  const active = assignmentFor('patient-a');
+  const changed = assignmentFor('patient-a', {
+    version: 2,
+    last_transition_action: 'activate',
+    last_transition_at: '2026-09-03T12:30:00.000Z',
+    last_transition_request_id: 'activate-request-a',
+    last_transition_request_key: 'agency-a:patient-a:user-1:activate-request-a',
+  });
+  const { handler } = await loadBroker('list', {
+    patients: [nonCreatorPatient('patient-a')],
+    assignmentResponses: [[active], [active], [changed], [changed]],
+  });
+  const { response, json } = await invoke(
+    handler,
+    'listAuthorizedPatients',
+    pageBody(),
+  );
+  assert.equal(response.status, 409);
+  assert.match(json.error, /authority changed/);
+  assert.equal(json.patients, undefined);
+});
+
+test('assignment discovery stops at its hard scan cap instead of returning a partial page', async () => {
+  const assignments = Array.from({ length: 255 }, (_, index) => (
+    assignmentFor(`patient-${String(index).padStart(3, '0')}`)
+  ));
+  const { handler, calls } = await loadBroker('list', { patients: [], assignments });
+  const { response, json } = await invoke(
+    handler,
+    'listAuthorizedPatients',
+    pageBody(),
+  );
+  assert.equal(response.status, 409);
+  assert.match(json.error, /bounded scan/);
+  assert.equal(json.patients, undefined);
+  assert.equal(calls.assignments.filter((call) => call.sort === 'patient_id').length, 5);
+});
+
 test('list continuation is context-bound and applies an immutable id keyset before the limit', async () => {
   const rows = [
     patient({ id: 'patient-a', client_request_id: 'request-a' }),
@@ -964,6 +1205,31 @@ test('id batches are capped, tenant-pinned, ordered, and omit missing or foreign
   assert.equal(duplicate.response.status, 400);
   assert.equal(invalid.calls.auth, 0);
   assert.deepEqual(invalid.calls.patients, []);
+});
+
+test('clinician id batches preserve request order across creator and exact assignment access', async () => {
+  const assigned = nonCreatorPatient('patient-a');
+  const own = patient({ id: 'patient-b', client_request_id: 'creator-request-b' });
+  const unavailable = nonCreatorPatient('patient-c');
+  const { handler, calls } = await loadBroker('list', {
+    patients: [assigned, own, unavailable],
+    assignments: [assignmentFor('patient-a')],
+  });
+  const { response, json } = await invoke(handler, 'listAuthorizedPatients', {
+    agency_id: 'agency-a',
+    mode: 'ids',
+    purpose: 'roster',
+    patient_ids: ['patient-c', 'patient-a', 'patient-b'],
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(json.patients.map((row) => row.id), ['patient-a', 'patient-b']);
+  assert.equal(json.missing_ids, undefined);
+  assert.equal(calls.patients.length, 2);
+  assert.equal(calls.assignments.length, 4);
+  assert.deepEqual(
+    calls.assignments.map((call) => call.query.patient_id),
+    ['patient-c', 'patient-a', 'patient-c', 'patient-a'],
+  );
 });
 
 test('list read fails closed when Patient authority drifts between bounded reads', async () => {

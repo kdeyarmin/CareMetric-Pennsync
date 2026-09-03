@@ -6,8 +6,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * Every service query is tenant-scoped before the keyset continuation is
  * applied. This first slice supports a small page or a capped id batch only;
  * it deliberately omits arbitrary filters, field selection, full exports,
- * and search scans. Mutable assigned_nurses email values are not treated as
- * authority.
+ * and search scans. Non-agency-wide roster access is the ordered union of
+ * immutable Patient creator provenance and exact, active, server-owned
+ * PatientCareTeamAssignment evidence. Mutable assigned_nurses email values
+ * are not treated as authority.
  */
 
 const MAX_BODY_BYTES = 20_000;
@@ -16,6 +18,8 @@ const MEMBERSHIP_SCAN_LIMIT = 100;
 const EXACT_ROW_LIMIT = 10;
 const MAX_PAGE_SIZE = 50;
 const MAX_BATCH_IDS = 25;
+const ASSIGNMENT_PAGE_BATCH_SIZE = MAX_PAGE_SIZE + 1;
+const MAX_ASSIGNMENT_PAGE_SCAN = 255;
 const CURSOR_VERSION = 1;
 
 const MEMBERSHIP_STATUSES = new Set(['pending', 'active', 'suspended', 'revoked']);
@@ -30,6 +34,14 @@ const TENANT_ROLES = new Set([
 const ENABLED_AGENCY_STATUSES = new Set(['active', 'trial']);
 const VISIBLE_PATIENT_STATUSES = new Set(['active', 'hospitalized', 'discharged']);
 const AGENCY_WIDE_ROLES = new Set(['agency_admin', 'manager', 'platform_owner']);
+const ASSIGNMENT_STATUSES = new Set(['active', 'suspended', 'revoked']);
+const ASSIGNMENT_SOURCES = new Set([
+  'manual',
+  'patient_creator',
+  'legacy_assigned_nurses',
+  'legacy_provider_patient_assignment',
+]);
+const ASSIGNMENT_ACTIONS = new Set(['grant', 'activate', 'suspend', 'revoke']);
 const PAGE_SORT = 'id_asc';
 
 // <<<BEGIN AUTHORIZED PATIENT LIST PURPOSE POLICY>>>
@@ -118,6 +130,32 @@ const PATIENT_AUTHORITY_FIELDS = [
   'is_archived',
   'status',
   'updated_date',
+];
+const ASSIGNMENT_AUTHORITY_FIELDS = [
+  'id',
+  'assignment_key',
+  'agency_id',
+  'patient_id',
+  'user_id',
+  'user_email_normalized',
+  'assignee_membership_id',
+  'assignee_membership_version_at_enablement',
+  'status',
+  'source',
+  'created_by_user_id',
+  'created_by_user_email_normalized',
+  'activated_at',
+  'suspended_at',
+  'revoked_at',
+  'revocation_reason',
+  'last_transition_by_user_id',
+  'last_transition_by_email_normalized',
+  'last_transition_at',
+  'last_transition_reason',
+  'last_transition_action',
+  'last_transition_request_id',
+  'last_transition_request_key',
+  'version',
 ];
 
 class PublicError extends Error {
@@ -549,20 +587,23 @@ function requireCursorAuthority(
   }
 }
 
-function patientScope(authority: Record<string, any>) {
-  const scope: Record<string, any> = {
+function patientBaseScope(authority: Record<string, any>) {
+  return {
     agency_id: authority.agencyId,
     is_sample: false,
     is_archived: false,
   };
-  if (!AGENCY_WIDE_ROLES.has(authority.tenantRole)) {
-    scope.created_by_user_id = authority.userId;
-    scope.created_by_user_email_normalized = authority.normalizedEmail;
-  }
-  return scope;
 }
 
-function rowMatchesScope(
+function creatorPatientScope(authority: Record<string, any>) {
+  return {
+    ...patientBaseScope(authority),
+    created_by_user_id: authority.userId,
+    created_by_user_email_normalized: authority.normalizedEmail,
+  };
+}
+
+function rowMatchesBaseScope(
   row: Record<string, any>,
   authority: Record<string, any>,
   status: string | null,
@@ -575,16 +616,12 @@ function rowMatchesScope(
   ) {
     return false;
   }
-  if (
-    !AGENCY_WIDE_ROLES.has(authority.tenantRole)
-    && (
-      row?.created_by_user_id !== authority.userId
-      || row?.created_by_user_email_normalized !== authority.normalizedEmail
-    )
-  ) {
-    return false;
-  }
   return true;
+}
+
+function isPatientCreator(row: Record<string, any>, authority: Record<string, any>) {
+  return row.created_by_user_id === authority.userId
+    && row.created_by_user_email_normalized === authority.normalizedEmail;
 }
 
 function validatePatientIntegrity(row: Record<string, any>, authority: Record<string, any>) {
@@ -633,12 +670,198 @@ function patientRowsSnapshot(rows: Array<Record<string, any>>) {
   return rows.map(patientAuthoritySnapshot);
 }
 
-async function loadPage(
+function assignmentKey(agencyId: string, patientId: string, userId: string) {
+  return `${agencyId}:${patientId}:${userId}`;
+}
+
+function transitionRequestKey(key: string, requestId: string) {
+  return `${key}:${requestId}`;
+}
+
+function validateAssignmentIntegrity(
+  row: Record<string, any>,
+  patientId: string,
+  authority: Record<string, any>,
+) {
+  const id = exactIdentifier(row?.id);
+  const key = assignmentKey(authority.agencyId, patientId, authority.userId);
+  const userEmail = canonicalEmail(row?.user_email_normalized);
+  const creatorEmail = canonicalEmail(row?.created_by_user_email_normalized);
+  const transitionEmail = canonicalEmail(row?.last_transition_by_email_normalized);
+  const requestId = exactIdentifier(row?.last_transition_request_id);
+  const status = typeof row?.status === 'string' ? row.status : '';
+  const action = typeof row?.last_transition_action === 'string'
+    ? row.last_transition_action
+    : '';
+  const suspendedAt = row?.suspended_at;
+  const revokedAt = row?.revoked_at;
+  const revocationReason = row?.revocation_reason;
+  if (
+    !id
+    || !authority.membership
+    || row.assignment_key !== key
+    || row.agency_id !== authority.agencyId
+    || row.patient_id !== patientId
+    || row.user_id !== authority.userId
+    || !userEmail
+    || row.user_email_normalized !== userEmail
+    || userEmail !== authority.normalizedEmail
+    || row.assignee_membership_id !== authority.membership.id
+    || !Number.isSafeInteger(row.assignee_membership_version_at_enablement)
+    || row.assignee_membership_version_at_enablement < 1
+    || row.assignee_membership_version_at_enablement > authority.membership.version
+    || !ASSIGNMENT_STATUSES.has(status)
+    || !ASSIGNMENT_SOURCES.has(String(row.source || ''))
+    || !exactIdentifier(row.created_by_user_id)
+    || !creatorEmail
+    || row.created_by_user_email_normalized !== creatorEmail
+    || !validInstant(row.activated_at)
+    || (suspendedAt != null && !validInstant(suspendedAt))
+    || (status === 'suspended' && !validInstant(suspendedAt))
+    || (revokedAt != null && !validInstant(revokedAt))
+    || (status === 'revoked' && (
+      !validInstant(revokedAt) || !boundedReason(revocationReason)
+    ))
+    || (status !== 'revoked' && (revokedAt != null || revocationReason != null))
+    || !exactIdentifier(row.last_transition_by_user_id)
+    || !transitionEmail
+    || row.last_transition_by_email_normalized !== transitionEmail
+    || !validInstant(row.last_transition_at)
+    || !boundedReason(row.last_transition_reason)
+    || !ASSIGNMENT_ACTIONS.has(action)
+    || (status === 'active' && action !== 'grant' && action !== 'activate')
+    || (status === 'suspended' && action !== 'suspend')
+    || (status === 'revoked' && action !== 'revoke')
+    || !requestId
+    || row.last_transition_request_key !== transitionRequestKey(key, requestId)
+    || !Number.isSafeInteger(row.version)
+    || row.version < 1
+  ) {
+    throw new PublicError(409, 'Care-team assignment integrity check failed');
+  }
+  return row;
+}
+
+function assignmentAuthoritySnapshot(row: Record<string, any>) {
+  return pickFields(row, ASSIGNMENT_AUTHORITY_FIELDS);
+}
+
+async function loadExactAssignment(
+  entities: Record<string, any>,
+  patientId: string,
+  authority: Record<string, any>,
+) {
+  const key = assignmentKey(authority.agencyId, patientId, authority.userId);
+  const rows = requireRows(
+    await entities.PatientCareTeamAssignment.filter(
+      {
+        assignment_key: key,
+        agency_id: authority.agencyId,
+        patient_id: patientId,
+        user_id: authority.userId,
+      },
+      '-updated_date',
+      EXACT_ROW_LIMIT,
+      undefined,
+      ASSIGNMENT_AUTHORITY_FIELDS,
+    ),
+    'PatientCareTeamAssignment.filter',
+  );
+  if (rows.length >= EXACT_ROW_LIMIT) {
+    throw new PublicError(409, 'Care-team assignment is ambiguous');
+  }
+  if (rows.some((row) => (
+    row?.assignment_key !== key
+    || row?.agency_id !== authority.agencyId
+    || row?.patient_id !== patientId
+    || row?.user_id !== authority.userId
+  ))) {
+    throw new PublicError(409, 'Care-team assignment query scope could not be verified');
+  }
+  if (rows.length > 1) throw new PublicError(409, 'Care-team assignment is ambiguous');
+  return rows.length === 1
+    ? validateAssignmentIntegrity(rows[0], patientId, authority)
+    : null;
+}
+
+function pageAuthorizationSnapshot(
+  rows: Array<Record<string, any>>,
+  basisByPatientId: Map<string, Record<string, any>>,
+) {
+  return rows.map((row) => {
+    const basis = basisByPatientId.get(row.id);
+    if (!basis) throw new Error('Patient list authorization basis is missing');
+    return basis;
+  });
+}
+
+function validateOrderedPatientRows(
+  rawRows: Array<Record<string, any>>,
+  authority: Record<string, any>,
+  status: string | null,
+  afterId: string | null,
+) {
+  const ids = new Set<string>();
+  let previousId = afterId;
+  return rawRows.map((row) => {
+    if (!rowMatchesBaseScope(row, authority, status)) {
+      throw new PublicError(409, 'Patient result scope check failed');
+    }
+    const validated = validatePatientIntegrity(row, authority);
+    if (ids.has(validated.id) || (previousId !== null && validated.id <= previousId)) {
+      throw new PublicError(409, 'Patient page is ambiguous');
+    }
+    ids.add(validated.id);
+    previousId = validated.id;
+    return validated;
+  });
+}
+
+async function loadPatientBatch(
+  entities: Record<string, any>,
+  patientIds: string[],
+  input: Record<string, any>,
+  authority: Record<string, any>,
+) {
+  if (patientIds.length === 0) return new Map<string, Record<string, any>>();
+  const query: Record<string, any> = {
+    ...patientBaseScope(authority),
+    id: { $in: patientIds },
+  };
+  if (input.status !== null) query.status = input.status;
+  const rawRows = requireRows(
+    await entities.Patient.filter(
+      query,
+      undefined,
+      patientIds.length + 1,
+      undefined,
+      patientReadFields(input.purpose),
+    ),
+    'Patient.filter',
+  );
+  if (rawRows.length > patientIds.length) {
+    throw new PublicError(409, 'Patient id batch is ambiguous');
+  }
+  const requested = new Set(patientIds);
+  const byId = new Map<string, Record<string, any>>();
+  for (const row of rawRows) {
+    // A provider-side over-return of a wrong-tenant, filtered-status, or
+    // unrequested row is indistinguishable from a missing id to the caller.
+    // It is never projected and cannot become an authorization signal.
+    if (!requested.has(row?.id) || !rowMatchesBaseScope(row, authority, input.status)) continue;
+    const validated = validatePatientIntegrity(row, authority);
+    if (byId.has(validated.id)) throw new PublicError(409, 'Patient id batch is ambiguous');
+    byId.set(validated.id, validated);
+  }
+  return byId;
+}
+
+async function loadWidePage(
   entities: Record<string, any>,
   input: Record<string, any>,
   authority: Record<string, any>,
 ) {
-  const query: Record<string, any> = patientScope(authority);
+  const query: Record<string, any> = patientBaseScope(authority);
   if (input.status !== null) query.status = input.status;
   if (input.cursor) query.id = { $gt: input.cursor.after_id };
   const rawRows = requireRows(
@@ -654,24 +877,186 @@ async function loadPage(
   if (rawRows.length > input.pageSize + 1) {
     throw new PublicError(409, 'Patient page is ambiguous');
   }
-  if (rawRows.some((row) => !rowMatchesScope(row, authority, input.status))) {
-    throw new PublicError(409, 'Patient result scope check failed');
+  const rows = validateOrderedPatientRows(
+    rawRows,
+    authority,
+    input.status,
+    input.cursor?.after_id ?? null,
+  );
+  return {
+    rows,
+    authorization: rows.map((row) => ({ patient_id: row.id, basis: 'agency_wide' })),
+  };
+}
+
+async function loadCreatorPage(
+  entities: Record<string, any>,
+  input: Record<string, any>,
+  authority: Record<string, any>,
+) {
+  const query: Record<string, any> = creatorPatientScope(authority);
+  if (input.status !== null) query.status = input.status;
+  if (input.cursor) query.id = { $gt: input.cursor.after_id };
+  const rawRows = requireRows(
+    await entities.Patient.filter(
+      query,
+      'id',
+      input.pageSize + 1,
+      undefined,
+      patientReadFields(input.purpose),
+    ),
+    'Patient.filter',
+  );
+  if (rawRows.length > input.pageSize + 1) {
+    throw new PublicError(409, 'Patient page is ambiguous');
   }
-  const ids = new Set<string>();
-  let previousId = input.cursor?.after_id ?? null;
-  const rows = rawRows.map((row) => {
-    const validated = validatePatientIntegrity(row, authority);
-    if (
-      ids.has(validated.id)
-      || (previousId !== null && validated.id <= previousId)
-    ) {
-      throw new PublicError(409, 'Patient page is ambiguous');
-    }
-    ids.add(validated.id);
-    previousId = validated.id;
-    return validated;
-  });
+  const rows = validateOrderedPatientRows(
+    rawRows,
+    authority,
+    input.status,
+    input.cursor?.after_id ?? null,
+  );
+  if (rows.some((row) => !isPatientCreator(row, authority))) {
+    throw new PublicError(409, 'Patient creator scope check failed');
+  }
   return rows;
+}
+
+async function loadAssignedPage(
+  entities: Record<string, any>,
+  input: Record<string, any>,
+  authority: Record<string, any>,
+) {
+  if (!authority.membership) {
+    throw new PublicError(409, 'Care-team assignment binding is invalid');
+  }
+  const rows: Array<Record<string, any>> = [];
+  const basisByPatientId = new Map<string, Record<string, any>>();
+  const seenAssignmentIds = new Set<string>();
+  let scanAfter = input.cursor?.after_id ?? null;
+  let scanned = 0;
+
+  while (rows.length < input.pageSize + 1) {
+    const remaining = MAX_ASSIGNMENT_PAGE_SCAN - scanned;
+    if (remaining < 1) {
+      throw new PublicError(409, 'Care-team assignment page exceeds bounded scan');
+    }
+    const limit = Math.min(ASSIGNMENT_PAGE_BATCH_SIZE, remaining);
+    const query: Record<string, any> = {
+      agency_id: authority.agencyId,
+      user_id: authority.userId,
+      user_email_normalized: authority.normalizedEmail,
+      assignee_membership_id: authority.membership.id,
+      status: 'active',
+    };
+    if (scanAfter !== null) query.patient_id = { $gt: scanAfter };
+    const discovered = requireRows(
+      await entities.PatientCareTeamAssignment.filter(
+        query,
+        'patient_id',
+        limit,
+        undefined,
+        ASSIGNMENT_AUTHORITY_FIELDS,
+      ),
+      'PatientCareTeamAssignment.filter',
+    );
+    if (discovered.length > limit) {
+      throw new PublicError(409, 'Care-team assignment page is ambiguous');
+    }
+    if (discovered.length === 0) break;
+
+    const patientIds: string[] = [];
+    let previousPatientId = scanAfter;
+    for (const discoveredRow of discovered) {
+      const patientId = exactIdentifier(discoveredRow?.patient_id);
+      const assignmentId = exactIdentifier(discoveredRow?.id);
+      if (
+        !patientId
+        || !assignmentId
+        || seenAssignmentIds.has(assignmentId)
+        || (previousPatientId !== null && patientId <= previousPatientId)
+        || discoveredRow?.agency_id !== authority.agencyId
+        || discoveredRow?.user_id !== authority.userId
+        || discoveredRow?.user_email_normalized !== authority.normalizedEmail
+        || discoveredRow?.assignee_membership_id !== authority.membership.id
+        || discoveredRow?.status !== 'active'
+      ) {
+        throw new PublicError(409, 'Care-team assignment query scope could not be verified');
+      }
+      validateAssignmentIntegrity(discoveredRow, patientId, authority);
+      seenAssignmentIds.add(assignmentId);
+      patientIds.push(patientId);
+      previousPatientId = patientId;
+    }
+
+    const patientsById = await loadPatientBatch(entities, patientIds, input, authority);
+    for (const discoveredRow of discovered) {
+      const patient = patientsById.get(discoveredRow.patient_id);
+      if (!patient || isPatientCreator(patient, authority)) continue;
+      const exact = await loadExactAssignment(entities, patient.id, authority);
+      if (
+        !exact
+        || exact.status !== 'active'
+        || !sameValue(
+          assignmentAuthoritySnapshot(exact),
+          assignmentAuthoritySnapshot(discoveredRow),
+        )
+      ) {
+        throw new PublicError(409, 'Patient read authority changed during request');
+      }
+      rows.push(patient);
+      basisByPatientId.set(patient.id, {
+        patient_id: patient.id,
+        basis: 'care_team_assignment',
+        assignment: assignmentAuthoritySnapshot(exact),
+      });
+      if (rows.length >= input.pageSize + 1) break;
+    }
+
+    scanned += discovered.length;
+    scanAfter = patientIds[patientIds.length - 1];
+    if (discovered.length < limit) break;
+    if (scanned >= MAX_ASSIGNMENT_PAGE_SCAN && rows.length < input.pageSize + 1) {
+      throw new PublicError(409, 'Care-team assignment page exceeds bounded scan');
+    }
+  }
+  return { rows, basisByPatientId };
+}
+
+async function loadRestrictedPage(
+  entities: Record<string, any>,
+  input: Record<string, any>,
+  authority: Record<string, any>,
+) {
+  const creatorRows = await loadCreatorPage(entities, input, authority);
+  const assigned = await loadAssignedPage(entities, input, authority);
+  const byId = new Map<string, Record<string, any>>();
+  const basisByPatientId = new Map<string, Record<string, any>>();
+  for (const row of creatorRows) {
+    byId.set(row.id, row);
+    basisByPatientId.set(row.id, { patient_id: row.id, basis: 'patient_creator' });
+  }
+  for (const row of assigned.rows) {
+    if (byId.has(row.id)) continue;
+    byId.set(row.id, row);
+    const basis = assigned.basisByPatientId.get(row.id);
+    if (!basis) throw new Error('Care-team assignment authorization basis is missing');
+    basisByPatientId.set(row.id, basis);
+  }
+  const rows = [...byId.values()]
+    .sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+    .slice(0, input.pageSize + 1);
+  return { rows, authorization: pageAuthorizationSnapshot(rows, basisByPatientId) };
+}
+
+async function loadPage(
+  entities: Record<string, any>,
+  input: Record<string, any>,
+  authority: Record<string, any>,
+) {
+  return AGENCY_WIDE_ROLES.has(authority.tenantRole)
+    ? loadWidePage(entities, input, authority)
+    : loadRestrictedPage(entities, input, authority);
 }
 
 async function loadIdBatch(
@@ -679,40 +1064,32 @@ async function loadIdBatch(
   input: Record<string, any>,
   authority: Record<string, any>,
 ) {
-  const requested = new Set(input.patientIds);
-  const query = {
-    ...patientScope(authority),
-    id: { $in: input.patientIds },
-  };
-  const rawRows = requireRows(
-    await entities.Patient.filter(
-      query,
-      undefined,
-      MAX_BATCH_IDS + 1,
-      undefined,
-      patientReadFields(input.purpose),
-    ),
-    'Patient.filter',
-  );
-  if (rawRows.length >= MAX_BATCH_IDS + 1) {
-    throw new PublicError(409, 'Patient id batch is ambiguous');
+  const byId = await loadPatientBatch(entities, input.patientIds, input, authority);
+  const rows: Array<Record<string, any>> = [];
+  const authorization: Array<Record<string, any>> = [];
+  for (const patientId of input.patientIds) {
+    const row = byId.get(patientId);
+    if (!row) continue;
+    if (AGENCY_WIDE_ROLES.has(authority.tenantRole)) {
+      rows.push(row);
+      authorization.push({ patient_id: row.id, basis: 'agency_wide' });
+      continue;
+    }
+    if (isPatientCreator(row, authority)) {
+      rows.push(row);
+      authorization.push({ patient_id: row.id, basis: 'patient_creator' });
+      continue;
+    }
+    const exact = await loadExactAssignment(entities, row.id, authority);
+    if (!exact || exact.status !== 'active') continue;
+    rows.push(row);
+    authorization.push({
+      patient_id: row.id,
+      basis: 'care_team_assignment',
+      assignment: assignmentAuthoritySnapshot(exact),
+    });
   }
-
-  // Wrong-agency and otherwise out-of-scope rows are treated exactly like a
-  // missing id. No missing_ids or denial reason is returned to the caller.
-  const rows = rawRows.filter(
-    (row) => requested.has(row?.id) && rowMatchesScope(row, authority, null),
-  );
-  const byId = new Map<string, Record<string, any>>();
-  for (const row of rows) {
-    const validated = validatePatientIntegrity(row, authority);
-    if (byId.has(validated.id)) throw new PublicError(409, 'Patient id batch is ambiguous');
-    byId.set(validated.id, validated);
-  }
-  return input.patientIds.flatMap((id: string) => {
-    const row = byId.get(id);
-    return row ? [row] : [];
-  });
+  return { rows, authorization };
 }
 
 async function loadPatients(
@@ -740,8 +1117,9 @@ Deno.serve(async (req) => {
     requirePurposeRole(initialAuthority, input.purpose);
     requireCursorAuthority(input.cursor, input, initialAuthority);
     const entities = base44.asServiceRole.entities;
-    const initialRows = await loadPatients(entities, input, initialAuthority);
-    const initialRowsSnapshot = patientRowsSnapshot(initialRows);
+    const initialResult = await loadPatients(entities, input, initialAuthority);
+    const initialRowsSnapshot = patientRowsSnapshot(initialResult.rows);
+    const initialAuthorizationSnapshot = initialResult.authorization;
 
     const finalAuthority = await loadAuthority(
       base44,
@@ -750,14 +1128,17 @@ Deno.serve(async (req) => {
     );
     requirePurposeRole(finalAuthority, input.purpose);
     requireCursorAuthority(input.cursor, input, finalAuthority);
-    const finalRows = await loadPatients(entities, input, finalAuthority);
-    if (!sameValue(patientRowsSnapshot(finalRows), initialRowsSnapshot)) {
+    const finalResult = await loadPatients(entities, input, finalAuthority);
+    if (
+      !sameValue(patientRowsSnapshot(finalResult.rows), initialRowsSnapshot)
+      || !sameValue(finalResult.authorization, initialAuthorizationSnapshot)
+    ) {
       throw new PublicError(409, 'Patient read authority changed during request');
     }
 
     const visibleRows = input.mode === 'page'
-      ? finalRows.slice(0, input.pageSize)
-      : finalRows;
+      ? finalResult.rows.slice(0, input.pageSize)
+      : finalResult.rows;
     const response: Record<string, any> = {
       success: true,
       mode: input.mode,
@@ -771,7 +1152,7 @@ Deno.serve(async (req) => {
       },
     };
     if (input.mode === 'page') {
-      const hasMore = finalRows.length > input.pageSize;
+      const hasMore = finalResult.rows.length > input.pageSize;
       const nextAfterId = hasMore ? visibleRows[visibleRows.length - 1]?.id : null;
       if (hasMore && !exactIdentifier(nextAfterId)) {
         throw new PublicError(409, 'Patient page is ambiguous');
