@@ -246,7 +246,7 @@ test('reviewed dormant and service-only entities remain fail-closed', () => {
     'OASISScenario', 'OASISWorkflowExecution', 'PatientBillingInfo',
     'PatientEducationDraft', 'PatientEducationEngagement',
     'PatientEducationMaterial', 'PatientMessage', 'PatientOutcome',
-    'PatientRiskAssessment', 'RiskAlert', 'RiskAnalysis', 'ScheduleFeedback',
+    'PatientPathwayAssignment', 'PatientRiskAssessment', 'RiskAlert', 'RiskAnalysis', 'ScheduleFeedback',
     'ServiceCode', 'SharedDocument', 'SuggestedIntervention', 'TeamMessage',
   ];
   const bad = [];
@@ -381,9 +381,9 @@ test('known RLS debt cannot grow or change without explicit review', () => {
     if (isOpen(schema.rls?.read)) inventories.openRead.push(name);
   }
   const expected = {
-    noRls: [20, '49ecafee8efec9044a7656d905e510995c226aed839edf0e1fa19cc62b25d2af'],
-    openMutation: [26, 'bb2728153cf03ffd56874208aeb77b89ad0f3fcc2df10ca51704e9bf906513f7'],
-    openRead: [35, 'e0f19e3ed34d83d9814d2e08b915d70452b680b4806390bed517827a2b209f07'],
+    noRls: [19, 'bcbfc561c8cc848d606628489b3ab07549c0e262521f4a15e9e4d98627a4ae28'],
+    openMutation: [25, 'f20a3d2934eb361c924d2e3ed39a1b48672cd7caa56d1e6034dc962128ee3a64'],
+    openRead: [34, '8b08070aaaa3c85dc972c7fffd1b18d647f0ac88ad62930a5bef8f4cff22a132'],
   };
   const bad = [];
   for (const [kind, names] of Object.entries(inventories)) {
