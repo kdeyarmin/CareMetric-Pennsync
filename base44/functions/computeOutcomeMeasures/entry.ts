@@ -1,5 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
+// Production remains fail-closed until hosted atomicity, stable snapshots,
+// tenant backfill, and two-agency validation are complete. The accompanying
+// function.jsonc also preserves the legacy schedule explicitly as inactive.
+const OUTCOME_COMPUTATION_ENABLED = false;
+
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
@@ -741,6 +746,13 @@ function dispositionFromAnswers(dcAns, patient) {
 }
 
 Deno.serve(async (req) => {
+  if (!OUTCOME_COMPUTATION_ENABLED) {
+    return Response.json(
+      { error: 'Outcome computation is paused pending hosted atomicity and tenant validation' },
+      { status: 503 },
+    );
+  }
+
   let activeRunClient = null;
   let activeRunId = null;
   let activeRunSnapshot = null;
@@ -749,7 +761,10 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     let body = {};
-    try { body = await req.json(); } catch { /* GET / cron invocation */ }
+    try {
+      const parsedBody = await req.json();
+      if (parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody)) body = parsedBody;
+    } catch { /* GET / cron invocation */ }
     const agencyId = String(body.agency_id || '').trim();
     if (!agencyId) {
       return Response.json(
