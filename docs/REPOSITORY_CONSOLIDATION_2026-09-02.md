@@ -321,6 +321,22 @@ allowlisting, full parsing and malware scanning, existing-row backfill, and all
 legacy read/write migrations remain open. Neither the schema nor function was
 deployed to staging.
 
+An additive `PatientCareTeamAssignment` authority foundation is also present
+only in source. All direct entity operations are denied, browser callsites are
+absent, and every mutation is hard-paused by the literal
+`CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED = false` before client creation,
+authentication, or service-role access; no environment switch can open it. The
+dormant lifecycle candidate uses the documented Base44 SDK 0.8.46
+`updateMany` predicate plus `$inc` as a full-preimage conditional transition,
+binds replay to action, actor, request, reason, and result version, and preserves
+stored assignee evidence during emergency suspension/revocation even if the
+target User, membership, or Patient no longer exists. This does not make grants
+deployable: Base44 exposes no documented atomic create-if-absent, unique schema
+constraint, or multi-entity transaction. Hosted uniqueness, cross-entity
+authorization atomicity, two-request CAS proof, legacy backfill/quarantine, and
+patient-merge collision handling remain blockers. The entity and broker were
+not deployed or wired.
+
 The two brokers are intentionally not wired into the SPA yet, and direct
 `Patient.rls.read` remains broad rather than false. Cutover still requires
 migrating every Patient read consumer, proving authenticated multi-row hosted
@@ -329,9 +345,9 @@ with immutable user-id authority, completing tenant/provenance backfill, and
 running the authenticated two-agency matrix. The deployment changed no
 production app, data or schema, domain, native binary, or app-store record.
 
-Latest full validation passes 2,065 core tests, 34 schema/contracts, 392
-security tests, 47 deduplication tests, and 992 component tests (3,530 checks
-across the package groups). All 259 local backend functions transpile and all
+Latest full validation passes 2,065 core tests, 34 schema/contracts, 407
+security tests, 47 deduplication tests, and 999 component tests (3,552 checks
+across the package groups). All 260 local backend functions transpile and all
 244 shared-helper consumers match. ESLint, `typecheck:signal`, the
 staging-bound build, dependency audit with one low and no high-severity finding,
 and `git diff --check` pass.
@@ -384,8 +400,11 @@ functions, or upload a native binary until all of these are complete:
    roster read brokers are deployed to staging but intentionally unwired;
    Patient read RLS remains broad and consumers still use direct entity access
    plus client filtering. Migrate every read consumer, prove authenticated
-   multi-row hosted keyset traversal and concurrency behavior, add immutable
-   user-id care-team assignments, complete the remaining subtractive
+   multi-row hosted keyset traversal and concurrency behavior. The immutable
+   user-id care-team assignment foundation remains source-only and hard-paused;
+   add hosted grant uniqueness/create-if-absent, multi-entity authorization
+   atomicity, concurrent CAS proof, backfill/quarantine, and merge-collision
+   handling before deploying or wiring it. Complete the remaining subtractive
    service-role maintenance review, and remove the
    global-admin/sample read bypass only after a reviewed tenant/provenance
    backfill and authenticated two-agency proof.

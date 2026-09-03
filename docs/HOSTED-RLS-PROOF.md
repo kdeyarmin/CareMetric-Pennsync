@@ -583,6 +583,47 @@ silently strand a binding.
 This checkpoint made no production, domain, data, native-binary, scheduler,
 OASIS-v2, PDGM, or app-store change.
 
+## 5l. Care-team assignment authority foundation (source-only, updated 2026-09-03)
+
+The source tree now contains an additive `PatientCareTeamAssignment` schema
+whose create/read/update/delete RLS operations are all false, plus one finite
+broker and a fail-closed client wrapper. A repository-wide source scan proves
+there is no SPA callsite. The schema and function were deliberately **not**
+deployed to staging.
+
+All mutation actions (`grant`, `activate`, `suspend`, and `revoke`) are guarded
+by a literal `CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED = false` and return HTTP
+503 before creating a Base44 client, authenticating, reading with service role,
+or writing. The gate cannot be changed through an environment variable. The
+dormant implementation pins Base44 SDK 0.8.46 and replaces unconditional
+existing-row writes with a full-assignment-preimage `updateMany` predicate,
+`$inc: { version: 1 }`, exact result checks, and full snapshot readback. Local
+failure injection proves that a concurrent terminal revocation or membership
+binding change wins and the stale transition returns 409. Replay is bound to
+the exact action, actor, request id, reason, and expected result version.
+Restrictive suspension/revocation preserves the stored identity evidence and
+does not require a still-existing target User, target membership, or Patient.
+
+This is not a deployable grant system. The documented Base44 entity API has no
+transaction, unique schema constraint, upsert, or atomic create-if-absent.
+Concurrent grants and cross-entity Agency/membership/Patient authorization
+therefore cannot be proved atomic in repository code. Before this gate can ever
+be reviewed for opening, provision a hosted uniqueness/transaction strategy,
+run simultaneous authenticated two-agency requests against nonproduction,
+design resumable legacy assignment backfill with quarantine, and resolve
+patient-merge rekey/collision behavior.
+
+The current source checkpoint passes 3,552 package checks: 2,065 core, 34
+schema/contracts, 407 security, 47 deduplication, and 999 component checks. All
+260 local backend functions transpile and all 244 shared-helper consumers match.
+ESLint, `typecheck:signal`, the staging-bound build, dependency audit with one
+low and no high-severity finding, and `git diff --check` pass. Hosted inventory
+remains 239 schemas and 258 functions because this source-only addition was not
+deployed.
+
+No production app, production data/schema, domain, scheduler, secret,
+OASIS-v2/PDGM gate, native binary, or app-store record was changed.
+
 ---
 
 ## 6. Sign-off

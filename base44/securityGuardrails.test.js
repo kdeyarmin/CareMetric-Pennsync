@@ -401,6 +401,7 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
   for (const entity of [
     'DocumentTenantBinding',
     'OASISAssessment',
+    'PatientCareTeamAssignment',
     'PatientNoteHistoryEntry',
     'PatientOutcomeMetric',
   ]) {
