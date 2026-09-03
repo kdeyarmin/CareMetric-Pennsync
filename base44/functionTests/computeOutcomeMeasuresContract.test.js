@@ -4,6 +4,7 @@ import { readFile, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
 import { transpileTs } from "../../tools-transpile-ts.mjs";
 import {
   IMPROVEMENT_MEASURES as FE_MEASURES,
@@ -30,6 +31,20 @@ const V2 = "pennsync-oasis-response-v2-cms-e2";
 const V1 = "pennsync-oasis-response-v1-legacy";
 const AGENCY_A = "agency-a";
 const AGENCY_B = "agency-b";
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().flatMap((key) => (
+      value[key] === undefined ? [] : [[key, canonicalJson(value[key])]]
+    )));
+  }
+  return value;
+}
+
+function canonicalSha256(value) {
+  return createHash("sha256").update(JSON.stringify(canonicalJson(value))).digest("hex");
+}
 
 function v2Row(itemNumber, definitionId, code) {
   return {
@@ -81,6 +96,15 @@ async function loadHandler({
   createFailures = [],
   unpersistedCreates = [],
   noOpRunUpdateStatuses = [],
+  zeroRunUpdateStatuses = [],
+  hasMoreRunUpdateStatuses = [],
+  unsuccessfulRunUpdateStatuses = [],
+  doubleUpdatedRunUpdateStatuses = [],
+  ignoreRunVersionIncrementStatuses = [],
+  applyThenThrowRunUpdateStatuses = [],
+  mutateCreatedRun = null,
+  mutateBeforeRunUpdateMany = null,
+  onRunUpdateMany = null,
   updateFailures = [],
   onQuery = null,
 } = {}) {
@@ -103,19 +127,24 @@ async function loadHandler({
   const metricRows = outcomeMetrics.map((row) => ({ ...row }));
   const kpiRows = agencyKpis.map((row) => ({ ...row }));
   const queries = [];
+  const sameStoredValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  const matchesQueryField = (row, key, value) => {
+    const rowValue = row?.[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      if (value.$exists !== undefined && (rowValue !== undefined) !== value.$exists) return false;
+      if (value.$eq !== undefined && !sameStoredValue(rowValue, value.$eq)) return false;
+      if (value.$ne !== undefined && sameStoredValue(rowValue, value.$ne)) return false;
+      if (value.$gte !== undefined && String(rowValue) < String(value.$gte)) return false;
+      if (value.$lte !== undefined && String(rowValue) > String(value.$lte)) return false;
+      return true;
+    }
+    return sameStoredValue(rowValue, value);
+  };
   const matching = (rows, q) => {
     if (ignoreFilters) return rows;
-    return rows.filter((row) => Object.entries(q || {}).every(([key, value]) => {
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        const rowValue = row?.[key];
-        if (rowValue === undefined || rowValue === null) return false;
-        const comparable = String(rowValue);
-        if (value.$gte !== undefined && comparable < String(value.$gte)) return false;
-        if (value.$lte !== undefined && comparable > String(value.$lte)) return false;
-        return true;
-      }
-      return row?.[key] === value;
-    }));
+    return rows.filter((row) => Object.entries(q || {}).every(
+      ([key, value]) => matchesQueryField(row, key, value),
+    ));
   };
   const queried = (entity, rows, q, sort, limit, skip = 0) => {
     queries.push({ entity, q: { ...(q || {}) }, sort, limit, skip });
@@ -124,6 +153,7 @@ async function loadHandler({
     const scoped = matching(rows, q);
     return Number.isFinite(limit) ? scoped.slice(skip, skip + limit) : scoped;
   };
+  const pendingApplyThenThrowStatuses = new Set(applyThenThrowRunUpdateStatuses);
   let handler;
   globalThis.Deno = {
     serve: (h) => { handler = h; },
@@ -179,23 +209,62 @@ async function loadHandler({
           create: async (payload) => {
             if (createFailures.includes("OutcomeComputationRun")) throw new Error("run create failed");
             written.events.push("run:create");
-            const row = { id: `r${runRows.length + 1}`, ...payload };
+            const row = { id: `r${runRows.length + 1}`, ...payload, ...(mutateCreatedRun || {}) };
             runRows.push(row);
             written.runs.push(payload);
             written.runCreates.push(payload);
             return row;
           },
-          update: async (id, payload) => {
+          updateMany: async (query, operations) => {
             if (updateFailures.includes("OutcomeComputationRun")) throw new Error("run update failed");
+            const payload = { ...(operations.$set || {}) };
+            const status = payload.status || "metadata";
+            mutateBeforeRunUpdateMany?.({ runRows, query, operations, status });
+            const indexes = runRows
+              .map((row, index) => ({ row, index }))
+              .filter(({ row }) => Object.entries(query || {}).every(
+                ([key, value]) => matchesQueryField(row, key, value),
+              ))
+              .map(({ index }) => index);
             written.events.push(`run:update:${payload.status || "metadata"}`);
-            const index = runRows.findIndex((row) => row.id === id);
             written.runs.push(payload);
-            written.runUpdates.push({ id, payload });
-            if (noOpRunUpdateStatuses.includes(payload.status)) {
-              return index === -1 ? { id } : runRows[index];
+            written.runUpdates.push({
+              id: typeof query.id === "string" ? query.id : null,
+              payload,
+              query: structuredClone(query),
+              operations: structuredClone(operations),
+            });
+            if (!noOpRunUpdateStatuses.includes(status)) {
+              for (const index of indexes) {
+                const increments = Object.fromEntries(Object.entries(
+                  ignoreRunVersionIncrementStatuses.includes(status) ? {} : (operations.$inc || {}),
+                ).map(
+                  ([field, amount]) => [field, runRows[index][field] + amount],
+                ));
+                runRows[index] = {
+                  ...runRows[index],
+                  ...payload,
+                  ...increments,
+                };
+              }
             }
-            if (index !== -1) runRows[index] = { ...runRows[index], ...payload };
-            return index === -1 ? { id, ...payload } : runRows[index];
+            onRunUpdateMany?.({
+              runRows,
+              query,
+              operations,
+              status,
+              matchedIndexes: [...indexes],
+            });
+            if (pendingApplyThenThrowStatuses.delete(status)) {
+              throw new Error("run update response lost after apply");
+            }
+            return {
+              success: !unsuccessfulRunUpdateStatuses.includes(status),
+              updated: zeroRunUpdateStatuses.includes(status)
+                ? 0
+                : doubleUpdatedRunUpdateStatuses.includes(status) ? 2 : indexes.length,
+              has_more: hasMoreRunUpdateStatuses.includes(status),
+            };
           },
         },
       },
@@ -258,14 +327,87 @@ test("outcome run and derived-row schemas make the server-only publication gate 
     assert.deepEqual(schema.rls, { create: false, read: false, update: false, delete: false });
   }
   assert.deepEqual(runSchema.properties.status.enum, ["building", "published", "failed", "superseded"]);
+  assert.equal(runSchema.properties.transition_version.type, "integer");
+  assert.equal(runSchema.properties.transition_version.minimum, 1);
+  assert.equal(runSchema.properties.result_summary_hash.type, "string");
   assert.ok(runSchema.required.includes("run_key"));
   assert.ok(runSchema.required.includes("window_key"));
   assert.ok(runSchema.required.includes("attempt_id"));
+  assert.ok(runSchema.required.includes("transition_version"));
   assert.equal(metricSchema.properties.outcome_computation_run_id.type, "string");
   assert.equal(metricSchema.properties.optional_fields_present.type, "array");
   assert.equal(metricSchema.properties.row_content_hash.type, "string");
   assert.equal(kpiSchema.properties.outcome_computation_run_id.type, "string");
   assert.equal(kpiSchema.properties.row_content_hash.type, "string");
+});
+
+test("outcome run transitions pin SDK 0.8.46 and use exact full-preimage updateMany", async () => {
+  const [source, runSchema] = await Promise.all([
+    readFile(new URL("../functions/computeOutcomeMeasures/entry.ts", import.meta.url), "utf8"),
+    readFile(new URL("../entities/OutcomeComputationRun.jsonc", import.meta.url), "utf8")
+      .then(JSON.parse),
+  ]);
+  assert.match(source, /npm:@base44\/sdk@0\.8\.46/);
+  assert.doesNotMatch(source, /OutcomeComputationRun\.update\s*\(/);
+
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+  });
+  const result = await run(fixture.handler);
+  assert.equal(result.status, 200);
+  const publication = fixture.written.runUpdates.find(({ payload }) => payload.status === "published");
+  assert.ok(publication);
+  assert.deepEqual(
+    Object.keys(publication.query).sort(),
+    ["id", ...Object.keys(runSchema.properties)].sort(),
+  );
+  assert.equal(publication.query.id, result.json.outcome_computation_run_id);
+  assert.equal(publication.query.agency_id, AGENCY_A);
+  assert.equal(publication.query.status, "building");
+  assert.equal(publication.query.transition_version, 1);
+  assert.deepEqual(publication.query.published_at, { $exists: false });
+  assert.deepEqual(publication.query.failure_stage, { $exists: false });
+  assert.deepEqual(publication.operations.$inc, { transition_version: 1 });
+  assert.equal(publication.operations.$set.status, "published");
+  const stored = fixture.stored.runRows.find((row) => row.id === publication.id);
+  assert.equal(stored.status, "published");
+  assert.equal(stored.transition_version, 2);
+});
+
+test("corrupt or identity-changed create preimages never reach derived writes", async () => {
+  const cases = [
+    { name: "terminal status", mutation: { status: "failed" } },
+    { name: "wrong version", mutation: { transition_version: 2 } },
+    { name: "changed agency", mutation: { agency_id: AGENCY_B } },
+    { name: "terminal metadata", mutation: { failed_at: "2026-06-01T00:00:00.000Z" } },
+  ];
+  for (const scenario of cases) {
+    const fixture = await loadHandler({
+      assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+      patients: [{ id: "p1", agency_id: AGENCY_A }],
+      mutateCreatedRun: scenario.mutation,
+    });
+    const result = await run(fixture.handler);
+    assert.equal(result.status, 500, scenario.name);
+    assert.equal(fixture.written.metricCreates.length, 0, scenario.name);
+    assert.equal(fixture.written.kpiCreates.length, 0, scenario.name);
+    assert.equal(fixture.written.runUpdates.length, 0, scenario.name);
+  }
+});
+
+test("derived outcome cohorts remain append-only in the computation function", async () => {
+  const source = await readFile(
+    new URL("../functions/computeOutcomeMeasures/entry.ts", import.meta.url),
+    "utf8",
+  );
+  for (const entity of ["PatientOutcomeMetric", "AgencyKPI"]) {
+    assert.doesNotMatch(
+      source,
+      new RegExp(`entities\\.${entity}\\.(?:update|updateMany|delete|deleteMany|bulkUpdate)\\s*\\(`),
+      entity,
+    );
+  }
 });
 
 // ── tenant scope and authorization ──────────────────────────────────────────
@@ -495,6 +637,69 @@ test("published replay rejects diagnosis, measure, and KPI mutations that retain
   }
 });
 
+test("published replay rejects version drift and failed-terminal metadata", async () => {
+  const cases = [
+    { name: "version three", mutate: (row) => { row.transition_version = 3; } },
+    {
+      name: "failed metadata",
+      mutate: (row) => {
+        row.failed_at = "2026-06-02T00:00:00.000Z";
+        row.failure_stage = "post_publish_corruption";
+      },
+    },
+  ];
+  for (const scenario of cases) {
+    const fixture = await loadHandler({
+      assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+      patients: [{ id: "p1", agency_id: AGENCY_A }],
+    });
+    const first = await run(fixture.handler);
+    assert.equal(first.status, 200, scenario.name);
+    const stored = fixture.stored.runRows.find(
+      (row) => row.id === first.json.outcome_computation_run_id,
+    );
+    scenario.mutate(stored);
+    const replay = await run(fixture.handler);
+    assert.equal(replay.status, 409, scenario.name);
+    assert.equal(replay.json.success, false, scenario.name);
+    assert.match(replay.json.error, /not replayable/i, scenario.name);
+  }
+});
+
+test("published replay binds the canonical summary hash and reconciles stored counts", async () => {
+  const cases = [
+    {
+      name: "summary content without hash update",
+      mutate: (row) => { row.result_summary.discharge_rows_returned += 1; },
+      expected: /summary hash/i,
+    },
+    {
+      name: "count with recomputed hash",
+      mutate: (row) => {
+        row.result_summary.patient_outcome_metrics_written += 1;
+        row.result_summary_hash = canonicalSha256(row.result_summary);
+      },
+      expected: /metadata is incomplete or inconsistent/i,
+    },
+  ];
+  for (const scenario of cases) {
+    const fixture = await loadHandler({
+      assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+      patients: [{ id: "p1", agency_id: AGENCY_A }],
+    });
+    const first = await run(fixture.handler);
+    assert.equal(first.status, 200, scenario.name);
+    const stored = fixture.stored.runRows.find(
+      (row) => row.id === first.json.outcome_computation_run_id,
+    );
+    assert.equal(stored.result_summary_hash, canonicalSha256(stored.result_summary));
+    scenario.mutate(stored);
+    const replay = await run(fixture.handler);
+    assert.equal(replay.status, 409, scenario.name);
+    assert.match(replay.json.error, scenario.expected, scenario.name);
+  }
+});
+
 test("replay rejects a second published run for the same window under another key", async () => {
   const fixture = await loadHandler({
     assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
@@ -555,6 +760,181 @@ test("the final claim rejects multiple competing window publications instead of 
   assert.match(json.error, /multiple published runs exist for this reporting window/i);
   assert.ok(written.runUpdates.some(({ payload }) => payload.status === "superseded"));
   assert.ok(!written.runUpdates.some(({ payload }) => payload.status === "published"));
+});
+
+test("full-preimage CAS cannot overwrite a concurrent terminal run transition", async () => {
+  let injected = false;
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    mutateBeforeRunUpdateMany: ({ runRows, query, status }) => {
+      if (injected || status !== "published") return;
+      injected = true;
+      const index = runRows.findIndex((row) => row.id === query.id);
+      assert.notEqual(index, -1);
+      runRows[index] = {
+        ...runRows[index],
+        status: "superseded",
+        transition_version: 2,
+        failure_stage: "concurrent_terminal_transition",
+      };
+    },
+  });
+  const result = await run(fixture.handler);
+  assert.equal(result.status, 500);
+  assert.equal(injected, true);
+  assert.equal(fixture.stored.runRows[0].status, "superseded");
+  assert.equal(fixture.stored.runRows[0].transition_version, 2);
+  assert.equal(fixture.stored.runRows[0].failure_stage, "concurrent_terminal_transition");
+});
+
+test("conditional run transitions reject zero updates, partial batches, and unsuccessful results", async () => {
+  const cases = [
+    {
+      name: "zero update",
+      options: { zeroRunUpdateStatuses: ["published"], noOpRunUpdateStatuses: ["published"] },
+      committed: false,
+    },
+    {
+      name: "has_more",
+      options: { hasMoreRunUpdateStatuses: ["published"] },
+      committed: true,
+    },
+    {
+      name: "success false",
+      options: { unsuccessfulRunUpdateStatuses: ["published"] },
+      committed: true,
+    },
+    {
+      name: "updated two",
+      options: { doubleUpdatedRunUpdateStatuses: ["published"] },
+      committed: true,
+    },
+  ];
+  for (const scenario of cases) {
+    const fixture = await loadHandler({
+      assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+      patients: [{ id: "p1", agency_id: AGENCY_A }],
+      ...scenario.options,
+    });
+    const first = await run(fixture.handler);
+    assert.equal(first.status, 500, scenario.name);
+    assert.equal(
+      fixture.stored.runRows[0].status,
+      scenario.committed ? "published" : "building",
+      scenario.name,
+    );
+    if (scenario.committed) {
+      const replay = await run(fixture.handler);
+      assert.equal(replay.status, 200, scenario.name);
+      assert.equal(replay.json.idempotent_replay, true, scenario.name);
+    }
+  }
+});
+
+test("publication readback rejects a set applied without its version increment", async () => {
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    ignoreRunVersionIncrementStatuses: ["published"],
+  });
+  const first = await run(fixture.handler);
+  assert.equal(first.status, 500);
+  assert.equal(fixture.stored.runRows[0].status, "published");
+  assert.equal(fixture.stored.runRows[0].transition_version, 1);
+  const attempted = fixture.written.runUpdates.find(({ payload }) => payload.status === "published");
+  assert.deepEqual(attempted.operations.$inc, { transition_version: 1 });
+  const replay = await run(fixture.handler);
+  assert.equal(replay.status, 409);
+  assert.match(replay.json.error, /not replayable/i);
+});
+
+test("an optional terminal field appearing before CAS prevents publication", async () => {
+  let injected = false;
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    mutateBeforeRunUpdateMany: ({ runRows, query, status }) => {
+      if (injected || status !== "published") return;
+      const row = runRows.find((candidate) => candidate.id === query.id);
+      row.failed_at = "2026-06-02T00:00:00.000Z";
+      injected = true;
+    },
+  });
+  const result = await run(fixture.handler);
+  assert.equal(result.status, 500);
+  assert.equal(injected, true);
+  assert.equal(fixture.stored.runRows[0].status, "building");
+  assert.equal(fixture.stored.runRows[0].transition_version, 1);
+  assert.equal(fixture.stored.runRows[0].failed_at, "2026-06-02T00:00:00.000Z");
+});
+
+test("a lost publication response is recovered only by validated idempotent replay", async () => {
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    applyThenThrowRunUpdateStatuses: ["published"],
+  });
+  const first = await run(fixture.handler);
+  assert.equal(first.status, 500);
+  assert.equal(fixture.stored.runRows[0].status, "published");
+  assert.equal(fixture.stored.runRows[0].transition_version, 2);
+  assert.equal(
+    fixture.written.runUpdates.filter(({ payload }) => payload.status === "failed").length,
+    0,
+  );
+
+  const replay = await run(fixture.handler);
+  assert.equal(replay.status, 200);
+  assert.equal(replay.json.idempotent_replay, true);
+  assert.equal(fixture.written.runCreates.length, 1);
+});
+
+test("post-publication window readback reports a newly visible competing publication", async () => {
+  let inserted = false;
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    onRunUpdateMany: ({ runRows, query, status }) => {
+      if (inserted || status !== "published") return;
+      const published = runRows.find((row) => row.id === query.id);
+      assert.ok(published);
+      runRows.push({
+        ...published,
+        id: "late-competing-publication",
+        run_key: "f".repeat(64),
+        attempt_id: "late-competing-attempt",
+      });
+      inserted = true;
+    },
+  });
+  const result = await run(fixture.handler);
+  assert.equal(result.status, 409);
+  assert.equal(result.json.success, false);
+  assert.equal(result.json.requires_operator_review, true);
+  assert.match(result.json.error, /publication conflict/i);
+  assert.equal(fixture.stored.runRows.filter((row) => row.status === "published").length, 2);
+});
+
+test("distinct run rows remain outside the scope of per-record full-preimage CAS", async () => {
+  const source = await readFile(
+    new URL("../functions/computeOutcomeMeasures/entry.ts", import.meta.url),
+    "utf8",
+  );
+  const sameWindow = "shared-window-key";
+  const contenders = [
+    { id: "run-a", window_key: sameWindow, status: "building", transition_version: 1 },
+    { id: "run-b", window_key: sameWindow, status: "building", transition_version: 1 },
+  ];
+  const ownPreimageMatches = (row, preimage) => Object.entries(preimage).every(
+    ([field, value]) => row[field] === value,
+  );
+  assert.equal(ownPreimageMatches(contenders[0], contenders[0]), true);
+  assert.equal(ownPreimageMatches(contenders[1], contenders[1]), true);
+  assert.notEqual(contenders[0].id, contenders[1].id);
+  assert.equal(contenders[0].window_key, contenders[1].window_key);
+  assert.match(source, /cannot close the[\s\S]*final phantom window/);
+  assert.match(source, /datastore uniqueness or a proved[\s\S]*single-record lease/);
 });
 
 test("append-only output cannot inherit optional values from an older metric", async () => {

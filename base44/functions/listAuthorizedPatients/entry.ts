@@ -98,6 +98,8 @@ const MEMBERSHIP_AUTHORITY_FIELDS = [
   'status',
   'created_by_user_id',
   'activated_at',
+  'revoked_at',
+  'revocation_reason',
   'last_transition_by_user_id',
   'last_transition_by_email_normalized',
   'last_transition_at',
@@ -418,6 +420,9 @@ function validateMembershipRows(
       || ((status === 'active' || status === 'suspended') && !validInstant(row.activated_at))
       || (status === 'revoked' && (
         !validInstant(row.revoked_at) || !boundedReason(row.revocation_reason)
+      ))
+      || (status !== 'revoked' && (
+        row.revoked_at != null || row.revocation_reason != null
       ))
     ) {
       throw new PublicError(409, 'Tenant membership integrity check failed');
@@ -786,7 +791,8 @@ Deno.serve(async (req) => {
     if (error instanceof PublicError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
-    console.error('listAuthorizedPatients failed:', error);
+    // Never retain provider error objects: they may embed query predicates or PHI.
+    console.error('listAuthorizedPatients failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

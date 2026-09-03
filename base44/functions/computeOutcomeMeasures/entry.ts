@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
@@ -124,6 +124,53 @@ const MAX_UNEXPECTED_STAGED_ROWS = 5_000;
 const MAX_MATCHING_RUN_ROWS = 100;
 const OUTCOME_RUN_PUBLICATION_MODE = 'single_run_record_gate_v1';
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/;
+const OUTCOME_RUN_SNAPSHOT_FIELDS = Object.freeze([
+  'id',
+  'agency_id',
+  'run_key',
+  'window_key',
+  'attempt_id',
+  'status',
+  'transition_version',
+  'publication_mode',
+  'period_type',
+  'period_start',
+  'period_end',
+  'calculation_version',
+  'benchmark_value',
+  'started_at',
+  'published_at',
+  'failed_at',
+  'failure_stage',
+  'patient_outcome_metric_count',
+  'agency_kpi_count',
+  'generation_fingerprint',
+  'result_summary',
+  'result_summary_hash',
+]);
+const OUTCOME_RUN_TERMINAL_FIELDS = Object.freeze([
+  'published_at',
+  'failed_at',
+  'failure_stage',
+  'patient_outcome_metric_count',
+  'agency_kpi_count',
+  'generation_fingerprint',
+  'result_summary',
+  'result_summary_hash',
+]);
+const OUTCOME_RUN_TRANSITION_FIELDS = Object.freeze({
+  failed: Object.freeze(['failed_at', 'failure_stage', 'status']),
+  superseded: Object.freeze(['failure_stage', 'status']),
+  published: Object.freeze([
+    'agency_kpi_count',
+    'generation_fingerprint',
+    'patient_outcome_metric_count',
+    'published_at',
+    'result_summary',
+    'result_summary_hash',
+    'status',
+  ]),
+});
 const GG_FUNCTION_ITEMS = [
   'gg0130a', 'gg0130b', 'gg0130c', 'gg0130e', 'gg0130f', 'gg0130g', 'gg0130h',
   'gg0170a', 'gg0170b', 'gg0170c', 'gg0170d', 'gg0170e', 'gg0170f',
@@ -211,6 +258,125 @@ async function outcomeRowContentHash(row, fields) {
   return sha256Hex(JSON.stringify(canonicalOutcomeRowPayload(row, fields)));
 }
 // <<<END OUTCOME ROW CONTENT HASH V1>>>
+
+function outcomeRunSnapshot(row) {
+  return Object.fromEntries(OUTCOME_RUN_SNAPSHOT_FIELDS.map((field) => [field, row?.[field]]));
+}
+
+function sameOutcomeRunValue(left, right) {
+  if (left === undefined || right === undefined) return left === right;
+  return JSON.stringify(canonicalOutcomeJsonValue(left)) ===
+    JSON.stringify(canonicalOutcomeJsonValue(right));
+}
+
+async function resultSummaryHash(summary) {
+  return sha256Hex(JSON.stringify(canonicalOutcomeJsonValue(summary)));
+}
+
+function requireCleanBuildingOutcomeRun(preimage) {
+  if (preimage.status !== 'building' || preimage.transition_version !== 1) {
+    throw new Error('OutcomeComputationRun transition requires an exact building@v1 preimage');
+  }
+  if (OUTCOME_RUN_TERMINAL_FIELDS.some((field) => preimage[field] !== undefined)) {
+    throw new Error('OutcomeComputationRun building preimage contains terminal metadata');
+  }
+}
+
+function requireExactOutcomeRunTransition(setFields) {
+  const status = setFields?.status;
+  const allowedFields = OUTCOME_RUN_TRANSITION_FIELDS[status];
+  if (!allowedFields || !setFields || typeof setFields !== 'object' || Array.isArray(setFields)) {
+    throw new Error('OutcomeComputationRun transition target is invalid');
+  }
+  const actualFields = Object.keys(setFields).sort();
+  if (JSON.stringify(actualFields) !== JSON.stringify(allowedFields)) {
+    throw new Error('OutcomeComputationRun transition fields are incomplete or unexpected');
+  }
+  if (status === 'published') {
+    if (!Number.isFinite(Date.parse(String(setFields.published_at || ''))) ||
+        !Number.isSafeInteger(setFields.patient_outcome_metric_count) ||
+        setFields.patient_outcome_metric_count < 0 ||
+        !Number.isSafeInteger(setFields.agency_kpi_count) || setFields.agency_kpi_count < 0 ||
+        !/^[a-f0-9]{64}$/.test(String(setFields.generation_fingerprint || '')) ||
+        !setFields.result_summary || typeof setFields.result_summary !== 'object' ||
+        Array.isArray(setFields.result_summary) ||
+        !/^[a-f0-9]{64}$/.test(String(setFields.result_summary_hash || ''))) {
+      throw new Error('OutcomeComputationRun published transition metadata is invalid');
+    }
+    if (setFields.result_summary.patient_outcome_metrics_written !==
+          setFields.patient_outcome_metric_count ||
+        setFields.result_summary.agency_kpis_written !== setFields.agency_kpi_count) {
+      throw new Error('OutcomeComputationRun published summary counts do not reconcile');
+    }
+  } else if (typeof setFields.failure_stage !== 'string' || !setFields.failure_stage.trim()) {
+    throw new Error('OutcomeComputationRun unpublished terminal metadata is invalid');
+  } else if (status === 'failed' &&
+      !Number.isFinite(Date.parse(String(setFields.failed_at || '')))) {
+    throw new Error('OutcomeComputationRun failed transition timestamp is invalid');
+  }
+}
+
+function requireExactCreatedBuildingRun(created, expected) {
+  const actual = outcomeRunSnapshot(created);
+  const intended = outcomeRunSnapshot(expected);
+  requireCleanBuildingOutcomeRun(actual);
+  if (Object.entries(intended).some(([field, value]) =>
+    !sameOutcomeRunValue(actual[field], value))) {
+    throw new Error('OutcomeComputationRun create response changed its immutable preimage');
+  }
+  return actual;
+}
+
+async function applyConditionalOutcomeRunTransition(entity, before, setFields) {
+  const preimage = outcomeRunSnapshot(before);
+  if (!preimage.id || !preimage.agency_id) {
+    throw new Error('OutcomeComputationRun transition requires an exact scoped preimage');
+  }
+  requireCleanBuildingOutcomeRun(preimage);
+  requireExactOutcomeRunTransition(setFields);
+  if (setFields.status === 'published' &&
+      setFields.result_summary_hash !== await resultSummaryHash(setFields.result_summary)) {
+    throw new Error('OutcomeComputationRun published summary hash is invalid');
+  }
+  const query = Object.fromEntries(
+    Object.entries(preimage).map(([field, value]) => [
+      field,
+      value === undefined ? { $exists: false } : value,
+    ]),
+  );
+  const outcome = await entity.updateMany(query, {
+    $set: setFields,
+    $inc: { transition_version: 1 },
+  });
+  if (!outcome || outcome.success !== true || outcome.updated !== 1 || outcome.has_more !== false) {
+    throw new Error('OutcomeComputationRun changed before its conditional transition');
+  }
+
+  const readback = await entity.filter(
+    { agency_id: preimage.agency_id, id: preimage.id },
+    '-created_date',
+    2,
+  );
+  if (!Array.isArray(readback)) {
+    throw new Error('OutcomeComputationRun transition readback returned a non-array result');
+  }
+  const exactRows = readback.filter((row) =>
+    row?.id === preimage.id && row?.agency_id === preimage.agency_id);
+  if (exactRows.length !== 1) {
+    throw new Error('OutcomeComputationRun transition readback was missing or ambiguous');
+  }
+  const expected = {
+    ...preimage,
+    ...setFields,
+    transition_version: preimage.transition_version + 1,
+  };
+  const after = exactRows[0];
+  if (Object.entries(expected).some(([field, value]) =>
+    !sameOutcomeRunValue(after?.[field], value))) {
+    throw new Error('OutcomeComputationRun conditional transition could not be reconciled');
+  }
+  return after;
+}
 
 function toNum(v) {
   if (v === undefined || v === null || v === '') return null;
@@ -577,6 +743,7 @@ function dispositionFromAnswers(dcAns, patient) {
 Deno.serve(async (req) => {
   let activeRunClient = null;
   let activeRunId = null;
+  let activeRunSnapshot = null;
   let failureStage = 'request_validation';
   try {
     const base44 = createClientFromRequest(req);
@@ -722,6 +889,9 @@ Deno.serve(async (req) => {
     const publishedRunValidationError = async (row) => {
       const summary = row?.result_summary;
       if (row?.status !== 'published' ||
+          row?.transition_version !== 2 ||
+          row?.failed_at !== undefined || row?.failure_stage !== undefined ||
+          row?.agency_id !== agencyId ||
           row?.run_key !== runKey ||
           row?.publication_mode !== OUTCOME_RUN_PUBLICATION_MODE ||
           typeof row?.attempt_id !== 'string' || !row.attempt_id.trim() ||
@@ -730,14 +900,26 @@ Deno.serve(async (req) => {
           !Number.isFinite(Date.parse(String(row?.published_at || ''))) ||
           !Number.isInteger(row?.patient_outcome_metric_count) || row.patient_outcome_metric_count < 0 ||
           !Number.isInteger(row?.agency_kpi_count) || row.agency_kpi_count < 0 ||
-          !summary || typeof summary !== 'object' || summary.success !== true ||
+          !/^[a-f0-9]{64}$/.test(String(row?.result_summary_hash || '')) ||
+          !summary || typeof summary !== 'object' || Array.isArray(summary) || summary.success !== true ||
           summary.agency_id !== agencyId ||
           summary.period_type !== periodType ||
           summary.period_start !== periodStart ||
           summary.period_end !== periodEnd ||
           summary.calculation_version !== OUTCOME_CALCULATION_VERSION ||
-          summary.generation_fingerprint !== row.generation_fingerprint) {
+          summary.generation_fingerprint !== row.generation_fingerprint ||
+          summary.patient_outcome_metrics_written !== row.patient_outcome_metric_count ||
+          summary.agency_kpis_written !== row.agency_kpi_count) {
         return 'published run metadata is incomplete or inconsistent';
+      }
+      let recomputedSummaryHash;
+      try {
+        recomputedSummaryHash = await resultSummaryHash(summary);
+      } catch {
+        return 'published run summary is not canonically hashable';
+      }
+      if (row.result_summary_hash !== recomputedSummaryHash) {
+        return 'published run summary hash does not match its content';
       }
       const cohorts = [
         {
@@ -871,12 +1053,13 @@ Deno.serve(async (req) => {
 
     const attemptId = crypto.randomUUID();
     const startedAt = new Date().toISOString();
-    const createdRun = await base44.asServiceRole.entities.OutcomeComputationRun.create({
+    const runCreatePayload = {
       agency_id: agencyId,
       run_key: runKey,
       window_key: windowKey,
       attempt_id: attemptId,
       status: 'building',
+      transition_version: 1,
       publication_mode: OUTCOME_RUN_PUBLICATION_MODE,
       period_type: periodType,
       period_start: periodStart,
@@ -884,17 +1067,23 @@ Deno.serve(async (req) => {
       calculation_version: OUTCOME_CALCULATION_VERSION,
       ...(benchmark != null ? { benchmark_value: benchmark } : {}),
       started_at: startedAt,
-    });
+    };
+    const createdRun = await base44.asServiceRole.entities.OutcomeComputationRun.create(runCreatePayload);
     const runId = String(createdRun?.id || '').trim();
     if (!runId) throw new Error('OutcomeComputationRun create did not return an id');
+    activeRunSnapshot = requireExactCreatedBuildingRun(createdRun, {
+      id: runId,
+      ...runCreatePayload,
+    });
     activeRunClient = base44;
     activeRunId = runId;
 
-    // Best-effort duplicate-claim election. Base44 does not currently expose a
-    // datastore uniqueness constraint or compare-and-swap API, so the strict
-    // production gate remains blocked on that platform guarantee. This check
-    // still catches overlapping claims visible after creation and lets only
-    // the lexically first run id continue.
+    // Best-effort duplicate-claim election. Base44 does not expose a datastore
+    // uniqueness constraint or atomic create-if-absent/cross-record claim. The
+    // full-preimage updateMany transition below protects this existing row only,
+    // so the strict production gate remains blocked. This check still catches
+    // overlapping claims visible after creation and lets only the lexically
+    // first run id continue.
     const contenderPage = await fetchAllPages(
       base44.asServiceRole.entities.OutcomeComputationRun,
       { agency_id: agencyId, run_key: runKey },
@@ -908,12 +1097,16 @@ Deno.serve(async (req) => {
       .filter((row) => belongsToAgency(row) && row.run_key === runKey && row.status === 'building')
       .sort((a, b) => String(a.id).localeCompare(String(b.id)));
     if (buildingContenders[0] && buildingContenders[0].id !== runId) {
-      await base44.asServiceRole.entities.OutcomeComputationRun.update(runId, {
-        agency_id: agencyId,
-        status: 'superseded',
-        failure_stage: 'duplicate_run_claim',
-      });
+      await applyConditionalOutcomeRunTransition(
+        base44.asServiceRole.entities.OutcomeComputationRun,
+        activeRunSnapshot,
+        {
+          status: 'superseded',
+          failure_stage: 'duplicate_run_claim',
+        },
+      );
       activeRunId = null;
+      activeRunSnapshot = null;
       return Response.json({
         success: false,
         error: 'A concurrent attempt won this idempotency-key claim',
@@ -950,13 +1143,17 @@ Deno.serve(async (req) => {
       { maxRows: MAX_DISCHARGE_ROWS },
     );
     if (dischargePage.truncated) {
-      await base44.asServiceRole.entities.OutcomeComputationRun.update(runId, {
-        agency_id: agencyId,
-        status: 'failed',
-        failed_at: new Date().toISOString(),
-        failure_stage: 'source_discharge_cap',
-      });
+      await applyConditionalOutcomeRunTransition(
+        base44.asServiceRole.entities.OutcomeComputationRun,
+        activeRunSnapshot,
+        {
+          status: 'failed',
+          failed_at: new Date().toISOString(),
+          failure_stage: 'source_discharge_cap',
+        },
+      );
       activeRunId = null;
+      activeRunSnapshot = null;
       return Response.json({
         success: false,
         error: 'Discharge query exceeded the 50,000-row safety cap; split the requested period before computing a rollup',
@@ -1024,13 +1221,17 @@ Deno.serve(async (req) => {
         { maxRows: MAX_PRIOR_ROWS_PER_PATIENT },
       );
       if (priorPage.truncated) {
-        await base44.asServiceRole.entities.OutcomeComputationRun.update(runId, {
-          agency_id: agencyId,
-          status: 'failed',
-          failed_at: new Date().toISOString(),
-          failure_stage: 'source_patient_history_cap',
-        });
+        await applyConditionalOutcomeRunTransition(
+          base44.asServiceRole.entities.OutcomeComputationRun,
+          activeRunSnapshot,
+          {
+            status: 'failed',
+            failed_at: new Date().toISOString(),
+            failure_stage: 'source_patient_history_cap',
+          },
+        );
         activeRunId = null;
+        activeRunSnapshot = null;
         return Response.json({
           success: false,
           error: 'Patient assessment history exceeded the 10,000-row safety cap; no derived writes were attempted',
@@ -1393,6 +1594,7 @@ Deno.serve(async (req) => {
       measures: rollup.measures,
       generation_fingerprint: generationFingerprint,
     };
+    const canonicalResultSummaryHash = await resultSummaryHash(resultSummary);
     // Re-elect immediately before publication. This catches a contender that
     // became visible while source reads or staged writes were in progress.
     // A uniqueness/CAS guarantee is still required before production because
@@ -1416,12 +1618,16 @@ Deno.serve(async (req) => {
       .sort((a, b) => String(a.id).localeCompare(String(b.id)))[0];
     if (competingPublishedRuns.length > 0 ||
         (finalBuildingWinner && finalBuildingWinner.id !== runId)) {
-      await base44.asServiceRole.entities.OutcomeComputationRun.update(runId, {
-        agency_id: agencyId,
-        status: 'superseded',
-        failure_stage: 'lost_final_publication_claim',
-      });
+      await applyConditionalOutcomeRunTransition(
+        base44.asServiceRole.entities.OutcomeComputationRun,
+        activeRunSnapshot,
+        {
+          status: 'superseded',
+          failure_stage: 'lost_final_publication_claim',
+        },
+      );
       activeRunId = null;
+      activeRunSnapshot = null;
       if (competingPublishedRuns.length > 1) {
         return Response.json({
           success: false,
@@ -1468,34 +1674,50 @@ Deno.serve(async (req) => {
     }
 
     failureStage = 'publish_run';
-    await base44.asServiceRole.entities.OutcomeComputationRun.update(runId, {
-      agency_id: agencyId,
-      status: 'published',
-      published_at: new Date().toISOString(),
-      patient_outcome_metric_count: metricsWritten,
-      agency_kpi_count: kpisWritten,
-      generation_fingerprint: generationFingerprint,
-      result_summary: resultSummary,
-    });
-    const publicationReadback = await fetchAllPages(
+    const publishedRunRow = await applyConditionalOutcomeRunTransition(
       base44.asServiceRole.entities.OutcomeComputationRun,
-      { agency_id: agencyId, id: runId },
-      '-created_date',
-      { maxRows: MAX_MATCHING_RUN_ROWS },
+      activeRunSnapshot,
+      {
+        status: 'published',
+        published_at: new Date().toISOString(),
+        patient_outcome_metric_count: metricsWritten,
+        agency_kpi_count: kpisWritten,
+        generation_fingerprint: generationFingerprint,
+        result_summary: resultSummary,
+        result_summary_hash: canonicalResultSummaryHash,
+      },
     );
-    if (publicationReadback.truncated) {
-      throw new Error('OutcomeComputationRun publication readback exceeded the safety cap');
-    }
-    const exactPublishedRuns = publicationReadback.rows.filter((row) =>
-      belongsToAgency(row) && row.id === runId);
-    if (exactPublishedRuns.length !== 1) {
-      throw new Error('OutcomeComputationRun publication readback was missing or ambiguous');
-    }
-    const publicationValidationError = await publishedRunValidationError(exactPublishedRuns[0]);
+    const publicationValidationError = await publishedRunValidationError(publishedRunRow);
     if (publicationValidationError) {
       throw new Error(`OutcomeComputationRun publication readback failed: ${publicationValidationError}`);
     }
+
+    // Defense in depth only: this catches a contender that became visible after
+    // the pre-publication election but before this read. It cannot close the
+    // final phantom window after this query; datastore uniqueness or a proved
+    // single-record lease is still required before production.
+    const postPublicationWindowPage = await fetchAllPages(
+      base44.asServiceRole.entities.OutcomeComputationRun,
+      { agency_id: agencyId, window_key: windowKey },
+      '-created_date',
+      { maxRows: MAX_MATCHING_RUN_ROWS },
+    );
+    if (postPublicationWindowPage.truncated) {
+      throw new Error('OutcomeComputationRun post-publication window readback exceeded the safety cap');
+    }
+    const publishedWindowRows = postPublicationWindowPage.rows.filter((row) =>
+      belongsToAgency(row) && row.window_key === windowKey && row.status === 'published');
+    if (publishedWindowRows.length !== 1 || publishedWindowRows[0].id !== runId) {
+      activeRunId = null;
+      activeRunSnapshot = null;
+      return Response.json({
+        success: false,
+        error: 'Publication conflict appeared during the final outcome window transition',
+        requires_operator_review: true,
+      }, { status: 409 });
+    }
     activeRunId = null;
+    activeRunSnapshot = null;
 
     return Response.json({
       ...resultSummary,
@@ -1512,13 +1734,17 @@ Deno.serve(async (req) => {
     // ambiguous: the first update may have committed even if its response was
     // lost. Every earlier failure is safely marked failed; its staged rows stay
     // invisible because no published run references them.
-    if (activeRunClient && activeRunId && failureStage !== 'publish_run') {
+    if (activeRunClient && activeRunId && activeRunSnapshot && failureStage !== 'publish_run') {
       try {
-        await activeRunClient.asServiceRole.entities.OutcomeComputationRun.update(activeRunId, {
-          status: 'failed',
-          failed_at: new Date().toISOString(),
-          failure_stage: failureStage,
-        });
+        await applyConditionalOutcomeRunTransition(
+          activeRunClient.asServiceRole.entities.OutcomeComputationRun,
+          activeRunSnapshot,
+          {
+            status: 'failed',
+            failed_at: new Date().toISOString(),
+            failure_stage: failureStage,
+          },
+        );
       } catch (runError) {
         console.error('Failed to mark outcome computation run failed:', runError);
       }

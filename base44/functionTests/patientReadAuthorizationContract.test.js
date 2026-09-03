@@ -81,6 +81,43 @@ function patient(overrides = {}) {
   return row;
 }
 
+function assignment(overrides = {}) {
+  const row = {
+    id: 'assignment-a',
+    assignment_key: 'agency-a:patient-a:user-1',
+    agency_id: 'agency-a',
+    patient_id: 'patient-a',
+    user_id: 'user-1',
+    user_email_normalized: 'clinician@agency.test',
+    assignee_membership_id: 'membership-a',
+    assignee_membership_version_at_enablement: 1,
+    status: 'active',
+    source: 'manual',
+    created_by_user_id: 'manager-1',
+    created_by_user_email_normalized: 'manager@agency.test',
+    activated_at: '2026-09-03T11:30:00.000Z',
+    last_transition_by_user_id: 'manager-1',
+    last_transition_by_email_normalized: 'manager@agency.test',
+    last_transition_at: '2026-09-03T11:30:00.000Z',
+    last_transition_reason: 'Assigned for direct care',
+    last_transition_action: 'grant',
+    last_transition_request_id: 'assignment-request-a',
+    last_transition_request_key: 'agency-a:patient-a:user-1:assignment-request-a',
+    version: 1,
+    ...overrides,
+  };
+  if (row.status === 'suspended') {
+    if (row.suspended_at === undefined) row.suspended_at = '2026-09-03T12:30:00.000Z';
+    if (overrides.last_transition_action === undefined) row.last_transition_action = 'suspend';
+  }
+  if (row.status === 'revoked') {
+    if (row.revoked_at === undefined) row.revoked_at = '2026-09-03T12:30:00.000Z';
+    if (row.revocation_reason === undefined) row.revocation_reason = 'Removed from care team';
+    if (overrides.last_transition_action === undefined) row.last_transition_action = 'revoke';
+  }
+  return row;
+}
+
 async function importHandler(kind, makeClient, superAdminEmail = null) {
   let source = await readFile(brokers[kind], 'utf8');
   const globalName = `__patientReadMakeClient_${kind}_${Math.random().toString(36).slice(2)}`;
@@ -119,6 +156,8 @@ async function loadBroker(kind, {
   agencyResponses = null,
   patients = [patient()],
   patientResponses = null,
+  assignments = [],
+  assignmentResponses = null,
   ignoreFilters = false,
   superAdminEmail = null,
 } = {}) {
@@ -129,10 +168,12 @@ async function loadBroker(kind, {
     memberships: [],
     agencies: [],
     patients: [],
+    assignments: [],
   };
   let membershipIndex = 0;
   let agencyIndex = 0;
   let patientIndex = 0;
+  let assignmentIndex = 0;
 
   const selected = (responses, index, fallback) => (
     responses ? responses[Math.min(index, responses.length - 1)] : fallback
@@ -174,6 +215,13 @@ async function loadBroker(kind, {
         filter: async (query, sort, limit, offset, fields) => {
           calls.patients.push({ query: clone(query), sort, limit, offset, fields: clone(fields) });
           const rows = selected(patientResponses, patientIndex++, patients);
+          return filterRows(clone(rows), query, limit, offset, sort);
+        },
+      },
+      PatientCareTeamAssignment: {
+        filter: async (query, sort, limit, offset, fields) => {
+          calls.assignments.push({ query: clone(query), sort, limit, offset, fields: clone(fields) });
+          const rows = selected(assignmentResponses, assignmentIndex++, assignments);
           return filterRows(clone(rows), query, limit, offset, sort);
         },
       },
@@ -311,6 +359,14 @@ function fieldsFor(policy, purpose, usesSet = false) {
     `(?:^|\\n)\\s*${purpose}:\\s*${prefix}([\\s\\S]*?)${suffix}\\s*,`,
   ));
   assert.ok(match, `${purpose} policy is required`);
+  const nonLiteralRemainder = match[1]
+    .replace(/'[^']*'/g, '')
+    .replace(/[\s,]/g, '');
+  assert.equal(
+    nonLiteralRemainder,
+    '',
+    `${purpose} policy must contain only literal field names (no spread/computed additions)`,
+  );
   return quotedValues(match[1]);
 }
 
@@ -330,7 +386,17 @@ test('read brokers expose finite projections and contain no read bypass or Patie
     assert.ok((source.match(/await loadAuthority\s*\(/g) || []).length >= 2);
   }
   assert.match(getSource, /patientReadFields\(purpose\)/);
+  assert.match(
+    getSource,
+    /MEMBERSHIP_AUTHORITY_FIELDS[\s\S]*?'revoked_at'[\s\S]*?'revocation_reason'/,
+  );
+  assert.match(getSource, /entities\.PatientCareTeamAssignment\.filter\(/);
+  assert.doesNotMatch(
+    getSource,
+    /entities\.PatientCareTeamAssignment\.(?:create|bulkCreate|update|updateMany|delete)\s*\(/,
+  );
   assert.match(listSource, /patientReadFields\(input\.purpose\)/);
+  assert.doesNotMatch(listSource, /PatientCareTeamAssignment/);
   assert.match(listSource, /entities\.Patient\.filter\(/);
   assert.match(listSource, /query\.id\s*=\s*\{\s*\$gt:\s*input\.cursor\.after_id\s*\}/);
   assert.match(listSource, /['"]id['"],\s*\n\s*input\.pageSize \+ 1,\s*\n\s*undefined,/);
@@ -340,6 +406,10 @@ test('read brokers expose finite projections and contain no read bypass or Patie
   assert.doesNotMatch(listWrapper, /MAX_PAGE_OFFSET|next_offset|updated_desc|name_asc/);
   assert.match(getWrapper, /functions\.invoke\('getAuthorizedPatient'/);
   assert.match(listWrapper, /functions\.invoke\('listAuthorizedPatients'/);
+  assert.match(getSource, /console\.error\('getAuthorizedPatient failed'\)/);
+  assert.match(listSource, /console\.error\('listAuthorizedPatients failed'\)/);
+  assert.doesNotMatch(getSource, /console\.error\([^)]*,\s*error\b/);
+  assert.doesNotMatch(listSource, /console\.error\([^)]*,\s*error\b/);
 
   const getPolicy = markedSection(
     getSource,
@@ -417,7 +487,34 @@ test('anonymous, disabled, service, and unverified callers fail before service-r
   }
 });
 
-test('exact display read uses immutable creator scope, rechecks authority, and projects no protected fields', async () => {
+test('active or suspended membership rows polluted with revocation fields fail closed', async () => {
+  const polluted = [
+    membership({
+      status: 'active',
+      revoked_at: '2026-09-03T12:30:00.000Z',
+      revocation_reason: 'Invalid active-row revocation metadata',
+    }),
+    membership({
+      status: 'suspended',
+      revoked_at: '2026-09-03T12:30:00.000Z',
+      revocation_reason: 'Invalid suspended-row revocation metadata',
+    }),
+  ];
+  for (const kind of ['get', 'list']) {
+    for (const row of polluted) {
+      const { handler, calls } = await loadBroker(kind, { memberships: [row] });
+      const result = await invoke(
+        handler,
+        kind,
+        kind === 'get' ? getBody() : pageBody(),
+      );
+      assert.equal(result.response.status, 409);
+      assert.deepEqual(calls.patients, []);
+    }
+  }
+});
+
+test('exact display creator read rechecks authority and projects no protected fields', async () => {
   const { handler, calls } = await loadBroker('get');
   const { response, json } = await invoke(handler, 'getAuthorizedPatient', getBody());
   assert.equal(response.status, 200);
@@ -436,8 +533,6 @@ test('exact display read uses immutable creator scope, rechecks authority, and p
       agency_id: 'agency-a',
       is_sample: false,
       is_archived: false,
-      created_by_user_id: 'user-1',
-      created_by_user_email_normalized: 'clinician@agency.test',
     },
     sort: undefined,
     limit: 10,
@@ -448,6 +543,154 @@ test('exact display read uses immutable creator scope, rechecks authority, and p
       'is_archived', 'status', 'updated_date', 'first_name', 'middle_name', 'last_name',
     ],
   });
+  assert.deepEqual(calls.assignments, []);
+});
+
+test('an exact active care-team assignment authorizes a non-creator narrow read and is rechecked', async () => {
+  const nonCreator = patient({
+    created_by_user_id: 'user-2',
+    created_by_user_email_normalized: 'other@agency.test',
+    created_by: 'other@agency.test',
+    client_request_id: 'other-create-request',
+  });
+  const { handler, calls } = await loadBroker('get', {
+    patients: [nonCreator],
+    assignments: [assignment()],
+  });
+  const { response, json } = await invoke(
+    handler,
+    'getAuthorizedPatient',
+    getBody({ purpose: 'visit_summary' }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(Object.keys(json.patient).sort(), [
+    'date_of_birth', 'first_name', 'id', 'last_name', 'middle_name', 'primary_diagnosis',
+  ]);
+  assert.equal(json.patient.created_by_user_id, undefined);
+  assert.equal(calls.assignments.length, 2);
+  for (const call of calls.assignments) {
+    assert.deepEqual(call.query, {
+      assignment_key: 'agency-a:patient-a:user-1',
+      agency_id: 'agency-a',
+      patient_id: 'patient-a',
+      user_id: 'user-1',
+    });
+    assert.equal(call.limit, 10);
+    assert.equal(call.sort, '-updated_date');
+    assert.equal(call.fields.includes('assigned_nurses'), false);
+  }
+});
+
+test('agency-wide exact readers remain independent of care-team assignment rows', async () => {
+  const nonCreator = patient({
+    created_by_user_id: 'user-2',
+    created_by_user_email_normalized: 'other@agency.test',
+    created_by: 'other@agency.test',
+    client_request_id: 'manager-read-target',
+  });
+  const { handler, calls } = await loadBroker('get', {
+    memberships: [membership({ tenant_role: 'manager' })],
+    patients: [nonCreator],
+  });
+  const result = await invoke(handler, 'getAuthorizedPatient', getBody());
+  assert.equal(result.response.status, 200);
+  assert.deepEqual(calls.assignments, []);
+});
+
+test('inactive, absent, and foreign care-team evidence cannot authorize a non-creator', async () => {
+  const nonCreator = patient({
+    created_by_user_id: 'user-2',
+    created_by_user_email_normalized: 'other@agency.test',
+    created_by: 'other@agency.test',
+    client_request_id: 'other-create-request',
+  });
+  const cases = [
+    [],
+    [assignment({ status: 'suspended' })],
+    [assignment({ status: 'revoked' })],
+    [assignment({
+      agency_id: 'agency-b',
+      assignment_key: 'agency-b:patient-a:user-1',
+      last_transition_request_key: 'agency-b:patient-a:user-1:assignment-request-a',
+    })],
+  ];
+  for (const assignments of cases) {
+    const { handler } = await loadBroker('get', { patients: [nonCreator], assignments });
+    const result = await invoke(handler, 'getAuthorizedPatient', getBody());
+    assert.equal(result.response.status, 404);
+    assert.equal(result.json.error, 'Patient unavailable');
+  }
+});
+
+test('malformed, duplicate, or mismatched assignment bindings fail closed', async () => {
+  const nonCreator = patient({
+    created_by_user_id: 'user-2',
+    created_by_user_email_normalized: 'other@agency.test',
+    created_by: 'other@agency.test',
+    client_request_id: 'other-create-request',
+  });
+  const cases = [
+    [assignment({ last_transition_at: 'not-an-instant' })],
+    [assignment(), assignment({ id: 'assignment-b' })],
+    [assignment({ assignee_membership_id: 'membership-b' })],
+    [assignment({ assignee_membership_version_at_enablement: 3 })],
+    [assignment({ user_email_normalized: 'other@agency.test' })],
+  ];
+  for (const assignments of cases) {
+    const { handler } = await loadBroker('get', { patients: [nonCreator], assignments });
+    const result = await invoke(handler, 'getAuthorizedPatient', getBody());
+    assert.equal(result.response.status, 409);
+    assert.equal(result.json.patient, undefined);
+  }
+
+  const leakedForeign = await loadBroker('get', {
+    patients: [nonCreator],
+    assignments: [assignment({
+      agency_id: 'agency-b',
+      assignment_key: 'agency-b:patient-a:user-1',
+      last_transition_request_key: 'agency-b:patient-a:user-1:assignment-request-a',
+    })],
+    ignoreFilters: true,
+  });
+  const leakedResult = await invoke(leakedForeign.handler, 'getAuthorizedPatient', getBody());
+  assert.equal(leakedResult.response.status, 409);
+  assert.equal(leakedResult.json.patient, undefined);
+});
+
+test('assignment suspension or version drift during an exact read returns no PHI', async () => {
+  const nonCreator = patient({
+    created_by_user_id: 'user-2',
+    created_by_user_email_normalized: 'other@agency.test',
+    created_by: 'other@agency.test',
+    client_request_id: 'other-create-request',
+  });
+  const driftCases = [
+    assignment({
+      status: 'suspended',
+      version: 2,
+      last_transition_at: '2026-09-03T12:30:00.000Z',
+      last_transition_action: 'suspend',
+      last_transition_request_id: 'suspend-request-a',
+      last_transition_request_key: 'agency-a:patient-a:user-1:suspend-request-a',
+    }),
+    assignment({
+      version: 2,
+      last_transition_at: '2026-09-03T12:30:00.000Z',
+      last_transition_action: 'activate',
+      last_transition_request_id: 'activate-request-a',
+      last_transition_request_key: 'agency-a:patient-a:user-1:activate-request-a',
+    }),
+  ];
+  for (const changed of driftCases) {
+    const { handler } = await loadBroker('get', {
+      patients: [nonCreator],
+      assignmentResponses: [[assignment()], [changed]],
+    });
+    const result = await invoke(handler, 'getAuthorizedPatient', getBody());
+    assert.equal(result.response.status, 409);
+    assert.match(result.json.error, /authority changed/);
+    assert.equal(result.json.patient, undefined);
+  }
 });
 
 test('missing, foreign, and mutable-email-only assigned exact charts are indistinguishable', async () => {
@@ -489,6 +732,21 @@ test('exact read fails closed when membership authority changes during the reque
   const { response, json } = await invoke(handler, 'getAuthorizedPatient', getBody());
   assert.equal(response.status, 409);
   assert.match(json.error, /authority changed/);
+});
+
+test('exact read returns no PHI when revocation pollution appears mid-request', async () => {
+  const { handler } = await loadBroker('get', {
+    membershipResponses: [
+      [membership()],
+      [membership({
+        revoked_at: '2026-09-03T12:30:00.000Z',
+        revocation_reason: 'Concurrent polluted revocation metadata',
+      })],
+    ],
+  });
+  const { response, json } = await invoke(handler, 'getAuthorizedPatient', getBody());
+  assert.equal(response.status, 409);
+  assert.equal(json.patient, undefined);
 });
 
 test('list page applies tenant and creator scope before paging and returns a finite roster', async () => {

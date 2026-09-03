@@ -1,6 +1,6 @@
 # PennSync repository consolidation
 
-Status: **latest isolated staging hardening checkpoint complete — production remains blocked**.
+Status: **latest source-only hardening checkpoint complete — hosted validation and production remain blocked**.
 
 ## Canonical destination
 
@@ -337,16 +337,58 @@ authorization atomicity, two-request CAS proof, legacy backfill/quarantine, and
 patient-merge collision handling remain blockers. The entity and broker were
 not deployed or wired.
 
-The two brokers are intentionally not wired into the SPA yet, and direct
+The next source-only checkpoint strengthens outcome publication and the exact
+Patient read path without changing the hosted app. `OutcomeComputationRun` now
+requires `transition_version`, initializes each run at `building@v1`, and
+permits only one full-writer-preimage conditional transition to an exact
+terminal `@v2` state. The predicate includes every writer-owned schema field,
+using `$exists: false` for absent optional fields; the update must report
+`success: true`, `updated: 1`, and `has_more: false`; and exact readback must
+reconcile. Published rows additionally require mutually exclusive terminal
+metadata, a canonical `result_summary_hash`, count reconciliation, exact
+derived-row cohort validation, and pre/post-publication window checks. These
+controls close stale same-row transitions in source, but they do not provide
+cross-record uniqueness. A distinct-row phantom publication race, hosted
+`updateMany`/`$inc`/`$exists` atomicity proof, stable source snapshots, and
+runtime-budget work remain blockers.
+
+The same checkpoint makes `getAuthorizedPatient` assignment-aware for one exact
+chart id. Agency-wide platform-owner/agency-admin/manager access and immutable
+Patient-creator access remain; otherwise access requires one exact active
+`PatientCareTeamAssignment` bound to the agency, patient, immutable user id and
+email, current membership id and enablement version, and validated lifecycle,
+source, transition, and version evidence. Tenant, Patient, and assignment
+preimages are re-read before the finite purpose projection is returned.
+`getMyTenantContext` now exposes the validated `membership_version`;
+active/suspended membership rows carrying revocation metadata fail closed;
+backend errors are logged without provider or PHI objects; and client wrappers
+reject sparse, extra, or ill-typed projections. No SPA callsite was added.
+`listAuthorizedPatients` did not gain assignment discovery; its only change is
+shared membership-integrity and safe-logging parity.
+
+Fresh read-only staging queries found zero Agency, AgencyMembership, Patient,
+OutcomeComputationRun, PatientOutcomeMetric, and AgencyKPI rows.
+`PatientCareTeamAssignment` returned upstream not found, consistent with its
+source-only schema never having been pushed. `OutcomeComputationRun` therefore
+has no current staging rows to normalize, but `transition_version` remains a
+migration gate: recheck the run count immediately before any staging schema
+push. If any row exists, stop and use a reviewed two-phase optional-field
+backfill and verification before making the field required. This checkpoint
+pushed no schema or function and changed no staging or production data,
+production app, domain, scheduler, secret, OASIS-v2/PDGM gate, native binary,
+or app-store record.
+
+The Patient read brokers are intentionally not wired into the SPA yet, and direct
 `Patient.rls.read` remains broad rather than false. Cutover still requires
 migrating every Patient read consumer, proving authenticated multi-row hosted
-keyset traversal without gaps or duplicates, replacing email-based assignment
-with immutable user-id authority, completing tenant/provenance backfill, and
-running the authenticated two-agency matrix. The deployment changed no
-production app, data or schema, domain, native binary, or app-store record.
+keyset traversal without gaps or duplicates, adding assignment-aware roster
+discovery and assignment-version-aware cache eviction, completing
+tenant/provenance and legacy-assignment backfill, and running the authenticated
+two-agency matrix. The checkpoint changed no production app, data or schema,
+domain, native binary, or app-store record.
 
-Latest full validation passes 2,065 core tests, 34 schema/contracts, 407
-security tests, 47 deduplication tests, and 999 component tests (3,552 checks
+Latest full validation passes 2,077 core tests, 34 schema/contracts, 414
+security tests, 47 deduplication tests, and 1,005 component tests (3,577 checks
 across the package groups). All 260 local backend functions transpile and all
 244 shared-helper consumers match. ESLint, `typecheck:signal`, the
 staging-bound build, dependency audit with one low and no high-severity finding,
@@ -401,10 +443,17 @@ functions, or upload a native binary until all of these are complete:
    Patient read RLS remains broad and consumers still use direct entity access
    plus client filtering. Migrate every read consumer, prove authenticated
    multi-row hosted keyset traversal and concurrency behavior. The immutable
-   user-id care-team assignment foundation remains source-only and hard-paused;
-   add hosted grant uniqueness/create-if-absent, multi-entity authorization
-   atomicity, concurrent CAS proof, backfill/quarantine, and merge-collision
-   handling before deploying or wiring it. Complete the remaining subtractive
+   user-id care-team assignment schema and mutation broker remain source-only
+   and hard-paused, while the exact chart broker consumes one validated
+   assignment only in source. Deploy and prove the immutable assignment schema
+   and exact broker, add assignment-aware roster discovery, and design
+   assignment-version-aware cache invalidation because `membership_version`
+   alone cannot represent assignment revocation. Add hosted grant
+   uniqueness/create-if-absent, multi-entity authorization atomicity,
+   concurrent CAS proof, legacy backfill/quarantine, and merge-collision
+   handling before deploying or wiring it. The mutation broker's literal
+   default-off gate cannot be reviewed for opening without datastore create
+   uniqueness and cross-entity atomicity. Complete the remaining subtractive
    service-role maintenance review, and remove the
    global-admin/sample read bypass only after a reviewed tenant/provenance
    backfill and authenticated two-agency proof.
@@ -435,6 +484,19 @@ functions, or upload a native binary until all of these are complete:
    meanwhile. The emitted rates are unadjusted internal proxies, not official
    CMS results. Deployment is still blocked until all of the following are
    completed:
+   - recheck the staging `OutcomeComputationRun` count immediately before the
+     required `transition_version` schema push. If it is no longer zero, use a
+     reviewed two-phase optional-field backfill and verification before making
+     the field required;
+   - prove on hosted Base44 that a full-writer-preimage `updateMany` predicate
+     using `$exists: false`, with one `$set` plus `$inc`, is atomic and returns
+     reliable `success`, `updated`, and `has_more` values under competing
+     requests;
+   - add datastore-enforced single-winner uniqueness or a proved lease for each
+     logical publication window. Source rejects ambiguous rows before and after
+     publication, but a distinct-row phantom can still appear outside the final
+     observation window; and
+   - capture or pin a stable source snapshot for the complete computation run;
    - the hosted schemas now accept the optional tenant keys on `Patient`,
      `OASISAssessment`, `OASISUpload`, and `PatientOutcomeMetric`, the AgencyKPI
      lifecycle fields, `OutcomeComputationRun`, and

@@ -162,6 +162,8 @@ test('resolver source does not authorize from mutable custom User claims', async
     source,
     /user\.(?:account_type|agency_id|agency_name|agency_role|is_active|is_approved|is_manager|manager_email|staff_role|care_scope)\b/,
   );
+  assert.match(source, /console\.error\('getMyTenantContext failed'\)/);
+  assert.doesNotMatch(source, /console\.error\([^)]*,\s*error\b/);
 });
 
 test('an active exact membership resolves through exact Agency validation', async () => {
@@ -180,6 +182,7 @@ test('an active exact membership resolves through exact Agency validation', asyn
     user_email: 'member@example.com',
     membership_id: 'membership-a',
     membership_key: 'agency-a:user-1',
+    membership_version: 1,
     agency_id: 'agency-a',
     tenant_role: 'clinician',
     membership_status: 'active',
@@ -326,6 +329,10 @@ test('all exact lifecycle rows require complete provenance, versions, and status
     membership({ status: 'suspended', activated_at: 'invalid' }),
     membership({ status: 'revoked', revoked_at: 'invalid' }),
     membership({ status: 'revoked', revocation_reason: '' }),
+    membership({ status: 'active', revoked_at: '2026-09-03T12:02:00.000Z' }),
+    membership({ status: 'active', revocation_reason: 'Polluted active row' }),
+    membership({ status: 'suspended', revoked_at: '2026-09-03T12:02:00.000Z' }),
+    membership({ status: 'suspended', revocation_reason: 'Polluted suspended row' }),
     membership({ status: 'unknown' }),
   ];
   for (const corrupt of corruptRows) {
@@ -442,6 +449,7 @@ test('only the exact configured built-in admin may obtain membership-free owner 
     user_email: 'owner@example.com',
     membership_id: null,
     membership_key: null,
+    membership_version: null,
     agency_id: null,
     tenant_role: 'platform_owner',
     membership_status: null,

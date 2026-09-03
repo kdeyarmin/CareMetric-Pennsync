@@ -3,10 +3,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 /**
  * Exact, purpose-bound Patient read broker.
  *
- * This first slice deliberately does not trust Patient.assigned_nurses. That
- * email array is mutable and is not immutable assignment authority. Until an
- * agency-stamped, user-id assignment relation exists, non-manager readers can
- * read only Patients whose immutable creator provenance matches the caller.
+ * Patient.assigned_nurses remains deliberately untrusted. A non-manager may
+ * read a Patient only when immutable creator provenance matches the caller or
+ * an exact, active, server-owned PatientCareTeamAssignment binds the caller's
+ * current AgencyMembership to that Patient.
  */
 
 const MAX_BODY_BYTES = 20_000;
@@ -26,6 +26,14 @@ const TENANT_ROLES = new Set([
 const ENABLED_AGENCY_STATUSES = new Set(['active', 'trial']);
 const VISIBLE_PATIENT_STATUSES = new Set(['active', 'hospitalized', 'discharged']);
 const AGENCY_WIDE_ROLES = new Set(['agency_admin', 'manager', 'platform_owner']);
+const ASSIGNMENT_STATUSES = new Set(['active', 'suspended', 'revoked']);
+const ASSIGNMENT_SOURCES = new Set([
+  'manual',
+  'patient_creator',
+  'legacy_assigned_nurses',
+  'legacy_provider_patient_assignment',
+]);
+const ASSIGNMENT_ACTIONS = new Set(['grant', 'activate', 'suspend', 'revoke']);
 
 // <<<BEGIN AUTHORIZED PATIENT EXACT PURPOSE POLICY>>>
 const PURPOSE_FIELDS: Record<string, readonly string[]> = {
@@ -102,6 +110,8 @@ const MEMBERSHIP_AUTHORITY_FIELDS = [
   'status',
   'created_by_user_id',
   'activated_at',
+  'revoked_at',
+  'revocation_reason',
   'last_transition_by_user_id',
   'last_transition_by_email_normalized',
   'last_transition_at',
@@ -120,6 +130,32 @@ const PATIENT_AUTHORITY_FIELDS = [
   'is_archived',
   'status',
   'updated_date',
+];
+const ASSIGNMENT_AUTHORITY_FIELDS = [
+  'id',
+  'assignment_key',
+  'agency_id',
+  'patient_id',
+  'user_id',
+  'user_email_normalized',
+  'assignee_membership_id',
+  'assignee_membership_version_at_enablement',
+  'status',
+  'source',
+  'created_by_user_id',
+  'created_by_user_email_normalized',
+  'activated_at',
+  'suspended_at',
+  'revoked_at',
+  'revocation_reason',
+  'last_transition_by_user_id',
+  'last_transition_by_email_normalized',
+  'last_transition_at',
+  'last_transition_reason',
+  'last_transition_action',
+  'last_transition_request_id',
+  'last_transition_request_key',
+  'version',
 ];
 
 class PublicError extends Error {
@@ -275,6 +311,9 @@ function validateMembershipRows(
       || (status === 'revoked' && (
         !validInstant(row.revoked_at) || !boundedReason(row.revocation_reason)
       ))
+      || (status !== 'revoked' && (
+        row.revoked_at != null || row.revocation_reason != null
+      ))
     ) {
       throw new PublicError(409, 'Tenant membership integrity check failed');
     }
@@ -370,16 +409,11 @@ function requirePurposeRole(authority: Record<string, any>, purpose: string) {
 }
 
 function patientScope(authority: Record<string, any>) {
-  const scope: Record<string, unknown> = {
+  return {
     agency_id: authority.agencyId,
     is_sample: false,
     is_archived: false,
   };
-  if (!AGENCY_WIDE_ROLES.has(authority.tenantRole)) {
-    scope.created_by_user_id = authority.userId;
-    scope.created_by_user_email_normalized = authority.normalizedEmail;
-  }
-  return scope;
 }
 
 function validatePatientIntegrity(
@@ -408,16 +442,161 @@ function validatePatientIntegrity(
   ) {
     throw new PublicError(409, 'Patient authority integrity check failed');
   }
+  return row;
+}
+
+function assignmentKey(agencyId: string, patientId: string, userId: string) {
+  return `${agencyId}:${patientId}:${userId}`;
+}
+
+function transitionRequestKey(key: string, requestId: string) {
+  return `${key}:${requestId}`;
+}
+
+function validateAssignmentIntegrity(
+  row: Record<string, any>,
+  patientId: string,
+  authority: Record<string, any>,
+) {
+  const id = exactIdentifier(row?.id);
+  const key = assignmentKey(authority.agencyId, patientId, authority.userId);
+  const userEmail = canonicalEmail(row?.user_email_normalized);
+  const creatorEmail = canonicalEmail(row?.created_by_user_email_normalized);
+  const transitionEmail = canonicalEmail(row?.last_transition_by_email_normalized);
+  const requestId = exactIdentifier(row?.last_transition_request_id);
+  const status = typeof row?.status === 'string' ? row.status : '';
+  const action = typeof row?.last_transition_action === 'string'
+    ? row.last_transition_action
+    : '';
+  const suspendedAt = row?.suspended_at;
+  const revokedAt = row?.revoked_at;
+  const revocationReason = row?.revocation_reason;
   if (
-    !AGENCY_WIDE_ROLES.has(authority.tenantRole)
-    && (
-      row.created_by_user_id !== authority.userId
-      || creatorEmail !== authority.normalizedEmail
-    )
+    !id
+    || row.assignment_key !== key
+    || row.agency_id !== authority.agencyId
+    || row.patient_id !== patientId
+    || row.user_id !== authority.userId
+    || !userEmail
+    || row.user_email_normalized !== userEmail
+    || !exactIdentifier(row.assignee_membership_id)
+    || !Number.isSafeInteger(row.assignee_membership_version_at_enablement)
+    || row.assignee_membership_version_at_enablement < 1
+    || !ASSIGNMENT_STATUSES.has(status)
+    || !ASSIGNMENT_SOURCES.has(String(row.source || ''))
+    || !exactIdentifier(row.created_by_user_id)
+    || !creatorEmail
+    || row.created_by_user_email_normalized !== creatorEmail
+    || !validInstant(row.activated_at)
+    || (suspendedAt != null && !validInstant(suspendedAt))
+    || (status === 'suspended' && !validInstant(suspendedAt))
+    || (revokedAt != null && !validInstant(revokedAt))
+    || (status === 'revoked' && (
+      !validInstant(revokedAt) || !boundedReason(revocationReason)
+    ))
+    || (status !== 'revoked' && (revokedAt != null || revocationReason != null))
+    || !exactIdentifier(row.last_transition_by_user_id)
+    || !transitionEmail
+    || row.last_transition_by_email_normalized !== transitionEmail
+    || !validInstant(row.last_transition_at)
+    || !boundedReason(row.last_transition_reason)
+    || !ASSIGNMENT_ACTIONS.has(action)
+    || (status === 'active' && action !== 'grant' && action !== 'activate')
+    || (status === 'suspended' && action !== 'suspend')
+    || (status === 'revoked' && action !== 'revoke')
+    || !requestId
+    || row.last_transition_request_key !== transitionRequestKey(key, requestId)
+    || !Number.isSafeInteger(row.version)
+    || row.version < 1
   ) {
-    throw new PublicError(404, 'Patient unavailable');
+    throw new PublicError(409, 'Care-team assignment integrity check failed');
   }
   return row;
+}
+
+async function loadExactAssignment(
+  entities: Record<string, any>,
+  patientId: string,
+  authority: Record<string, any>,
+) {
+  const key = assignmentKey(authority.agencyId, patientId, authority.userId);
+  const rows = requireRows(
+    await entities.PatientCareTeamAssignment.filter(
+      {
+        assignment_key: key,
+        agency_id: authority.agencyId,
+        patient_id: patientId,
+        user_id: authority.userId,
+      },
+      '-updated_date',
+      EXACT_ROW_LIMIT,
+      undefined,
+      ASSIGNMENT_AUTHORITY_FIELDS,
+    ),
+    'PatientCareTeamAssignment.filter',
+  );
+  if (rows.length >= EXACT_ROW_LIMIT) {
+    throw new PublicError(409, 'Care-team assignment is ambiguous');
+  }
+  if (rows.some((row) => (
+    row?.assignment_key !== key
+    || row?.agency_id !== authority.agencyId
+    || row?.patient_id !== patientId
+    || row?.user_id !== authority.userId
+  ))) {
+    throw new PublicError(409, 'Care-team assignment query scope could not be verified');
+  }
+  if (rows.length > 1) throw new PublicError(409, 'Care-team assignment is ambiguous');
+  return rows.length === 1
+    ? validateAssignmentIntegrity(rows[0], patientId, authority)
+    : null;
+}
+
+function isPatientCreator(row: Record<string, any>, authority: Record<string, any>) {
+  return row.created_by_user_id === authority.userId
+    && row.created_by_user_email_normalized === authority.normalizedEmail;
+}
+
+function assignmentAuthoritySnapshot(row: Record<string, any>) {
+  return pickFields(row, ASSIGNMENT_AUTHORITY_FIELDS);
+}
+
+async function loadPatientReadAccess(
+  entities: Record<string, any>,
+  patient: Record<string, any>,
+  authority: Record<string, any>,
+  expectedSnapshot: Record<string, any> | null = null,
+) {
+  let snapshot: Record<string, any>;
+  if (AGENCY_WIDE_ROLES.has(authority.tenantRole)) {
+    snapshot = { basis: 'agency_wide', assignment: null };
+  } else if (isPatientCreator(patient, authority)) {
+    snapshot = { basis: 'patient_creator', assignment: null };
+  } else {
+    const assignment = await loadExactAssignment(entities, patient.id, authority);
+    if (!assignment || assignment.status !== 'active') {
+      if (expectedSnapshot?.basis === 'care_team_assignment') {
+        throw new PublicError(409, 'Patient read authority changed during request');
+      }
+      throw new PublicError(404, 'Patient unavailable');
+    }
+    if (
+      !authority.membership
+      || assignment.user_email_normalized !== authority.normalizedEmail
+      || assignment.assignee_membership_id !== authority.membership.id
+      || assignment.assignee_membership_version_at_enablement > authority.membership.version
+    ) {
+      throw new PublicError(409, 'Care-team assignment binding is invalid');
+    }
+    snapshot = {
+      basis: 'care_team_assignment',
+      assignment: assignmentAuthoritySnapshot(assignment),
+    };
+  }
+  if (expectedSnapshot && !sameValue(snapshot, expectedSnapshot)) {
+    throw new PublicError(409, 'Patient read authority changed during request');
+  }
+  return snapshot;
 }
 
 async function loadExactPatient(
@@ -483,6 +662,11 @@ Deno.serve(async (req) => {
       input.purpose,
     );
     const initialPatientSnapshot = patientAuthoritySnapshot(initialPatient);
+    const initialAccessSnapshot = await loadPatientReadAccess(
+      entities,
+      initialPatient,
+      initialAuthority,
+    );
 
     const finalAuthority = await loadAuthority(
       base44,
@@ -499,6 +683,12 @@ Deno.serve(async (req) => {
     if (!sameValue(patientAuthoritySnapshot(finalPatient), initialPatientSnapshot)) {
       throw new PublicError(409, 'Patient read authority changed during request');
     }
+    await loadPatientReadAccess(
+      entities,
+      finalPatient,
+      finalAuthority,
+      initialAccessSnapshot,
+    );
 
     return Response.json({
       success: true,
@@ -515,7 +705,8 @@ Deno.serve(async (req) => {
     if (error instanceof PublicError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
-    console.error('getAuthorizedPatient failed:', error);
+    // Never retain provider error objects: they may embed query predicates or PHI.
+    console.error('getAuthorizedPatient failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

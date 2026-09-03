@@ -161,6 +161,10 @@ function validateMemberships(
         status === 'revoked'
         && (!Number.isFinite(revokedAt) || !revocationReason)
       )
+      || (
+        status !== 'revoked'
+        && (row.revoked_at != null || row.revocation_reason != null)
+      )
     ) {
       throw new PublicError(409, 'Tenant membership integrity check failed');
     }
@@ -259,6 +263,7 @@ Deno.serve(async (req) => {
           user_email: normalizedEmail,
           membership_id: null,
           membership_key: null,
+          membership_version: null,
           agency_id: requestedAgencyId,
           tenant_role: 'platform_owner',
           membership_status: null,
@@ -285,6 +290,7 @@ Deno.serve(async (req) => {
         user_email: normalizedEmail,
         membership_id: selected.id,
         membership_key: selected.membership_key,
+        membership_version: selected.version,
         agency_id: agencyId,
         tenant_role: selected.tenant_role,
         membership_status: 'active',
@@ -296,7 +302,8 @@ Deno.serve(async (req) => {
     if (error instanceof PublicError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
-    console.error('getMyTenantContext failed:', error);
+    // Never retain provider error objects: they may embed identity or tenant data.
+    console.error('getMyTenantContext failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

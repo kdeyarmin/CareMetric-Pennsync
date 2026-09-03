@@ -23,6 +23,11 @@
       "type": "string",
       "enum": ["building", "published", "failed", "superseded"]
     },
+    "transition_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic server-owned revision used by full-preimage conditional lifecycle transitions. It does not provide cross-record publication uniqueness."
+    },
     "publication_mode": {
       "type": "string",
       "enum": ["single_run_record_gate_v1"],
@@ -76,6 +81,10 @@
     "result_summary": {
       "type": "object",
       "description": "Non-PHI response summary returned verbatim on an idempotent replay."
+    },
+    "result_summary_hash": {
+      "type": "string",
+      "description": "Canonical SHA-256 of result_summary. Required by function validation whenever status is published."
     }
   },
   "required": [
@@ -84,6 +93,7 @@
     "window_key",
     "attempt_id",
     "status",
+    "transition_version",
     "publication_mode",
     "period_type",
     "period_start",

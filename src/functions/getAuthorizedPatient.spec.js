@@ -43,7 +43,12 @@ describe('getAuthorizedPatient wrapper', () => {
     invoke.mockResolvedValue({
       success: true,
       purpose: 'education_context',
-      patient: { id: 'patient-a', primary_diagnosis: 'I10' },
+      patient: {
+        id: 'patient-a',
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        primary_diagnosis: 'I10',
+      },
       scope: {
         agency_id: 'agency-a',
         membership_id: null,
@@ -93,5 +98,148 @@ describe('getAuthorizedPatient wrapper', () => {
     await expect(getAuthorizedPatient({
       agencyId: 'agency-a', patientId: 'patient-a', purpose: 'display',
     })).rejects.toThrow(/lookup failed/);
+
+    invoke.mockResolvedValue({
+      data: {
+        success: true,
+        purpose: 'display',
+        patient: { id: 'patient-a' },
+        scope: { ...scope, membership_version: null },
+      },
+    });
+    await expect(getAuthorizedPatient({
+      agencyId: 'agency-a', patientId: 'patient-a', purpose: 'display',
+    })).rejects.toThrow(/lookup failed/);
+
+    invoke.mockResolvedValue({
+      data: {
+        success: true,
+        purpose: 'display',
+        patient: { id: 'patient-a' },
+        scope: { ...scope, tenant_role: 'office_staff' },
+        extra: true,
+      },
+    });
+    await expect(getAuthorizedPatient({
+      agencyId: 'agency-a', patientId: 'patient-a', purpose: 'display',
+    })).rejects.toThrow(/lookup failed/);
+  });
+
+  it('requires mandatory purpose fields and type-checks every returned optional field', async () => {
+    for (const patient of [
+      { id: 'patient-a' },
+      { id: 'patient-a', first_name: ['Ada'], last_name: 'Lovelace' },
+      {
+        id: 'patient-a',
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        secondary_diagnoses: 'E11.9',
+        status: 'active',
+      },
+      {
+        id: 'patient-a',
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        status: 'unknown',
+      },
+    ]) {
+      invoke.mockResolvedValueOnce({
+        data: { success: true, purpose: 'alert_analysis', patient, scope },
+      });
+      await expect(getAuthorizedPatient({
+        agencyId: 'agency-a', patientId: 'patient-a', purpose: 'alert_analysis',
+      })).rejects.toThrow(/lookup failed/);
+    }
+
+    invoke.mockResolvedValueOnce({
+      data: {
+        success: true,
+        purpose: 'visit_summary',
+        patient: { id: 'patient-a', first_name: 'Ada', last_name: 'Lovelace' },
+        scope,
+      },
+    });
+    await expect(getAuthorizedPatient({
+      agencyId: 'agency-a', patientId: 'patient-a', purpose: 'visit_summary',
+    })).resolves.toMatchObject({ patient: { first_name: 'Ada' } });
+  });
+
+  it('rejects malformed identity, enum, date, and nested projection values', async () => {
+    const cases = [
+      {
+        purpose: 'display',
+        patient: { id: 'patient-a', first_name: '', last_name: 'Lovelace' },
+      },
+      {
+        purpose: 'display',
+        patient: { id: 'patient-a', first_name: ' Ada', last_name: 'Lovelace' },
+      },
+      {
+        purpose: 'display',
+        patient: { id: 'patient-a', first_name: 'Ada', last_name: ' ' },
+      },
+      {
+        purpose: 'display',
+        patient: { id: 'patient-a', first_name: 'A'.repeat(201), last_name: 'Lovelace' },
+      },
+      {
+        purpose: 'selector',
+        patient: {
+          id: 'patient-a',
+          first_name: 'Ada',
+          last_name: 'Lovelace',
+          status: 'active',
+          updated_date: '2026-09-03T12:00:00.000Z',
+          care_type: 'skilled_nursing',
+        },
+      },
+      {
+        purpose: 'visit_summary',
+        patient: {
+          id: 'patient-a',
+          first_name: 'Ada',
+          last_name: 'Lovelace',
+          date_of_birth: '2026-02-30',
+        },
+      },
+      {
+        purpose: 'visit_summary',
+        patient: {
+          id: 'patient-a',
+          first_name: 'Ada',
+          last_name: 'Lovelace',
+          date_of_birth: '02/03/2026',
+        },
+      },
+      {
+        purpose: 'health_history_write_base',
+        patient: {
+          id: 'patient-a',
+          updated_date: '2026-09-03T12:00:00.000Z',
+          past_hospitalizations: [{
+            date: '2026-09-01',
+            hospital: 'General Hospital',
+            internal_note: 'must not cross the projection boundary',
+          }],
+        },
+      },
+      {
+        purpose: 'health_history_write_base',
+        patient: {
+          id: 'patient-a',
+          updated_date: '2026-09-03T12:00:00.000Z',
+          past_hospitalizations: [{ date: '2026-02-30' }],
+        },
+      },
+    ];
+
+    for (const { purpose, patient } of cases) {
+      invoke.mockResolvedValueOnce({
+        data: { success: true, purpose, patient, scope },
+      });
+      await expect(getAuthorizedPatient({
+        agencyId: 'agency-a', patientId: 'patient-a', purpose,
+      })).rejects.toThrow(/lookup failed/);
+    }
   });
 });

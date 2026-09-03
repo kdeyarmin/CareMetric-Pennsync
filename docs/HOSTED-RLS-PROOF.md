@@ -624,6 +624,57 @@ deployed.
 No production app, production data/schema, domain, scheduler, secret,
 OASIS-v2/PDGM gate, native binary, or app-store record was changed.
 
+## 5m. Outcome transition and assigned-patient exact-read checkpoint (source-only, updated 2026-09-03)
+
+The next source-only checkpoint strengthens outcome publication without
+changing the hosted app. `OutcomeComputationRun` now requires
+`transition_version`, initializes a run at `building@v1`, and permits only one
+full-writer-preimage conditional transition to an exact terminal `@v2` state.
+The predicate includes every writer-owned schema field, with `$exists: false`
+for absent optional fields; the update must report `success: true`, `updated:
+1`, and `has_more: false`; and exact readback must reconcile. Published rows
+also require mutually exclusive terminal metadata, a canonical
+`result_summary_hash`, count reconciliation, exact derived-row cohort
+validation, and pre/post-publication window checks. This closes stale same-row
+transitions in source, but distinct-row phantom publication, datastore
+uniqueness, hosted `updateMany`/`$inc`/`$exists` atomicity, stable source
+snapshots, and runtime-budget work remain unproved.
+
+The same source-only checkpoint makes `getAuthorizedPatient` assignment-aware
+for one exact chart id. Existing agency-wide and immutable Patient-creator
+access is preserved; the additional path requires one exact active
+`PatientCareTeamAssignment` bound to the agency, patient, immutable user id and
+email, current membership id and enablement version, and validated lifecycle,
+source, transition, and version evidence. Tenant, Patient, and assignment
+preimages are re-read before returning a finite purpose projection.
+`getMyTenantContext` returns the validated `membership_version`;
+active/suspended memberships carrying revocation metadata fail closed; logs no
+longer retain provider error objects; and the wrappers reject sparse, extra, or
+ill-typed results. No SPA callsite was added, and `listAuthorizedPatients`
+remains creator-only for nonmanagers; its only source change is shared
+membership-integrity and safe-logging parity.
+
+Fresh read-only staging queries found zero Agency, AgencyMembership, Patient,
+OutcomeComputationRun, PatientOutcomeMetric, and AgencyKPI rows.
+`PatientCareTeamAssignment` returned upstream not found because the source-only
+schema has not been pushed; this is not evidence of a deployed zero-row entity.
+Recheck the run count immediately before any staging schema push. If an
+`OutcomeComputationRun` row then exists, stop and use a reviewed two-phase
+optional-field backfill and verification before requiring
+`transition_version`. No schema or function was pushed, and no staging or
+production data, production app, domain, scheduler, secret, OASIS-v2/PDGM
+gate, native binary, or app-store record changed.
+
+The complete local checkpoint passes 3,577 package checks: 2,077 core, 34
+schema/contracts, 414 security, 47 deduplication, and 1,005 component checks.
+All 260 backend functions transpile and all 244 shared-helper consumers match;
+ESLint and `typecheck:signal` pass. This remains source-only and undeployed.
+Deployment and UI cutover are blocked by hosted service-role/RLS and two-agency
+proof, assignment uniqueness and cross-entity atomicity, assignment-aware
+roster discovery, an assignment-revocation cache strategy, hosted multi-row id
+collation, the conditional required-field migration above, outcome
+cross-record uniqueness, stable snapshots, and hosted CAS semantics.
+
 ---
 
 ## 6. Sign-off
