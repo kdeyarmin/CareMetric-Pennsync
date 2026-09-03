@@ -60,7 +60,10 @@ targeted the CareMetric production app.
 | Feature gates | No AgencySettings row exists; OASIS v2 remains default-off, `saveOasisResponses` remains hard-paused, PDGM reimbursement remains source-disabled, and both withheld functions remain unwired |
 | Time zone | `America/New_York` is the default business/agency clock, giving Eastern Standard or Daylight Time as seasonally appropriate |
 | Validation | 2,077 core, 34 schema/contract, 414 security, 47 deduplication, and 1,005 component tests pass (3,577 package checks); a broader 616-test function/security sweep, all 260 function transpiles, all 244 shared-helper comparisons, type diagnostics, ESLint, actionlint, OASIS worksheet, and staging build also pass |
-| Production/store safety | Production Base44 app `694ec16e72e01b60d22f7cbf`, domains, data/schema, scheduler, secrets, native binaries, and Apple/Google records were not changed; both existing store listings were still live on 2026-09-03 |
+| Production source baseline | The CareMetric Base44 source workspace auto-fast-forwarded through its GitHub sync to merged `main` `67d9d5ee66aad222a712e6ba49d00461d0a68337` at 2026-09-02 19:58:30 UTC and remains clean there; this source change came from PR `#142`, not from the isolated staging synchronization |
+| Live production surfaces | On 2026-09-03, `caremetricai.base44.app` and `app.caremetricai.com` both returned HTTP 200 and the same existing `CareMetric AI` bundle `index-BQUjg8kG.js`; staging returned its distinct `PennSync by CareMetric` bundle `index-DoqEmZdz.js`; `pennsync.com` still returned the separate `PENNSync` bundle `index--wkWNhXC.js`, so no production bundle publish or domain cutover occurred |
+| Manifest nuance | The production-facing manifest already says `PennSync by CareMetric` and is byte-identical to staging. Git history traces that manifest branding to 2026-06-30 and its blob did not change in PR `#142` or today's staging work; its relative PWA identity and four icons remain intact, but the mixed old HTML bundle/newer manifest branding must be explicitly reconciled at release |
+| Current safety boundary | Today's staging work made no production data or schema API mutation, secret/scheduler change, bundle publication, domain move, native upload, or Apple/Google record change; both existing store listings were still live on 2026-09-03 |
 
 The initial entity deployment exposed unsupported `$contains` array-membership
 RLS in Message and SharedDocument. Draft PR `#143` replaces it with Base44's
@@ -595,8 +598,12 @@ functions, or upload a native binary until all of these are complete:
    apps against the staged web release: cold launch, login, Smart Note,
    camera/microphone, uploads, downloads, telehealth, session persistence, and
    subscriptions.
-8. Back up production data, document rollback, deploy frontend/functions/schema
-   in a coordinated window, and smoke-test both permanent and custom origins.
+8. Reconcile the pre-existing mixed production release state (the old
+   `CareMetric AI` JavaScript bundle with the `PennSync by CareMetric` manifest),
+   then back up production data, document rollback, deploy frontend/functions/schema
+   in one coordinated window, and smoke-test both permanent and custom origins.
+   Verify that HTML, manifest, service worker, icons, and asset hashes all resolve
+   to the intended release before observing installed clients through rollback.
 
 Only after those gates pass should `pennsync.com` and `app.pennsync.com` be moved
 from the old Base44 app to the CareMetric app. Keep the old repositories and old
