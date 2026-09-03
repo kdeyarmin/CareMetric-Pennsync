@@ -320,7 +320,10 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, deduped: true, fax_id: dupe.id, status: dupe.status });
     }
 
-    const faxLog = await base44.entities.FaxLog.create({
+    // All caller-controlled inputs and tenant-sensitive patient/destination
+    // checks have passed above. Use the service role only for the authorized
+    // FaxLog write so entity RLS cannot strand a valid outbound transmission.
+    const faxLog = await base44.asServiceRole.entities.FaxLog.create({
       from_number: fromNumber,
       // Store and send the NORMALIZED E.164 destination (what was validated),
       // not the raw user input — Telnyx rejects/misroutes non-E164 numbers and a
@@ -364,7 +367,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify(payload),
       });
     } catch (netErr) {
-      await base44.entities.FaxLog.update(faxLog.id, {
+      await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
         status: 'failed',
         failure_reason: `Network error reaching Telnyx: ${netErr.message}`,
       }).catch(() => {});
@@ -377,7 +380,7 @@ Deno.serve(async (req) => {
       const firstErr = Array.isArray(telnyxData?.errors) ? telnyxData.errors[0] : null;
       // Log provider detail server-side; never echo it (recipient number / URL is PHI).
       console.error('Telnyx fax send error', { status: telnyxResponse.status, code: firstErr?.code });
-      await base44.entities.FaxLog.update(faxLog.id, {
+      await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
         status: 'failed',
         failure_reason: firstErr?.detail || firstErr?.title || 'Fax send failed',
       });

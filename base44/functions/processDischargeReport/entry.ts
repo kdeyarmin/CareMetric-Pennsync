@@ -1,5 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -7,15 +18,6 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
   { status: 403 },
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
-
-
-// Platform-wide: role:admin without agency, or super_admin. Facility admins
-// with an agency_name may run the import but only against their agency's charts.
-const canRunDischargeImport = (u) => !!u && (
-  u.account_type === 'super_admin'
-  || u.role === 'admin'
-  || u.account_type === 'agency_admin'
-);
 
 // Does an MRN-matched chart carry a different person's name?
 //
@@ -49,11 +51,17 @@ Deno.serve(async (req) => {
     debugLog('Starting discharge report processing...');
     const base44 = createClientFromRequest(req);
     
-    const user = await base44.auth.me();
-    
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    if (!canRunDischargeImport(user)) {
-      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    // This bulk discharge path reads every patient and mutates multiple charts.
+    // Until tenant membership is immutable/server-verified, mutable account and
+    // agency claims must not widen it. Fail closed when SUPER_ADMIN_EMAIL is not
+    // configured, and reject before parsing the caller-controlled file URL.
+    if (!isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Forbidden: protected platform administrator required' }, { status: 403 });
     }
 
     const { file_url } = await req.json();
@@ -102,25 +110,7 @@ Deno.serve(async (req) => {
     // Fetch patients to match the discharge records against (bounded to the
     // SDK's 5000/request max; omitting a limit silently caps at the SDK default
     // of 50).
-    let allPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
-    const isAgencyScoped = user.account_type !== 'super_admin'
-      && user.agency_name
-      && (user.account_type === 'agency_admin' || user.role === 'admin');
-    if (isAgencyScoped) {
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .list('-created_date', 5000).catch(() => []);
-      const agencyEmails = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-      allPatients = (allPatients || []).filter((p) =>
-        (p.created_by && agencyEmails.has(p.created_by))
-        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e))),
-      );
-    } else if (user.account_type === 'agency_admin' && !user.agency_name) {
-      return Response.json({ error: 'Forbidden: agency_name is required' }, { status: 403 });
-    }
+    const allPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
     
     const results = {
       total_processed: dischargedPatientsData.length,

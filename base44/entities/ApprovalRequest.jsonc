@@ -94,10 +94,10 @@
     "read": {
       "$or": [
         {
-          "requester_email": "{{user.email}}"
+          "data.requester_email": "{{user.email}}"
         },
         {
-          "approver_email": "{{user.email}}"
+          "data.approver_email": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -106,13 +106,43 @@
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
-          "requester_email": "{{user.email}}"
+          "data.requester_email": "{{user.email}}"
         },
         {
-          "approver_email": "{{user.email}}"
+          "data.approver_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.requester_email": "{{user.email}}"
+        },
+        {
+          "data.approver_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.requester_email": "{{user.email}}"
+        },
+        {
+          "data.approver_email": "{{user.email}}"
         },
         {
           "user_condition": {

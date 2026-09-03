@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster';
+import { sendMessage } from '@/functions/sendMessage';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -497,8 +498,6 @@ Actions available:
 • Review patient information
 
 📎 ${referral.processed_document_url ? 'AI-processed admission packet PDF is attached.' : 'Referral document is attached.'}`,
-        sender_name: 'System',
-        sender_email: currentUser?.email,
         recipients: [nurseEmail],
         priority: referral.priority === 'urgent' ? 'urgent' : 'high',
         attachments: attachmentUrl ? [attachmentUrl] : [],
@@ -514,7 +513,7 @@ Actions available:
       const priorAssignedTo = referral.assigned_to ?? null;
       await base44.entities.Referral.update(referralId, { assigned_to: nurseEmail });
       try {
-        await base44.entities.Message.create(messageData);
+        await sendMessage(messageData);
       } catch (notifyErr) {
         await base44.entities.Referral.update(referralId, { assigned_to: priorAssignedTo }).catch(() => {});
         throw notifyErr;

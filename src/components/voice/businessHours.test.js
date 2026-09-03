@@ -208,6 +208,7 @@ test("agencyHoursConfig maps the flat AgencySettings fields", () => {
   // Defensive defaults for an empty settings object.
   const empty = agencyHoursConfig(undefined);
   assert.equal(empty.enabled, false);
+  assert.equal(empty.timeZone, "America/New_York");
   assert.deepEqual(empty.days, {});
   assert.deepEqual(empty.holidays, []);
 });

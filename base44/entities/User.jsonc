@@ -287,37 +287,23 @@
           "user_condition": {
             "role": "admin"
           }
-        },
-        {
-          "user_condition": {
-            "account_type": "agency_admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "super_admin"
-          }
         }
       ]
     },
-    "write": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "agency_admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "super_admin"
-          }
-        }
-      ]
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
     }
   }
 }

@@ -182,18 +182,20 @@
   // visible to their submitter.
   // Reads are scoped to the owning user (+ admin), matching the app's
   // Patient/Visit/ComplianceAudit role model: non-admin staff see only their
-  // own rows on agency-wide report surfaces; admins see everything. "write": {}
-  // deliberately preserves the existing open write behavior — this change is
+  // own rows on agency-wide report surfaces; admins see everything. The
+  // create/update/delete rules preserve the existing open mutation behavior — this change is
   // read-scoping only (several write flows are legitimately cross-user), the
   // same shape as the ClinicalLibraryTemplate read-scoping fix.
   "rls": {
     "read": {
       "$or": [
-        { "uploaded_by": "{{user.email}}" },
+        { "data.uploaded_by": "{{user.email}}" },
         { "created_by": "{{user.email}}" },
         { "user_condition": { "role": "admin" } }
       ]
     },
-    "write": {}
+    "create": true,
+    "update": true,
+    "delete": true
   }
 }

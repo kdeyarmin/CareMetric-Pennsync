@@ -55,6 +55,8 @@
         "role": "admin"
       }
     },
-    "write": {}
+    "create": true,
+    "update": true,
+    "delete": true
   }
 }

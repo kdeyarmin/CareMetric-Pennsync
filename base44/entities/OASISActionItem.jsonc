@@ -121,5 +121,11 @@
     "action_type",
     "category",
     "rationale"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

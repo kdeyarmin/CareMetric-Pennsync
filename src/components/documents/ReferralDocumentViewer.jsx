@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { toast } from 'sonner';
 import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { sendMessage } from '@/functions/sendMessage';
 
 export default function ReferralDocumentViewer({ patientId }) {
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
@@ -45,6 +46,12 @@ export default function ReferralDocumentViewer({ patientId }) {
     queryFn: () => base44.auth.me(),
   });
 
+  const { data: patient } = useQuery({
+    queryKey: ['patient-by-id', patientId],
+    queryFn: () => base44.entities.Patient.get(patientId),
+    enabled: !!patientId,
+  });
+
   const { data: users = [] } = useQuery({
     queryKey: ['allUsers', ALL_ROWS, agencyQueryKey(currentUser)],
     queryFn: async () => {
@@ -55,19 +62,23 @@ export default function ReferralDocumentViewer({ patientId }) {
     initialData: [],
     enabled: !!currentUser,
   });
+  const allowedRecipientEmails = new Set([
+    selectedReferral?.created_by,
+    selectedReferral?.assigned_to,
+    patient?.created_by,
+    ...(patient?.assigned_nurses || []),
+  ].filter(Boolean).map((email) => email.toLowerCase()));
 
   const handleSendDocument = async () => {
     if (!recipientEmail || !selectedReferral) return;
 
     setIsSending(true);
     try {
-      await base44.entities.Message.create({
+      await sendMessage({
         patient_id: patientId,
         thread_id: `referral-doc-${selectedReferral.id}`,
         subject: `Referral Document: ${selectedReferral.patient_name || 'Patient'}`,
         message_text: messageText || `${selectedReferral.documentUrl === selectedReferral.processed_document_url ? 'AI-processed admission packet' : 'Referral document'} for ${selectedReferral.patient_name}.\n\nReferral Date: ${selectedReferral.referral_date ? format(parseLocalDate(selectedReferral.referral_date), 'MM/dd/yyyy') : 'N/A'}\nSource: ${selectedReferral.referral_source || 'N/A'}`,
-        sender_name: currentUser?.full_name || 'System',
-        sender_email: currentUser?.email,
         recipients: [recipientEmail],
         priority: selectedReferral.priority === 'urgent' ? 'urgent' : 'normal',
         attachments: [selectedReferral.documentUrl],
@@ -204,7 +215,9 @@ export default function ReferralDocumentViewer({ patientId }) {
                   <SelectValue placeholder="Select nurse or user" />
                 </SelectTrigger>
                 <SelectContent>
-                  {users.filter(u => u.email !== currentUser?.email).map(u => (
+                  {users.filter((user) =>
+                    user.email !== currentUser?.email
+                      && allowedRecipientEmails.has(user.email?.toLowerCase())).map(u => (
                     <SelectItem key={u.email} value={u.email}>
                       {u.full_name || u.email} {u.role === 'admin' && '(Admin)'}
                     </SelectItem>

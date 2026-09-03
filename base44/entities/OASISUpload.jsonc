@@ -152,10 +152,8 @@
         { "user_condition": { "role": "admin" } }
       ]
     },
-    "write": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    }
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

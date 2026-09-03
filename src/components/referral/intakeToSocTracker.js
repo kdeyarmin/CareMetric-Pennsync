@@ -22,12 +22,24 @@ const CLOSED_STATUSES = new Set(["soc_completed", "declined"]);
 // inline so this module stays dependency-free and `node --test`-runnable.
 function toLocalDate(v) {
   if (!v) return null;
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(v).trim());
+  const raw = String(v).trim();
+  // Referral and SOC values represent clinical calendar dates. Preserve the
+  // date written in an ISO datetime instead of letting the machine timezone
+  // move the instant onto an adjacent day.
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:$|T)/.exec(raw);
   if (iso) {
-    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
-    return Number.isNaN(d.getTime()) ? null : d;
+    if (raw.includes('T') && Number.isNaN(Date.parse(raw))) return null;
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    const d = new Date(year, month - 1, day);
+    if (Number.isNaN(d.getTime())
+      || d.getFullYear() !== year
+      || d.getMonth() !== month - 1
+      || d.getDate() !== day) return null;
+    return d;
   }
-  const d = new Date(v);
+  const d = new Date(raw);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 

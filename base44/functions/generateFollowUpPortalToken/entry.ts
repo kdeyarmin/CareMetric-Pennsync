@@ -1,12 +1,24 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // generateFollowUpPortalToken — mint the capability link for the public
 // provider follow-up response portal (mirrors generateSignerToken).
 //
-// Admin-gated: only office/admin staff send follow-up requests. The returned
-// portalLink goes on the provider information-request form (fax/PDF); the
-// provider opens it and answers via validateFollowUpToken /
-// submitFollowUpResponse (both service-role, token-authenticated).
+// Platform-owner-gated: the returned portalLink is a bearer capability sent on
+// the provider information-request form (fax/PDF). Until referral tenant
+// membership is immutable/server-verified, only the configured protected admin
+// may mint one. validateFollowUpToken / submitFollowUpResponse remain the public,
+// token-authenticated consumers.
 
 function generateSecureToken() {
   const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -37,55 +49,47 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     if (user && user.is_active === false) {
       return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
     }
-    const isAdmin = user?.role === 'admin' || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
-    if (!user || !isAdmin) {
-      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+    // Gate before parsing referral_id: a forged mutable account/agency claim
+    // must not trigger a privileged referral read or token mutation.
+    if (!isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Forbidden: protected platform administrator required' }, { status: 403 });
     }
 
     const { referral_id, provider_name, expires_in_days = 30 } = await req.json();
-    if (!referral_id) {
+    const referralId = typeof referral_id === 'string' ? referral_id.trim() : '';
+    if (!referralId) {
       return Response.json({ error: 'referral_id is required' }, { status: 400 });
     }
 
-    // The referral must exist before a capability link is minted for it.
-    const referrals = await base44.asServiceRole.entities.Referral.filter({ id: referral_id }, undefined, 5000);
-    if (!referrals || referrals.length === 0) {
+    // Treat the backend filter as a query optimization, not an authorization
+    // fact: re-check the exact requested id before a returned row can anchor a
+    // new bearer capability.
+    const referralRows = await base44.asServiceRole.entities.Referral.filter({ id: referralId }, undefined, 5000);
+    const referral = (Array.isArray(referralRows) ? referralRows : [])
+      .find((row) => row?.id === referralId);
+    if (!referral) {
       return Response.json({ error: 'Referral not found' }, { status: 404 });
-    }
-    const referral = referrals[0];
-
-    // Agency-scoped admins (agency_admin OR facility admin with agency_name)
-    // may only mint follow-up links for referrals created by / assigned within
-    // their agency.
-    if (user.account_type === 'agency_admin' && !user.agency_name) {
-      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-    }
-    const isAgencyScopedAdmin = user.account_type !== 'super_admin'
-      && user.agency_name
-      && (user.account_type === 'agency_admin' || user.role === 'admin');
-    if (isAgencyScopedAdmin) {
-      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
-      const agencyEmails = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-      const ownerEmail = referral.created_by || referral.assigned_to || referral.intake_nurse_email;
-      if (!ownerEmail || !agencyEmails.has(ownerEmail)) {
-        return Response.json({ error: 'Forbidden: referral is outside your agency.' }, { status: 403 });
-      }
     }
 
     // One active token per referral: deactivate any predecessor so a re-sent
     // form always invalidates the previously mailed link.
-    const prior = await base44.asServiceRole.entities.ProviderFollowUpToken.filter({
-      referral_id,
+    const priorRows = await base44.asServiceRole.entities.ProviderFollowUpToken.filter({
+      referral_id: referralId,
       is_active: true,
     }, undefined, 5000);
-    for (const t of prior || []) {
+    const prior = (Array.isArray(priorRows) ? priorRows : []).filter((row) =>
+      row?.referral_id === referralId
+      && row?.is_active === true
+      && typeof row?.id === 'string'
+      && row.id.length > 0
+    );
+    for (const t of prior) {
       await base44.asServiceRole.entities.ProviderFollowUpToken.update(t.id, { is_active: false });
     }
 
@@ -102,7 +106,7 @@ Deno.serve(async (req) => {
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 
     const record = await base44.asServiceRole.entities.ProviderFollowUpToken.create({
-      referral_id,
+      referral_id: referralId,
       token: tokenHash,
       provider_name: provider_name || null,
       expires_at: expiresAt,

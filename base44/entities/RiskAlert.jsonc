@@ -64,5 +64,11 @@
     "nurse_email",
     "risk_category",
     "threshold_score"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

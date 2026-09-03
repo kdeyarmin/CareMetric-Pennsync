@@ -77,5 +77,11 @@
     "user_email",
     "file_url",
     "file_name"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

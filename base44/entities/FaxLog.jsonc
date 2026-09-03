@@ -133,5 +133,16 @@
     "from_number",
     "to_number",
     "document_url"
-  ]
+  ],
+  // FaxLog contains destination numbers, document URLs, OCR text, and patient
+  // links. Browser users may read only faxes they sent; every mutation is
+  // performed by an already-authorized backend fax workflow.
+  "rls": {
+    "read": {
+      "data.sent_by": "{{user.email}}"
+    },
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import JSON5 from 'json5';
 
 const HERE = dirname(fileURLToPath(import.meta.url)); // base44/
 const REPO = join(HERE, '..');
@@ -153,14 +154,18 @@ const PHI_READ_SCOPED_ENTITIES = {
 for (const [entity, ownerFields] of Object.entries(PHI_READ_SCOPED_ENTITIES)) {
   test(`${entity} scopes read RLS (PHI not bulk-listable by any authenticated user)`, () => {
     const src = read(`base44/entities/${entity}.jsonc`);
+    const readRule = JSON.stringify(JSON5.parse(src).rls?.read);
     assert.ok(
       /"rls"\s*:/.test(src) && /"read"\s*:/.test(src),
       `${entity} must define an rls.read policy — without one, any authenticated user can list every patient's rows.`,
     );
+    // A hard-deny is a stricter interim posture for disabled/dormant workflows.
+    if (readRule === 'false') return;
     for (const field of ownerFields) {
+      const ruleField = field === 'created_by' ? field : `data.${field}`;
       assert.ok(
-        new RegExp(`"${field}"\\s*:\\s*"\\{\\{user\\.email\\}\\}"`).test(src),
-        `${entity} rls.read must scope by ${field} ({{user.email}}) so non-admin reads stay limited to the caller's own rows.`,
+        readRule.includes(`"${ruleField}":"{{user.email}}"`),
+        `${entity} rls.read must scope by ${ruleField} ({{user.email}}) so non-admin reads stay limited to the caller's own rows.`,
       );
     }
   });
@@ -172,17 +177,20 @@ for (const [entity, ownerFields] of Object.entries(PHI_READ_SCOPED_ENTITIES)) {
 //    rule is admin-only; staff submissions go through submitPersonnelCredential
 //    (which pins status=pending_approval) and decisions through the admin-gated
 //    reviewPersonnelCredential.
-test('PersonnelCredential write RLS is admin-only (no self-approval)', () => {
-  const src = read('base44/entities/PersonnelCredential.jsonc');
-  const writeBlock = src.slice(src.indexOf('"write"'));
-  assert.ok(
-    !/"user_id"\s*:\s*"\{\{user\.email\}\}"/.test(writeBlock),
-    'PersonnelCredential write RLS must NOT include the owner (user_id) — owner write access lets staff self-approve their own credential (status is a single field; RLS cannot restrict it).',
-  );
-  assert.ok(
-    /"user_condition"\s*:\s*\{\s*"role"\s*:\s*"admin"/.test(writeBlock),
-    'PersonnelCredential write RLS must be admin-only.',
-  );
+test('PersonnelCredential mutation RLS is admin-only (no self-approval)', () => {
+  const rls = JSON5.parse(read('base44/entities/PersonnelCredential.jsonc')).rls;
+  for (const operation of ['create', 'update', 'delete']) {
+    const rule = JSON.stringify(rls[operation]);
+    assert.ok(
+      !rule.includes('user_id'),
+      `PersonnelCredential rls.${operation} must NOT include the owner (user_id) — owner mutation access lets staff self-approve their own credential (status is a single field; RLS cannot restrict it).`,
+    );
+    assert.match(
+      rule,
+      /"user_condition":\{"role":"admin"\}/,
+      `PersonnelCredential rls.${operation} must be admin-only.`,
+    );
+  }
   const submitFn = read('base44/functions/submitPersonnelCredential/entry.ts');
   assert.ok(
     /status\s*:\s*'pending_approval'/.test(submitFn),
@@ -209,16 +217,19 @@ test('scheduleSignatureReminders queues future reminders instead of sending imme
   // writes must stay admin-only: an owner write rule would let any user queue a
   // reminder for an arbitrary document_id, bypassing scheduleSignatureReminders'
   // ownership/role checks (the scheduling function itself writes via service role).
-  const entity = read('base44/entities/ScheduledSignatureReminder.jsonc');
-  const writeBlock = entity.slice(entity.indexOf('"write"'));
-  assert.ok(
-    !/"(created_by|requested_by)"\s*:\s*"\{\{user\.email\}\}"/.test(writeBlock),
-    'ScheduledSignatureReminder write RLS must NOT include an owner rule — a direct client create would make the service-role dispatcher notify signers of a document the caller does not control.',
-  );
-  assert.ok(
-    /"user_condition"\s*:\s*\{\s*"role"\s*:\s*"admin"/.test(writeBlock),
-    'ScheduledSignatureReminder write RLS must be admin-only.',
-  );
+  const rls = JSON5.parse(read('base44/entities/ScheduledSignatureReminder.jsonc')).rls;
+  for (const operation of ['create', 'update', 'delete']) {
+    const rule = JSON.stringify(rls[operation]);
+    assert.ok(
+      !/(created_by|requested_by)/.test(rule),
+      `ScheduledSignatureReminder rls.${operation} must NOT include an owner rule — a direct client create would make the service-role dispatcher notify signers of a document the caller does not control.`,
+    );
+    assert.match(
+      rule,
+      /"user_condition":\{"role":"admin"\}/,
+      `ScheduledSignatureReminder rls.${operation} must be admin-only.`,
+    );
+  }
 });
 
 // 10. Patient.enhanced_notes_history is append-only via the backend function —
@@ -306,16 +317,13 @@ test('computeOutcomeMeasures is internal-secret-only and never authorizes from U
   assert.ok(/valid period_start and period_end/.test(handler));
 });
 
-test('outcome metric and KPI direct reads and writes remain service-role-only', () => {
-  for (const entity of ['PatientOutcomeMetric', 'AgencyKPI']) {
+test('computed outcome and PDGM rows use hosted operation-specific service-role-only RLS', () => {
+  for (const entity of ['PatientOutcomeMetric', 'AgencyKPI', 'PDGMRateConfig']) {
     const src = read(`base44/entities/${entity}.jsonc`);
-    for (const operation of ['read', 'write']) {
-      const operationStart = src.indexOf(`"${operation}"`);
-      const operationBlock = src.slice(operationStart, operationStart + 150);
-      assert.ok(
-        /"user_condition"\s*:\s*\{\s*"role"\s*:\s*"__service_role_only__"/.test(operationBlock),
-        `${entity} ${operation} RLS must keep computed outcome rows behind service role.`,
-      );
+    assert.doesNotMatch(src, /"write"\s*:/, `${entity} must not use the ignored legacy write key.`);
+    for (const operation of ['create', 'read', 'update', 'delete']) {
+      assert.match(src, new RegExp(`"${operation}"\\s*:\\s*false`),
+        `${entity} ${operation} must deny direct hosted API access.`);
     }
   }
 });
@@ -347,14 +355,13 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
   const oasisUploadEntity = read('base44/entities/OASISUpload.jsonc');
   const oasisWriter = read('base44/functions/saveOasisResponses/entry.ts');
   const dashboard = read('src/components/reports/KPIDashboard.jsx');
-  assert.ok(
-    /"write"\s*:\s*\{\s*"user_condition"\s*:\s*\{\s*"role"\s*:\s*"__service_role_only__"/.test(oasisEntity),
-    'OASISAssessment direct writes must stay service-role-only.',
-  );
-  assert.ok(
-    /"write"\s*:\s*\{\s*"user_condition"\s*:\s*\{\s*"role"\s*:\s*"__service_role_only__"/.test(oasisUploadEntity),
-    'OASISUpload direct writes must stay service-role-only.',
-  );
+  for (const [name, source] of [['OASISAssessment', oasisEntity], ['OASISUpload', oasisUploadEntity]]) {
+    assert.doesNotMatch(source, /"write"\s*:/, `${name} must not use the ignored legacy write key.`);
+    for (const operation of ['create', 'update', 'delete']) {
+      assert.match(source, new RegExp(`"${operation}"\\s*:\\s*false`),
+        `${name} ${operation} must deny direct hosted API mutation.`);
+    }
+  }
   assert.ok(/const OASIS_V2_WRITES_PAUSED = true;/.test(oasisWriter));
   const handler = oasisWriter.slice(oasisWriter.indexOf('Deno.serve'));
   assert.ok(

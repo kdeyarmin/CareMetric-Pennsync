@@ -169,5 +169,13 @@
   "required": [
     "user_email",
     "document_url"
-  ]
+  ],
+  // Provider webhooks and the scheduled processor use the service role. The
+  // PHI-bearing inbox must not be reachable through direct entity CRUD.
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

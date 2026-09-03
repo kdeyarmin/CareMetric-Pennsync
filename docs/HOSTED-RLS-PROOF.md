@@ -136,8 +136,8 @@ rules (or each app is single-tenant):
 | Pattern in `.jsonc` | Effective scope today |
 |---|---|
 | `user_condition: { role: "admin" }` | **Every** user with `role:admin`, including agency-scoped facility admins — platform-wide read/write for that entity |
-| `owner_agency_code: "{{user.agency_code}}"` (etc.) | Tenant-scoped **only if** the caller has that template field populated; does not replace the bare `role:admin` arm when both are `$or`’d |
-| `account_type: "super_admin"` / `"agency_admin"` arms | Additive clarity; still does not constrain bare `role:admin` |
+| `data.agency_id: "{{user.agency_id}}"` (etc.) | Tenant-scoped **only after** both sides are server-owned and backfilled; current custom User tenant fields are self-editable and are not authority |
+| `account_type: "super_admin"` / `"agency_admin"` arms | Prohibited by the repository contract because these custom User fields are mutable |
 
 **Do not** “fix” this by scoping admin-only entities with a lone
 `agency_name: "{{user.agency_name}}"` arm — that would let any nurse in the
@@ -158,11 +158,12 @@ entity API, LR-01 fails regardless of function-layer gates.
 not the boundary** — the rows have already reached the browser by the time it
 runs. Everything in §5b about service-role + function gates still stands.
 
-`User` carries `agency_id` / `agency_name`, so staff scoping is a direct
-comparison. **`Patient` carries no agency field**, so a chart's tenancy is
-resolved in priority order: an explicit `agency_id` / `agency_name` on the
-chart, else the agency of a `created_by` / `assigned_nurses` address that
-resolves to a known user, else *unattributable*.
+`User` carries custom `agency_id` / `agency_name` fields, but they are not an
+authorization source. `Patient` now carries an optional `agency_id` for the
+future server-stamped tenant model; legacy rows are deliberately unbackfilled
+and unscoped until an audited migration can assign them without guessing. The
+interim browser helper resolves display scope from explicit chart fields or the
+`created_by` / `assigned_nurses` roster only as defense in depth.
 
 **Unattributable charts remain visible.** Absence of attribution is not
 evidence of another tenant, and hiding a chart from the clinician who needs it
@@ -173,8 +174,7 @@ roster the instant the first `agency_name` is assigned.
 
 Before enabling multi-tenancy, in this order:
 
-1. Add an agency attribute to `Patient` (prefer `agency_id`; it survives a
-   rename, and the helper compares ids ahead of names).
+1. Make `Patient.agency_id` server-owned at every creation/import boundary.
 2. Backfill it on existing charts. `describePatientAgencyScope` reports the
    outstanding count, surfaced on the admin Data Quality dashboard.
 3. Only then populate `User.agency_name` / `agency_id`. Doing this before the
@@ -268,12 +268,29 @@ carries agency attribution either.
 Both are properties of filtering after the fact, which is why §5b's position
 stands: this layer is defense in depth, and the boundary is server-side.
 
-**`Message` is deliberately excluded.** A message belongs to its *participants*,
-not its author, so the author rule would hide a message addressed to this user
-by someone outside their agency. `Message` RLS is `created_by` ∨ `recipients
-$contains` ∨ bare `role:admin`, so non-admins are already narrowed correctly and
-only the admin arm over-reads. Closing that needs participant-based narrowing on
-`Message.list()` — a different filter, not this one.
+**`Message` is deliberately participant-scoped.** Its read policy uses
+`created_by` ∨ `data.sender_email` ∨ `data.recipients.$in` with no global admin
+arm. Direct create/update/delete are denied. New sends and atomic mark-read
+updates go through authenticated service functions that derive sender identity,
+validate the exact patient/referral/document/thread participants, and never use
+custom agency or account claims as authority. Hosted two-user and two-agency
+negative proofs are still required before production.
+
+## 5d. Isolated anonymous-policy proof (updated 2026-09-03)
+
+Against nonproduction app `6a9881683dc68a0bd54f1ef7`, after the complete
+236-schema push:
+
+- all 51 shaped anonymous POST probes returned HTTP 403, including the 40
+  fully fail-closed entities, Message, TrainingQuestion, FaxLog, FaxContact,
+  FaxTemplate, the five critical OASIS/outcome/PDGM entities, and PDFIndex;
+- all 51 anonymous list requests returned HTTP 200 with an empty array; and
+- privileged connector queries reported `count: 0` for all 51 entities, so no
+  probe row was created.
+
+This is real hosted negative evidence for anonymous access. It is not LR-01:
+the authenticated multi-user/multi-agency matrix in sections 1–4 still needs
+separate test identities and tokens.
 
 ---
 

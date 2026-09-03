@@ -64,5 +64,11 @@
     "patient_id",
     "material_id",
     "action_type"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

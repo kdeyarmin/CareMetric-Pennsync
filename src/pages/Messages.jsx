@@ -41,6 +41,8 @@ import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
 import { shortAgo } from "@/components/phone/timeUtils";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { sendMessage } from "@/functions/sendMessage";
+import { markMessageRead } from "@/functions/markMessageRead";
 
 const PRIORITY_DOT = { urgent: "bg-red-500", high: "bg-orange-500", normal: "bg-navy-600" };
 
@@ -93,17 +95,24 @@ export default function Messages() {
   });
 
   const { data: patients = [] } = useScopedPatients({ sort: 'first_name', limit: 100 });
+  const composePatients = patients.filter((patient) =>
+    patient.created_by === currentUser?.email
+      || patient.assigned_nurses?.includes(currentUser?.email));
+  const selectedComposePatient = composePatients.find((patient) => patient.id === newMessage.patient_id);
+  const composeParticipantEmails = new Set([
+    selectedComposePatient?.created_by,
+    ...(selectedComposePatient?.assigned_nurses || []),
+  ].filter(Boolean).map((email) => email.toLowerCase()));
+  const composeRecipients = users.filter((candidate) =>
+    candidate.email !== currentUser?.email
+      && composeParticipantEmails.has(candidate.email?.toLowerCase()));
 
   const markAsReadMutation = useMutation({
     mutationFn: async (messageId) => {
       const message = messages.find(m => m.id === messageId);
       if (!message || !currentUser?.email) return;
-      const readBy = message.read_by || [];
-      if (!readBy.includes(currentUser.email)) {
-        await base44.entities.Message.update(messageId, {
-          is_read: true,
-          read_by: [...readBy, currentUser.email]
-        });
+      if (!message.read_by?.includes(currentUser.email)) {
+        return markMessageRead(messageId);
       }
     },
     onSuccess: () => {
@@ -112,7 +121,7 @@ export default function Messages() {
   });
 
   const sendMessageMutation = useMutation({
-    mutationFn: (messageData) => base44.entities.Message.create(messageData),
+    mutationFn: (messageData) => sendMessage(messageData),
     onMutate: async (messageData) => {
       await queryClient.cancelQueries({ queryKey: ['messages'] });
       const previousMessages = queryClient.getQueryData(['messages']) || [];
@@ -120,6 +129,9 @@ export default function Messages() {
       queryClient.setQueryData(['messages'], [
         {
           ...messageData,
+          sender_name: currentUser?.full_name || currentUser?.email,
+          sender_email: currentUser?.email,
+          read_by: currentUser?.email ? [currentUser.email] : [],
           id: optimisticId,
           created_date: new Date().toISOString(),
           updated_date: new Date().toISOString(),
@@ -236,18 +248,14 @@ export default function Messages() {
 
   const handleSendMessage = () => {
     if (sendMessageMutation.isPending) return;
-    if (newMessage.recipients.length === 0 || !newMessage.subject.trim() || !newMessage.message_text.trim()) {
-      toast.error('Please add a recipient, subject, and message.');
+    if (!newMessage.patient_id || newMessage.recipients.length === 0
+      || !newMessage.subject.trim() || !newMessage.message_text.trim()) {
+      toast.error('Please add a related patient, recipient, subject, and message.');
       return;
     }
 
     sendMessageMutation.mutate({
       ...newMessage,
-      sender_name: currentUser?.full_name,
-      sender_email: currentUser?.email,
-      // The author has implicitly "read" their own message, so seed read_by to
-      // keep it out of their own unread count.
-      read_by: currentUser?.email ? [currentUser.email] : [],
       thread_id: null
     });
   };
@@ -274,9 +282,6 @@ export default function Messages() {
     sendMessageMutation.mutate({
       subject: `Re: ${originalMessage.subject}`,
       message_text: replyText.trim(),
-      sender_name: currentUser?.full_name,
-      sender_email: me,
-      read_by: me ? [me] : [],
       recipients,
       // A reply inherits the thread's priority, but the nurse can escalate this
       // specific reply to urgent (e.g. a status change the recipient must see).
@@ -547,18 +552,22 @@ export default function Messages() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label htmlFor="new-message-recipients" className="mb-2 block text-sm font-semibold">Recipients *</label>
+              <label htmlFor="new-message-patient" className="mb-2 block text-sm font-semibold">Related Patient *</label>
               <Select
-                value={newMessage.recipients[0] || ""}
-                onValueChange={(value) => setNewMessage({ ...newMessage, recipients: [value] })}
+                value={newMessage.patient_id || ""}
+                onValueChange={(value) => setNewMessage({
+                  ...newMessage,
+                  patient_id: value,
+                  recipients: [],
+                })}
               >
-                <SelectTrigger id="new-message-recipients" className="h-11">
-                  <SelectValue placeholder="Select recipient" />
+                <SelectTrigger id="new-message-patient" className="h-11">
+                  <SelectValue placeholder="Select patient" />
                 </SelectTrigger>
                 <SelectContent>
-                  {users.map((u) => (
-                    <SelectItem key={u.email} value={u.email}>
-                      {u.full_name} ({u.email})
+                  {composePatients.map((patient) => (
+                    <SelectItem key={patient.id} value={patient.id}>
+                      {patient.first_name} {patient.last_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -566,19 +575,19 @@ export default function Messages() {
             </div>
 
             <div>
-              <label htmlFor="new-message-patient" className="mb-2 block text-sm font-semibold">Related Patient (Optional)</label>
+              <label htmlFor="new-message-recipients" className="mb-2 block text-sm font-semibold">Recipients *</label>
               <Select
-                value={newMessage.patient_id || "none"}
-                onValueChange={(value) => setNewMessage({ ...newMessage, patient_id: value === "none" ? null : value })}
+                value={newMessage.recipients[0] || ""}
+                onValueChange={(value) => setNewMessage({ ...newMessage, recipients: [value] })}
+                disabled={!selectedComposePatient}
               >
-                <SelectTrigger id="new-message-patient" className="h-11">
-                  <SelectValue placeholder="Select patient" />
+                <SelectTrigger id="new-message-recipients" className="h-11">
+                  <SelectValue placeholder={selectedComposePatient ? "Select recipient" : "Select a patient first"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {patients.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.first_name} {p.last_name}
+                  {composeRecipients.map((candidate) => (
+                    <SelectItem key={candidate.email} value={candidate.email}>
+                      {candidate.full_name} ({candidate.email})
                     </SelectItem>
                   ))}
                 </SelectContent>

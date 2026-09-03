@@ -31,6 +31,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import JSON5 from 'json5';
 
 const ENTITIES_DIR = join(dirname(fileURLToPath(import.meta.url)), 'entities');
@@ -147,8 +148,7 @@ test('every required field exists in its properties', () => {
 
 test('RLS uses only Base44-supported field operators', () => {
   const supported = new Set([
-    '$all', '$elemMatch', '$eq', '$exists', '$gt', '$gte', '$in',
-    '$lt', '$lte', '$ne', '$nin', '$size', '$and', '$or', '$nor',
+    '$all', '$in', '$ne', '$nin', '$and', '$or', '$nor',
   ]);
   const bad = [];
 
@@ -166,6 +166,186 @@ test('RLS uses only Base44-supported field operators', () => {
 
   for (const [file, schema] of parsed) visit(schema.rls, 'rls', file);
   assert.equal(bad.length, 0, `Unsupported RLS operator(s):\n${bad.join('\n')}`);
+});
+
+test('array-valued RLS fields use an explicit membership operator', () => {
+  const bad = [];
+  const visit = (value, schema, path, file, inUserCondition = false) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, schema, `${path}[${index}]`, file, inUserCondition));
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (inUserCondition) continue;
+      if (key === 'user_condition') {
+        visit(child, schema, `${path}.${key}`, file, true);
+      } else if (key.startsWith('$')) {
+        visit(child, schema, `${path}.${key}`, file, false);
+      } else {
+        const fieldName = key.startsWith('data.') ? key.slice(5) : key;
+        if (schema.properties?.[fieldName]?.type === 'array' && (child === null || typeof child !== 'object')) {
+          bad.push(`${file}: ${path}.${key}`);
+        }
+        visit(child, schema, `${path}.${key}`, file, false);
+      }
+    }
+  };
+  for (const [file, schema] of parsed) {
+    for (const operation of ['create', 'read', 'update', 'delete']) {
+      visit(schema.rls?.[operation], schema, `rls.${operation}`, file);
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `Array RLS field(s) compared with scalar equality:\n${bad.join('\n')}`,
+  );
+});
+
+test('entity-level RLS uses operation-specific mutation keys', () => {
+  const bad = [];
+  for (const [file, schema] of parsed) {
+    if (schema?.rls && Object.hasOwn(schema.rls, 'write')) {
+      bad.push(`${file}: rls.write is ignored for hosted entity mutations; use create/update/delete`);
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `Legacy entity-level RLS mutation key(s):\n${bad.join('\n')}`,
+  );
+});
+
+test('reviewed dormant and service-only entities remain fail-closed', () => {
+  const names = [
+    'AgencyMessage', 'AIInsightFeedback', 'AILearningPattern', 'AlertTriggerRule',
+    'AppointmentForm', 'Billing', 'CitationLibrary', 'ClinicalScenario',
+    'FaxCoverTemplate', 'FaxDocument', 'FaxHistory', 'FaxNotification',
+    'FaxPriorityRule', 'FormTemplate', 'IncomingFax', 'InsuranceProvider',
+    'MaterialInteraction', 'Medication', 'MedicationReconciliation', 'MessageTemplate',
+    'NursePerformanceMetric', 'OASISActionItem', 'OASISAudit', 'OASISFeedback',
+    'OASISScenario', 'OASISWorkflowExecution', 'PatientBillingInfo',
+    'PatientEducationDraft', 'PatientEducationEngagement',
+    'PatientEducationMaterial', 'PatientMessage', 'PatientOutcome',
+    'PatientRiskAssessment', 'RiskAlert', 'RiskAnalysis', 'ScheduleFeedback',
+    'ServiceCode', 'SharedDocument', 'SuggestedIntervention', 'TeamMessage',
+  ];
+  const bad = [];
+  for (const name of names) {
+    const schema = byName.get(name);
+    if (!schema) {
+      bad.push(`${name}: missing schema`);
+      continue;
+    }
+    for (const operation of ['create', 'read', 'update', 'delete']) {
+      if (schema.rls?.[operation] !== false) bad.push(`${name}: ${operation} must be false`);
+    }
+  }
+  assert.equal(bad.length, 0, `Fail-closed entity drift:\n${bad.join('\n')}`);
+});
+
+test('entity-level RLS prefixes custom record fields with data.', () => {
+  const builtInFields = new Set([
+    'id', 'email', 'created_by', 'created_by_id', 'created_date', 'updated_date',
+  ]);
+  const bad = [];
+
+  const visit = (value, path, file, inUserCondition = false) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`, file, inUserCondition));
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (inUserCondition) continue;
+      if (key === 'user_condition') {
+        visit(child, `${path}.${key}`, file, true);
+      } else if (key.startsWith('$')) {
+        visit(child, `${path}.${key}`, file, false);
+      } else {
+        if (!key.startsWith('data.') && !builtInFields.has(key)) {
+          bad.push(`${file}: ${path}.${key}`);
+        }
+        visit(child, `${path}.${key}`, file, false);
+      }
+    }
+  };
+
+  for (const [file, schema] of parsed) {
+    for (const operation of ['create', 'read', 'update', 'delete']) {
+      visit(schema.rls?.[operation], `rls.${operation}`, file);
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `Unprefixed custom field(s) in entity-level RLS:\n${bad.join('\n')}`,
+  );
+});
+
+test('entity-level RLS never authorizes with mutable account_type', () => {
+  const bad = [];
+  const visit = (value, path, file) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`, file));
+      return;
+    }
+    if (value.user_condition && Object.hasOwn(value.user_condition, 'account_type')) {
+      bad.push(`${file}: ${path}.user_condition.account_type`);
+    }
+    for (const [key, child] of Object.entries(value)) visit(child, `${path}.${key}`, file);
+  };
+  for (const [file, schema] of parsed) visit(schema.rls, 'rls', file);
+  assert.equal(
+    bad.length,
+    0,
+    `Mutable account_type used as an RLS authority:\n${bad.join('\n')}`,
+  );
+});
+
+test('known RLS debt cannot grow or change without explicit review', () => {
+  const isOpen = (rule) => {
+    if (rule === undefined || rule === null || rule === true) return true;
+    if (rule === false || typeof rule !== 'object' || Array.isArray(rule)) return false;
+    if (Object.keys(rule).length === 0) return true;
+    if (Array.isArray(rule.$or)) return rule.$or.some(isOpen);
+    if (Array.isArray(rule.$and)) return rule.$and.every(isOpen);
+    return false;
+  };
+  const fingerprint = (names) => createHash('sha256').update(names.join('\n')).digest('hex');
+  const inventories = {
+    noRls: [],
+    openMutation: [],
+    openRead: [],
+  };
+  for (const [file, schema] of parsed) {
+    const name = schema.name || file.replace(/\.jsonc$/, '');
+    if (!schema.rls) inventories.noRls.push(name);
+    if (['create', 'update', 'delete'].some((operation) => isOpen(schema.rls?.[operation]))) {
+      inventories.openMutation.push(name);
+    }
+    if (isOpen(schema.rls?.read)) inventories.openRead.push(name);
+  }
+  const expected = {
+    noRls: [36, '519b3359c78602edfb95cd81b9a839469a5b729d3af26dc30f498719ba2cc8d2'],
+    openMutation: [43, 'ce88f1d3069ffa27d0b11c9b762fc6da56905b4195343caf785833ebfb823632'],
+    openRead: [63, '089e68f3d2f94661f819652eeca01a19a28e3d9706b1cfa28b2af9d4cadfcf2d'],
+  };
+  const bad = [];
+  for (const [kind, names] of Object.entries(inventories)) {
+    names.sort();
+    const actual = [names.length, fingerprint(names)];
+    if (actual[0] !== expected[kind][0] || actual[1] !== expected[kind][1]) {
+      bad.push(`${kind}: count=${actual[0]} sha256=${actual[1]}\n  ${names.join(', ')}`);
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `RLS debt inventory changed. Shrink it deliberately and update the reviewed fingerprint; never expand it:\n${bad.join('\n')}`,
+  );
 });
 
 // ---------------------------------------------------------------------------

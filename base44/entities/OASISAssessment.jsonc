@@ -197,14 +197,12 @@
     // rejection, and tenant/patient authorization. saveOasisResponses is also
     // hard-paused until a server-owned tenant + chart-access broker is proved.
     //
-    // NOTE — hosted validation is still OUTSTANDING. This file is the declared
-    // contract; whether the hosted Base44 app enforces it has not been proven
-    // in this environment. See docs/oasis/OASIS_RESPONSE_SCHEMA_MIGRATION.md
-    // ("Hosted schema / RLS status") — v2 entry stays disabled until it is.
-    "write": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    }
+    // Base44's hosted schema uses operation-specific rules. The legacy
+    // `write` key is accepted by the CLI but does not protect create requests.
+    // False still allows trusted backend service-role access while denying
+    // every direct browser/API mutation.
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

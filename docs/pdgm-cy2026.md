@@ -3,14 +3,25 @@
 Source rule: **CMS-1828-F**, "CY 2026 HH PPS Rate Update" — Federal Register doc
 **2025-21767** (published 2025-12-02, effective 2026-01-01).
 
-> ⚠️ **Billing safety:** the numbers below are split by confidence. Only the
-> **VERIFIED** figures (cross-checked across ≥2 independent summaries of the final
-> rule) should be treated as usable, and even those should be confirmed against the
-> primary CMS rule tables before being relied on for billing. The
-> **NEEDS CMS DOWNLOAD** items are the values that actually drive payment accuracy
-> (the 432 case-mix weights, functional point/threshold tables, and comorbidity
-> diagnosis lists) — they are **not** reproduced in any web-fetchable source and
-> must come from the CMS files. Do **not** fabricate them.
+> ⚠️ **Billing safety:** the bundled 432-row case-mix-weight/HIPPS/LUPA table is
+> source-traced to the primary CMS CY 2026 file, but it is only one input to the
+> official grouper. Functional point/threshold tables, diagnosis-to-clinical-
+> group mappings, comorbidity tables/interactions, and parity against CMS HHGS
+> input/output fixtures are still missing. Do not produce payment amounts until
+> the complete official grouper passes golden-case parity.
+
+## Current CMS grouper releases (verified 2026-09-02)
+
+CMS posted HHGS `v07.2.26` on 2026-08-20 for claims starting 2026-10-01. CMS
+states that it has no logic or interface changes, but it updates diagnosis-code
+tables that affect grouping and HIPPS assignments. Until 2026-09-30, the latest
+already-effective package is `v07.1.26` (posted 2026-02-10). A production
+integration must select the official grouper by claim-from date; merely using
+the newest posted file early would be incorrect.
+
+- CMS HHGS releases: <https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health/home-health-grouper-software>
+- CMS CY 2026 case-mix weights: <https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health-pps/home-health-pps-case-mix-weights>
+- CMS CY 2026 final-rule summary: <https://www.cms.gov/newsroom/fact-sheets/calendar-year-cy-2026-home-health-prospective-payment-system-final-rule-cms-1828-f>
 
 ## VERIFIED
 
@@ -64,23 +75,27 @@ Neoplasms, and Blood-Forming Diseases · MMTA — Respiratory · MMTA — Other.
 - Structure: clinical group (12) × admission source (community/institutional) ×
   timing (early/late) × functional level (3) × comorbidity (3) = 432.
 - Case-mix budget-neutrality factor: **1.0052** (final; 1.0051 was proposed).
-- ⚠️ The full 432-row weight table (Rule **Table 13**) is **NOT** web-fetchable. → NEEDS CMS DOWNLOAD.
+- The full official 432-row weight/HIPPS/LUPA table is bundled in
+  `src/components/pdgm/hhCaseMixWeightsCy2026.js` and strict-parsed/tested.
+  This does not replace the diagnosis, functional, comorbidity, or executable
+  HHGS logic needed to select the correct row.
 
 ### Other verified ancillary values
 FDL ratio (outliers) **0.37** · labor-related share **74.9%** · wage-index BN factor
 **1.0025** (standard) / **1.0005** (per-visit).
 
-## NEEDS CMS DOWNLOAD (to finish the billing-grade grouper)
+## STILL NEEDED to finish the billing-grade grouper
 
 Download these in a browser (cms.gov returns HTTP 403 to automated tools):
 
-1. **CY2026 PDGM case-mix weights (432-cell, Table 13) + LUPA thresholds & HIPPS
-   crosswalk** — CMS **Home Health Agency (HHA) Center**:
-   <https://www.cms.gov/medicare/enrollment-renewal/providerssuppliers/home-health-agency-center>
-2. **Functional point values (Table 8) & thresholds by clinical group (Table 9)**,
+1. **Functional point values (Table 8) & thresholds by clinical group (Table 9)**,
    and **comorbidity subgroup lists (Tables 10/11)** — the final rule PDF, Federal
-   Register doc 2025-21767, and CMS's interactive **PDGM Grouper Tool** (Functional
-   Thresholds tab) on the Home Health PDGM page.
+   Register doc 2025-21767, and the applicable official HHGS package.
+2. **Diagnosis-to-clinical-group and unacceptable-primary-diagnosis tables**
+   from HHGS `v07.1.26`, plus the effective 2026-10-01 changes from `v07.2.26`.
+3. **Official HHGS input/output test fixtures and Java 17 execution parity** for
+   both effective releases. Base44 edge functions cannot be treated as a port of
+   HHGS until representative and boundary fixtures match exactly.
 
 ## Wiring plan (once the files are in hand)
 
@@ -89,14 +104,12 @@ takes `{ itemPoints, functionalThresholds, dxToGroup, comorbidity, caseMixTable 
 and returns `missing: [...]` instead of guessing when a table is absent. To make
 PDGM billable:
 
-1. Add a `cyYYYY` CMS data module exporting those five structures from the
-   downloaded files (caseMixTable keyed by clinical group × source × timing ×
-   functional × comorbidity → `{ hipps, weight }`).
+1. Add date-effective CMS data modules exporting the missing four structures;
+   the complete CY 2026 `caseMixTable` is already bundled and tested.
 2. Point `calculatePDGM` (or a new grouped path) at `groupPeriod(input, cmsTables)`
    instead of the decomposed factor approximation.
 3. Add LUPA logic using the per-visit rates above + the downloaded LUPA thresholds.
 4. Keep the "Official CMS rates" flag tied to using verified tables.
 
-Sources used for the verified figures: team-iha CY2026 rule summary; Homecare
-Homebase; CHAP; Applied Policy; Home Health Care News. Primary references
-(not directly fetchable here): CMS fact sheet CMS-1828-F; Federal Register 2025-21767.
+Primary references: CMS HHGS release page, CMS CY 2026 case-mix-weight page, CMS
+fact sheet CMS-1828-F, and Federal Register document 2025-21767.

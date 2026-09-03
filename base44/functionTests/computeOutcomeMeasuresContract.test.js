@@ -94,10 +94,11 @@ async function loadHandler({
     if (ignoreFilters) return rows;
     return rows.filter((row) => Object.entries(q || {}).every(([key, value]) => row?.[key] === value));
   };
-  const queried = (entity, rows, q) => {
-    queries.push({ entity, q: { ...(q || {}) } });
+  const queried = (entity, rows, q, sort, limit, skip = 0) => {
+    queries.push({ entity, q: { ...(q || {}) }, sort, limit, skip });
     if (filterFailures.includes(entity)) throw new Error(`${entity} filter failed`);
-    return matching(rows, q);
+    const scoped = matching(rows, q);
+    return Number.isFinite(limit) ? scoped.slice(skip, skip + limit) : scoped;
   };
   let handler;
   globalThis.Deno = {
@@ -108,13 +109,13 @@ async function loadHandler({
     auth: { me: async () => user },
     asServiceRole: {
       entities: {
-        Agency: { filter: async (q) => queried("Agency", agencies, q) },
+        Agency: { filter: async (q, sort, limit, skip) => queried("Agency", agencies, q, sort, limit, skip) },
         OASISAssessment: {
-          filter: async (q) => queried("OASISAssessment", assessments, q),
+          filter: async (q, sort, limit, skip) => queried("OASISAssessment", assessments, q, sort, limit, skip),
         },
-        Patient: { filter: async (q) => queried("Patient", patients, q) },
+        Patient: { filter: async (q, sort, limit, skip) => queried("Patient", patients, q, sort, limit, skip) },
         PatientOutcomeMetric: {
-          filter: async (q) => queried("PatientOutcomeMetric", outcomeMetrics, q),
+          filter: async (q, sort, limit, skip) => queried("PatientOutcomeMetric", outcomeMetrics, q, sort, limit, skip),
           create: async (payload) => {
             written.metrics.push(payload);
             written.metricCreates.push(payload);
@@ -128,7 +129,7 @@ async function loadHandler({
           },
         },
         AgencyKPI: {
-          filter: async (q) => queried("AgencyKPI", agencyKpis, q),
+          filter: async (q, sort, limit, skip) => queried("AgencyKPI", agencyKpis, q, sort, limit, skip),
           create: async (payload) => {
             written.kpis.push(payload);
             written.kpiCreates.push(payload);
@@ -463,21 +464,65 @@ test("KPI excluded_episode_count includes every in-period episode skip once", as
   assert.ok(written.kpiCreates.every((kpi) => kpi.excluded_episode_count === 2));
 });
 
-test("the 5,000-discharge cap fails closed before any derived write", async () => {
-  const assessments = Array.from({ length: 5000 }, (_, index) => assessment({
+test("discharge reads paginate beyond the first 500 rows", async () => {
+  const assessments = Array.from({ length: 501 }, (_, index) => assessment({
     id: `dc-${index}`,
-    patientId: `p-${index}`,
+    patientId: "",
     visitType: "Discharge",
     date: "2026-06-01",
     rows: [v2Row("M1860", "m1860_cms_e2", "1")],
   }));
-  const { handler, written } = await loadHandler({ assessments });
+  const { handler, written, queries } = await loadHandler({ assessments });
   const { status, json } = await run(handler);
-  assert.equal(status, 409);
-  assert.equal(json.discharge_query_may_be_truncated, true);
-  assert.match(json.error, /pagination is required/i);
+  assert.equal(status, 200);
+  assert.equal(json.discharge_rows_returned, 501);
+  assert.equal(json.skipped_missing_patient_id, 501);
+  assert.equal(json.discharge_query_may_be_truncated, false);
+  const dischargeQueries = queries.filter(({ entity, q }) =>
+    entity === "OASISAssessment" && q.visit_type === "Discharge");
+  assert.deepEqual(dischargeQueries.map(({ limit, skip }) => ({ limit, skip })), [
+    { limit: 500, skip: 0 },
+    { limit: 500, skip: 500 },
+  ]);
   assert.deepEqual(written.metrics, []);
-  assert.deepEqual(written.kpis, []);
+});
+
+test("patient history pagination can find a start assessment beyond row 500", async () => {
+  const dc = assessment({
+    id: "dc-paged-prior",
+    patientId: "p-paged",
+    visitType: "Discharge",
+    date: "2026-06-01",
+    rows: [v2Row("M1860", "m1860_cms_e2", "1")],
+  });
+  const intervening = Array.from({ length: 500 }, (_, index) => assessment({
+    id: `followup-${index}`,
+    patientId: "p-paged",
+    visitType: "Follow Up",
+    date: "2026-05-15",
+    rows: [],
+  }));
+  const soc = assessment({
+    id: "soc-paged-prior",
+    patientId: "p-paged",
+    visitType: "Start of Care",
+    date: "2026-05-01",
+    rows: [v2Row("M1860", "m1860_cms_e2", "3")],
+  });
+  const { handler, written, queries } = await loadHandler({
+    assessments: [dc, ...intervening, soc],
+    patients: [{ id: "p-paged", agency_id: AGENCY_A }],
+  });
+  const { status, json } = await run(handler);
+  assert.equal(status, 200);
+  assert.equal(json.patient_outcome_metrics_written, 1);
+  assert.equal(written.metricCreates.length, 1);
+  const priorQueries = queries.filter(({ entity, q }) =>
+    entity === "OASISAssessment" && q.patient_id === "p-paged");
+  assert.deepEqual(priorQueries.map(({ limit, skip }) => ({ limit, skip })), [
+    { limit: 500, skip: 0 },
+    { limit: 500, skip: 500 },
+  ]);
 });
 
 test("cross-tenant rows leaked by a service response are rejected in memory", async () => {

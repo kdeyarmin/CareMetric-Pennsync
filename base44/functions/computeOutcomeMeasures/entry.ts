@@ -115,6 +115,10 @@ const EXPECTED_DEFINITION_BY_ITEM = new Map([
 const OUTCOME_PROVENANCE_ITEMS = new Set(EXPECTED_DEFINITION_BY_ITEM.keys());
 const INTERNAL_SAMPLE_MIN_PAIRS = 20;
 const INTERNAL_SAMPLE_MEASURE_TARGET = 5;
+const ENTITY_PAGE_SIZE = 500;
+const MAX_DISCHARGE_ROWS = 50_000;
+const MAX_PRIOR_ROWS_PER_PATIENT = 10_000;
+const MAX_MATCHING_DERIVED_ROWS = 5_000;
 const GG_FUNCTION_ITEMS = [
   'gg0130a', 'gg0130b', 'gg0130c', 'gg0130e', 'gg0130f', 'gg0130g', 'gg0130h',
   'gg0170a', 'gg0170b', 'gg0170c', 'gg0170d', 'gg0170e', 'gg0170f',
@@ -538,14 +542,47 @@ Deno.serve(async (req) => {
     // score or become the target of a service-role mutation. Legacy unscoped
     // rows therefore remain untouched until an audited backfill assigns them.
     const belongsToAgency = (row) => String(row?.agency_id || '').trim() === agencyId;
+    const fetchAllPages = async (
+      entity,
+      query,
+      sort,
+      { maxRows, pageSize = ENTITY_PAGE_SIZE },
+    ) => {
+      const rows = [];
+      const seenIds = new Set();
+      let skip = 0;
+      while (rows.length < maxRows) {
+        const limit = Math.min(pageSize, maxRows - rows.length);
+        const page = await entity.filter(query, sort, limit, skip);
+        if (!Array.isArray(page)) throw new Error('Base44 entity filter returned a non-array page');
+        const rowsBeforePage = rows.length;
+        for (const row of page) {
+          const id = String(row?.id || '').trim();
+          if (id && seenIds.has(id)) continue;
+          if (id) seenIds.add(id);
+          rows.push(row);
+        }
+        skip += page.length;
+        if (page.length < limit) return { rows, truncated: false };
+        // A broken/ignored skip must fail closed instead of spinning or
+        // silently scoring the first page repeatedly.
+        if (page.length > 0 && rows.length === rowsBeforePage) {
+          return { rows, truncated: true };
+        }
+      }
+      const overflow = await entity.filter(query, sort, 1, skip);
+      if (!Array.isArray(overflow)) throw new Error('Base44 entity overflow check returned a non-array page');
+      return { rows, truncated: overflow.length > 0 };
+    };
     const findScopedMetrics = async (patientId, episodeStart, episodeEnd) => {
-      const rows = await base44.asServiceRole.entities.PatientOutcomeMetric.filter({
+      const page = await fetchAllPages(base44.asServiceRole.entities.PatientOutcomeMetric, {
         agency_id: agencyId,
         patient_id: patientId,
         episode_start: episodeStart,
         episode_end: episodeEnd,
-      }, '-created_date', 50);
-      return (rows || []).filter((row) =>
+      }, '-created_date', { maxRows: MAX_MATCHING_DERIVED_ROWS });
+      if (page.truncated) throw new Error('PatientOutcomeMetric exact-key query exceeded the safety cap');
+      return page.rows.filter((row) =>
         belongsToAgency(row) &&
         row.patient_id === patientId &&
         row.episode_start === episodeStart &&
@@ -587,18 +624,21 @@ Deno.serve(async (req) => {
 
     // Discharges for ONE explicit agency; each is paired with the latest
     // same-agency SOC/ROC before it for the same patient. Never list the entity.
-    const dischargeRows = await base44.asServiceRole.entities.OASISAssessment.filter(
-      { agency_id: agencyId, visit_type: 'Discharge' }, '-assessment_date', 5000,
+    const dischargePage = await fetchAllPages(
+      base44.asServiceRole.entities.OASISAssessment,
+      { agency_id: agencyId, visit_type: 'Discharge' },
+      '-assessment_date',
+      { maxRows: MAX_DISCHARGE_ROWS },
     );
-    if ((dischargeRows || []).length >= 5000) {
+    if (dischargePage.truncated) {
       return Response.json({
         success: false,
-        error: 'Discharge query reached the 5,000-row cap; pagination is required before a complete rollup can be computed',
+        error: 'Discharge query exceeded the 50,000-row safety cap; split the requested period before computing a rollup',
         agency_id: agencyId,
         discharge_query_may_be_truncated: true,
       }, { status: 409 });
     }
-    const discharges = (dischargeRows || []).filter((row) =>
+    const discharges = dischargePage.rows.filter((row) =>
       belongsToAgency(row) && row.visit_type === 'Discharge');
 
     const outcomes = [];
@@ -650,10 +690,22 @@ Deno.serve(async (req) => {
       }
 
       // Latest SOC/ROC on or before the discharge date.
-      const priorRows = await base44.asServiceRole.entities.OASISAssessment.filter(
-        { agency_id: agencyId, patient_id: dc.patient_id }, '-assessment_date', 50,
+      const priorPage = await fetchAllPages(
+        base44.asServiceRole.entities.OASISAssessment,
+        { agency_id: agencyId, patient_id: dc.patient_id },
+        '-assessment_date',
+        { maxRows: MAX_PRIOR_ROWS_PER_PATIENT },
       );
-      const priors = (priorRows || []).filter((row) =>
+      if (priorPage.truncated) {
+        return Response.json({
+          success: false,
+          error: 'Patient assessment history exceeded the 10,000-row safety cap; no derived writes were attempted',
+          agency_id: agencyId,
+          patient_id: dc.patient_id,
+          prior_query_may_be_truncated: true,
+        }, { status: 409 });
+      }
+      const priors = priorPage.rows.filter((row) =>
         belongsToAgency(row) && row.patient_id === dc.patient_id);
       const start = priors.find((a) =>
         (a.visit_type === 'Start of Care' || a.visit_type === 'Resumption of Care') &&
@@ -687,14 +739,10 @@ Deno.serve(async (req) => {
           continue;
         }
         skippedMissingStartAssessment += 1;
-        const priorCapReached = (priorRows || []).length >= 50;
-        if (priorCapReached) skippedPriorQueryCap += 1;
         skipReasons.push({
           patient_id: dc.patient_id,
           episode_end: dc.assessment_date,
-          reasons: [priorCapReached
-            ? 'no_start_assessment_within_50_prior_rows'
-            : 'missing_start_assessment'],
+          reasons: ['missing_start_assessment'],
         });
         continue;
       }
@@ -869,8 +917,14 @@ Deno.serve(async (req) => {
         period_start: kpi.period_start,
         period_end: kpi.period_end,
       };
-      const existingKpi = await base44.asServiceRole.entities.AgencyKPI.filter(kpiFilter, '-created_date', 50);
-      const matchingKpis = (existingKpi || []).filter((row) =>
+      const existingKpiPage = await fetchAllPages(
+        base44.asServiceRole.entities.AgencyKPI,
+        kpiFilter,
+        '-created_date',
+        { maxRows: MAX_MATCHING_DERIVED_ROWS },
+      );
+      if (existingKpiPage.truncated) throw new Error('AgencyKPI exact-key query exceeded the safety cap');
+      const matchingKpis = existingKpiPage.rows.filter((row) =>
         belongsToAgency(row) &&
         row.metric_name === kpi.metric_name &&
         row.metric_category === kpi.metric_category &&
@@ -907,14 +961,15 @@ Deno.serve(async (req) => {
     // numeric value is retained for audit history; no row is deleted.
     const emptyMeasures = rollup.measures.filter((measure) => measure.rate === null);
     for (const measure of emptyMeasures) {
-      const staleRows = await base44.asServiceRole.entities.AgencyKPI.filter({
+      const stalePage = await fetchAllPages(base44.asServiceRole.entities.AgencyKPI, {
         agency_id: agencyId,
         metric_name: measure.label,
         metric_category: 'quality',
         period_start: targetPeriodStart,
         period_end: targetPeriodEnd,
-      }, '-created_date', 50);
-      const scopedStaleRows = (staleRows || []).filter((row) =>
+      }, '-created_date', { maxRows: MAX_MATCHING_DERIVED_ROWS });
+      if (stalePage.truncated) throw new Error('AgencyKPI stale-row query exceeded the safety cap');
+      const scopedStaleRows = stalePage.rows.filter((row) =>
         belongsToAgency(row) &&
         row.metric_name === measure.label &&
         row.metric_category === 'quality' &&

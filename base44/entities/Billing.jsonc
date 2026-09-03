@@ -140,5 +140,11 @@
     "billing_period_start",
     "billing_period_end",
     "payer_type"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

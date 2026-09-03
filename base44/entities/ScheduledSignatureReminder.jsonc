@@ -84,7 +84,7 @@
           "created_by": "{{user.email}}"
         },
         {
-          "requested_by": "{{user.email}}"
+          "data.requested_by": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -99,7 +99,17 @@
     // for an ARBITRARY document_id directly, and the dispatcher would then
     // notify that document's signers — bypassing scheduleSignatureReminders'
     // ownership/role checks.
-    "write": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
       "user_condition": {
         "role": "admin"
       }

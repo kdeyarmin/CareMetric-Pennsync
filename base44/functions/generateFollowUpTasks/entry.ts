@@ -1,5 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -9,36 +20,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 
-/** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
-async function assertPatientAccess(base44, user, patient) {
+/** Explicit patient access for service-role clinical processing. */
+function assertPatientAccess(user, callerEmail, patient) {
   if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-  const isSuperAdmin = user.account_type === 'super_admin';
-  const isAgencyScopedAdmin =
-    user.account_type === 'agency_admin'
-    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+  const isOwner = normalizeProtectedEmail(patient.created_by) === callerEmail;
   const isAssigned = Array.isArray(patient.assigned_nurses)
-    && patient.assigned_nurses.includes(user.email);
-  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  if (isAgencyScopedAdmin) {
-    if (!user.agency_name) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    const agencyUsers = await base44.asServiceRole.entities.User
-      .list('-created_date', 5000).catch(() => []);
-    const agencyEmails = new Set(
-      (agencyUsers || [])
-        .filter((u) => u.agency_name === user.agency_name && u.email)
-        .map((u) => u.email),
+    && patient.assigned_nurses.some(
+      (email) => normalizeProtectedEmail(email) === callerEmail,
     );
-    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
-      || (Array.isArray(patient.assigned_nurses)
-        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
-    if (!inAgency) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  if (!isOwner && !isAssigned && !isProtectedSuperAdmin(user)) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
   return null;
 }
@@ -49,68 +40,101 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    const callerEmail = normalizeProtectedEmail(user.email);
+    if (!callerEmail) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { noteText, patientId, visitId, visitType, diagnosis } = await req.json(); // v2
-    if (!noteText) return Response.json({ error: 'noteText is required' }, { status: 400 });
+    const body = await req.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    const { noteText, patientId, visitId, visitType, diagnosis } = body; // v2
+    if (typeof noteText !== 'string' || !noteText.trim()) {
+      return Response.json({ error: 'noteText is required' }, { status: 400 });
+    }
+    if (typeof patientId !== 'string' || !patientId.trim() || patientId.trim().length > 200) {
+      return Response.json({ error: 'patientId is required' }, { status: 400 });
+    }
+    if (visitId !== undefined
+      && (typeof visitId !== 'string' || !visitId.trim() || visitId.trim().length > 200)) {
+      return Response.json({ error: 'Invalid visitId' }, { status: 400 });
+    }
+    const scopedPatientId = patientId.trim();
+    const scopedVisitId = typeof visitId === 'string' ? visitId.trim() : '';
 
     let patientContext = '';
     let patientName = '';
     // Chart-attached tasks require a patient the caller can access. Optional
     // visitId must belong to that patient (service-role Task.create otherwise
     // lets a foreign related_visit_id slip through).
-    if (patientId) {
-      const [patient] = await base44.asServiceRole.entities.Patient
-        .filter({ id: patientId }, '', 1).catch(() => []);
-      const denied = await assertPatientAccess(base44, user, patient);
-      if (denied) return denied;
-      patientName = `${patient.first_name} ${patient.last_name}`;
-      patientContext = `Patient: ${patientName}, Primary Diagnosis: ${patient.primary_diagnosis || diagnosis || 'Not documented'}, Secondary Diagnoses: ${(patient.secondary_diagnoses || []).join(', ') || 'None'}`;
-      if (visitId) {
-        const [visit] = await base44.asServiceRole.entities.Visit
-          .filter({ id: visitId }, '', 1).catch(() => []);
-        if (!visit || visit.patient_id !== patientId) {
-          return Response.json({ error: 'Visit not found for this patient' }, { status: 404 });
-        }
-        // Claim before LLM + Task.create so concurrent submits cannot both
-        // invent duplicate follow-ups (mirrors extractClinicalEvents).
-        const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `followup-tasks-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        try {
-          await base44.asServiceRole.entities.Visit.update(visitId, {
-            followup_tasks_claimed_by: claimToken,
-          });
-        } catch {
-          return Response.json({ error: 'Could not claim visit for follow-up tasks' }, { status: 409 });
-        }
-        const claimCheck = await base44.asServiceRole.entities.Visit
-          .filter({ id: visitId }, '', 1).catch(() => []);
-        if (!claimCheck[0] || claimCheck[0].followup_tasks_claimed_by !== claimToken) {
-          return Response.json({
-            success: true,
-            already_processed: true,
-            tasks_created: 0,
-            tasks: [],
-            patient_name: patientName,
-            skipped: 'claimed by concurrent run',
-          });
-        }
-        const existingAi = await base44.asServiceRole.entities.Task
-          .filter({ related_visit_id: visitId, source: 'ai_generated' }, undefined, 1)
-          .catch(() => []);
-        if (existingAi && existingAi.length > 0) {
-          return Response.json({
-            success: true,
-            already_processed: true,
-            tasks_created: 0,
-            tasks: [],
-            patient_name: patientName,
-            skipped: 'ai follow-up tasks already exist for visit',
-          });
-        }
+    const patientRows = await base44.asServiceRole.entities.Patient
+      .filter({ id: scopedPatientId }, '', 1).catch(() => []);
+    // A service-role result is data, not proof that the requested id matched.
+    const patient = (Array.isArray(patientRows) ? patientRows : [])
+      .find((row) => typeof row?.id === 'string' && row.id.trim() === scopedPatientId);
+    const denied = assertPatientAccess(user, callerEmail, patient);
+    if (denied) return denied;
+    patientName = `${patient.first_name} ${patient.last_name}`;
+    const secondaryDiagnoses = Array.isArray(patient.secondary_diagnoses)
+      ? patient.secondary_diagnoses.join(', ')
+      : '';
+    patientContext = `Patient: ${patientName}, Primary Diagnosis: ${patient.primary_diagnosis || diagnosis || 'Not documented'}, Secondary Diagnoses: ${secondaryDiagnoses || 'None'}`;
+    if (scopedVisitId) {
+      const visitRows = await base44.asServiceRole.entities.Visit
+        .filter({ id: scopedVisitId }, '', 1).catch(() => []);
+      const visit = (Array.isArray(visitRows) ? visitRows : [])
+        .find((row) => typeof row?.id === 'string'
+          && row.id.trim() === scopedVisitId
+          && typeof row?.patient_id === 'string'
+          && row.patient_id.trim() === scopedPatientId);
+      if (!visit) {
+        return Response.json({ error: 'Visit not found for this patient' }, { status: 404 });
       }
-    } else if (visitId) {
-      return Response.json({ error: 'patientId is required when visitId is provided' }, { status: 400 });
+      // Claim before LLM + Task.create so concurrent submits cannot both
+      // invent duplicate follow-ups (mirrors extractClinicalEvents).
+      const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `followup-tasks-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      try {
+        await base44.asServiceRole.entities.Visit.update(scopedVisitId, {
+          followup_tasks_claimed_by: claimToken,
+        });
+      } catch {
+        return Response.json({ error: 'Could not claim visit for follow-up tasks' }, { status: 409 });
+      }
+      const claimRows = await base44.asServiceRole.entities.Visit
+        .filter({ id: scopedVisitId }, '', 1).catch(() => []);
+      const claimCheck = (Array.isArray(claimRows) ? claimRows : [])
+        .find((row) => typeof row?.id === 'string'
+          && row.id.trim() === scopedVisitId
+          && typeof row?.patient_id === 'string'
+          && row.patient_id.trim() === scopedPatientId);
+      if (!claimCheck || claimCheck.followup_tasks_claimed_by !== claimToken) {
+        return Response.json({
+          success: true,
+          already_processed: true,
+          tasks_created: 0,
+          tasks: [],
+          patient_name: patientName,
+          skipped: 'claimed by concurrent run',
+        });
+      }
+      const existingRows = await base44.asServiceRole.entities.Task
+        .filter({ related_visit_id: scopedVisitId, source: 'ai_generated' }, undefined, 1)
+        .catch(() => []);
+      const existingAi = (Array.isArray(existingRows) ? existingRows : [])
+        .filter((task) => typeof task?.related_visit_id === 'string'
+          && task.related_visit_id.trim() === scopedVisitId
+          && task.source === 'ai_generated');
+      if (existingAi.length > 0) {
+        return Response.json({
+          success: true,
+          already_processed: true,
+          tasks_created: 0,
+          tasks: [],
+          patient_name: patientName,
+          skipped: 'ai follow-up tasks already exist for visit',
+        });
+      }
     }
 
     const response = await base44.integrations.Core.InvokeLLM({
@@ -174,9 +198,9 @@ Return JSON array of tasks.`,
           status: 'pending',
           source: 'ai_generated',
           ai_reason: task.ai_reason || '',
-          ...(patientId ? { patient_id: patientId } : {}),
-          ...(visitId ? { related_visit_id: visitId } : {}),
-          assigned_to: user.email,
+          patient_id: scopedPatientId,
+          ...(scopedVisitId ? { related_visit_id: scopedVisitId } : {}),
+          assigned_to: callerEmail,
         })
       )
     );

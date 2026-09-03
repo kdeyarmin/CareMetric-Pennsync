@@ -19,7 +19,9 @@ const HIGH_RISK_ACCESS = [
   { entity: 'Patient', owners: ['created_by'], adminReadable: true },
   { entity: 'Visit', owners: ['created_by'], adminReadable: true },
   { entity: 'Document', owners: ['uploaded_by', 'created_by'], adminReadable: true },
-  { entity: 'Message', owners: ['created_by'], adminReadable: true, arrayOwners: ['recipients'] },
+  // Message is participant-only. A global admin read arm would bypass the
+  // broker's immutable thread/clinical-context checks and expose PHI.
+  { entity: 'Message', owners: ['created_by'], adminReadable: false, arrayOwners: ['recipients'] },
   { entity: 'TrainingAssignment', owners: ['assigned_to_user_id'], adminReadable: true },
   { entity: 'Timesheet', owners: ['employee_email'], adminReadable: true },
 ];
@@ -73,10 +75,15 @@ function assertField(schema, field) {
 test('P0-01 high-risk entities define scoped read RLS for patient/document/message/training/payroll records', () => {
   for (const item of HIGH_RISK_ACCESS) {
     const raw = source(`base44/entities/${item.entity}.jsonc`);
+    const readRule = JSON.stringify(entity(item.entity).rls?.read);
     assert.match(raw, /"rls"\s*:/, `${item.entity} must define RLS`);
     assert.match(raw, /"read"\s*:/, `${item.entity} must define read RLS`);
     for (const owner of item.owners) {
-      assert.match(raw, new RegExp(`"${owner}"\\s*:\\s*"\\{\\{user\\.email\\}\\}"`), `${item.entity} read RLS must include ${owner}`);
+      const ruleField = owner === 'created_by' ? owner : `data.${owner}`;
+      assert.ok(
+        readRule.includes(`"${ruleField}":"{{user.email}}"`),
+        `${item.entity} read RLS must include ${ruleField}`,
+      );
     }
     for (const owner of item.arrayOwners || []) {
       assert.match(
@@ -88,8 +95,8 @@ test('P0-01 high-risk entities define scoped read RLS for patient/document/messa
     if (item.adminReadable) {
       assert.match(
         raw,
-        /"role"\s*:\s*"admin"|"account_type"\s*:\s*"agency_admin"|"account_type"\s*:\s*"super_admin"/,
-        `${item.entity} read RLS must include an admin/super-admin path`,
+        /"role"\s*:\s*"admin"/,
+        `${item.entity} read RLS must include a protected admin-role path`,
       );
     }
   }

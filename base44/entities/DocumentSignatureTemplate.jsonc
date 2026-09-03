@@ -153,11 +153,17 @@
           "created_by": "{{user.email}}"
         },
         {
-          "is_shared": true
+          "data.is_shared": true
         }
       ]
     },
-    "write": {
+    "create": {
+      "created_by": "{{user.email}}"
+    },
+    "update": {
+      "created_by": "{{user.email}}"
+    },
+    "delete": {
       "created_by": "{{user.email}}"
     }
   }

@@ -299,20 +299,10 @@
           "user_condition": {
             "role": "admin"
           }
-        },
-        {
-          "user_condition": {
-            "account_type": "agency_admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "super_admin"
-          }
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
           "created_by": "{{user.email}}"
@@ -321,15 +311,29 @@
           "user_condition": {
             "role": "admin"
           }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
         },
         {
           "user_condition": {
-            "account_type": "agency_admin"
+            "role": "admin"
           }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
         },
         {
           "user_condition": {
-            "account_type": "super_admin"
+            "role": "admin"
           }
         }
       ]

@@ -49,7 +49,7 @@
           "created_by": "{{user.email}}"
         },
         {
-          "captured_by": "{{user.email}}"
+          "data.captured_by": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -58,13 +58,43 @@
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
           "created_by": "{{user.email}}"
         },
         {
-          "captured_by": "{{user.email}}"
+          "data.captured_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "data.captured_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "data.captured_by": "{{user.email}}"
         },
         {
           "user_condition": {

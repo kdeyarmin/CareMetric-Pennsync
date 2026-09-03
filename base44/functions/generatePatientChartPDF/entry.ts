@@ -1,5 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -18,55 +29,64 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    const callerEmail = normalizeProtectedEmail(user.email);
+    if (!callerEmail) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const body = await req.json();
-    const { patientId, includeVisits = true, includeIncidents = true } = body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    const { patientId } = body;
+    const includeVisits = body.includeVisits === undefined ? true : body.includeVisits;
+    const includeIncidents = body.includeIncidents === undefined ? true : body.includeIncidents;
 
     if (!patientId) {
       return Response.json({ error: 'Missing patientId' }, { status: 400 });
     }
+    if (typeof patientId !== 'string' || !patientId.trim() || patientId.trim().length > 200) {
+      return Response.json({ error: 'Invalid patientId' }, { status: 400 });
+    }
+    const scopedPatientId = patientId.trim();
+    // These values flow into a privileged audit record. Accept booleans only so
+    // caller-controlled objects/strings cannot inject arbitrary data or PHI into
+    // SecurityLog after its write moves to the service role.
+    if (typeof includeVisits !== 'boolean' || typeof includeIncidents !== 'boolean') {
+      return Response.json({ error: 'includeVisits and includeIncidents must be boolean' }, { status: 400 });
+    }
 
-    // Service-role read + explicit access gate — Patient RLS grants all
-    // role:admin charts, so facility admins with an agency must be scoped.
+    // Service-role read + explicit access gate. Only direct ownership, an
+    // explicit nurse assignment, or the configured protected platform owner
+    // may authorize a chart export. account_type and agency_name are mutable
+    // User fields and therefore cannot grant cross-patient access.
     const [patient] = await base44.asServiceRole.entities.Patient
-      .filter({ id: patientId }, '', 1).catch(() => []);
-    if (!patient) {
+      .filter({ id: scopedPatientId }, '', 1).catch(() => []);
+    // Re-check the row identity in memory in case a backend filter is ignored or
+    // regresses; related service-role reads must never inherit a mismatched id.
+    if (!patient || String(patient.id || '').trim() !== scopedPatientId) {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isOwner = normalizeProtectedEmail(patient.created_by) === callerEmail;
     const isAssigned = Array.isArray(patient.assigned_nurses)
-      && patient.assigned_nurses.includes(user.email);
-    if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    if (isAgencyScopedAdmin) {
-      if (!user.agency_name) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .list('-created_date', 5000).catch(() => []);
-      const agencyEmails = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
+      && patient.assigned_nurses.some(
+        (email) => normalizeProtectedEmail(email) === callerEmail,
       );
-      const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
-        || (Array.isArray(patient.assigned_nurses)
-          && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
-      if (!inAgency) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
+    if (!isOwner && !isAssigned && !isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Fetch related data in parallel (same patient_id already authorized).
-    const [visits, incidents] = await Promise.all([
-      includeVisits ? base44.asServiceRole.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 100) : [],
-      includeIncidents ? base44.asServiceRole.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 100) : []
+    const [visitRows, incidentRows] = await Promise.all([
+      includeVisits ? base44.asServiceRole.entities.Visit.filter({ patient_id: scopedPatientId }, '-visit_date', 100) : [],
+      includeIncidents ? base44.asServiceRole.entities.Incident.filter({ patient_id: scopedPatientId }, '-incident_date', 100) : []
     ]);
+    // Service-role reads require a second boundary check: never let an ignored
+    // backend filter mix another patient's clinical events into this chart.
+    const visits = (Array.isArray(visitRows) ? visitRows : [])
+      .filter((visit) => String(visit?.patient_id || '').trim() === scopedPatientId);
+    const incidents = (Array.isArray(incidentRows) ? incidentRows : [])
+      .filter((incident) => String(incident?.patient_id || '').trim() === scopedPatientId);
 
     const secondaryDiagnoses = patient.secondary_diagnoses?.join(', ') || 'None';
     const pastMedicalHistory = patient.past_medical_history?.join('; ') || 'None';
@@ -163,21 +183,27 @@ Create professional medical chart content with:
       return Response.json({ error: 'Chart generation returned empty content' }, { status: 502 });
     }
     const pageCount = Number.isFinite(Number(result?.page_count)) ? Number(result.page_count) : undefined;
+    // Proxy headers are request-controlled at this boundary. Store one bounded
+    // scalar rather than an arbitrary forwarded chain in the privileged audit.
+    const clientIp = (
+      req.headers.get('cf-connecting-ip')
+      || (req.headers.get('x-forwarded-for') || '').split(',')[0].trim()
+      || 'unknown'
+    ).slice(0, 64);
 
     // Log the export action for compliance
-    await base44.entities.SecurityLog.create({
+    await base44.asServiceRole.entities.SecurityLog.create({
       user_email: user.email,
       user_role: user.role,
       action: 'export_patient_chart_pdf',
       details: {
-        patient_id: patientId,
-        patient_name: `${patient.first_name} ${patient.last_name}`,
+        patient_id: scopedPatientId,
         includes_visits: includeVisits,
         includes_incidents: includeIncidents,
         exported_at: new Date().toISOString()
       },
       timestamp: new Date().toISOString(),
-      ip_address: req.headers.get('x-forwarded-for') || 'unknown'
+      ip_address: clientIp
     });
 
     return Response.json({

@@ -146,37 +146,13 @@
     "document_type",
     "owner_agency_code"
   ],
+  // The prior rule referenced agency_code claims that the User schema does not
+  // define. Keep this unused sharing model service-role-only until a broker
+  // stamps and validates immutable agency identifiers.
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "owner_agency_code": "{{user.agency_code}}"
-        },
-        {
-          "data.shared_with_agencies": {
-            "$in": [
-              "{{user.data.agency_code}}"
-            ]
-          }
-        }
-      ]
-    },
-    "write": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "owner_agency_code": "{{user.agency_code}}"
-        }
-      ]
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

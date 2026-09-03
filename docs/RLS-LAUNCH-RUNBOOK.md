@@ -68,8 +68,11 @@ are the largest body of outstanding work.
 > `Patient`/`Visit` themselves are already `created_by`-scoped. A dashboard
 > `byPatient` relation rule remains the richer end-state and may REPLACE these
 > field rules; do not simply delete them (the guardrail test pins their presence).
-> Writes on these seven were intentionally left open (`"write": {}`) pending the
-> dashboard pass, since several write flows are legitimately cross-user.
+> Mutation rules on this cohort were mechanically migrated from the ignored
+> legacy `write` key to hosted `create`/`update`/`delete` keys. Several remain
+> deliberately permissive pending the dashboard pass because their workflows
+> are legitimately cross-user; this is tracked release-blocking debt, not a
+> statement that the old key was enforced.
 > `ClinicalEvent` was **excluded on purpose**: its rows are created only by the
 > service role (no per-user owner field), so an owner rule would zero out every
 > non-admin's clinical timeline — it still needs the dashboard relation rule.

@@ -139,10 +139,16 @@
   ],
   "rls": {
     "read": {
-      "provider_email": "{{user.email}}"
+      "data.provider_email": "{{user.email}}"
     },
-    "write": {
-      "provider_email": "{{user.email}}"
+    "create": {
+      "data.provider_email": "{{user.email}}"
+    },
+    "update": {
+      "data.provider_email": "{{user.email}}"
+    },
+    "delete": {
+      "data.provider_email": "{{user.email}}"
     }
   }
 }

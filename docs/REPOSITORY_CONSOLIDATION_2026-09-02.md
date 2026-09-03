@@ -7,9 +7,9 @@ Status: **source candidate only — not approved for production deployment**.
 - GitHub repository: `kdeyarmin/CareMetric-Pennsync`
 - Protected preparation branch: `consolidation/pennsync-unified-2026-09-02`
 - Initial destination baseline: `b95b567ea9487e2841e438777b12d65796c34f69`
-- Current `main` safety baseline: `c5457299630b02aea790a97e5bb2353011ad0d69`
-  (`Repair lockfile after Base44 package update`); the draft branch must retain
-  this commit as a merge parent before CI can be evaluated.
+- Consolidated `main` baseline: `67d9d5ee66aad222a712e6ba49d00461d0a68337`
+  (merged PR `#142`). The isolated hosted-validation branch and draft PR `#143`
+  are based on this commit.
 - Feature source: `kdeyarmin/pennsync2` at `3e73ea75bd37ef2819dad952cbd5343c179bccb1`
 - `kdeyarmin/pennsync` is already an ancestor of the PennSync2 feature history;
   it does not require a second code merge.
@@ -37,7 +37,7 @@ The installed mobile apps continue to use their existing store records. Adding
 PennSync domains later must point those domains at the same CareMetric Base44
 app; it must not change the permanent origin embedded in the iOS shell.
 
-## Nonproduction hosted-validation evidence (2026-09-02)
+## Nonproduction hosted-validation evidence (updated 2026-09-03)
 
 The first release gate is now in progress in a separate Base44 application;
 none of these operations targeted the CareMetric production app above:
@@ -47,18 +47,59 @@ none of these operations targeted the CareMetric production app above:
 | Base44 app | `caremetric-pennsync-staging-2026-09-02`, `6a9881683dc68a0bd54f1ef7` |
 | Staging URL | `https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/` |
 | Source baseline | merged canonical `main` at `67d9d5ee66aad222a712e6ba49d00461d0a68337` plus draft staging PR `#143` |
-| Frontend | built with the staging app id and `https://base44.app` backend origin; real-browser boot reaches the PennSync sign-in screen |
+| Frontend | deployed from a successful staging-id build using the `https://base44.app` backend origin; hosted root returns HTTP 200 |
 | PWA | hosted manifest preserves relative `id`, `start_url`, and `scope`; all four manifest icons and the Apple touch icon return HTTP 200 |
-| Entities | hosted deployment accepted the candidate entity schemas, including the service-role-only OASIS/outcome/PDGM contracts |
-| Data | only the staging owner account exists; Patient, OASISAssessment, OASISUpload, PatientOutcomeMetric, AgencyKPI, PDGMRateConfig, and Agency all have zero rows |
-| Functions | `139 / 240` deployed; the interrupted bulk job's server lock cleared and subsequent controlled batches completed without function errors |
+| Entities | all `236 / 236` local entity names match staging; hosted deployment accepted the candidate schemas, including operation-specific service-role-only OASIS/outcome/PDGM contracts |
+| Time zone | `America/New_York` is the default business/agency clock, giving Eastern Standard or Daylight Time as seasonally appropriate |
+| Data | only the staging owner account exists; anonymous lists and privileged connector queries confirm zero rows across the 51-entity negative-probe cohort |
+| Functions | all `242 / 242` local functions are deployed; exact local/hosted inventory reconciliation found no missing or extra functions |
 | Feature gates | no AgencySettings row exists; `oasis_response_schema_v2_enabled` therefore remains absent/default-off, the writer remains hard-paused, PDGM reimbursement remains source-disabled, and no outcome schedule was added |
 
 The initial entity deployment exposed unsupported `$contains` array-membership
 RLS in Message and SharedDocument. Draft PR `#143` replaces it with Base44's
 accepted `data.<array>.$in` form and adds a repository-wide operator contract.
-Both PR workflows pass. The remaining function source upload requires explicit
-authorization for the staging destination before the hosted batch can resume.
+Both PR workflows pass.
+
+Hosted anonymous-write probes then proved that Base44 does not enforce the
+legacy top-level `rls.write` key as a create rule: synthetic rows could be
+created in PatientOutcomeMetric, AgencyKPI, and PDGMRateConfig. The three exact
+probe rows were deleted through a temporary exact-id, service-role-only cleanup
+function, and that function was removed. The critical schemas now use hosted
+operation-specific `create`, `read`, `update`, and `delete` rules. A second
+hosted probe returned HTTP 403 for anonymous creates on OASISAssessment,
+OASISUpload, PatientOutcomeMetric, AgencyKPI, and PDGMRateConfig; anonymous
+lists exposed no records, and authenticated staging queries confirmed zero
+matching probe rows. The staging candidate now migrates every legacy
+top-level `rls.write` policy to Base44's hosted `create`, `update`, and
+`delete` keys, prefixes custom record fields with `data.`, removes mutable
+`account_type` authorization branches, and pins those invariants in contract
+tests. That syntax migration deliberately preserves each policy's effective
+access while the actual authorization model is redesigned. A reviewed
+fail-closed pass then locked unused, service-only, disabled OASIS, inbound-fax,
+parallel-message, and dormant clinical PHI entities without breaking a live
+client path. The remaining inventory is `36 / 236` schemas with no RLS,
+`43 / 236` permitting unrestricted mutations, and `63 / 236` permitting
+unrestricted reads. Those exact cohorts are hash-pinned so the debt
+cannot change without explicit review. Per-operation integrity, tenant-owned
+authority, and hosted authenticated workflow proofs remain production blockers.
+The complete staging schema push succeeded. All 51 shaped anonymous POST probes
+returned HTTP 403: the 40 fully fail-closed entities, Message, TrainingQuestion,
+FaxLog, FaxContact, FaxTemplate, and the five critical OASIS/outcome/PDGM
+entities, plus the owner-only PDFIndex. Every anonymous list returned an empty
+array, and privileged connector queries confirmed `count: 0` for the same
+cohort, so no probe row was created. The hosted staging site and all five PWA
+icons return HTTP 200. Local release validation passes 2,040 core tests, 33
+schema/contracts, 179 security tests, 47 deduplication tests, and 950 component
+tests; all 242 backend functions transpile and the staging-bound frontend builds.
+
+The staging pass also removed mutable `account_type`/agency-profile privilege
+from the highest-risk service-role paths: dashboard and alert reads/mutations,
+message and fax writes, training questions/badges, chart-PDF export, PDF
+index/search and risk analysis, bulk import/discharge processing, follow-up
+portal minting/tasks, telehealth tokens, and state-reportable incident filing.
+These now require direct immutable ownership/assignment or the protected Base44
+admin role plus the configured platform-owner email, and they re-check exact
+identifiers and relationships after privileged reads.
 
 ## Deliberate merge decisions
 
@@ -81,8 +122,15 @@ authorization for the staging destination before the hosted batch can resume.
 Do not deploy this branch, move domains, enable OASIS v2, register new scheduled
 functions, or upload a native binary until all of these are complete:
 
-1. Create a separate nonproduction Base44 app and prove the changed entity RLS,
-   functions, authentication, uploads, and shared-patient workflows there.
+1. Continue validation in the separate nonproduction Base44 app. Exact entity
+   and function inventory is now hosted, and anonymous-write denial is proved
+   for the five critical OASIS/outcome/PDGM entities. The ignored legacy
+   mutation-key syntax is fully migrated, but `36` no-RLS schemas, `43`
+   mutation-open schemas, and `63` read-open schemas remain explicitly tracked
+   debt. Before production, replace those permissive policies with reviewed
+   per-operation tenant rules and prove authenticated multi-user isolation,
+   uploads, shared-patient workflows, and negative cross-tenant cases with at
+   least two agencies and owner/admin/clinician test users.
 2. Keep `oasis_response_schema_v2_enabled` false. Complete named clinical SME
    review, patient-access enforcement, remaining consumer wiring, and hosted RLS
    proof before any agency activation. Source now locks `OASISAssessment` and
@@ -121,9 +169,9 @@ functions, or upload a native binary until all of these are complete:
    - every assessment writer rejects duplicate normalized item/definition rows,
      stamps verified definition/instrument provenance, and cannot be bypassed by
      a direct owner/admin entity update;
-   - source read/write RLS for `PatientOutcomeMetric` and `AgencyKPI` is now
-     service-role-only; prove it is enforced when hosted, then add an authorized
-     server broker before restoring any tenant outcome UI;
+   - operation-specific RLS for `PatientOutcomeMetric` and `AgencyKPI` is now
+     service-role-only and its anonymous denial is proved when hosted; add and
+     prove an authorized server broker before restoring any tenant outcome UI;
    - replace self-mutable User `agency_id`/`account_type` and globally
      admin-writable Agency membership with a server-owned tenant authority;
      Patient/OASIS admin-like RLS must also become tenant-bound;
@@ -131,10 +179,13 @@ functions, or upload a native binary until all of these are complete:
      one-agency requests carrying `{ agency_id, period_start, period_end, period_type }` for
      stable windows, including a defined rerun/retirement policy for windows
      whose discharges were removed or reassigned;
-   - add pagination/checkpoint/time-budget handling for the serial N+1 sweep.
-     Source now fails closed with HTTP 409 if the 5,000-discharge cap is reached
-     and reports a 50-prior-row pairing-cap skip, but it cannot complete those
-     cohorts until paging/checkpointing exists;
+   - finish checkpoint/time-budget and snapshot-stability handling for the serial
+     N+1 sweep. Source now paginates discharges, patient histories, exact episode
+     metrics, and exact/stale KPI rows; contract tests cover a discharge cohort
+     and a start assessment beyond the first 500 records. It also fails closed at
+     explicit 50,000-discharge, 10,000-history-row, and 5,000-derived-row safety
+     caps. Offset paging is not a stable datastore snapshot, however, and one
+     invocation can still exceed a hosted runtime budget for a large agency;
    - add datastore-enforced uniqueness or an atomic idempotency/lease strategy
      for patient-episode metrics and agency/measure/period KPIs. The source
      reconciles already-visible duplicates but concurrent query-then-create
@@ -169,7 +220,10 @@ functions, or upload a native binary until all of these are complete:
      writes meanwhile; hosted Agency membership/RLS still requires proof before
      facility-admin rate editing can be restored.
 5. Reconcile Apple/Google privacy disclosures with the clinical data actually
-   handled by the app.
+   handled by the app. As rechecked on 2026-09-03, both store listings remain
+   live, but Google Play currently says “No data collected” while the product
+   handles account, user-content, and clinical data. Treat this mismatch as a
+   production/app-update blocker until the declaration is reviewed and corrected.
 6. Recover and verify the original iOS and Android signing/build projects,
    in-app-purchase behavior, and store credentials before any native upload.
 7. Run physical-device tests on the currently installed App Store and Play Store

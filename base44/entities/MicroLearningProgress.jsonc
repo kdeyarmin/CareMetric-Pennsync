@@ -90,10 +90,34 @@
   // staff-overview screens read across nurses, and owner-scoping reads would
   // need each of those confirmed admin-gated first (checklist §7).
   "rls": {
-    "write": {
+    "create": {
       "$or": [
         {
-          "nurse_email": "{{user.email}}"
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
         },
         {
           "user_condition": {

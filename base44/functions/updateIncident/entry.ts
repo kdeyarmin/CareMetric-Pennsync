@@ -3,7 +3,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 /**
  * updateIncident — the only write path for an existing Incident.
  *
- * Incident.rls.write is service-role-only, so every mutation lands here. That
+ * Incident.rls create/update/delete rules are service-role-only, so every
+ * mutation lands here. That
  * matters because the CAP lifecycle is a compliance control: before this
  * function existed the transition graph and the "high-severity / state-
  * reportable incidents need a corrective action plan" rule ran only in

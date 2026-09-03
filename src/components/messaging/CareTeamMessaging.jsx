@@ -25,6 +25,8 @@ import {
 import { format } from "date-fns";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
+import { sendMessage } from "@/functions/sendMessage";
+import { markMessageRead } from "@/functions/markMessageRead";
 
 export default function CareTeamMessaging({ patientId, relatedEventId, relatedEventType }) {
   const navigate = useNavigate();
@@ -56,6 +58,12 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
+  });
+
+  const { data: patient } = useQuery({
+    queryKey: ['patient-by-id', patientId],
+    queryFn: () => base44.entities.Patient.get(patientId),
+    enabled: !!patientId
   });
 
   // NOT agency-scoped: this is one patient's care-team thread. Filtering by the
@@ -96,7 +104,7 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
 
   const sendMessageMutation = useMutation({
     mutationFn: async (messageData) => {
-      return base44.entities.Message.create(messageData);
+      return sendMessage(messageData);
     },
     onMutate: async (messageData) => {
       await queryClient.cancelQueries({ queryKey: ['messages', patientId] });
@@ -108,6 +116,8 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
           id: optimisticId,
           created_date: new Date().toISOString(),
           updated_date: new Date().toISOString(),
+          sender_name: user?.full_name || user?.email,
+          sender_email: user?.email,
           read_by: user?.email ? [user.email] : [],
           is_optimistic: true,
         },
@@ -160,13 +170,10 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
 
   const markAsReadMutation = useMutation({
     mutationFn: async (messageId) => {
-      const msg = messages.find(m => m.id === messageId);
-      if (!msg || !user?.email) return;
-      const readBy = msg.read_by || [];
-      if (!readBy.includes(user.email)) {
-        // Spread rather than push — readBy may alias the react-query-cached
-        // array, and mutating it in place corrupts cached state.
-        return base44.entities.Message.update(messageId, { read_by: [...readBy, user.email] });
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !user?.email) return;
+      if (!message.read_by?.includes(user.email)) {
+        return markMessageRead(messageId);
       }
     },
     onSuccess: () => {
@@ -190,13 +197,26 @@ export default function CareTeamMessaging({ patientId, relatedEventId, relatedEv
   const handleSendMessage = () => {
     if (!newMessage.trim()) return;
 
+    const participantEmails = selectedThread
+      ? selectedThread.messages.flatMap((message) => [
+          message.sender_email,
+          ...(Array.isArray(message.recipients) ? message.recipients : []),
+        ])
+      : (Array.isArray(patient?.assigned_nurses) ? patient.assigned_nurses : []);
+    const recipients = [...new Set(
+      participantEmails.filter((email) => email && email !== user?.email),
+    )];
+    if (recipients.length === 0) {
+      toast.error('No other assigned care-team member is available for this message.');
+      return;
+    }
+
     const messageData = {
       patient_id: patientId,
       thread_id: selectedThread?.threadId || `thread-${Date.now()}`,
       subject: showNewThread ? newSubject : selectedThread?.subject,
       message_text: newMessage,
-      sender_name: user?.full_name || user?.email,
-      sender_email: user?.email,
+      recipients,
       priority,
       related_event_id: relatedEventId,
       related_event_type: relatedEventType

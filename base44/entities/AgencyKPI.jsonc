@@ -126,15 +126,9 @@
     "metric_value"
   ],
   "rls": {
-    "read": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    },
-    "write": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    }
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
   }
 }

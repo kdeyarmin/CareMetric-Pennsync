@@ -43,5 +43,11 @@
     "fax_history_id",
     "status",
     "message"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

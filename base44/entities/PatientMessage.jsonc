@@ -100,19 +100,12 @@
     "sender_email",
     "body"
   ],
+  // This retired parallel message model has no live client callers. Keep it
+  // service-role-only until participant and tenant ownership are server-stamped.
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "sender_email": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    },
-    "write": {}
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

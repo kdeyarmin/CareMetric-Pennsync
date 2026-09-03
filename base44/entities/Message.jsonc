@@ -141,10 +141,9 @@
       "description": "Email addresses of users who have read the message"
     }
   },
-  // Message backs two disjoint shapes: outbound delivery (patient_id/body/
-  // delivery_method/status) and in-app care-team messages (message_text/
-  // recipients/sender_email, e.g. Messages.jsx + referral assignment). They
-  // share no universal field, so nothing is required to avoid rejecting either.
+  // Message backs historical outbound delivery rows as well as in-app care-team
+  // messages. New in-app writes go through sendMessage, which validates the
+  // participant and clinical-record context and stamps sender identity.
   "required": [],
   "rls": {
     "read": {
@@ -153,30 +152,19 @@
           "created_by": "{{user.email}}"
         },
         {
+          "data.sender_email": "{{user.email}}"
+        },
+        {
           "data.recipients": {
             "$in": [
               "{{user.email}}"
             ]
           }
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
-    "write": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    }
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }
