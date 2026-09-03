@@ -39,6 +39,9 @@ app; it must not change the permanent origin embedded in the iOS shell.
 
 ## Immediate production containment (P0, identified 2026-09-03)
 
+Operational procedure and stop/rollback gates:
+[`PRODUCTION_MIXED_RELEASE_CONTAINMENT_2026-09-03.md`](./PRODUCTION_MIXED_RELEASE_CONTAINMENT_2026-09-03.md).
+
 Read-only comparison of the live old frontend baseline (`c545729`) with the
 hosted schemas auto-synced by `67d9d5e` found a real compatibility incident.
 The 14 entity-schema changes contain no field deletion and add no required
