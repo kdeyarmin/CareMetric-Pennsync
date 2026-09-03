@@ -127,6 +127,12 @@ const MAX_DISCHARGE_ROWS = 50_000;
 const MAX_PRIOR_ROWS_PER_PATIENT = 10_000;
 const MAX_UNEXPECTED_STAGED_ROWS = 5_000;
 const MAX_MATCHING_RUN_ROWS = 100;
+// This is an immutable recovery lease, not a promise that the platform will
+// run a function for this long. An expired invocation may still be executing;
+// retiring its building row through the same full-preimage transition prevents
+// it from publishing afterward while preserving any staged rows as audit debris.
+const OUTCOME_RUN_LEASE_MS = 60 * 60 * 1000;
+const MAX_EXPIRED_RUN_RECONCILIATIONS_PER_REQUEST = 10;
 const OUTCOME_RUN_PUBLICATION_MODE = 'single_run_record_gate_v1';
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/;
 const OUTCOME_RUN_SNAPSHOT_FIELDS = Object.freeze([
@@ -144,6 +150,7 @@ const OUTCOME_RUN_SNAPSHOT_FIELDS = Object.freeze([
   'calculation_version',
   'benchmark_value',
   'started_at',
+  'lease_expires_at',
   'published_at',
   'failed_at',
   'failure_stage',
@@ -278,12 +285,27 @@ async function resultSummaryHash(summary) {
   return sha256Hex(JSON.stringify(canonicalOutcomeJsonValue(summary)));
 }
 
+function outcomeRunLeaseValidationError(row) {
+  const startedAtMs = Date.parse(String(row?.started_at || ''));
+  const leaseExpiresAtMs = Date.parse(String(row?.lease_expires_at || ''));
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(leaseExpiresAtMs)) {
+    return 'recovery lease timestamps are missing or invalid';
+  }
+  if (leaseExpiresAtMs - startedAtMs !== OUTCOME_RUN_LEASE_MS) {
+    return 'recovery lease duration does not match this computation version';
+  }
+  return null;
+}
+
 function requireCleanBuildingOutcomeRun(preimage) {
   if (preimage.status !== 'building' || preimage.transition_version !== 1) {
     throw new Error('OutcomeComputationRun transition requires an exact building@v1 preimage');
   }
   if (OUTCOME_RUN_TERMINAL_FIELDS.some((field) => preimage[field] !== undefined)) {
     throw new Error('OutcomeComputationRun building preimage contains terminal metadata');
+  }
+  if (outcomeRunLeaseValidationError(preimage)) {
+    throw new Error('OutcomeComputationRun building preimage has invalid recovery lease evidence');
   }
 }
 
@@ -903,7 +925,9 @@ Deno.serve(async (req) => {
       row.calculation_version === OUTCOME_CALCULATION_VERSION);
     const publishedRunValidationError = async (row) => {
       const summary = row?.result_summary;
-      if (row?.status !== 'published' ||
+      const leaseValidationError = outcomeRunLeaseValidationError(row);
+      if (leaseValidationError ||
+          row?.status !== 'published' ||
           row?.transition_version !== 2 ||
           row?.failed_at !== undefined || row?.failure_stage !== undefined ||
           row?.agency_id !== agencyId ||
@@ -1050,6 +1074,73 @@ Deno.serve(async (req) => {
         publication_mode: OUTCOME_RUN_PUBLICATION_MODE,
       });
     }
+
+    // A process can disappear without reaching the catch block, leaving its
+    // publication gate in `building` forever. Reconcile only an immutable,
+    // expired lease and only through the same full-preimage transition used by
+    // normal terminal states. We deliberately return after reconciliation:
+    // creating a replacement is a separate retry, and no derived row is ever
+    // deleted or promoted by this recovery request.
+    const buildingWindowRuns = liveWindowRuns.filter((row) => row.status === 'building');
+    const buildingRunCandidates = Array.from(new Map([
+      ...matchingRuns.filter((row) => row.status === 'building'),
+      ...buildingWindowRuns,
+    ].map((row) => [String(row.id || ''), row])).values());
+    const malformedBuildingRun = buildingRunCandidates.find((row) => {
+      try {
+        const snapshot = outcomeRunSnapshot(row);
+        requireCleanBuildingOutcomeRun(snapshot);
+        return !snapshot.id || snapshot.agency_id !== agencyId ||
+          !/^[a-f0-9]{64}$/.test(String(snapshot.run_key || '')) ||
+          snapshot.window_key !== windowKey ||
+          typeof snapshot.attempt_id !== 'string' || !snapshot.attempt_id.trim() ||
+          snapshot.publication_mode !== OUTCOME_RUN_PUBLICATION_MODE ||
+          snapshot.period_type !== periodType ||
+          snapshot.period_start !== periodStart ||
+          snapshot.period_end !== periodEnd ||
+          typeof snapshot.calculation_version !== 'string' || !snapshot.calculation_version.trim();
+      } catch {
+        return true;
+      }
+    });
+    if (malformedBuildingRun) {
+      return Response.json({
+        success: false,
+        error: 'An unpublished outcome run lacks valid immutable recovery-lease evidence',
+        requires_operator_review: true,
+      }, { status: 409 });
+    }
+    const recoveryObservedAt = new Date().toISOString();
+    const recoveryObservedAtMs = Date.parse(recoveryObservedAt);
+    const expiredBuildingRuns = buildingWindowRuns
+      .filter((row) => Date.parse(String(row.lease_expires_at)) <= recoveryObservedAtMs)
+      .sort((left, right) =>
+        String(left.lease_expires_at).localeCompare(String(right.lease_expires_at)) ||
+        String(left.id).localeCompare(String(right.id)));
+    if (expiredBuildingRuns.length > 0) {
+      const selectedRuns = expiredBuildingRuns.slice(
+        0,
+        MAX_EXPIRED_RUN_RECONCILIATIONS_PER_REQUEST,
+      );
+      for (const expiredRun of selectedRuns) {
+        await applyConditionalOutcomeRunTransition(
+          base44.asServiceRole.entities.OutcomeComputationRun,
+          outcomeRunSnapshot(expiredRun),
+          {
+            status: 'failed',
+            failed_at: recoveryObservedAt,
+            failure_stage: 'expired_run_lease_reconciled',
+          },
+        );
+      }
+      return Response.json({
+        success: false,
+        error: 'Expired unpublished outcome run lease reconciled; retry the request to create a new attempt',
+        expired_runs_reconciled: selectedRuns.length,
+        expired_runs_remaining: expiredBuildingRuns.length - selectedRuns.length,
+        retry_with_same_key: true,
+      }, { status: 409 });
+    }
     if (matchingRuns.some((row) => row.status === 'building')) {
       return Response.json({
         success: false,
@@ -1068,6 +1159,9 @@ Deno.serve(async (req) => {
 
     const attemptId = crypto.randomUUID();
     const startedAt = new Date().toISOString();
+    const leaseExpiresAt = new Date(
+      Date.parse(startedAt) + OUTCOME_RUN_LEASE_MS,
+    ).toISOString();
     const runCreatePayload = {
       agency_id: agencyId,
       run_key: runKey,
@@ -1082,6 +1176,7 @@ Deno.serve(async (req) => {
       calculation_version: OUTCOME_CALCULATION_VERSION,
       ...(benchmark != null ? { benchmark_value: benchmark } : {}),
       started_at: startedAt,
+      lease_expires_at: leaseExpiresAt,
     };
     const createdRun = await base44.asServiceRole.entities.OutcomeComputationRun.create(runCreatePayload);
     const runId = String(createdRun?.id || '').trim();

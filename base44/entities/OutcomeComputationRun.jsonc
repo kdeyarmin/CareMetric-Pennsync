@@ -56,6 +56,11 @@
       "type": "string",
       "format": "date-time"
     },
+    "lease_expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Immutable recovery deadline set when the run is created. After this time, a retry may move a still-building run to failed through a full-preimage conditional transition; it does not assert that the original process has stopped."
+    },
     "published_at": {
       "type": "string",
       "format": "date-time"
@@ -99,7 +104,8 @@
     "period_start",
     "period_end",
     "calculation_version",
-    "started_at"
+    "started_at",
+    "lease_expires_at"
   ],
   "rls": {
     "create": false,

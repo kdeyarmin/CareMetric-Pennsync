@@ -375,10 +375,13 @@ test("outcome run and derived-row schemas make the server-only publication gate 
   assert.equal(runSchema.properties.transition_version.type, "integer");
   assert.equal(runSchema.properties.transition_version.minimum, 1);
   assert.equal(runSchema.properties.result_summary_hash.type, "string");
+  assert.equal(runSchema.properties.lease_expires_at.type, "string");
+  assert.equal(runSchema.properties.lease_expires_at.format, "date-time");
   assert.ok(runSchema.required.includes("run_key"));
   assert.ok(runSchema.required.includes("window_key"));
   assert.ok(runSchema.required.includes("attempt_id"));
   assert.ok(runSchema.required.includes("transition_version"));
+  assert.ok(runSchema.required.includes("lease_expires_at"));
   assert.equal(metricSchema.properties.outcome_computation_run_id.type, "string");
   assert.equal(metricSchema.properties.optional_fields_present.type, "array");
   assert.equal(metricSchema.properties.row_content_hash.type, "string");
@@ -411,6 +414,10 @@ test("outcome run transitions pin SDK 0.8.46 and use exact full-preimage updateM
   assert.equal(publication.query.agency_id, AGENCY_A);
   assert.equal(publication.query.status, "building");
   assert.equal(publication.query.transition_version, 1);
+  assert.equal(
+    Date.parse(publication.query.lease_expires_at) - Date.parse(publication.query.started_at),
+    60 * 60 * 1000,
+  );
   assert.deepEqual(publication.query.published_at, { $exists: false });
   assert.deepEqual(publication.query.failure_stage, { $exists: false });
   assert.deepEqual(publication.operations.$inc, { transition_version: 1 });
@@ -711,6 +718,37 @@ test("published replay rejects version drift and failed-terminal metadata", asyn
   }
 });
 
+test("published replay rejects missing or changed immutable lease evidence", async () => {
+  const cases = [
+    {
+      name: "missing lease",
+      mutate: (row) => { delete row.lease_expires_at; },
+    },
+    {
+      name: "changed duration",
+      mutate: (row) => { row.lease_expires_at = row.started_at; },
+    },
+  ];
+  for (const scenario of cases) {
+    const fixture = await loadHandler({
+      assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+      patients: [{ id: "p1", agency_id: AGENCY_A }],
+    });
+    const first = await run(fixture.handler);
+    assert.equal(first.status, 200, scenario.name);
+    const stored = fixture.stored.runRows.find(
+      (row) => row.id === first.json.outcome_computation_run_id,
+    );
+    scenario.mutate(stored);
+
+    const replay = await run(fixture.handler);
+    assert.equal(replay.status, 409, scenario.name);
+    assert.equal(replay.json.success, false, scenario.name);
+    assert.match(replay.json.error, /not replayable/i, scenario.name);
+    assert.equal(fixture.written.runCreates.length, 1, scenario.name);
+  }
+});
+
 test("published replay binds the canonical summary hash and reconciles stored counts", async () => {
   const cases = [
     {
@@ -932,6 +970,172 @@ test("a lost publication response is recovered only by validated idempotent repl
   const replay = await run(fixture.handler);
   assert.equal(replay.status, 200);
   assert.equal(replay.json.idempotent_replay, true);
+  assert.equal(fixture.written.runCreates.length, 1);
+});
+
+test("an expired building lease is failed by full-preimage CAS before a separate retry", async () => {
+  const noOpStatuses = ["published"];
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    noOpRunUpdateStatuses: noOpStatuses,
+  });
+
+  // Simulate a process whose publication transition never became durable and
+  // whose catch block intentionally left the ambiguous building row alone.
+  const interrupted = await run(fixture.handler);
+  assert.equal(interrupted.status, 500);
+  assert.equal(fixture.stored.runRows.length, 1);
+  assert.equal(fixture.stored.runRows[0].status, "building");
+  noOpStatuses.length = 0;
+
+  fixture.stored.runRows[0].started_at = "2026-06-01T00:00:00.000Z";
+  fixture.stored.runRows[0].lease_expires_at = "2026-06-01T01:00:00.000Z";
+  const createsBeforeRecovery = {
+    runs: fixture.written.runCreates.length,
+    metrics: fixture.written.metricCreates.length,
+    kpis: fixture.written.kpiCreates.length,
+  };
+  const recovered = await run(fixture.handler);
+
+  assert.equal(recovered.status, 409);
+  assert.equal(recovered.json.success, false);
+  assert.equal(recovered.json.expired_runs_reconciled, 1);
+  assert.equal(recovered.json.expired_runs_remaining, 0);
+  assert.equal(recovered.json.retry_with_same_key, true);
+  assert.deepEqual({
+    runs: fixture.written.runCreates.length,
+    metrics: fixture.written.metricCreates.length,
+    kpis: fixture.written.kpiCreates.length,
+  }, createsBeforeRecovery, "reconciliation is terminal-only and never creates or promotes data");
+  assert.equal(fixture.stored.runRows[0].status, "failed");
+  assert.equal(fixture.stored.runRows[0].transition_version, 2);
+  assert.equal(fixture.stored.runRows[0].failure_stage, "expired_run_lease_reconciled");
+  assert.match(fixture.stored.runRows[0].failed_at, /^\d{4}-\d{2}-\d{2}T/);
+
+  const replacement = await run(fixture.handler);
+  assert.equal(replacement.status, 200);
+  assert.equal(replacement.json.idempotent_replay, false);
+  assert.equal(fixture.written.runCreates.length, 2);
+  assert.equal(fixture.stored.runRows.filter((row) => row.status === "failed").length, 1);
+  assert.equal(fixture.stored.runRows.filter((row) => row.status === "published").length, 1);
+});
+
+test("an unexpired building lease remains live and is never reclaimed", async () => {
+  const noOpStatuses = ["published"];
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    noOpRunUpdateStatuses: noOpStatuses,
+  });
+  const interrupted = await run(fixture.handler);
+  assert.equal(interrupted.status, 500);
+  noOpStatuses.length = 0;
+  const terminalUpdatesBeforeRetry = fixture.written.runUpdates.length;
+
+  const retry = await run(fixture.handler);
+  assert.equal(retry.status, 409);
+  assert.match(retry.json.error, /unpublished attempt already holds/i);
+  assert.equal(fixture.stored.runRows[0].status, "building");
+  assert.equal(fixture.stored.runRows[0].transition_version, 1);
+  assert.equal(fixture.written.runUpdates.length, terminalUpdatesBeforeRetry);
+  assert.equal(fixture.written.runCreates.length, 1);
+});
+
+test("expired-run reconciliation is capped and requires another request for the remainder", async () => {
+  const noOpStatuses = ["published"];
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    noOpRunUpdateStatuses: noOpStatuses,
+  });
+  const interrupted = await run(fixture.handler);
+  assert.equal(interrupted.status, 500);
+  noOpStatuses.length = 0;
+
+  const original = fixture.stored.runRows[0];
+  original.started_at = "2026-06-01T00:00:00.000Z";
+  original.lease_expires_at = "2026-06-01T01:00:00.000Z";
+  for (let index = 0; index < 10; index += 1) {
+    fixture.stored.runRows.push({
+      ...original,
+      id: `expired-run-${String(index).padStart(2, "0")}`,
+      run_key: String(index + 1).padStart(64, "0"),
+      attempt_id: `expired-attempt-${index}`,
+    });
+  }
+
+  const firstRecovery = await run(fixture.handler);
+  assert.equal(firstRecovery.status, 409);
+  assert.equal(firstRecovery.json.expired_runs_reconciled, 10);
+  assert.equal(firstRecovery.json.expired_runs_remaining, 1);
+  assert.equal(fixture.stored.runRows.filter((row) => row.status === "failed").length, 10);
+  assert.equal(fixture.stored.runRows.filter((row) => row.status === "building").length, 1);
+
+  const secondRecovery = await run(fixture.handler);
+  assert.equal(secondRecovery.status, 409);
+  assert.equal(secondRecovery.json.expired_runs_reconciled, 1);
+  assert.equal(secondRecovery.json.expired_runs_remaining, 0);
+  assert.equal(fixture.stored.runRows.filter((row) => row.status === "failed").length, 11);
+  assert.equal(fixture.written.runCreates.length, 1, "recovery requests do not create replacements");
+});
+
+test("expired-run recovery loses safely to a concurrent terminal transition", async () => {
+  const noOpStatuses = ["published"];
+  let injected = false;
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    noOpRunUpdateStatuses: noOpStatuses,
+    mutateBeforeRunUpdateMany: ({ runRows, query, operations, status }) => {
+      if (injected || status !== "failed" ||
+          operations.$set?.failure_stage !== "expired_run_lease_reconciled") return;
+      const index = runRows.findIndex((row) => row.id === query.id);
+      assert.notEqual(index, -1);
+      runRows[index] = {
+        ...runRows[index],
+        status: "superseded",
+        transition_version: 2,
+        failure_stage: "concurrent_operator_reconciliation",
+      };
+      injected = true;
+    },
+  });
+  const interrupted = await run(fixture.handler);
+  assert.equal(interrupted.status, 500);
+  noOpStatuses.length = 0;
+  fixture.stored.runRows[0].started_at = "2026-06-01T00:00:00.000Z";
+  fixture.stored.runRows[0].lease_expires_at = "2026-06-01T01:00:00.000Z";
+
+  const recovery = await run(fixture.handler);
+  assert.equal(recovery.status, 500);
+  assert.equal(recovery.json.success, false);
+  assert.equal(injected, true);
+  assert.equal(fixture.stored.runRows[0].status, "superseded");
+  assert.equal(fixture.stored.runRows[0].transition_version, 2);
+  assert.equal(fixture.stored.runRows[0].failure_stage, "concurrent_operator_reconciliation");
+  assert.equal(fixture.written.runCreates.length, 1);
+});
+
+test("a building run without exact lease evidence fails closed for operator review", async () => {
+  const noOpStatuses = ["published"];
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    noOpRunUpdateStatuses: noOpStatuses,
+  });
+  const interrupted = await run(fixture.handler);
+  assert.equal(interrupted.status, 500);
+  noOpStatuses.length = 0;
+  delete fixture.stored.runRows[0].lease_expires_at;
+  const updatesBeforeRetry = fixture.written.runUpdates.length;
+
+  const retry = await run(fixture.handler);
+  assert.equal(retry.status, 409);
+  assert.equal(retry.json.requires_operator_review, true);
+  assert.match(retry.json.error, /recovery-lease evidence/i);
+  assert.equal(fixture.stored.runRows[0].status, "building");
+  assert.equal(fixture.written.runUpdates.length, updatesBeforeRetry);
   assert.equal(fixture.written.runCreates.length, 1);
 });
 

@@ -31,6 +31,7 @@ const MAX_IDENTIFIER_LENGTH = 200;
 const MAX_TEXT_LENGTH = 1_000;
 const MAX_MEMBERSHIP_REASON_LENGTH = 500;
 const PUBLICATION_MODE = 'single_run_record_gate_v1';
+const OUTCOME_RUN_LEASE_MS = 60 * 60 * 1000;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const PERIOD_TYPES = new Set([
@@ -472,6 +473,7 @@ function validatePublishedRun(
   const attemptId = exactIdentifier(row?.attempt_id);
   const calculationVersion = exactIdentifier(row?.calculation_version);
   const startedAt = exactTimestamp(row?.started_at);
+  const leaseExpiresAt = exactTimestamp(row?.lease_expires_at);
   const publishedAt = exactTimestamp(row?.published_at);
   const fingerprint = typeof row?.generation_fingerprint === 'string'
     && HASH_PATTERN.test(row.generation_fingerprint)
@@ -493,6 +495,8 @@ function validatePublishedRun(
     || !attemptId
     || !calculationVersion
     || !startedAt
+    || !leaseExpiresAt
+    || Date.parse(leaseExpiresAt) - Date.parse(startedAt) !== OUTCOME_RUN_LEASE_MS
     || !publishedAt
     || publishedAt < startedAt
     || !fingerprint

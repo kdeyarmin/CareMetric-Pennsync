@@ -37,6 +37,36 @@ The installed mobile apps continue to use their existing store records. Adding
 PennSync domains later must point those domains at the same CareMetric Base44
 app; it must not change the permanent origin embedded in the iOS shell.
 
+## Legacy-data boundary (read-only inventory, 2026-09-03)
+
+The old PennSync Base44 app is not empty and cannot be replaced by a DNS-only
+domain move. A complete ID-only, paginated inventory counted all 236 hosted
+entities without reading or exporting row contents:
+
+| Inventory | Old PennSync app | CareMetric app |
+| --- | ---: | ---: |
+| Total rows | 8,672 | 3,190 |
+| Nonempty entities | 35 | 37 |
+| User rows | 8 | 2 |
+| Patient rows | 387 | 1 |
+| Hosted functions | 239 | 240 |
+
+No User or Patient IDs overlap between the two apps. Seventeen entity types are
+populated only in the old app (2,093 rows total), including 198 Visit, 10
+CarePlan, 5 OASISUpload, 420 Physician, 190 ComplianceAudit, 522
+PendingPatientUpdate, and 712 NoteConversion rows. Nineteen entity types are
+populated only in CareMetric (1,397 rows total), led by 1,230 AgencyKPI rows.
+The apps expose the same 236 schema names, but `Patient`, `OASISAssessment`,
+`OASISUpload`, `PatientOutcomeMetric`, `AgencyKPI`, and `PDGMRateConfig` differ.
+In particular, the CareMetric definitions add tenant scoping and tighter
+service-owned access that make a blind copy or overwrite unsafe.
+
+The required backup, transform, merge, reconciliation, and rollback sequence is
+defined in
+[`PENNSYNC_DATA_MIGRATION_RUNBOOK_2026-09-03.md`](./PENNSYNC_DATA_MIGRATION_RUNBOOK_2026-09-03.md).
+No backup/export, row mutation, user/auth migration, file transfer, or domain
+change was performed during this inventory.
+
 ## Production frontend containment (completed 2026-09-03)
 
 Operational record and stop/rollback gates:
@@ -125,8 +155,8 @@ file references are available only through the authorized packet function. The
 service-only PDGM case-mix, supply inventory/usage/prediction, low-stock alert,
 and skill-badge definitions are now fail-closed as well. Their backend consumers
 use service-role access; no browser consumer reads them directly. The remaining
-inventory is `20 / 238` schemas with no RLS, `26 / 238` permitting unrestricted
-mutations, and `35 / 238` permitting
+inventory is `19 / 241` schemas with no RLS, `25 / 241` permitting unrestricted
+mutations, and `34 / 241` permitting
 unrestricted reads. Those exact cohorts are hash-pinned so the debt
 cannot change without explicit review. Per-operation integrity, tenant-owned
 authority, and hosted authenticated workflow proofs remain production blockers.
@@ -469,8 +499,8 @@ functions, or upload a native binary until all of these are complete:
 1. Continue validation in the separate nonproduction Base44 app. Exact entity
    and function inventory is now hosted, and anonymous-write denial is proved
    for the five critical OASIS/outcome/PDGM entities. The ignored legacy
-   mutation-key syntax is fully migrated, but `20` no-RLS schemas, `26`
-   mutation-open schemas, and `35` read-open schemas remain explicitly tracked
+   mutation-key syntax is fully migrated, but `19` no-RLS schemas, `25`
+   mutation-open schemas, and `34` read-open schemas remain explicitly tracked
    debt. Before production, replace those permissive policies with reviewed
    per-operation tenant rules and prove authenticated multi-user isolation,
    uploads, shared-patient workflows, and negative cross-tenant cases with at
