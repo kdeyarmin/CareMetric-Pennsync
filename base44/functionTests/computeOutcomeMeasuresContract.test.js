@@ -107,11 +107,16 @@ async function loadHandler({
   onRunUpdateMany = null,
   updateFailures = [],
   onQuery = null,
+  outcomeComputationEnabled = true,
 } = {}) {
   let src = await readFile(new URL("../functions/computeOutcomeMeasures/entry.ts", import.meta.url), "utf8");
   src = src.replace(
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     "const createClientFromRequest = globalThis.__omMakeClient;",
+  );
+  src = src.replace(
+    'const OUTCOME_COMPUTATION_ENABLED = false;',
+    `const OUTCOME_COMPUTATION_ENABLED = ${outcomeComputationEnabled};`,
   );
   const js = transpileTs(src).outputText;
   const tmp = join(tmpdir(), `omctr_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
@@ -312,6 +317,46 @@ function pair({ startCodes, dcCodes, startSchema = V2, dcSchema = V2, startRowsR
     assessment({ id: `dc-${agencyId}-${patientId}`, patientId, agencyId, visitType: "Discharge", date: "2026-06-01", rows: dcRowsRaw || mk(dcCodes), schema: dcSchema }),
   ];
 }
+
+test("outcome computation is hard-paused before SDK access for every request shape", async () => {
+  const fixture = await loadHandler({ outcomeComputationEnabled: false });
+  const requests = [
+    new Request("http://local/computeOutcomeMeasures", { method: "POST" }),
+    new Request("http://local/computeOutcomeMeasures", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "null",
+    }),
+    new Request("http://local/computeOutcomeMeasures", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-secret": "scheduler-secret",
+      },
+      body: JSON.stringify({
+        agency_id: AGENCY_A,
+        period_start: "2026-06-01",
+        period_end: "2026-06-01",
+        period_type: "daily",
+        idempotency_key: "outcome-paused-run-0001",
+      }),
+    }),
+  ];
+
+  for (const request of requests) {
+    const response = await fixture.handler(request);
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      error: "Outcome computation is paused pending hosted atomicity and tenant validation",
+    });
+  }
+  assert.deepEqual(fixture.queries, []);
+  assert.deepEqual(fixture.written.events, []);
+  assert.deepEqual(fixture.written.metricCreates, []);
+  assert.deepEqual(fixture.written.kpiCreates, []);
+  assert.deepEqual(fixture.written.runCreates, []);
+  assert.deepEqual(fixture.written.runUpdates, []);
+});
 
 test("outcome run and derived-row schemas make the server-only publication gate explicit", async () => {
   const loadSchema = async (name) => JSON.parse(await readFile(
