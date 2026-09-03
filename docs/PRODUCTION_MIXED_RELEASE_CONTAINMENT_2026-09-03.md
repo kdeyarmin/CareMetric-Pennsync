@@ -1,7 +1,7 @@
 # CareMetric production mixed-release containment runbook
 
 Date: 2026-09-03  
-Status: **P0 frontend containment deployed and technically verified; device and log follow-up remains**
+Status: **P0 frontend containment deployed and technically verified; physical-device follow-up remains**
 
 ## Purpose
 
@@ -54,8 +54,11 @@ to defaults.
 - Production function inventory is 240 before and after the site deployment.
   Pulled production copies of `deduplicatePatients`, `saveOasisResponses`,
   and `calculatePDGM` exactly match the hardened source.
-- Base44's production log endpoint timed out on both the pre-deployment and
-  post-deployment queries; log review remains an explicit open validation item.
+- Focused Base44 production log queries completed for 2026-09-03 UTC,
+  including the 05:55–06:10 UTC schedule window and the post-deployment period.
+  They returned no retained `computeOutcomeMeasures` entries. This is evidence
+  of no logged invocation in those windows, not proof that the scheduler never
+  attempted to fire.
 
 ## Prepared forward artifact
 
@@ -196,9 +199,10 @@ Additional findings:
 - The pulled production `computeOutcomeMeasures` code exactly matches the
   hardened internal-secret-only, single-agency source, but its remote function
   metadata has a pre-existing active daily 06:00 schedule with null arguments.
-  A null-argument invocation returns `400` for missing `agency_id` before
-  authentication or any service-role read/write, so the schedule is inert but
-  should be disabled in a separately authorized backend change.
+  Empty or missing arguments return `400` for missing `agency_id`; a literal
+  JSON `null` body returns `500`. Both paths stop before authentication or any
+  service-role read/write, so the schedule is data-inert but should still be
+  disabled in a separately authorized backend change.
 - `managePatientCareTeamAssignment` is not deployed in production.
 - `/service-worker.js` returns the SPA HTML fallback because the offline
   service worker was intentionally retired. The source and hosted-path tests
@@ -206,9 +210,15 @@ Additional findings:
   unregisters legacy workers and deletes their caches after safely draining
   stranded clinical work. This is the expected online-only/PHI-safe posture,
   not a deployment defect.
-- Base44 production log queries timed out, including a narrow
-  `computeOutcomeMeasures` query. This prevented the required systemic-error
-  review.
+- Focused production log queries returned no retained
+  `computeOutcomeMeasures` entries for 2026-09-03 UTC, including the scheduled
+  06:00 UTC window and the post-deployment period. No new systemic function
+  error pattern was observed in the queried windows; log retention limits mean
+  this does not prove the scheduler never attempted to fire.
+- PR #143 now source-controls the complete legacy schedule as
+  `is_active: false` and adds a literal code gate before SDK client creation.
+  That branch remains draft and unmerged; neither safeguard has been deployed
+  to production.
 - Physical Apple/Google cold-launch, authenticated session restoration,
   test-chart reads, and visible control checks still require a designated test
   account/device and must not use PHI.
