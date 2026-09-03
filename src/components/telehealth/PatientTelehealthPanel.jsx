@@ -16,6 +16,7 @@ import { rememberJoinLink, getPatientJoinLink } from "@/components/telehealth/jo
 import { toast } from "sonner";
 import { hostedAbsoluteUrl } from '@/lib/assetPath';
 import { ROUTER_PATHS } from '@/routes';
+import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
 
 const visitTypes = {
   routine_followup: { label: "Routine Follow-up", visitType: "routine_visit" },
@@ -68,7 +69,7 @@ export default function PatientTelehealthPanel({ patient, currentUser }) {
   });
 
   const createVisitMutation = useMutation({
-    mutationFn: (payload) => base44.entities.Visit.create(payload),
+    mutationFn: async (payload) => (await createAuthorizedVisit(payload)).visit,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["patientVisits", patient?.id] })
   });
 

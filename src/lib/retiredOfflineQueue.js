@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import { migrateLegacyOfflineQueues } from '@/lib/offlineMigration';
 import { OFFLINE_RETIRED_FLAG } from '@/lib/localPhiKeys';
 import { saveDraftNoteLocally, getDraftNoteLocally } from '@/lib/draftNotes';
+import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
 
 /**
  * ONE-TIME migration for the retired offline feature. DELETE AFTER ONE RELEASE.
@@ -213,13 +214,12 @@ async function flushItem(item, entities, functions) {
 
   switch (item.action) {
     case 'CREATE_VISIT': {
-      // Reuse a visit a prior (interrupted) drain already created rather than
-      // writing a duplicate clinical record.
-      const key = fields.client_request_id;
-      const existing = key ? await entities.Visit.filter({ client_request_id: key }) : [];
-      const isNew = !existing?.length;
-      const visit = isNew ? await entities.Visit.create(fields) : existing[0];
-      if (isNew && noteConversion && entities.NoteConversion?.create) {
+      // The server broker owns tenant authorization, immutable provenance, and
+      // client_request_id replay detection. Direct Visit create is intentionally
+      // disabled, including for this one-release recovery path.
+      const result = await createAuthorizedVisit(fields, functions);
+      const visit = result.visit;
+      if (result.created && noteConversion && entities.NoteConversion?.create) {
         await entities.NoteConversion.create(noteConversion);
       }
       await reconcileAudit(visit.id, fields.patient_id);

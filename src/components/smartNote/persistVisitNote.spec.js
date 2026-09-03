@@ -8,7 +8,11 @@ const noteConvCreate = vi.fn(async () => ({}));
 const auditCreate = vi.fn(async () => ({ id: "audit-1" }));
 const auditUpdate = vi.fn(async () => ({}));
 const auditFilter = vi.fn(async () => []);
-const functionsInvoke = vi.fn(async () => ({ data: { success: true } }));
+const functionsInvoke = vi.fn(async (name, payload) => (
+  name === "createAuthorizedVisit"
+    ? { data: { created: true, visit: { id: "visit-1", ...payload } } }
+    : { data: { success: true } }
+));
 
 vi.mock("@/api/base44Client", () => ({
   base44: {
@@ -70,12 +74,12 @@ describe("persistVisitNote", () => {
   it("creates a visit (with vitals) and the compliance records on a fresh save", async () => {
     const out = await persistVisitNote({ ...baseArgs, vitals: { heart_rate: 80 } });
     expect(out).toMatchObject({ mode: "create", visitId: "visit-1", auditId: "audit-1" });
-    expect(visitCreate).toHaveBeenCalledTimes(1);
-    expect(visitCreate.mock.calls[0][0]).toMatchObject({
+    expect(visitCreate).not.toHaveBeenCalled();
+    expect(functionsInvoke).toHaveBeenCalledWith("createAuthorizedVisit", expect.objectContaining({
       patient_id: "p1", visit_type: "routine_visit", nurse_notes: "Final note text",
       vital_signs: { heart_rate: 80 },
       grounding_pending: false,
-    });
+    }));
     expect(noteConvCreate).toHaveBeenCalledTimes(1);
     expect(auditCreate).toHaveBeenCalledTimes(1);
     expect(visitUpdate).not.toHaveBeenCalled();

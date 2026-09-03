@@ -355,6 +355,59 @@ two-agency actor matrix in sections 1–4. It proves the new surfaces fail close
 on an empty isolated staging app; operational membership provisioning,
 revocation, agency stamping/backfill, and cross-tenant tests remain required.
 
+## 5g. Membership, outcome-reader, and Visit-create checkpoint (updated 2026-09-03)
+
+The next reviewed batch was deployed only to nonproduction app
+`6a9881683dc68a0bd54f1ef7`. Immediately before the schema push, exact local and
+hosted inventories both contained 238 names with no difference. Privileged
+queries found zero rows in every changed clinical, authority, outcome, and
+dormant entity. The full schema push therefore had no entity deletion or rename
+target and no changed-row migration target in this isolated app.
+
+Hosted inventory after deployment reports 238 schemas and 252 functions.
+`SUPER_ADMIN_EMAIL` remains the sole secret; `INTERNAL_FN_SECRET` remains absent.
+The following anonymous function probes were recorded:
+
+| Function | Hosted result |
+| --- | --- |
+| `manageAgencyMembership` | HTTP 401 before service-role reads |
+| `getPublishedOutcomeMeasures` | HTTP 401 before service-role reads |
+| `createAuthorizedVisit` | HTTP 401 before service-role reads or writes |
+| `getMyTenantContext` | HTTP 401 before service-role reads |
+| `offboardUser` | HTTP 401 before service-role reads or writes |
+| `computeOutcomeMeasures` | HTTP 500, expected missing `INTERNAL_FN_SECRET`, before privileged data access |
+| `autoAssignNurseToPatient` | HTTP 200 static `skipped` response; unconditional no-op |
+
+The first hosted `offboardUser` probe returned a generic HTTP 500 because an
+anonymous `auth.me()` rejection was not normalized. The function was changed to
+catch that rejection, a runtime regression contract proved zero service-role
+activity, only that function was redeployed, and the repeated hosted probe
+returned HTTP 401 with `{"error":"Unauthorized"}`.
+
+Anonymous GET requests returned HTTP 200 with `[]`, and shaped anonymous POST
+requests returned HTTP 403, for all of these 17 entities:
+
+`AIKnowledgeBase`, `AIModelConfiguration`, `AgencyComplianceRule`, `CareSetting`,
+`DocumentationTemplate`, `FeaturePackage`, `InvitationSettings`, `NewFeature`,
+`NoteTemplate`, `ProviderSettings`, `SharedPhraseLibrary`,
+`SubscriptionSettings`, `AgencyMembership`, `Visit`, `PatientOutcomeMetric`,
+`AgencyKPI`, and `OutcomeComputationRun`.
+
+Privileged post-probe connector queries reported `count: 0` for all 17, and also
+for `Patient` and `Agency`. The hosted staging root, `/privacy`,
+`/privacypolicy`, relative manifest, and all four manifest icons return HTTP 200.
+The manifest retains relative `id`, `start_url`, and `scope`. The fresh bundle
+contains the staging app id, not the CareMetric production app id, and uses
+`America/New_York`.
+
+This proves anonymous denial and zero probe residue on the empty isolated app.
+It does not prove the authenticated matrix: no Agency, Patient, or membership
+rows and no second-agency identities exist in staging. It also does not provide
+datastore transactions/CAS, protect direct Visit updates/deletes, backfill
+clinical tenant provenance, make outcome rows immutable, complete the CMS PDGM
+grouper, or validate native devices/stores. No production app, production data,
+domain, scheduler, OASIS-v2 flag, native binary, or app-store record was changed.
+
 ---
 
 ## 6. Sign-off

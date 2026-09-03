@@ -18,6 +18,10 @@
       "type": "string",
       "description": "SHA-256 copied from the planned generation and reconciled before the run can publish."
     },
+    "row_content_hash": {
+      "type": "string",
+      "description": "Deterministic SHA-256 of every domain, result, and provenance field owned by computeOutcomeMeasures, excluding only Base44-injected metadata and this hash field. Consumers must recompute it before trusting a published row."
+    },
     "is_current": {
       "type": "boolean",
       "description": "Legacy publication hint retained for stored-data compatibility. New run-scoped rows keep this false permanently; the referenced OutcomeComputationRun is the only publication gate."

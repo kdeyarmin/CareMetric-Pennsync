@@ -17,7 +17,9 @@ const source = (rel) => readFileSync(join(REPO, rel), 'utf8');
 
 const HIGH_RISK_ACCESS = [
   { entity: 'Patient', owners: ['created_by'], adminReadable: true },
-  { entity: 'Visit', owners: ['created_by'], adminReadable: true },
+  // Visit creation is service-owned. Its caller provenance is an explicit
+  // server-stamped custom field; platform-managed created_by is incidental.
+  { entity: 'Visit', owners: ['created_by_user_email_normalized'], adminReadable: true },
   { entity: 'Document', owners: ['uploaded_by', 'created_by'], adminReadable: true },
   // Message is participant-only. A global admin read arm would bypass the
   // broker's immutable thread/clinical-context checks and expose PHI.
@@ -28,7 +30,14 @@ const HIGH_RISK_ACCESS = [
 
 const REQUIRED_RELATIONSHIP_FIELDS = {
   Patient: ['first_name', 'last_name', 'date_of_birth', 'status'],
-  Visit: ['patient_id', 'visit_date', 'client_request_id'],
+  Visit: [
+    'patient_id',
+    'agency_id',
+    'created_by_user_id',
+    'created_by_user_email_normalized',
+    'visit_date',
+    'client_request_id',
+  ],
   Referral: ['patient_name', 'assigned_to', 'status'],
   Document: ['patient_id', 'uploaded_by', 'file_url'],
   DocumentSignature: ['document_id', 'signer_email', 'status'],

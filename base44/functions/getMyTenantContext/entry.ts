@@ -19,7 +19,9 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 const MEMBERSHIP_SCAN_LIMIT = 100;
 const AGENCY_SCAN_LIMIT = 10;
 const MAX_IDENTIFIER_LENGTH = 200;
+const MAX_REASON_LENGTH = 500;
 const ACTIVE_AGENCY_STATUSES = new Set(['active', 'trial']);
+const MEMBERSHIP_STATUSES = new Set(['pending', 'active', 'suspended', 'revoked']);
 const TENANT_ROLES = new Set([
   'agency_admin',
   'manager',
@@ -42,6 +44,14 @@ class PublicError extends Error {
 const normalizeEmail = (value: unknown) =>
   typeof value === 'string' ? value.trim().toLowerCase() : '';
 
+function canonicalEmail(value: unknown) {
+  const normalized = normalizeEmail(value);
+  if (!normalized || normalized.length > 320 || !normalized.includes('@') || /\s/.test(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
 function exactIdentifier(value: unknown) {
   if (typeof value !== 'string') return null;
   if (!value || value.length > MAX_IDENTIFIER_LENGTH || value.trim() !== value) return null;
@@ -49,10 +59,17 @@ function exactIdentifier(value: unknown) {
 }
 
 function isProtectedPlatformOwner(user: Record<string, unknown>) {
-  const configuredEmail = normalizeEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  const configuredEmail = canonicalEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
   return !!configuredEmail
     && user.role === 'admin'
-    && normalizeEmail(user.email) === configuredEmail;
+    && canonicalEmail(user.email) === configuredEmail;
+}
+
+function boundedReason(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const reason = value.trim();
+  if (!reason || reason.length > MAX_REASON_LENGTH) return null;
+  return reason;
 }
 
 function requireRows(value: unknown, label: string) {
@@ -82,7 +99,7 @@ async function parseRequestedAgencyId(req: Request) {
   return agencyId;
 }
 
-function validateActiveMemberships(
+function validateMemberships(
   rawRows: Array<Record<string, unknown>>,
   userId: string,
   normalizedEmail: string,
@@ -92,11 +109,10 @@ function validateActiveMemberships(
   }
 
   // Recheck the service-role query in memory. Rows outside the requested user
-  // or status are ignored, but any active row for this exact immutable user id
-  // must be internally consistent or the entire resolution fails closed.
-  const candidates = rawRows.filter(
-    (row) => row?.user_id === userId && row?.status === 'active',
-  );
+  // are ignored, but every lifecycle state for this exact immutable user id is
+  // validated before active memberships are selected. This prevents a hidden
+  // suspended/revoked duplicate from coexisting with an authorizing active row.
+  const candidates = rawRows.filter((row) => row?.user_id === userId);
 
   const memberships: Array<Record<string, unknown>> = [];
   const ids = new Set<string>();
@@ -107,8 +123,17 @@ function validateActiveMemberships(
     const id = exactIdentifier(row.id);
     const agencyId = exactIdentifier(row.agency_id);
     const membershipKey = exactIdentifier(row.membership_key);
-    const storedEmail = normalizeEmail(row.user_email_normalized);
+    const storedEmail = canonicalEmail(row.user_email_normalized);
     const tenantRole = typeof row.tenant_role === 'string' ? row.tenant_role : '';
+    const status = typeof row.status === 'string' ? row.status : '';
+    const createdBy = exactIdentifier(row.created_by_user_id);
+    const transitionedBy = exactIdentifier(row.last_transition_by_user_id);
+    const transitionEmail = canonicalEmail(row.last_transition_by_email_normalized);
+    const transitionAt = Date.parse(String(row.last_transition_at || ''));
+    const transitionReason = boundedReason(row.last_transition_reason);
+    const activatedAt = Date.parse(String(row.activated_at || ''));
+    const revokedAt = Date.parse(String(row.revoked_at || ''));
+    const revocationReason = boundedReason(row.revocation_reason);
 
     if (
       !id
@@ -119,6 +144,23 @@ function validateActiveMemberships(
       || storedEmail !== normalizedEmail
       || membershipKey !== `${agencyId}:${userId}`
       || !TENANT_ROLES.has(tenantRole)
+      || !MEMBERSHIP_STATUSES.has(status)
+      || !Number.isSafeInteger(row.version)
+      || Number(row.version) < 1
+      || !createdBy
+      || !transitionedBy
+      || !transitionEmail
+      || row.last_transition_by_email_normalized !== transitionEmail
+      || !Number.isFinite(transitionAt)
+      || !transitionReason
+      || (
+        (status === 'active' || status === 'suspended')
+        && !Number.isFinite(activatedAt)
+      )
+      || (
+        status === 'revoked'
+        && (!Number.isFinite(revokedAt) || !revocationReason)
+      )
     ) {
       throw new PublicError(409, 'Tenant membership integrity check failed');
     }
@@ -173,7 +215,11 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const userId = exactIdentifier(user.id);
-    const normalizedEmail = normalizeEmail(user.email);
+    if (user.disabled === true || user.is_service === true || user.is_verified === false) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const normalizedEmail = canonicalEmail(user.email);
     if (!userId || !normalizedEmail) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -182,17 +228,18 @@ Deno.serve(async (req) => {
     const entities = base44.asServiceRole.entities;
     const rawMemberships = requireRows(
       await entities.AgencyMembership.filter(
-        { user_id: userId, status: 'active' },
+        { user_id: userId },
         '-updated_date',
         MEMBERSHIP_SCAN_LIMIT,
       ),
       'AgencyMembership.filter',
     );
-    const memberships = validateActiveMemberships(
+    const allMemberships = validateMemberships(
       rawMemberships,
       userId,
       normalizedEmail,
     );
+    const memberships = allMemberships.filter((row) => row.status === 'active');
     const isPlatformOwner = isProtectedPlatformOwner(user);
 
     if (memberships.length === 0) {

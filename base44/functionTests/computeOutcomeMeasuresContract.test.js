@@ -263,7 +263,9 @@ test("outcome run and derived-row schemas make the server-only publication gate 
   assert.ok(runSchema.required.includes("attempt_id"));
   assert.equal(metricSchema.properties.outcome_computation_run_id.type, "string");
   assert.equal(metricSchema.properties.optional_fields_present.type, "array");
+  assert.equal(metricSchema.properties.row_content_hash.type, "string");
   assert.equal(kpiSchema.properties.outcome_computation_run_id.type, "string");
+  assert.equal(kpiSchema.properties.row_content_hash.type, "string");
 });
 
 // ── tenant scope and authorization ──────────────────────────────────────────
@@ -448,6 +450,51 @@ test("replay rejects an extra same-attempt row carrying the wrong generation fin
   assert.equal(fixture.written.runCreates.length, 1);
 });
 
+test("published replay rejects diagnosis, measure, and KPI mutations that retain provenance tags", async () => {
+  const cases = [
+    {
+      collection: "metricRows",
+      mutate: (row) => { row.primary_diagnosis = "E11.9"; },
+    },
+    {
+      collection: "metricRows",
+      mutate: (row) => { row.measure_results[0].discharge_value = "01"; },
+    },
+    {
+      collection: "kpiRows",
+      mutate: (row) => { row.metric_value = 25; },
+    },
+  ];
+
+  for (const { collection, mutate } of cases) {
+    const fixture = await loadHandler({
+      assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+      patients: [{
+        id: "p1",
+        agency_id: AGENCY_A,
+        primary_diagnosis: "I10",
+      }],
+    });
+    const first = await run(fixture.handler);
+    assert.equal(first.status, 200, collection);
+    const row = fixture.stored[collection].find((candidate) =>
+      candidate.outcome_computation_run_id === first.json.outcome_computation_run_id);
+    assert.ok(row, collection);
+    const copiedFingerprint = row.generation_fingerprint;
+    const copiedRowHash = row.row_content_hash;
+    assert.match(copiedFingerprint, /^[a-f0-9]{64}$/, collection);
+    assert.match(copiedRowHash, /^[a-f0-9]{64}$/, collection);
+
+    mutate(row);
+    assert.equal(row.generation_fingerprint, copiedFingerprint, collection);
+    assert.equal(row.row_content_hash, copiedRowHash, collection);
+    const replay = await run(fixture.handler);
+    assert.equal(replay.status, 409, collection);
+    assert.equal(replay.json.success, false, collection);
+    assert.match(replay.json.error, /mutated row content/i, collection);
+  }
+});
+
 test("replay rejects a second published run for the same window under another key", async () => {
   const fixture = await loadHandler({
     assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
@@ -549,6 +596,62 @@ test("staged-row readback blocks publication when a create response was not dura
   assert.equal(written.runUpdates.at(-1).payload.status, "failed");
   assert.equal(written.runUpdates.at(-1).payload.failure_stage, "reconcile_staged_generation");
   assert.ok(!written.runUpdates.some(({ payload }) => payload.status === "published"));
+});
+
+test("staged readback rejects diagnosis, measure, and KPI tampering under a copied generation fingerprint", async () => {
+  const cases = [
+    {
+      entity: "PatientOutcomeMetric",
+      mutate: (row) => { row.primary_diagnosis = "E11.9"; },
+    },
+    {
+      entity: "PatientOutcomeMetric",
+      mutate: (row) => { row.measure_results[0].discharge_value = "01"; },
+    },
+    {
+      entity: "AgencyKPI",
+      mutate: (row) => { row.metric_value = 25; },
+    },
+  ];
+
+  for (const { entity, mutate } of cases) {
+    let tampered = false;
+    let copiedFingerprint = null;
+    const fixture = await loadHandler({
+      assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+      patients: [{
+        id: "p1",
+        agency_id: AGENCY_A,
+        primary_diagnosis: "I10",
+      }],
+      onQuery: ({ entity: queriedEntity, rows, q }) => {
+        if (tampered || queriedEntity !== entity || !q?.outcome_computation_run_id) return;
+        const row = rows.find((candidate) =>
+          candidate.outcome_computation_run_id === q.outcome_computation_run_id);
+        assert.ok(row);
+        assert.match(row.row_content_hash, /^[a-f0-9]{64}$/);
+        copiedFingerprint = row.generation_fingerprint;
+        mutate(row);
+        assert.equal(row.generation_fingerprint, copiedFingerprint);
+        tampered = true;
+      },
+    });
+    const { status, json } = await run(fixture.handler);
+    assert.equal(status, 500, entity);
+    assert.equal(json.success, false, entity);
+    assert.equal(tampered, true, entity);
+    assert.match(copiedFingerprint, /^[a-f0-9]{64}$/, entity);
+    assert.equal(fixture.written.runUpdates.at(-1).payload.status, "failed", entity);
+    assert.equal(
+      fixture.written.runUpdates.at(-1).payload.failure_stage,
+      "reconcile_staged_generation",
+      entity,
+    );
+    assert.ok(
+      !fixture.written.runUpdates.some(({ payload }) => payload.status === "published"),
+      entity,
+    );
+  }
 });
 
 test("generation fingerprints are deterministic when service rows arrive in a different order", async () => {

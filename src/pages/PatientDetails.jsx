@@ -59,6 +59,7 @@ import PatientTelehealthPanel from "../components/telehealth/PatientTelehealthPa
 import CareTeamMessaging from "../components/messaging/CareTeamMessaging";
 import PatientContactActions from "../components/voice/PatientContactActions";
 import { PDGM_REIMBURSEMENT_ENABLED } from "@/components/pdgm/pdgmAvailability";
+import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
 
 // [Force recompile: 2026-06-29 12:15:00 UTC]
 export default function PatientDetails() {
@@ -169,7 +170,9 @@ export default function PatientDetails() {
   }, [ctx.oasisAssessments]);
 
   const createVisitMutation = useMutation({
-    mutationFn: (visitData) => base44.entities.Visit.create({ ...visitData, patient_id: patientId }),
+    mutationFn: async (visitData) => (
+      await createAuthorizedVisit({ ...visitData, patient_id: patientId })
+    ).visit,
     onSuccess: (newVisit) => {
       queryClient.invalidateQueries({ queryKey: ['patientContext', patientId] });
       queryClient.invalidateQueries({ queryKey: ['patientVisits', patientId] });

@@ -1,6 +1,6 @@
 # PennSync repository consolidation
 
-Status: **isolated staging checkpoint complete — not approved for production deployment**.
+Status: **third isolated staging hardening checkpoint complete — not approved for production deployment**.
 
 ## Canonical destination
 
@@ -49,10 +49,10 @@ none of these operations targeted the CareMetric production app above:
 | Source baseline | merged canonical `main` at `67d9d5ee66aad222a712e6ba49d00461d0a68337` plus draft staging PR `#143` |
 | Frontend | deployed from a successful staging-id build using the `https://base44.app` backend origin; hosted root returns HTTP 200 |
 | PWA | hosted manifest preserves relative `id`, `start_url`, and `scope`; all four manifest icons and the Apple touch icon return HTTP 200 |
-| Entities | all `238 / 238` local entity names match staging; the pre-push comparison proved `0` staging-only schemas and exactly two candidate additions (`AgencyMembership`, `OutcomeComputationRun`), so the push could not delete a hosted schema |
+| Entities | all `238 / 238` local entity names match staging; the latest pre-push comparison proved `0` staging-only and `0` local-only schemas, so the push had no schema deletion or rename target |
 | Time zone | `America/New_York` is the default business/agency clock, giving Eastern Standard or Daylight Time as seasonally appropriate |
-| Data | only the staging owner account exists; privileged connector queries confirm zero Agencies, memberships, computation runs, outcome/KPI rows, scenario attempts, plan enrollments, recommendations, audit events, badges, leaderboard rows, and notification preferences after the probes |
-| Functions | all `249 / 249` local functions are deployed; the seven additions are narrowly scoped tenant, training, and reference-catalog brokers, and `computeOutcomeMeasures` is the only updated existing function |
+| Data | only the staging owner account exists; privileged connector queries confirm zero Agencies, Patients, Visits, memberships, computation runs, outcome/KPI rows, and every newly locked dormant entity after the probes |
+| Functions | all `252 / 252` local functions are deployed; the latest explicit deployment added the membership-lifecycle, published-outcome, and authorized-Visit brokers and updated only four reviewed functions |
 | Secrets | `SUPER_ADMIN_EMAIL` is the only staging secret; `INTERNAL_FN_SECRET` is deliberately absent, so a validly shaped outcome-job request stops with HTTP 500 before any privileged read or write |
 | Feature gates | no AgencySettings row exists; `oasis_response_schema_v2_enabled` therefore remains absent/default-off, the writer remains hard-paused, PDGM reimbursement remains source-disabled, and no outcome schedule was added |
 
@@ -83,8 +83,8 @@ file references are available only through the authorized packet function. The
 service-only PDGM case-mix, supply inventory/usage/prediction, low-stock alert,
 and skill-badge definitions are now fail-closed as well. Their backend consumers
 use service-role access; no browser consumer reads them directly. The remaining
-inventory is `20 / 238` schemas with no RLS, `27 / 238` permitting unrestricted
-mutations, and `47 / 238` permitting
+inventory is `20 / 238` schemas with no RLS, `26 / 238` permitting unrestricted
+mutations, and `35 / 238` permitting
 unrestricted reads. Those exact cohorts are hash-pinned so the debt
 cannot change without explicit review. Per-operation integrity, tenant-owned
 authority, and hosted authenticated workflow proofs remain production blockers.
@@ -109,8 +109,10 @@ The 2026-09-03 hardening checkpoint then added a service-owned
 canonical email, validates an active exact Agency, rejects duplicate or
 inconsistent membership rows, and ignores mutable custom User tenant/admin
 claims. This is the first tenant-authority phase, not a production-ready tenant
-system: provisioning, activation, revocation, agency stamping/backfill, and
-integration into every protected clinical path are still required. New
+system: the lifecycle broker can provision, activate, suspend, change, and
+revoke an exact membership, but datastore uniqueness/CAS, invitation and
+terminal-rehire workflows, operational agency provisioning, stamping/backfill,
+and integration into every protected clinical path are still required. New
 training/reference brokers remove browser-wide reads and direct evidence
 writes; scenario scoring and attempt ownership are derived server-side. The
 three newly authenticated functions initially missed the standard deactivated
@@ -122,10 +124,10 @@ The same checkpoint added append-only outcome attempts plus a single
 fingerprints, exact replay-cohort validation, staged readback, and final-claim
 revalidation. These changes prevent a failed run from being presented as the
 published result, but Base44 still provides no proved datastore uniqueness or
-compare-and-swap primitive. Concurrent writers, crash/lease recovery, stable
-source snapshots, and a publication-aware tenant reader therefore remain
-production blockers. The job is unscheduled and its staging internal secret is
-unset.
+compare-and-swap primitive. Concurrent writers, crash/lease recovery, and stable
+source snapshots remain production blockers. A publication-aware reader now
+exists but remains disconnected from the UI pending authenticated two-agency
+hosted proof. The job is unscheduled and its staging internal secret is unset.
 
 The PDGM candidate now includes source-pinned CY 2026 functional scoring for
 M1800 through M1860, the complete ten-flag M1033 risk calculation, threshold
@@ -136,7 +138,7 @@ comorbidity/timing assignment, official grouper parity, and golden payment
 cases remain incomplete, so the grouper still returns `complete:false` and no
 HIPPS code or reimbursement amount can be emitted.
 
-The second hosted deployment contains 238 schemas and 249 functions. Anonymous
+The second hosted deployment contained 238 schemas and 249 functions. Anonymous
 calls to the seven user-facing new functions returned HTTP 401; a validly
 shaped `computeOutcomeMeasures` call returned the expected missing-internal-
 secret HTTP 500. Direct anonymous lists of `AgencyMembership`,
@@ -146,12 +148,60 @@ Connector rechecks found zero rows in every changed evidence/outcome entity.
 The hosted root, both privacy-policy paths, manifest, and all four manifest
 icons return HTTP 200. The built bundle contains the staging app id and
 `https://base44.app`, contains no production CareMetric app id, preserves the
-relative PWA identity, and defaults to `America/New_York`. Current local release
-validation passes 2,055 core tests, 33 schema/contracts, 231 security tests, 47
-deduplication tests, and 950 component tests; all 249 backend functions
-transpile, ESLint passes, dependency audit has no high-severity findings, all
-four GitHub Action files pass actionlint, and the 36-item OASIS worksheet is
+relative PWA identity, and defaults to `America/New_York`. That checkpoint's
+local validation passed 2,055 core tests, 33 schema/contracts, 231 security
+tests, 47 deduplication tests, and 950 component tests; all 249 backend functions
+transpiled, ESLint passed, dependency audit had no high-severity findings, all
+four GitHub Action files passed actionlint, and the 36-item OASIS worksheet was
 current.
+
+The third staging checkpoint completes the next reviewed containment layer:
+
+- `manageAgencyMembership` owns versioned lifecycle transitions and rejects
+  duplicate/corrupt all-status membership sets, unsafe self/owner/peer changes,
+  stale authority, and noncommitting writes. Direct membership CRUD remains
+  fail-closed.
+- `getPublishedOutcomeMeasures` returns only one exactly reconciled published
+  run to an immutable active tenant authority. Writer and reader recompute a
+  deterministic per-row content hash, so copied provenance cannot hide changed
+  diagnosis, nested measure, or KPI content. The reader is intentionally not
+  connected to a production UI.
+- all five known browser/offline Visit-create paths use
+  `createAuthorizedVisit`. Tenant/user provenance is service-stamped, ordinary
+  users need pre-existing Patient access, and the legacy auto-assignment
+  function is an unconditional no-op so creating a Visit cannot grant Patient
+  PHI access.
+- offboarding is protected-owner-only, revokes and reconciles every revocable
+  membership before deactivating the User, and reactivation restores identity
+  only. A hosted anonymous probe found an uncaught auth rejection; the function
+  was corrected and now returns HTTP 401 before every privileged operation,
+  with a regression contract.
+- twelve zero-consumer reference/settings entities are now all-operation
+  fail-closed, reducing the pinned RLS cohorts to `20 / 26 / 35` for no-RLS,
+  mutation-open, and read-open respectively.
+
+Immediately before the latest schema push, the local and hosted staging
+inventories both contained the same 238 entity names. Connector queries found
+zero rows in all changed clinical, authority, outcome, and dormant entities.
+After deployment, hosted inventory reports 238 schemas, 252 functions, and only
+`SUPER_ADMIN_EMAIL`. Anonymous calls to `manageAgencyMembership`,
+`getPublishedOutcomeMeasures`, `createAuthorizedVisit`, `getMyTenantContext`,
+and `offboardUser` return HTTP 401. A validly shaped
+`computeOutcomeMeasures` request returns the expected missing-secret HTTP 500,
+and `autoAssignNurseToPatient` returns a static skipped response without reads
+or writes. Anonymous GETs for the 17 changed/evidence entities return `[]`, all
+17 shaped POSTs return HTTP 403, and privileged post-probe queries report zero
+residue. Root, both privacy aliases, manifest, and all four manifest icons
+return HTTP 200. The fresh bundle contains only the staging app id, uses
+`https://base44.app`, preserves relative PWA identity, and defaults to
+`America/New_York`.
+
+Current local validation passes 2,065 core tests, 34 schema/contracts, 297
+security tests, 47 deduplication tests, and 950 component tests (3,393 checks
+across the package groups); all 252 backend functions transpile and all 242
+shared-helper consumers match. ESLint, dependency audit, actionlint for all four
+workflows, the 36-item OASIS worksheet, the staging build, and `git diff
+--check` pass.
 
 The staging pass also removed mutable `account_type`/agency-profile privilege
 from the highest-risk service-role paths: dashboard and alert reads/mutations,
@@ -186,12 +236,15 @@ functions, or upload a native binary until all of these are complete:
 1. Continue validation in the separate nonproduction Base44 app. Exact entity
    and function inventory is now hosted, and anonymous-write denial is proved
    for the five critical OASIS/outcome/PDGM entities. The ignored legacy
-   mutation-key syntax is fully migrated, but `20` no-RLS schemas, `27`
-   mutation-open schemas, and `47` read-open schemas remain explicitly tracked
+   mutation-key syntax is fully migrated, but `20` no-RLS schemas, `26`
+   mutation-open schemas, and `35` read-open schemas remain explicitly tracked
    debt. Before production, replace those permissive policies with reviewed
    per-operation tenant rules and prove authenticated multi-user isolation,
    uploads, shared-patient workflows, and negative cross-tenant cases with at
-   least two agencies and owner/admin/clinician test users.
+   least two agencies and owner/admin/clinician test users. Membership lifecycle
+   and offboarding writes are intentionally restrictive but are still sequential
+   rather than transactional; add datastore CAS/uniqueness, partial-failure
+   audit/reconciliation, exact User-update readback, and a terminal rehire path.
 2. Keep `oasis_response_schema_v2_enabled` false. Complete named clinical SME
    review, patient-access enforcement, remaining consumer wiring, and hosted RLS
    proof before any agency activation. Source now locks `OASISAssessment` and
@@ -234,12 +287,15 @@ functions, or upload a native binary until all of these are complete:
      a direct owner/admin entity update;
    - operation-specific RLS for `PatientOutcomeMetric`, `AgencyKPI`, and
      `OutcomeComputationRun` is service-role-only and hosted anonymous denial is
-     proved; add and prove a publication-aware authorized server reader before
-     restoring any tenant outcome UI;
+     proved; the publication-aware authorized server reader now exists, but it
+     still needs authenticated two-agency hosted proof and deliberate UI
+     integration before any tenant outcome surface is restored;
    - provision and operate the new service-owned `AgencyMembership` authority,
-     then integrate it into every protected Patient/OASIS/Document workflow;
-     Phase 1 resolves tenant context but does not yet stamp or backfill clinical
-     rows, and Patient/OASIS admin-like RLS must still become tenant-bound;
+     finish invitation/rehire and datastore uniqueness guarantees, then
+     integrate it into every protected Patient/OASIS/Document workflow; the
+     lifecycle and tenant-context brokers exist but no staging tenant row has
+     been provisioned, clinical rows are not yet stamped/backfilled, and
+     Patient/OASIS admin-like RLS must still become tenant-bound;
    - replace the old global nightly invocation (`{}`) with secret-authenticated,
      one-agency requests carrying `{ agency_id, period_start, period_end, period_type }` for
      stable windows, including a defined rerun/retirement policy for windows
@@ -262,7 +318,12 @@ functions, or upload a native binary until all of these are complete:
      offset paging can still make one computation internally inconsistent; and
    - restore the OASIS Quality section and Reports outcome summary only through
      the proved tenant authorization boundary, with current calculation-version
-     and lifecycle filters. They intentionally perform no direct entity reads now.
+     and lifecycle filters. They intentionally perform no direct entity reads now;
+     and
+   - route Visit updates/deletes through a server broker that makes
+     `patient_id`, `agency_id`, and creator provenance immutable; backfill legacy
+     Visit provenance and prove the full Visit lifecycle under the two-agency
+     hosted matrix before any production publish.
 4. Keep all PennSync PDGM reimbursement amounts disabled. The candidate now
    fails closed with `paymentAvailable:false`, `totalPayment:null`,
    `caseMixWeight:null`, and an actionable **Unavailable — not $0** result in

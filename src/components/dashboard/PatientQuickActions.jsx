@@ -11,6 +11,7 @@ import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { toLocalISODate } from "@/lib/dateLocal";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
 
 export default function PatientQuickActions({ onActionComplete }) {
   const [showNewPatient, setShowNewPatient] = useState(false);
@@ -64,7 +65,7 @@ export default function PatientQuickActions({ onActionComplete }) {
   });
 
   const createVisitMutation = useMutation({
-    mutationFn: (data) => base44.entities.Visit.create(data),
+    mutationFn: async (data) => (await createAuthorizedVisit(data)).visit,
     onSuccess: () => {
       toast.success('Visit scheduled successfully!');
       setShowNewVisit(false);

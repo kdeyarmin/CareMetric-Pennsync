@@ -2,6 +2,19 @@
   "name": "Visit",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Server-stamped immutable tenant key copied from the authenticated creator's exact active AgencyMembership and the same-agency Patient. Legacy visits without this stamp are excluded from tenant-owned automation."
+    },
+    "created_by_user_id": {
+      "type": "string",
+      "description": "Server-stamped immutable built-in Base44 User id of the authenticated visit creator. This corroborates the platform created_by email for tenant automation."
+    },
+    "created_by_user_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Server-stamped normalized built-in Base44 User email paired with created_by_user_id. Tenant authorization and automation use this custom provenance field rather than trusting platform-managed created_by metadata."
+    },
     "patient_id": {
       "type": "string",
       "description": "Reference to Patient entity"
@@ -239,7 +252,7 @@
     "read": {
       "$or": [
         {
-          "created_by": "{{user.email}}"
+          "data.created_by_user_email_normalized": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -251,22 +264,11 @@
         }
       ]
     },
-    "create": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    },
+    "create": false,
     "update": {
       "$or": [
         {
-          "created_by": "{{user.email}}"
+          "data.created_by_user_email_normalized": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -278,7 +280,7 @@
     "delete": {
       "$or": [
         {
-          "created_by": "{{user.email}}"
+          "data.created_by_user_email_normalized": "{{user.email}}"
         },
         {
           "user_condition": {

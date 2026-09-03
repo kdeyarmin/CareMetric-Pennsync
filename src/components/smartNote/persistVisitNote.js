@@ -3,6 +3,7 @@ import { logActivity, ActivityActions } from "@/components/utils/activityLogger"
 import { toNoteConversionFields, deriveStructuredVisitFields } from "@/components/smartNote/compliance/coverageScore";
 import { buildVisitReportingFields, buildAuditFields } from "@/components/smartNote/compliance/reportingFields";
 import { toast } from "sonner";
+import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
 
 /**
  * Thrown when a save is attempted with no network. Its own type (rather than a
@@ -158,7 +159,7 @@ export async function persistVisitNote({
   };
   const visit = existingVisitId
     ? (await base44.entities.Visit.update(existingVisitId, visitFields), { id: existingVisitId })
-    : await base44.entities.Visit.create(visitFields);
+    : (await createAuthorizedVisit(visitFields)).visit;
 
   // Atomic-append the history entry server-side (see the re-save comment above);
   // created_by/created_at are stamped by the function from the caller's session.

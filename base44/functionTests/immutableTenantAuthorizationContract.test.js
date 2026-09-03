@@ -11,16 +11,35 @@ const functionUrl = new URL('../functions/getMyTenantContext/entry.ts', import.m
 const entityUrl = new URL('../entities/AgencyMembership.jsonc', import.meta.url);
 const wrapperUrl = new URL('../../src/functions/getMyTenantContext.js', import.meta.url);
 
-const membership = (overrides = {}) => ({
-  id: 'membership-a',
-  membership_key: 'agency-a:user-1',
-  agency_id: 'agency-a',
-  user_id: 'user-1',
-  user_email_normalized: 'member@example.com',
-  tenant_role: 'clinician',
-  status: 'active',
-  ...overrides,
-});
+const membership = (overrides = {}) => {
+  const row = {
+    id: 'membership-a',
+    membership_key: 'agency-a:user-1',
+    agency_id: 'agency-a',
+    user_id: 'user-1',
+    user_email_normalized: 'member@example.com',
+    tenant_role: 'clinician',
+    status: 'active',
+    created_by_user_id: 'owner-1',
+    last_transition_by_user_id: 'owner-1',
+    last_transition_by_email_normalized: 'owner@example.com',
+    last_transition_at: '2026-09-03T12:00:00.000Z',
+    last_transition_reason: 'Authorized lifecycle transition',
+    version: 1,
+    ...overrides,
+  };
+  if (
+    (row.status === 'active' || row.status === 'suspended')
+    && row.activated_at === undefined
+  ) {
+    row.activated_at = '2026-09-03T12:01:00.000Z';
+  }
+  if (row.status === 'revoked') {
+    if (row.revoked_at === undefined) row.revoked_at = '2026-09-03T12:02:00.000Z';
+    if (row.revocation_reason === undefined) row.revocation_reason = 'Revoked by test operator';
+  }
+  return row;
+};
 
 const agency = (overrides = {}) => ({
   id: 'agency-a',
@@ -111,6 +130,12 @@ test('AgencyMembership is a required service-owned authority entity', async () =
     'user_email_normalized',
     'tenant_role',
     'status',
+    'created_by_user_id',
+    'last_transition_by_user_id',
+    'last_transition_by_email_normalized',
+    'last_transition_at',
+    'last_transition_reason',
+    'version',
   ]) {
     assert.equal(schema.required.includes(field), true, field);
   }
@@ -145,7 +170,7 @@ test('an active exact membership resolves through exact Agency validation', asyn
 
   assert.equal(response.status, 200);
   assert.deepEqual(calls.membershipFilters, [[
-    { user_id: 'user-1', status: 'active' },
+    { user_id: 'user-1' },
     '-updated_date',
     100,
   ]]);
@@ -205,6 +230,20 @@ test('missing immutable built-in identity fails before service-role reads', asyn
   }
 });
 
+test('disabled, service, and explicitly unverified callers fail before service-role reads', async () => {
+  for (const user of [
+    { id: 'user-1', email: 'member@example.com', role: 'user', disabled: true },
+    { id: 'user-1', email: 'member@example.com', role: 'user', is_service: true },
+    { id: 'user-1', email: 'member@example.com', role: 'user', is_verified: false },
+  ]) {
+    const { handler, calls } = await loadHandler({ user });
+    const { response } = await invoke(handler);
+    assert.equal(response.status, 403);
+    assert.deepEqual(calls.membershipFilters, []);
+    assert.deepEqual(calls.agencyFilters, []);
+  }
+});
+
 test('inactive and service-filter-regression rows never authorize', async () => {
   const { handler, calls } = await loadHandler({
     membershipRows: [
@@ -257,6 +296,56 @@ test('duplicate active membership keys or agencies fail closed', async () => {
     assert.equal(response.status, 409);
     assert.deepEqual(calls.agencyFilters, []);
   }
+});
+
+test('inactive lifecycle duplicates cannot be hidden beside an active membership', async () => {
+  for (const duplicate of [
+    membership({ id: 'membership-revoked', status: 'revoked' }),
+    membership({ id: 'membership-suspended', status: 'suspended' }),
+    membership({ id: 'membership-pending', status: 'pending' }),
+  ]) {
+    const { handler, calls } = await loadHandler({
+      membershipRows: [membership(), duplicate],
+    });
+    const { response } = await invoke(handler, { agency_id: 'agency-a' });
+    assert.equal(response.status, 409);
+    assert.deepEqual(calls.agencyFilters, []);
+  }
+});
+
+test('all exact lifecycle rows require complete provenance, versions, and status timestamps', async () => {
+  const corruptRows = [
+    membership({ created_by_user_id: '' }),
+    membership({ last_transition_by_user_id: '' }),
+    membership({ last_transition_by_email_normalized: 'Owner@Example.com' }),
+    membership({ last_transition_at: 'invalid' }),
+    membership({ last_transition_reason: '' }),
+    membership({ version: 0 }),
+    membership({ version: 1.5 }),
+    membership({ status: 'active', activated_at: 'invalid' }),
+    membership({ status: 'suspended', activated_at: 'invalid' }),
+    membership({ status: 'revoked', revoked_at: 'invalid' }),
+    membership({ status: 'revoked', revocation_reason: '' }),
+    membership({ status: 'unknown' }),
+  ];
+  for (const corrupt of corruptRows) {
+    const { handler, calls } = await loadHandler({ membershipRows: [corrupt] });
+    const { response } = await invoke(handler);
+    assert.equal(response.status, 409);
+    assert.deepEqual(calls.agencyFilters, []);
+  }
+});
+
+test('a capped all-status membership scan fails closed', async () => {
+  const rows = Array.from({ length: 100 }, (_, index) => membership({
+    id: `membership-${index}`,
+    membership_key: `agency-${index}:user-1`,
+    agency_id: `agency-${index}`,
+  }));
+  const { handler, calls } = await loadHandler({ membershipRows: rows });
+  const { response } = await invoke(handler);
+  assert.equal(response.status, 409);
+  assert.deepEqual(calls.agencyFilters, []);
 });
 
 test('non-array membership and Agency provider results fail closed', async () => {

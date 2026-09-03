@@ -140,6 +140,78 @@ async function sha256Hex(value) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+// <<<BEGIN OUTCOME ROW CONTENT HASH V1>>>
+const PATIENT_OUTCOME_METRIC_CONTENT_FIELDS = Object.freeze([
+  'agency_id',
+  'outcome_computation_run_id',
+  'outcome_computation_attempt_id',
+  'generation_fingerprint',
+  'optional_fields_present',
+  'patient_id',
+  'episode_start',
+  'episode_end',
+  'discharge_disposition',
+  'primary_diagnosis',
+  'functional_improvement',
+  'internal_gg_18_item_raw_sum',
+  'measure_results',
+  'outcome_measure_source',
+  'input_response_schema_ids',
+  'source_assessment_ids',
+  'instrument_versions',
+  'calculation_version',
+]);
+const AGENCY_KPI_CONTENT_FIELDS = Object.freeze([
+  'agency_id',
+  'outcome_computation_run_id',
+  'outcome_computation_attempt_id',
+  'generation_fingerprint',
+  'is_current',
+  'metric_name',
+  'metric_category',
+  'period_type',
+  'period_start',
+  'period_end',
+  'metric_value',
+  'benchmark_value',
+  'unit',
+  'status',
+  'input_response_schema_ids',
+  'calculation_version',
+  'excluded_episode_count',
+  'contributing_factors',
+]);
+
+function canonicalOutcomeJsonValue(value) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('Outcome row content contains a non-finite number');
+    return value;
+  }
+  if (Array.isArray(value)) return value.map((item) => canonicalOutcomeJsonValue(item));
+  if (value && typeof value === 'object') {
+    const result = {};
+    for (const key of Object.keys(value).sort()) {
+      if (value[key] !== undefined) result[key] = canonicalOutcomeJsonValue(value[key]);
+    }
+    return result;
+  }
+  throw new Error('Outcome row content contains an unsupported value');
+}
+
+function canonicalOutcomeRowPayload(row, fields) {
+  const payload = {};
+  for (const field of fields) {
+    if (Object.hasOwn(row, field) && row[field] !== undefined) payload[field] = row[field];
+  }
+  return canonicalOutcomeJsonValue(payload);
+}
+
+async function outcomeRowContentHash(row, fields) {
+  return sha256Hex(JSON.stringify(canonicalOutcomeRowPayload(row, fields)));
+}
+// <<<END OUTCOME ROW CONTENT HASH V1>>>
+
 function toNum(v) {
   if (v === undefined || v === null || v === '') return null;
   const n = typeof v === 'number' ? v : parseInt(String(v).trim(), 10);
@@ -672,6 +744,7 @@ Deno.serve(async (req) => {
           entity: base44.asServiceRole.entities.PatientOutcomeMetric,
           count: row.patient_outcome_metric_count,
           label: 'PatientOutcomeMetric',
+          contentFields: PATIENT_OUTCOME_METRIC_CONTENT_FIELDS,
           keyOf: (item) => JSON.stringify([
             item.agency_id, item.patient_id, item.episode_start, item.episode_end,
           ]),
@@ -680,6 +753,7 @@ Deno.serve(async (req) => {
           entity: base44.asServiceRole.entities.AgencyKPI,
           count: row.agency_kpi_count,
           label: 'AgencyKPI',
+          contentFields: AGENCY_KPI_CONTENT_FIELDS,
           keyOf: (item) => JSON.stringify([
             item.agency_id,
             item.metric_name,
@@ -705,6 +779,20 @@ Deno.serve(async (req) => {
         if (scopedRows.some((item) =>
           item.generation_fingerprint !== row.generation_fingerprint)) {
           return `${cohort.label} published cohort contains a mismatched fingerprint`;
+        }
+        for (const item of scopedRows) {
+          if (!/^[a-f0-9]{64}$/.test(String(item.row_content_hash || ''))) {
+            return `${cohort.label} published cohort contains a missing or invalid row content hash`;
+          }
+          let recomputedHash;
+          try {
+            recomputedHash = await outcomeRowContentHash(item, cohort.contentFields);
+          } catch {
+            return `${cohort.label} published cohort contains unhashable row content`;
+          }
+          if (item.row_content_hash !== recomputedHash) {
+            return `${cohort.label} published cohort contains mutated row content`;
+          }
         }
         const keys = scopedRows.map(cohort.keyOf);
         if (scopedRows.length !== cohort.count || new Set(keys).size !== keys.length) {
@@ -1173,6 +1261,19 @@ Deno.serve(async (req) => {
     }));
     for (const payload of metricPayloads) payload.generation_fingerprint = generationFingerprint;
     for (const payload of stagedKpis) payload.generation_fingerprint = generationFingerprint;
+    // Bind every writer-owned domain/result/provenance value to this exact
+    // attempt. Base44-injected id/date/owner metadata is deliberately absent.
+    // The generation fingerprint is assigned first because it is itself
+    // provenance committed by each row hash.
+    for (const payload of metricPayloads) {
+      payload.row_content_hash = await outcomeRowContentHash(
+        payload,
+        PATIENT_OUTCOME_METRIC_CONTENT_FIELDS,
+      );
+    }
+    for (const payload of stagedKpis) {
+      payload.row_content_hash = await outcomeRowContentHash(payload, AGENCY_KPI_CONTENT_FIELDS);
+    }
 
     // All source reads and calculations finish before any derived row is
     // written. Rows are append-only and permanently staged; a failure halfway
@@ -1196,7 +1297,7 @@ Deno.serve(async (req) => {
     // tenant/run/attempt. The generation tag plus exact logical-key set makes a
     // missing, duplicated, or cross-run row fail closed.
     failureStage = 'reconcile_staged_generation';
-    const reconcileStagedRows = async (entity, expectedPayloads, keyOf, label) => {
+    const reconcileStagedRows = async (entity, expectedPayloads, keyOf, contentFields, label) => {
       const page = await fetchAllPages(entity, {
         agency_id: agencyId,
         outcome_computation_run_id: runId,
@@ -1215,6 +1316,20 @@ Deno.serve(async (req) => {
       if (rows.some((row) => row.generation_fingerprint !== generationFingerprint)) {
         throw new Error(`${label} staged-row fingerprint did not match the outcome plan`);
       }
+      const expectedHashes = new Map(expectedPayloads.map((payload) => [
+        keyOf(payload),
+        payload.row_content_hash,
+      ]));
+      for (const row of rows) {
+        const storedHash = String(row?.row_content_hash || '');
+        if (!/^[a-f0-9]{64}$/.test(storedHash)) {
+          throw new Error(`${label} staged row has a missing or invalid content hash`);
+        }
+        const recomputedHash = await outcomeRowContentHash(row, contentFields);
+        if (storedHash !== recomputedHash || storedHash !== expectedHashes.get(keyOf(row))) {
+          throw new Error(`${label} staged-row content did not match the outcome plan`);
+        }
+      }
       const expectedKeys = expectedPayloads.map(keyOf).sort();
       const actualKeys = rows.map(keyOf).sort();
       if (new Set(actualKeys).size !== actualKeys.length ||
@@ -1227,12 +1342,14 @@ Deno.serve(async (req) => {
         base44.asServiceRole.entities.PatientOutcomeMetric,
         metricPayloads,
         metricPlanKey,
+        PATIENT_OUTCOME_METRIC_CONTENT_FIELDS,
         'PatientOutcomeMetric',
       ),
       reconcileStagedRows(
         base44.asServiceRole.entities.AgencyKPI,
         stagedKpis,
         kpiPlanKey,
+        AGENCY_KPI_CONTENT_FIELDS,
         'AgencyKPI',
       ),
     ]);

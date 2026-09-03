@@ -20,7 +20,7 @@ function harness(queue = [], { online = true } = {}) {
   const order = [];
   const entities = {
     Visit: {
-      create: vi.fn(async (p) => { created.Visit.push(p); return { id: 'visit-1', ...p }; }),
+      create: vi.fn(async () => { throw new Error('direct Visit.create is disabled'); }),
       update: vi.fn(async () => ({})),
       filter: vi.fn(async () => []),
     },
@@ -33,11 +33,25 @@ function harness(queue = [], { online = true } = {}) {
       filter: vi.fn(async () => []),
     },
   };
+  const functions = {
+    invoke: vi.fn(async (name, payload) => {
+      if (name === 'createAuthorizedVisit') {
+        const existing = payload?.client_request_id
+          ? created.Visit.find((row) => row.client_request_id === payload.client_request_id)
+          : null;
+        if (existing) return { data: { created: false, visit: existing } };
+        const visit = { id: `visit-${created.Visit.length + 1}`, ...payload };
+        created.Visit.push(visit);
+        return { data: { created: true, visit } };
+      }
+      return { data: {} };
+    }),
+  };
   return {
     created,
     order,
     entities,
-    functions: { invoke: vi.fn(async () => ({ data: {} })) },
+    functions,
     getQueue: vi.fn(async () => queue),
     deleteDatabase: vi.fn(async () => { order.push('delete'); }),
     unregisterWorker: vi.fn(async () => {}),
@@ -114,7 +128,7 @@ describe('flushAndRetireOfflineQueue', () => {
 
   it('does not re-create a visit a previous interrupted run already wrote', async () => {
     const h = harness([{ action: 'CREATE_VISIT', payload: { client_request_id: 'req-1', patient_id: 'p1' } }]);
-    h.entities.Visit.filter.mockResolvedValue([{ id: 'visit-existing' }]);
+    h.created.Visit.push({ id: 'visit-existing', client_request_id: 'req-1', patient_id: 'p1' });
 
     const result = await flushAndRetireOfflineQueue(h);
 
@@ -172,7 +186,10 @@ describe('flushAndRetireOfflineQueue', () => {
   it('does NOT clear them when an upload fails part-way', async () => {
     mig.actions = [['CREATE_VISIT', { client_request_id: 'legacy-1', patient_id: 'p1' }]];
     const h = harness([]);
-    h.entities.Visit.create.mockImplementation(() => { throw new Error('server rejected'); });
+    h.functions.invoke.mockImplementation((name) => {
+      if (name === 'createAuthorizedVisit') throw new Error('server rejected');
+      return Promise.resolve({ data: {} });
+    });
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const result = await flushAndRetireOfflineQueue(h);

@@ -35,6 +35,23 @@ import { createHash } from 'node:crypto';
 import JSON5 from 'json5';
 
 const ENTITIES_DIR = join(dirname(fileURLToPath(import.meta.url)), 'entities');
+const BASE44_DIR = dirname(ENTITIES_DIR);
+const REPO_DIR = dirname(BASE44_DIR);
+
+const DORMANT_REFERENCE_ENTITY_NAMES = [
+  'AIKnowledgeBase',
+  'AIModelConfiguration',
+  'AgencyComplianceRule',
+  'CareSetting',
+  'DocumentationTemplate',
+  'FeaturePackage',
+  'InvitationSettings',
+  'NewFeature',
+  'NoteTemplate',
+  'ProviderSettings',
+  'SharedPhraseLibrary',
+  'SubscriptionSettings',
+];
 
 const entityFiles = readdirSync(ENTITIES_DIR).filter((f) => f.endsWith('.jsonc'));
 
@@ -219,6 +236,7 @@ test('entity-level RLS uses operation-specific mutation keys', () => {
 
 test('reviewed dormant and service-only entities remain fail-closed', () => {
   const names = [
+    ...DORMANT_REFERENCE_ENTITY_NAMES,
     'AgencyMessage', 'AIInsightFeedback', 'AILearningPattern', 'AlertTriggerRule',
     'AppointmentForm', 'Billing', 'CitationLibrary', 'ClinicalScenario',
     'FaxCoverTemplate', 'FaxDocument', 'FaxHistory', 'FaxNotification',
@@ -243,6 +261,40 @@ test('reviewed dormant and service-only entities remain fail-closed', () => {
     }
   }
   assert.equal(bad.length, 0, `Fail-closed entity drift:\n${bad.join('\n')}`);
+});
+
+test('locked dormant reference entities have no production-code consumer', () => {
+  const codeFiles = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(path);
+      } else if (
+        /\.(?:js|jsx|ts|tsx|mjs)$/.test(entry.name)
+        && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)
+      ) {
+        codeFiles.push(path);
+      }
+    }
+  };
+  visit(join(REPO_DIR, 'src'));
+  visit(join(BASE44_DIR, 'functions'));
+
+  const bad = [];
+  for (const path of codeFiles) {
+    const source = readFileSync(path, 'utf8');
+    for (const name of DORMANT_REFERENCE_ENTITY_NAMES) {
+      if (new RegExp(`\\b${name}\\b`).test(source)) {
+        bad.push(`${path.slice(REPO_DIR.length + 1)}: ${name}`);
+      }
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `A locked dormant entity gained a production consumer; add an authorized broker before use:\n${bad.join('\n')}`,
+  );
 });
 
 test('entity-level RLS prefixes custom record fields with data.', () => {
@@ -330,8 +382,8 @@ test('known RLS debt cannot grow or change without explicit review', () => {
   }
   const expected = {
     noRls: [20, '49ecafee8efec9044a7656d905e510995c226aed839edf0e1fa19cc62b25d2af'],
-    openMutation: [27, '27bbb098f21caa3b92b31035abb0ada91dac88940204e9ccab60fafec3497c03'],
-    openRead: [47, 'd1c024d06afcbb9e930f218aec3ef0ac6b8a9cfbc62227f147a5454be2ade4d6'],
+    openMutation: [26, 'bb2728153cf03ffd56874208aeb77b89ad0f3fcc2df10ca51704e9bf906513f7'],
+    openRead: [35, 'e0f19e3ed34d83d9814d2e08b915d70452b680b4806390bed517827a2b209f07'],
   };
   const bad = [];
   for (const [kind, names] of Object.entries(inventories)) {

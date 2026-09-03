@@ -75,6 +75,7 @@ import { logActivity, ActivityActions } from "@/components/utils/activityLogger"
 import UserActivityPanel from "@/components/admin/UserActivityPanel";
 import { buildOffboardInvokeArgs } from "@/components/admin/runUserOffboard";
 import { STAFF_ROLE_OPTIONS, getStaffRole, staffRoleLabel } from "@/lib/roles";
+import { isSuperAdmin } from "@/lib/superAdmin";
 
 export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -103,6 +104,7 @@ export default function UserManagement() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+  const canManageOffboarding = isSuperAdmin(currentUser);
 
   const { data: allUsers = [], isLoading } = useQuery({
     queryKey: ['allUsersManagement', agencyQueryKey(currentUser)],
@@ -281,6 +283,10 @@ export default function UserManagement() {
 
   const confirmToggleActive = async () => {
     if (!selectedUser) return;
+    if (!canManageOffboarding) {
+      toast.error('Offboarding is restricted to the protected platform owner while tenant membership migration is in progress.');
+      return;
+    }
     const enabling = selectedUser.is_active === false;
     try {
       const args = buildOffboardInvokeArgs({
@@ -308,7 +314,11 @@ export default function UserManagement() {
         revocation_complete: payload.complete !== false,
       });
       if (enabling) {
-        toast.success('User reactivated.');
+        toast.warning(
+          payload.message
+            || 'User identity reactivated without tenant authority. A separate owner-controlled rehire workflow is required.',
+          { duration: 10000 },
+        );
       } else if (payload.complete === false) {
         // The account is deactivated, but some access was not revoked. Telling
         // the admin this succeeded would leave live PHI access unnoticed.
@@ -792,9 +802,13 @@ export default function UserManagement() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleToggleActive(user)}
-                              disabled={currentUser.email === user.email}
+                              disabled={currentUser.email === user.email || !canManageOffboarding}
                               className={`min-h-[44px] w-10 sm:w-auto p-2 ${isActive ? 'text-red-600 hover:text-red-700' : 'text-emerald-600 hover:text-emerald-700'}`}
-                              title={isActive ? 'Disable / offboard user' : 'Enable user'}
+                              title={!canManageOffboarding
+                                ? 'Protected platform owner only while tenant membership migration is in progress'
+                                : isActive
+                                  ? 'Disable / offboard user'
+                                  : 'Reactivate identity without tenant authority'}
                             >
                               {isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
                             </Button>
@@ -946,9 +960,9 @@ export default function UserManagement() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {selectedUser?.is_active === false ? (
-                <>Are you sure you want to enable <strong>{selectedUser?.full_name}</strong>? They will be able to access the system again.</>
+                <>Reactivate the identity for <strong>{selectedUser?.full_name}</strong>? This does <strong>not</strong> restore tenant membership or patient access. Revoked memberships remain terminal until a separate owner-controlled rehire workflow is available.</>
               ) : (
-                <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This deactivates the account, unassigns patients, releases the work number, clears on-call shifts, and records audit metadata. Platform-level rejection of inactive sessions still requires hosted RLS verification (LR-01).</>
+                <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This first revokes every validated tenant membership, then deactivates the account, unassigns patients, releases the work number, clears on-call shifts, and records audit metadata. Platform-level rejection of inactive sessions still requires hosted RLS verification (LR-01).</>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -958,7 +972,7 @@ export default function UserManagement() {
               onClick={confirmToggleActive}
               className={selectedUser?.is_active === false ? 'bg-emerald-600' : 'bg-red-600'}
             >
-              {selectedUser?.is_active === false ? 'Enable' : 'Offboard'}
+              {selectedUser?.is_active === false ? 'Reactivate Identity Only' : 'Offboard'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
