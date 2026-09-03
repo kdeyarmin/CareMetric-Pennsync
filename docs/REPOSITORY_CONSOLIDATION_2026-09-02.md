@@ -1,6 +1,6 @@
 # PennSync repository consolidation
 
-Status: **nonproduction staging synchronization validated — draft source PR and production remain blocked**.
+Status: **P0 mixed-release containment required — staging candidate validated; production remains blocked**.
 
 ## Canonical destination
 
@@ -36,6 +36,31 @@ These identifiers must not be renamed or moved during source consolidation:
 The installed mobile apps continue to use their existing store records. Adding
 PennSync domains later must point those domains at the same CareMetric Base44
 app; it must not change the permanent origin embedded in the iOS shell.
+
+## Immediate production containment (P0, identified 2026-09-03)
+
+Read-only comparison of the live old frontend baseline (`c545729`) with the
+hosted schemas auto-synced by `67d9d5e` found a real compatibility incident.
+The 14 entity-schema changes contain no field deletion and add no required
+field, but eight change RLS behavior. No production record was inspected, so the
+analysis establishes reachable risk, not proof that a user already triggered it.
+
+| Area | Live mixed-release risk |
+| --- | --- |
+| Patient merge — P0 | The old browser merge can fail to reassign now-service-only OASISAssessment, OASISUpload, and PatientOutcomeMetric rows, swallow those errors, then archive the duplicate Patient. This can strand protected rows on an archived chart |
+| OASIS saves/reviews — high | Old direct OASIS creates/updates now fail closed. Some paths perform another action first, so a failed save can leave changed Patient care type, an unbound uploaded PDF/LLM cost, or an audit entry claiming an approval/edit that did not persist |
+| PDGM configuration — high/medium | The old browser catches the now-denied PDGMRateConfig read and silently treats it as no config, causing at least eight consumers to use built-in defaults. If the old save function is live, a save could overwrite configuration; the `67d9d5e` function hard-pauses that write, but hosted function revision remains unverified |
+| KPI/outcome display — medium | Direct AgencyKPI and PatientOutcomeMetric reads now fail closed. The outcome view shows an error and the KPI dashboard degrades to missing values; this is availability loss rather than a write-corruption path |
+| New Patient rows — migration debt | Patient creation still works because `agency_id` is optional and Patient RLS is unchanged, but the old frontend does not stamp it, so new charts created during the mixed window require audited tenant backfill |
+
+Until containment is complete, operators must not use production patient merge,
+OASIS save/upload/review, PDGM rate settings, or rate-dependent decisions. A
+blanket schema rollback is not recommended because it would reopen PHI-sensitive
+writes and formerly unrestricted reads. The safest technical containment is an
+urgent, explicitly approved roll-forward of the matching `67d9d5e` fail-closed
+frontend (or equivalent route-level maintenance), followed by logs, smoke tests,
+and rollback monitoring. No production roll-forward or rollback has been
+performed by this staging work.
 
 ## Nonproduction hosted-validation evidence (updated 2026-09-03)
 
