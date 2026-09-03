@@ -1,6 +1,6 @@
 # PennSync repository consolidation
 
-Status: **latest source-only hardening checkpoint complete — hosted validation and production remain blocked**.
+Status: **nonproduction staging synchronization validated — draft source PR and production remain blocked**.
 
 ## Canonical destination
 
@@ -39,22 +39,28 @@ app; it must not change the permanent origin embedded in the iOS shell.
 
 ## Nonproduction hosted-validation evidence (updated 2026-09-03)
 
-The first release gate is now in progress in a separate Base44 application;
-none of these operations targeted the CareMetric production app above:
+The first release gate has now been synchronized and validated in a separate
+Base44 application. The table below is the authoritative current state. The
+paragraphs after it are the chronological audit trail, so their intermediate
+inventory counts and “not yet deployed” statements describe those earlier
+checkpoints rather than the current staging state. None of these operations
+targeted the CareMetric production app.
 
-| Surface | Hosted staging evidence |
+| Surface | Current hosted staging evidence |
 | --- | --- |
 | Base44 app | `caremetric-pennsync-staging-2026-09-02`, `6a9881683dc68a0bd54f1ef7` |
 | Staging URL | `https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/` |
-| Source baseline | merged canonical `main` at `67d9d5ee66aad222a712e6ba49d00461d0a68337` plus draft staging PR `#143` |
-| Frontend | deployed from a successful staging-id build using the `https://base44.app` backend origin; hosted root returns HTTP 200 |
-| PWA | hosted manifest preserves relative `id`, `start_url`, and `scope`; all four manifest icons and the Apple touch icon return HTTP 200 |
-| Entities | staging now contains 239 schemas after the additive `PatientNoteHistoryEntry` push; the pre-push comparison found no staging-only schema and exactly that one local-only addition, so there was no deletion or rename target |
+| Runtime candidate | Draft PR `#143` code baseline `655624f749c1c94542e6eb616a31b1c9c1135eef`; merged canonical `main` baseline remains `67d9d5ee66aad222a712e6ba49d00461d0a68337` |
+| Frontend | The complete canonical candidate is synchronized with staging-specific app configuration; frozen install, staging-ID build, and the managed Vite root all pass |
+| PWA/native identity | Relative manifest `id`, `start_url`, and `scope`; four manifest icons retained; Apple bundle `com.caremetric.ai`; Google package `com.caremetic.ai`; iOS WebView origin `https://caremetricai.base44.app/` |
+| Entities | All 241 source schemas are hosted and semantically exact; `PatientCareTeamAssignment`, `DocumentTenantBinding`, and the required `OutcomeComputationRun.transition_version` / `result_summary_hash` fields are present; direct CRUD remains denied on the new authority/binding schemas |
+| Functions | 258 reviewed functions are hosted and byte-exact. Exactly two source functions are deliberately absent: `computeOutcomeMeasures` and `managePatientCareTeamAssignment` |
+| Data | Rechecks confirm zero staging rows in Agency, AgencyMembership, Patient, PatientCareTeamAssignment, DocumentTenantBinding, OutcomeComputationRun, PatientOutcomeMetric, and AgencyKPI; no migration or production data write occurred |
+| Secrets/schedules | `INTERNAL_FN_SECRET` remains absent and no outcome schedule was added |
+| Feature gates | No AgencySettings row exists; OASIS v2 remains default-off, `saveOasisResponses` remains hard-paused, PDGM reimbursement remains source-disabled, and both withheld functions remain unwired |
 | Time zone | `America/New_York` is the default business/agency clock, giving Eastern Standard or Daylight Time as seasonally appropriate |
-| Data | only the staging owner account exists; privileged connector queries confirm zero Agencies, AgencyMemberships, Patients, Visits, Documents, PatientNoteHistoryEntries, computation runs, and outcome/KPI rows after the probes |
-| Functions | hosted inventory contains 258 functions at the latest checkpoint; the two newest explicit deployments are the reviewed, read-only `getAuthorizedPatient` and `listAuthorizedPatients` brokers |
-| Secrets | `SUPER_ADMIN_EMAIL` is the only staging secret; `INTERNAL_FN_SECRET` is deliberately absent, so a validly shaped outcome-job request stops with HTTP 500 before any privileged read or write |
-| Feature gates | no AgencySettings row exists; `oasis_response_schema_v2_enabled` therefore remains absent/default-off, the writer remains hard-paused, PDGM reimbursement remains source-disabled, and no outcome schedule was added |
+| Validation | 2,077 core, 34 schema/contract, 414 security, 47 deduplication, and 1,005 component tests pass (3,577 package checks); a broader 616-test function/security sweep, all 260 function transpiles, all 244 shared-helper comparisons, type diagnostics, ESLint, actionlint, OASIS worksheet, and staging build also pass |
+| Production/store safety | Production Base44 app `694ec16e72e01b60d22f7cbf`, domains, data/schema, scheduler, secrets, native binaries, and Apple/Google records were not changed; both existing store listings were still live on 2026-09-03 |
 
 The initial entity deployment exposed unsupported `$contains` array-membership
 RLS in Message and SharedDocument. Draft PR `#143` replaces it with Base44's
@@ -309,7 +315,7 @@ connector queries again reported zero Agency, AgencyMembership, Patient, Visit,
 Document, PatientNoteHistoryEntry, OutcomeComputationRun,
 PatientOutcomeMetric, and AgencyKPI rows.
 
-Source also now contains an unwired, undeployed `DocumentTenantBinding` schema
+An earlier source checkpoint added an unwired `DocumentTenantBinding` schema
 with all direct operations denied and a purpose-bound
 `createAuthorizedDocument` upload/create broker. It validates finite multipart
 files, resolves exact immutable actor/membership/Agency/optional-Patient
@@ -319,10 +325,11 @@ not a production-ready Document cutover: datastore uniqueness/transactions,
 orphan upload reconciliation, private or signed delivery, storage-host
 allowlisting, full parsing and malware scanning, existing-row backfill, and all
 legacy read/write migrations remain open. Neither the schema nor function was
-deployed to staging.
+deployed at that checkpoint; both are now present in staging, but remain unwired
+and cannot be treated as a production-ready Document cutover.
 
-An additive `PatientCareTeamAssignment` authority foundation is also present
-only in source. All direct entity operations are denied, browser callsites are
+An additive `PatientCareTeamAssignment` authority foundation was initially
+present only in source. All direct entity operations are denied, browser callsites are
 absent, and every mutation is hard-paused by the literal
 `CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED = false` before client creation,
 authentication, or service-role access; no environment switch can open it. The
@@ -334,8 +341,9 @@ target User, membership, or Patient no longer exists. This does not make grants
 deployable: Base44 exposes no documented atomic create-if-absent, unique schema
 constraint, or multi-entity transaction. Hosted uniqueness, cross-entity
 authorization atomicity, two-request CAS proof, legacy backfill/quarantine, and
-patient-merge collision handling remain blockers. The entity and broker were
-not deployed or wired.
+patient-merge collision handling remain blockers. The schema is now hosted with
+direct CRUD denied; its mutation broker is still deliberately withheld and
+unwired.
 
 The next source-only checkpoint strengthens outcome publication and the exact
 Patient read path without changing the hosted app. `OutcomeComputationRun` now
@@ -366,15 +374,13 @@ reject sparse, extra, or ill-typed projections. No SPA callsite was added.
 `listAuthorizedPatients` did not gain assignment discovery; its only change is
 shared membership-integrity and safe-logging parity.
 
-Fresh read-only staging queries found zero Agency, AgencyMembership, Patient,
-OutcomeComputationRun, PatientOutcomeMetric, and AgencyKPI rows.
-`PatientCareTeamAssignment` returned upstream not found, consistent with its
-source-only schema never having been pushed. `OutcomeComputationRun` therefore
-has no current staging rows to normalize, but `transition_version` remains a
-migration gate: recheck the run count immediately before any staging schema
-push. If any row exists, stop and use a reviewed two-phase optional-field
-backfill and verification before making the field required. This checkpoint
-pushed no schema or function and changed no staging or production data,
+At that source-only checkpoint, read-only staging queries found zero Agency,
+AgencyMembership, Patient, OutcomeComputationRun, PatientOutcomeMetric, and
+AgencyKPI rows, and `PatientCareTeamAssignment` was not yet hosted. The later
+full synchronization rechecked zero rows, added the assignment schema, and made
+`transition_version` required without a backfill because the run table was
+still empty. That earlier checkpoint pushed no schema or function and changed no
+staging or production data,
 production app, domain, scheduler, secret, OASIS-v2/PDGM gate, native binary,
 or app-store record.
 
@@ -442,11 +448,11 @@ functions, or upload a native binary until all of these are complete:
    roster read brokers are deployed to staging but intentionally unwired;
    Patient read RLS remains broad and consumers still use direct entity access
    plus client filtering. Migrate every read consumer, prove authenticated
-   multi-row hosted keyset traversal and concurrency behavior. The immutable
-   user-id care-team assignment schema and mutation broker remain source-only
-   and hard-paused, while the exact chart broker consumes one validated
-   assignment only in source. Deploy and prove the immutable assignment schema
-   and exact broker, add assignment-aware roster discovery, and design
+   multi-row hosted keyset traversal and concurrency behavior. The immutable user-id care-team assignment schema is now hosted with direct
+   CRUD denied, and the exact chart broker is hosted; the mutation broker remains
+   deliberately withheld, unwired, and hard-paused. Prove the hosted assignment
+   schema and chart broker with real staging users, then add assignment-aware
+   roster discovery and design
    assignment-version-aware cache invalidation because `membership_version`
    alone cannot represent assignment revocation. Add hosted grant
    uniqueness/create-if-absent, multi-entity authorization atomicity,
@@ -484,10 +490,11 @@ functions, or upload a native binary until all of these are complete:
    meanwhile. The emitted rates are unadjusted internal proxies, not official
    CMS results. Deployment is still blocked until all of the following are
    completed:
-   - recheck the staging `OutcomeComputationRun` count immediately before the
-     required `transition_version` schema push. If it is no longer zero, use a
-     reviewed two-phase optional-field backfill and verification before making
-     the field required;
+   - the staging `OutcomeComputationRun` count was rechecked at zero immediately
+     before and after the required `transition_version` / `result_summary_hash`
+     schema push, so no row backfill was needed. Repeat the zero-row check before
+     any future incompatible schema change and use a reviewed two-phase backfill
+     if rows ever exist;
    - prove on hosted Base44 that a full-writer-preimage `updateMany` predicate
      using `$exists: false`, with one `$set` plus `$inc`, is atomic and returns
      reliable `success`, `updated`, and `has_more` values under competing
