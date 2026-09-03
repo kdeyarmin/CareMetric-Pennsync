@@ -4,8 +4,9 @@
  * `/join` and `/signer` (and `/followup`) are capability links: possession of
  * the high-entropy token in the URL is the authorization, so an external
  * patient or physician must never be bounced to the login screen. `/privacy`
- * is the canonical pre-auth privacy policy; `/privacypolicy` is the public
- * compatibility URL already registered with the Apple listing.
+ * is the canonical pre-auth privacy policy; `/privacy-policy` is its public
+ * hyphenated alias, and `/privacypolicy` is the compatibility URL already
+ * registered with the Apple listing.
  *
  * The match is on the first path SEGMENT. A `startsWith('/join')` prefix test
  * also matches '/joinsomething'. Keep every intentionally public compatibility
@@ -16,6 +17,7 @@ export const PUBLIC_TOKEN_SEGMENTS = Object.freeze([
   'signer',
   'followup',
   'privacy',
+  'privacy-policy',
   'privacypolicy',
   'consent',
 ]);
