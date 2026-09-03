@@ -2,28 +2,16 @@ import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Search, FileText, Download, Trash2, Eye, Calendar, User, Tag, Filter, Grid, List, Brain, AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
+import { Search, FileText, Download, Eye, Calendar, User, Tag, Filter, Grid, List, Brain, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateLocal";
 import { openExternalUrl } from "@/components/utils/security";
 import DocumentAIAnalysis from "./DocumentAIAnalysis";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 const CATEGORIES = [
   { value: "all", label: "All Categories" },
@@ -39,9 +27,8 @@ const CATEGORIES = [
   { value: "other", label: "Other" }
 ];
 
-const DocumentCard = ({ doc, onDocumentClick, getPatientName, getCategoryLabel, getCategoryColor, deleteMutation, showPatientInfo }) => {
+const DocumentCard = ({ doc, onDocumentClick, getPatientName, getCategoryLabel, getCategoryColor, showPatientInfo }) => {
   const [showAnalysis, setShowAnalysis] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const hasCriticalFlags = doc.ai_analysis?.critical_flags?.some(f => f.severity === 'critical' || f.severity === 'high');
 
   return (
@@ -130,33 +117,6 @@ const DocumentCard = ({ doc, onDocumentClick, getPatientName, getCategoryLabel, 
           >
             <Download className="w-4 h-4" />
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label="Delete document"
-            onClick={() => setShowDeleteConfirm(true)}
-          >
-            <Trash2 className="w-4 h-4 text-red-600" />
-          </Button>
-          <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Document</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete "{doc.title}"? This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-red-600 hover:bg-red-700"
-                  onClick={() => deleteMutation.mutate(doc.id)}
-                >
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </div>
 
         <div className="mt-3 pt-3 border-t text-xs text-slate-500">
@@ -171,8 +131,6 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [viewMode, setViewMode] = useState("grid");
-
-  const queryClient = useQueryClient();
 
   const { data: documents = [], isLoading } = useAgencyScopedQuery({
     // Row limit is part of the identity — DocumentFaxSender reads 100 rows
@@ -193,15 +151,6 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
     sort: '-updated_date',
     limit: 2000,
     enabled: showPatientInfo && !patientId,
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Document.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
-      queryClient.invalidateQueries({ queryKey: ['patient-documents'] });
-      toast.success("Document deleted");
-    }
   });
 
   const getPatientName = (patientId) => {
@@ -305,7 +254,6 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
               getPatientName={getPatientName}
               getCategoryLabel={getCategoryLabel}
               getCategoryColor={getCategoryColor}
-              deleteMutation={deleteMutation}
               showPatientInfo={showPatientInfo}
             />
           ))}
