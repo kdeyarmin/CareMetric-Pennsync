@@ -15,8 +15,9 @@
 // below feeds the SAME strict parseCaseMixWeightsCsv path as a hand-imported
 // file — all 432 groups must map or nothing is stored.
 //
-// Reference table for analysis only (see CaseMixWeightsUpload): payment
-// estimates remain from calculatePDGM; LUPA thresholds are informational.
+// Reference table for validation only. PennSync payment output is unavailable;
+// the retired calculatePDGM approximation is not an alternative payment path.
+// LUPA thresholds remain informational and are not wired to visit counting.
 //
 // Pure + offline (unit-tested with `node --test`); no React, no Base44 SDK.
 

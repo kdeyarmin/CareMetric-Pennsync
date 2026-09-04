@@ -6,8 +6,16 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { transpileTs } from "../../tools-transpile-ts.mjs";
 
-async function loadHandler() {
+async function loadHandler({ flipGlobalFlagOnly = false } = {}) {
   let source = await readFile(new URL("../functions/calculatePDGM/entry.ts", import.meta.url), "utf8");
+  if (flipGlobalFlagOnly) {
+    const flipped = source.replace(
+      "const PDGM_REIMBURSEMENT_ENABLED = false;",
+      "const PDGM_REIMBURSEMENT_ENABLED = true;",
+    );
+    assert.notEqual(flipped, source, "test must flip only the raw global flag");
+    source = flipped;
+  }
   source = source.replace(
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     "const createClientFromRequest = globalThis.__pdgmMakeClient;",
@@ -77,6 +85,28 @@ test("global PDGM gate refuses every reimbursement result with explicit nulls", 
   assert.equal(json.financialImpact, null);
   assert.equal(json.wageIndexApplied, null);
   assert.match(json.message, /unavailable.*not a \$0 result/i);
+});
+
+test("independent retirement lock still blocks a global-flag-only source edit", async () => {
+  const { handler, calls } = await loadHandler({ flipGlobalFlagOnly: true });
+  const { status, json } = await call(handler, {
+    is_official: true,
+    pdgmData: { totalPayment: 999999, caseMixWeight: 9.99 },
+  });
+
+  assert.equal(status, 409);
+  assert.equal(json.featureEnabled, false);
+  assert.equal(json.paymentAvailable, false);
+  assert.equal(json.totalPayment, null);
+  assert.equal(json.original.totalPayment, null);
+  assert.equal(json.rateBasis.isOfficial, false);
+  assert.deepEqual(calls, {
+    client: 0,
+    auth: 0,
+    requestJson: 0,
+    agencySettings: 0,
+    rateConfig: 0,
+  });
 });
 
 test("disabled handler returns before client, auth, body parsing, or service-role reads", async () => {

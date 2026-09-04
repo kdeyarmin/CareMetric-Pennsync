@@ -58,7 +58,9 @@ import VitalSignsTrendDashboard from "../components/patient/VitalSignsTrendDashb
 import PatientTelehealthPanel from "../components/telehealth/PatientTelehealthPanel";
 import CareTeamMessaging from "../components/messaging/CareTeamMessaging";
 import PatientContactActions from "../components/voice/PatientContactActions";
-import { PDGM_REIMBURSEMENT_ENABLED } from "@/components/pdgm/pdgmAvailability";
+// A global-flag-only edit cannot mount legacy OASIS/PDGM scoring surfaces on an
+// otherwise active Patient Details page.
+import { PDGM_LEGACY_SURFACES_ENABLED } from "@/components/pdgm/pdgmAvailability";
 import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
 
 // [Force recompile: 2026-06-29 12:15:00 UTC]
@@ -698,7 +700,7 @@ export default function PatientDetails() {
                 patient={patient}
                 noteText={latestNoteText}
               />
-              {PDGM_REIMBURSEMENT_ENABLED && oasisTriggerVisit && (
+              {PDGM_LEGACY_SURFACES_ENABLED && oasisTriggerVisit && (
                 <AIGeneratedOASISAssessment
                   patientId={patientId}
                   visitId={oasisTriggerVisit.id}
@@ -709,7 +711,7 @@ export default function PatientDetails() {
                   }}
                 />
               )}
-              {PDGM_REIMBURSEMENT_ENABLED && (
+              {PDGM_LEGACY_SURFACES_ENABLED && (
                 <AIProactiveOASISAssistant patientId={patientId} autoAnalyze={false} />
               )}
               <AIComplianceAuditor
@@ -791,7 +793,7 @@ export default function PatientDetails() {
       </Tabs>
 
       {/* OASIS Generation Prompt */}
-      {PDGM_REIMBURSEMENT_ENABLED && showOASISPrompt && oasisTriggerVisit && (
+      {PDGM_LEGACY_SURFACES_ENABLED && showOASISPrompt && oasisTriggerVisit && (
         <Alert className="mb-6 bg-navy-50 border-navy-300">
           <Sparkles className="w-4 h-4 text-navy-600" />
           <AlertDescription>

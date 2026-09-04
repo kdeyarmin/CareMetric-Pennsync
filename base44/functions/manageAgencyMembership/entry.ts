@@ -3,11 +3,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 /**
  * Service-owned lifecycle for immutable tenant membership.
  *
- * A protected platform owner can bootstrap the first membership without already
- * holding one and is the only actor allowed to provision pending memberships
- * until an exact agency-bound UserInvitation workflow is integrated. Every other
- * caller must hold exactly one active agency_admin membership for the requested
- * agency. Custom User agency/account fields never participate in authorization.
+ * A protected platform owner can bootstrap the first membership for another User
+ * without already holding one and is the only actor allowed to provision pending
+ * memberships until an exact agency-bound UserInvitation workflow is integrated.
+ * The protected owner identity itself cannot hold a tenant membership. Every
+ * other caller must hold exactly one active agency_admin membership for the
+ * requested agency. Custom User agency/account fields never participate in
+ * authorization.
  */
 
 const ACTIONS = new Set(['inspect', 'provision', 'activate', 'suspend', 'revoke', 'change_role']);
@@ -33,6 +35,40 @@ const MEMBERSHIP_SCAN_LIMIT = 100;
 const EXACT_RECORD_SCAN_LIMIT = 10;
 const MAX_IDENTIFIER_LENGTH = 200;
 const MAX_REASON_LENGTH = 500;
+
+// Every application-owned AgencyMembership field that must survive a lifecycle
+// write unless that exact field is part of the requested transition. Base44
+// entity updates are last-write-wins, so this snapshot comparison is deliberately
+// a pre-write/re-read guard plus post-write reconciliation, not a claim of atomic
+// datastore CAS. True conditional-write semantics remain a hosted release blocker.
+const MEMBERSHIP_WRITER_FIELDS = [
+  'id',
+  'membership_key',
+  'agency_id',
+  'user_id',
+  'user_email_normalized',
+  'tenant_role',
+  'status',
+  'invitation_id',
+  'created_by_user_id',
+  'last_transition_by_user_id',
+  'last_transition_by_email_normalized',
+  'last_transition_at',
+  'last_transition_reason',
+  'activated_at',
+  'revoked_at',
+  'revocation_reason',
+  'version',
+] as const;
+
+const TARGET_ENABLEMENT_FIELDS = [
+  'id',
+  'role',
+  'is_active',
+  'disabled',
+  'is_service',
+  'is_verified',
+] as const;
 
 class PublicError extends Error {
   status: number;
@@ -83,6 +119,13 @@ function isProtectedPlatformOwner(user: Record<string, any>) {
 function isProtectedOwnerIdentity(user: Record<string, any>) {
   const configuredEmail = canonicalEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
   return !!configuredEmail && canonicalEmail(user.email) === configuredEmail;
+}
+
+function callerCanManageMemberships(user: Record<string, any>) {
+  return user.is_active !== false
+    && user.disabled !== true
+    && user.is_service !== true
+    && user.is_verified !== false;
 }
 
 async function parseRequest(req: Request) {
@@ -296,6 +339,55 @@ function transitionMetadata(actorId: string, actorEmail: string, reason: string,
   };
 }
 
+function matchesMembershipSnapshot(
+  before: Record<string, any>,
+  after: Record<string, any>,
+  expectedChanges: Record<string, any> = {},
+) {
+  return MEMBERSHIP_WRITER_FIELDS.every((field) => {
+    const expectedValue = Object.prototype.hasOwnProperty.call(expectedChanges, field)
+      ? expectedChanges[field]
+      : before[field];
+    return after[field] === expectedValue;
+  });
+}
+
+async function recheckTargetPreimage(
+  entities: Record<string, any>,
+  before: Record<string, any>,
+) {
+  const current = await loadExactMembership(entities, before.agency_id, before.user_id);
+  if (!current || !matchesMembershipSnapshot(before, current)) {
+    throw new PublicError(409, 'Membership changed; reload before retrying');
+  }
+}
+
+function targetCanReceiveMembership(user: Record<string, any>) {
+  return user.role === 'user'
+    && user.is_active !== false
+    && user.disabled !== true
+    && user.is_service !== true
+    && user.is_verified !== false;
+}
+
+async function recheckEnablingContext(
+  entities: Record<string, any>,
+  beforeAgency: Record<string, any>,
+  beforeUser: Record<string, any>,
+  expectedEmail: string,
+) {
+  const currentAgency = await loadExactAgency(entities, beforeAgency.id);
+  const currentUser = await loadExactUser(entities, beforeUser.id, expectedEmail);
+  if (
+    currentAgency.status !== beforeAgency.status
+    || !ENABLED_AGENCY_STATUSES.has(currentAgency.status)
+    || TARGET_ENABLEMENT_FIELDS.some((field) => currentUser[field] !== beforeUser[field])
+    || !targetCanReceiveMembership(currentUser)
+  ) {
+    throw new PublicError(409, 'Membership enablement authority changed; reload before retrying');
+  }
+}
+
 async function reconcileTransition(
   entities: Record<string, any>,
   before: Record<string, any>,
@@ -305,21 +397,38 @@ async function reconcileTransition(
   if (
     !after
     || after.id !== before.id
-    || Object.entries(expected).some(([field, value]) => after[field] !== value)
+    || !matchesMembershipSnapshot(before, after, expected)
   ) {
     throw new PublicError(409, 'Membership transition could not be reconciled');
   }
   return after;
 }
 
+// This last-moment auth recheck only narrows the authorization race window. It
+// is not an atomic auth/datastore transaction and does not provide entity CAS.
+// Hosted conditional-write plus authorization-transaction semantics remain a
+// release blocker.
 async function recheckCallerAuthority(
+  base44: Record<string, any>,
   entities: Record<string, any>,
+  expectedOwner: boolean,
   expected: Record<string, any> | null,
   agencyId: string,
   callerId: string,
   callerEmail: string,
 ) {
-  if (!expected) return;
+  const currentCaller = await base44.auth.me().catch(() => null);
+  if (
+    !currentCaller
+    || exactIdentifier(currentCaller.id) !== callerId
+    || canonicalEmail(currentCaller.email) !== callerEmail
+    || !callerCanManageMemberships(currentCaller)
+    || isProtectedPlatformOwner(currentCaller) !== expectedOwner
+  ) {
+    throw new PublicError(403, 'Caller authority changed; reload before retrying');
+  }
+  if (expectedOwner) return;
+  if (!expected) throw new Error('Agency administrator authority snapshot is missing');
   const current = await loadExactMembership(entities, agencyId, callerId);
   if (
     !current
@@ -329,23 +438,7 @@ async function recheckCallerAuthority(
   ) {
     throw new PublicError(403, 'Agency administrator authority changed; reload before retrying');
   }
-  const stableFields = [
-    'id',
-    'membership_key',
-    'agency_id',
-    'user_id',
-    'user_email_normalized',
-    'tenant_role',
-    'status',
-    'created_by_user_id',
-    'activated_at',
-    'last_transition_by_user_id',
-    'last_transition_by_email_normalized',
-    'last_transition_at',
-    'last_transition_reason',
-    'version',
-  ];
-  if (stableFields.some((field) => current[field] !== expected[field])) {
+  if (!matchesMembershipSnapshot(expected, current)) {
     throw new PublicError(403, 'Agency administrator authority changed; reload before retrying');
   }
 }
@@ -364,7 +457,7 @@ Deno.serve(async (req) => {
     if (caller.is_active === false) {
       return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
     }
-    if (caller.disabled === true || caller.is_service === true || caller.is_verified === false) {
+    if (!callerCanManageMemberships(caller)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     const callerId = exactIdentifier(caller.id);
@@ -404,9 +497,8 @@ Deno.serve(async (req) => {
       input.targetUserId,
       input.targetUserEmail,
     );
-    const targetIsPlatformOwner = isProtectedPlatformOwner(targetUser);
-    if (!callerIsOwner && isProtectedOwnerIdentity(targetUser)) {
-      throw new PublicError(403, 'Only the protected platform owner may manage this identity');
+    if (isProtectedOwnerIdentity(targetUser)) {
+      throw new PublicError(403, 'Protected platform owner cannot hold tenant memberships');
     }
 
     const current = await loadExactMembership(entities, input.agencyId, input.targetUserId);
@@ -427,19 +519,22 @@ Deno.serve(async (req) => {
     }
     if (
       (input.action === 'provision' || input.action === 'activate' || input.action === 'change_role')
-      && (
-        (!targetIsPlatformOwner && targetUser.role !== 'user')
-        || targetUser.is_active === false
-        || targetUser.disabled === true
-        || targetUser.is_service === true
-        || targetUser.is_verified === false
-      )
+      && !targetCanReceiveMembership(targetUser)
     ) {
       throw new PublicError(409, 'Target User is deactivated');
     }
 
     if (input.action === 'inspect') {
       if (!current) throw new PublicError(404, 'Membership not found');
+      await recheckCallerAuthority(
+        base44,
+        entities,
+        callerIsOwner,
+        callerAuthority,
+        input.agencyId,
+        callerId,
+        callerEmail,
+      );
       return success(current, input.action, true);
     }
 
@@ -455,10 +550,35 @@ Deno.serve(async (req) => {
           && current.user_email_normalized === input.targetUserEmail
           && current.tenant_role === input.tenantRole
         ) {
+          await recheckCallerAuthority(
+            base44,
+            entities,
+            callerIsOwner,
+            callerAuthority,
+            input.agencyId,
+            callerId,
+            callerEmail,
+          );
           return success(current, input.action, true);
         }
         throw new PublicError(409, 'A membership already exists for this User and Agency');
       }
+
+      await recheckEnablingContext(
+        entities,
+        agency,
+        targetUser,
+        input.targetUserEmail,
+      );
+      await recheckCallerAuthority(
+        base44,
+        entities,
+        callerIsOwner,
+        callerAuthority,
+        input.agencyId,
+        callerId,
+        callerEmail,
+      );
 
       const created = await entities.AgencyMembership.create({
         membership_key: `${input.agencyId}:${input.targetUserId}`,
@@ -500,7 +620,18 @@ Deno.serve(async (req) => {
       if (!emailMatchesCurrentUser) {
         throw new PublicError(409, 'Membership email integrity requires protected reconciliation');
       }
-      if (current.tenant_role === input.tenantRole) return success(current, input.action, true);
+      if (current.tenant_role === input.tenantRole) {
+        await recheckCallerAuthority(
+          base44,
+          entities,
+          callerIsOwner,
+          callerAuthority,
+          input.agencyId,
+          callerId,
+          callerEmail,
+        );
+        return success(current, input.action, true);
+      }
       requireVersionCapacity(current);
       requireExpectedVersion(current, input.expectedVersion);
       const expected = {
@@ -508,8 +639,17 @@ Deno.serve(async (req) => {
         version: current.version + 1,
         ...metadata,
       };
-      await recheckCallerAuthority(
+      await recheckEnablingContext(
         entities,
+        agency,
+        targetUser,
+        input.targetUserEmail,
+      );
+      await recheckTargetPreimage(entities, current);
+      await recheckCallerAuthority(
+        base44,
+        entities,
+        callerIsOwner,
         callerAuthority,
         input.agencyId,
         callerId,
@@ -526,6 +666,15 @@ Deno.serve(async (req) => {
         ? 'suspended'
         : 'revoked';
     if (current.status === desiredStatus && emailMatchesCurrentUser) {
+      await recheckCallerAuthority(
+        base44,
+        entities,
+        callerIsOwner,
+        callerAuthority,
+        input.agencyId,
+        callerId,
+        callerEmail,
+      );
       return success(current, input.action, true);
     }
     if (input.action === 'activate') {
@@ -553,8 +702,19 @@ Deno.serve(async (req) => {
       ...(input.action === 'revoke' ? { revoked_at: now, revocation_reason: transitionReason } : {}),
       ...metadata,
     };
+    if (input.action === 'activate') {
+      await recheckEnablingContext(
+        entities,
+        agency,
+        targetUser,
+        input.targetUserEmail,
+      );
+    }
+    await recheckTargetPreimage(entities, current);
     await recheckCallerAuthority(
+      base44,
       entities,
+      callerIsOwner,
       callerAuthority,
       input.agencyId,
       callerId,

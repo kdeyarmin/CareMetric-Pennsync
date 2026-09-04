@@ -275,7 +275,7 @@ export function assignComorbidityAdjustment(secondaryDiagnoses, comorbidity) {
  *  explicit and unconditional prevents a table lookup from being mistaken for
  *  a CMS-valid, billable group. */
 export const UNSUPPORTED_CMS_GROUPING_BEHAVIORS = Object.freeze([
-  "CMS date-effective grouper version selection is not implemented",
+  "CMS date-effective grouper version selection is not wired into groupPeriod",
   "CMS diagnosis validity, code-first, manifestation, and SDX1 promotion rules are not implemented",
   "CMS comorbidity diagnosis and same-subchapter exclusion rules are not implemented",
   "CMS timing and admission-source sequence validation are not implemented",

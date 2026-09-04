@@ -363,21 +363,31 @@ async function loadAuthority(
   if (!userId || !normalizedEmail) throw new PublicError(403, 'Forbidden');
 
   const entities = base44.asServiceRole.entities;
-  const memberships = validateMembershipRows(
-    requireRows(
-      await entities.AgencyMembership.filter(
-        { user_id: userId },
-        '-updated_date',
-        MEMBERSHIP_SCAN_LIMIT,
-      ),
-      'AgencyMembership.filter',
+  const isPlatformOwner = isProtectedPlatformOwner(user);
+  const rawMemberships = requireRows(
+    await entities.AgencyMembership.filter(
+      { user_id: userId },
+      '-updated_date',
+      MEMBERSHIP_SCAN_LIMIT,
     ),
-    userId,
-    normalizedEmail,
+    'AgencyMembership.filter',
   );
+  if (isPlatformOwner) {
+    if (rawMemberships.length >= MEMBERSHIP_SCAN_LIMIT) {
+      throw new PublicError(409, 'Tenant membership is ambiguous');
+    }
+    if (rawMemberships.some((row) => row?.user_id !== userId)) {
+      throw new PublicError(409, 'Tenant membership query scope could not be verified');
+    }
+    if (rawMemberships.length !== 0) {
+      throw new PublicError(409, 'Platform owner tenant membership must not exist');
+    }
+  }
+  const memberships = isPlatformOwner
+    ? []
+    : validateMembershipRows(rawMemberships, userId, normalizedEmail);
   const active = memberships.filter((row) => row.status === 'active');
   const selected = active.find((row) => row.agency_id === agencyId);
-  const isPlatformOwner = isProtectedPlatformOwner(user);
   if (!selected && !isPlatformOwner) {
     throw new PublicError(403, 'No active membership for agency');
   }

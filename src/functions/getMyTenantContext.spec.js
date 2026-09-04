@@ -37,6 +37,14 @@ describe('getMyTenantContext wrapper', () => {
     });
   });
 
+  it('rejects membership-backed context that also claims platform-owner authority', async () => {
+    invoke.mockResolvedValue({
+      data: { tenant_context: memberContext({ is_platform_owner: true }) },
+    });
+
+    await expect(getMyTenantContext({ agencyId: 'agency-a' })).rejects.toThrow(/integrity/);
+  });
+
   it('accepts only a fully null membership identity for an unscoped owner', async () => {
     invoke.mockResolvedValue({
       tenant_context: {

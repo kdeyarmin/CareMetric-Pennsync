@@ -245,6 +245,7 @@ describe('useScopedPatients', () => {
     ]));
 
     const { result } = renderHook(() => useScopedPatients({
+      agencyId: 'agency-a',
       status: 'active',
       sort: 'first_name',
       limit: 100,
@@ -266,6 +267,21 @@ describe('useScopedPatients', () => {
     expect(patientList).not.toHaveBeenCalled();
     expect(patientFilter).not.toHaveBeenCalled();
     expect(userList).not.toHaveBeenCalled();
+  });
+
+  it('omits the selector for server resolution instead of trusting User.agency_id', async () => {
+    authMe.mockResolvedValueOnce({
+      id: 'user-a', role: 'admin', agency_id: 'attacker-controlled-agency',
+    });
+    listAuthorized.mockResolvedValueOnce(authorizedPage([]));
+
+    renderHook(() => useScopedPatients({ readMode: 'authorized-roster' }), { wrapper });
+
+    await waitFor(() => expect(listAuthorized).toHaveBeenCalled());
+    expect(getTenantContext).toHaveBeenCalledWith({});
+    expect(listAuthorized).toHaveBeenCalledWith(expect.objectContaining({
+      agencyId: 'agency-a',
+    }));
   });
 
   it('walks every keyset page before sorting and applying the UI limit', async () => {
@@ -310,7 +326,9 @@ describe('useScopedPatients', () => {
   });
 
   it('fails closed instead of falling back when no agency is selected', async () => {
-    authMe.mockResolvedValueOnce({ id: 'owner-a', role: 'admin' });
+    authMe.mockResolvedValueOnce({
+      id: 'owner-a', role: 'admin', agency_id: 'mutable-owner-fallback',
+    });
     getTenantContext.mockResolvedValueOnce({
       tenant_context: { ...TENANT_CONTEXT, agency_id: null },
     });
@@ -321,6 +339,7 @@ describe('useScopedPatients', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error.message).toMatch(/Select an agency/);
+    expect(getTenantContext).toHaveBeenCalledWith({});
     expect(result.current.data).toEqual([]);
     expect(listAuthorized).not.toHaveBeenCalled();
     expect(patientList).not.toHaveBeenCalled();
@@ -359,6 +378,7 @@ describe('useScopedPatients', () => {
       { readMode: 'authorized-roster', sort: 'date_of_birth' },
       { readMode: 'authorized-roster', status: 'archived' },
       { readMode: 'authorized-roster', limit: 10001 },
+      { readMode: 'authorized-roster', agencyId: '$ne' },
     ]) {
       expect(() => renderHook(() => useScopedPatients(input), { wrapper })).toThrow();
     }

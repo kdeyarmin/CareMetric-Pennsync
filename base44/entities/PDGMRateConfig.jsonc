@@ -4,7 +4,7 @@
   "properties": {
     "label": {
       "type": "string",
-      "description": "Human label for this rate set, e.g. 'CY2025 Official CMS'."
+      "description": "Human label for this retired reference rate set. A label never makes the values official or payment-eligible."
     },
     "effective_year": {
       "type": "string",
@@ -13,19 +13,19 @@
     "is_official": {
       "type": "boolean",
       "default": false,
-      "description": "When true, the admin has entered their official CMS numbers, so calculatePDGM treats the result as authoritative rather than an estimate."
+      "description": "Deprecated legacy marker retained for data compatibility only. It is ignored for calculation and must remain false; no stored flag can authenticate or enable PDGM payment output."
     },
     "rates": {
       "type": "object",
-      "description": "Editable PDGM rate numbers. Shape mirrors DEFAULT_PDGM_RATES in src/components/pdgm/pdgmRates.js: { basePaymentRate, clinicalGroupWeights, functionalThresholds, functionalMultipliers, comorbidityMultipliers }. Any omitted value falls back to the built-in default, so a partial override is safe."
+      "description": "Retired factorized reference values retained for data compatibility. Shape mirrors DEFAULT_PDGM_RATES in src/components/pdgm/pdgmRates.js. These values and partial overrides are not CMS HHGS inputs and cannot produce payment output."
     },
     "icd10_clinical_groups": {
       "type": "object",
-      "description": "Editable ICD-10 (prefix) -> clinical-group map used to assign the PDGM clinical group from the principal diagnosis. Longest matching prefix wins. REPLACE semantics: when non-empty it is used verbatim (supports add/edit/remove); empty/unset falls back to the built-in default map (DEFAULT_ICD10_CLINICAL_GROUPS)."
+      "description": "Retired illustrative ICD-10 prefix map retained for data compatibility. It is not the CMS HHGS diagnosis logic and cannot produce a billable clinical-group assignment."
     },
     "case_mix_weight_table": {
       "type": "object",
-      "description": "REFERENCE-ONLY official CMS 432-group case-mix weight table, parsed from the agency's CMS CSV by caseMixWeightsLoader.js (which reports unmappable rows and never guesses). Shape: { payment_year, source, uploaded_at, uploaded_by_email, groups, rows } where rows is the { [caseMixKey]: { weight, hipps?, lupaThreshold? } } map pdgmGrouper.js consumes. Per the pdgmGrouper header this table must NEVER produce a second reimbursement figure: it feeds only the admin-only HIPPS/weight reconciliation preview, payment estimates remain from calculatePDGM, and LUPA thresholds are informational display only (no visit counting, no alerts)."
+      "description": "REFERENCE-ONLY CMS 432-group case-mix table parsed by caseMixWeightsLoader.js. It cannot select a group or produce money without complete date-effective HHGS logic. The legacy calculatePDGM approximation is retired; LUPA thresholds are informational only and are not wired to visit counting."
     },
     "wage_index_table": {
       "type": "object",

@@ -27,7 +27,7 @@ const SRC = readFileSync(
 test('the caller must still be an active account', () => {
   assert.match(
     SRC,
-    /currentUser\.is_active === false/,
+    /currentUser\.is_active !== true/,
     'offboardUser must reject a deactivated caller; without this an offboarded '
       + 'admin keeps a working session and can drive this function.',
   );
@@ -96,13 +96,23 @@ test('an incomplete sweep is reported to the caller, not just logged', () => {
   );
 });
 
-test('the client exposes offboarding only to the protected owner and does not promise restored authority', () => {
+test('the client exposes offboarding only to the protected owner and cannot invoke reactivation', () => {
   const client = readFileSync(join(process.cwd(), 'src/pages/UserManagement.jsx'), 'utf8');
   assert.match(client, /import \{ isSuperAdmin \} from ["']@\/lib\/superAdmin["']/, 'UI must use the protected owner helper');
   assert.match(client, /const canManageOffboarding = isSuperAdmin\(currentUser\)/, 'UI gate must require the protected owner');
-  assert.match(client, /disabled=\{currentUser\.email === user\.email \|\| !canManageOffboarding\}/, 'ordinary admins must not receive an actionable offboard control');
-  assert.match(client, /does <strong>not<\/strong> restore tenant membership or patient access/, 'reactivation dialog must disclose that tenant authority stays revoked');
-  assert.doesNotMatch(client, /They will be able to access the system again/, 'reactivation must not promise restored system access');
+  assert.match(client, /disabled=\{!isActive \|\| currentUser\.email === user\.email \|\| !canManageOffboarding\}/, 'inactive accounts and ordinary admins must not receive an actionable status control');
+  assert.match(client, /Reactivation temporarily unavailable pending retirement of legacy PHI grants/, 'inactive-account control must explain the hard pause');
+  assert.doesNotMatch(client, /Reactivate Identity Only/, 'the confirmation dialog must not offer reactivation');
+});
+
+test('reactivation is hard-paused before Base44 client creation while source remains preserved', () => {
+  const pause = SRC.indexOf("if (action === 'reactivate')");
+  const clientCreation = SRC.indexOf('const base44 = createClientFromRequest(req)');
+  const preservedSource = SRC.indexOf('async function reactivateUser');
+  assert.ok(pause !== -1 && pause < clientCreation, 'reactivation must return 503 before client creation');
+  assert.ok(preservedSource > clientCreation, 'the dormant implementation source must remain available for review');
+  assert.match(SRC.slice(pause, clientCreation), /USER_REACTIVATION_PAUSED/);
+  assert.match(SRC.slice(pause, clientCreation), /status: 503/);
 });
 
 test('the patient sweep filters server-side instead of scanning every patient', () => {
@@ -162,12 +172,22 @@ const membership = (overrides = {}) => {
 async function loadRuntime({
   caller = OWNER,
   authMeError = null,
+  authMutationOnRead = null,
   users = [TARGET, OWNER],
   memberships = [membership()],
   superAdminEmail = 'owner@example.test',
   membershipNoopIds = [],
   membershipThrowId = null,
   ignoreMembershipFilters = false,
+  membershipMutationOnRead = null,
+  userPreimageMutation = null,
+  userUpdateNoop = false,
+  userUpdateThrows = false,
+  userUpdateThrowsAfterCommit = false,
+  userUpdateCollateralMutation = null,
+  freshUserReadObjects = false,
+  sweepRows = {},
+  sweepNoopEntities = [],
 } = {}) {
   let source = await readFile(
     join(process.cwd(), 'base44/functions/offboardUser/entry.ts'),
@@ -186,44 +206,95 @@ async function loadRuntime({
   const state = {
     users: users.map((row) => ({ ...row })),
     memberships: memberships.map((row) => ({ ...row })),
+    sweeps: Object.fromEntries([
+      'Patient',
+      'PhoneNumber',
+      'OnCallShift',
+      'UserInvitation',
+      'ScheduledSms',
+      'ScheduledFax',
+      'ScheduledSignatureReminder',
+    ].map((name) => [
+      name,
+      (sweepRows[name] || []).map((row) => structuredClone(row)),
+    ])),
   };
   const calls = {
+    clientCreations: 0,
+    authReads: 0,
     userFilters: [],
     userUpdates: [],
     membershipFilters: [],
     membershipUpdates: [],
     sweepFilters: [],
+    sweepUpdates: [],
     activityCreates: [],
     events: [],
   };
-  const matches = (row, query) =>
-    Object.entries(query || {}).every(([key, value]) => row?.[key] === value);
+  const matches = (row, query) => Object.entries(query || {}).every(([key, value]) => (
+    Array.isArray(row?.[key]) && !Array.isArray(value)
+      ? row[key].includes(value)
+      : row?.[key] === value
+  ));
+  let targetUserReads = 0;
+  let membershipReads = 0;
+  let authUser = { ...caller };
   const sweepEntity = (name) => ({
-    filter: async (...args) => {
-      calls.sweepFilters.push({ name, args });
-      return [];
+    filter: async (query, sort, limit) => {
+      calls.sweepFilters.push({ name, args: [query, sort, limit] });
+      const rows = state.sweeps[name].filter((row) => matches(row, query));
+      return rows.slice(0, limit);
     },
-    update: async () => {
-      throw new Error(`${name}.update should not run for an empty sweep`);
+    update: async (id, payload) => {
+      calls.sweepUpdates.push({ name, id, payload: { ...payload } });
+      const index = state.sweeps[name].findIndex((row) => row.id === id);
+      if (!sweepNoopEntities.includes(name) && index !== -1) {
+        state.sweeps[name][index] = { ...state.sweeps[name][index], ...payload };
+      }
+      return state.sweeps[name][index];
     },
   });
   const entities = {
     User: {
       filter: async (query, sort, limit) => {
         calls.userFilters.push({ query, sort, limit });
-        return state.users.filter((row) => matches(row, query)).slice(0, limit);
+        if (query?.id === 'target-1') {
+          targetUserReads += 1;
+          if (targetUserReads === 2 && userPreimageMutation) {
+            const index = state.users.findIndex((row) => row.id === 'target-1');
+            if (index !== -1) {
+              state.users[index] = { ...state.users[index], ...userPreimageMutation };
+            }
+          }
+        }
+        const rows = state.users.filter((row) => matches(row, query)).slice(0, limit);
+        return freshUserReadObjects ? rows.map((row) => structuredClone(row)) : rows;
       },
       update: async (id, payload) => {
         calls.events.push(`User.update:${id}`);
         calls.userUpdates.push({ id, payload: { ...payload } });
+        if (userUpdateThrows) throw new Error('simulated User update failure');
         const index = state.users.findIndex((row) => row.id === id);
-        if (index !== -1) state.users[index] = { ...state.users[index], ...payload };
+        if (!userUpdateNoop && index !== -1) {
+          state.users[index] = {
+            ...state.users[index],
+            ...payload,
+            ...(userUpdateCollateralMutation || {}),
+          };
+        }
+        if (userUpdateThrowsAfterCommit) {
+          throw new Error('simulated response loss after User update');
+        }
         return state.users[index];
       },
     },
     AgencyMembership: {
       filter: async (query, sort, limit) => {
         calls.membershipFilters.push({ query, sort, limit });
+        membershipReads += 1;
+        if (membershipMutationOnRead?.read === membershipReads) {
+          state.memberships.push(structuredClone(membershipMutationOnRead.row));
+        }
         const rows = ignoreMembershipFilters
           ? state.memberships
           : state.memberships.filter((row) => matches(row, query));
@@ -257,15 +328,22 @@ async function loadRuntime({
   const client = {
     auth: {
       me: async () => {
+        calls.authReads += 1;
         if (authMeError) throw authMeError;
-        return caller;
+        if (authMutationOnRead?.read === calls.authReads) {
+          authUser = { ...authUser, ...authMutationOnRead.patch };
+        }
+        return authUser;
       },
     },
     asServiceRole: { entities },
   };
 
   let handler;
-  globalThis.__offboardMakeClient = () => client;
+  globalThis.__offboardMakeClient = () => {
+    calls.clientCreations += 1;
+    return client;
+  };
   globalThis.Deno = {
     serve: (candidate) => { handler = candidate; },
     env: { get: (name) => (name === 'SUPER_ADMIN_EMAIL' ? superAdminEmail : undefined) },
@@ -289,21 +367,45 @@ async function invokeRuntime(handler, body) {
   return { response, json: await response.json() };
 }
 
-test('offboard and reactivate deny every non-owner before service-role reads', async () => {
-  for (const body of [
-    { action: 'offboard', user_id: 'target-1', reason: 'Employment ended' },
-    { action: 'reactivate', user_id: 'target-1' },
-  ]) {
-    const runtime = await loadRuntime({
-      caller: { ...OWNER, id: 'other-admin', email: 'other@example.test' },
-    });
-    const result = await invokeRuntime(runtime.handler, body);
-    assert.equal(result.response.status, 403);
-    assert.equal(runtime.calls.userFilters.length, 0);
-    assert.equal(runtime.calls.membershipFilters.length, 0);
-    assert.equal(runtime.calls.userUpdates.length, 0);
-    assert.equal(runtime.calls.membershipUpdates.length, 0);
-  }
+test('offboard denies every non-owner before service-role reads', async () => {
+  const runtime = await loadRuntime({
+    caller: { ...OWNER, id: 'other-admin', email: 'other@example.test' },
+  });
+  const result = await invokeRuntime(runtime.handler, {
+    action: 'offboard',
+    user_id: 'target-1',
+    reason: 'Employment ended',
+  });
+  assert.equal(result.response.status, 403);
+  assert.equal(runtime.calls.userFilters.length, 0);
+  assert.equal(runtime.calls.membershipFilters.length, 0);
+  assert.equal(runtime.calls.userUpdates.length, 0);
+  assert.equal(runtime.calls.membershipUpdates.length, 0);
+});
+
+test('reactivation returns controlled 503 before client creation, privileged reads, or writes', async () => {
+  const runtime = await loadRuntime({
+    users: [{ ...TARGET, is_active: false }, OWNER],
+    memberships: [membership({ status: 'revoked' })],
+  });
+  const result = await invokeRuntime(runtime.handler, {
+    action: 'reactivate',
+    user_id: 'target-1',
+  });
+  assert.equal(result.response.status, 503);
+  assert.deepEqual(result.json, {
+    error: 'User reactivation is temporarily unavailable pending retirement of legacy PHI grants',
+    code: 'USER_REACTIVATION_PAUSED',
+  });
+  assert.equal(runtime.calls.clientCreations, 0);
+  assert.equal(runtime.calls.userFilters.length, 0);
+  assert.equal(runtime.calls.membershipFilters.length, 0);
+  assert.equal(runtime.calls.userUpdates.length, 0);
+  assert.equal(runtime.calls.membershipUpdates.length, 0);
+  assert.equal(runtime.calls.sweepFilters.length, 0);
+  assert.equal(runtime.calls.sweepUpdates.length, 0);
+  assert.equal(runtime.calls.activityCreates.length, 0);
+  assert.equal(runtime.state.users[0].is_active, false);
 });
 
 test('an anonymous auth rejection returns 401 before every service-role read or write', async () => {
@@ -445,33 +547,378 @@ test('all revocable memberships reconcile before User deactivation or cleanup', 
   assert.equal(membershipUpdateIndexes.every((index) => index < userUpdateIndex), true);
 });
 
-test('reactivation never restores tenant authority', async () => {
-  const revoked = await loadRuntime({
-    users: [{ ...TARGET, is_active: false }, OWNER],
-    memberships: [membership({ status: 'revoked' })],
+test('offboarding revalidates the exact active nonservice owner at every mutation phase', async () => {
+  const cases = [
+    {
+      name: 'membership mutation',
+      read: 2,
+      patch: { id: 'different-owner' },
+      membershipUpdates: 0,
+      userUpdates: 0,
+      targetActive: true,
+      message: /before membership revocation/,
+    },
+    {
+      name: 'User deactivation',
+      read: 3,
+      patch: { is_active: false },
+      membershipUpdates: 1,
+      userUpdates: 0,
+      targetActive: true,
+      message: /before User deactivation/,
+    },
+    {
+      name: 'legacy cleanup',
+      read: 4,
+      patch: { is_service: true },
+      membershipUpdates: 1,
+      userUpdates: 1,
+      targetActive: false,
+      message: /before legacy cleanup/,
+    },
+  ];
+  for (const scenario of cases) {
+    const runtime = await loadRuntime({
+      authMutationOnRead: { read: scenario.read, patch: scenario.patch },
+    });
+    const result = await invokeRuntime(runtime.handler, {
+      action: 'offboard',
+      user_id: 'target-1',
+      reason: 'Employment ended',
+    });
+    assert.equal(result.response.status, 403, scenario.name);
+    assert.match(result.json.error, scenario.message, scenario.name);
+    assert.equal(runtime.calls.membershipUpdates.length, scenario.membershipUpdates, scenario.name);
+    assert.equal(runtime.calls.userUpdates.length, scenario.userUpdates, scenario.name);
+    assert.equal(runtime.state.users[0].is_active, scenario.targetActive, scenario.name);
+    assert.equal(runtime.calls.sweepFilters.length, 0, scenario.name);
+    assert.equal(runtime.calls.sweepUpdates.length, 0, scenario.name);
+    assert.equal(runtime.calls.activityCreates.length, 0, scenario.name);
+  }
+});
+
+test('offboarding never reports success when the exact built-in User write is absent or corrupt', async () => {
+  for (const options of [
+    { userUpdateNoop: true },
+    { userUpdateCollateralMutation: { role: 'admin' } },
+    { userUpdateCollateralMutation: { unexpected_capability: 'elevated' } },
+    { userUpdateThrows: true },
+  ]) {
+    const runtime = await loadRuntime(options);
+    const result = await invokeRuntime(runtime.handler, {
+      action: 'offboard',
+      user_id: 'target-1',
+      reason: 'Employment ended',
+    });
+    assert.equal(result.response.status, 409);
+    assert.match(result.json.error, /memberships remain revoked/);
+    assert.equal(runtime.state.memberships[0].status, 'revoked');
+    assert.equal(runtime.calls.userUpdates.length, 1);
+    assert.equal(runtime.calls.sweepFilters.length, 0);
+    assert.equal(runtime.calls.activityCreates.length, 0);
+  }
+});
+
+test('provider-owned User metadata may appear without weakening exact readback', async () => {
+  const runtime = await loadRuntime({
+    userUpdateCollateralMutation: { updated_date: '2026-09-03T12:30:00.000Z' },
   });
-  const result = await invokeRuntime(revoked.handler, {
-    action: 'reactivate',
+  const result = await invokeRuntime(runtime.handler, {
+    action: 'offboard',
     user_id: 'target-1',
+    reason: 'Employment ended',
   });
   assert.equal(result.response.status, 200);
-  assert.equal(result.json.membership_authority_restored, false);
-  assert.equal(result.json.membership_reprovisioning_required, true);
-  assert.equal(result.json.membership_reprovisioning_available, false);
-  assert.equal(revoked.calls.membershipUpdates.length, 0);
-  assert.equal(revoked.state.memberships[0].status, 'revoked');
-  assert.equal(revoked.state.users.find((row) => row.id === 'target-1').is_active, true);
+  assert.equal(result.json.complete, true);
+  assert.equal(runtime.state.users[0].updated_date, '2026-09-03T12:30:00.000Z');
+});
 
-  const retained = await loadRuntime({
-    users: [{ ...TARGET, is_active: false }, OWNER],
-    memberships: [membership()],
-  });
-  const blocked = await invokeRuntime(retained.handler, {
-    action: 'reactivate',
+test('an exact User readback resolves a transport error that followed a committed write', async () => {
+  const offboard = await loadRuntime({ userUpdateThrowsAfterCommit: true });
+  const offboardResult = await invokeRuntime(offboard.handler, {
+    action: 'offboard',
     user_id: 'target-1',
+    reason: 'Employment ended',
   });
-  assert.equal(blocked.response.status, 409);
-  assert.equal(retained.calls.membershipUpdates.length, 0);
-  assert.equal(retained.calls.userUpdates.length, 0);
-  assert.equal(retained.state.users.find((row) => row.id === 'target-1').is_active, false);
+  assert.equal(offboardResult.response.status, 200);
+  assert.equal(offboard.state.users[0].is_active, false);
+});
+
+test('a concurrent User preimage change blocks the offboard User write after membership revocation', async () => {
+  const runtime = await loadRuntime({
+    userPreimageMutation: { full_name: 'Concurrent profile edit' },
+  });
+  const result = await invokeRuntime(runtime.handler, {
+    action: 'offboard',
+    user_id: 'target-1',
+    reason: 'Employment ended',
+  });
+  assert.equal(result.response.status, 409);
+  assert.match(result.json.error, /changed during offboarding/);
+  assert.equal(runtime.state.memberships[0].status, 'revoked');
+  assert.equal(runtime.state.users[0].is_active, true);
+  assert.equal(runtime.calls.userUpdates.length, 0);
+  assert.equal(runtime.calls.sweepFilters.length, 0);
+});
+
+test('fresh nested User values compare by canonical JSON structure, not object identity', async () => {
+  const runtime = await loadRuntime({
+    users: [{
+      ...TARGET,
+      preferences: {
+        notifications: { email: true, sms: false },
+        work_queues: ['visits', { kind: 'documents', enabled: true }],
+      },
+      pinned_agencies: ['agency-a', 'agency-b'],
+    }, OWNER],
+    userPreimageMutation: {
+      preferences: {
+        work_queues: ['visits', { enabled: true, kind: 'documents' }],
+        notifications: { sms: false, email: true },
+      },
+    },
+    freshUserReadObjects: true,
+  });
+  const result = await invokeRuntime(runtime.handler, {
+    action: 'offboard',
+    user_id: 'target-1',
+    reason: 'Employment ended',
+  });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.json.success, true);
+  assert.equal(runtime.state.users[0].is_active, false);
+  assert.equal(runtime.calls.userUpdates.length, 1);
+});
+
+test('changed nested User content still fails exact preimage and readback reconciliation', async () => {
+  const originalPreferences = {
+    notifications: { email: true, sms: false },
+    work_queues: ['visits', { kind: 'documents', enabled: true }],
+  };
+  const changedPreferences = {
+    notifications: { email: false, sms: false },
+    work_queues: ['visits', { kind: 'documents', enabled: true }],
+  };
+
+  const preimage = await loadRuntime({
+    users: [{ ...TARGET, preferences: originalPreferences }, OWNER],
+    userPreimageMutation: { preferences: changedPreferences },
+    freshUserReadObjects: true,
+  });
+  const preimageResult = await invokeRuntime(preimage.handler, {
+    action: 'offboard',
+    user_id: 'target-1',
+    reason: 'Employment ended',
+  });
+  assert.equal(preimageResult.response.status, 409);
+  assert.match(preimageResult.json.error, /changed during offboarding/);
+  assert.equal(preimage.calls.userUpdates.length, 0);
+
+  const readback = await loadRuntime({
+    users: [{ ...TARGET, preferences: originalPreferences }, OWNER],
+    userUpdateCollateralMutation: { preferences: changedPreferences },
+    freshUserReadObjects: true,
+  });
+  const readbackResult = await invokeRuntime(readback.handler, {
+    action: 'offboard',
+    user_id: 'target-1',
+    reason: 'Employment ended',
+  });
+  assert.equal(readbackResult.response.status, 409);
+  assert.match(readbackResult.json.error, /could not be reconciled/);
+  assert.equal(readback.calls.userUpdates.length, 1);
+  assert.equal(readback.calls.sweepFilters.length, 0);
+});
+
+test('offboarding rechecks the exact revoked membership set before and after User deactivation', async () => {
+  const racedMembership = membership({
+    id: 'membership-race',
+    membership_key: 'agency-b:target-1',
+    agency_id: 'agency-b',
+  });
+  for (const [read, expectedUserUpdates, expectedActive, expectedSweepFilters] of [
+    [5, 0, true, 0],
+    [6, 1, false, 0],
+    [7, 1, false, 8],
+  ]) {
+    const runtime = await loadRuntime({
+      membershipMutationOnRead: { read, row: racedMembership },
+    });
+    const result = await invokeRuntime(runtime.handler, {
+      action: 'offboard',
+      user_id: 'target-1',
+      reason: 'Employment ended',
+    });
+    assert.equal(result.response.status, 409);
+    assert.match(result.json.error, /Membership set changed/);
+    assert.equal(runtime.calls.userUpdates.length, expectedUserUpdates);
+    assert.equal(runtime.state.users[0].is_active, expectedActive);
+    assert.equal(runtime.calls.sweepFilters.length, expectedSweepFilters);
+  }
+});
+
+test('patient cleanup sweeps canonical and distinct raw emails with bounded exact readback', async () => {
+  const canonical = 'target@example.test';
+  const raw = TARGET.email;
+  const runtime = await loadRuntime({
+    sweepRows: {
+      Patient: [
+        { id: 'patient-canonical', assigned_nurses: [canonical, 'other@example.test'] },
+        { id: 'patient-raw', assigned_nurses: [raw, 'other@example.test'] },
+        { id: 'patient-both', assigned_nurses: [canonical, raw, 'other@example.test'] },
+      ],
+    },
+  });
+  const result = await invokeRuntime(runtime.handler, {
+    action: 'offboard',
+    user_id: 'target-1',
+    reason: 'Employment ended',
+  });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.json.complete, true);
+  assert.equal(result.json.results.patients_unassigned, 3);
+  assert.equal(result.json.results.failures, 0);
+  assert.deepEqual(
+    runtime.calls.sweepFilters
+      .filter(({ name, args }) => name === 'Patient' && args[0]?.assigned_nurses)
+      .map(({ args }) => args),
+    [
+      [{ assigned_nurses: canonical }, '-updated_date', 5000],
+      [{ assigned_nurses: raw }, '-updated_date', 5000],
+    ],
+  );
+  const patientReadbacks = runtime.calls.sweepFilters
+    .filter(({ name, args }) => name === 'Patient' && args[0]?.id);
+  assert.equal(patientReadbacks.length, 6);
+  assert.equal(patientReadbacks.every(({ args }) => (
+    args[1] === '-updated_date' && args[2] === 10
+  )), true);
+  assert.equal(
+    runtime.calls.sweepUpdates.filter(({ name }) => name === 'Patient').length,
+    3,
+  );
+  assert.deepEqual(
+    runtime.state.sweeps.Patient.map((row) => row.assigned_nurses),
+    [
+      ['other@example.test'],
+      ['other@example.test'],
+      ['other@example.test'],
+    ],
+  );
+});
+
+test('every cleanup update requires exact readback before complete can be true', async () => {
+  const targetEmail = TARGET.email;
+  const cases = [
+    ['Patient', 'patients_unassigned', {
+      id: 'patient-1',
+      assigned_nurses: [targetEmail],
+      full_name: 'Example Patient',
+    }],
+    ['PhoneNumber', 'work_numbers_released', {
+      id: 'phone-1',
+      assigned_to_email: targetEmail,
+      status: 'assigned',
+    }],
+    ['OnCallShift', 'on_call_shifts_cleared', {
+      id: 'shift-1',
+      assigned_user_email: targetEmail,
+      assigned_user_name: 'Target User',
+      notes: 'Original note',
+    }],
+    ['UserInvitation', 'invitations_cancelled', {
+      id: 'invite-1',
+      email: targetEmail,
+      status: 'pending',
+    }],
+    ['ScheduledSms', 'scheduled_sms_canceled', {
+      id: 'sms-1',
+      nurse_email: targetEmail,
+      status: 'pending',
+    }],
+    ['ScheduledFax', 'scheduled_faxes_canceled', {
+      id: 'fax-1',
+      created_by: targetEmail,
+      status: 'pending',
+    }],
+    ['ScheduledSignatureReminder', 'signature_reminders_canceled', {
+      id: 'reminder-1',
+      requested_by: targetEmail,
+      status: 'pending',
+    }],
+  ];
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    for (const [entity, resultField, row] of cases) {
+      const runtime = await loadRuntime({
+        sweepRows: { [entity]: [row] },
+        sweepNoopEntities: [entity],
+      });
+      const result = await invokeRuntime(runtime.handler, {
+        action: 'offboard',
+        user_id: 'target-1',
+        reason: 'Employment ended',
+      });
+      assert.equal(result.response.status, 200);
+      assert.equal(result.json.success, true);
+      assert.equal(result.json.complete, false);
+      assert.equal(result.json.results.failures, 1);
+      assert.equal(result.json.results[resultField], 0);
+      assert.equal(runtime.calls.sweepUpdates.length, 1);
+    }
+  } finally {
+    console.error = originalError;
+  }
+});
+
+test('exact committed cleanup readbacks are the only rows counted as revoked', async () => {
+  const targetEmail = TARGET.email;
+  const runtime = await loadRuntime({
+    sweepRows: {
+      Patient: [{ id: 'patient-1', assigned_nurses: [targetEmail, 'other@example.test'] }],
+      PhoneNumber: [{ id: 'phone-1', assigned_to_email: targetEmail, status: 'assigned' }],
+      OnCallShift: [{
+        id: 'shift-1',
+        assigned_user_email: targetEmail,
+        assigned_user_name: 'Target User',
+        notes: '',
+      }],
+      UserInvitation: [{ id: 'invite-1', email: targetEmail, status: 'pending' }],
+      ScheduledSms: [{ id: 'sms-1', nurse_email: targetEmail, status: 'pending' }],
+      ScheduledFax: [{ id: 'fax-1', created_by: targetEmail, status: 'pending' }],
+      ScheduledSignatureReminder: [{
+        id: 'reminder-1',
+        requested_by: targetEmail,
+        status: 'pending',
+      }],
+    },
+  });
+  const result = await invokeRuntime(runtime.handler, {
+    action: 'offboard',
+    user_id: 'target-1',
+    reason: 'Employment ended',
+  });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.json.complete, true);
+  assert.equal(result.json.results.failures, 0);
+  for (const field of [
+    'patients_unassigned',
+    'work_numbers_released',
+    'on_call_shifts_cleared',
+    'invitations_cancelled',
+    'scheduled_sms_canceled',
+    'scheduled_faxes_canceled',
+    'signature_reminders_canceled',
+  ]) {
+    assert.equal(result.json.results[field], 1);
+  }
+  assert.equal(runtime.calls.sweepUpdates.length, 7);
+  assert.deepEqual(runtime.state.sweeps.Patient[0].assigned_nurses, ['other@example.test']);
+  assert.equal(runtime.state.sweeps.PhoneNumber[0].assigned_to_email, '');
+  assert.equal(runtime.state.sweeps.OnCallShift[0].assigned_user_email, '');
+  assert.equal(runtime.state.sweeps.UserInvitation[0].status, 'cancelled');
+  assert.equal(runtime.state.sweeps.ScheduledSms[0].status, 'canceled');
+  assert.equal(runtime.state.sweeps.ScheduledFax[0].status, 'cancelled');
+  assert.equal(runtime.state.sweeps.ScheduledSignatureReminder[0].status, 'canceled');
 });

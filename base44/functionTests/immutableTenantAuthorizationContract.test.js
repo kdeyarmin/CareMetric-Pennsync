@@ -473,6 +473,31 @@ test('membership-free owner agency selection is still exact and status validated
   assert.deepEqual(calls.agencyFilters, [[{ id: 'agency-a' }, undefined, 10]]);
 });
 
+test('a protected owner fails closed when any tenant membership row exists', async () => {
+  const ownerMembership = membership({
+    id: 'membership-owner',
+    membership_key: 'agency-a:owner',
+    user_id: 'owner',
+    user_email_normalized: 'owner@example.com',
+  });
+
+  for (const membershipRows of [
+    [ownerMembership],
+    [ownerMembership, { ...ownerMembership, id: 'membership-owner-duplicate' }],
+  ]) {
+    const { handler, calls } = await loadHandler({
+      user: { id: 'owner', email: 'owner@example.com', role: 'admin' },
+      membershipRows,
+      superAdminEmail: 'owner@example.com',
+    });
+    const { response, json } = await invoke(handler, { agency_id: 'agency-a' });
+
+    assert.equal(response.status, 409);
+    assert.equal(json.error, 'Platform owner tenant membership must not exist');
+    assert.deepEqual(calls.agencyFilters, []);
+  }
+});
+
 test('operator-shaped and malformed agency selectors are rejected before service reads', async () => {
   for (const agencyId of [{ $ne: null }, '', ' agency-a']) {
     const { handler, calls } = await loadHandler();

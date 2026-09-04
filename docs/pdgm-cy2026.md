@@ -1,115 +1,109 @@
-# CY2026 PDGM reference & grouper data plan
+# CY 2026 CMS HHGS evidence and implementation gate
 
-Source rule: **CMS-1828-F**, "CY 2026 HH PPS Rate Update" — Federal Register doc
-**2025-21767** (published 2025-12-02, effective 2026-01-01).
+> **Payment remains unavailable.** This repository does not yet implement or
+> host the complete CMS Home Health PPS Grouper Software (HHGS). The legacy
+> factorized payment approximation is retired, every reimbursement/UI gate is
+> default-off, and `calculatePDGM` returns a static unavailable response before
+> SDK client creation, request-body parsing, authentication, or data access.
 
-> ⚠️ **Billing safety:** the bundled 432-row case-mix-weight/HIPPS/LUPA table is
-> source-traced to the primary CMS CY 2026 file, but it is only one input to the
-> official grouper. Functional point/threshold tables, diagnosis-to-clinical-
-> group mappings, comorbidity tables/interactions, and parity against CMS HHGS
-> input/output fixtures are still missing. Do not produce payment amounts until
-> the complete official grouper passes golden-case parity.
+## Primary CMS releases
 
-## Current CMS grouper releases (verified 2026-09-02)
+CMS publishes date-effective HHGS releases. The claim-from date—not download
+date and not “latest available”—selects the package.
 
-CMS posted HHGS `v07.2.26` on 2026-08-20 for claims starting 2026-10-01. CMS
-states that it has no logic or interface changes, but it updates diagnosis-code
-tables that affect grouping and HIPPS assignments. Until 2026-09-30, the latest
-already-effective package is `v07.1.26` (posted 2026-02-10). A production
-integration must select the official grouper by claim-from date; merely using
-the newest posted file early would be incorrect.
+| Claim-from date | CMS release | CMS posted | Distribution SHA-256 |
+| --- | --- | --- | --- |
+| 2026-01-01 through 2026-03-31 | `07.0.26` | 2025-12-01 | `40cdaad09e83ec67d37ae041b59bdc2a9f9fd8b76638dd36702da0236f4628e7` |
+| 2026-04-01 through 2026-09-30 | `07.1.26` | 2026-02-10 | `0c8c35996fea3be516c000afa5ae67dac64e25d9fb3123ce0f5e16d9f95bf0e7` |
+| 2026-10-01 through 2026-12-31 | `07.2.26` | 2026-08-20 | `ff3efb8e4a09f5fb9d111df133129dc2e2dbfea829a39b4498e405b3cdcb7f26` |
 
-- CMS HHGS releases: <https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health/home-health-grouper-software>
-- CMS CY 2026 case-mix weights: <https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health-pps/home-health-pps-case-mix-weights>
-- CMS CY 2026 final-rule summary: <https://www.cms.gov/newsroom/fact-sheets/calendar-year-cy-2026-home-health-prospective-payment-system-final-rule-cms-1828-f>
+Primary source and distributions:
 
-## VERIFIED
+- [CMS HHGS release page](https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health/home-health-grouper-software)
+- [January 2026 v07.0.26 ZIP](https://www.cms.gov/files/zip/jan-2026-hh-pps-grouper-software-hh-pdgm-v07-0-26-posted-12-1-2025.zip)
+- [April 2026 v07.1.26 ZIP](https://www.cms.gov/files/zip/apr-2026-hh-pps-grouper-software-hh-pdgm-v07-1-26-posted-02-10-2026.zip)
+- [October 2026 v07.2.26 ZIP](https://www.cms.gov/files/zip/oct-2026-hh-pps-grouper-software-hh-pdgm-v07-2-26-posted-08-20-2026.zip)
 
-### Base 30-day period payment rate (CY2026)
-- Quality submitters: **$2,038.22** ✅ (already set as the app default — see
-  `src/components/pdgm/pdgmRates.js` and `base44/functions/calculatePDGM/entry.ts`).
-  Down from CY2025 $2,057.35. The −1.023% permanent and −3.0% temporary behavior
-  adjustments are already baked in.
-- Non-submitters (QRP non-compliant): updated by +0.4% instead of +2.4%. The exact
-  printed dollar figure was not found in summaries (≈$1,997.46 by the standard
-  method — **derived, unverified**).
+CMS says v07.2.26 has no logic or interface changes, but its diagnosis tables
+change grouping and HIPPS assignments effective 2026-10-01. Using it early is
+therefore incorrect. The strict resolver in
+`src/components/pdgm/cmsHhgsReleasesCy2026.js` encodes the three CY 2026 ranges
+and rejects timestamps, invalid dates, dates outside CY 2026, and gaps. It is an
+audited building block; it is **not yet wired into a PennSync payment path**.
 
-### LUPA per-visit rates (CY2026, quality submitters)
-| Discipline | Per-visit | First-visit add-on | Add-on factor |
-|---|---|---|---|
-| Home Health Aide (HHA) | $80.12 | — | — |
-| Medical Social Services (MSW) | $283.64 | — | — |
-| Occupational Therapy (OT) | $194.74 | $335.69 | 1.7238 |
-| Physical Therapy (PT) | $193.42 | $313.82 | 1.6225 |
-| Skilled Nursing (SN) | $176.96 | $304.37 | 1.7200 |
-| Speech-Language Pathology (SLP) | $210.25 | $351.03 | 1.6696 |
+## Immutable artifact manifest
 
-Add-on applies only to SN/PT/OT/SLP, first visit of an only/initial LUPA period.
-Per-visit rates are not subject to the behavior or case-mix budget-neutrality adjustments.
+`src/components/pdgm/cmsHhgsReleasesCy2026.js` records the exact byte length and
+SHA-256 of each CMS ZIP plus the matching:
 
-### 12 PDGM clinical groups (official names)
-Musculoskeletal Rehabilitation · Neuro/Stroke Rehabilitation · Wounds (Post-Op &
-Skin/Non-Surgical) · Complex Nursing Interventions · Behavioral Health · MMTA —
-Surgical Aftercare · MMTA — Cardiac and Circulatory · MMTA — Endocrine · MMTA —
-Gastrointestinal Tract and Genitourinary System · MMTA — Infectious Disease,
-Neoplasms, and Blood-Forming Diseases · MMTA — Respiratory · MMTA — Other.
+- `HomeHealth.jar`;
+- `Version_Range.txt` and `Claim_Layout.txt`;
+- version-specific diagnosis, code-first, subchapter, clinical-group,
+  comorbidity, functional-response, HIPPS, validity, and return-code tables; and
+- both official normal and irregular/GRC fixture files.
 
-> Note: the legacy `calculatePDGM` engine uses non-standard names (`MMTA_Wounds`,
-> `MMTA_Neuro_Rehab`, …). The table-driven `pdgmGrouper.js` uses the official names
-> above and is the target for the accurate model.
+The hashes were recomputed from fresh CMS downloads on 2026-09-03. Full hashes,
+not prefixes, are stored in source and enforced by tests.
 
-### Functional impairment scoring
-- OASIS items used: **M1800, M1810, M1820, M1830, M1840, M1850, M1860, M1033**.
-- Levels: Low / Medium / High.
-- ⚠️ Point values (Table 8) and low/med/high cut-points (Table 9) **vary by clinical
-  group**, were recalibrated on CY2024 data, and are **NOT** in any web summary.
-  Do not reuse prior-year values — they change annually. → NEEDS CMS DOWNLOAD.
+## Exact offline CMS fixture verification
 
-### Comorbidity adjustment
-- None / Low (one qualifying secondary dx in a subgroup) / High (≥2 dx in
-  interacting subgroup pairs).
-- CY2026 counts: **20 low** subgroups, **98 high** interaction subgroups.
-- ⚠️ Full diagnosis→subgroup lists (Tables 10 & 11) **NOT** web-available. → NEEDS CMS DOWNLOAD.
+The CMS ZIPs are roughly 52–57 MiB each and are not committed. After downloading
+all three primary distributions, run the verifier with Java 17 and `unzip`:
 
-### Case-mix weights (432 cells)
-- Structure: clinical group (12) × admission source (community/institutional) ×
-  timing (early/late) × functional level (3) × comorbidity (3) = 432.
-- Case-mix budget-neutrality factor: **1.0052** (final; 1.0051 was proposed).
-- The full official 432-row weight/HIPPS/LUPA table is bundled in
-  `src/components/pdgm/hhCaseMixWeightsCy2026.js` and strict-parsed/tested.
-  This does not replace the diagnosis, functional, comorbidity, or executable
-  HHGS logic needed to select the correct row.
+```bash
+pnpm verify:cms-hhgs -- /path/to/v07.0.26.zip /path/to/v07.1.26.zip /path/to/v07.2.26.zip
+```
 
-### Other verified ancillary values
-FDL ratio (outliers) **0.37** · labor-related share **74.9%** · wage-index BN factor
-**1.0025** (standard) / **1.0005** (per-visit).
+The verifier:
 
-## STILL NEEDED to finish the billing-grade grouper
+1. rejects any ZIP whose byte count or SHA-256 differs from the manifest;
+2. verifies every pinned inner artifact before execution;
+3. runs the matching official `HomeHealth.jar` against both CMS fixture files;
+4. extracts the expected 16-character `VER + HIPPS + GVF + GRC` result from
+   one-based columns 601–616 defined by `Claim_Layout.txt`; and
+5. requires exact line-for-line output for all **310** CMS cases:
+   `50 + 51` for v07.0.26, `17 + 51` for v07.1.26, and `90 + 51` for v07.2.26.
 
-Download these in a browser (cms.gov returns HTTP 403 to automated tools):
+A 2026-09-03 audit run matched 310/310 using OpenJDK 17. That proves the pinned
+CMS packages and offline runner reproduce the expected CMS results. It does
+**not** prove parity for PennSync: the application has no complete HHGS port or
+wired official-JAR service to compare yet.
 
-1. **Functional point values (Table 8) & thresholds by clinical group (Table 9)**,
-   and **comorbidity subgroup lists (Tables 10/11)** — the final rule PDF, Federal
-   Register doc 2025-21767, and the applicable official HHGS package.
-2. **Diagnosis-to-clinical-group and unacceptable-primary-diagnosis tables**
-   from HHGS `v07.1.26`, plus the effective 2026-10-01 changes from `v07.2.26`.
-3. **Official HHGS input/output test fixtures and Java 17 execution parity** for
-   both effective releases. Base44 edge functions cannot be treated as a port of
-   HHGS until representative and boundary fixtures match exactly.
+## What is verified in source today
 
-## Wiring plan (once the files are in hand)
+- `cmsPdgmFunctionalDataCy2026.js` transcribes the byte-identical CY 2026
+  `FI_Responses.txt` table (SHA-256
+  `36a4646815903eceb7d16ee67b787c7a97f53beeb71397cd2546ba2094542efa`).
+- `hhCaseMixWeightsCy2026.js` contains the separately published official CY 2026
+  432-row case-mix-weight/HIPPS/LUPA table and is strict-parsed in tests.
+- `cmsHhgsReleasesCy2026.js` resolves the correct 07.0/07.1/07.2 release for a
+  valid CY 2026 claim-from date.
+- `pdgmGrouper.js` fails closed and cannot report a complete/billable result.
+- The former base × clinical × functional × comorbidity approximation is
+  explicitly retired. User-supplied rate data cannot unlock it or make it
+  official.
 
-`src/components/pdgm/pdgmGrouper.js` is already a clean, table-driven engine that
-takes `{ itemPoints, functionalThresholds, dxToGroup, comorbidity, caseMixTable }`
-and returns `missing: [...]` instead of guessing when a table is absent. To make
-PDGM billable:
+These pieces are evidence and validation aids, not a payment calculator. The
+432-row table cannot itself apply diagnosis validity, code-first/manifestation,
+secondary-diagnosis promotion, subchapter exclusions, date-effective table
+selection, admission source, timing, LUPA, outlier, or other HHGS rules.
 
-1. Add date-effective CMS data modules exporting the missing four structures;
-   the complete CY 2026 `caseMixTable` is already bundled and tested.
-2. Point `calculatePDGM` (or a new grouped path) at `groupPeriod(input, cmsTables)`
-   instead of the decomposed factor approximation.
-3. Add LUPA logic using the per-visit rates above + the downloaded LUPA thresholds.
-4. Keep the "Official CMS rates" flag tied to using verified tables.
+## Remaining external and implementation blockers
 
-Primary references: CMS HHGS release page, CMS CY 2026 case-mix-weight page, CMS
-fact sheet CMS-1828-F, and Federal Register document 2025-21767.
+Before any PennSync payment amount, reimbursement comparison, or “official” flag
+can be enabled:
+
+1. choose and security-review one supported architecture: an authorized
+   server-side Java 17 HHGS service or an exact, maintainable port;
+2. wire claim-from-date version selection and preserve the complete official
+   input/output record contract;
+3. implement every required HHGS rule/table without client-side PHI or browser
+   trust;
+4. compare the PennSync result—not merely the official JAR against itself—to all
+   310 pinned CMS fixtures plus boundary and regression cases;
+5. add tenant authorization, immutable source provenance, audit, rollback, and
+   hosted nonproduction evidence; and
+6. obtain clinical, coding, billing, security, and release-owner sign-off.
+
+Until then, use the official EMR/CMS-approved grouper for all billing and
+reimbursement decisions.

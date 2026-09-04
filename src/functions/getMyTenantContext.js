@@ -91,6 +91,7 @@ function validTenantContext(context, requestedAgencyId) {
     && context.membership_version >= 1
     && TENANT_ROLES.has(context.tenant_role)
     && context.membership_status === 'active'
+    && context.is_platform_owner === false
     && validAgency(context.agency, context.agency_id);
 }
 

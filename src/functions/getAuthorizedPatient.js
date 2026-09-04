@@ -26,6 +26,11 @@ const PURPOSE_FIELDS = Object.freeze({
     'id', 'past_medical_history', 'past_hospitalizations', 'updated_date',
   ]),
 });
+export const AUTHORIZED_PATIENT_PURPOSES = Object.freeze(Object.keys(PURPOSE_FIELDS));
+
+export function isAuthorizedPatientPurpose(value) {
+  return typeof value === 'string' && Object.hasOwn(PURPOSE_FIELDS, value);
+}
 const PURPOSE_ROLES = Object.freeze({
   display: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']),
   selector: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']),
@@ -149,7 +154,7 @@ export async function getAuthorizedPatient(options = {}) {
   const { agencyId, patientId, purpose } = options;
   if (!exactIdentifier(agencyId)) throw new Error('agencyId is required');
   if (!exactIdentifier(patientId)) throw new Error('patientId is required');
-  if (!Object.hasOwn(PURPOSE_FIELDS, purpose)) throw new Error('purpose is required');
+  if (!isAuthorizedPatientPurpose(purpose)) throw new Error('purpose is required');
 
   const response = await base44.functions.invoke('getAuthorizedPatient', {
     agency_id: agencyId,

@@ -52,9 +52,10 @@ files.** Routing derives from a single source of truth (`src/lib/nav.manifest.js
   guarantee); `RegulatoryMonitor` never auto-mutates `ComplianceRule` and gates on
   human confirmation; `VulnerabilityAssessment` labels platform/manual-review items
   honestly.
-- **PDGM honesty** — the grouper returns `null` rather than guessing for unknown
-  codes and discloses `isEstimate` until an admin loads official CMS tables
-  (`isOfficial`/`is_official` path in `calculatePDGM`).
+- **PDGM honesty (superseded posture)** — payment is now globally unavailable,
+  and the legacy factorized approximation is independently retirement-locked.
+  An admin-loaded table or stored `is_official` flag cannot enable or
+  authenticate payment output. See `docs/pdgm-cy2026.md`.
 
 ---
 
@@ -117,12 +118,12 @@ fax processor (`processScheduledFaxes` **or** `processScheduledFaxesByPriority`)
 **only one** `dispatchScheduledSms` schedule — the pending→sending claim is
 best-effort, not atomic, so overlapping runs double-send.
 
-### 2.5 PDGM rates — product decision (payment/compliance risk)
-PDGM grouping/case-mix weights need **official CMS 2026 tables**, not invented
-numbers. The live path correctly discloses `isEstimate` until an admin loads official
-values. **Decide before billing relies on it:** load the agency's official CMS files
-(then results flip to `isOfficial`), or keep PDGM output explicitly labeled as an
-estimate and not used for claims.
+### 2.5 PDGM grouper — active payment/compliance blocker
+PDGM payment is **unavailable**, not estimated and not $0. Loading tables or
+setting `is_official` is insufficient: the app must integrate a date-effective
+official CMS HHGS implementation, match the pinned CMS fixtures, and pass the
+tenant/provenance/operational gates in `docs/pdgm-cy2026.md`. Use the official
+EMR/CMS-approved grouper meanwhile.
 
 ---
 
@@ -168,13 +169,13 @@ estimate and not used for claims.
 3. Enable exactly one of each scheduled dispatcher (§2.4).
 4. Run the multi-role RLS verification (checklist §7) against **raw network
    responses** — this is the launch gate for a PHI app.
-5. Decide the PDGM rate posture (§2.5).
+5. Complete the verified CMS HHGS integration and parity gate (§2.5).
 6. Launch. Track §3 as fast-follow.
 
 **Bottom line:** the application itself is in strong, launch-ready condition — the
 remaining work is platform configuration and verification, dominated by RLS. Get RLS
 right and verified, set the secrets and webhooks, pick exactly one cron per
-dispatcher, and settle the PDGM-rate posture, and PennSync is ready to go live.
+dispatcher, and complete the PDGM HHGS parity gate, and PennSync is ready to go live.
 
 ---
 

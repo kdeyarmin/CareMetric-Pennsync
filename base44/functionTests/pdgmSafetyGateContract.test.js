@@ -6,27 +6,102 @@ const root = new URL("../../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
 test("canonical frontend and backend PDGM reimbursement gates default off", async () => {
-  const [frontend, backend] = await Promise.all([
+  const [frontend, backend, preview] = await Promise.all([
     read("src/components/pdgm/pdgmAvailability.js"),
     read("base44/_shared/backendHelpers.mjs"),
+    read("src/components/pdgm/PDGMCalculationPreview.jsx"),
   ]);
   assert.match(frontend, /PDGM_REIMBURSEMENT_ENABLED\s*=\s*false/);
   assert.match(backend, /PDGM_REIMBURSEMENT_ENABLED\s*=\s*false/);
   for (const source of [frontend, backend]) {
+    assert.match(source, /LEGACY_FACTORIZED_PDGM_MODEL_RETIRED\s*=\s*true/);
+    assert.match(source, /PDGM_LEGACY_SURFACES_ENABLED\s*=\s*PDGM_REIMBURSEMENT_ENABLED\s*&&\s*!LEGACY_FACTORIZED_PDGM_MODEL_RETIRED/);
+  }
+  for (const source of [frontend, backend]) {
     assert.match(source, /paymentAvailable:\s*false/);
     assert.match(source, /(?:totalPayment|amount):\s*null/);
     assert.match(source, /not a \$0 result/i);
+  }
+  assert.match(preview, /previewEnabled\s*=\s*PDGM_LEGACY_SURFACES_ENABLED/);
+  assert.match(preview, /disabled=\{!previewEnabled\s*\|\|/);
+});
+
+test("a global-flag-only edit cannot activate any legacy frontend financial surface", async () => {
+  const canonical = await read("src/components/pdgm/pdgmAvailability.js");
+  const flipped = canonical.replace(
+    "export const PDGM_REIMBURSEMENT_ENABLED = false;",
+    "export const PDGM_REIMBURSEMENT_ENABLED = true;",
+  );
+  assert.notEqual(flipped, canonical, "test must flip the raw global flag");
+
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(flipped).toString("base64")}`;
+  const availability = await import(moduleUrl);
+  assert.equal(availability.PDGM_REIMBURSEMENT_ENABLED, true);
+  assert.equal(availability.LEGACY_FACTORIZED_PDGM_MODEL_RETIRED, true);
+  assert.equal(availability.PDGM_LEGACY_SURFACES_ENABLED, false);
+  assert.deepEqual(
+    availability.getPdgmPaymentState({
+      incomplete: false,
+      paymentAvailable: true,
+      totalPayment: 999999,
+    }),
+    {
+      available: false,
+      amount: null,
+      reason: "pdgm_payment_unavailable",
+      message: availability.PDGM_REIMBURSEMENT_BLOCKER
+        ? `PDGM payment is unavailable — this is not a $0 result. ${availability.PDGM_REIMBURSEMENT_BLOCKER}`
+        : null,
+      actions: [availability.PDGM_REIMBURSEMENT_ACTION],
+    },
+  );
+
+  const legacyConsumers = [
+    "src/components/hub-tabs/OASISAnalyzer.jsx",
+    "src/components/oasis/PDGMRevenueComparison.jsx",
+    "src/components/pdgm/PDGMCalculationPreview.jsx",
+    "src/components/referral/clinicalManagerBrief.js",
+    "src/components/referral/followUpRevenueImpact.js",
+    "src/pages/PatientDetails.jsx",
+  ];
+  for (const path of legacyConsumers) {
+    const source = await read(path);
+    assert.match(source, /PDGM_LEGACY_SURFACES_ENABLED/, `${path} must use the retirement-qualified gate`);
+    assert.doesNotMatch(source, /\bPDGM_REIMBURSEMENT_ENABLED\b/, `${path} must not consume the raw global flag`);
   }
 });
 
 test("calculatePDGM returns before client creation, body parsing, or service reads", async () => {
   const source = await read("base44/functions/calculatePDGM/entry.ts");
   const handler = source.slice(source.indexOf("Deno.serve"));
-  const gate = handler.indexOf("if (!PDGM_REIMBURSEMENT_ENABLED)");
+  assert.match(source, /LEGACY_FACTORIZED_PDGM_MODEL_RETIRED\s*=\s*true/);
+  const gate = handler.indexOf("if (!PDGM_LEGACY_SURFACES_ENABLED)");
   assert.ok(gate >= 0, "handler must check the global gate");
   assert.ok(gate < handler.indexOf("createClientFromRequest(req)"));
   assert.ok(gate < handler.indexOf("req.json()"));
   assert.match(handler.slice(gate, handler.indexOf("createClientFromRequest(req)")), /status:\s*409/);
+});
+
+test("every backend raw reimbursement-flag consumer carries the retirement lock", async () => {
+  const paths = [
+    "base44/functions/batchAIAnalysis/entry.ts",
+    "base44/functions/calculatePDGM/entry.ts",
+    "base44/functions/generateComprehensiveOASISReport/entry.ts",
+    "base44/functions/generatePDGMComparisonPDF/entry.ts",
+    "base44/functions/generatePDGMNavigatorPDF/entry.ts",
+    "base44/functions/rankDiagnosesByPDGM/entry.ts",
+  ];
+  for (const path of paths) {
+    const source = await read(path);
+    assert.match(source, /PDGM_REIMBURSEMENT_ENABLED\s*=\s*false/, `${path} raw gate must default off`);
+    assert.match(source, /LEGACY_FACTORIZED_PDGM_MODEL_RETIRED\s*=\s*true/, `${path} must carry retirement lock`);
+    assert.match(
+      source,
+      /PDGM_LEGACY_SURFACES_ENABLED\s*=\s*PDGM_REIMBURSEMENT_ENABLED\s*&&\s*!LEGACY_FACTORIZED_PDGM_MODEL_RETIRED/,
+      `${path} must derive its effective gate from both locks`,
+    );
+    assert.match(source, /featureEnabled:\s*PDGM_LEGACY_SURFACES_ENABLED/);
+  }
 });
 
 test("dedicated PDGM/AI scoring endpoints are static unavailable handlers", async () => {
@@ -115,7 +190,7 @@ test("OASIS analyzer and patient proactive scoring stop before child mounts", as
   ]);
   assert.match(analyzer, /OASIS_ANALYZER_ENABLED\s*=\s*false/);
   assert.match(analyzer, /if \(!OASIS_ANALYZER_ENABLED\)[\s\S]*OASIS AI Analyzer Paused/);
-  assert.match(patientDetails, /PDGM_REIMBURSEMENT_ENABLED\s*&&\s*\(\s*<AIProactiveOASISAssistant/);
+  assert.match(patientDetails, /PDGM_LEGACY_SURFACES_ENABLED\s*&&\s*\(\s*<AIProactiveOASISAssistant/);
 });
 
 test("OASIS/PDGM AI, analytics, reporting, and workflow surfaces default to static pre-hook pauses", async () => {

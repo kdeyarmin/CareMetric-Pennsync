@@ -85,7 +85,6 @@ export default function UserManagement() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDisableDialog, setShowDisableDialog] = useState(false);
   const [showPasswordResetDialog, setShowPasswordResetDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [resetPasswordResult, setResetPasswordResult] = useState(null);
   const [editedRole, setEditedRole] = useState("");
   const [editForm, setEditForm] = useState({ full_name: '', phone: '', credential_type: '', staff_role: 'nurse' });
@@ -171,17 +170,6 @@ export default function UserManagement() {
     onError: (error) => {
       setResetPasswordResult({ success: false, error: error?.message || 'Failed to reset password' });
       toast.error('Failed to reset password: ' + (error?.message || 'Unknown error'));
-    },
-  });
-
-  const deleteUserMutation = useMutation({
-    mutationFn: (userId) => base44.entities.User.delete(userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
-      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setShowDeleteDialog(false);
-      setSelectedUser(null);
     },
   });
 
@@ -277,6 +265,10 @@ export default function UserManagement() {
   };
 
   const handleToggleActive = (user) => {
+    if (user?.is_active === false) {
+      toast.error('User reactivation is temporarily unavailable pending retirement of legacy PHI grants.');
+      return;
+    }
     setSelectedUser(user);
     setShowDisableDialog(true);
   };
@@ -287,15 +279,18 @@ export default function UserManagement() {
       toast.error('Offboarding is restricted to the protected platform owner while tenant membership migration is in progress.');
       return;
     }
-    const enabling = selectedUser.is_active === false;
+    if (selectedUser.is_active === false) {
+      toast.error('User reactivation is temporarily unavailable pending retirement of legacy PHI grants.');
+      setShowDisableDialog(false);
+      setSelectedUser(null);
+      return;
+    }
     try {
       const args = buildOffboardInvokeArgs({
         targetUser: selectedUser,
         currentUser,
-        enabling,
-        reason: enabling
-          ? undefined
-          : `Disabled via User Management by ${currentUser?.email || 'admin'}`,
+        enabling: false,
+        reason: `Disabled via User Management by ${currentUser?.email || 'admin'}`,
       });
       const res = await base44.functions.invoke('offboardUser', args);
       queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
@@ -305,21 +300,15 @@ export default function UserManagement() {
       // Log only after the invoke resolves. Logging first meant a rejected
       // offboard (e.g. the server's super-admin-only check) still left an audit
       // row asserting a disable that never happened.
-      logActivity(enabling ? ActivityActions.USER_ENABLED : ActivityActions.USER_DISABLED, {
+      logActivity(ActivityActions.USER_DISABLED, {
         user_email: selectedUser.email,
         user_name: selectedUser.full_name,
         entity_type: 'User',
         entity_id: selectedUser.id,
-        offboarding: !enabling,
+        offboarding: true,
         revocation_complete: payload.complete !== false,
       });
-      if (enabling) {
-        toast.warning(
-          payload.message
-            || 'User identity reactivated without tenant authority. A separate owner-controlled rehire workflow is required.',
-          { duration: 10000 },
-        );
-      } else if (payload.complete === false) {
+      if (payload.complete === false) {
         // The account is deactivated, but some access was not revoked. Telling
         // the admin this succeeded would leave live PHI access unnoticed.
         toast.warning(
@@ -356,11 +345,6 @@ export default function UserManagement() {
     resetPasswordMutation.mutate(selectedUser.email);
   };
 
-  const handleDeleteUser = (user) => {
-    setSelectedUser(user);
-    setShowDeleteDialog(true);
-  };
-
   const handleCreateUser = () => {
     if (!setupFormData.email || !setupFormData.full_name) {
       toast.error('Email and full name are required');
@@ -377,17 +361,6 @@ export default function UserManagement() {
       ...setupFormData,
       staff_role: setupFormData.role === 'user' ? setupFormData.staff_role : 'nurse',
     });
-  };
-
-  const confirmDeleteUser = () => {
-    if (!selectedUser) return;
-    logActivity(ActivityActions.USER_DELETED, {
-      user_email: selectedUser.email,
-      user_name: selectedUser.full_name,
-      entity_type: 'User',
-      entity_id: selectedUser.id
-    });
-    deleteUserMutation.mutate(selectedUser.id);
   };
 
   const filteredUsers = useMemo(() => allUsers.filter(user => {
@@ -801,26 +774,16 @@ export default function UserManagement() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleToggleActive(user)}
-                              disabled={currentUser.email === user.email || !canManageOffboarding}
+                              onClick={isActive ? () => handleToggleActive(user) : undefined}
+                              disabled={!isActive || currentUser.email === user.email || !canManageOffboarding}
                               className={`min-h-[44px] w-10 sm:w-auto p-2 ${isActive ? 'text-red-600 hover:text-red-700' : 'text-emerald-600 hover:text-emerald-700'}`}
-                              title={!canManageOffboarding
+                              title={!isActive
+                                ? 'Reactivation temporarily unavailable pending retirement of legacy PHI grants'
+                                : !canManageOffboarding
                                 ? 'Protected platform owner only while tenant membership migration is in progress'
-                                : isActive
-                                  ? 'Disable / offboard user'
-                                  : 'Reactivate identity without tenant authority'}
+                                : 'Disable / offboard user'}
                             >
                               {isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteUser(user)}
-                              disabled={currentUser.email === user.email}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 min-h-[44px] w-10 sm:w-auto p-2"
-                              title="Delete user permanently"
-                            >
-                              <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -955,44 +918,18 @@ export default function UserManagement() {
       <AlertDialog open={showDisableDialog} onOpenChange={setShowDisableDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {selectedUser?.is_active === false ? 'Enable User' : 'Disable / Offboard User'}
-            </AlertDialogTitle>
+            <AlertDialogTitle>Disable / Offboard User</AlertDialogTitle>
             <AlertDialogDescription>
-              {selectedUser?.is_active === false ? (
-                <>Reactivate the identity for <strong>{selectedUser?.full_name}</strong>? This does <strong>not</strong> restore tenant membership or patient access. Revoked memberships remain terminal until a separate owner-controlled rehire workflow is available.</>
-              ) : (
-                <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This first revokes every validated tenant membership, then deactivates the account, unassigns patients, releases the work number, clears on-call shifts, and records audit metadata. Platform-level rejection of inactive sessions still requires hosted RLS verification (LR-01).</>
-              )}
+              <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This first revokes every validated tenant membership, then deactivates the account, unassigns patients, releases the work number, clears on-call shifts, and records audit metadata. Platform-level rejection of inactive sessions still requires hosted RLS verification (LR-01).</>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmToggleActive}
-              className={selectedUser?.is_active === false ? 'bg-emerald-600' : 'bg-red-600'}
+              className="bg-red-600"
             >
-              {selectedUser?.is_active === false ? 'Reactivate Identity Only' : 'Offboard'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
-              <Trash2 className="w-5 h-5" />
-              Delete User Permanently
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to permanently delete <strong>{selectedUser?.full_name}</strong>?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteUser} disabled={deleteUserMutation.isPending} className="bg-red-600 hover:bg-red-700">
-              Delete User
+              Offboard
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

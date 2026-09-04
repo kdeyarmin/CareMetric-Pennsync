@@ -230,6 +230,7 @@ Deno.serve(async (req) => {
 
     const requestedAgencyId = await parseRequestedAgencyId(req);
     const entities = base44.asServiceRole.entities;
+    const isPlatformOwner = isProtectedPlatformOwner(user);
     const rawMemberships = requireRows(
       await entities.AgencyMembership.filter(
         { user_id: userId },
@@ -238,22 +239,21 @@ Deno.serve(async (req) => {
       ),
       'AgencyMembership.filter',
     );
-    const allMemberships = validateMemberships(
-      rawMemberships,
-      userId,
-      normalizedEmail,
-    );
-    const memberships = allMemberships.filter((row) => row.status === 'active');
-    const isPlatformOwner = isProtectedPlatformOwner(user);
 
-    if (memberships.length === 0) {
-      if (!isPlatformOwner) {
-        return Response.json({ error: 'No active tenant membership' }, { status: 403 });
+    if (isPlatformOwner) {
+      if (rawMemberships.length >= MEMBERSHIP_SCAN_LIMIT) {
+        throw new PublicError(409, 'Tenant membership is ambiguous');
+      }
+      if (rawMemberships.some((row) => row?.user_id !== userId)) {
+        throw new PublicError(409, 'Tenant membership query scope could not be verified');
+      }
+      if (rawMemberships.length !== 0) {
+        throw new PublicError(409, 'Platform owner tenant membership must not exist');
       }
 
-      // The protected owner may obtain an unscoped owner context without a
-      // membership. If an agency is requested, it is still exact-loaded and
-      // status-validated; there is no implicit tenant selected from User data.
+      // The protected owner is intentionally membership-free. Cross-tenant
+      // selection is authorized only by the exact built-in admin + configured
+      // email match above, never by an AgencyMembership row.
       const agency = requestedAgencyId
         ? await loadExactAgency(entities, requestedAgencyId)
         : null;
@@ -271,6 +271,17 @@ Deno.serve(async (req) => {
           agency: publicAgency(agency),
         },
       });
+    }
+
+    const allMemberships = validateMemberships(
+      rawMemberships,
+      userId,
+      normalizedEmail,
+    );
+    const memberships = allMemberships.filter((row) => row.status === 'active');
+
+    if (memberships.length === 0) {
+      return Response.json({ error: 'No active tenant membership' }, { status: 403 });
     }
 
     if (memberships.length > 1 && !requestedAgencyId) {
@@ -294,7 +305,7 @@ Deno.serve(async (req) => {
         agency_id: agencyId,
         tenant_role: selected.tenant_role,
         membership_status: 'active',
-        is_platform_owner: isPlatformOwner,
+        is_platform_owner: false,
         agency: publicAgency(agency),
       },
     });

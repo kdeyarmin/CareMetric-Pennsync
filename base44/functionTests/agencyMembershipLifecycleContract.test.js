@@ -55,6 +55,15 @@ const adminMembership = (overrides = {}) => membership({
   ...overrides,
 });
 
+const ownerMembership = (overrides = {}) => membership({
+  id: 'membership-owner',
+  membership_key: 'agency-a:owner-1',
+  user_id: 'owner-1',
+  user_email_normalized: 'owner@example.test',
+  tenant_role: 'agency_admin',
+  ...overrides,
+});
+
 const agency = (overrides = {}) => ({
   id: 'agency-a',
   agency_name: 'Agency A',
@@ -73,7 +82,12 @@ async function loadHandler({
   createDuplicate = false,
   createdByMutation = null,
   revokeAuthorityOnRecheck = false,
+  agencyRecheckMutation = null,
+  targetUserRecheckMutation = null,
+  targetPreimageMutation = null,
   updateNoop = false,
+  updateCollateralMutation = null,
+  callerRecheckMutation = null,
 } = {}) {
   let source = await readFile(functionUrl, 'utf8');
   source = source.replace(
@@ -91,8 +105,11 @@ async function loadHandler({
     agencies: agencies.map((row) => ({ ...row })),
     memberships: memberships.map((row) => ({ ...row })),
   };
-  const calls = { filters: [], creates: [], updates: [] };
+  const calls = { authReads: 0, events: [], filters: [], creates: [], updates: [] };
   let authorityReads = 0;
+  let agencyReads = 0;
+  let targetUserReads = 0;
+  let targetReads = 0;
   const filtered = (entity, rows, query, limit) => {
     calls.filters.push({ entity, query: { ...(query || {}) }, limit });
     if (nonArrayEntity === entity) return null;
@@ -104,17 +121,51 @@ async function loadHandler({
   const client = {
     auth: {
       me: async () => {
+        calls.authReads += 1;
+        calls.events.push('auth.me');
         if (caller instanceof Error) throw caller;
+        if (calls.authReads > 1 && callerRecheckMutation) {
+          if (callerRecheckMutation instanceof Error) throw callerRecheckMutation;
+          return { ...caller, ...callerRecheckMutation };
+        }
         return caller;
       },
     },
     asServiceRole: {
       entities: {
         User: {
-          filter: async (query, sort, limit) => filtered('User', state.users, query, limit),
+          filter: async (query, sort, limit) => {
+            if (query?.id === 'target-1') {
+              targetUserReads += 1;
+              if (targetUserReads === 2 && targetUserRecheckMutation) {
+                const index = state.users.findIndex((row) => row.id === 'target-1');
+                if (index !== -1) {
+                  state.users[index] = {
+                    ...state.users[index],
+                    ...targetUserRecheckMutation,
+                  };
+                }
+              }
+            }
+            return filtered('User', state.users, query, limit);
+          },
         },
         Agency: {
-          filter: async (query, sort, limit) => filtered('Agency', state.agencies, query, limit),
+          filter: async (query, sort, limit) => {
+            if (query?.id === 'agency-a') {
+              agencyReads += 1;
+              if (agencyReads === 2 && agencyRecheckMutation) {
+                const index = state.agencies.findIndex((row) => row.id === 'agency-a');
+                if (index !== -1) {
+                  state.agencies[index] = {
+                    ...state.agencies[index],
+                    ...agencyRecheckMutation,
+                  };
+                }
+              }
+            }
+            return filtered('Agency', state.agencies, query, limit);
+          },
         },
         AgencyMembership: {
           filter: async (query, sort, limit) => {
@@ -140,9 +191,22 @@ async function loadHandler({
                 }
               }
             }
+            if (query?.agency_id === 'agency-a' && query?.user_id === 'target-1') {
+              targetReads += 1;
+              if (targetReads === 2 && targetPreimageMutation) {
+                const index = state.memberships.findIndex((row) => row.user_id === 'target-1');
+                if (index !== -1) {
+                  state.memberships[index] = {
+                    ...state.memberships[index],
+                    ...targetPreimageMutation,
+                  };
+                }
+              }
+            }
             return filtered('AgencyMembership', state.memberships, query, limit);
           },
           create: async (payload) => {
+            calls.events.push('AgencyMembership.create');
             calls.creates.push({ ...payload });
             const row = {
               id: `membership-${state.memberships.length + 1}`,
@@ -156,10 +220,15 @@ async function loadHandler({
             return row;
           },
           update: async (id, payload) => {
+            calls.events.push('AgencyMembership.update');
             calls.updates.push({ id, payload: { ...payload } });
             const index = state.memberships.findIndex((row) => row.id === id);
             if (!updateNoop && index !== -1) {
-              state.memberships[index] = { ...state.memberships[index], ...payload };
+              state.memberships[index] = {
+                ...state.memberships[index],
+                ...payload,
+                ...(updateCollateralMutation || {}),
+              };
             }
             return index === -1 ? { id, ...payload } : state.memberships[index];
           },
@@ -313,6 +382,48 @@ test('the exact protected owner can bootstrap a pending membership with narrow o
   assert.equal(json.membership.last_transition_by_user_id, undefined);
 });
 
+test('the protected owner identity cannot be a membership target, including for self-service', async () => {
+  const target = {
+    target_user_id: 'owner-1',
+    target_user_email: 'owner@example.test',
+  };
+  const cases = [
+    [provisionBody(target), []],
+    [inspectBody(target), [ownerMembership()]],
+    [transitionBody('activate', 1, target), [ownerMembership()]],
+    [transitionBody('suspend', 1, target), [ownerMembership({ status: 'active' })]],
+    [transitionBody('revoke', 1, target), [ownerMembership({ status: 'active' })]],
+    [transitionBody('change_role', 1, { ...target, tenant_role: 'manager' }), [ownerMembership()]],
+  ];
+
+  for (const [body, memberships] of cases) {
+    const runtime = await loadHandler({ memberships });
+    const result = await invoke(runtime.handler, body);
+    assert.equal(result.response.status, 403);
+    assert.match(result.json.error, /owner cannot hold tenant memberships/);
+    assert.equal(runtime.calls.creates.length, 0);
+    assert.equal(runtime.calls.updates.length, 0);
+    assert.equal(runtime.calls.filters.some(({ entity }) => entity === 'AgencyMembership'), false);
+  }
+});
+
+test('agency administrators also fail closed before managing the protected owner identity', async () => {
+  const runtime = await loadHandler({
+    caller: ADMIN,
+    memberships: [adminMembership(), ownerMembership()],
+  });
+  const result = await invoke(runtime.handler, transitionBody('activate', 1, {
+    target_user_id: 'owner-1',
+    target_user_email: 'owner@example.test',
+  }));
+
+  assert.equal(result.response.status, 403);
+  assert.match(result.json.error, /owner cannot hold tenant memberships/);
+  assert.equal(runtime.calls.creates.length, 0);
+  assert.equal(runtime.calls.updates.length, 0);
+  assert.equal(runtime.calls.filters.filter(({ entity }) => entity === 'AgencyMembership').length, 1);
+});
+
 test('owner provisioning is idempotent only for the exact pending identity and role', async () => {
   const initial = membership();
   const exact = await loadHandler({ memberships: [initial] });
@@ -455,6 +566,149 @@ test('a concurrent agency-admin revocation blocks the target mutation on authori
   assert.equal(runtime.calls.updates.length, 0);
   assert.equal(runtime.state.memberships.find((row) => row.user_id === 'admin-1').status, 'revoked');
   assert.equal(runtime.state.memberships.find((row) => row.user_id === 'target-1').status, 'pending');
+});
+
+test('a full target preimage recheck blocks concurrent untouched-field drift before update', async () => {
+  const runtime = await loadHandler({
+    memberships: [membership()],
+    targetPreimageMutation: { created_by_user_id: 'concurrent-actor' },
+  });
+  const result = await invoke(runtime.handler, transitionBody('activate', 1));
+  assert.equal(result.response.status, 409);
+  assert.match(result.json.error, /Membership changed/);
+  assert.equal(runtime.calls.updates.length, 0);
+  assert.equal(runtime.state.memberships[0].status, 'pending');
+  assert.equal(runtime.state.memberships[0].created_by_user_id, 'concurrent-actor');
+});
+
+test('enabling writes recheck Agency and target User authority immediately before mutation', async () => {
+  const actions = [
+    { body: provisionBody(), memberships: [] },
+    { body: transitionBody('activate', 1), memberships: [membership()] },
+    {
+      body: transitionBody('change_role', 1, { tenant_role: 'manager' }),
+      memberships: [membership()],
+    },
+  ];
+  for (const mutation of [
+    { agencyRecheckMutation: { status: 'suspended' } },
+    { targetUserRecheckMutation: { disabled: true } },
+  ]) {
+    for (const { body, memberships } of actions) {
+      const runtime = await loadHandler({ memberships, ...mutation });
+      const result = await invoke(runtime.handler, body);
+      assert.equal(result.response.status, 409);
+      assert.match(result.json.error, /enablement authority changed/);
+      assert.equal(runtime.calls.creates.length, 0);
+      assert.equal(runtime.calls.updates.length, 0);
+    }
+  }
+});
+
+test('owner-authorized enabling writes recheck the exact current auth identity immediately before mutation', async () => {
+  const actions = [
+    { body: provisionBody(), memberships: [], write: 'AgencyMembership.create' },
+    {
+      body: transitionBody('activate', 1),
+      memberships: [membership()],
+      write: 'AgencyMembership.update',
+    },
+    {
+      body: transitionBody('change_role', 1, { tenant_role: 'manager' }),
+      memberships: [membership()],
+      write: 'AgencyMembership.update',
+    },
+  ];
+
+  for (const { body, memberships, write } of actions) {
+    const runtime = await loadHandler({ memberships });
+    const result = await invoke(runtime.handler, body);
+    assert.ok([200, 201].includes(result.response.status));
+    assert.equal(runtime.calls.authReads, 2);
+    const writeIndex = runtime.calls.events.indexOf(write);
+    assert.notEqual(writeIndex, -1);
+    assert.equal(runtime.calls.events[writeIndex - 1], 'auth.me');
+  }
+});
+
+test('owner-authorized enabling writes fail closed when the current auth identity or account state drifts', async () => {
+  const actions = [
+    { body: provisionBody(), memberships: [] },
+    { body: transitionBody('activate', 1), memberships: [membership()] },
+    {
+      body: transitionBody('change_role', 1, { tenant_role: 'manager' }),
+      memberships: [membership()],
+    },
+  ];
+  const drifts = [
+    { id: 'replacement-owner' },
+    { email: 'replacement@example.test' },
+    { role: 'user' },
+    { is_active: false },
+    { disabled: true },
+    { is_service: true },
+    { is_verified: false },
+    new Error('auth session no longer resolves'),
+  ];
+
+  for (const callerRecheckMutation of drifts) {
+    for (const { body, memberships } of actions) {
+      const runtime = await loadHandler({ memberships, callerRecheckMutation });
+      const result = await invoke(runtime.handler, body);
+      assert.equal(result.response.status, 403);
+      assert.match(result.json.error, /Caller authority changed/);
+      assert.equal(runtime.calls.authReads, 2);
+      assert.equal(runtime.calls.creates.length, 0);
+      assert.equal(runtime.calls.updates.length, 0);
+      if (runtime.state.memberships[0]) {
+        assert.equal(runtime.state.memberships[0].status, 'pending');
+        assert.equal(runtime.state.memberships[0].tenant_role, 'clinician');
+      }
+    }
+  }
+});
+
+test('owner inspection, idempotent results, and restrictive writes also recheck current auth authority', async () => {
+  const boundaries = [
+    { body: inspectBody(), memberships: [membership()] },
+    { body: provisionBody(), memberships: [membership()] },
+    {
+      body: transitionBody('activate', 1),
+      memberships: [membership({ status: 'active', version: 2 })],
+    },
+    {
+      body: transitionBody('change_role', 1, { tenant_role: 'clinician' }),
+      memberships: [membership()],
+    },
+    {
+      body: transitionBody('suspend', 1),
+      memberships: [membership({ status: 'active' })],
+    },
+    {
+      body: transitionBody('revoke', 1),
+      memberships: [membership({ status: 'active' })],
+    },
+  ];
+
+  for (const { body, memberships } of boundaries) {
+    const runtime = await loadHandler({
+      memberships,
+      callerRecheckMutation: { is_service: true },
+    });
+    const result = await invoke(runtime.handler, body);
+    assert.equal(result.response.status, 403);
+    assert.match(result.json.error, /Caller authority changed/);
+    assert.equal(runtime.calls.authReads, 2);
+    assert.equal(runtime.calls.creates.length, 0);
+    assert.equal(runtime.calls.updates.length, 0);
+  }
+});
+
+test('membership authority rechecks do not claim datastore CAS or transaction semantics', async () => {
+  const source = await readFile(functionUrl, 'utf8');
+  assert.match(source, /not an atomic auth\/datastore transaction/);
+  assert.match(source, /does not provide entity CAS/);
+  assert.match(source, /remain a\s+\/\/ release blocker/);
 });
 
 test('tenant administrators cannot manage themselves, the owner, or agency-admin roles', async () => {
@@ -728,4 +982,18 @@ test('post-create duplicates and non-committing updates cannot return false succ
   assert.equal(noopResult.response.status, 409);
   assert.equal(noop.calls.updates.length, 1);
   assert.equal(noop.state.memberships[0].status, 'pending');
+
+  const collateral = await loadHandler({
+    memberships: [membership()],
+    updateCollateralMutation: { created_by_user_id: 'unexpected-actor' },
+  });
+  const collateralResult = await invoke(
+    collateral.handler,
+    transitionBody('activate', 1),
+  );
+  assert.equal(collateralResult.response.status, 409);
+  assert.match(collateralResult.json.error, /could not be reconciled/);
+  assert.equal(collateral.calls.updates.length, 1);
+  assert.equal(collateral.state.memberships[0].status, 'active');
+  assert.equal(collateral.state.memberships[0].created_by_user_id, 'unexpected-actor');
 });

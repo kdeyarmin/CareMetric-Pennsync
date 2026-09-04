@@ -6,6 +6,7 @@ import { listAuthorizedPatients } from '@/functions/listAuthorizedPatients';
 
 const AUTHORIZED_PAGE_SIZE = 50;
 const AUTHORIZED_ROSTER_LIMIT = 10000;
+const MAX_IDENTIFIER_LENGTH = 200;
 const AUTHORIZED_SORT_FIELDS = new Set([
   'id',
   'first_name',
@@ -20,9 +21,12 @@ const AUTHORIZED_SORT_FIELDS = new Set([
 ]);
 const AUTHORIZED_STATUSES = new Set(['active', 'hospitalized', 'discharged']);
 
-function requestedAgencyId(currentUser) {
-  const agencyId = String(currentUser?.agency_id || '').trim();
-  return agencyId || null;
+function exactIdentifier(value) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= MAX_IDENTIFIER_LENGTH
+    && value.trim() === value
+    && !value.startsWith('$');
 }
 
 function tenantScopeKey(context) {
@@ -66,7 +70,10 @@ function comparePatients(sort) {
   };
 }
 
-function validateAuthorizedOptions({ status, sort, limit, options }) {
+function validateAuthorizedOptions({ agencyId, status, sort, limit, options }) {
+  if (agencyId !== undefined && !exactIdentifier(agencyId)) {
+    throw new Error('Authorized patient agencyId is invalid');
+  }
   if (status != null && !AUTHORIZED_STATUSES.has(status)) {
     throw new Error('Authorized patient status is invalid');
   }
@@ -151,11 +158,16 @@ async function fetchAuthorizedRoster({ tenantContext, status, sort, limit }) {
  * because the authorization boundary pages by id. The default remains
  * `legacy` until full-chart consumers have purpose-specific projections; this
  * is an explicit migration seam, not a silent shape change across every page.
+ * `agencyId` is an optional explicit tenant selection for that mode. If it is
+ * omitted, the server may resolve a caller with exactly one active membership;
+ * it is never inferred from mutable custom User fields. A membership-free
+ * platform owner must pass an explicit selection.
  *
  * Legacy `options` are passed through to useQuery. Authorized mode accepts only
  * `select`; cache and refetch policy are part of its security boundary.
  */
 export function useScopedPatients({
+  agencyId,
   status,
   sort = '-updated_date',
   limit = 2000,
@@ -167,7 +179,7 @@ export function useScopedPatients({
     throw new Error('Patient readMode is invalid');
   }
   if (readMode === 'authorized-roster') {
-    validateAuthorizedOptions({ status, sort, limit, options });
+    validateAuthorizedOptions({ agencyId, status, sort, limit, options });
   }
 
   const { data: currentUser } = useQuery({
@@ -176,16 +188,18 @@ export function useScopedPatients({
   });
 
   const useAuthorizedRoster = readMode === 'authorized-roster';
-  const agencyId = requestedAgencyId(currentUser);
+  const requestedAgencyId = agencyId === undefined ? null : agencyId;
   const tenantContextQuery = useQuery({
     queryKey: [
       'tenant-context',
       'patient-roster',
       currentUser?.id || currentUser?.email || null,
-      agencyId || 'default',
+      requestedAgencyId || 'server-resolved',
     ],
     queryFn: async () => {
-      const result = await getMyTenantContext(agencyId ? { agencyId } : {});
+      const result = await getMyTenantContext(
+        requestedAgencyId === null ? {} : { agencyId: requestedAgencyId },
+      );
       if (!result.tenant_context.agency_id) {
         throw new Error('Select an agency before loading an authorized patient roster');
       }

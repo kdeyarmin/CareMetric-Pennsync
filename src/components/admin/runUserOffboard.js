@@ -14,7 +14,9 @@ import { canOffboardUser } from './userOffboarding.js';
 export function buildOffboardInvokeArgs({ targetUser, currentUser, enabling, reason } = {}) {
   if (!targetUser?.id) throw new Error('targetUser is required');
   if (enabling) {
-    return { action: 'reactivate', user_id: targetUser.id };
+    throw new Error(
+      'User reactivation is temporarily unavailable pending retirement of legacy PHI grants',
+    );
   }
   if (!canOffboardUser({
     currentUserEmail: currentUser?.email,

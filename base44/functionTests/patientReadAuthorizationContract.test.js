@@ -1165,6 +1165,33 @@ test('only the configured built-in admin receives membership-free platform-owner
   }
 });
 
+test('platform owner Patient reads reject preexisting or duplicate owner memberships', async () => {
+  const owner = { ...USER, role: 'admin', email: 'owner@platform.test' };
+  const ownerMembership = membership({ user_email_normalized: 'owner@platform.test' });
+  for (const kind of ['get', 'list']) {
+    for (const memberships of [
+      [ownerMembership],
+      [ownerMembership, { ...ownerMembership, id: 'membership-owner-duplicate' }],
+    ]) {
+      const fixture = await loadBroker(kind, {
+        caller: owner,
+        memberships,
+        superAdminEmail: 'owner@platform.test',
+      });
+      const result = await invoke(
+        fixture.handler,
+        kind,
+        kind === 'get' ? getBody() : pageBody(),
+      );
+
+      assert.equal(result.response.status, 409);
+      assert.equal(result.json.error, 'Platform owner tenant membership must not exist');
+      assert.equal(fixture.calls.memberships.length, 1);
+      assert.deepEqual(fixture.calls.patients, []);
+    }
+  }
+});
+
 test('id batches are capped, tenant-pinned, ordered, and omit missing or foreign ids identically', async () => {
   const managerMembership = membership({ tenant_role: 'manager' });
   const sameAgency = patient({ id: 'patient-a', client_request_id: 'same-request' });
