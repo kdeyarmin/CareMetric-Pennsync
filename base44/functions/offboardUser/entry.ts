@@ -938,9 +938,7 @@ async function offboardUser(
     user_name: currentUser.full_name,
     action: 'user_offboarded',
     details: {
-      target_user_email: targetEmail,
-      target_user_id: userId,
-      reason: note.slice(0, 200),
+      reason_recorded: Boolean(note),
       ...results,
       platform_session_revocation: 'client_shell_blocked; entity_api_policy_pending',
     },
@@ -1059,12 +1057,9 @@ async function reactivateUser(
     user_name: currentUser.full_name,
     action: 'user_reactivated',
     details: {
-      target_user_email: targetUser.email,
-      target_user_id: userId,
       membership_authority_restored: false,
       membership_reprovisioning_required: true,
       membership_reprovisioning_available: false,
-      reactivated_by_user_id: actorId,
     },
     page: 'UserManagement',
     entity_type: 'User',

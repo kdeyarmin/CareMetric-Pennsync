@@ -51,6 +51,16 @@ const libraryDocument = (id = 'document-a', overrides = {}) => ({
   ...overrides,
 });
 
+const downloadDocument = (overrides = {}) => ({
+  id: 'document-a',
+  file_name: 'Document-a.pdf',
+  file_size: 1024,
+  file_type: 'application/pdf',
+  category: 'other',
+  patient_id: 'patient-a',
+  ...overrides,
+});
+
 const cursor = (overrides = {}) => ({
   version: 1,
   after_document_id: 'document-a',
@@ -96,12 +106,32 @@ describe('authorized Document read wrappers', () => {
       agencyId: 'agency-a', documentId: 'document-a', purpose: 'all_fields',
     })).rejects.toThrow(/purpose/);
     await expect(getAuthorizedDocument({
-      agencyId: 'agency-a', documentId: 'document-a', purpose: 'download',
-    })).rejects.toThrow(/purpose/);
-    await expect(getAuthorizedDocument({
       agencyId: 'agency-a', documentId: 'document-a', purpose: 'metadata', fields: ['file_url'],
     })).rejects.toThrow(/unsupported/);
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('accepts only an exact short-lived signed download envelope', async () => {
+    invoke.mockResolvedValue({
+      data: {
+        success: true,
+        purpose: 'download',
+        document: downloadDocument(),
+        delivery: {
+          download_url: 'https://files.base44.app/signed/document-a.pdf?token=secret',
+          expires_in_seconds: 60,
+        },
+        scope: memberScope,
+      },
+    });
+    const result = await getAuthorizedDocument({
+      agencyId: 'agency-a', documentId: 'document-a', purpose: 'download',
+    });
+    expect(invoke).toHaveBeenCalledWith('getAuthorizedDocument', {
+      agency_id: 'agency-a', document_id: 'document-a', purpose: 'download',
+    });
+    expect(result.delivery.expires_in_seconds).toBe(60);
+    expect(JSON.stringify(result)).not.toContain('file_uri');
   });
 
   it('rejects false-success exact envelopes, extra fields, and scope drift', async () => {
@@ -134,6 +164,32 @@ describe('authorized Document read wrappers', () => {
       invoke.mockResolvedValueOnce({ data: payload });
       await expect(getAuthorizedDocument({
         agencyId: 'agency-a', documentId: 'document-a', purpose: 'metadata',
+      })).rejects.toThrow(/lookup failed/);
+    }
+  });
+
+  it('rejects malformed, overlong, or pointer-bearing download capabilities', async () => {
+    const base = {
+      success: true,
+      purpose: 'download',
+      document: downloadDocument(),
+      delivery: {
+        download_url: 'https://files.base44.app/signed/document-a.pdf?token=secret',
+        expires_in_seconds: 60,
+      },
+      scope: memberScope,
+    };
+    for (const payload of [
+      { ...base, delivery: { ...base.delivery, download_url: 'http://files.test/a.pdf' } },
+      { ...base, delivery: { ...base.delivery, download_url: `${base.delivery.download_url}#x` } },
+      { ...base, delivery: { ...base.delivery, expires_in_seconds: 3600 } },
+      { ...base, delivery: { ...base.delivery, file_uri: 'private/document-a.pdf' } },
+      { ...base, document: { ...base.document, file_uri: 'private/document-a.pdf' } },
+      { ...base, document: { ...base.document, file_url: base.delivery.download_url } },
+    ]) {
+      invoke.mockResolvedValueOnce({ data: payload });
+      await expect(getAuthorizedDocument({
+        agencyId: 'agency-a', documentId: 'document-a', purpose: 'download',
       })).rejects.toThrow(/lookup failed/);
     }
   });

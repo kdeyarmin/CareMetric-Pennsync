@@ -140,7 +140,7 @@ export default function UserActivityPanel({ userEmail, _userName }) {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {[
-          { label: "Logins", value: stats.logins, icon: LogIn, color: "text-green-600" },
+          { label: "Historical Logins", value: stats.logins, icon: LogIn, color: "text-green-600" },
           { label: "Notes", value: stats.notes, icon: Brain, color: "text-indigo-600" },
           { label: "Visits Done", value: stats.visits, icon: CheckSquare, color: "text-navy-600" },
           { label: "AI Uses", value: stats.aiUses, icon: Star, color: "text-navy-600" },

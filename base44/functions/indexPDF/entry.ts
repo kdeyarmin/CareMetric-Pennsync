@@ -263,11 +263,10 @@ Deno.serve(async (req) => {
       user_email: user.email,
       user_name: user.full_name,
       action: 'pdf_indexed',
+      entity_type: 'PDFIndex',
+      entity_id: indexId,
       details: {
-        pdf_url: scopedPdfUrl,
-        document_name: scopedDocumentName,
         page_count: pageCount,
-        index_id: indexId
       },
       page: 'pdf_indexer'
     });

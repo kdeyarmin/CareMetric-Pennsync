@@ -63,6 +63,40 @@ const patient = (overrides = {}) => ({
   ...overrides,
 });
 
+const assignment = (overrides = {}) => ({
+  id: 'assignment-a',
+  assignment_key: 'agency-a:patient-a:user-a',
+  agency_id: 'agency-a',
+  patient_id: 'patient-a',
+  user_id: 'user-a',
+  user_email_normalized: 'clinician@agency.test',
+  assignee_membership_id: 'membership-a',
+  assignee_membership_version_at_enablement: 2,
+  status: 'active',
+  source: 'manual',
+  created_by_user_id: 'admin-a',
+  created_by_user_email_normalized: 'admin@agency.test',
+  activated_at: NOW,
+  last_transition_by_user_id: 'admin-a',
+  last_transition_by_email_normalized: 'admin@agency.test',
+  last_transition_at: NOW,
+  last_transition_reason: 'Assigned clinician',
+  last_transition_action: 'grant',
+  last_transition_request_id: 'assignment-request-a',
+  last_transition_request_key: 'agency-a:patient-a:user-a:assignment-request-a',
+  version: 1,
+  ...overrides,
+});
+
+const assignedPatient = (overrides = {}) => patient({
+  created_by_user_id: 'admin-a',
+  created_by_user_email_normalized: 'admin@agency.test',
+  created_by: 'admin@agency.test',
+  client_request_id: 'patient-create-admin-a',
+  patient_creation_key: 'agency-a:admin-a:patient-create-admin-a',
+  ...overrides,
+});
+
 const pdfFile = (name = 'clinical-note.pdf', contents = 'exact-pdf-content') =>
   new File([`%PDF-${contents}`], name, { type: 'application/pdf' });
 
@@ -102,18 +136,20 @@ async function loadBroker({
   agencies = [agency()],
   memberships = [membership()],
   patients = [patient()],
+  assignments = [],
   documents = [],
   bindings = [],
   ignoreFilters = false,
   membershipResponses = null,
   agencyResponses = null,
   patientResponses = null,
+  assignmentResponses = null,
   documentFilterMutation = null,
   documentCreateMutation = null,
   bindingCreateMutation = null,
   bindingCreateError = null,
   duplicateBindingOnCreate = false,
-  uploadResult = { file_url: 'https://files.base44.app/document-a.pdf' },
+  uploadResult = { file_uri: 'private/document-a.pdf' },
   uploadError = null,
 } = {}) {
   const clone = (value) => structuredClone(value);
@@ -121,6 +157,7 @@ async function loadBroker({
     agencies: clone(agencies),
     memberships: clone(memberships),
     patients: clone(patients),
+    assignments: clone(assignments),
     documents: clone(documents),
     bindings: clone(bindings),
   };
@@ -130,6 +167,7 @@ async function loadBroker({
     agencies: [],
     memberships: [],
     patients: [],
+    assignments: [],
     documentFilters: [],
     bindingFilters: [],
     documentCreates: [],
@@ -141,6 +179,7 @@ async function loadBroker({
   let membershipIndex = 0;
   let agencyIndex = 0;
   let patientIndex = 0;
+  let assignmentIndex = 0;
   const selected = (responses, index, fallback) => (
     responses ? responses[Math.min(index, responses.length - 1)] : fallback
   );
@@ -177,6 +216,18 @@ async function loadBroker({
           calls.events.push('Patient.filter');
           calls.patients.push({ query: clone(query), sort, limit });
           const rows = selected(patientResponses, patientIndex++, state.patients);
+          return filtered(clone(rows), query, limit);
+        },
+      },
+      PatientCareTeamAssignment: {
+        filter: async (query, sort, limit, offset, fields) => {
+          calls.events.push('PatientCareTeamAssignment.filter');
+          calls.assignments.push({ query: clone(query), sort, limit, offset, fields });
+          const rows = selected(
+            assignmentResponses,
+            assignmentIndex++,
+            state.assignments,
+          );
           return filtered(clone(rows), query, limit);
         },
       },
@@ -225,8 +276,8 @@ async function loadBroker({
     },
     integrations: {
       Core: {
-        UploadFile: async ({ file }) => {
-          calls.events.push('UploadFile');
+        UploadPrivateFile: async ({ file }) => {
+          calls.events.push('UploadPrivateFile');
           calls.uploads.push(file);
           if (uploadError) throw uploadError;
           return clone(uploadResult);
@@ -314,12 +365,15 @@ test('DocumentTenantBinding is service-owned while direct Document mutation debt
   for (const field of [
     'binding_key', 'document_id', 'agency_id', 'created_by_user_id',
     'created_by_user_email_normalized', 'membership_id', 'membership_version',
-    'document_created_by_email_normalized', 'file_url', 'file_name', 'file_type',
+    'document_created_by_email_normalized', 'storage_mode', 'file_uri', 'file_name', 'file_type',
     'file_size', 'content_sha256', 'client_request_id', 'purpose', 'version',
     'created_at', 'last_verified_at',
   ]) {
     assert.ok(bindingSchema.required.includes(field), field);
   }
+  assert.deepEqual(bindingSchema.properties.storage_mode.enum, ['private']);
+  assert.equal(Object.hasOwn(bindingSchema.properties, 'file_url'), false);
+  assert.equal(bindingSchema.properties.version.default, 2);
   assert.deepEqual(bindingSchema.properties.purpose.enum, ['patient_document', 'referral']);
   assert.notEqual(documentSchema.rls.create, false);
   assert.equal(documentSchema.rls.update, false);
@@ -327,7 +381,10 @@ test('DocumentTenantBinding is service-owned while direct Document mutation debt
 
   const wrapper = await readFile(wrapperUrl, 'utf8');
   assert.match(wrapper, /functions\.invoke\('createAuthorizedDocument', payload\)/);
-  assert.doesNotMatch(wrapper, /integrations\.Core\.UploadFile|entities\.Document\./);
+  assert.doesNotMatch(
+    wrapper,
+    /integrations\.Core\.(?:UploadFile|UploadPrivateFile)|entities\.Document\./,
+  );
   const wired = [];
   for (const path of await sourceFiles(sourceRootUrl)) {
     if (path === wrapperUrl.pathname || path.endsWith('createAuthorizedDocument.spec.js')) continue;
@@ -355,7 +412,7 @@ test('DocumentTenantBinding is service-owned while direct Document mutation debt
   );
 });
 
-test('authorized patient upload orders authority, File upload, Document create, binding, and readbacks', async () => {
+test('authorized patient upload orders authority, private upload, metadata create, binding, and readbacks', async () => {
   const runtime = await loadBroker();
   const file = pdfFile();
   const { response, json } = await invoke(runtime.handler, { file });
@@ -365,8 +422,10 @@ test('authorized patient upload orders authority, File upload, Document create, 
   assert.equal(json.created, true);
   assert.deepEqual(Object.keys(json).sort(), ['binding', 'created', 'document', 'scope', 'success']);
   assert.deepEqual(Object.keys(json.document).sort(), [
-    'category', 'file_name', 'file_size', 'file_type', 'file_url', 'id', 'patient_id',
+    'category', 'file_name', 'file_size', 'file_type', 'id', 'patient_id',
   ]);
+  assert.equal(JSON.stringify(json).includes('file_uri'), false);
+  assert.equal(JSON.stringify(json).includes('private/document-a.pdf'), false);
   assert.deepEqual(Object.keys(json.binding).sort(), ['client_request_id', 'id', 'version']);
   assert.equal(runtime.calls.uploads.length, 1);
   assert.ok(runtime.calls.uploads[0] instanceof File);
@@ -379,8 +438,8 @@ test('authorized patient upload orders authority, File upload, Document create, 
   );
   assert.equal(runtime.calls.documentCreates.length, 1);
   assert.equal(runtime.calls.bindingCreates.length, 1);
-  assert.ok(runtime.calls.events.indexOf('AgencyMembership.filter') < runtime.calls.events.indexOf('UploadFile'));
-  assert.ok(runtime.calls.events.indexOf('UploadFile') < runtime.calls.events.indexOf('Document.create'));
+  assert.ok(runtime.calls.events.indexOf('AgencyMembership.filter') < runtime.calls.events.indexOf('UploadPrivateFile'));
+  assert.ok(runtime.calls.events.indexOf('UploadPrivateFile') < runtime.calls.events.indexOf('Document.create'));
   assert.ok(runtime.calls.events.indexOf('Document.create') < runtime.calls.events.indexOf('DocumentTenantBinding.create'));
   assert.ok(runtime.calls.memberships.length >= 4, 'authority must be rechecked around irreversible work');
   assert.ok(runtime.calls.patients.length >= 4);
@@ -388,7 +447,6 @@ test('authorized patient upload orders authority, File upload, Document create, 
   const document = runtime.calls.documentCreates[0];
   assert.deepEqual(document, {
     title: 'clinical-note.pdf',
-    file_url: 'https://files.base44.app/document-a.pdf',
     file_name: 'clinical-note.pdf',
     file_size: file.size,
     file_type: 'application/pdf',
@@ -400,6 +458,8 @@ test('authorized patient upload orders authority, File upload, Document create, 
     created_by: 'clinician@agency.test',
     is_sensitive: true,
   });
+  assert.equal(Object.hasOwn(document, 'file_url'), false);
+  assert.equal(Object.hasOwn(document, 'file_uri'), false);
   assert.match(document.document_date, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(Object.hasOwn(document, 'agency_id'), false);
 
@@ -411,9 +471,11 @@ test('authorized patient upload orders authority, File upload, Document create, 
   assert.equal(binding.membership_id, 'membership-a');
   assert.equal(binding.membership_version, 2);
   assert.equal(binding.document_created_by_email_normalized, 'clinician@agency.test');
+  assert.equal(binding.storage_mode, 'private');
+  assert.equal(binding.file_uri, 'private/document-a.pdf');
   assert.match(binding.binding_key, /^[a-f0-9]{64}$/);
   assert.match(binding.content_sha256, /^[a-f0-9]{64}$/);
-  assert.equal(binding.version, 1);
+  assert.equal(binding.version, 2);
   assert.equal(json.scope.agency_id, 'agency-a');
   assert.equal(json.scope.membership_version, 2);
 });
@@ -573,7 +635,122 @@ test('membership roles, lifecycle integrity, Agency state, and immutable Patient
   }
 });
 
-test('authority drift after UploadFile prevents Document and binding creation', async () => {
+test('assigned clinician upload requires one exact active assignment bound to current membership', async () => {
+  const authorized = await loadBroker({
+    patients: [assignedPatient()],
+    assignments: [assignment()],
+  });
+  const accepted = await invoke(authorized.handler);
+  assert.equal(accepted.response.status, 200);
+  assert.ok(
+    authorized.calls.assignments.length >= 4,
+    'assignment authority must be rechecked around irreversible work',
+  );
+  for (const call of authorized.calls.assignments) {
+    assert.deepEqual(call.query, {
+      assignment_key: 'agency-a:patient-a:user-a',
+      agency_id: 'agency-a',
+      patient_id: 'patient-a',
+      user_id: 'user-a',
+    });
+    assert.equal(call.sort, '-updated_date');
+    assert.equal(call.limit, 10);
+    assert.ok(call.fields.includes('assignee_membership_version_at_enablement'));
+    assert.ok(call.fields.includes('last_transition_request_key'));
+  }
+  assert.ok(
+    authorized.calls.events.indexOf('PatientCareTeamAssignment.filter')
+      < authorized.calls.events.indexOf('UploadPrivateFile'),
+  );
+
+  const failures = [
+    { assignments: [], expected: 404 },
+    {
+      assignments: [assignment({
+        status: 'suspended',
+        suspended_at: NOW,
+        last_transition_action: 'suspend',
+      })],
+      expected: 404,
+    },
+    { assignments: [assignment(), assignment({ id: 'assignment-duplicate' })], expected: 409 },
+    {
+      assignments: [assignment({ assignee_membership_id: 'membership-old' })],
+      expected: 409,
+    },
+    {
+      assignments: [assignment({ assignee_membership_version_at_enablement: 1 })],
+      expected: 409,
+    },
+    {
+      assignments: [assignment({ user_email_normalized: 'other@agency.test' })],
+      expected: 409,
+    },
+    {
+      assignments: [assignment({ assignment_key: 'agency-b:patient-a:user-a' })],
+      ignoreFilters: true,
+      expected: 409,
+    },
+    {
+      assignments: [assignment({ agency_id: 'agency-b' })],
+      ignoreFilters: true,
+      expected: 409,
+    },
+    {
+      assignments: [assignment({ patient_id: 'patient-b' })],
+      ignoreFilters: true,
+      expected: 409,
+    },
+    {
+      assignments: [assignment({ user_id: 'user-b' })],
+      ignoreFilters: true,
+      expected: 409,
+    },
+    {
+      assignments: [assignment({ last_transition_request_key: 'forged' })],
+      expected: 409,
+    },
+  ];
+  for (const scenario of failures) {
+    const runtime = await loadBroker({
+      patients: [assignedPatient()],
+      assignments: scenario.assignments,
+      ignoreFilters: scenario.ignoreFilters,
+    });
+    const result = await invoke(runtime.handler);
+    assert.equal(result.response.status, scenario.expected, JSON.stringify(scenario.assignments));
+    assert.equal(runtime.calls.uploads.length, 0);
+    assert.equal(runtime.calls.documentCreates.length, 0);
+    assert.equal(runtime.calls.bindingCreates.length, 0);
+  }
+});
+
+test('assigned-clinician authority drift after private upload prevents metadata creation', async () => {
+  const changedAssignment = assignment({
+    version: 2,
+    last_transition_action: 'activate',
+    last_transition_request_id: 'assignment-request-b',
+    last_transition_request_key: 'agency-a:patient-a:user-a:assignment-request-b',
+    last_transition_reason: 'Reactivated assignment',
+  });
+  const runtime = await loadBroker({
+    patients: [assignedPatient()],
+    assignments: [assignment()],
+    assignmentResponses: [
+      [assignment()],
+      [assignment()],
+      [changedAssignment],
+    ],
+  });
+  const { response, json } = await invoke(runtime.handler);
+  assert.equal(response.status, 409);
+  assert.match(json.error, /authority changed/);
+  assert.equal(runtime.calls.uploads.length, 1);
+  assert.equal(runtime.calls.documentCreates.length, 0);
+  assert.equal(runtime.calls.bindingCreates.length, 0);
+});
+
+test('authority drift after UploadPrivateFile prevents Document and binding creation', async () => {
   const runtime = await loadBroker({
     membershipResponses: [
       [membership()],
@@ -597,7 +774,7 @@ test('binding creation or verification failure compensates only the request-crea
   assert.equal(createFailure.state.documents.length, 0);
 
   const verificationFailure = await loadBroker({
-    bindingCreateMutation: { file_url: 'https://files.base44.app/replaced.pdf' },
+    bindingCreateMutation: { file_uri: 'private/replaced.pdf' },
   });
   const mismatched = await invoke(verificationFailure.handler);
   assert.equal(mismatched.response.status, 409);
@@ -657,7 +834,33 @@ test('exact readback drift is compensated and runtime logs never receive PHI-bea
   const source = await readFile(brokerUrl, 'utf8');
   assert.doesNotMatch(source, /console\.(?:log|warn)\s*\(/);
   assert.doesNotMatch(source, /console\.error\([^)]*,/);
-  assert.match(source, /UploadFile\(\{ file: input\.file \}\)/);
+  assert.match(source, /UploadPrivateFile\(\{\s*file: input\.file,?\s*\}\)/);
+  assert.doesNotMatch(source, /\.UploadFile\s*\(/);
   assert.doesNotMatch(source, /req\.json\s*\(/);
   assert.doesNotMatch(source, /DocumentTenantBinding\.delete|DocumentTenantBinding\.update/);
+});
+
+test('invalid private upload pointers fail closed before metadata creation and are never logged', async () => {
+  for (const fileUri of [
+    'https://files.base44.app/public.pdf',
+    ' private/document-a.pdf',
+    'private/document-a.pdf\n',
+    'public/document-a.pdf',
+  ]) {
+    const logged = [];
+    const original = console.error;
+    console.error = (...args) => logged.push(args);
+    try {
+      const runtime = await loadBroker({ uploadResult: { file_uri: fileUri } });
+      const { response, json } = await invoke(runtime.handler);
+      assert.equal(response.status, 500, fileUri);
+      assert.deepEqual(json, { error: 'Internal server error' });
+      assert.equal(runtime.calls.uploads.length, 1);
+      assert.equal(runtime.calls.documentCreates.length, 0);
+      assert.equal(runtime.calls.bindingCreates.length, 0);
+    } finally {
+      console.error = original;
+    }
+    assert.deepEqual(logged, [['createAuthorizedDocument failed']]);
+  }
 });

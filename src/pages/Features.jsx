@@ -455,10 +455,10 @@ export default function FeaturesPage() {
         {
           name: "User Activity Tracking",
           icon: Users,
-          description: "Comprehensive logging of all user actions for audit trail and performance monitoring",
+          description: "Review previously stored user activity for historical audit and performance context",
           timeSaved: "Regulatory compliance",
           impact: "critical",
-          details: "HIPAA audit trail, login tracking, note enhancement stats, action-specific metrics",
+          details: "Historical login records, note enhancement stats, and action-specific metrics; in-app collection is currently paused",
           howToUse: "Admins: View User Activity Log for detailed action history and compliance reporting."
         },
         {
@@ -713,7 +713,7 @@ export default function FeaturesPage() {
       <span class="step-number">3</span>Click "Sign In"
     </div>
     <div class="tip">
-      <span class="tip-icon">💡 TIP:</span> Your login activity is automatically tracked for security and compliance purposes. You'll see a timestamp of your last login on the dashboard.
+      <span class="tip-icon">💡 TIP:</span> PennSync's in-app login-event collection is currently paused. Use identity-provider audit logs for current login monitoring; PennSync activity reports show only previously stored login records.
     </div>
 
     <h3>1.2 Dashboard Overview</h3>
@@ -1044,7 +1044,7 @@ export default function FeaturesPage() {
       <span class="step-number">1</span>Navigate to <strong>"User Activity Log"</strong>
     </div>
     <div class="step">
-      <span class="step-number">2</span>Review login activity, note enhancements, and system usage
+      <span class="step-number">2</span>Review previously stored login activity, note enhancements, and system usage
     </div>
     <div class="step">
       <span class="step-number">3</span>Use filters to focus on specific users, actions, or date ranges

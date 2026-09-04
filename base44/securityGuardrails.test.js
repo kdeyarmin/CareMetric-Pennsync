@@ -584,6 +584,7 @@ test('Codex review: scheduleSms auth, digests, fax sender agency, audit cohort',
   const retry = read('base44/functions/retryFailedFax/entry.ts');
   const timesheet = read('base44/functions/submitTimesheet/entry.ts');
   const audit = read('base44/functions/runSecurityAudit/entry.ts');
+  const smsConsent = read('base44/functions/manageSmsConsent/entry.ts');
   assert.ok(
     /canAccessPatient\(match\)/.test(sms),
     'scheduleSms must authorize every phone-resolved patient before linking.',
@@ -606,11 +607,19 @@ test('Codex review: scheduleSms auth, digests, fax sender agency, audit cohort',
     'submitTimesheet must adopt a single unscoped VisitPointConfig legacy row.',
   );
   assert.ok(
-    /filter\(\{\s*agency_name:\s*agency/.test(audit)
-    && /filter\(\{\s*created_by:\s*email/.test(audit)
+    /isProtectedSuperAdmin\(user\)/.test(audit)
+    && /SUPER_ADMIN_EMAIL/.test(audit)
+    && !/user\.account_type|user\.agency_name/.test(audit)
     && /status:\s*503/.test(audit)
     && /status:\s*422/.test(audit),
-    'runSecurityAudit must query agency cohort first and fail on incomplete/empty reads.',
+    'runSecurityAudit must be protected-owner-only and fail on incomplete/empty reads.',
+  );
+  assert.ok(
+    /isProtectedSuperAdmin\(user\)/.test(smsConsent)
+    && /isProtectedSuperAdmin\(freshUser\)/.test(smsConsent)
+    && /SUPER_ADMIN_EMAIL/.test(smsConsent)
+    && !/user\.account_type|user\.agency_name/.test(smsConsent),
+    'manageSmsConsent must never derive global consent authority from mutable User claims.',
   );
 });
 
@@ -967,4 +976,28 @@ test('HighRiskPatientsWidget uses getScopedPatientAlerts', () => {
     !/overall_risk_level/.test(src),
     'HighRiskPatientsWidget must not filter on non-schema overall_risk_level.',
   );
+});
+
+test('unwired Document binding v2 keeps storage private and signs only exact downloads', () => {
+  const document = JSON5.parse(read('base44/entities/Document.jsonc'));
+  const binding = JSON5.parse(read('base44/entities/DocumentTenantBinding.jsonc'));
+  const create = read('base44/functions/createAuthorizedDocument/entry.ts');
+  const get = read('base44/functions/getAuthorizedDocument/entry.ts');
+  const list = read('base44/functions/listAuthorizedDocuments/entry.ts');
+
+  assert.equal(document.required.includes('file_url'), false);
+  assert.equal(document.rls.create, true, 'Document RLS migration debt must remain explicit');
+  assert.deepEqual(binding.properties.storage_mode.enum, ['private']);
+  assert.equal(binding.properties.version.default, 2);
+  assert.equal(binding.required.includes('file_uri'), true);
+  assert.equal(Object.hasOwn(binding.properties, 'file_url'), false);
+
+  assert.match(create, /\.UploadPrivateFile\s*\(/);
+  assert.doesNotMatch(create, /\.UploadFile\s*\(/);
+  assert.match(create, /storage_mode:\s*'private'/);
+  assert.match(create, /version:\s*2/);
+  assert.match(get, /CreateFileSignedUrl\s*\(/);
+  assert.match(get, /SIGNED_URL_TTL_SECONDS\s*=\s*60/);
+  assert.match(get, /'Cache-Control':\s*'no-store'/);
+  assert.doesNotMatch(list, /CreateFileSignedUrl\s*\(/);
 });

@@ -17,6 +17,9 @@ const PURPOSE_FIELDS = Object.freeze({
     'clinician_signed', 'clinician_signed_date', 'clinician_name', 'patient_signed',
     'patient_signed_date', 'patient_name', 'is_signed', 'is_locked', 'updated_date',
   ],
+  download: [
+    'id', 'file_name', 'file_size', 'file_type', 'category', 'patient_id',
+  ],
 });
 
 const PURPOSE_ROLES = Object.freeze({
@@ -24,6 +27,9 @@ const PURPOSE_ROLES = Object.freeze({
     'platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care',
   ]),
   signature_review: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  download: new Set([
+    'platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care',
+  ]),
 });
 
 function exactIdentifier(value) {
@@ -49,6 +55,22 @@ function validCalendarDate(value) {
 
 function validInstant(value) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function validHttpsUrl(value) {
+  if (typeof value !== 'string' || !value || value.length > 4096 || value.trim() !== value) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:'
+      && !url.username
+      && !url.password
+      && !url.hash
+      && url.href === value;
+  } catch {
+    return false;
+  }
 }
 
 function safeFileName(value) {
@@ -133,12 +155,20 @@ export async function getAuthorizedDocument(options = {}) {
     purpose,
   });
   const result = response?.data ?? response;
+  const expectedResultKeys = purpose === 'download'
+    ? ['success', 'purpose', 'document', 'delivery', 'scope']
+    : ['success', 'purpose', 'document', 'scope'];
   if (
-    !exactKeys(result, ['success', 'purpose', 'document', 'scope'])
+    !exactKeys(result, expectedResultKeys)
     || result.success !== true
     || result.purpose !== purpose
     || !validProjection(result.document, documentId, purpose)
     || !validScope(result.scope, agencyId, purpose)
+    || (purpose === 'download' && (
+      !exactKeys(result.delivery, ['download_url', 'expires_in_seconds'])
+      || !validHttpsUrl(result.delivery.download_url)
+      || result.delivery.expires_in_seconds !== 60
+    ))
   ) {
     throw new Error(result?.error || 'Document lookup failed');
   }

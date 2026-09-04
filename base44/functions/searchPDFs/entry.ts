@@ -260,9 +260,9 @@ Deno.serve(async (req) => {
       user_name: user.full_name,
       action: 'pdf_search',
       details: {
-        query: searchQuery,
         results_count: results.length,
-        filters: { document_type: scopedDocumentType, patient_id: scopedPatientId }
+        document_type_filter_applied: Boolean(scopedDocumentType),
+        patient_filter_applied: Boolean(scopedPatientId),
       },
       page: 'pdf_search'
     });

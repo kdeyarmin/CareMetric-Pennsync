@@ -292,7 +292,8 @@ test('configured protected platform owner can export but audit omits patient nam
   const audit = calls.serviceAuditCreates[0];
   assert.equal(audit.action, 'export_patient_chart_pdf');
   assert.equal(audit.details.patient_id, 'patient-1');
-  assert.equal(audit.ip_address, '203.0.113.8');
+  assert.equal(audit.ip_address, 'server-side');
+  assert.doesNotMatch(JSON.stringify(audit), /203\.0\.113\.8/);
   assert.equal(Object.hasOwn(audit.details, 'patient_name'), false);
   assert.doesNotMatch(JSON.stringify(audit), /Private|Patient/);
 });

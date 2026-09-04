@@ -7,7 +7,7 @@ import { lazy, Suspense, useMemo } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "sonner"
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog"
-import { QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import VisualEditAgent from '@/lib/VisualEditAgent'
 import NavigationTracker from '@/lib/NavigationTracker'
@@ -25,6 +25,7 @@ import ErrorBoundary from '@/components/utils/ErrorBoundary';
 import { ROUTES, REDIRECTS, MAIN_PAGE, ROUTER_PATHS } from '@/routes';
 import { getRoleView, canAccessLevel } from '@/lib/roles';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
+import { getAiContentAgreementStatus } from '@/functions/getAiContentAgreementStatus';
 import { getRouterBasename } from '@/lib/routerBasename';
 import { isPublicTokenPath } from '@/lib/publicRoutes';
 
@@ -107,6 +108,34 @@ const AppUnavailableScreen = ({ type, message }) => {
   );
 };
 
+const AgreementVerificationUnavailable = ({ onRetry, onSignOut }) => (
+  <div className="fixed inset-0 flex items-center justify-center bg-slate-50 p-4">
+    <div className="max-w-lg rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
+      <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Verification unavailable</p>
+      <h1 className="mt-2 text-2xl font-bold text-slate-900">PennSync could not verify your acknowledgment</h1>
+      <p className="mt-3 text-sm text-slate-700">
+        No clinical workspace has been opened. Retry the protected verification, or sign out and try again later.
+      </p>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-lg bg-navy-700 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
+        >
+          Retry verification
+        </button>
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 const AdminOnlyFallback = ({ superAdmin = false }) => (
   <div className="flex min-h-[60vh] flex-col items-center justify-center p-8 text-center">
     <h1 className="text-2xl font-bold text-slate-900">
@@ -168,7 +197,20 @@ const RoutePageLoader = () => (
 
 const AuthenticatedApp = () => {
   const location = useLocation();
-  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated } = useAuth();
+  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, logout } = useAuth();
+  const publicTokenPath = isPublicTokenPath(location.pathname);
+  const agreementStatus = useQuery({
+    queryKey: ['aiContentAgreementStatus', user?.id || 'authenticated-user'],
+    queryFn: getAiContentAgreementStatus,
+    enabled: !publicTokenPath
+      && !isLoadingAuth
+      && !isLoadingPublicSettings
+      && !authError
+      && isAuthenticated
+      && Boolean(user),
+    retry: false,
+    staleTime: 0,
+  });
   // Three-tier role model (see lib/roles.js): super_admin > facility_admin > nurse.
   // Both admin tiers require Base44's protected built-in admin role. The owner
   // tier additionally requires the configured email; self-mutable custom User
@@ -220,7 +262,7 @@ const AuthenticatedApp = () => {
   // gated by capability tokens in the link, not by an app login. This is
   // checked before the auth gate below so external users are never bounced to login.
   // Segment match, not a string prefix — see lib/publicRoutes.js.
-  if (isPublicTokenPath(location.pathname)) {
+  if (publicTokenPath) {
     return (
       <Suspense fallback={
         <div className="fixed inset-0 flex items-center justify-center">
@@ -287,15 +329,48 @@ const AuthenticatedApp = () => {
     return <SignInScreen />;
   }
 
+  // Never render a clinical route from cached agreement data while a fresh
+  // protected verification is in flight. This matters when returning from a
+  // public token route or re-enabling the query for the same authenticated
+  // user: React Query may retain old data while it performs the new request.
+  if (!user || agreementStatus.isPending || agreementStatus.isFetching) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center">
+        <PageLoader />
+      </div>
+    );
+  }
+
+  if (agreementStatus.isError) {
+    return (
+      <AgreementVerificationUnavailable
+        onRetry={() => agreementStatus.refetch()}
+        onSignOut={() => logout()}
+      />
+    );
+  }
+
   // Responsibility gate: before using the software, every user must sign off
   // that they are responsible for proofreading/editing AI-generated material
   // and for attesting to anything they submit. This sits AFTER the auth gate
   // (so we have a user to record acceptance against) but BEFORE any app route
   // renders. The public /join and /signer routes are handled above, so external
-  // patients are never asked to accept it. Version-bumping the agreement in
+  // patients are never asked to accept it. Only the protected status broker's
+  // service-owned AIContentAgreementAttestation is trusted here; self-mutable User
+  // fields cannot satisfy this gate. Version-bumping the agreement in
   // lib/aiContentAgreement.js re-prompts everyone.
-  if (!hasAcceptedAiContentAgreement(user)) {
-    return <AIContentResponsibilityAgreement />;
+  if (!hasAcceptedAiContentAgreement(agreementStatus.data)) {
+    return (
+      <AIContentResponsibilityAgreement
+        onAccepted={async () => {
+          const result = await agreementStatus.refetch({ cancelRefetch: true });
+          if (result.error) throw result.error;
+          if (!hasAcceptedAiContentAgreement(result.data)) {
+            throw new Error('Protected agreement verification did not confirm the current version.');
+          }
+        }}
+      />
+    );
   }
 
   // Render the main app. A single layout route keeps the sidebar, header, and

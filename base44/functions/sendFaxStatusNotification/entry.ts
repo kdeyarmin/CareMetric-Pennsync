@@ -122,6 +122,17 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: resolveTelnyxCreds — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
@@ -206,6 +217,9 @@ async function resolveAgencySettings(base44, agencyName) {
 }
 // <<<END SHARED HELPER: resolveAgencySettings>>>
 
+// Interim containment: notification claims can suppress subsequent notices and
+// expose fax metadata, so only the configured protected owner may invoke this
+// handler until fax-sender routing is backed by immutable server-owned bindings.
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -216,6 +230,10 @@ Deno.serve(async (req) => {
     }
     if (user.is_active === false) {
       return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Only the protected platform owner can send fax status notifications' }, { status: 403 });
     }
 
     const { data } = await req.json();
@@ -228,32 +246,6 @@ Deno.serve(async (req) => {
     const fax = await base44.asServiceRole.entities.FaxLog.get(data.id).catch(() => null);
     if (!fax) {
       return Response.json({ error: 'Fax not found' }, { status: 404 });
-    }
-
-    // Only the sender or an admin may drive the sender's delivery/failure notice
-    // (and consume its one-shot idempotency markers). Agency-scoped admins are
-    // limited to their own agency's faxes — a bare isAdminLike() check let an
-    // agency_admin of another tenant read this fax's recipient/document/failure
-    // detail and suppress the real sender's notification.
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    const isOwner = fax.sent_by === user.email;
-    if (!isOwner && !isPlatformAdmin && !isAgencyScopedAdmin) {
-      return Response.json({ error: 'Forbidden: not the fax sender' }, { status: 403 });
-    }
-    if (isAgencyScopedAdmin && !isOwner) {
-      if (!user.agency_name || !fax.sent_by) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      const senders = await base44.asServiceRole.entities.User
-        .filter({ email: fax.sent_by }, undefined, 5)
-        .catch(() => []);
-      if (!senders?.[0] || senders[0].agency_name !== user.agency_name) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
     }
 
     const status = String(fax.status || '').toLowerCase();

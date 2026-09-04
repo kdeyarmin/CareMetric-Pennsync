@@ -16,8 +16,20 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 const MIN_LEAD_MS = 60 * 1000;
 const MAX_SCHEDULE_MS = 365 * 24 * 60 * 60 * 1000;
+const SCHEDULED_SMS_CREATION_PAUSED = true;
 
 function normalizeE164(raw) {
   if (!raw) return null;
@@ -41,11 +53,27 @@ function getThreadId(a, b) {
 }
 
 Deno.serve(async (req) => {
+  if (SCHEDULED_SMS_CREATION_PAUSED) {
+    return Response.json({
+      error: 'Scheduled SMS is temporarily unavailable pending a service-owned telecom and tenant binding',
+      code: 'telecom_authority_migration_pending',
+    }, { status: 503 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    // Scheduled dispatch still derives routing from custom User fields. Keep
+    // provider-bound queue creation owner-only until service-owned telecom and
+    // tenant bindings replace those fields.
+    if (!isProtectedSuperAdmin(user)) {
+      return Response.json({
+        error: 'Scheduled SMS is restricted to the protected platform owner pending telecom-binding migration',
+        code: 'telecom_authority_migration_pending',
+      }, { status: 503 });
+    }
 
     const { to_number, body, patient_id, send_at, template_label } = await req.json();
     if (!to_number || !body || !send_at) {
@@ -96,26 +124,11 @@ Deno.serve(async (req) => {
     let resolvedPatientId = null;
     const canAccessPatient = async (claimed) => {
       if (!claimed) return false;
-      const isSuperAdmin = user.account_type === 'super_admin';
-      const isAgencyScopedAdmin =
-        user.account_type === 'agency_admin'
-        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-      const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
       const isAssigned = Array.isArray(claimed.assigned_nurses)
         && claimed.assigned_nurses.includes(user.email);
-      if (isPlatformAdmin || claimed.created_by === user.email || isAssigned) return true;
-      if (!isAgencyScopedAdmin) return false;
-      if (!user.agency_name) return false;
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .list('-created_date', 5000).catch(() => []);
-      const agencyEmails = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-      return (claimed.created_by && agencyEmails.has(claimed.created_by))
-        || (Array.isArray(claimed.assigned_nurses)
-          && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
+      return isProtectedSuperAdmin(user)
+        || claimed.created_by === user.email
+        || isAssigned;
     };
 
     if (destination) {
@@ -160,7 +173,7 @@ Deno.serve(async (req) => {
       // Phone match already authorized above.
     }
 
-    const row = await base44.entities.ScheduledSms.create({
+    const row = await base44.asServiceRole.entities.ScheduledSms.create({
       to_number: destination,
       from_number: fromNumber,
       body,
@@ -174,19 +187,15 @@ Deno.serve(async (req) => {
       created_by: user.email,
     });
 
-    await base44.entities.UserActivity.create({
+    await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'sms_scheduled',
       entity_type: 'ScheduledSms',
       entity_id: row.id,
       details: {
-        to_number: destination,
-        from_number: fromNumber,
-        patient_id: patient_id || null,
-        send_at: sendAtIso,
-        body_length: body.length,
-        timestamp: new Date().toISOString(),
+        provider: 'telnyx',
+        direction: 'outbound',
       },
       status: 'success',
     }).catch((err) => console.error('Failed to log activity:', err));

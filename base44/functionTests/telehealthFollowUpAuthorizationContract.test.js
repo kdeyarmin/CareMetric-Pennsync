@@ -19,6 +19,15 @@ async function loadHandler(functionName, { client, superAdminEmail = '', fetchIm
     new URL(`../functions/${functionName}/entry.ts`, import.meta.url),
     'utf8',
   );
+  // A dedicated containment contract proves the shipped literal 503 gate.
+  // Exercise the dormant authorization implementation only in this temporary
+  // module so it stays hardened for a future reviewed migration.
+  if (functionName === 'createTelehealthToken') {
+    source = source.replace(
+      'const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = true;',
+      'const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = false;',
+    );
+  }
   source = source.replace(
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     'const createClientFromRequest = globalThis.__clinicalBoundaryMakeClient;',

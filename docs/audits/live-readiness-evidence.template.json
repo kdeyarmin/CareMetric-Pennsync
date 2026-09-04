@@ -1,42 +1,83 @@
 {
   "release": {
-    "id": "rc-YYYY-MM-DD",
-    "name": "PennSync live-readiness candidate",
+    "release_id": "FILL_ME: rc-YYYY-MM-DD",
     "environment": "staging",
-    "notes": "Fill real evidence for LR-01 and LR-02 only. Do not commit secrets or PHI."
+    "fixture_set_id": "lr01-lr02-two-agency-v1",
+    "staging_app_id": "6a9881683dc68a0bd54f1ef7",
+    "staging_origin": "https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/",
+    "staging_backend_origin": "FILL_ME: exact VITE_BASE44_BACKEND_URL origin used for raw probes",
+    "candidate_source_commit_sha": "FILL_ME: exact 40-character candidate Git commit SHA",
+    "candidate_source_tree_sha": "FILL_ME: exact 40-character candidate Git tree SHA",
+    "hosted_runtime_commit_sha": "FILL_ME: exact hosted Base44 runtime commit SHA",
+    "hosted_runtime_tree_sha": "FILL_ME: exact hosted Base44 runtime tree SHA",
+    "hosted_deployment_id": "FILL_ME: identifier from a complete immutable deployment receipt covering the deployed site and resources; a functions version alone or human checkpoint label is insufficient",
+    "candidate_deployable_manifest_sha256": "FILL_ME: SHA-256 of the externally reviewed candidate resource-inventory attestation with explicit scope and exclusions",
+    "hosted_resource_manifest_sha256": "FILL_ME: SHA-256 of the externally reviewed hosted resource-inventory attestation using the same scope and exclusions",
+    "requested_rollout_date": "FILL_ME: YYYY-MM-DD",
+    "release_owner": "FILL_ME: engineering release owner",
+    "rollback_owner": "FILL_ME: rollback owner",
+    "monitoring_owner": "FILL_ME: monitoring owner"
   },
+  "matrix": [
+    {
+      "id": "LR-01",
+      "capability": "Hosted tenant/RLS verification",
+      "priority": 1,
+      "phaseSource": "Phase 0",
+      "risk": "critical"
+    },
+    {
+      "id": "LR-02",
+      "capability": "Seeded authenticated staging E2E",
+      "priority": 2,
+      "phaseSource": "Phase 0",
+      "risk": "critical"
+    }
+  ],
   "evidence": {
     "LR-01": {
       "owner": {
-        "summary": "Engineering + security owners for hosted RLS",
-        "references": ["https://example.com/ticket-or-doc"]
+        "summary": "FILL_ME: engineering + security owners for hosted RLS",
+        "references": []
       },
       "product_approval": {
-        "summary": "Product confirmed server-owned membership and care-team authority; platform owner excluded from tenant assertions",
+        "summary": "FILL_ME: product confirmed server-owned membership and care-team authority; platform owner excluded from tenant assertions",
         "references": []
       },
       "security_approval": {
-        "summary": "Security reviewed secure-broker, two-agency, immutable-membership, and cross-tenant tests",
+        "summary": "FILL_ME: security reviewed secure-broker, two-agency, immutable-membership, and cross-tenant tests",
         "references": []
       },
       "hosted_environment": {
-        "summary": "Base44 staging app id / URL (no secrets)",
+        "summary": "FILL_ME: corroborate staging app/frontend/backend, fixture set, candidate commit/tree, hosted runtime commit/tree, complete immutable deployment receipt, and equal candidate/hosted inventory-attestation hashes; references identify the protected receipt and both reviewed inventory artifacts (no secrets)",
         "references": []
       },
       "credentials_or_sandbox": {
-        "summary": "Admin-A/Admin-B and Clinician-A/Clinician-A-empty use built-in user plus active agency_admin/clinician memberships; A1 assigned, A2 unassigned, B1 foreign; platform owner reserved and excluded",
+        "summary": "FILL_ME: Admin-A/Admin-B and Clinician-A/Clinician-A-empty use built-in user plus active agency_admin/clinician memberships; A1 assigned, A2 unassigned, B1 foreign; platform owner reserved and excluded",
         "references": []
       },
       "test_evidence": {
-        "summary": "V1–V6 and T1–T4 against raw secure-broker responses; no direct entity reads or mutable claims",
-        "references": []
+        "summary": "FILL_ME: V1–V6 and T1–T4 passed against raw secure-broker responses; the run-index reference and every required probe entry point to retained artifacts; no direct entity reads or mutable claims",
+        "references": [],
+        "probes": {
+          "V1": { "references": [] },
+          "V2": { "references": [] },
+          "V3": { "references": [] },
+          "V4": { "references": [] },
+          "V5": { "references": [] },
+          "V6": { "references": [] },
+          "T1": { "references": [] },
+          "T2": { "references": [] },
+          "T3": { "references": [] },
+          "T4": { "references": [] }
+        }
       },
       "rollback_plan": {
-        "summary": "Documented RLS revert path and owner SLA",
+        "summary": "FILL_ME: documented RLS revert path and owner SLA",
         "references": ["docs/RLS-LAUNCH-RUNBOOK.md"]
       },
       "monitoring_plan": {
-        "summary": "Unauthorized access visible in SecurityLog / platform logs; alert owner named",
+        "summary": "FILL_ME: unauthorized access visible in Base44 platform logs and alert owner named; use SecurityLog only after its hosted append/read boundary and tenant exposure are independently proved",
         "references": []
       },
       "reviewers": {
@@ -48,35 +89,41 @@
     },
     "LR-02": {
       "owner": {
-        "summary": "QA + engineering owners for staging E2E",
+        "summary": "FILL_ME: QA + engineering owners for staging E2E",
         "references": []
       },
       "product_approval": {
-        "summary": "Product confirmed minimum smoke flows for pilot",
+        "summary": "FILL_ME: product confirmed minimum smoke flows for pilot",
         "references": []
       },
       "security_approval": {
-        "summary": "Security confirmed no production PHI in seeds; staging secrets isolated",
+        "summary": "FILL_ME: security confirmed no production PHI in seeds; staging secrets isolated",
         "references": []
       },
       "hosted_environment": {
-        "summary": "Staging URL and seed dataset description (no PHI)",
+        "summary": "FILL_ME: corroborate staging app/frontend/backend, fixture set, candidate commit/tree, hosted runtime commit/tree, complete immutable deployment receipt, and equal candidate/hosted inventory-attestation hashes; references identify the protected receipt and both reviewed inventory artifacts (no PHI or secrets)",
         "references": []
       },
       "credentials_or_sandbox": {
-        "summary": "Authenticated test accounts; CI secrets staging-only if used",
+        "summary": "FILL_ME: authenticated test accounts and shared actors/patients exist; fixture validation does not supply the Referral/Visit results, so S3/S4 create them; CI secrets staging-only if used",
         "references": []
       },
       "test_evidence": {
-        "summary": "S1–S8 authenticated smoke results (login, patient, referral, note, OASIS, training, signature, comms sandbox)",
-        "references": []
+        "summary": "FILL_ME: S1–S4 passed with a retained artifact reference under every required probe entry; identify which optional/in-scope S5–S9 flows were exercised",
+        "references": [],
+        "probes": {
+          "S1": { "references": [] },
+          "S2": { "references": [] },
+          "S3": { "references": [] },
+          "S4": { "references": [] }
+        }
       },
       "rollback_plan": {
-        "summary": "Re-seed or wipe staging tenant without affecting production",
+        "summary": "FILL_ME: re-seed or wipe staging tenant without affecting production",
         "references": []
       },
       "monitoring_plan": {
-        "summary": "Failed smoke runs tracked in QA ticket; release owner notified",
+        "summary": "FILL_ME: failed smoke runs tracked in QA ticket and release owner notified; use Base44 platform logs until SecurityLog's hosted append/read and tenant boundary are proved",
         "references": []
       },
       "reviewers": {

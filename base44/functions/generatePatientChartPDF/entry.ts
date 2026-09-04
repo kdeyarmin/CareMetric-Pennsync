@@ -183,14 +183,6 @@ Create professional medical chart content with:
       return Response.json({ error: 'Chart generation returned empty content' }, { status: 502 });
     }
     const pageCount = Number.isFinite(Number(result?.page_count)) ? Number(result.page_count) : undefined;
-    // Proxy headers are request-controlled at this boundary. Store one bounded
-    // scalar rather than an arbitrary forwarded chain in the privileged audit.
-    const clientIp = (
-      req.headers.get('cf-connecting-ip')
-      || (req.headers.get('x-forwarded-for') || '').split(',')[0].trim()
-      || 'unknown'
-    ).slice(0, 64);
-
     // Log the export action for compliance
     await base44.asServiceRole.entities.SecurityLog.create({
       user_email: user.email,
@@ -203,7 +195,7 @@ Create professional medical chart content with:
         exported_at: new Date().toISOString()
       },
       timestamp: new Date().toISOString(),
-      ip_address: clientIp
+      ip_address: 'server-side'
     });
 
     return Response.json({

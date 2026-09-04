@@ -1,6 +1,4 @@
 import DOMPurify from 'dompurify';
-import { formatInTimeZone } from 'date-fns-tz';
-import { base44 } from '@/api/base44Client';
 import { logError } from './activityLogger';
 
 /**
@@ -216,95 +214,13 @@ export function sanitizeObject(obj) {
  * @returns {Promise<void>}
  */
 export async function logSecurityEvent(action, details = {}, severity = 'info') {
-  try {
-    const user = await base44.auth.me();
-    if (!user) return;
-    
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      user_email: user.email,
-      user_role: user.role,
-      action,
-      details: {
-        ...details,
-        page: window.location.pathname,
-        timestamp_local: new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })
-      },
-      ip_address: 'client-side',
-      user_agent: navigator.userAgent
-    };
-    
-    // Store in SecurityLog entity - don't await to avoid blocking
-    base44.entities.SecurityLog.create(logEntry).catch(err => {
-      console.error('Failed to store security log:', err);
-    });
-    
-    // Detect anomalies and create alerts for critical events
-    if (severity === 'critical') {
-      detectAndAlertAnomalies(action, user, details);
-    }
-  } catch (error) {
-    console.error('Failed to log security event:', error);
-  }
-}
-
-/**
- * Detect security anomalies and create alerts
- */
-async function detectAndAlertAnomalies(action, user, details) {
-  try {
-    const anomalies = [];
-    
-    // Check for rapid repeated failed attempts
-    if (action.includes('FAILED') || action.includes('DENIED')) {
-      anomalies.push({
-        type: 'failed_action',
-        message: `Failed action detected: ${action}`,
-        severity: 'high'
-      });
-    }
-    
-    // Check for bulk deletions
-    if (action.includes('DELETE') && details.bulk_count > 5) {
-      anomalies.push({
-        type: 'bulk_deletion',
-        message: `Bulk deletion of ${details.bulk_count} records`,
-        severity: 'critical'
-      });
-    }
-    
-    // Check for after-hours access (outside 6am-10pm ET). Compute the hour in
-    // Eastern Time (not the browser's local zone) so the window is consistent
-    // regardless of the client machine's timezone.
-    const hour = Number(formatInTimeZone(new Date(), 'America/New_York', 'H'));
-    if (hour < 6 || hour >= 22) {
-      anomalies.push({
-        type: 'after_hours_access',
-        message: `After-hours system access at ${formatInTimeZone(new Date(), 'America/New_York', 'h:mm a')} ET`,
-        severity: 'warning'
-      });
-    }
-    
-    // Log anomalies
-    for (const anomaly of anomalies) {
-      await base44.entities.SecurityLog.create({
-        timestamp: new Date().toISOString(),
-        user_email: user.email,
-        user_role: user.role,
-        action: 'SECURITY_ANOMALY_DETECTED',
-        details: {
-          original_action: action,
-          anomaly_type: anomaly.type,
-          anomaly_message: anomaly.message,
-          anomaly_severity: anomaly.severity
-        },
-        ip_address: 'client-side',
-        user_agent: navigator.userAgent
-      });
-    }
-  } catch (error) {
-    console.error('Failed to detect anomalies:', error);
-  }
+  // SecurityLog is append-only through purpose-specific service-role brokers.
+  // Browser-shaped action/details cannot be authoritative, so this legacy
+  // helper intentionally records nothing until each event has a fixed-schema
+  // server broker.
+  void action;
+  void details;
+  void severity;
 }
 
 /**

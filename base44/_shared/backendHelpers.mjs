@@ -327,6 +327,36 @@ function isProtectedSuperAdmin(user) {
     && normalizeProtectedEmail(user.email) === configuredEmail;
 }`,
 
+  // Transitional authority for legacy exact-creator/assignee workflows. The
+  // User.is_active custom field is self-editable, so it cannot prove that an
+  // account remains employed. AgencyMembership is service-owned and direct RLS
+  // is fully closed. Require exactly one active row bound to both immutable User
+  // id and built-in email; ambiguous or malformed results fail closed.
+  activeMembershipAuthz: `const normalizeMembershipEmail = (value) => String(value || '').trim().toLowerCase();
+async function hasExactActiveAgencyMembership(base44, user) {
+  const userId = typeof user?.id === 'string' ? user.id.trim() : '';
+  const userEmail = normalizeMembershipEmail(user?.email);
+  if (!userId || !userEmail) return false;
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: userId, status: 'active' },
+      undefined,
+      2,
+    );
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row
+    && String(row.user_id || '').trim() === userId
+    && String(row.status || '') === 'active'
+    && normalizeMembershipEmail(row.user_email_normalized) === userEmail
+    && typeof row.agency_id === 'string'
+    && !!row.agency_id.trim();
+}`,
+
   // Offboarding sets is_active:false but deliberately leaves role/account_type
   // intact (history and audit joins key off them), and the Base44 platform does
   // not reject entity-API calls from a deactivated session. So an offboarded

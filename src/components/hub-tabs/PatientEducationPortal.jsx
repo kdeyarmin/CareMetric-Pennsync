@@ -274,14 +274,21 @@ function EducationMaterialCard({
 
   const handleMarkDelivered = async () => {
     setUpdatingStatus(true);
+    let deliveredBy;
     try {
-      let deliveredBy = "";
-      try {
-        const currentUser = await base44.auth.me();
-        deliveredBy = currentUser?.email || "";
-      } catch {
-        deliveredBy = "";
-      }
+      const currentUser = await base44.auth.me();
+      deliveredBy = currentUser?.email;
+    } catch {
+      toast.error("Your session identity is unavailable. Please reload and try again.");
+      setUpdatingStatus(false);
+      return;
+    }
+    if (!deliveredBy) {
+      toast.error("Your session identity is unavailable. Please reload and try again.");
+      setUpdatingStatus(false);
+      return;
+    }
+    try {
       await onUpdate(material.id, {
         delivery_status: "delivered",
         delivery_method: deliveryMethod,

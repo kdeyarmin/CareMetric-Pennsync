@@ -12,9 +12,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const MAX_BODY_BYTES = 20_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const MAX_FILE_NAME_LENGTH = 200;
+const MAX_FILE_URI_LENGTH = 4096;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MEMBERSHIP_SCAN_LIMIT = 100;
 const EXACT_ROW_LIMIT = 10;
+const SIGNED_URL_TTL_SECONDS = 60;
 
 const MEMBERSHIP_STATUSES = new Set(['pending', 'active', 'suspended', 'revoked']);
 const TENANT_ROLES = new Set([
@@ -79,6 +81,14 @@ const PURPOSE_FIELDS: Record<string, readonly string[]> = {
     'is_locked',
     'updated_date',
   ],
+  download: [
+    'id',
+    'file_name',
+    'file_size',
+    'file_type',
+    'category',
+    'patient_id',
+  ],
 };
 
 const PURPOSE_ROLES: Record<string, ReadonlySet<string>> = {
@@ -86,6 +96,9 @@ const PURPOSE_ROLES: Record<string, ReadonlySet<string>> = {
     'platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care',
   ]),
   signature_review: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  download: new Set([
+    'platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care',
+  ]),
 };
 // <<<END AUTHORIZED DOCUMENT EXACT PURPOSE POLICY>>>
 
@@ -118,7 +131,8 @@ const BINDING_AUTHORITY_FIELDS = [
   'membership_id',
   'membership_version',
   'document_created_by_email_normalized',
-  'file_url',
+  'storage_mode',
+  'file_uri',
   'file_name',
   'file_type',
   'file_size',
@@ -248,6 +262,18 @@ function exactHttpsUrl(value: unknown) {
   } catch {
     return null;
   }
+}
+
+function exactPrivateFileUri(value: unknown) {
+  if (
+    typeof value !== 'string'
+    || !value
+    || value.length > MAX_FILE_URI_LENGTH
+    || value.trim() !== value
+    || /[\u0000-\u0020\u007f]/.test(value)
+  ) return null;
+  if (!value.startsWith('private/') && !value.startsWith('private://')) return null;
+  return value;
 }
 
 function validInstant(value: unknown) {
@@ -519,7 +545,7 @@ async function validateBindingIntegrity(
   const clientRequestId = exactIdentifier(row?.client_request_id);
   const patientId = row?.patient_id == null ? null : exactIdentifier(row.patient_id);
   const fileName = safeFileName(row?.file_name);
-  const fileUrl = exactHttpsUrl(row?.file_url);
+  const fileUri = exactPrivateFileUri(row?.file_uri);
   const purpose = typeof row?.purpose === 'string' ? row.purpose : '';
   if (
     !id
@@ -536,7 +562,8 @@ async function validateBindingIntegrity(
     || !documentCreatorEmail
     || row.document_created_by_email_normalized !== documentCreatorEmail
     || documentCreatorEmail !== creatorEmail
-    || !fileUrl
+    || row.storage_mode !== 'private'
+    || !fileUri
     || !fileName
     || !FILE_TYPES.has(String(row.file_type || ''))
     || !fileExtensionMatches(fileName, String(row.file_type || ''))
@@ -547,7 +574,7 @@ async function validateBindingIntegrity(
     || !clientRequestId
     || !BINDING_PURPOSES.has(purpose)
     || (purpose === 'patient_document' && !patientId)
-    || row.version !== 1
+    || row.version !== 2
     || !validInstant(row.created_at)
     || !validInstant(row.last_verified_at)
     || Date.parse(row.last_verified_at) < Date.parse(row.created_at)
@@ -625,7 +652,6 @@ function validatePurposeProjection(row: Record<string, any>, purpose: string) {
     const value = row[field];
     if (value == null) continue;
     if (field === 'id' && !exactIdentifier(value)) throw new PublicError(409, 'Document data is invalid');
-    if (field === 'file_url' && !exactHttpsUrl(value)) throw new PublicError(409, 'Document data is invalid');
     if (field === 'file_name' && !safeFileName(value)) throw new PublicError(409, 'Document data is invalid');
     if (field === 'file_size' && (!Number.isSafeInteger(value) || value < 1 || value > MAX_FILE_BYTES)) {
       throw new PublicError(409, 'Document data is invalid');
@@ -667,7 +693,7 @@ function validateDocumentIntegrity(
   if (
     row?.id !== binding.document_id
     || row.title !== binding.file_name
-    || row.file_url !== binding.file_url
+    || row.file_url != null
     || row.file_name !== binding.file_name
     || row.file_type !== binding.file_type
     || row.file_size !== binding.file_size
@@ -965,7 +991,7 @@ Deno.serve(async (req) => {
       throw new PublicError(409, 'Document read authority changed during request');
     }
     // Re-read every authority and content preimage immediately before
-    // disclosure. Public file URLs are intentionally not an available purpose.
+    // disclosure. Private storage authority is never projected to the caller.
     const disclosureAuthority = await loadAuthority(
       base44,
       input.agencyId,
@@ -979,6 +1005,54 @@ Deno.serve(async (req) => {
     );
     if (!sameValue(disclosure.snapshot, final.snapshot)) {
       throw new PublicError(409, 'Document read authority changed during request');
+    }
+
+    if (input.purpose === 'download') {
+      const signedResult = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({
+        file_uri: disclosure.binding.file_uri,
+        expires_in: SIGNED_URL_TTL_SECONDS,
+      });
+      const downloadUrl = exactHttpsUrl(signedResult?.signed_url);
+      if (!downloadUrl) throw new Error('CreateFileSignedUrl returned an invalid URL');
+
+      // Signing is an asynchronous disclosure boundary. Re-prove the complete
+      // authority/content snapshot once more and discard the capability if any
+      // membership, assignment, binding, Patient, or Document state changed.
+      const postSignAuthority = await loadAuthority(
+        base44,
+        input.agencyId,
+        initialAuthority.snapshot,
+      );
+      requirePurposeRole(postSignAuthority, input.purpose);
+      const postSign = await loadDocumentRead(
+        postSignAuthority.entities,
+        input,
+        postSignAuthority,
+      );
+      if (!sameValue(postSign.snapshot, disclosure.snapshot)) {
+        throw new PublicError(409, 'Document read authority changed during request');
+      }
+
+      return Response.json({
+        success: true,
+        purpose: input.purpose,
+        document: projectDocument(postSign.document, input.purpose),
+        delivery: {
+          download_url: downloadUrl,
+          expires_in_seconds: SIGNED_URL_TTL_SECONDS,
+        },
+        scope: {
+          agency_id: postSignAuthority.agencyId,
+          membership_id: postSignAuthority.membership?.id ?? null,
+          membership_version: postSignAuthority.membership?.version ?? null,
+          tenant_role: postSignAuthority.tenantRole,
+        },
+      }, {
+        headers: {
+          'Cache-Control': 'no-store',
+          Pragma: 'no-cache',
+        },
+      });
     }
 
     return Response.json({

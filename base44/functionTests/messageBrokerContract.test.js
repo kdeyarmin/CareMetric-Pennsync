@@ -71,7 +71,7 @@ function makeClient({ user, users = [], patients = [], referrals = [], documents
         }
         Object.assign(row, operations.$set || {});
       }
-      return { updated: matches.length, has_more: false };
+      return { success: true, updated: matches.length, has_more: false };
     },
   };
   const entities = {
@@ -334,7 +334,7 @@ test('thread authorization rechecks exact IDs when backend filters return unrela
   assert.equal(fixture.state.creates.length, 0);
 });
 
-test('markMessageRead atomically adds a participant and completes only after all recipients read', async () => {
+test('markMessageRead confirms and reads back each update before reporting success', async () => {
   const other = { ...recipient, email: 'other@example.com' };
   const message = {
     id: 'message-1',
@@ -368,6 +368,257 @@ test('markMessageRead atomically adds a participant and completes only after all
   });
 });
 
+test('markMessageRead returns an already-read retry without issuing a write', async () => {
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email, 'other@example.com'],
+    read_by: [sender.email, recipient.email],
+    is_read: false,
+  };
+  const fixture = makeClient({ user: recipient, messages: [message] });
+  const handler = await loadHandler('markMessageRead', fixture.client);
+  const response = await handler(request({ id: message.id }));
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), message);
+  assert.equal(fixture.state.updates.length, 0);
+});
+
+test('markMessageRead reconciles an updated:0 read-state result from exact persisted state', async () => {
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email, 'other@example.com'],
+    read_by: [sender.email],
+    is_read: false,
+  };
+  const fixture = makeClient({ user: recipient, messages: [message] });
+  const entity = fixture.client.asServiceRole.entities.Message;
+  entity.updateMany = async (query, operations) => {
+    fixture.state.updates.push({ query, operations });
+    fixture.state.messages[0].read_by.push(recipient.email);
+    return { success: true, updated: 0, has_more: false };
+  };
+  const handler = await loadHandler('markMessageRead', fixture.client);
+  const response = await handler(request({ id: message.id }));
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).read_by, [sender.email, recipient.email]);
+  assert.equal(fixture.state.updates.length, 1);
+});
+
+test('markMessageRead reconciles an updated:0 completion result after an already-read retry', async () => {
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email],
+    read_by: [sender.email, recipient.email],
+    is_read: false,
+  };
+  const fixture = makeClient({ user: recipient, messages: [message] });
+  const entity = fixture.client.asServiceRole.entities.Message;
+  entity.updateMany = async (query, operations) => {
+    fixture.state.updates.push({ query, operations });
+    fixture.state.messages[0].is_read = true;
+    return { success: true, updated: 0, has_more: false };
+  };
+  const handler = await loadHandler('markMessageRead', fixture.client);
+  const response = await handler(request({ id: message.id }));
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).is_read, true);
+  assert.deepEqual(fixture.state.updates, [{
+    query: { id: message.id },
+    operations: { $set: { is_read: true } },
+  }]);
+});
+
+test('markMessageRead fails closed on invalid or unreconciled updateMany outcomes', async () => {
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email],
+    read_by: [sender.email],
+    is_read: false,
+  };
+  const outcomes = [
+    null,
+    { success: false, updated: 1, has_more: false },
+    { success: true, updated: 0, has_more: false },
+    { success: true, updated: 2, has_more: false },
+    { success: true, updated: 1, has_more: true },
+  ];
+
+  for (const outcome of outcomes) {
+    const fixture = makeClient({ user: recipient, messages: [message] });
+    fixture.client.asServiceRole.entities.Message.updateMany = async () => outcome;
+    const handler = await loadHandler('markMessageRead', fixture.client);
+    const response = await handler(request({ id: message.id }));
+
+    assert.equal(response.status, 500, JSON.stringify(outcome));
+    assert.deepEqual(
+      await response.json(),
+      { error: 'Failed to mark message read' },
+      JSON.stringify(outcome),
+    );
+    assert.deepEqual(fixture.state.messages[0].read_by, [sender.email], JSON.stringify(outcome));
+    assert.equal(fixture.state.messages[0].is_read, false, JSON.stringify(outcome));
+  }
+});
+
+test('markMessageRead rejects an updated:0 result with an ambiguous exact readback', async () => {
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email, 'other@example.com'],
+    read_by: [sender.email],
+    is_read: false,
+  };
+  const fixture = makeClient({ user: recipient, messages: [message] });
+  const entity = fixture.client.asServiceRole.entities.Message;
+  const originalFilter = entity.filter;
+  let reads = 0;
+  entity.filter = async (...args) => {
+    reads += 1;
+    if (reads === 1) return originalFilter(...args);
+    const persisted = { ...fixture.state.messages[0], read_by: [sender.email, recipient.email] };
+    return [persisted, { ...persisted }];
+  };
+  entity.updateMany = async (query, operations) => {
+    fixture.state.updates.push({ query, operations });
+    return { success: true, updated: 0, has_more: false };
+  };
+  const handler = await loadHandler('markMessageRead', fixture.client);
+  const response = await handler(request({ id: message.id }));
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: 'Failed to mark message read' });
+  assert.equal(fixture.state.updates.length, 1);
+});
+
+test('markMessageRead rejects a confirmed update without an exact persisted readback', async () => {
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email, 'other@example.com'],
+    read_by: [sender.email],
+    is_read: false,
+  };
+  const fixture = makeClient({ user: recipient, messages: [message] });
+  const entity = fixture.client.asServiceRole.entities.Message;
+  const originalFilter = entity.filter;
+  let reads = 0;
+  entity.filter = async (...args) => {
+    reads += 1;
+    if (reads === 2) return [];
+    return originalFilter(...args);
+  };
+  const handler = await loadHandler('markMessageRead', fixture.client);
+  const response = await handler(request({ id: message.id }));
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: 'Failed to mark message read' });
+  assert.deepEqual(fixture.state.messages[0].read_by, [sender.email, recipient.email]);
+});
+
+test('markMessageRead rejects an exact result when the read-state write was not persisted', async () => {
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email],
+    read_by: [sender.email],
+    is_read: false,
+  };
+  const fixture = makeClient({ user: recipient, messages: [message] });
+  fixture.client.asServiceRole.entities.Message.updateMany = async () => ({
+    success: true,
+    updated: 1,
+    has_more: false,
+  });
+  const handler = await loadHandler('markMessageRead', fixture.client);
+  const response = await handler(request({ id: message.id }));
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: 'Failed to mark message read' });
+  assert.deepEqual(fixture.state.messages[0].read_by, [sender.email]);
+  assert.equal(fixture.state.messages[0].is_read, false);
+});
+
+test('markMessageRead reads back completion instead of synthesizing is_read success', async () => {
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email],
+    read_by: [sender.email],
+    is_read: false,
+  };
+  const fixture = makeClient({ user: recipient, messages: [message] });
+  const entity = fixture.client.asServiceRole.entities.Message;
+  const originalUpdateMany = entity.updateMany;
+  let writes = 0;
+  entity.updateMany = async (query, operations) => {
+    writes += 1;
+    if (writes === 1) return originalUpdateMany(query, operations);
+    fixture.state.updates.push({ query, operations });
+    return { success: true, updated: 1, has_more: false };
+  };
+  const handler = await loadHandler('markMessageRead', fixture.client);
+  const response = await handler(request({ id: message.id }));
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: 'Failed to mark message read' });
+  assert.deepEqual(fixture.state.messages[0].read_by, [sender.email, recipient.email]);
+  assert.equal(fixture.state.messages[0].is_read, false);
+  assert.equal(writes, 2);
+});
+
+test('markMessageRead authorizes before taking the already-read retry shortcut', async () => {
+  const outsider = { ...sender, email: 'outsider@example.com' };
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email],
+    read_by: [sender.email, outsider.email],
+    is_read: false,
+  };
+  const fixture = makeClient({ user: outsider, messages: [message] });
+  const handler = await loadHandler('markMessageRead', fixture.client);
+  const response = await handler(request({ id: message.id }));
+
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: 'Forbidden' });
+  assert.equal(fixture.state.updates.length, 0);
+});
+
+test('markMessageRead rejects authorization drift in the exact update readback', async () => {
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email, 'other@example.com'],
+    read_by: [sender.email],
+    is_read: false,
+  };
+  const fixture = makeClient({ user: recipient, messages: [message] });
+  const entity = fixture.client.asServiceRole.entities.Message;
+  const originalFilter = entity.filter;
+  let reads = 0;
+  entity.filter = async (...args) => {
+    reads += 1;
+    if (reads === 1) return originalFilter(...args);
+    return [{
+      ...fixture.state.messages[0],
+      sender_email: 'other-sender@example.com',
+      recipients: ['other@example.com'],
+    }];
+  };
+  const handler = await loadHandler('markMessageRead', fixture.client);
+  const response = await handler(request({ id: message.id }));
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: 'Failed to mark message read' });
+});
+
 test('markMessageRead accepts id only and rejects non-participants', async () => {
   const outsider = { ...sender, email: 'outsider@example.com' };
   const fixture = makeClient({
@@ -385,6 +636,23 @@ test('markMessageRead accepts id only and rejects non-participants', async () =>
   assert.equal(extraField.status, 400);
   const forbidden = await handler(request({ id: 'message-1' }));
   assert.equal(forbidden.status, 403);
+  assert.equal(fixture.state.updates.length, 0);
+});
+
+test('markMessageRead rejects an ambiguous initial exact-ID read before writing', async () => {
+  const message = {
+    id: 'message-1',
+    sender_email: sender.email,
+    recipients: [recipient.email],
+    read_by: [sender.email],
+  };
+  const fixture = makeClient({ user: recipient, messages: [message] });
+  fixture.client.asServiceRole.entities.Message.filter = async () => [message, { ...message }];
+  const handler = await loadHandler('markMessageRead', fixture.client);
+  const response = await handler(request({ id: message.id }));
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: 'Failed to mark message read' });
   assert.equal(fixture.state.updates.length, 0);
 });
 

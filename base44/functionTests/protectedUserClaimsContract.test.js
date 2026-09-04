@@ -58,6 +58,8 @@ test('account and credential mutation paths use protected authorization', () => 
     ['base44/functions/saveTelnyxSecret/entry.ts', /const isSuperAdmin = isProtectedSuperAdmin\(user\)/],
     ['base44/functions/discoverTelnyxResources/entry.ts', /if \(!isProtectedSuperAdmin\(user\)\)/],
     ['base44/functions/backfillTcpaQuietHours/entry.ts', /if \(!isProtectedSuperAdmin\(user\)\)/],
+    ['base44/functions/searchPurchaseTelnyxNumbers/entry.ts', /!isProtectedSuperAdmin\(user\)/],
+    ['base44/functions/managePhoneNumberPool/entry.ts', /!isProtectedSuperAdmin\(user\)/],
   ];
 
   for (const [file, ...patterns] of expectations) {
@@ -67,10 +69,8 @@ test('account and credential mutation paths use protected authorization', () => 
   }
 });
 
-test('billable and integration-admin entry gates reject account_type-only callers', () => {
+test('remaining integration-admin entry gates reject account_type-only callers', () => {
   const roleOnlyGates = [
-    'base44/functions/searchPurchaseTelnyxNumbers/entry.ts',
-    'base44/functions/managePhoneNumberPool/entry.ts',
     'base44/functions/getTelnyxSecretStatus/entry.ts',
     'base44/functions/testTelnyxConnection/entry.ts',
     'base44/functions/checkAllIntegrations/entry.ts',

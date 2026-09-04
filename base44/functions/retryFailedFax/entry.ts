@@ -166,11 +166,22 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Retrying a fax is another provider transmission, so it stays behind the same
+// service-owned sender, tenant, and document-authority migration as new sends.
+const FAX_TRANSMISSION_MIGRATION_PAUSED = true;
+
 
 /**
  * Retry a failed fax transmission
  */
 Deno.serve(async (req) => {
+  if (FAX_TRANSMISSION_MIGRATION_PAUSED) {
+    return Response.json({
+      error: 'Fax retry is temporarily unavailable pending service-owned sender, tenant, and document bindings',
+      code: 'fax_authority_migration_pending',
+    }, { status: 503 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

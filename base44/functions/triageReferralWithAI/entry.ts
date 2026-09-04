@@ -26,6 +26,13 @@ function parseLLMJson(raw) {
   }
 }
 
+const TRIAGE_URGENCY_LEVELS = new Set(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']);
+
+function auditUrgencyLevel(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  return TRIAGE_URGENCY_LEVELS.has(normalized) ? normalized : 'UNKNOWN';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -77,27 +84,29 @@ Return ONLY valid JSON, no markdown or explanation.`,
     });
     const analysis = parseLLMJson(rawAnalysis) || {};
 
-    // Log the triage analysis for audit trail
-    await base44.entities.UserActivity.create({
+    // Log only the triage category. The analysis contains patient identity and
+    // clinical detail; UserActivity is a broad operational audit surface, not
+    // a second copy of the referral record.
+    await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'referral_triage_analysis',
       details: {
-        patient_name: analysis?.patient_name,
-        urgency_level: analysis?.urgency_level,
-        timestamp: new Date().toISOString(),
+        urgency_level: auditUrgencyLevel(analysis?.urgency_level),
       },
       page: 'referral_triage',
       user_agent: req.headers.get('user-agent'),
-    }).catch(err => console.error('Activity logging failed:', err));
+    }).catch(() => console.error('Referral triage activity logging failed'));
 
     return Response.json({
       success: true,
       analysis,
       processedAt: new Date().toISOString(),
     });
-  } catch (error) {
-    console.error('Triage analysis error:', error);
+  } catch {
+    // Provider errors can echo prompt fragments; keep logs static because the
+    // prompt contains the full referral payload.
+    console.error('Referral triage analysis failed');
     return Response.json(
       { error: 'Triage analysis failed', details: 'Internal server error' },
       { status: 500 }

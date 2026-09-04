@@ -176,11 +176,8 @@ Deno.serve(async (req) => {
         action: 'document_signed',
         details: {
           document_type,
-          patient_id,
           signature_count: signatureCount,
           total_annotations: Object.values(annotations).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0),
-          original_pdf: pdf_url,
-          signed_pdf: uploadResult.file_url
         },
         page: 'pdf_signature'
       });

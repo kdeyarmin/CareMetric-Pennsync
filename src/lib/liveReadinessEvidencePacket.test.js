@@ -30,6 +30,19 @@ test("evidence packet requires references for present evidence", () => {
   assert.deepEqual(packet.missingReferences, ["test_evidence"]);
 });
 
+test("evidence packet does not treat a reference-only entry as evidence", () => {
+  const packet = createLiveReadinessEvidencePacket(capability, {
+    "LR-X": {
+      ...fullEvidenceEntries,
+      test_evidence: { references: ["docs/test-results.md"] },
+      reviewers: approvedReviewers,
+    },
+  });
+  assert.equal(packet.reviewComplete, false);
+  assert.deepEqual(packet.missingEvidence, ["test_evidence"]);
+  assert.deepEqual(packet.missingReferences, []);
+});
+
 test("evidence packet is review-complete with evidence, references, and approvals", () => {
   const packet = createLiveReadinessEvidencePacket(capability, {
     "LR-X": { ...fullEvidenceEntries, reviewers: approvedReviewers },

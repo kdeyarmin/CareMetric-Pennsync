@@ -34,14 +34,43 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
-function agencyAdminMissingAgencyResponse(user) {
-  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
-    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-  }
-  return null;
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
 }
-// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
+// <<<BEGIN SHARED HELPER: activeMembershipAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeMembershipEmail = (value) => String(value || '').trim().toLowerCase();
+async function hasExactActiveAgencyMembership(base44, user) {
+  const userId = typeof user?.id === 'string' ? user.id.trim() : '';
+  const userEmail = normalizeMembershipEmail(user?.email);
+  if (!userId || !userEmail) return false;
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: userId, status: 'active' },
+      undefined,
+      2,
+    );
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row
+    && String(row.user_id || '').trim() === userId
+    && String(row.status || '') === 'active'
+    && normalizeMembershipEmail(row.user_email_normalized) === userEmail
+    && typeof row.agency_id === 'string'
+    && !!row.agency_id.trim();
+}
+// <<<END SHARED HELPER: activeMembershipAuthz>>>
 
 
 const INCIDENT_STATUS_TO_LIFECYCLE = {
@@ -113,29 +142,34 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
-    {
-      const _agencyAdminGate = agencyAdminMissingAgencyResponse(currentUser);
-      if (_agencyAdminGate) return _agencyAdminGate;
+    if (currentUser.disabled === true || currentUser.is_service === true || currentUser.is_verified === false) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    if (currentUser.is_active === false) {
-      return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    if (!isProtectedSuperAdmin(currentUser)
+      && !(await hasExactActiveAgencyMembership(base44, currentUser))) {
+      return Response.json({ error: 'Forbidden: active agency membership required' }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));
-    const { incident_id, action } = body;
-    if (!incident_id) {
-      return Response.json({ error: 'incident_id is required' }, { status: 400 });
+    const { action } = body;
+    const incidentId = typeof body.incident_id === 'string' ? body.incident_id.trim() : '';
+    if (!incidentId || incidentId.length > 200) {
+      return Response.json({ error: 'incident_id is invalid' }, { status: 400 });
     }
 
-    const rows = await base44.asServiceRole.entities.Incident.filter({ id: incident_id }, undefined, 1);
-    const incident = rows?.[0];
-    if (!incident) {
-      return Response.json({ error: 'Incident not found' }, { status: 404 });
+    const rows = await base44.asServiceRole.entities.Incident
+      .filter({ id: incidentId }, undefined, 2).catch(() => []);
+    const exactRows = Array.isArray(rows)
+      ? rows.filter((candidate) => candidate?.id === incidentId)
+      : [];
+    if (rows.length !== 1 || exactRows.length !== 1) {
+      return Response.json({
+        error: exactRows.length ? 'Incident lookup is ambiguous' : 'Incident not found',
+      }, { status: exactRows.length ? 409 : 404 });
     }
+    const incident = exactRows[0];
 
-    const isAdmin = currentUser.role === 'admin'
-      || currentUser.account_type === 'agency_admin'
-      || currentUser.account_type === 'super_admin';
+    const isAdmin = isProtectedSuperAdmin(currentUser);
 
     if (action === 'patch') {
       return await patchIncident(base44, currentUser, incident, body, isAdmin);
@@ -162,11 +196,6 @@ async function patchIncident(base44, currentUser, incident, body, isAdmin) {
   if (!isAdmin && !isOwner) {
     return Response.json({ error: 'Unauthorized - not your incident' }, { status: 403 });
   }
-  if (isAdmin) {
-    const agencyDenied = await assertAgencyIncidentAccess(base44, currentUser, incident);
-    if (agencyDenied) return agencyDenied;
-  }
-
   const patch = body.patch && typeof body.patch === 'object' ? body.patch : {};
   const rejected = Object.keys(patch).filter((k) => !PATCHABLE_FIELDS.includes(k));
   if (rejected.length > 0) {
@@ -192,21 +221,16 @@ async function patchIncident(base44, currentUser, incident, body, isAdmin) {
 
   await base44.asServiceRole.entities.Incident.update(incident.id, patch);
 
-  // Mirror transitionIncident: persist an append-only trail for compliance review.
-  // Before/after only for keys that actually change so the audit stays readable.
-  const changed = {};
-  for (const key of Object.keys(patch)) {
-    changed[key] = { before: incident[key] ?? null, after: patch[key] };
-  }
+  // Mirror transitionIncident with an append-only compliance event. Record
+  // only which fields changed: the values can contain incident narrative,
+  // witness names, notes, or photo URLs and belong only on Incident itself.
   let auditRecorded = true;
   await base44.asServiceRole.entities.UserActivity.create({
     user_email: currentUser.email,
     user_name: currentUser.full_name,
     action: 'incident_patched',
     details: {
-      incident_id: incident.id,
       updated_fields: Object.keys(patch),
-      changes: changed,
     },
     page: 'IncidentReview',
     entity_type: 'Incident',
@@ -227,55 +251,12 @@ async function patchIncident(base44, currentUser, incident, body, isAdmin) {
   });
 }
 
-async function assertAgencyIncidentAccess(base44, currentUser, incident) {
-  // Agency-scope facility admins too (parity with getDashboardData): only
-  // super_admin / admin-without-agency stay platform-wide.
-  const isAgencyScoped = currentUser.account_type !== 'super_admin'
-    && currentUser.agency_name
-    && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
-  if (!isAgencyScoped) return null;
-  if (!currentUser.agency_name) {
-    return Response.json({ error: 'Forbidden: incident is outside your agency.' }, { status: 403 });
-  }
-  if (!incident.patient_id) {
-    // No patient link — fall back to reporter agency membership.
-    const reporters = await base44.asServiceRole.entities.User
-      .filter({ email: incident.created_by }, undefined, 5)
-      .catch(() => []);
-    if (!reporters?.[0] || reporters[0].agency_name !== currentUser.agency_name) {
-      return Response.json({ error: 'Forbidden: incident is outside your agency.' }, { status: 403 });
-    }
-    return null;
-  }
-  const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
-  const agencyEmails = new Set(
-    (agencyUsers || [])
-      .filter((u) => u.agency_name === currentUser.agency_name && u.email)
-      .map((u) => u.email),
-  );
-  const patients = await base44.asServiceRole.entities.Patient
-    .filter({ id: incident.patient_id }, undefined, 5)
-    .catch(() => []);
-  const patient = patients?.[0];
-  const inAgency = patient && (
-    (patient.created_by && agencyEmails.has(patient.created_by))
-    || (Array.isArray(patient.assigned_nurses) && patient.assigned_nurses.some((e) => agencyEmails.has(e)))
-  );
-  if (!inAgency) {
-    return Response.json({ error: 'Forbidden: incident is outside your agency.' }, { status: 403 });
-  }
-  return null;
-}
-
 async function transitionIncident(base44, currentUser, incident, body, isAdmin) {
   // Reviewing an incident is an admin action; the reporter files it, the office
   // reviews it. Enforced here rather than by hiding the queue in the UI.
   if (!isAdmin) {
     return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
   }
-
-  const agencyDenied = await assertAgencyIncidentAccess(base44, currentUser, incident);
-  if (agencyDenied) return agencyDenied;
 
   const fromStatus = incident.status || 'reported';
   const toStatus = body.to_status;
@@ -343,13 +324,11 @@ async function transitionIncident(base44, currentUser, incident, body, isAdmin) 
     user_name: currentUser.full_name,
     action: 'incident_status_changed',
     details: {
-      incident_id: incident.id,
       from_status: fromStatus,
       to_status: toStatus,
       from_lifecycle: INCIDENT_STATUS_TO_LIFECYCLE[fromStatus] || null,
       to_lifecycle: INCIDENT_STATUS_TO_LIFECYCLE[toStatus] || null,
       required_corrective_action: incidentNeedsCorrectiveAction(incident),
-      reason: (capPlan || notes || `Status -> ${toStatus}`).slice(0, 500),
     },
     page: 'IncidentReview',
     entity_type: 'Incident',
@@ -383,18 +362,10 @@ async function reassignIncidentPatient(base44, currentUser, incident, body, isAd
   if (!isAdmin) {
     return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
   }
-  const agencyDenied = await assertAgencyIncidentAccess(base44, currentUser, incident);
-  if (agencyDenied) return agencyDenied;
-
   const patientId = body.patient_id;
   if (!patientId) {
     return Response.json({ error: 'patient_id is required' }, { status: 400 });
   }
-
-  // Destination patient must also be in-agency for agency-scoped admins.
-  const probe = { patient_id: patientId, created_by: incident.created_by };
-  const destDenied = await assertAgencyIncidentAccess(base44, currentUser, probe);
-  if (destDenied) return destDenied;
 
   await base44.asServiceRole.entities.Incident.update(incident.id, { patient_id: patientId });
 
@@ -402,7 +373,6 @@ async function reassignIncidentPatient(base44, currentUser, incident, body, isAd
     user_email: currentUser.email,
     user_name: currentUser.full_name,
     action: 'incident_patient_reassigned',
-    details: { incident_id: incident.id, from_patient_id: incident.patient_id, to_patient_id: patientId },
     page: 'PatientMerge',
     entity_type: 'Incident',
     entity_id: incident.id,

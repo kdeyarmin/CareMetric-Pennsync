@@ -405,6 +405,36 @@ function decodeClientState(b64) {
   try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { return null; }
 }
 
+// Inbound patient communications cannot be routed safely until dialed Telnyx
+// numbers, tenant ownership, and destinations are resolved from a service-owned
+// binding instead of mutable User profile fields. Keep these literal release
+// gates fail-closed so they are mechanically reviewable and cannot be enabled by
+// a request, entity row, or environment value.
+const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;
+const INBOUND_PATIENT_FAX_ROUTING_PAUSED = true;
+const INBOUND_PATIENT_CALL_ROUTING_PAUSED = true;
+const INBOUND_PATIENT_CALL_STATES = new Set([
+  'inbound_ivr',
+  'inbound_after_greet',
+  'ringdown',
+  'voicemail',
+]);
+
+function isInboundPatientCallEvent(eventType, payload) {
+  if (!String(eventType || '').startsWith('call.')) return false;
+  if (String(payload?.direction || '').toLowerCase() === 'incoming') return true;
+  const state = decodeClientState(payload?.client_state);
+  return INBOUND_PATIENT_CALL_STATES.has(String(state?.t || '').toLowerCase());
+}
+
+function inboundRoutingPausedResponse(channel) {
+  return Response.json({
+    error: `Inbound patient ${channel} routing is temporarily unavailable during the service-owned telecom binding migration`,
+    code: 'INBOUND_TELECOM_BINDING_MIGRATION_PAUSED',
+    retryable: true,
+  }, { status: 503, headers: { 'Retry-After': '300' } });
+}
+
 // ---- Call Control command helper ----
 // Returns { ok, status } so callers can fall back on failure instead of
 // silently stranding a live (billed) call leg.
@@ -590,7 +620,7 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
   if (!nurse) {
     await base44.asServiceRole.entities.UserActivity.create({
       user_email: 'system', action: 'sms_received_unresolved',
-      details: { destination: workNum, timestamp: new Date().toISOString() }, status: 'failure',
+      details: { direction: 'inbound' }, status: 'failure',
     }).catch(() => {});
     return Response.json({ success: true, skipped: 'unresolved work number' });
   }
@@ -643,7 +673,7 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
     await sendReply('You have been unsubscribed and will no longer receive texts from your care team. Reply START to opt back in.');
     await base44.asServiceRole.entities.UserActivity.create({
       user_email: 'system', action: 'sms_opt_out', entity_type: 'SmsMessage', entity_id: inboundRow.id,
-      details: { phone: patientNum, nurse_email: nurse.email, patient_id: patientId }, status: 'success',
+      details: { consent_status: 'opted_out', source: 'keyword' }, status: 'success',
     }).catch(() => {});
     return Response.json({ success: true, opted_out: true });
   }
@@ -697,12 +727,12 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
     type: 'sms_received', priority: 'medium', metadata: { related_entity: 'SmsMessage', related_entity_id: inboundRow.id }, is_read: false,
   }).catch((err) => console.error('notification failed:', err));
 
-  // Audit — never log message body.
+  // SmsMessage holds endpoints, patient linkage, thread, and content metadata.
+  // Keep the broad activity stream limited to routing outcome categories.
   await base44.asServiceRole.entities.UserActivity.create({
     user_email: 'system', action: 'sms_received', entity_type: 'SmsMessage', entity_id: inboundRow.id,
     details: {
-      from_number: patientNum, to_number: workNum, nurse_email: nurse.email, patient_id: patientId,
-      thread_id: inboundRow.thread_id, body_length: text.length, off_duty: offDuty, agency_closed: agencyClosed, urgent: urgency.urgent,
+      direction: 'inbound', off_duty: offDuty, agency_closed: agencyClosed, urgent: urgency.urgent,
     }, status: 'success',
   }).catch(() => {});
 
@@ -1093,7 +1123,7 @@ async function logInboundCall(base44, callControlId, callerNum, workNum, route) 
   }).catch(() => null);
   await base44.asServiceRole.entities.UserActivity.create({
     user_email: 'system', action: 'inbound_call_received', entity_type: 'CallLog', entity_id: logRow?.id,
-    details: { call_mode: callMode, nurse_email: route.nurse?.email || null, provider_call_id: callControlId }, status: 'success',
+    details: { call_mode: callMode, direction: 'inbound' }, status: 'success',
   }).catch(() => {});
 }
 
@@ -1406,6 +1436,23 @@ Deno.serve(async (req) => {
     const { eventType, payload } = extractTelnyxEvent(body);
 
     if (!eventType) return Response.json({ success: true, skipped: 'no event type' });
+
+    // These checks intentionally run only after signature verification and
+    // before any inbound handler can perform a service-role User/AgencySettings
+    // lookup or execute a previously derived mutable routing target. The consent
+    // ledger has no immutable destination-to-tenant binding, so even START
+    // cannot be separated safely here without potentially broadening consent
+    // across tenants. Pause the complete message.received event (including
+    // STOP/START) and return 503 so Telnyx can retry after migration recovery.
+    if (eventType === 'message.received' && INBOUND_PATIENT_SMS_ROUTING_PAUSED) {
+      return inboundRoutingPausedResponse('SMS');
+    }
+    if (eventType === 'fax.received' && INBOUND_PATIENT_FAX_ROUTING_PAUSED) {
+      return inboundRoutingPausedResponse('fax');
+    }
+    if (INBOUND_PATIENT_CALL_ROUTING_PAUSED && isInboundPatientCallEvent(eventType, payload)) {
+      return inboundRoutingPausedResponse('call');
+    }
 
     if (eventType === 'message.received') return await handleInboundMessage(base44, apiKey, messagingProfileId, payload);
     if (eventType.startsWith('message.')) return await handleOutboundMessageStatus(base44, payload);

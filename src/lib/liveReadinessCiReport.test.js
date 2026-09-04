@@ -25,7 +25,12 @@ test("CI report passes only for a release-complete ledger", () => {
   );
   const report = createLiveReadinessCiReport(ledger);
   assert.equal(report.status, "pass");
-  assert.deepEqual(report.messages, ["Live-readiness release ledger is complete."]);
+  assert.deepEqual(report.messages, ["Evaluated readiness packet is structurally complete for LR-X."]);
+  assert.deepEqual(report.evaluatedCapabilityIds, ["LR-X"]);
+  assert.equal(report.totalReferenceCount, LIVE_READINESS_EVIDENCE.length);
+  assert.deepEqual(report.referenceCountsByCapability, { "LR-X": LIVE_READINESS_EVIDENCE.length });
+  assert.deepEqual(report.probeCountsByCapability, { "LR-X": { required: 0, completed: 0 } });
+  assert.deepEqual(report.blockers.missingRequiredProbes, {});
 });
 
 test("CI report fails and classifies missing release metadata", () => {
@@ -57,4 +62,23 @@ test("CI report messages omit raw evidence values", () => {
   const report = createLiveReadinessCiReport(ledger);
   assert.equal(JSON.stringify(report).includes("owner-private"), false);
   assert.equal(report.messages.some((message) => message.includes("LR-X")), true);
+});
+
+test("CI report rejects an empty or unreconciled forged ledger", () => {
+  assert.throws(
+    () => createLiveReadinessCiReport({
+      releaseComplete: true,
+      packets: [],
+      totalCapabilities: 0,
+    }),
+    /non-empty reconciled ledger/,
+  );
+  assert.throws(
+    () => createLiveReadinessCiReport({
+      releaseComplete: true,
+      packets: [{}],
+      totalCapabilities: 2,
+    }),
+    /non-empty reconciled ledger/,
+  );
 });

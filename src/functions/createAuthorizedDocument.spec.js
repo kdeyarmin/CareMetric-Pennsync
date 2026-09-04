@@ -18,7 +18,6 @@ function success(file, overrides = {}) {
       created: true,
       document: {
         id: 'document-a',
-        file_url: 'https://files.base44.app/document-a.pdf',
         file_name: file.name,
         file_type: file.type,
         file_size: file.size,
@@ -27,7 +26,7 @@ function success(file, overrides = {}) {
       },
       binding: {
         id: 'binding-a',
-        version: 1,
+        version: 2,
         client_request_id: 'request-a',
       },
       scope: {
@@ -67,6 +66,7 @@ describe('createAuthorizedDocument wrapper', () => {
     });
     expect(invoke.mock.calls[0][1].file).toBe(file);
     expect(result.document.id).toBe('document-a');
+    expect(JSON.stringify(result)).not.toContain('file_uri');
   });
 
   it('supports an agency-scoped referral without inventing a Patient link', async () => {
@@ -74,14 +74,13 @@ describe('createAuthorizedDocument wrapper', () => {
     invoke.mockResolvedValue(success(file, {
       document: {
         id: 'document-r',
-        file_url: 'https://files.base44.app/document-r.pdf',
         file_name: file.name,
         file_type: file.type,
         file_size: file.size,
         category: 'referral',
         patient_id: null,
       },
-      binding: { id: 'binding-r', version: 1, client_request_id: 'request-r' },
+      binding: { id: 'binding-r', version: 2, client_request_id: 'request-r' },
       scope: {
         agency_id: 'agency-a',
         patient_id: null,
@@ -165,9 +164,10 @@ describe('createAuthorizedDocument wrapper', () => {
     };
     for (const override of [
       { document: { ...success(file).data.document, patient_id: 'patient-b' } },
-      { document: { ...success(file).data.document, file_url: 'http://files.test/a.pdf' } },
+      { document: { ...success(file).data.document, file_url: 'https://files.test/a.pdf' } },
+      { document: { ...success(file).data.document, file_uri: 'private/document-a.pdf' } },
       { document: { ...success(file).data.document, notes: 'unexpected projection' } },
-      { binding: { id: 'binding-a', version: 2, client_request_id: 'request-a' } },
+      { binding: { id: 'binding-a', version: 1, client_request_id: 'request-a' } },
       {
         scope: {
           ...success(file).data.scope,

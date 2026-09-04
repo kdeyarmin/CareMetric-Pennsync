@@ -12,7 +12,7 @@
     },
     "file_url": {
       "type": "string",
-      "description": "URL to the uploaded file"
+      "description": "Legacy public URL retained only for migration. New binding-backed uploads omit this field and keep their private file URI solely in DocumentTenantBinding."
     },
     "file_name": {
       "type": "string",
@@ -172,7 +172,6 @@
   },
   "required": [
     "title",
-    "file_url",
     "category"
   ],
   // PHI read-scoping: with no read rule, ANY authenticated user could bulk-

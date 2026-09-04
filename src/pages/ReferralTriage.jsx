@@ -62,9 +62,7 @@ export default function ReferralTriage() {
           // 'followup' is the schema's enum value — 'referral_follow_up' is not a
           // member, so Base44 rejected or dropped it, and the task landed with no
           // type at all. What makes this a referral follow-up is the
-          // related_entity pair below, not a bespoke type. Matches
-          // ALLOWED_TASK_TYPES / safeTaskType() in ProactiveClinicalTaskGenerator,
-          // whose fallback for an unclassified task is likewise 'followup'.
+          // related_entity pair below, not a bespoke type.
           type: 'followup',
           priority: URGENCY_TO_TASK_PRIORITY[lastAnalysis.urgency_level] || 'medium',
           status: 'pending',

@@ -208,7 +208,18 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
+// Fax transmission remains fail-closed until sender, tenant, and document
+// authority come from immutable service-owned bindings rather than User fields.
+const FAX_TRANSMISSION_MIGRATION_PAUSED = true;
+
 Deno.serve(async (req) => {
+  if (FAX_TRANSMISSION_MIGRATION_PAUSED) {
+    return Response.json({
+      error: 'Fax transmission is temporarily unavailable pending service-owned sender, tenant, and document bindings',
+      code: 'fax_authority_migration_pending',
+    }, { status: 503 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);

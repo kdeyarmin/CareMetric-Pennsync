@@ -58,8 +58,19 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Scheduled fax dispatch is held until the queue and its routing inputs are
+// authorized through immutable service-owned bindings.
+const FAX_TRANSMISSION_MIGRATION_PAUSED = true;
+
 
 Deno.serve(async (req) => {
+  if (FAX_TRANSMISSION_MIGRATION_PAUSED) {
+    return Response.json({
+      error: 'Priority fax dispatch is temporarily unavailable pending service-owned sender, tenant, and document bindings',
+      code: 'fax_authority_migration_pending',
+    }, { status: 503 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
 

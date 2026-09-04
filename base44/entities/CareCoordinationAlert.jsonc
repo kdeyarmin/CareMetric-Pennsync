@@ -123,5 +123,14 @@
     "severity",
     "title",
     "description"
-  ]
+  ],
+  // The only browser writer was an unreferenced prototype component. Keep this
+  // patient-linked PHI service-only until an authorized by-patient broker is
+  // implemented and proven with the two-agency matrix.
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
 }

@@ -71,9 +71,9 @@
   // Reads are scoped to the owning user (+ admin), matching the app's
   // Patient/Visit/ComplianceAudit role model: non-admin staff see only their
   // own rows on agency-wide report surfaces; admins see everything. The
-  // create/update/delete rules preserve the existing open mutation behavior — this change is
-  // read-scoping only (several write flows are legitimately cross-user), the
-  // same shape as the ClinicalLibraryTemplate read-scoping fix.
+  // Create/update preserve the existing mutation behavior for note persistence
+  // and service-role patient merges. No production workflow deletes conversion
+  // evidence, so that destructive operation is fail-closed.
   "rls": {
     "read": {
       "$or": [
@@ -84,6 +84,6 @@
     },
     "create": true,
     "update": true,
-    "delete": true
+    "delete": false
   }
 }

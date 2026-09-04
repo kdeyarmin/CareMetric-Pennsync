@@ -1,15 +1,44 @@
 {
   "release": {
-    "id": "rc-2026-07-30",
-    "name": "PennSync live-readiness candidate",
+    "release_id": "FILL_ME: rc-YYYY-MM-DD",
     "environment": "staging",
-    "notes": "PLACEHOLDER packet for LR-01 and LR-02. Replace every FILL_ME value with real hosted evidence. Do not commit secrets, tokens, passwords, or PHI. Copy to tmp/live-readiness-evidence.json (gitignored) before running: pnpm run readiness:report -- tmp/live-readiness-evidence.json"
+    "fixture_set_id": "lr01-lr02-two-agency-v1",
+    "staging_app_id": "6a9881683dc68a0bd54f1ef7",
+    "staging_origin": "https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/",
+    "staging_backend_origin": "FILL_ME: exact VITE_BASE44_BACKEND_URL origin used for raw probes",
+    "candidate_source_commit_sha": "FILL_ME: exact 40-character candidate Git commit SHA",
+    "candidate_source_tree_sha": "FILL_ME: exact 40-character candidate Git tree SHA",
+    "hosted_runtime_commit_sha": "FILL_ME: exact hosted Base44 runtime commit SHA",
+    "hosted_runtime_tree_sha": "FILL_ME: exact hosted Base44 runtime tree SHA",
+    "hosted_deployment_id": "FILL_ME: identifier from a complete immutable deployment receipt covering the deployed site and resources; a functions version alone or human checkpoint label is insufficient",
+    "candidate_deployable_manifest_sha256": "FILL_ME: SHA-256 of the externally reviewed candidate resource-inventory attestation with explicit scope and exclusions",
+    "hosted_resource_manifest_sha256": "FILL_ME: SHA-256 of the externally reviewed hosted resource-inventory attestation using the same scope and exclusions",
+    "requested_rollout_date": "FILL_ME: YYYY-MM-DD",
+    "release_owner": "FILL_ME: engineering release owner",
+    "rollback_owner": "FILL_ME: rollback owner",
+    "monitoring_owner": "FILL_ME: monitoring owner"
   },
+  "matrix": [
+    {
+      "id": "LR-01",
+      "capability": "Hosted tenant/RLS verification",
+      "priority": 1,
+      "phaseSource": "Phase 0",
+      "risk": "critical"
+    },
+    {
+      "id": "LR-02",
+      "capability": "Seeded authenticated staging E2E",
+      "priority": 2,
+      "phaseSource": "Phase 0",
+      "risk": "critical"
+    }
+  ],
   "evidence": {
     "LR-01": {
       "owner": {
         "summary": "FILL_ME: Engineering + security owners for hosted RLS (name/email)",
-        "references": ["docs/SECURITY-RLS-CHECKLIST.md", "docs/RLS-LAUNCH-RUNBOOK.md", "docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md"]
+        "references": []
       },
       "product_approval": {
         "summary": "FILL_ME: Product confirmed server-owned membership and care-team authority; platform owner excluded from tenant assertions",
@@ -20,7 +49,7 @@
         "references": []
       },
       "hosted_environment": {
-        "summary": "FILL_ME: Base44 staging app id / URL (e.g. https://staging-pennsync.base44.app) — no secrets",
+        "summary": "FILL_ME: Corroborate staging app/frontend/backend, fixture set, candidate commit/tree, hosted runtime commit/tree, complete immutable deployment receipt, and equal candidate/hosted inventory-attestation hashes; references identify the protected receipt and both reviewed inventory artifacts — no secrets",
         "references": []
       },
       "credentials_or_sandbox": {
@@ -28,22 +57,27 @@
         "references": []
       },
       "test_evidence": {
-        "summary": "FILL_ME: V1-V6 and T1-T4 against raw secure-broker responses; no direct entity reads or mutable claims. Attach ticket IDs or external screenshot links (no PHI in repo).",
-        "references": [
-          "V1: Clinician-A-empty — active Agency A clinician context; brokered patient roster empty",
-          "V2: Clinician-A — broker permits A1 and rejects unassigned A2 and foreign B1",
-          "V3: Admin-A/Admin-B — brokered rosters remain isolated to Agencies A/B",
-          "V4: Secure-broker IDOR — spoofed foreign-agency or B1 ids return 403/404/empty",
-          "V5: Training forge — non-admin issueCertificate/completion write without passing attempt rejected",
-          "V6: Audit hygiene — UserActivity/SecurityLog samples contain no message bodies or full phone numbers"
-        ]
+        "summary": "FILL_ME: V1-V6 and T1-T4 passed against raw secure-broker responses; the run-index reference and every required probe entry point to retained artifacts; no direct entity reads or mutable claims. Attach ticket IDs or external screenshot links (no PHI in repo).",
+        "references": [],
+        "probes": {
+          "V1": { "references": [] },
+          "V2": { "references": [] },
+          "V3": { "references": [] },
+          "V4": { "references": [] },
+          "V5": { "references": [] },
+          "V6": { "references": [] },
+          "T1": { "references": [] },
+          "T2": { "references": [] },
+          "T3": { "references": [] },
+          "T4": { "references": [] }
+        }
       },
       "rollback_plan": {
-        "summary": "Documented RLS revert path and owner SLA in docs/RLS-LAUNCH-RUNBOOK.md. Staging tenant can be wiped and re-seeded without affecting production.",
+        "summary": "FILL_ME: documented RLS revert path and owner SLA in docs/RLS-LAUNCH-RUNBOOK.md. Confirm staging can be wiped and re-seeded without affecting production.",
         "references": ["docs/RLS-LAUNCH-RUNBOOK.md"]
       },
       "monitoring_plan": {
-        "summary": "FILL_ME: Unauthorized access visible in SecurityLog / Base44 platform logs; alert owner named",
+        "summary": "FILL_ME: Unauthorized access visible in Base44 platform logs and alert owner named; use SecurityLog only after its hosted append/read boundary and tenant exposure are independently proved",
         "references": []
       },
       "reviewers": {
@@ -56,7 +90,7 @@
     "LR-02": {
       "owner": {
         "summary": "FILL_ME: QA + engineering owners for staging E2E",
-        "references": ["docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md"]
+        "references": []
       },
       "product_approval": {
         "summary": "FILL_ME: Product confirmed minimum smoke flows for pilot (S1-S4 required)",
@@ -67,32 +101,29 @@
         "references": []
       },
       "hosted_environment": {
-        "summary": "FILL_ME: Staging URL and seed dataset description (no PHI). Seed: >=1 active patient, >=1 referral, >=1 visit (or ability to create them).",
+        "summary": "FILL_ME: Corroborate staging app/frontend/backend, fixture set, candidate commit/tree, hosted runtime commit/tree, complete immutable deployment receipt, and equal candidate/hosted inventory-attestation hashes; references identify the protected receipt and both reviewed inventory artifacts — no PHI or secrets",
         "references": []
       },
       "credentials_or_sandbox": {
-        "summary": "FILL_ME: Authenticated tenant-admin and clinician test accounts; CI secrets staging-only if used",
+        "summary": "FILL_ME: Authenticated test accounts and shared actors/patients exist; fixture validation does not supply the Referral/Visit results, so S3/S4 create them; CI secrets staging-only if used",
         "references": []
       },
       "test_evidence": {
-        "summary": "FILL_ME: S1-S8 authenticated smoke results. Attach external evidence links (no PHI).",
-        "references": [
-          "S1: Login — tenant admin and clinician can sign in; wrong password fails cleanly",
-          "S2: Patient list / chart — clinician sees only actively assigned patients through reviewed brokers; chart opens",
-          "S3: Referral intake (or triage) — create/accept path completes; record visible",
-          "S4: Smart Note or Visit Scribe — save online creates Visit + compliance artifacts",
-          "S5: OASIS path (if in scope) — assessment open/save does not crash",
-          "S6: Training (if in scope) — complete attempt via intended path; certificate only after grade",
-          "S7: Signature / document (if in scope) — package request or portal open does not 500",
-          "S8: Communications mock/sandbox — SMS/fax sandbox send does not expose real PHI to production carriers"
-        ]
+        "summary": "FILL_ME: S1-S4 passed with a retained artifact reference under every required probe entry; identify optional/in-scope S5-S9 flows exercised. Attach external evidence links (no PHI).",
+        "references": [],
+        "probes": {
+          "S1": { "references": [] },
+          "S2": { "references": [] },
+          "S3": { "references": [] },
+          "S4": { "references": [] }
+        }
       },
       "rollback_plan": {
-        "summary": "Re-seed or wipe staging tenant without affecting production",
+        "summary": "FILL_ME: re-seed or wipe staging tenant without affecting production",
         "references": []
       },
       "monitoring_plan": {
-        "summary": "FILL_ME: Failed smoke runs tracked in QA ticket; release owner notified",
+        "summary": "FILL_ME: Failed smoke runs tracked in QA ticket and release owner notified; use Base44 platform logs until SecurityLog's hosted append/read and tenant boundary are proved",
         "references": []
       },
       "reviewers": {

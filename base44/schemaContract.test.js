@@ -239,6 +239,7 @@ test('reviewed dormant and service-only entities remain fail-closed', () => {
     ...DORMANT_REFERENCE_ENTITY_NAMES,
     'AgencyMessage', 'AIInsightFeedback', 'AILearningPattern', 'AlertTriggerRule',
     'AppointmentForm', 'Billing', 'CitationLibrary', 'ClinicalScenario',
+    'CareCoordinationAlert',
     'FaxCoverTemplate', 'FaxDocument', 'FaxHistory', 'FaxNotification',
     'FaxPriorityRule', 'FormTemplate', 'IncomingFax', 'InsuranceProvider',
     'MaterialInteraction', 'Medication', 'MedicationReconciliation', 'MessageTemplate',
@@ -246,8 +247,10 @@ test('reviewed dormant and service-only entities remain fail-closed', () => {
     'OASISScenario', 'OASISWorkflowExecution', 'PatientBillingInfo',
     'PatientEducationDraft', 'PatientEducationEngagement',
     'PatientEducationMaterial', 'PatientMessage', 'PatientOutcome',
-    'PatientPathwayAssignment', 'PatientRiskAssessment', 'RiskAlert', 'RiskAnalysis', 'ScheduleFeedback',
+    'PatientPathwayAssignment', 'PatientRecommendation', 'PatientRiskAssessment',
+    'OASISAutomationRule', 'RiskAlert', 'RiskAnalysis', 'ScheduleFeedback',
     'ServiceCode', 'SharedDocument', 'SuggestedIntervention', 'TeamMessage',
+    'TeamNote',
   ];
   const bad = [];
   for (const name of names) {
@@ -261,6 +264,171 @@ test('reviewed dormant and service-only entities remain fail-closed', () => {
     }
   }
   assert.equal(bad.length, 0, `Fail-closed entity drift:\n${bad.join('\n')}`);
+});
+
+test('retired patient-linked entities have no direct browser entity access', () => {
+  const names = ['CareCoordinationAlert', 'TeamNote'];
+  const codeFiles = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (/\.(?:js|jsx|ts|tsx|mjs)$/.test(entry.name) && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)) {
+        codeFiles.push(path);
+      }
+    }
+  };
+  visit(join(REPO_DIR, 'src'));
+
+  const bad = [];
+  for (const path of codeFiles) {
+    const source = readFileSync(path, 'utf8');
+    for (const name of names) {
+      if (new RegExp(`\\bentities\\.${name}\\s*\\.`).test(source)) {
+        bad.push(`${path.slice(REPO_DIR.length + 1)}: ${name}`);
+      }
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `A fail-closed patient-linked entity gained direct browser access; add an authorized broker first:\n${bad.join('\n')}`,
+  );
+});
+
+test('OCR feedback is directly readable only by its owner/admin and directly immutable', () => {
+  const schema = byName.get('OCRFeedback');
+  assert.deepEqual(schema.rls.read, {
+    $or: [
+      { 'data.user_email': '{{user.email}}' },
+      { user_condition: { role: 'admin' } },
+    ],
+  });
+  for (const operation of ['create', 'update', 'delete']) {
+    assert.equal(schema.rls[operation], false, `OCRFeedback ${operation} must remain service-role-only`);
+  }
+
+  const retrain = readFileSync(join(BASE44_DIR, 'functions', 'retrainOCRModel', 'entry.ts'), 'utf8');
+  assert.match(retrain, /asServiceRole\.entities\.OCRFeedback\.filter/);
+  assert.match(retrain, /asServiceRole\.entities\.OCRFeedback\.update/);
+});
+
+test('paused OASIS recommendation and automation entities stay behind containment gates', () => {
+  const analyzer = readFileSync(join(REPO_DIR, 'src', 'components', 'hub-tabs', 'OASISAnalyzer.jsx'), 'utf8');
+  const clinicalReview = readFileSync(join(REPO_DIR, 'src', 'components', 'hub-tabs', 'OASISClinicalReview.jsx'), 'utf8');
+  assert.match(analyzer, /const OASIS_ANALYZER_ENABLED = false;/);
+  assert.match(clinicalReview, /const OASIS_CLINICAL_AI_ENABLED = false;/);
+
+  const codeFiles = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (/\.(?:js|jsx|ts|tsx|mjs)$/.test(entry.name) && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)) {
+        codeFiles.push(path);
+      }
+    }
+  };
+  visit(join(REPO_DIR, 'src'));
+  visit(join(BASE44_DIR, 'functions'));
+
+  const expectedEntityConsumers = {
+    OASISAutomationRule: [
+      'src/components/oasis/OASISAutomationSettings.jsx',
+      'src/components/oasis/WorkflowExecutionEngine.jsx',
+      'src/components/oasis/WorkflowMonitoringDashboard.jsx',
+    ],
+    PatientRecommendation: [
+      'src/components/oasis/OASISToPatientChartPusher.jsx',
+      'src/components/oasis/PredictiveOutcomesAnalyzer.jsx',
+    ],
+  };
+  const actualEntityConsumers = Object.fromEntries(
+    Object.keys(expectedEntityConsumers).map((name) => [name, []]),
+  );
+  for (const path of codeFiles) {
+    const source = readFileSync(path, 'utf8');
+    for (const name of Object.keys(expectedEntityConsumers)) {
+      if (new RegExp(`\\bentities\\.${name}\\s*\\.`).test(source)) {
+        actualEntityConsumers[name].push(path.slice(REPO_DIR.length + 1));
+      }
+    }
+  }
+  for (const name of Object.keys(actualEntityConsumers)) actualEntityConsumers[name].sort();
+  assert.deepEqual(actualEntityConsumers, expectedEntityConsumers);
+
+  const expectedImportHosts = {
+    OASISToPatientChartPusher: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
+    PredictiveOutcomesAnalyzer: [
+      'src/components/hub-tabs/OASISAnalyzer.jsx',
+      'src/components/hub-tabs/OASISClinicalReview.jsx',
+    ],
+    OASISAutomationSettings: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
+    WorkflowExecutionEngine: [
+      'src/components/hub-tabs/OASISAnalyzer.jsx',
+      'src/components/hub-tabs/OASISClinicalReview.jsx',
+    ],
+    WorkflowMonitoringDashboard: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
+  };
+  const actualImportHosts = Object.fromEntries(
+    Object.keys(expectedImportHosts).map((component) => [component, []]),
+  );
+  for (const path of codeFiles.filter((file) => file.startsWith(join(REPO_DIR, 'src')))) {
+    const source = readFileSync(path, 'utf8');
+    for (const component of Object.keys(expectedImportHosts)) {
+      const importPattern = new RegExp(
+        `(?:from\\s+["'][^"']*/${component}["']|import\\(\\s*["'][^"']*/${component}["']\\s*\\))`,
+      );
+      if (importPattern.test(source)) actualImportHosts[component].push(path.slice(REPO_DIR.length + 1));
+    }
+  }
+  for (const component of Object.keys(actualImportHosts)) actualImportHosts[component].sort();
+  assert.deepEqual(actualImportHosts, expectedImportHosts);
+});
+
+test('zero-caller destructive deletes remain fail-closed', () => {
+  const names = [
+    'ComplianceRule',
+    'DischargeSummary',
+    'FaceToFaceEncounter',
+    'FaxRetryConfig',
+    'MedicareComplianceRule',
+    'NoteConversion',
+    'PatientEducationAssignment',
+    'PatientEducationDelivery',
+    'SentEducationMaterial',
+  ];
+  for (const name of names) {
+    assert.equal(byName.get(name)?.rls?.delete, false, `${name} delete must remain denied`);
+  }
+
+  const codeFiles = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (/\.(?:js|jsx|ts|tsx|mjs)$/.test(entry.name) && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)) {
+        codeFiles.push(path);
+      }
+    }
+  };
+  visit(join(REPO_DIR, 'src'));
+  visit(join(BASE44_DIR, 'functions'));
+
+  const bad = [];
+  for (const path of codeFiles) {
+    const source = readFileSync(path, 'utf8');
+    for (const name of names) {
+      if (new RegExp(`\\bentities\\.${name}\\s*\\.\\s*delete\\s*\\(`).test(source)) {
+        bad.push(`${path.slice(REPO_DIR.length + 1)}: ${name}.delete`);
+      }
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `A denied destructive operation gained a production caller; use a reviewed service broker or revise the contract:\n${bad.join('\n')}`,
+  );
 });
 
 test('locked dormant reference entities have no production-code consumer', () => {
@@ -381,9 +549,9 @@ test('known RLS debt cannot grow or change without explicit review', () => {
     if (isOpen(schema.rls?.read)) inventories.openRead.push(name);
   }
   const expected = {
-    noRls: [19, 'bcbfc561c8cc848d606628489b3ab07549c0e262521f4a15e9e4d98627a4ae28'],
-    openMutation: [25, 'f20a3d2934eb361c924d2e3ed39a1b48672cd7caa56d1e6034dc962128ee3a64'],
-    openRead: [34, '8b08070aaaa3c85dc972c7fffd1b18d647f0ac88ad62930a5bef8f4cff22a132'],
+    noRls: [10, '482c70a7c5acf10b906a6bc7b274bb6f2781d7d8297c2387c6142a816681817e'],
+    openMutation: [16, 'c2cd089d32ca02f5afa7083ed3f3fb21b7afb7227432185bf22e71949e715417'],
+    openRead: [28, '848ea7ba2fc72d33010aacd73a6fef5030e69155a21385814ff6a7465e859db7'],
   };
   const bad = [];
   for (const [kind, names] of Object.entries(inventories)) {

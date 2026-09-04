@@ -12,6 +12,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const MAX_BODY_BYTES = 20_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const MAX_FILE_NAME_LENGTH = 200;
+const MAX_FILE_URI_LENGTH = 4096;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MEMBERSHIP_SCAN_LIMIT = 100;
 const EXACT_ROW_LIMIT = 10;
@@ -93,7 +94,7 @@ const MEMBERSHIP_AUTHORITY_FIELDS = [
 const BINDING_AUTHORITY_FIELDS = [
   'id', 'binding_key', 'document_id', 'agency_id', 'patient_id', 'created_by_user_id',
   'created_by_user_email_normalized', 'membership_id', 'membership_version',
-  'document_created_by_email_normalized', 'file_url', 'file_name', 'file_type', 'file_size',
+  'document_created_by_email_normalized', 'storage_mode', 'file_uri', 'file_name', 'file_type', 'file_size',
   'content_sha256', 'client_request_id', 'purpose', 'version', 'created_at', 'last_verified_at',
 ];
 const DOCUMENT_AUTHORITY_FIELDS = [
@@ -159,19 +160,16 @@ function fileExtensionMatches(fileName: string, fileType: string) {
   return false;
 }
 
-function exactHttpsUrl(value: unknown) {
-  if (typeof value !== 'string' || !value || value.length > 4096 || value.trim() !== value) {
-    return null;
-  }
-  try {
-    const url = new URL(value);
-    if (
-      url.protocol !== 'https:' || url.username || url.password || url.hash || url.href !== value
-    ) return null;
-    return value;
-  } catch {
-    return null;
-  }
+function exactPrivateFileUri(value: unknown) {
+  if (
+    typeof value !== 'string'
+    || !value
+    || value.length > MAX_FILE_URI_LENGTH
+    || value.trim() !== value
+    || /[\u0000-\u0020\u007f]/.test(value)
+  ) return null;
+  if (!value.startsWith('private/') && !value.startsWith('private://')) return null;
+  return value;
 }
 
 function validInstant(value: unknown) {
@@ -676,13 +674,14 @@ async function validateBindingIntegrity(
     || row.created_by_user_email_normalized !== creatorEmail || !membershipId
     || !Number.isSafeInteger(row.membership_version) || row.membership_version < 1
     || !documentCreatorEmail || row.document_created_by_email_normalized !== documentCreatorEmail
-    || documentCreatorEmail !== creatorEmail || !exactHttpsUrl(row.file_url)
+    || documentCreatorEmail !== creatorEmail || row.storage_mode !== 'private'
+    || !exactPrivateFileUri(row.file_uri)
     || !safeFileName(row.file_name) || !FILE_TYPES.has(String(row.file_type || ''))
     || !fileExtensionMatches(String(row.file_name || ''), String(row.file_type || ''))
     || !Number.isSafeInteger(row.file_size) || row.file_size < 1 || row.file_size > MAX_FILE_BYTES
     || !/^[a-f0-9]{64}$/.test(String(row.content_sha256 || '')) || !clientRequestId
     || !BINDING_PURPOSES.has(purpose) || (purpose === 'patient_document' && !patientId)
-    || row.version !== 1 || !validInstant(row.created_at) || !validInstant(row.last_verified_at)
+    || row.version !== 2 || !validInstant(row.created_at) || !validInstant(row.last_verified_at)
     || Date.parse(row.last_verified_at) < Date.parse(row.created_at)
   ) throw new PublicError(409, 'Document binding integrity check failed');
   const expectedKey = await sha256Text(`${agencyId}\u0000${creatorId}\u0000${clientRequestId}`);
@@ -729,7 +728,7 @@ function validateDocumentIntegrity(
   const patientId = row?.patient_id == null ? null : row.patient_id;
   if (
     row?.id !== binding.document_id || row.title !== binding.file_name
-    || row.file_url !== binding.file_url || row.file_name !== binding.file_name
+    || row.file_url != null || row.file_name !== binding.file_name
     || row.file_type !== binding.file_type || row.file_size !== binding.file_size
     || row.category !== PURPOSE_CATEGORY[binding.purpose] || patientId !== binding.patient_id
     || row.uploaded_by !== binding.document_created_by_email_normalized

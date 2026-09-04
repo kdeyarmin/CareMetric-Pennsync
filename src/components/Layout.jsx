@@ -132,21 +132,6 @@ export default function Layout() {
     flushAndRetireOfflineQueue().catch(() => { /* best-effort; retried next load */ });
   }, [currentUser?.email]);
 
-  useEffect(() => {
-    if (!currentUser?.email) return;
-    const key = `login_tracked_${currentUser.email}`;
-    if (sessionStorage.getItem(key)) return;
-    base44.entities.UserActivity.create({
-      user_email: currentUser.email,
-      user_name: currentUser.full_name,
-      action: 'login',
-      device_type: /mobile|android|iphone/i.test(navigator.userAgent) ? 'mobile' : /tablet|ipad/i.test(navigator.userAgent) ? 'tablet' : 'desktop',
-      details: { timestamp: new Date().toISOString(), user_role: currentUser.role, session_start: true },
-      user_agent: navigator.userAgent,
-    }).catch((e) => console.warn("Failed to log login activity:", e?.message));
-    sessionStorage.setItem(key, 'true');
-  }, [currentUser?.email, currentUser?.full_name, currentUser?.role]);
-
   // NOT agency-scoped: these are messages addressed TO this user. Filtering by
   // the SENDER's agency would hide a message someone outside the agency sent
   // them, which is the opposite of what the badge is for. Recipient-pinned is
@@ -304,14 +289,8 @@ export default function Layout() {
   }, [badgeValues, actionHandlers, unreadNotificationCount, isSuperAdminUser]);
 
   const handleLogout = useCallback(async () => {
-    try {
-      await base44.entities.UserActivity.create({
-        user_email: currentUser?.email, user_name: currentUser?.full_name, action: 'logout',
-        device_type: /mobile|android|iphone/i.test(navigator.userAgent) ? 'mobile' : /tablet|ipad/i.test(navigator.userAgent) ? 'tablet' : 'desktop',
-        details: { logout_time: new Date().toISOString(), user_role: currentUser?.role },
-        user_agent: navigator.userAgent,
-      });
-    } catch { /* no-op */ }
+    // Logout is a browser-reported event, not an attested server transition.
+    // Do not append an audit row that a caller can forge.
     // HIPAA: purge cached PHI before logging out (shared-device safety). Await
     // the storage purge so the IndexedDB clear isn't abandoned by the redirect.
     try { queryClientInstance.clear(); } catch { /* no-op */ }
@@ -322,7 +301,7 @@ export default function Layout() {
     try { await clearCachedPHI(); } catch { /* no-op */ }
     base44.auth.logout();
 
-  }, [currentUser?.email, currentUser?.full_name, currentUser?.role]);
+  }, []);
 
   // Highlight the active sidebar/bottom-nav item, including when the user is on a
   // sub-page (e.g. PatientDetails highlights "Patients") so the nav never loses

@@ -134,6 +134,13 @@ function telnyxCredsMessage(creds, what) {
 
 const TELNYX_API_BASE = 'https://api.telnyx.com/v2';
 
+// TelehealthSession records are still caller-shaped: a browser can currently
+// choose the host and room identifiers that this broker would otherwise treat
+// as authorization and provider-routing authority. Keep the complete Telnyx
+// implementation dormant until session creation and provider room binding are
+// moved behind a server-owned broker with an immutable binding record.
+const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = true;
+
 /** Find a Telnyx room by unique_name, creating it if it doesn't exist yet. */
 async function findOrCreateRoom(apiKey, uniqueName) {
   const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
@@ -166,6 +173,13 @@ async function findOrCreateRoom(apiKey, uniqueName) {
 
 Deno.serve(async (req) => {
   try {
+    if (TELEHEALTH_PROVIDER_MIGRATION_PAUSED) {
+      return Response.json({
+        error: 'Telehealth provider access is temporarily unavailable while session authority is migrated.',
+        code: 'telehealth_provider_migration_pending',
+      }, { status: 503 });
+    }
+
     const base44 = createClientFromRequest(req);
 
     const body = await req.json();

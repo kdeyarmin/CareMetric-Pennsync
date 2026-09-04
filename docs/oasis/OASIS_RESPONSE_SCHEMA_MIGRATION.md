@@ -2,8 +2,10 @@
 
 **CMS-aligned response sets for PennSync's supported OASIS-E2 item subset.**
 
-Status: implemented behind a feature flag, **default OFF**. Not deployed, not
-enabled for any tenant, no migration run, no production data modified.
+Status: the current source contains a create-draft design beneath a literal
+hard pause and an additional default-off flag. Hosted staging still runs the
+earlier hard-paused endpoint; the create-draft design is **not deployed or
+enabled** for any tenant. No migration has run and no production data changed.
 
 PennSync is a clinical-assistance application used beside the agency's EMR. It
 is not the legal record, it does not replace the EMR, it does not submit to
@@ -227,24 +229,36 @@ Apply is deliberately a separate, bound invocation. First produce and review a
 detached report:
 
 ```sh
+umask 077
+export OASIS_MIGRATION_DIR="tmp/oasis-migration/review-YYYY-MM-DD"
+mkdir -p "$OASIS_MIGRATION_DIR"
+chmod 700 "$OASIS_MIGRATION_DIR"
+# Transfer the authorized export into this ignored directory by an approved
+# secure method; never place it in the repository root.
 node tools-oasis-response-migration.mjs \
-  --in oasis-export.json \
-  --out oasis-migration-plan.json
+  --in "$OASIS_MIGRATION_DIR/oasis-export.json" \
+  --out "$OASIS_MIGRATION_DIR/oasis-migration-plan.json"
 ```
 
 Then manually copy **both** displayed digests into the later apply command:
 
 ```sh
 node tools-oasis-response-migration.mjs \
-  --in oasis-export.json \
-  --out oasis-migration-apply-report.json \
-  --data-out oasis-migration-annotated-data.json \
+  --in "$OASIS_MIGRATION_DIR/oasis-export.json" \
+  --out "$OASIS_MIGRATION_DIR/oasis-migration-apply-report.json" \
+  --data-out "$OASIS_MIGRATION_DIR/oasis-migration-annotated-data.json" \
   --apply \
-  --plan oasis-migration-plan.json \
+  --plan "$OASIS_MIGRATION_DIR/oasis-migration-plan.json" \
   --expect-input-sha256 <reviewed-input-sha256> \
   --expect-plan-sha256 <reviewed-plan-sha256> \
   --i-have-read-the-plan
 ```
+
+The export, plan, annotated data, and reports may contain PHI. `tmp/` is
+gitignored, but that is only an accidental-commit safeguard: use an approved
+encrypted workstation/storage location, restrict access to the named operators,
+never stage or commit these artifacts, and remove them under the applicable
+retention/secure-cleanup procedure after the reviewed migration window.
 
 This manual cross-invocation binding is intentional: the apply path verifies
 the detached artifact's own hash, both operator-carried digests, the current
@@ -388,7 +402,8 @@ Rollout order:
 1. P0 AI/output/analytics containment
 2. Reader support for frozen v1 and v2
 3. Additive entity schema
-4. Server-owned tenant + patient/chart authorization broker (not yet built)
+4. Server-owned tenant + patient/chart create-draft broker (built, hard-paused;
+   update/upload/approval brokers remain outstanding)
 5. v2 controls
 6. Schema-aware consumers and derived-data versioning
 7. Named clinical review
@@ -424,17 +439,28 @@ These are four **separate** approvals. None of them is implied by another.
 ### Hosted schema / RLS status — RELEASE BLOCKER
 
 `OASISAssessment` previously admitted owner/admin direct writes. Source now
-locks writes to service role. `base44/functions/saveOasisResponses` is dormant,
-non-activatable scaffolding: it returns 503 before data access, and its retained
-user-mode write branch cannot satisfy service-only RLS.
+denies direct writes. `base44/functions/saveOasisResponses` now contains a
+server-owned, service-role create-draft broker that derives tenant, chart,
+schema, response, and clinician provenance, but it remains dormant and
+non-activatable: a literal gate returns 503 before body parsing, client
+creation, authentication, or data access. The pinned SDK 0.8.31 service-role
+behavior is evidenced separately in `docs/HOSTED-RLS-PROOF.md` §5e; that generic
+proof is not an authorized OASIS happy-path or two-agency proof.
 
 **That is a declared contract in this repository. Whether the hosted Base44 app
-enforces it has not been verified in this environment**, and PennSync is a
-frontend-only SPA against a hosted backend — so UI-level enforcement is not
-enforcement. Before any write is restored, replace the dormant branch with a
-server-owned tenant + patient/chart authorization broker, prove hosted RLS, and
-provide server-backed legacy/v2 and patient-merge workflows. **All OASIS entry
-stays disabled meanwhile.** This is a release blocker, not a warning.
+enforces this exact OASIS boundary has not been verified in this environment**,
+and PennSync is a frontend-only SPA against a hosted backend — so UI-level
+enforcement is not enforcement. Before any write is restored, prove the exact
+broker with the authenticated two-agency matrix and add an authority-bound
+idempotency key plus a datastore-backed atomic authorization/create design. The
+current post-create recheck prevents a raced request from receiving success,
+but it cannot undo an unacknowledged draft if authority or the kill switch
+changes after creation. An ambiguous create retry can also duplicate a draft.
+A named clinical review
+must additionally approve how optional Visit types/statuses map to OASIS time
+points. Server-backed update/upload/approval, legacy/v2, and patient-merge
+workflows remain outstanding. **All OASIS entry stays disabled meanwhile.**
+These are release blockers, not warnings.
 
 ## 12. Data-driven controls
 

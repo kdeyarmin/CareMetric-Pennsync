@@ -21,13 +21,31 @@ export const LIVE_CAPABILITY_MATRIX = Object.freeze([
   { id: "LR-09", capability: "Legacy page cleanup", priority: 9, phaseSource: "Phase 5", risk: "low" },
 ]);
 
+function requireNonEmptyCapabilityMatrix(matrix) {
+  if (!Array.isArray(matrix) || matrix.length === 0) {
+    throw new TypeError("Live-readiness capability matrix must be a non-empty array.");
+  }
+  return matrix;
+}
+
 function evidenceFor(capabilityId, evidence = {}) {
   return evidence[capabilityId] || {};
 }
 
+function hasPlanningEvidence(value) {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return [value.value, value.summary]
+    .some((candidate) => typeof candidate === "string" && candidate.trim().length > 0);
+}
+
 export function evaluateLiveCapabilityReadiness(capability, evidence = {}) {
   const capabilityEvidence = evidenceFor(capability.id, evidence);
-  const missing = LIVE_READINESS_EVIDENCE.filter((key) => !capabilityEvidence[key]);
+  // This is a planning signal, not the release gate. Still reject empty or
+  // reference-only objects so a matrix cannot look ready from truthiness alone.
+  const missing = LIVE_READINESS_EVIDENCE.filter(
+    (key) => !hasPlanningEvidence(capabilityEvidence[key]),
+  );
   return {
     ...capability,
     ready: missing.length === 0,
@@ -37,7 +55,8 @@ export function evaluateLiveCapabilityReadiness(capability, evidence = {}) {
 }
 
 export function evaluateLiveReadinessMatrix(evidence = {}, matrix = LIVE_CAPABILITY_MATRIX) {
-  const capabilities = matrix.map((capability) => evaluateLiveCapabilityReadiness(capability, evidence));
+  const capabilities = requireNonEmptyCapabilityMatrix(matrix)
+    .map((capability) => evaluateLiveCapabilityReadiness(capability, evidence));
   return {
     ready: capabilities.every((capability) => capability.ready),
     readyCount: capabilities.filter((capability) => capability.ready).length,
@@ -63,21 +82,86 @@ export const LIVE_READINESS_REVIEWERS = Object.freeze([
   "release",
 ]);
 
-function normalizeEvidenceEntry(value) {
+export const LIVE_READINESS_PROBES = Object.freeze({
+  "LR-01": Object.freeze({
+    required: Object.freeze(["V1", "V2", "V3", "V4", "V5", "V6", "T1", "T2", "T3", "T4"]),
+    optional: Object.freeze([]),
+  }),
+  "LR-02": Object.freeze({
+    required: Object.freeze(["S1", "S2", "S3", "S4"]),
+    optional: Object.freeze(["S5", "S6", "S7", "S8", "S9"]),
+  }),
+});
+
+function probePlanFor(capabilityId) {
+  return LIVE_READINESS_PROBES[capabilityId] || { required: [], optional: [] };
+}
+
+function normalizedProbeEvidence(value, capabilityId) {
+  const plan = probePlanFor(capabilityId);
+  const supplied = value && typeof value === "object" && !Array.isArray(value)
+    ? value.probes
+    : null;
+  const probes = Object.fromEntries(
+    [...plan.required, ...plan.optional].flatMap((probeId) => {
+      const raw = supplied && typeof supplied === "object" && !Array.isArray(supplied)
+        ? supplied[probeId]
+        : null;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+      const references = Array.isArray(raw.references)
+        ? raw.references.filter((reference) => (
+          typeof reference === "string" && reference.trim().length > 0
+        ))
+        : [];
+      return [[probeId, { references }]];
+    }),
+  );
+  const completedProbeIds = Object.entries(probes)
+    .filter(([, entry]) => entry.references.length > 0)
+    .map(([probeId]) => probeId);
+  return {
+    probes,
+    requiredProbeIds: [...plan.required],
+    completedProbeIds,
+    missingRequiredProbeIds: plan.required.filter((probeId) => (
+      !probes[probeId] || probes[probeId].references.length === 0
+    )),
+  };
+}
+
+function normalizeEvidenceEntry(value, capabilityId, evidenceKey) {
+  const probeEvidence = evidenceKey === "test_evidence"
+    ? normalizedProbeEvidence(value, capabilityId)
+    : { probes: {}, requiredProbeIds: [], completedProbeIds: [], missingRequiredProbeIds: [] };
   if (!value) {
-    return { present: false, value: null, references: [], missingReferences: false };
+    return {
+      present: false,
+      value: null,
+      references: [],
+      missingReferences: false,
+      ...probeEvidence,
+    };
   }
   if (typeof value === "object" && !Array.isArray(value)) {
     const references = Array.isArray(value.references) ? value.references.filter(Boolean) : [];
-    const hasValue = Boolean(value.value || value.summary || references.length);
+    // A citation alone does not state what reviewers attested. Require a
+    // filled value or summary; references remain an independent requirement.
+    const hasValue = Boolean(value.value || value.summary);
     return {
       present: hasValue,
       value: value.value || value.summary || null,
       references,
       missingReferences: hasValue && references.length === 0,
+      ...probeEvidence,
     };
   }
-  return { present: true, value, references: [], missingReferences: true };
+  return {
+    present: true,
+    value,
+    references: [],
+    missingReferences: true,
+    ...probeEvidence,
+  };
 }
 
 function reviewerDecisionsFor(evidence = {}) {
@@ -90,7 +174,10 @@ function reviewerDecisionsFor(evidence = {}) {
 export function createLiveReadinessEvidencePacket(capability, evidence = {}) {
   const capabilityEvidence = evidenceFor(capability.id, evidence);
   const evidenceEntries = Object.fromEntries(
-    LIVE_READINESS_EVIDENCE.map((key) => [key, normalizeEvidenceEntry(capabilityEvidence[key])]),
+    LIVE_READINESS_EVIDENCE.map((key) => [
+      key,
+      normalizeEvidenceEntry(capabilityEvidence[key], capability.id, key),
+    ]),
   );
   const missingEvidence = Object.entries(evidenceEntries)
     .filter(([, entry]) => !entry.present)
@@ -98,6 +185,9 @@ export function createLiveReadinessEvidencePacket(capability, evidence = {}) {
   const missingReferences = Object.entries(evidenceEntries)
     .filter(([, entry]) => entry.missingReferences)
     .map(([key]) => key);
+  const requiredProbeIds = evidenceEntries.test_evidence.requiredProbeIds;
+  const completedProbeIds = evidenceEntries.test_evidence.completedProbeIds;
+  const missingRequiredProbeIds = evidenceEntries.test_evidence.missingRequiredProbeIds;
   const reviewerDecisions = reviewerDecisionsFor(capabilityEvidence);
   const missingReviewerDecisions = Object.entries(reviewerDecisions)
     .filter(([, decision]) => decision !== "approved")
@@ -111,14 +201,21 @@ export function createLiveReadinessEvidencePacket(capability, evidence = {}) {
     evidence: evidenceEntries,
     missingEvidence,
     missingReferences,
+    requiredProbeIds,
+    completedProbeIds,
+    missingRequiredProbeIds,
     reviewerDecisions,
     missingReviewerDecisions,
-    reviewComplete: missingEvidence.length === 0 && missingReferences.length === 0 && missingReviewerDecisions.length === 0,
+    reviewComplete: missingEvidence.length === 0
+      && missingReferences.length === 0
+      && missingRequiredProbeIds.length === 0
+      && missingReviewerDecisions.length === 0,
   };
 }
 
 export function summarizeLiveReadinessEvidencePackets(evidence = {}, matrix = LIVE_CAPABILITY_MATRIX) {
-  const packets = matrix.map((capability) => createLiveReadinessEvidencePacket(capability, evidence));
+  const packets = requireNonEmptyCapabilityMatrix(matrix)
+    .map((capability) => createLiveReadinessEvidencePacket(capability, evidence));
   return {
     total: packets.length,
     reviewCompleteCount: packets.filter((packet) => packet.reviewComplete).length,

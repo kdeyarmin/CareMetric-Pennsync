@@ -1,16 +1,19 @@
-# Hosted RLS proof worksheet (executable)
+# Hosted RLS proof worksheet (manual)
 
 > **This document does not prove tenant isolation by itself.** Repository
 > `rls` blocks in `base44/entities/*.jsonc` are declarations for the Base44
 > dashboard. Client filters and role checks are UX only. Proof requires raw
-> network evidence against a **hosted** staging (or pilot) app.
+> network evidence against the exact isolated **hosted staging** app pinned by
+> the canonical fixture manifest. A later pilot cannot substitute for this
+> PR's staging evidence packet.
 >
 > Do **not** mark LR-01 complete, claim “HIPAA-ready isolation,” or ship
 > multi-tenant production traffic until every gate below has real evidence
 > (no placeholders, no PHI in committed files).
 
 **Companions:** `docs/SECURITY-RLS-CHECKLIST.md` §7, `docs/RLS-LAUNCH-RUNBOOK.md` §5,
-`docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md`, evidence template
+`docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md`, no-write fixture plan
+`docs/audits/live-readiness-fixture-manifest.template.json`, evidence template
 `docs/audits/live-readiness-evidence.template.json`.
 
 ---
@@ -22,14 +25,28 @@
 | Entity `.jsonc` `rls` blocks + `phase0Contract` / `securityGuardrails` tests | **No** — schema contract only |
 | UI screenshots showing empty lists | **No** — UI filters client-side |
 | Raw HTTP responses (devtools / curl / HAR) showing empty or 403 for denied ids | **Yes** |
-| Two-agency cross-tenant probe (Agency A token cannot read Agency B rows) | **Yes** (required when multi-tenant) |
-| Filled LR-01 evidence packet + reviewer approvals via `pnpm run readiness:report` | **Yes** (release gate) |
+| Two-agency cross-tenant probe (Agency A token cannot read Agency B rows) | **Yes** (required for this PR's canonical packet) |
+| Filled packet + CLI report | **Only with retained raw artifacts** — exit 0 validates structure/attestations; the digest-bound private packet, required raw evidence, and human review form the release-gate record |
 
 ---
 
 ## 1. Seed matrix (staging only)
 
 Provision **non-production** users and patients. Never use real PHI.
+
+Before any hosted provisioning, validate the canonical topology locally:
+
+```bash
+pnpm run readiness:fixture:validate -- docs/audits/live-readiness-fixture-manifest.template.json
+```
+
+The result is a no-network/no-write plan check, not proof that any hosted
+identity or row exists. The validator requires A1/A2 to be created by Admin-A,
+B1 by Admin-B, and only A1 assigned to Clinician-A, so creator ownership cannot
+mask a failed care-team boundary. Never use `src/test/entityFixtures.js` as a
+hosted seeder. The reviewed assignment broker remains withheld at the
+2026-09-04 staging checkpoint; do not bypass that open atomicity gate with
+direct entity CRUD.
 
 **Authority invariant:** the sole platform owner has Base44 built-in
 `User.role === "admin"` and an exact match to backend `SUPER_ADMIN_EMAIL`.
@@ -59,23 +76,28 @@ Record app id, backend origin, and user emails in the **private** evidence file
 
 ---
 
-## 2. Capture tokens (browser or API)
+## 2. Capture tokens (browser or reviewed API harness)
 
 After each actor signs in, copy the bearer token from Application → Local Storage
 `base44_access_token`, or from the login response `access_token`.
 
+This worksheet defines the actors, calls, and expected results, but it does not
+ship a generic executable curl harness. Broker routes and request bodies must
+come from the exact deployed revision. If a separately reviewed harness uses
+environment variables, configure its private execution context explicitly:
+
 ```bash
-# Example env for curl probes (export locally; never commit)
-export B44_ORIGIN="https://<backend-host>"   # VITE_BASE44_BACKEND_URL origin
-export B44_APP_ID="<app-id>"
-export TOKEN_CLINICIAN_A="<clinician-a-access-token>"
-export TOKEN_CLINICIAN_EMPTY="<clinician-empty-access-token>"
-export TOKEN_ADMIN_A="<admin-a-access-token>"
-export TOKEN_ADMIN_B="<admin-b-access-token>"   # multi-tenant only
+export READINESS_STAGING_BACKEND_ORIGIN="https://<exact-staging-backend-host>" # HTTPS origin only; no path, query, or trailing slash
+export B44_APP_ID="6a9881683dc68a0bd54f1ef7" # exact isolated staging app
 export PATIENT_A1_ID="<id>"
 export PATIENT_A2_ID="<id>"
 export PATIENT_B1_ID="<id>"
 ```
+
+Inject the `TOKEN_CLINICIAN_A`, `TOKEN_CLINICIAN_EMPTY`, `TOKEN_ADMIN_A`, and
+`TOKEN_ADMIN_B` values into that harness through an approved ephemeral secret
+mechanism. Do not type literal bearer tokens into shell history or save them in
+the worksheet, evidence packet, screenshots, or command output.
 
 Positive LR-01 reads must use only reviewed authenticated brokers:
 `getMyTenantContext`, `listAuthorizedPatients`, `getAuthorizedPatient`, and
@@ -99,23 +121,29 @@ Run against **response bodies**, not the UI.
 | P5 | Clinician-A: spoof Agency B or B1 identifiers across reviewed brokers | `403` / `404` / empty |
 | P6 | Direct non-admin forge of `TrainingCompletion` / `issueCertificate` | rejected when lockdown active |
 
-Save redacted HAR or status+body snippets under private storage; put **references
-only** in the LR-01 `test_evidence.references` array.
+The companion checklist's V1–V5 are the packet labels for P1–P6: V1=P1,
+V2=P2+P4, V3=P3 plus T1/T2, V4=P5, and V5=P6. V6 adds the required audit-
+hygiene sample. Record the unified V1–V6 and T1–T4 evidence set; do not treat
+the P labels as a second duplicative packet.
+
+Save redacted HAR or status+body snippets under private storage. Put the run
+index in LR-01 `test_evidence.references`, and put at least one retained
+artifact reference under each required `test_evidence.probes.<probe-id>` entry.
 
 ---
 
-## 4. Cross-tenant gates (multi-agency apps)
+## 4. Cross-tenant gates (required two-agency matrix)
 
 | # | Probe | Expect |
 |---|---|---|
 | T1 | Admin-A `listAuthorizedPatients` | A1 and A2 only; no Agency B patients |
 | T2 | Admin-B `listAuthorizedPatients` | B1 only; no Agency A patients |
 | T3 | Admin-A `getAuthorizedPatient` with B1 | `403`/`404`/empty — never 200 with B PHI |
-| T4 | Service-role / scheduled jobs only touch intended agency scope (spot-check logs) | |
+| T4 | Service-role / scheduled jobs only touch intended agency scope | Raw bounded-run/log evidence names the intended Agency A or B scope, shows no foreign-tenant row ids or counts, and records the exact job/deployment revision |
 
-If the product is single-agency per Base44 app, document that architecture in
-LR-01 `hosted_environment.summary` and mark T1–T4 N/A with rationale — still
-complete P1–P6.
+T1–T4 are mandatory for this PR's canonical LR-01 packet. A single-agency or
+later pilot architecture does not waive them and cannot replace evidence from
+the pinned two-agency staging fixture.
 
 ---
 
@@ -768,14 +796,74 @@ uniqueness/CAS/transactions, legacy backfill, private Document delivery,
 official PDGM/OASIS approvals, device/store, migration/restore, and production
 cutover gates remain open.
 
+## 5o. Post-synchronization fail-closed source checkpoint (updated 2026-09-04)
+
+The next draft-PR revision is source-only and is not represented by the hosted
+evidence in §5n. It contains 242 entity schemas and 267 functions. In addition
+to the private Document v2, immutable AI-agreement authority, audit containment,
+and OASIS draft foundation recorded in the consolidation report, this revision
+closes the reviewed caller-profile-to-provider chains:
+
+- direct `SmsConsent`, `ScheduledSms`, `SmsMessage`, `ScheduledFax`, and
+  `TelehealthSession` read/write access is false for every SDK user;
+- scheduled SMS creation/dispatch, SMS redrive, batch/scheduled/retry fax
+  transmission, and telehealth provider-token minting return literal HTTP 503
+  before SDK construction or hosted access;
+- validly signed inbound SMS, fax, and inbound-call events return retryable HTTP
+  503 after Ed25519 verification and before mutable routing lookups; outbound
+  delivery-status reconciliation remains available;
+- remaining provider actions and phone administration require the exact
+  protected built-in admin identity configured by `SUPER_ADMIN_EMAIL` before
+  request parsing or privileged reads; and
+- legacy exact-owner/assignee clinical and self-service paths additionally
+  require one exact active service-owned `AgencyMembership`, so the mutable
+  `User.is_active`, `account_type`, `agency_name`, and phone fields cannot revive
+  an offboarded session or grant reviewed authority.
+
+This is containment, not proof of a working communications release. Inbound
+STOP/START processing is intentionally paused because the existing global
+consent ledger has no immutable destination-to-tenant binding. Direct browser
+conversation, consent, schedule, analytics, and telehealth consumers now fail
+closed. Do not deploy this source until compliant keyword handling, narrow read
+and mutation brokers, stable fax artifacts, immutable number/room bindings, and
+authenticated two-agency collision/replay/offboarding evidence are complete.
+No Base44 app, hosted schema/function, schedule, secret, domain, production
+asset, native binary, or store record was changed for this checkpoint.
+
+The complete source checkpoint passes 2,151 utility/core, 51 schema/contract,
+559 security, 47 deduplication, and 1,084 component tests: 3,892 package checks
+with zero failures. These are repository checks only and do not extend the
+hosted proof in §5n to this source tree.
+
 ---
 
 ## 6. Sign-off
 
-1. Fill `tmp/live-readiness-evidence.json` from the template (LR-01 keys).
-2. `pnpm run readiness:report -- tmp/live-readiness-evidence.json`
-3. Reviewers set product/security/qa/release to `approved` only with real refs.
-4. Any failure on P1–P5 or T1–T3 is a **launch blocker**.
+1. Validate the canonical no-write fixture plan, then separately provision and
+   verify it in hosted staging through reviewed paths.
+2. Fill `tmp/live-readiness-evidence.json` from the template for the exact
+   LR-01 and LR-02 matrix. Put at least one retained artifact reference under
+   every required `test_evidence.probes.<probe-id>.references` entry.
+3. Bind the packet to the candidate and hosted identities with a complete,
+   immutable deployment receipt. A functions version is useful corroboration
+   but does not identify the deployed site, schemas, and automations and cannot
+   satisfy `hosted_deployment_id` by itself. Separately obtain externally
+   reviewed candidate and hosted resource-inventory attestations that use the
+   same declared scope and exclusions. This repository has no generator or
+   hosted-state retrieval command for those inventories.
+4. Export the explicit `READINESS_STAGING_BACKEND_ORIGIN` from §2 plus the
+   independently captured `READINESS_HOSTED_RUNTIME_COMMIT_SHA`,
+   `READINESS_HOSTED_RUNTIME_TREE_SHA`, `READINESS_HOSTED_DEPLOYMENT_ID`,
+   `READINESS_CANDIDATE_DEPLOYABLE_MANIFEST_SHA256`, and
+   `READINESS_HOSTED_RESOURCE_MANIFEST_SHA256`, then run
+   `pnpm run readiness:report -- tmp/live-readiness-evidence.json` from the
+   exact clean candidate checkout.
+5. Reviewers set product/security/qa/release to `approved` only with real refs.
+6. Any failure in the unified V1–V6/T1–T4 set is a **launch blocker**. P1–P6
+   map to V1–V5 as documented above; V6 is the additional audit-hygiene sample.
+   No mapped probe may be omitted from the LR-01 artifact map, and LR-02 must
+   not start until all ten LR-01 probes pass without an unresolved isolation
+   failure.
 
 **Repo CI cannot greenlight this worksheet.** `phase0Contract` only asserts that
 this proof path exists and is not silently marked complete in-repo.

@@ -543,7 +543,16 @@ function monthStartISO(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
+const SCHEDULED_SMS_DISPATCH_PAUSED = true;
+
 Deno.serve(async (req) => {
+  if (SCHEDULED_SMS_DISPATCH_PAUSED) {
+    return Response.json({
+      error: 'Scheduled SMS dispatch is temporarily unavailable pending a service-owned telecom and tenant binding',
+      code: 'telecom_authority_migration_pending',
+    }, { status: 503 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
 
@@ -826,7 +835,7 @@ Deno.serve(async (req) => {
         action: 'scheduled_sms_sent',
         entity_type: 'ScheduledSms',
         entity_id: row.id,
-        details: { to_number: row.to_number, from_number: row.from_number, provider_message_id: providerMessageId, body_length: (row.body || '').length },
+        details: { provider: 'telnyx', direction: 'outbound' },
         status: 'success',
       }).catch(() => {});
       result.sent++;

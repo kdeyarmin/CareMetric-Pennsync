@@ -109,14 +109,15 @@ function binding(suffix = 'a', overrides = {}) {
     membership_id: 'membership-a',
     membership_version: 2,
     document_created_by_email_normalized: 'clinician@agency.test',
-    file_url: `https://files.base44.app/document-${suffix}.pdf`,
+    storage_mode: 'private',
+    file_uri: `private/document-${suffix}.pdf`,
     file_name: `Document-${suffix}.pdf`,
     file_type: 'application/pdf',
     file_size: 1024,
     content_sha256: createHash('sha256').update(`bytes-${suffix}`).digest('hex'),
     client_request_id: clientRequestId,
     purpose: 'patient_document',
-    version: 1,
+    version: 2,
     created_at: NOW,
     last_verified_at: NOW,
     ...overrides,
@@ -128,7 +129,6 @@ function document(suffix = 'a', overrides = {}) {
     id: `document-${suffix}`,
     title: `Document-${suffix}.pdf`,
     description: `Document ${suffix}`,
-    file_url: `https://files.base44.app/document-${suffix}.pdf`,
     file_name: `Document-${suffix}.pdf`,
     file_size: 1024,
     file_type: 'application/pdf',
@@ -214,6 +214,10 @@ async function loadBroker(kind, {
   ignoreFilters = [],
   ignoreLimit = [],
   superAdminEmail = null,
+  signedUrlResult = {
+    signed_url: 'https://files.base44.app/signed/document-a.pdf?token=secret',
+  },
+  signedUrlError = null,
 } = {}) {
   const clone = (value) => structuredClone(value);
   const calls = {
@@ -224,8 +228,12 @@ async function loadBroker(kind, {
     assignments: [],
     bindings: [],
     documents: [],
+    signedUrls: [],
   };
-  const indices = Object.fromEntries(Object.keys(calls).map((name) => [name, 0]));
+  const entityNames = [
+    'memberships', 'agencies', 'patients', 'assignments', 'bindings', 'documents',
+  ];
+  const indices = Object.fromEntries(entityNames.map((name) => [name, 0]));
   const datasets = { memberships, agencies, patients, assignments, bindings, documents };
   const entity = (name) => ({
     filter: async (query, sort, limit, offset, fields) => {
@@ -249,6 +257,15 @@ async function loadBroker(kind, {
       PatientCareTeamAssignment: entity('assignments'),
       DocumentTenantBinding: entity('bindings'),
       Document: entity('documents'),
+    },
+    integrations: {
+      Core: {
+        CreateFileSignedUrl: async (input) => {
+          calls.signedUrls.push(clone(input));
+          if (signedUrlError) throw signedUrlError;
+          return clone(signedUrlResult);
+        },
+      },
     },
   };
   const client = {
@@ -315,8 +332,12 @@ test('Document read brokers are unwired, projection-bounded, and mutation-free',
     /<<<BEGIN AUTHORIZED DOCUMENT EXACT PURPOSE POLICY>>>([\s\S]*?)<<<END AUTHORIZED DOCUMENT EXACT PURPOSE POLICY>>>/,
   )?.[1];
   assert.ok(exactPolicy);
-  assert.match(exactPolicy, /metadata:[\s\S]*signature_review:/);
-  assert.doesNotMatch(exactPolicy, /\bdownload\b|\bfile_url\b/);
+  assert.match(exactPolicy, /metadata:[\s\S]*signature_review:[\s\S]*download:/);
+  assert.doesNotMatch(exactPolicy, /\bfile_url\b|\bfile_uri\b/);
+  assert.match(getSource, /CreateFileSignedUrl\(\{/);
+  assert.match(getSource, /SIGNED_URL_TTL_SECONDS = 60/);
+  assert.match(getSource, /'Cache-Control': 'no-store'/);
+  assert.doesNotMatch(listSource, /CreateFileSignedUrl/);
   assert.match(listSource, /library:[\s\S]*signature_queue:/);
   assert.match(listSource, /MAX_SCAN_CAP = 50/);
   assert.match(listSource, /patient_id is required for this tenant role/);
@@ -348,6 +369,7 @@ test('exact read validates binding, historical membership, Patient, Document, an
     'is_signed', 'is_locked', 'updated_date',
   ]);
   assert.equal(Object.hasOwn(json.document, 'file_url'), false);
+  assert.equal(Object.hasOwn(json.document, 'file_uri'), false);
   assert.equal(fixture.calls.bindings.length, 3);
   assert.equal(fixture.calls.documents.length, 3);
   assert.equal(fixture.calls.patients.length, 3);
@@ -373,6 +395,7 @@ test('exact read accepts an active care-team assignment but conceals an unassign
   let result = await invoke(fixture.handler, 'getAuthorizedDocument', getBody());
   assert.equal(result.response.status, 200);
   assert.equal(Object.hasOwn(result.json.document, 'file_url'), false);
+  assert.equal(Object.hasOwn(result.json.document, 'file_uri'), false);
   assert.equal(fixture.calls.assignments.length, 3);
 
   fixture = await loadBroker('get', { patients: [foreignPatient] });
@@ -381,15 +404,35 @@ test('exact read accepts an active care-team assignment but conceals an unassign
   assert.deepEqual(result.json, { error: 'Document unavailable' });
 });
 
-test('exact read has no public-URL purpose and rejects stale assignment enablement versions', async () => {
+test('exact read returns only an expiring private capability and rejects stale assignment versions', async () => {
   let fixture = await loadBroker('get');
   let result = await invoke(
     fixture.handler,
     'getAuthorizedDocument',
     getBody({ purpose: 'download' }),
   );
-  assert.equal(result.response.status, 400);
-  assert.equal(fixture.calls.bindings.length, 0);
+  assert.equal(result.response.status, 200);
+  assert.deepEqual(Object.keys(result.json).sort(), [
+    'delivery', 'document', 'purpose', 'scope', 'success',
+  ]);
+  assert.deepEqual(Object.keys(result.json.document), [
+    'id', 'file_name', 'file_size', 'file_type', 'category', 'patient_id',
+  ]);
+  assert.deepEqual(result.json.delivery, {
+    download_url: 'https://files.base44.app/signed/document-a.pdf?token=secret',
+    expires_in_seconds: 60,
+  });
+  assert.equal(result.response.headers.get('cache-control'), 'no-store');
+  assert.equal(result.response.headers.get('pragma'), 'no-cache');
+  assert.deepEqual(fixture.calls.signedUrls, [{
+    file_uri: 'private/document-a.pdf',
+    expires_in: 60,
+  }]);
+  assert.equal(fixture.calls.auth, 4);
+  assert.equal(fixture.calls.bindings.length, 4);
+  assert.equal(fixture.calls.documents.length, 4);
+  assert.equal(JSON.stringify(result.json).includes('file_uri'), false);
+  assert.equal(JSON.stringify(result.json).includes('private/document-a.pdf'), false);
 
   const foreignPatient = patient({
     created_by_user_id: 'user-2',
@@ -415,7 +458,61 @@ test('exact read has no public-URL purpose and rejects stale assignment enableme
     );
     assert.equal(result.response.status, 200);
     assert.equal(Object.hasOwn(result.json.document, 'file_url'), false);
+    assert.equal(Object.hasOwn(result.json.document, 'file_uri'), false);
   }
+});
+
+test('download signing fails closed, never logs capability details, and rechecks after signing', async () => {
+  const logged = [];
+  const original = console.error;
+  console.error = (...args) => logged.push(args);
+  try {
+    for (const options of [
+      { signedUrlResult: { signed_url: 'http://files.base44.app/document-a.pdf' } },
+      { signedUrlResult: { signed_url: 'https://files.base44.app/document-a.pdf#fragment' } },
+      { signedUrlError: new Error('private/document-a.pdf?provider-secret=true') },
+    ]) {
+      const fixture = await loadBroker('get', options);
+      const result = await invoke(
+        fixture.handler,
+        'getAuthorizedDocument',
+        getBody({ purpose: 'download' }),
+      );
+      assert.equal(result.response.status, 500);
+      assert.deepEqual(result.json, { error: 'Internal server error' });
+      assert.equal(fixture.calls.signedUrls.length, 1);
+    }
+  } finally {
+    console.error = original;
+  }
+  assert.deepEqual(logged, [
+    ['getAuthorizedDocument failed'],
+    ['getAuthorizedDocument failed'],
+    ['getAuthorizedDocument failed'],
+  ]);
+
+  const drift = await loadBroker('get', {
+    callers: [USER, USER, USER, { ...USER, is_active: false }],
+  });
+  const driftResult = await invoke(
+    drift.handler,
+    'getAuthorizedDocument',
+    getBody({ purpose: 'download' }),
+  );
+  assert.equal(driftResult.response.status, 403);
+  assert.equal(Object.hasOwn(driftResult.json, 'delivery'), false);
+  assert.equal(drift.calls.signedUrls.length, 1);
+
+  const unauthorized = await loadBroker('get', {
+    memberships: [membership({ tenant_role: 'office_staff' })],
+  });
+  const unauthorizedResult = await invoke(
+    unauthorized.handler,
+    'getAuthorizedDocument',
+    getBody({ purpose: 'download' }),
+  );
+  assert.equal(unauthorizedResult.response.status, 403);
+  assert.equal(unauthorized.calls.signedUrls.length, 0);
 });
 
 test('exact read rejects operator input, unsupported roles, wrong-scope rows, duplicates, and scan saturation', async () => {
@@ -469,7 +566,7 @@ test('exact read fails closed on binding hash, membership, Document, or authorit
   assert.equal((await invoke(fixture.handler, 'getAuthorizedDocument', getBody())).response.status, 409);
 
   fixture = await loadBroker('get', {
-    documents: [document('a', { file_url: 'https://files.base44.app/replaced.pdf' })],
+    documents: [document('a', { file_url: 'https://files.base44.app/legacy-public.pdf' })],
   });
   assert.equal((await invoke(fixture.handler, 'getAuthorizedDocument', getBody())).response.status, 409);
 
@@ -479,6 +576,25 @@ test('exact read fails closed on binding hash, membership, Document, or authorit
     },
   });
   assert.equal((await invoke(fixture.handler, 'getAuthorizedDocument', getBody())).response.status, 409);
+});
+
+test('exact and list reads reject legacy, public, or malformed storage bindings', async () => {
+  for (const overrides of [
+    { version: 1 },
+    { storage_mode: 'public' },
+    { file_uri: 'https://files.base44.app/public.pdf' },
+    { file_uri: ' private/document-a.pdf' },
+    { file_uri: 'private/document-a.pdf\n' },
+  ]) {
+    let fixture = await loadBroker('get', { bindings: [binding('a', overrides)] });
+    let result = await invoke(fixture.handler, 'getAuthorizedDocument', getBody());
+    assert.equal(result.response.status, 409, JSON.stringify(overrides));
+    assert.equal(fixture.calls.signedUrls.length, 0);
+
+    fixture = await loadBroker('list', { bindings: [binding('a', overrides)] });
+    result = await invoke(fixture.handler, 'listAuthorizedDocuments', listBody());
+    assert.equal(result.response.status, 409, JSON.stringify(overrides));
+  }
 });
 
 test('exact read rechecks authority, binding, Document, Patient, and assignment at disclosure time', async () => {
@@ -711,7 +827,7 @@ test('non-agency-wide list requires and re-proves one exact Patient scope', asyn
   assert.equal(fixture.calls.bindings.length, 0);
 });
 
-test('list is bounded, ordered, keyset-paginated, and projects no file URL', async () => {
+test('list is bounded, ordered, keyset-paginated, and projects no storage pointer', async () => {
   const bindings = ['a', 'b', 'c'].map((suffix) => binding(suffix));
   const documents = ['a', 'b', 'c'].map((suffix) => document(suffix));
   const fixture = await loadBroker('list', { bindings, documents });
@@ -719,6 +835,7 @@ test('list is bounded, ordered, keyset-paginated, and projects no file URL', asy
   assert.equal(result.response.status, 200);
   assert.deepEqual(result.json.documents.map((row) => row.id), ['document-a', 'document-b']);
   assert.equal(result.json.documents.some((row) => Object.hasOwn(row, 'file_url')), false);
+  assert.equal(result.json.documents.some((row) => Object.hasOwn(row, 'file_uri')), false);
   assert.deepEqual(result.json.page, {
     page_size: 2,
     sort: 'document_id_asc',
@@ -750,6 +867,10 @@ test('list is bounded, ordered, keyset-paginated, and projects no file URL', asy
     assert.equal(purposeResult.response.status, 200);
     assert.equal(
       purposeResult.json.documents.some((row) => Object.hasOwn(row, 'file_url')),
+      false,
+    );
+    assert.equal(
+      purposeResult.json.documents.some((row) => Object.hasOwn(row, 'file_uri')),
       false,
     );
   }

@@ -8,18 +8,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
-function agencyAdminMissingAgencyResponse(user) {
-  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
-    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-  }
-  return null;
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
 }
-// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
-
-// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isAdminLike = (u) => !!u && u.role === 'admin';
-// <<<END SHARED HELPER: isAdminLike>>>
+// <<<END SHARED HELPER: protectedUserAuthz>>>
 
 
 // <<<BEGIN GENERATED ENGINE — DO NOT EDIT BY HAND.
@@ -1060,12 +1058,8 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
-    if (!isAdminLike(user)) {
+    if (!isProtectedSuperAdmin(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
-    }
-    {
-      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
-      if (_agencyAdminGate) return _agencyAdminGate;
     }
 
     // DRY-RUN BY DEFAULT. The merge is destructive, so callers must explicitly
@@ -1093,26 +1087,7 @@ Deno.serve(async (req) => {
 
     // Bounded to the SDK's 5000/request max; omitting a limit silently caps at
     // the SDK default of 50. Re-run the scan if more patients remain.
-    let loadedPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
-    // Agency-scoped admins may only merge charts in their own agency — otherwise
-    // a facility admin soft-merges every tenant via service-role Patient.list.
-    const isAgencyScoped = user.account_type !== 'super_admin'
-      && !!user.agency_name
-      && (user.account_type === 'agency_admin' || user.role === 'admin');
-    if (isAgencyScoped) {
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .filter({ agency_name: user.agency_name }, '-created_date', 5000)
-        .catch(() => []);
-      const agencyEmails = new Set(
-        (Array.isArray(agencyUsers) ? agencyUsers : [])
-          .map((u) => u?.email)
-          .filter(Boolean),
-      );
-      loadedPatients = (Array.isArray(loadedPatients) ? loadedPatients : []).filter((p) =>
-        (p.created_by && agencyEmails.has(p.created_by))
-        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
-      );
-    }
+    const loadedPatients = await base44.asServiceRole.entities.Patient.list('-created_date', 5000);
     // Exclude merged / soft-archived duplicates from the candidate set: a merged
     // loser keeps the survivor's MRN and name, so re-scanning it re-buckets the
     // same pair as a phantom duplicate on every run (and could even pick an
@@ -1297,8 +1272,9 @@ Deno.serve(async (req) => {
     }
 
     // Persist an audit trail of an APPLIED merge (skip for dry-run previews,
-    // which change nothing). Records kept/removed IDs + MRNs (identifiers, not
-    // full PHI bodies) so a wrongful merge can be traced and recovered.
+    // which change nothing). Opaque record ids are the minimum correlation data
+    // needed to investigate a wrongful merge; MRNs and demographics stay only
+    // on the patient records and are never copied into the broad activity log.
     if (confirm && removed.length > 0) {
       await base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email,
@@ -1309,8 +1285,7 @@ Deno.serve(async (req) => {
           removed_count: removed.length,
           groups: detailsArray.map((d) => ({
             kept_id: d.kept.id,
-            kept_mrn: d.kept.mrn,
-            removed: d.removed.map((r) => ({ id: r.id, mrn: r.mrn, match_score: r.match_score })),
+            removed_ids: d.removed.map((r) => r.id),
           })),
           timestamp: new Date().toISOString(),
         },

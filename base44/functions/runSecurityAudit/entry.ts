@@ -8,18 +8,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isAdminLike = (u) => !!u && u.role === 'admin';
-// <<<END SHARED HELPER: isAdminLike>>>
-
-// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
-function agencyAdminMissingAgencyResponse(user) {
-  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
-    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-  }
-  return null;
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
 }
-// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+// <<<END SHARED HELPER: protectedUserAuthz>>>
 
 /** Parse YYYY-MM-DD (or datetime) as local calendar day start. */
 function startOfLocalDay(value) {
@@ -38,10 +36,12 @@ function startOfLocalDay(value) {
 }
 
 /**
- * runSecurityAudit — admin-only PHI-aware security audit.
+ * runSecurityAudit — protected-platform-owner PHI-aware security audit.
  * Previously ran asServiceRole from the browser (impossible without a service
- * token and a cross-tenant PHI leak if it worked). Agency-scoped admins only
- * audit their own staff / charts / activity.
+ * token and a cross-tenant PHI leak if it worked). Tenant-admin audit access
+ * remains unavailable until the cohort is derived from immutable membership
+ * and tenant provenance. Mutable User account_type/agency_name fields are not
+ * authority.
  *
  * Body: { secure_context?: boolean }
  */
@@ -51,60 +51,23 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    {
-      const gate = agencyAdminMissingAgencyResponse(user);
-      if (gate) return gate;
-    }
-    if (!isAdminLike(user)) {
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));
     const secureContext = body?.secure_context !== false;
 
-    const agency = String(user.agency_name || '').trim();
-    const isAgencyScoped =
-      user.account_type !== 'super_admin' && !!agency
-      && (user.account_type === 'agency_admin' || user.role === 'admin');
-
     let users;
     let patients;
     let activities;
     try {
-      if (isAgencyScoped) {
-        // Agency cohort FIRST — never sample a global newest-N window and then
-        // filter (an older/smaller agency can vanish from the sample and look
-        // like a perfect score).
-        users = await base44.asServiceRole.entities.User
-          .filter({ agency_name: agency }, '-created_date', 2000);
-        if (!Array.isArray(users)) throw new Error('User cohort read failed');
-        const staffEmails = [...new Set((users || []).map((u) => u?.email).filter(Boolean))];
-        const patientById = new Map();
-        const activityById = new Map();
-        for (const email of staffEmails) {
-          const owned = await base44.asServiceRole.entities.Patient
-            .filter({ created_by: email }, '-created_date', 500);
-          if (!Array.isArray(owned)) throw new Error('Patient cohort read failed');
-          for (const p of owned) {
-            if (p?.id) patientById.set(p.id, p);
-          }
-          const acts = await base44.asServiceRole.entities.UserActivity
-            .filter({ user_email: email }, '-created_date', 500);
-          if (!Array.isArray(acts)) throw new Error('Activity cohort read failed');
-          for (const a of acts) {
-            if (a?.id) activityById.set(a.id, a);
-            else activityById.set(`${a?.user_email}:${a?.created_date}:${a?.action}`, a);
-          }
-        }
-        patients = [...patientById.values()];
-        activities = [...activityById.values()];
-      } else {
-        users = await base44.asServiceRole.entities.User.list('-created_date', 2000);
-        patients = await base44.asServiceRole.entities.Patient.list('-created_date', 2000);
-        activities = await base44.asServiceRole.entities.UserActivity.list('-created_date', 2000);
-        if (!Array.isArray(users) || !Array.isArray(patients) || !Array.isArray(activities)) {
-          throw new Error('Required audit cohort read failed');
-        }
+      users = await base44.asServiceRole.entities.User.list('-created_date', 2000);
+      patients = await base44.asServiceRole.entities.Patient.list('-created_date', 2000);
+      activities = await base44.asServiceRole.entities.UserActivity.list('-created_date', 2000);
+      if (!Array.isArray(users) || !Array.isArray(patients) || !Array.isArray(activities)) {
+        throw new Error('Required audit cohort read failed');
       }
     } catch (readErr) {
       console.error('runSecurityAudit cohort read failed:', readErr?.message || readErr);
@@ -216,10 +179,16 @@ Deno.serve(async (req) => {
     }
 
     const securityScore = Math.max(0, score);
+    const freshUser = await base44.auth.me().catch(() => null);
+    if (!freshUser || isDeactivatedUser(freshUser) || freshUser.disabled === true
+      || freshUser.is_service === true || freshUser.is_verified === false
+      || !isProtectedSuperAdmin(freshUser)) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
     await base44.asServiceRole.entities.SecurityLog.create({
       timestamp: new Date().toISOString(),
-      user_email: user.email,
-      user_role: user.role || user.account_type || 'admin',
+      user_email: freshUser.email,
+      user_role: freshUser.role || 'admin',
       action: 'security_audit',
       details: {
         audit_type: 'comprehensive',
@@ -229,8 +198,7 @@ Deno.serve(async (req) => {
         checked_users: (users || []).length,
         checked_patients: (patients || []).length,
         checked_activities: (activities || []).length,
-        agency_scoped: isAgencyScoped,
-        agency_name: agency || null,
+        agency_scoped: false,
       },
     });
 

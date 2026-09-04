@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { severitySolidClass } from "@/lib/severityStyles";
 
@@ -17,23 +16,16 @@ import {
   ClipboardList,
   Target,
   TrendingUp,
-  Loader2,
   ListChecks,
   Activity
 } from "lucide-react";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
-export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, patientId, onTasksCreated, onPathwaysTriggered }) {
-  const [triggeredPathways, setTriggeredPathways] = useState([]);
-  const [_isAnalyzing, _setIsAnalyzing] = useState(false);
-  const queryClient = useQueryClient();
+const TASK_CREATION_BLOCKER =
+  'Clinical-pathway task creation is paused pending an atomic, idempotent, patient-authorized broker.';
 
-  // Current user — assigned_to is required on Task; without it the pathway task
-  // creates are rejected and nothing is generated.
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
+export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, patientId, onPathwaysTriggered }) {
+  const [triggeredPathways, setTriggeredPathways] = useState([]);
 
   // Fetch all active clinical pathways
   const { data: pathways = [] } = useQuery({
@@ -42,14 +34,6 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
     queryFn: async () => {
       const result = await base44.entities.ClinicalPathway.filter({ is_active: true }, undefined, ALL_ROWS);
       return result;
-    }
-  });
-
-  // Create task mutation
-  const createTaskMutation = useMutation({
-    mutationFn: (taskData) => base44.entities.Task.create(taskData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     }
   });
 
@@ -144,50 +128,15 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
 
   // Check for pathway triggers when data changes
   useEffect(() => {
-    if (pdgmData && pathways.length > 0) {
-      checkPathwayTriggers();
-    }
-  }, [pdgmData, pathways, checkPathwayTriggers]);
-
-  const createPathwayTasks = async (pathway) => {
-    if (!pathway.recommended_tasks || pathway.recommended_tasks.length === 0) return;
-    // assigned_to is required on Task; abort if the current user isn't resolved yet.
-    if (!currentUser?.email) {
-      toast.error('Could not determine the current user. Please refresh and try again.');
+    if (!pdgmData) {
+      setTriggeredPathways([]);
+      onPathwaysTriggeredRef.current?.([]);
       return;
     }
-
-    const taskPromises = pathway.recommended_tasks.map(task => {
-      const taskData = {
-        patient_id: patientId || null,
-        assigned_to: currentUser?.email,
-        title: task.task_title,
-        description: `[Clinical Pathway: ${pathway.pathway_name}] ${task.task_description}`,
-        type: task.task_type || 'other',
-        priority: task.priority || 'medium',
-        due_timeframe: task.due_timeframe || 'this_week',
-        source: 'ai_generated',
-        ai_reason: `Auto-generated from clinical pathway: ${pathway.pathway_name}`
-      };
-
-      return createTaskMutation.mutateAsync(taskData);
-    });
-
-    // allSettled (not all): a partial failure was previously an unhandled rejection
-    // with no user feedback. Report how many succeeded and surface the rest.
-    const results = await Promise.allSettled(taskPromises);
-    const succeeded = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.length - succeeded;
-
-    if (onTasksCreated && succeeded > 0) {
-      onTasksCreated(succeeded);
-    }
-    if (failed > 0) {
-      toast.error(`Created ${succeeded} of ${results.length} pathway task(s); ${failed} failed. Please retry the failed one(s).`);
-    } else {
-      toast.success(`Created ${succeeded} pathway task(s).`);
-    }
-  };
+    // checkPathwayTriggers intentionally runs for an empty pathway list so a
+    // retired/deactivated final pathway cannot remain displayed from cache.
+    checkPathwayTriggers();
+  }, [pdgmData, pathways, checkPathwayTriggers]);
 
   if (!pdgmData || triggeredPathways.length === 0) {
     return null;
@@ -340,16 +289,11 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
                       <h4 className="font-semibold text-navy-900">Recommended Tasks</h4>
                     </div>
                     <Button
-                      onClick={() => createPathwayTasks(pathway)}
-                      disabled={!patientId || createTaskMutation.isPending}
+                      disabled
                       size="sm"
                       className="bg-navy-600 hover:bg-navy-700"
                     >
-                      {createTaskMutation.isPending ? (
-                        <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> Creating...</>
-                      ) : (
-                        <>Create {pathway.recommended_tasks.length} Tasks</>
-                      )}
+                      Task creation paused
                     </Button>
                   </div>
                   <div className="space-y-2">
@@ -374,6 +318,9 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
                     <p className="text-xs text-orange-600 mt-2">
                       ⚠ Link to a patient record to create tasks
                     </p>
+                  )}
+                  {patientId && (
+                    <p className="mt-2 text-xs text-amber-700">{TASK_CREATION_BLOCKER}</p>
                   )}
                 </div>
               )}

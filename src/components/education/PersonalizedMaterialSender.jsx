@@ -59,6 +59,9 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
 
   const sendMutation = useMutation({
     mutationFn: async () => {
+      if (!currentUser?.email) {
+        throw new Error('Your session identity is unavailable. Please reload and try again.');
+      }
       // Create the sent record FIRST, then bump usage_count — otherwise a failed
       // create left the counter incremented for a send that never happened.
       const sent = await base44.entities.SentEducationMaterial.create({
@@ -67,7 +70,7 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
         patient_id: selectedPatientId,
         patient_name: `${selectedPatient.first_name} ${selectedPatient.last_name}`,
         personalized_content: personalizedContent,
-        sent_by: currentUser?.email,
+        sent_by: currentUser.email,
         sent_date: new Date().toISOString(),
         delivery_method: deliveryMethod,
         notes: notes
@@ -185,7 +188,7 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
               // Also require selectedPatient (a separate async query): sending
               // while it's still loading throws on selectedPatient.first_name AFTER
               // the usage_count was already bumped — a partial write + generic error.
-              disabled={!selectedPatientId || !selectedPatient || sendMutation.isPending}
+              disabled={!selectedPatientId || !selectedPatient || !currentUser?.email || sendMutation.isPending}
             >
               {sendMutation.isPending ? (
                 <>

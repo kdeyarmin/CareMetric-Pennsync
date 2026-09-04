@@ -2,9 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   LIVE_READINESS_EVIDENCE,
+  LIVE_CAPABILITY_MATRIX,
+  LIVE_READINESS_PROBES,
+  LIVE_READINESS_REVIEWERS,
+  createLiveReadinessEvidencePacket,
   evaluateLiveCapabilityReadiness,
   evaluateLiveReadinessMatrix,
   recommendedLiveImplementationOrder,
+  summarizeLiveReadinessEvidencePackets,
 } from "./liveReadinessGate.js";
 
 const capability = { id: "LR-X", capability: "Example", priority: 1, phaseSource: "Phase X", risk: "high" };
@@ -40,4 +45,49 @@ test("recommended order puts ready capabilities first then priority order", () =
   ];
   const ordered = recommendedLiveImplementationOrder({ "LR-3": fullEvidence }, matrix);
   assert.deepEqual(ordered.map((item) => item.id), ["LR-3", "LR-1", "LR-2"]);
+});
+
+test("matrix helpers reject an empty scope instead of passing vacuously", () => {
+  assert.throws(() => evaluateLiveReadinessMatrix({}, []), /non-empty array/);
+  assert.throws(() => recommendedLiveImplementationOrder({}, []), /non-empty array/);
+  assert.throws(() => summarizeLiveReadinessEvidencePackets({}, []), /non-empty array/);
+});
+
+test("planning readiness rejects empty and reference-only evidence objects", () => {
+  const emptyObjects = Object.fromEntries(LIVE_READINESS_EVIDENCE.map((key) => [key, {}]));
+  const referenceOnly = Object.fromEntries(
+    LIVE_READINESS_EVIDENCE.map((key) => [key, { references: [`evidence/${key}.md`] }]),
+  );
+  assert.equal(evaluateLiveCapabilityReadiness(capability, { "LR-X": emptyObjects }).ready, false);
+  assert.equal(evaluateLiveCapabilityReadiness(capability, { "LR-X": referenceOnly }).ready, false);
+});
+
+test("release evidence cannot complete LR-01 without every required probe artifact", () => {
+  const capabilityEvidence = {
+    ...Object.fromEntries(LIVE_READINESS_EVIDENCE.map((key) => [key, {
+      summary: `${key} complete`,
+      references: [`evidence/${key}.md`],
+    }])),
+    reviewers: Object.fromEntries(
+      LIVE_READINESS_REVIEWERS.map((reviewer) => [reviewer, "approved"]),
+    ),
+  };
+  let packet = createLiveReadinessEvidencePacket(
+    LIVE_CAPABILITY_MATRIX[0],
+    { "LR-01": capabilityEvidence },
+  );
+  assert.equal(packet.reviewComplete, false);
+  assert.deepEqual(packet.missingRequiredProbeIds, LIVE_READINESS_PROBES["LR-01"].required);
+
+  capabilityEvidence.test_evidence.probes = Object.fromEntries(
+    LIVE_READINESS_PROBES["LR-01"].required.map((probeId) => [probeId, {
+      references: [`evidence/LR-01/${probeId}.json`],
+    }]),
+  );
+  packet = createLiveReadinessEvidencePacket(
+    LIVE_CAPABILITY_MATRIX[0],
+    { "LR-01": capabilityEvidence },
+  );
+  assert.equal(packet.reviewComplete, true);
+  assert.deepEqual(packet.completedProbeIds, LIVE_READINESS_PROBES["LR-01"].required);
 });

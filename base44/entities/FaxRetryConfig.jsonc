@@ -56,5 +56,14 @@
       "description": "Tenant agency this retry policy belongs to. Readers must filter by caller/sender agency — never take global newest-row across tenants."
     }
   },
-  "required": []
+  "required": [],
+  // The settings editor is on the protected admin route. Fax workers read with
+  // service role; the clinician fax-history view still needs direct reads until
+  // a tenant-scoped configuration broker replaces that legacy path.
+  "rls": {
+    "read": true,
+    "create": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": false
+  }
 }

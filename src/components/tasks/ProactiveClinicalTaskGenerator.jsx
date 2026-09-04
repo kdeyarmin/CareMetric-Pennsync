@@ -1,13 +1,11 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Brain,
-  CheckCircle2,
   X,
   Loader2,
   AlertTriangle,
@@ -18,27 +16,14 @@ import {
 } from "lucide-react";
 import { toast } from 'sonner';
 
-// Coerce AI-suggested task fields to the Task schema enums so an out-of-enum value
-// (e.g. type 'assessment') isn't silently dropped on create, leaving the task
-// unclassified. Mirrors the validation in the processCompletedVisit backend.
-const ALLOWED_TASK_TYPES = new Set(['call', 'notify', 'schedule', 'order', 'coordinate', 'document', 'safety', 'followup', 'other']);
-const ALLOWED_TASK_PRIORITIES = new Set(['high', 'medium', 'low']);
-const ALLOWED_TASK_TIMEFRAMES = new Set(['today', '24_hours', '48_hours', 'this_week', 'next_visit']);
-const safeTaskType = (t) => (ALLOWED_TASK_TYPES.has(t) ? t : 'followup');
-const safeTaskPriority = (p) => (ALLOWED_TASK_PRIORITIES.has(p) ? p : 'medium');
-const safeTaskTimeframe = (d) => (ALLOWED_TASK_TIMEFRAMES.has(d) ? d : '24_hours');
+const TASK_CREATION_BLOCKER =
+  'AI clinical task creation is paused pending an atomic, idempotent, patient-authorized broker. Suggestions are review-only.';
 
 export default function ProactiveClinicalTaskGenerator({ 
   patientId,
   _patientName,
-  onTasksCreated,
   autoAnalyze = false
 }) {
-  const queryClient = useQueryClient();
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
   const [analyzing, setAnalyzing] = useState(false);
   const [suggestedTasks, setSuggestedTasks] = useState([]);
   // Keyed by task OBJECT identity, not array index: the rendered list is a
@@ -46,24 +31,34 @@ export default function ProactiveClinicalTaskGenerator({
   // first dismissal and approve/dismiss/expand then hit the wrong task.
   const [expandedTasks, setExpandedTasks] = useState(() => new Set());
   const [dismissedTasks, setDismissedTasks] = useState(() => new Set());
-  const [creatingTasks, setCreatingTasks] = useState(false);
+  const analysisRequestRef = useRef(0);
+  const autoAnalysisPatientRef = useRef(null);
 
   // Clear sticky AI task suggestions when the chart switches patients — otherwise
   // Approve can write Patient A's suggestions onto Patient B.
   React.useEffect(() => {
+    analysisRequestRef.current += 1;
+    autoAnalysisPatientRef.current = null;
     setSuggestedTasks([]);
     setExpandedTasks(new Set());
     setDismissedTasks(new Set());
     setAnalyzing(false);
+    return () => {
+      analysisRequestRef.current += 1;
+    };
   }, [patientId]);
 
   const handleAnalyze = React.useCallback(async () => {
+    if (!patientId) return;
+
+    const requestId = ++analysisRequestRef.current;
     setAnalyzing(true);
     try {
       const response = await base44.functions.invoke('analyzeAndGenerateClinicalTasks', {
         patientId
       });
 
+      if (analysisRequestRef.current !== requestId) return;
       // Tag each task with a stable id so list rendering can key by identity
       // (not array index) — visibleTasks is a filtered subset that shrinks on
       // dismiss/approve, and index keys would attach card UI to the wrong task.
@@ -80,84 +75,38 @@ export default function ProactiveClinicalTaskGenerator({
       });
       setExpandedTasks(highPriorityExpanded);
     } catch (error) {
+      if (analysisRequestRef.current !== requestId) return;
       console.error('Failed to analyze patient:', error);
       toast.error('Failed to analyze patient data. Please try again.');
     }
-    setAnalyzing(false);
+    if (analysisRequestRef.current === requestId) {
+      setAnalyzing(false);
+    }
   }, [patientId]);
 
   React.useEffect(() => {
-    if (autoAnalyze && patientId && suggestedTasks.length === 0 && !analyzing) {
+    if (!autoAnalyze) {
+      autoAnalysisPatientRef.current = null;
+      return;
+    }
+    if (
+      patientId
+      && suggestedTasks.length === 0
+      && !analyzing
+      && autoAnalysisPatientRef.current !== patientId
+    ) {
+      // Mark the attempt before dispatch so a zero-result response or failure
+      // cannot create an automatic retry loop.
+      autoAnalysisPatientRef.current = patientId;
       handleAnalyze();
     }
   }, [autoAnalyze, patientId, suggestedTasks.length, analyzing, handleAnalyze]);
-
-  const handleApproveTask = async (task) => {
-    try {
-      await base44.entities.Task.create({
-        patient_id: patientId,
-        title: task.title,
-        description: task.description,
-        type: safeTaskType(task.type),
-        priority: safeTaskPriority(task.priority),
-        assigned_to: currentUser?.email,
-        due_date: task.due_date,
-        due_timeframe: safeTaskTimeframe(task.due_timeframe),
-        source: 'ai_generated',
-        ai_reason: task.clinical_rationale,
-        status: 'pending'
-      });
-
-      setSuggestedTasks(prev => prev.filter(t => t !== task));
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      onTasksCreated?.();
-    } catch (error) {
-      console.error('Failed to create task:', error);
-      toast.error('Failed to create task. Please try again.');
-    }
-  };
 
   const handleDismissTask = (task) => {
     setDismissedTasks(prev => new Set(prev).add(task));
     setTimeout(() => {
       setSuggestedTasks(prev => prev.filter(t => t !== task));
     }, 300);
-  };
-
-  const handleApproveAll = async () => {
-    setCreatingTasks(true);
-    // Create only the tasks the user still sees (exclude dismissed ones). A task
-    // dismissed just before clicking still lingers in suggestedTasks during the
-    // 300ms removal delay, so iterating suggestedTasks would re-create it and
-    // over-count against the button's "Approve All (N)" label.
-    const tasksToCreate = suggestedTasks.filter(task => !dismissedTasks.has(task));
-    try {
-      for (const task of tasksToCreate) {
-        await base44.entities.Task.create({
-          patient_id: patientId,
-          title: task.title,
-          description: task.description,
-          type: safeTaskType(task.type),
-          priority: safeTaskPriority(task.priority),
-          assigned_to: currentUser?.email,
-          due_date: task.due_date,
-          due_timeframe: safeTaskTimeframe(task.due_timeframe),
-          source: 'ai_generated',
-          ai_reason: task.clinical_rationale,
-          status: 'pending'
-        });
-
-        setSuggestedTasks(prev => prev.filter(t => t !== task));
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      onTasksCreated?.();
-      toast.success(`Successfully created ${tasksToCreate.length} tasks!`);
-    } catch (error) {
-      console.error('Failed to create tasks:', error);
-      toast.error('Some tasks failed to create. Please try again.');
-    }
-    setCreatingTasks(false);
   };
 
   const getPriorityColor = (priority) => {
@@ -238,8 +187,8 @@ export default function ProactiveClinicalTaskGenerator({
             <Alert className="bg-indigo-50 border-indigo-300">
               <Sparkles className="w-4 h-4 text-indigo-600" />
               <AlertDescription className="text-indigo-900 text-sm">
-                AI identified <strong>{visibleTasks.length} tasks</strong> based on clinical analysis. 
-                Review and approve to add to your task list.
+                AI identified <strong>{visibleTasks.length} task recommendations</strong> based on clinical analysis.
+                {` ${TASK_CREATION_BLOCKER}`}
               </AlertDescription>
             </Alert>
 
@@ -314,11 +263,10 @@ export default function ProactiveClinicalTaskGenerator({
                     <div className="flex gap-2 mt-3">
                       <Button
                         size="sm"
-                        onClick={() => handleApproveTask(task)}
+                        disabled
                         className="flex-1"
                       >
-                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                        Approve
+                        Creation paused
                       </Button>
                       <Button
                         size="sm"
@@ -336,21 +284,10 @@ export default function ProactiveClinicalTaskGenerator({
 
             <div className="flex gap-2 pt-2 border-t">
               <Button
-                onClick={handleApproveAll}
-                disabled={creatingTasks}
+                disabled
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700"
               >
-                {creatingTasks ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                    Approve All ({visibleTasks.length})
-                  </>
-                )}
+                Task creation paused ({visibleTasks.length})
               </Button>
               <Button
                 onClick={handleAnalyze}

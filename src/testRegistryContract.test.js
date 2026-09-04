@@ -13,8 +13,11 @@ import process from 'node:process';
  * Five files had drifted this way before this guard existed, three of them
  * added by the same PR that introduced them.
  *
- * `.test.jsx` is excluded: those are component tests, collected by vitest
- * (`test:components`) via glob rather than an explicit list.
+ * Root `tools-*.test.js` and `tools-*.test.mjs` files are also explicit
+ * node:test entries and must
+ * be registered. `.test.jsx` is excluded: those are component tests,
+ * collected by vitest (`test:components`) via glob rather than an explicit
+ * list.
  */
 
 const ROOTS = ['src', 'base44'];
@@ -39,6 +42,11 @@ test('every node:test file is wired into a package.json test script', () => {
 
   const orphans = ROOTS
     .flatMap((root) => collectNodeTests(join(process.cwd(), root)))
+    .concat(
+      readdirSync(process.cwd())
+        .filter((entry) => /^tools-.*\.test\.(?:js|mjs)$/.test(entry))
+        .map((entry) => join(process.cwd(), entry)),
+    )
     .map((abs) => abs.slice(process.cwd().length + 1))
     .filter((rel) => !registry.includes(rel))
     .sort();

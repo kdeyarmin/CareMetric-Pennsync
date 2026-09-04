@@ -122,6 +122,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 
 // ---- transient-failure retry policy ----
 // Telnyx has no client idempotency key. Therefore
@@ -175,14 +186,9 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    // Canonical admin tier (matches isAdminLike): facility admin, agency_admin,
-    // super_admin. agency_admin was previously (inconsistently) excluded.
-    const isAdmin =
-      user.role === 'admin' ||
-      user.account_type === 'agency_admin' ||
-      user.account_type === 'super_admin';
-    if (!isAdmin) {
-      return Response.json({ error: 'Only administrators can send a test text' }, { status: 403 });
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Only the protected platform owner can send a test text' }, { status: 403 });
     }
 
     const { to_number } = await req.json();
@@ -269,17 +275,15 @@ Deno.serve(async (req) => {
     }
 
     // Audit (no PHI; the body is a fixed non-PHI string). Not written to any inbox.
-    await base44.entities.UserActivity.create({
+    await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'sms_test_sent',
       entity_type: 'AgencySettings',
       entity_id: s.id || null,
       details: {
-        to_number: destination,
-        from_number: fromNumber,
-        provider_message_id: data?.data?.id || null,
-        timestamp: new Date().toISOString(),
+        provider: 'telnyx',
+        purpose: 'configuration_test',
       },
       status: 'success',
     }).catch((err) => console.error('Failed to log activity:', err));

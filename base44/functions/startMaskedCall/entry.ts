@@ -47,6 +47,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: isAllowedDestination — generated, edit base44/_shared/backendHelpers.mjs>>>
 // Cost-control destination gate. Single source of truth is the frontend
 // src/components/voice/costControls.js — this copy is generated from it verbatim.
@@ -217,6 +228,16 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    // work_phone_number and personal_cell_e164 are presently custom User fields.
+    // Do not trust them for provider routing until a service-owned binding is
+    // deployed and proven.
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({
+        error: 'Masked calling is restricted to the protected platform owner pending telecom-binding migration',
+        code: 'telecom_authority_migration_pending',
+      }, { status: 503 });
+    }
 
     const { patient_id, to_number } = await req.json();
 
@@ -229,40 +250,9 @@ Deno.serve(async (req) => {
     let destination = normalizeE164(to_number);
     let resolvedPatientId = patient_id || null;
     let resolvedPatient = null;
-    // Platform-wide: super_admin or role:admin without agency. Facility admins
-    // with an agency are scoped like agency_admin (parity with updateScopedPatientAlert).
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    let agencyEmailSet = null;
-    const loadAgencyEmails = async () => {
-      if (agencyEmailSet) return agencyEmailSet;
-      if (!isAgencyScopedAdmin) return null;
-      if (!user.agency_name) {
-        agencyEmailSet = new Set();
-        return agencyEmailSet;
-      }
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .list('-created_date', 5000)
-        .catch(() => []);
-      agencyEmailSet = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-      return agencyEmailSet;
-    };
     const canAccessPatient = async (p) => {
       if (!p) return false;
-      if (isPlatformAdmin) return true;
-      if (isAgencyScopedAdmin) {
-        const emails = await loadAgencyEmails();
-        if (!emails || emails.size === 0) return false;
-        if (p.created_by && emails.has(p.created_by)) return true;
-        return Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => emails.has(e));
-      }
+      if (isProtectedSuperAdmin(user)) return true;
       if (p.created_by === user.email) return true;
       return Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email);
     };
@@ -401,7 +391,7 @@ Deno.serve(async (req) => {
     const providerCallId = data?.data?.call_control_id || data?.data?.call_leg_id || null;
     await base44.entities.CallLog.update(callLog.id, { provider_call_id: providerCallId });
 
-    await base44.entities.UserActivity.create({
+    await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'call_initiated',
@@ -409,11 +399,7 @@ Deno.serve(async (req) => {
       entity_id: callLog.id,
       details: {
         provider: 'telnyx',
-        to_number: destination,
-        displayed_number: workNumber,
-        patient_id: resolvedPatientId,
-        provider_call_id: providerCallId,
-        timestamp: new Date().toISOString(),
+        direction: 'outbound',
       },
       status: 'success',
     }).catch((err) => console.error('Failed to log activity:', err));

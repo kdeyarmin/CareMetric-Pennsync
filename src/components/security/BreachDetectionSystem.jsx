@@ -201,19 +201,8 @@ export default function BreachDetectionSystem() {
         })
       });
 
-      // Log the breach scan
-      await base44.entities.SecurityLog.create({
-        timestamp: new Date().toISOString(),
-        user_email: currentUser?.email,
-        user_role: currentUser?.role,
-        action: 'BREACH_SCAN_COMPLETED',
-        details: {
-          indicators_found: indicators.length,
-          critical_indicators: indicators.filter(i => i.severity === 'critical').length
-        },
-        ip_address: 'client-side',
-        user_agent: navigator.userAgent
-      });
+      // A browser-computed scan is advisory UI state, not authoritative audit
+      // evidence. A fixed-schema service broker is required before recording it.
 
     } catch (error) {
       console.error('Breach detection error:', error);

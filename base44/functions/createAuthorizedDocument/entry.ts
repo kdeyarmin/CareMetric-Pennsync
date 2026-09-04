@@ -5,13 +5,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  *
  * This function is intentionally not wired to any frontend callsite yet. It
  * accepts an actual multipart File, proves immutable tenant authority before
- * the public upload, and records an all-RLS-false DocumentTenantBinding beside
- * the legacy Document row. Existing Document RLS remains unchanged until
+ * the private upload, and records an all-RLS-false DocumentTenantBinding beside
+ * the metadata-only Document row. Existing Document RLS remains unchanged until
  * every writer and reader has migrated to binding-backed brokers.
  */
 
 const MAX_IDENTIFIER_LENGTH = 200;
 const MAX_FILE_NAME_LENGTH = 200;
+const MAX_FILE_URI_LENGTH = 4096;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_MULTIPART_BYTES = MAX_FILE_BYTES + 64 * 1024;
 const MEMBERSHIP_SCAN_LIMIT = 100;
@@ -30,6 +31,14 @@ const DOCUMENT_CREATE_ROLES = new Set(['agency_admin', 'manager', 'clinician']);
 const AGENCY_WIDE_PATIENT_ROLES = new Set(['agency_admin', 'manager']);
 const ENABLED_AGENCY_STATUSES = new Set(['active', 'trial']);
 const PATIENT_STATUSES = new Set(['active', 'hospitalized', 'discharged']);
+const ASSIGNMENT_STATUSES = new Set(['active', 'suspended', 'revoked']);
+const ASSIGNMENT_SOURCES = new Set([
+  'manual',
+  'patient_creator',
+  'legacy_assigned_nurses',
+  'legacy_provider_patient_assignment',
+]);
+const ASSIGNMENT_ACTIONS = new Set(['grant', 'activate', 'suspend', 'revoke']);
 const ALLOWED_FILE_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const PURPOSE_CATEGORY: Record<string, string> = {
   patient_document: 'other',
@@ -42,6 +51,32 @@ const ALLOWED_MULTIPART_FIELDS = new Set([
   'purpose',
   'client_request_id',
 ]);
+const ASSIGNMENT_AUTHORITY_FIELDS = [
+  'id',
+  'assignment_key',
+  'agency_id',
+  'patient_id',
+  'user_id',
+  'user_email_normalized',
+  'assignee_membership_id',
+  'assignee_membership_version_at_enablement',
+  'status',
+  'source',
+  'created_by_user_id',
+  'created_by_user_email_normalized',
+  'activated_at',
+  'suspended_at',
+  'revoked_at',
+  'revocation_reason',
+  'last_transition_by_user_id',
+  'last_transition_by_email_normalized',
+  'last_transition_at',
+  'last_transition_reason',
+  'last_transition_action',
+  'last_transition_request_id',
+  'last_transition_request_key',
+  'version',
+];
 
 class PublicError extends Error {
   status: number;
@@ -88,6 +123,10 @@ function requireRows(value: unknown, label: string) {
 
 function sameJson(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function pickFields(row: Record<string, any>, fields: readonly string[]) {
+  return Object.fromEntries(fields.map((field) => [field, row?.[field] ?? null]));
 }
 
 function safeFileName(value: unknown) {
@@ -294,6 +333,108 @@ function patientAuthoritySnapshot(row: Record<string, any>) {
   };
 }
 
+function assignmentKey(agencyId: string, patientId: string, userId: string) {
+  return `${agencyId}:${patientId}:${userId}`;
+}
+
+function validateAssignmentIntegrity(
+  row: Record<string, any>,
+  patientId: string,
+  agencyId: string,
+  actor: { userId: string; normalizedEmail: string },
+) {
+  const key = assignmentKey(agencyId, patientId, actor.userId);
+  const userEmail = canonicalEmail(row?.user_email_normalized);
+  const creatorEmail = canonicalEmail(row?.created_by_user_email_normalized);
+  const transitionEmail = canonicalEmail(row?.last_transition_by_email_normalized);
+  const requestId = exactIdentifier(row?.last_transition_request_id);
+  const status = typeof row?.status === 'string' ? row.status : '';
+  const action = typeof row?.last_transition_action === 'string'
+    ? row.last_transition_action
+    : '';
+  if (
+    !exactIdentifier(row?.id)
+    || row.assignment_key !== key
+    || row.agency_id !== agencyId
+    || row.patient_id !== patientId
+    || row.user_id !== actor.userId
+    || !userEmail
+    || row.user_email_normalized !== userEmail
+    || userEmail !== actor.normalizedEmail
+    || !exactIdentifier(row.assignee_membership_id)
+    || !Number.isSafeInteger(row.assignee_membership_version_at_enablement)
+    || row.assignee_membership_version_at_enablement < 1
+    || !ASSIGNMENT_STATUSES.has(status)
+    || !ASSIGNMENT_SOURCES.has(String(row.source || ''))
+    || !exactIdentifier(row.created_by_user_id)
+    || !creatorEmail
+    || row.created_by_user_email_normalized !== creatorEmail
+    || !validInstant(row.activated_at)
+    || (row.suspended_at != null && !validInstant(row.suspended_at))
+    || (status === 'suspended' && !validInstant(row.suspended_at))
+    || (row.revoked_at != null && !validInstant(row.revoked_at))
+    || (status === 'revoked' && (
+      !validInstant(row.revoked_at) || !boundedReason(row.revocation_reason)
+    ))
+    || (status !== 'revoked' && (row.revoked_at != null || row.revocation_reason != null))
+    || !exactIdentifier(row.last_transition_by_user_id)
+    || !transitionEmail
+    || row.last_transition_by_email_normalized !== transitionEmail
+    || !validInstant(row.last_transition_at)
+    || !boundedReason(row.last_transition_reason)
+    || !ASSIGNMENT_ACTIONS.has(action)
+    || (status === 'active' && action !== 'grant' && action !== 'activate')
+    || (status === 'suspended' && action !== 'suspend')
+    || (status === 'revoked' && action !== 'revoke')
+    || !requestId
+    || row.last_transition_request_key !== `${key}:${requestId}`
+    || !Number.isSafeInteger(row.version)
+    || row.version < 1
+  ) {
+    throw new PublicError(409, 'Care-team assignment integrity check failed');
+  }
+  return row;
+}
+
+async function loadExactAssignment(
+  entities: Record<string, any>,
+  patientId: string,
+  agencyId: string,
+  actor: { userId: string; normalizedEmail: string },
+) {
+  const key = assignmentKey(agencyId, patientId, actor.userId);
+  const rows = requireRows(
+    await entities.PatientCareTeamAssignment.filter(
+      {
+        assignment_key: key,
+        agency_id: agencyId,
+        patient_id: patientId,
+        user_id: actor.userId,
+      },
+      '-updated_date',
+      EXACT_ROW_LIMIT,
+      undefined,
+      ASSIGNMENT_AUTHORITY_FIELDS,
+    ),
+    'PatientCareTeamAssignment.filter',
+  );
+  if (rows.length >= EXACT_ROW_LIMIT) {
+    throw new PublicError(409, 'Care-team assignment is ambiguous');
+  }
+  if (rows.some((row) => (
+    row?.assignment_key !== key
+    || row?.agency_id !== agencyId
+    || row?.patient_id !== patientId
+    || row?.user_id !== actor.userId
+  ))) {
+    throw new PublicError(409, 'Care-team assignment query scope could not be verified');
+  }
+  if (rows.length > 1) throw new PublicError(409, 'Care-team assignment is ambiguous');
+  return rows.length === 1
+    ? validateAssignmentIntegrity(rows[0], patientId, agencyId, actor)
+    : null;
+}
+
 async function loadExactAuthorizedPatient(
   entities: Record<string, any>,
   patientId: string,
@@ -332,20 +473,36 @@ async function loadExactAuthorizedPatient(
   ) {
     throw new PublicError(409, 'Patient authority integrity check failed');
   }
-  if (
-    !AGENCY_WIDE_PATIENT_ROLES.has(String(membership.tenant_role || ''))
-    && (creatorId !== actor.userId || creatorEmail !== actor.normalizedEmail)
-  ) {
+  if (AGENCY_WIDE_PATIENT_ROLES.has(String(membership.tenant_role || ''))) {
+    return { patient, access: { basis: 'agency_wide', assignment: null } };
+  }
+  if (creatorId === actor.userId && creatorEmail === actor.normalizedEmail) {
+    return { patient, access: { basis: 'patient_creator', assignment: null } };
+  }
+  const assignment = await loadExactAssignment(entities, patientId, agencyId, actor);
+  if (!assignment || assignment.status !== 'active') {
     throw new PublicError(404, 'Patient unavailable');
   }
-  return patient;
+  if (
+    assignment.assignee_membership_id !== membership.id
+    || assignment.assignee_membership_version_at_enablement !== membership.version
+  ) {
+    throw new PublicError(409, 'Care-team assignment binding is invalid');
+  }
+  return {
+    patient,
+    access: {
+      basis: 'care_team_assignment',
+      assignment: pickFields(assignment, ASSIGNMENT_AUTHORITY_FIELDS),
+    },
+  };
 }
 
 function authoritySnapshot(
   actor: { userId: string; normalizedEmail: string },
   membership: Record<string, any>,
   agency: Record<string, any>,
-  patient: Record<string, any> | null,
+  patientContext: Record<string, any> | null,
 ) {
   return {
     actor,
@@ -361,7 +518,8 @@ function authoritySnapshot(
       last_transition_at: membership.last_transition_at,
     },
     agency: { id: agency.id, status: agency.status },
-    patient: patient ? patientAuthoritySnapshot(patient) : null,
+    patient: patientContext ? patientAuthoritySnapshot(patientContext.patient) : null,
+    patient_access: patientContext?.access ?? null,
   };
 }
 
@@ -382,7 +540,7 @@ async function loadAuthority(
   );
   const membership = validateActiveMembership(rawMemberships, actor, input.agencyId);
   const agency = await loadExactEnabledAgency(entities, input.agencyId);
-  const patient = input.patientId
+  const patientContext = input.patientId
     ? await loadExactAuthorizedPatient(
       entities,
       input.patientId,
@@ -391,7 +549,7 @@ async function loadAuthority(
       membership,
     )
     : null;
-  const snapshot = authoritySnapshot(actor, membership, agency, patient);
+  const snapshot = authoritySnapshot(actor, membership, agency, patientContext);
   if (expected && !sameJson(snapshot, expected)) {
     throw new PublicError(409, 'Document upload authority changed during request');
   }
@@ -423,23 +581,16 @@ function fileSignatureMatches(bytes: ArrayBuffer, fileType: string) {
   return false;
 }
 
-function exactHttpsUrl(value: unknown) {
-  if (typeof value !== 'string' || !value || value.length > 4096 || value.trim() !== value) {
-    return null;
-  }
-  try {
-    const url = new URL(value);
-    if (
-      url.protocol !== 'https:'
-      || url.username
-      || url.password
-      || url.hash
-      || url.href !== value
-    ) return null;
-    return value;
-  } catch {
-    return null;
-  }
+function exactPrivateFileUri(value: unknown) {
+  if (
+    typeof value !== 'string'
+    || !value
+    || value.length > MAX_FILE_URI_LENGTH
+    || value.trim() !== value
+    || /[\u0000-\u0020\u007f]/.test(value)
+  ) return null;
+  if (!value.startsWith('private/') && !value.startsWith('private://')) return null;
+  return value;
 }
 
 function optionalPatientMatches(value: unknown, expected: string | null) {
@@ -452,7 +603,6 @@ function documentMatches(
   row: Record<string, any>,
   expected: {
     documentId: string;
-    fileUrl: string;
     fileName: string;
     fileType: string;
     fileSize: number;
@@ -465,7 +615,7 @@ function documentMatches(
 ) {
   return row?.id === expected.documentId
     && row.title === expected.fileName
-    && row.file_url === expected.fileUrl
+    && row.file_url == null
     && row.file_name === expected.fileName
     && row.file_type === expected.fileType
     && row.file_size === expected.fileSize
@@ -509,14 +659,15 @@ function bindingMatchesReplay(
     && row.membership_version >= 1
     && row.document_created_by_email_normalized === expected.actor.normalizedEmail
     && canonicalEmail(row.document_created_by_email_normalized) === expected.actor.normalizedEmail
-    && !!exactHttpsUrl(row.file_url)
+    && row.storage_mode === 'private'
+    && !!exactPrivateFileUri(row.file_uri)
     && row.file_name === expected.fileName
     && row.file_type === expected.fileType
     && row.file_size === expected.fileSize
     && row.content_sha256 === expected.contentSha256
     && row.client_request_id === expected.clientRequestId
     && row.purpose === expected.purpose
-    && row.version === 1
+    && row.version === 2
     && validInstant(row.created_at)
     && validInstant(row.last_verified_at);
 }
@@ -528,7 +679,8 @@ function bindingMatchesCreation(
   return bindingMatchesReplay(row, expected)
     && row.document_id === expected.documentId
     && row.membership_version === expected.membershipVersion
-    && row.file_url === expected.fileUrl
+    && row.storage_mode === 'private'
+    && row.file_uri === expected.fileUri
     && row.created_at === expected.createdAt
     && row.last_verified_at === expected.lastVerifiedAt;
 }
@@ -572,7 +724,6 @@ function narrowResult(
     created,
     document: {
       id: document.id,
-      file_url: document.file_url,
       file_name: document.file_name,
       file_type: document.file_type,
       file_size: document.file_size,
@@ -610,7 +761,6 @@ async function resolveReplay(
   const document = await loadExactDocument(entities, documentId);
   const documentExpected = {
     documentId,
-    fileUrl: binding.file_url,
     fileName: expected.fileName,
     fileType: expected.fileType,
     fileSize: expected.fileSize,
@@ -672,13 +822,15 @@ Deno.serve(async (req) => {
       return Response.json(replay);
     }
 
-    // Re-prove immediately before the irreversible public upload. Public file
-    // deletion is not exposed by this SDK; an authority change after this point
-    // can leave an unbound object, which is a documented staging blocker.
+    // Re-prove immediately before the irreversible private upload. File deletion
+    // is not exposed by this SDK; an authority change after this point can leave
+    // an unbound private object, which remains reconciliation debt.
     await loadAuthority(base44, input, initial.snapshot);
-    const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file: input.file });
-    const fileUrl = exactHttpsUrl(uploadResult?.file_url);
-    if (!fileUrl) throw new Error('UploadFile returned an invalid URL');
+    const uploadResult = await base44.asServiceRole.integrations.Core.UploadPrivateFile({
+      file: input.file,
+    });
+    const fileUri = exactPrivateFileUri(uploadResult?.file_uri);
+    if (!fileUri) throw new Error('UploadPrivateFile returned an invalid URI');
 
     const beforeCreate = await loadAuthority(base44, input, initial.snapshot);
     const concurrentRows = await loadBindingRows(beforeCreate.entities, bindingKey);
@@ -697,7 +849,6 @@ Deno.serve(async (req) => {
     const documentDate = now.slice(0, 10);
     const documentPayload = {
       title: input.fileName,
-      file_url: fileUrl,
       file_name: input.fileName,
       file_size: input.fileSize,
       file_type: input.fileType,
@@ -724,14 +875,15 @@ Deno.serve(async (req) => {
         membership_id: initial.membership.id,
         membership_version: initial.membership.version,
         document_created_by_email_normalized: initial.actor.normalizedEmail,
-        file_url: fileUrl,
+        storage_mode: 'private',
+        file_uri: fileUri,
         file_name: input.fileName,
         file_type: input.fileType,
         file_size: input.fileSize,
         content_sha256: contentSha256,
         client_request_id: input.clientRequestId,
         purpose: input.purpose,
-        version: 1,
+        version: 2,
         created_at: now,
         last_verified_at: now,
       };
@@ -742,7 +894,6 @@ Deno.serve(async (req) => {
       const exactDocument = await loadExactDocument(beforeCreate.entities, documentId);
       if (!documentMatches(exactDocument, {
         documentId,
-        fileUrl,
         fileName: input.fileName,
         fileType: input.fileType,
         fileSize: input.fileSize,
@@ -761,7 +912,7 @@ Deno.serve(async (req) => {
         ...replayExpected,
         documentId,
         membershipVersion: initial.membership.version,
-        fileUrl,
+        fileUri,
         createdAt: now,
         lastVerifiedAt: now,
       };
@@ -777,7 +928,7 @@ Deno.serve(async (req) => {
       return Response.json(narrowResult(true, exactDocument, exactBinding, finalAuthority));
     } catch (error) {
       // Never delete a replayed/pre-existing record. Only the Document created
-      // in this request is compensated; Base44 exposes no transaction or public
+      // in this request is compensated; Base44 exposes no transaction or private
       // file deletion primitive, and binding rows are immutable evidence.
       await beforeCreate.entities.Document.delete(documentId).catch(() => {});
       throw error;
@@ -786,7 +937,7 @@ Deno.serve(async (req) => {
     if (error instanceof PublicError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
-    // Static only: filenames, patient identifiers, URLs, and SDK error details
+    // Static only: filenames, patient identifiers, storage pointers, and SDK details
     // can contain PHI and must never be emitted to function logs.
     console.error('createAuthorizedDocument failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });

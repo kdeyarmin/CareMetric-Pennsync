@@ -41,22 +41,6 @@ function extensionMatches(name, type) {
   return false;
 }
 
-function validHttpsUrl(value) {
-  if (typeof value !== 'string' || !value || value.length > 4096 || value.trim() !== value) {
-    return false;
-  }
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:'
-      && !url.username
-      && !url.password
-      && !url.hash
-      && url.href === value;
-  } catch {
-    return false;
-  }
-}
-
 function hasExactKeys(value, expected) {
   return !!value
     && typeof value === 'object'
@@ -78,7 +62,7 @@ function validateResult(result, input) {
   if (
     !hasExactKeys(result, ['success', 'created', 'document', 'binding', 'scope'])
     || !hasExactKeys(document, [
-      'id', 'file_url', 'file_name', 'file_type', 'file_size', 'category', 'patient_id',
+      'id', 'file_name', 'file_type', 'file_size', 'category', 'patient_id',
     ])
     || !hasExactKeys(binding, ['id', 'version', 'client_request_id'])
     || !hasExactKeys(scope, [
@@ -88,7 +72,6 @@ function validateResult(result, input) {
     || typeof result.created !== 'boolean'
     || !document
     || !exactIdentifier(document.id)
-    || !validHttpsUrl(document.file_url)
     || document.file_name !== input.file.name
     || document.file_type !== input.file.type.toLowerCase()
     || document.file_size !== input.file.size
@@ -96,7 +79,7 @@ function validateResult(result, input) {
     || document.patient_id !== (input.patientId || null)
     || !binding
     || !exactIdentifier(binding.id)
-    || binding.version !== 1
+    || binding.version !== 2
     || binding.client_request_id !== input.clientRequestId
     || !scope
     || scope.agency_id !== input.agencyId
@@ -112,11 +95,11 @@ function validateResult(result, input) {
 }
 
 /**
- * Upload a File through the tenant-authorizing backend broker.
+ * Upload a File to private storage through the tenant-authorizing backend broker.
  *
  * This wrapper is deliberately unwired. Passing a File in the invoke payload
  * makes the Base44 SDK send multipart/form-data automatically; callers never
- * supply a URL, uploader identity, Document category, or tenant stamp.
+ * receive or supply a storage pointer, uploader identity, Document category, or tenant stamp.
  */
 export async function createAuthorizedDocument(options = {}) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) {

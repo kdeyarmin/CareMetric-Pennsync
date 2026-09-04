@@ -105,5 +105,14 @@
     "patient_id",
     "topic",
     "education_content"
-  ]
+  ],
+  // Generation is service-role-only. The care-team portal still reads and
+  // updates shared patient delivery evidence directly pending a by-patient
+  // authorization broker.
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": true,
+    "delete": false
+  }
 }

@@ -218,6 +218,10 @@ export default function CarePlanManagement() {
 
   const handleAcceptRecommendation = async (recommendation) => {
     if (!selectedPatient) return;
+    if (!currentUser?.email) {
+      toast.error('Your session identity is unavailable. Please reload and try again.');
+      return;
+    }
 
     try {
       const targetDate = format(addDays(new Date(), recommendation.target_days || 60), 'yyyy-MM-dd');
@@ -246,7 +250,8 @@ export default function CarePlanManagement() {
             // Local calendar day, not UTC's: toISOString() rolls over to tomorrow
             // for any US evening, stamping education assignments a day ahead.
             assigned_date: toLocalISODate(),
-            assigned_by: 'AI System'
+            assigned_by: currentUser.email,
+            assigned_by_name: 'AI System'
           });
         }
       }
@@ -661,6 +666,10 @@ export default function CarePlanManagement() {
             diagnosis={selectedPatient.primary_diagnosis}
             existingCarePlans={carePlans.filter(cp => cp.patient_id === selectedPatient.id)}
             onAcceptSuggestion={async (carePlanData, educationTopics) => {
+              if (!currentUser?.email) {
+                toast.error('Your session identity is unavailable. Please reload and try again.');
+                return;
+              }
               try {
                 const newPlan = await base44.entities.CarePlan.create(carePlanData);
                 
@@ -677,7 +686,8 @@ export default function CarePlanManagement() {
                       status: 'assigned',
                       // Local calendar day, not UTC's (see above).
                       assigned_date: toLocalISODate(),
-                      assigned_by: 'AI Care Plan System',
+                      assigned_by: currentUser.email,
+                      assigned_by_name: 'AI Care Plan System',
                       priority: 'high'
                     })
                   ));

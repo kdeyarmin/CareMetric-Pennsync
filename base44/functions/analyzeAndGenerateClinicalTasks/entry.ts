@@ -8,6 +8,44 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
+// <<<BEGIN SHARED HELPER: activeMembershipAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeMembershipEmail = (value) => String(value || '').trim().toLowerCase();
+async function hasExactActiveAgencyMembership(base44, user) {
+  const userId = typeof user?.id === 'string' ? user.id.trim() : '';
+  const userEmail = normalizeMembershipEmail(user?.email);
+  if (!userId || !userEmail) return false;
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: userId, status: 'active' },
+      undefined,
+      2,
+    );
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row
+    && String(row.user_id || '').trim() === userId
+    && String(row.status || '') === 'active'
+    && normalizeMembershipEmail(row.user_email_normalized) === userEmail
+    && typeof row.agency_id === 'string'
+    && !!row.agency_id.trim();
+}
+// <<<END SHARED HELPER: activeMembershipAuthz>>>
+
 
 // Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
 // response_json_schema, because the provider rejects deeply-nested object
@@ -27,36 +65,13 @@ function parseLLMJson(raw) {
 }
 
 
-/** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
-async function assertPatientAccess(base44, user, patient) {
+/** Explicit patient access; self-editable User profile fields grant nothing. */
+async function assertPatientAccess(_base44, user, patient) {
   if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-  const isSuperAdmin = user.account_type === 'super_admin';
-  const isAgencyScopedAdmin =
-    user.account_type === 'agency_admin'
-    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
   const isAssigned = Array.isArray(patient.assigned_nurses)
     && patient.assigned_nurses.includes(user.email);
-  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
+  if (!isProtectedSuperAdmin(user) && patient.created_by !== user.email && !isAssigned) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  if (isAgencyScopedAdmin) {
-    if (!user.agency_name) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    const agencyUsers = await base44.asServiceRole.entities.User
-      .list('-created_date', 5000).catch(() => []);
-    const agencyEmails = new Set(
-      (agencyUsers || [])
-        .filter((u) => u.agency_name === user.agency_name && u.email)
-        .map((u) => u.email),
-    );
-    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
-      || (Array.isArray(patient.assigned_nurses)
-        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
-    if (!inAgency) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
   }
   return null;
 }
@@ -70,22 +85,47 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (user.disabled === true || user.is_service === true || user.is_verified === false) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (!isProtectedSuperAdmin(user)
+      && !(await hasExactActiveAgencyMembership(base44, user))) {
+      return Response.json({ error: 'Forbidden: active agency membership required' }, { status: 403 });
+    }
 
-    const { patientId, analysisType = 'comprehensive' } = await req.json();
-    if (!patientId) {
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    const patientId = typeof body.patientId === 'string' ? body.patientId.trim() : '';
+    if (!patientId || patientId.length > 200) {
       return Response.json({ error: 'Patient ID required' }, { status: 400 });
     }
 
-    const [patient] = await base44.asServiceRole.entities.Patient
-      .filter({ id: patientId }, '', 1).catch(() => []);
+    const patientRows = await base44.asServiceRole.entities.Patient
+      .filter({ id: patientId }, '', 2).catch(() => []);
+    const exactPatients = Array.isArray(patientRows)
+      ? patientRows.filter((row) => row?.id === patientId)
+      : [];
+    if (patientRows.length !== 1 || exactPatients.length !== 1) {
+      return Response.json({ error: exactPatients.length ? 'Patient lookup is ambiguous' : 'Patient not found' }, {
+        status: exactPatients.length ? 409 : 404,
+      });
+    }
+    const patient = exactPatients[0];
     const denied = await assertPatientAccess(base44, user, patient);
     if (denied) return denied;
 
     const [visits, alerts, recentTasks] = await Promise.all([
-      base44.asServiceRole.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 5),
-      base44.asServiceRole.entities.PatientAlert.filter({ patient_id: patientId, status: 'active' }, undefined, 5000),
-      base44.asServiceRole.entities.Task.filter({ patient_id: patientId, status: { $in: ['pending', 'in_progress'] } }, undefined, 5000)
+      base44.asServiceRole.entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 5),
+      base44.asServiceRole.entities.PatientAlert.filter({ patient_id: patient.id, status: 'active' }, undefined, 5000),
+      base44.asServiceRole.entities.Task.filter({ patient_id: patient.id, status: { $in: ['pending', 'in_progress'] } }, undefined, 5000)
     ]);
+    const childSets = [visits, alerts, recentTasks];
+    if (childSets.some((rows) => !Array.isArray(rows)
+      || rows.some((row) => row?.patient_id !== patient.id))) {
+      return Response.json({ error: 'Patient-linked analysis data could not be verified' }, { status: 409 });
+    }
 
     const prompt = `You are an expert clinical nurse supervisor analyzing patient data to identify necessary follow-up tasks and interventions.
 
@@ -202,7 +242,7 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
     return Response.json({
       success: true,
       patient_name: `${patient.first_name} ${patient.last_name}`,
-      patient_id: patientId,
+      patient_id: patient.id,
       tasks: tasksWithDates,
       analysis_timestamp: new Date().toISOString()
     });

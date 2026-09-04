@@ -40,12 +40,28 @@ test("release ledger is complete only with metadata and complete evidence packet
   assert.equal(ledger.totalReferenceCount, LIVE_READINESS_EVIDENCE.length);
 });
 
+test("release ledger rejects an empty capability scope instead of completing vacuously", () => {
+  assert.throws(
+    () => createLiveReadinessReleaseLedger(completeRelease, completeEvidence, []),
+    /non-empty array/,
+  );
+});
+
 test("ledger export rows omit raw evidence values and expose counts only", () => {
   const ledger = createLiveReadinessReleaseLedger(completeRelease, completeEvidence, matrix);
   const [row] = ledgerRowsForExport(ledger);
   assert.deepEqual(Object.keys(row), [
     "release_id",
     "environment",
+    "candidate_source_commit_sha",
+    "candidate_source_tree_sha",
+    "hosted_runtime_commit_sha",
+    "hosted_runtime_tree_sha",
+    "hosted_deployment_id",
+    "candidate_deployable_manifest_sha256",
+    "hosted_resource_manifest_sha256",
+    "staging_app_id",
+    "staging_backend_origin",
     "capability_id",
     "capability",
     "priority",
@@ -54,6 +70,8 @@ test("ledger export rows omit raw evidence values and expose counts only", () =>
     "missing_evidence_count",
     "missing_reference_count",
     "missing_reviewer_count",
+    "missing_required_probe_count",
+    "completed_probe_count",
     "evidence_reference_count",
   ]);
   assert.equal(JSON.stringify(row).includes("sensitive-detail"), false);

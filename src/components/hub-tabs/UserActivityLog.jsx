@@ -323,7 +323,7 @@ export default function UserActivityLog() {
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <LogIn className="w-5 h-5 text-navy-600" />
-              Login Activity
+              Historical Login Activity — Collection Paused
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -347,12 +347,12 @@ export default function UserActivityLog() {
                         <p className="text-xs text-slate-500">{user.role}</p>
                       </div>
                       <Badge className="bg-navy-600 text-white">
-                        {userLogins.length} logins
+                        {userLogins.length} recorded logins
                       </Badge>
                     </div>
                     <div className="text-xs text-slate-600">
-                      <p>Last login: {formatEastern(lastLogin.created_date, 'MMM d, yyyy HH:mm')}</p>
-                      <p className="text-[10px] text-slate-500 mt-1">Total sessions: {userLogins.length}</p>
+                      <p>Last recorded login: {formatEastern(lastLogin.created_date, 'MMM d, yyyy HH:mm')}</p>
+                      <p className="text-[10px] text-slate-500 mt-1">Recorded login events: {userLogins.length}</p>
                     </div>
                   </div>
                 );
@@ -475,7 +475,7 @@ export default function UserActivityLog() {
                         {/* Enhanced detail display for specific actions */}
                         {activity.action === 'login' && activity.details?.login_time && (
                           <p className="text-xs text-navy-700 mt-1">
-                            Session started at {formatEastern(activity.details.login_time, 'HH:mm')}
+                            Recorded session start: {formatEastern(activity.details.login_time, 'HH:mm')}
                           </p>
                         )}
                         

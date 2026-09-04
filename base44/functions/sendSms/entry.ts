@@ -77,6 +77,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: resolveTelnyxCreds — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
@@ -531,6 +542,16 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    // User telecom-routing and tenant-setting fields are custom profile fields
+    // and therefore self-editable. Until a service-owned telecom binding is
+    // wired, only the protected platform owner may cause a provider send.
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({
+        error: 'SMS sending is restricted to the protected platform owner pending telecom-binding migration',
+        code: 'telecom_authority_migration_pending',
+      }, { status: 503 });
+    }
 
     const { to_number, body, patient_id, media_urls } = await req.json();
     if (!to_number || !body) {
@@ -647,26 +668,11 @@ Deno.serve(async (req) => {
     // (fails closed without an agency_name).
     const canAccessPatient = async (claimed) => {
       if (!claimed) return false;
-      const isSuperAdmin = user.account_type === 'super_admin';
-      const isAgencyScopedAdmin =
-        user.account_type === 'agency_admin'
-        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-      const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
       const isAssigned = Array.isArray(claimed.assigned_nurses)
         && claimed.assigned_nurses.includes(user.email);
-      if (isPlatformAdmin || claimed.created_by === user.email || isAssigned) return true;
-      if (!isAgencyScopedAdmin) return false;
-      if (!user.agency_name) return false;
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .list('-created_date', 5000).catch(() => []);
-      const agencyEmails = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-      return (claimed.created_by && agencyEmails.has(claimed.created_by))
-        || (Array.isArray(claimed.assigned_nurses)
-          && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
+      return isProtectedSuperAdmin(user)
+        || claimed.created_by === user.email
+        || isAssigned;
     };
 
     // Prefer phone→patient resolution (only to a chart the caller can access).
@@ -699,7 +705,7 @@ Deno.serve(async (req) => {
     const clientMessageId = crypto.randomUUID();
 
     // Log the message before sending so we always have a record.
-    const smsRow = await base44.entities.SmsMessage.create({
+    const smsRow = await base44.asServiceRole.entities.SmsMessage.create({
       direction: 'outbound',
       from_number: fromNumber,
       to_number: destination,
@@ -758,7 +764,8 @@ Deno.serve(async (req) => {
       const reason = aborted
         ? `Timed out after ${SEND_TIMEOUT_MS} ms reaching Telnyx`
         : `Network error reaching Telnyx: ${netErr.message}`;
-      await base44.entities.SmsMessage.update(smsRow.id, { status: 'failed', failure_reason: reason }).catch(() => {});
+      await base44.asServiceRole.entities.SmsMessage
+        .update(smsRow.id, { status: 'failed', failure_reason: reason }).catch(() => {});
       return Response.json(
         { error: aborted ? 'Telnyx SMS API timed out' : 'Failed to reach Telnyx SMS API', details: netErr.message },
         { status: aborted ? 504 : 502 },
@@ -770,7 +777,7 @@ Deno.serve(async (req) => {
     if (!result.ok) {
       // Telnyx error envelope: { errors: [{ detail, title, code }] }.
       const firstErr = Array.isArray(data?.errors) ? data.errors[0] : null;
-      await base44.entities.SmsMessage.update(smsRow.id, {
+      await base44.asServiceRole.entities.SmsMessage.update(smsRow.id, {
         status: 'failed',
         failure_reason: firstErr?.detail || firstErr?.title || `Telnyx API error (${result.status})`,
       });
@@ -780,13 +787,15 @@ Deno.serve(async (req) => {
     // Telnyx success envelope: { data: { id, to: [{ status }], ... } }.
     const messageId = data?.data?.id || null;
     const recipientStatus = (data?.data?.to?.[0]?.status || '').toLowerCase();
-    await base44.entities.SmsMessage.update(smsRow.id, {
+    await base44.asServiceRole.entities.SmsMessage.update(smsRow.id, {
       provider_message_id: messageId,
       status: recipientStatus === 'queued' || recipientStatus === 'sending' || recipientStatus === '' ? 'queued' : 'sent',
     });
 
-    // Audit — never log the message body (HIPAA). Length + thread only.
-    await base44.entities.UserActivity.create({
+    // Keep delivery identifiers, endpoints, patient linkage, and message
+    // characteristics on SmsMessage. UserActivity only needs a correlation key
+    // plus a non-identifying outcome category.
+    await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'sms_sent',
@@ -794,13 +803,7 @@ Deno.serve(async (req) => {
       entity_id: smsRow.id,
       details: {
         provider: 'telnyx',
-        to_number: destination,
-        from_number: fromNumber,
-        patient_id: resolvedPatientId || null,
-        thread_id: smsRow.thread_id,
-        body_length: String(body).length,
-        provider_message_id: messageId,
-        timestamp: new Date().toISOString(),
+        direction: 'outbound',
       },
       status: 'success',
     }).catch((err) => console.error('Failed to log activity:', err));

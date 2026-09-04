@@ -8,14 +8,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
-function agencyAdminMissingAgencyResponse(user) {
-  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
-    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-  }
-  return null;
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
 }
-// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+// <<<END SHARED HELPER: protectedUserAuthz>>>
 
 
 
@@ -79,36 +81,24 @@ function normalizeE164(raw) {
   return null;
 }
 
-// Mirrors maskPhone() in src/components/voice/phoneUtils.js — last-4 only.
-function maskLast4(e164) {
-  const d = (e164 || '').replace(/[^\d]/g, '');
-  if (!e164) return 'unknown';
-  if (d.length < 4) return '••••';
-  return `(•••) •••-${d.slice(-4)}`;
-}
-
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    {
-      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
-      if (_agencyAdminGate) return _agencyAdminGate;
-    }
-    const isAdmin = user.role === 'admin';
-    if (!isAdmin) {
-      return Response.json({ error: 'Only administrators can manage the number pool.' }, { status: 403 });
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Only the protected platform owner can manage the number pool.' }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || '');
-    const audit = (action2, details) =>
+    const audit = (action2, entityId) =>
       base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email, user_name: user.full_name,
-        action: action2, entity_type: 'PhoneNumber',
-        details: { ...details, timestamp: new Date().toISOString() }, status: 'success',
+        action: action2, entity_type: 'PhoneNumber', entity_id: entityId,
+        status: 'success',
       }).catch((err) => console.error('audit failed:', err));
 
     if (action === 'add') {
@@ -128,7 +118,7 @@ Deno.serve(async (req) => {
         status: holder ? 'assigned' : 'available',
         assigned_to_email: holder ? holder.email : '',
       });
-      await audit('phone_number_added', { e164, assigned_to_email: holder?.email || null });
+      await audit('phone_number_added', row.id);
       return Response.json({ success: true, id: row.id, e164, status: row.status });
     }
 
@@ -142,7 +132,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Release this number from its nurse before removing it.' }, { status: 409 });
       }
       await base44.asServiceRole.entities.PhoneNumber.delete(id);
-      await audit('phone_number_removed', { e164: row.e164 });
+      await audit('phone_number_removed', row.id);
       return Response.json({ success: true });
     }
 
@@ -180,13 +170,6 @@ Deno.serve(async (req) => {
       const target = targets[0];
       if (!target) return Response.json({ error: 'Target nurse not found.' }, { status: 404 });
 
-      // Agency admins may only assign numbers to staff in their own agency.
-      if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
-        if (!user.agency_name || target.agency_name !== user.agency_name) {
-          return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
-        }
-      }
-
       // Work numbers must be unique across nurses.
       const holders = await base44.asServiceRole.entities.User.filter({ work_phone_number: e164 }, undefined, 5000).catch(() => []);
       const conflict = holders.find((u) => u.email !== targetEmail);
@@ -211,10 +194,7 @@ Deno.serve(async (req) => {
       }
       await base44.asServiceRole.entities.PhoneNumber.update(id, { status: 'assigned', assigned_to_email: targetEmail });
 
-      await audit('phone_number_assigned', {
-        e164, target_user_email: targetEmail,
-        personal_cell_masked: cellNum ? maskLast4(cellNum) : null,
-      });
+      await audit('phone_number_assigned', row.id);
       return Response.json({ success: true, e164, target_user_email: targetEmail });
     }
 
@@ -230,24 +210,12 @@ Deno.serve(async (req) => {
       if (row.assigned_to_email) {
         const targets = await base44.asServiceRole.entities.User.filter({ email: row.assigned_to_email }, undefined, 5000).catch(() => []);
         const target = targets[0];
-        // Agency admins may only release numbers held by their own agency's staff.
-        if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
-          if (!user.agency_name || !target || target.agency_name !== user.agency_name) {
-            return Response.json({ error: 'Forbidden: number holder is outside your agency.' }, { status: 403 });
-          }
-        }
         if (target && normalizeE164(target.work_phone_number) === e164) {
           await base44.asServiceRole.entities.User.update(target.id, { work_phone_number: '' }).catch(() => {});
         }
-      } else if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
-        // Unassigned pool rows are agency-shared infrastructure — still allow
-        // release/reset, but refuse if we somehow lack agency_name.
-        if (!user.agency_name) {
-          return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-        }
       }
       await base44.asServiceRole.entities.PhoneNumber.update(id, { status: 'available', assigned_to_email: '' });
-      await audit('phone_number_released', { e164, prior_user_email: row.assigned_to_email || null });
+      await audit('phone_number_released', row.id);
       return Response.json({ success: true, e164 });
     }
 

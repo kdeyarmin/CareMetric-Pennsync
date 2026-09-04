@@ -41,9 +41,16 @@
       "format": "email",
       "description": "Exact normalized email stamped into Document.created_by and Document.uploaded_by."
     },
-    "file_url": {
+    "storage_mode": {
       "type": "string",
-      "description": "Exact public UploadFile URL stamped into the bound Document. Private-file migration remains a release blocker."
+      "enum": [
+        "private"
+      ],
+      "description": "Storage boundary for this binding. Version 2 permits only Base44 private storage."
+    },
+    "file_uri": {
+      "type": "string",
+      "description": "Exact opaque URI returned by Base44 UploadPrivateFile. It is service-only authority data and must never be copied to Document rows, browser projections, or logs."
     },
     "file_name": {
       "type": "string",
@@ -75,8 +82,8 @@
     },
     "version": {
       "type": "number",
-      "default": 1,
-      "description": "Immutable binding format version."
+      "default": 2,
+      "description": "Immutable binding format version. Version 2 requires private storage and signed delivery."
     },
     "created_at": {
       "type": "string",
@@ -98,7 +105,8 @@
     "membership_id",
     "membership_version",
     "document_created_by_email_normalized",
-    "file_url",
+    "storage_mode",
+    "file_uri",
     "file_name",
     "file_type",
     "file_size",

@@ -108,7 +108,7 @@ export default function UserActivityDashboard() {
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-slate-900">User Activity Tracking</h2>
-        <p className="text-slate-600 mt-1">Monitor all user actions and system usage</p>
+        <p className="text-slate-600 mt-1">Monitor stored user actions and system usage. Login collection is paused; use identity-provider audit logs for current login monitoring.</p>
       </div>
 
       {/* Statistics Cards */}
@@ -132,7 +132,7 @@ export default function UserActivityDashboard() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <p className="text-slate-500 text-sm mb-1">Logins</p>
+              <p className="text-slate-500 text-sm mb-1">Historical Logins</p>
               <p className="text-3xl font-bold text-green-600">{stats.loginCount}</p>
             </div>
           </CardContent>

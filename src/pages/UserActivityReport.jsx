@@ -233,7 +233,7 @@ export default function UserActivityReport() {
         'User Name',
         'Email',
         'Total Actions',
-        'Logins',
+        'Historical Logins',
         'Pages Visited',
         'Entities Interacted',
         'Last Activity',
@@ -290,7 +290,7 @@ export default function UserActivityReport() {
       doc.setFontSize(10);
       doc.text(`Total Users: ${overallStats.total_users}`, 30, 52);
       doc.text(`Total Actions: ${overallStats.total_actions}`, 30, 58);
-      doc.text(`Total Logins: ${overallStats.total_logins}`, 30, 64);
+      doc.text(`Historical Logins: ${overallStats.total_logins}`, 30, 64);
       doc.text(`Active Users (7 days): ${overallStats.active_users}`, 30, 70);
       
       // User details
@@ -314,7 +314,7 @@ export default function UserActivityReport() {
         doc.setFontSize(8);
         doc.text(`Email: ${stat.email || 'N/A'}`, 30, y);
         y += 5;
-        doc.text(`Total Actions: ${stat.total_actions || 0} | Logins: ${stat.logins || 0} | Pages: ${stat.pages_visited_count || 0} | Entities: ${stat.entities_interacted_count || 0}`, 30, y);
+        doc.text(`Total Actions: ${stat.total_actions || 0} | Historical Logins: ${stat.logins || 0} | Pages: ${stat.pages_visited_count || 0} | Entities: ${stat.entities_interacted_count || 0}`, 30, y);
         y += 5;
         
         if (stat.last_activity) {
@@ -355,7 +355,7 @@ export default function UserActivityReport() {
         icon={BarChart3}
         eyebrow="Admin"
         title="User Activity Report"
-        description="Comprehensive analytics on user engagement and activity"
+        description="Analytics on stored user activity. In-app login collection is paused; use identity-provider audit logs for current login monitoring."
         favoritePage="UserActivityReport"
       />
 
@@ -404,7 +404,7 @@ export default function UserActivityReport() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <StatCard label="Total Users" value={overallStats.total_users} icon={User} tone="navy" />
           <StatCard label="Total Actions" value={overallStats.total_actions} icon={MousePointer} tone="emerald" />
-          <StatCard label="Total Logins" value={overallStats.total_logins} icon={LogIn} tone="slate" />
+          <StatCard label="Historical Logins" value={overallStats.total_logins} icon={LogIn} tone="slate" />
           <StatCard label="Active (7 days)" value={overallStats.active_users} icon={Activity} tone="amber" />
         </div>
 
@@ -436,7 +436,7 @@ export default function UserActivityReport() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="total_actions">Total Actions</SelectItem>
-                    <SelectItem value="logins">Logins</SelectItem>
+                    <SelectItem value="logins">Historical Logins</SelectItem>
                     <SelectItem value="pages">Pages Visited</SelectItem>
                     <SelectItem value="last_activity">Last Activity</SelectItem>
                     <SelectItem value="name">Name (A-Z)</SelectItem>
@@ -492,7 +492,7 @@ export default function UserActivityReport() {
 
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
                         <StatCard label="Total Actions" value={stat.total_actions} tone="emerald" />
-                        <StatCard label="Logins" value={stat.logins} tone="navy" />
+                        <StatCard label="Historical Logins" value={stat.logins} tone="navy" />
                         <StatCard label="Pages" value={stat.pages_visited_count} tone="blue" />
                         <StatCard label="Entities" value={stat.entities_interacted_count} tone="orange" />
                         <div className="p-3 bg-slate-50 rounded-lg">

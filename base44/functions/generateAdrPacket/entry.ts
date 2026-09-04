@@ -500,13 +500,13 @@ Deno.serve(async (req) => {
       user_email: user.email,
       user_name: user.full_name,
       action: 'adr_packet_generated',
+      entity_type: 'AdrAuditCase',
+      entity_id: case_id,
       details: {
-        case_id,
         audit_type: adrCase.audit_type,
         packet_pages: packetPageCount,
         final_pages: totalPages,
         readiness: summary.readiness?.level,
-        final_packet: uploadResult.file_url,
       },
       page: 'adr_center',
     });

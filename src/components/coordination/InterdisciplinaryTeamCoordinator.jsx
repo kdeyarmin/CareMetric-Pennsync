@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
-import { isWithinLastDays, toLocalISODate } from "@/lib/dateLocal";
+import { isWithinLastDays } from "@/lib/dateLocal";
 import { useAICall } from "@/hooks/useAICall";
-import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +14,6 @@ import {
   AlertTriangle,
   UserPlus
 } from "lucide-react";
-import { toast } from 'sonner';
 
 export default function InterdisciplinaryTeamCoordinator({ 
   patientId,
@@ -26,10 +23,8 @@ export default function InterdisciplinaryTeamCoordinator({
   alerts,
   autoAnalyze = false 
 }) {
-  const queryClient = useQueryClient();
   const ai = useAICall();
   const [recommendation, setRecommendation] = useState(null);
-  const [isCreatingAlert, setIsCreatingAlert] = useState(false);
 
   const analyzeTeamMeetingNeed = useCallback(async () => {
     if (!patientData) return;
@@ -123,34 +118,6 @@ Return recommendation with:
       analyzeTeamMeetingNeed();
     }
   }, [autoAnalyze, patientId, patientData, analyzeTeamMeetingNeed]);
-
-  const handleCreateCoordinationAlert = async () => {
-    if (!recommendation?.meeting_recommended) return;
-
-    setIsCreatingAlert(true);
-    try {
-      await base44.entities.CareCoordinationAlert.create({
-        patient_id: patientId,
-        alert_type: 'care_gap',
-        severity: recommendation.urgency === 'urgent' ? 'urgent' : 
-                  recommendation.urgency === 'priority' ? 'high' : 'medium',
-        title: `IDT Meeting Recommended - ${patientData.first_name} ${patientData.last_name}`,
-        description: recommendation.summary || 'Interdisciplinary team coordination needed',
-        identified_gap: recommendation.key_reasons?.join('; '),
-        recommended_actions: recommendation.suggested_agenda || [],
-        team_meeting_suggested: true,
-        meeting_attendees: recommendation.suggested_attendees?.map(a => a.role) || [],
-        due_date: toLocalISODate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
-      });
-
-      queryClient.invalidateQueries({ queryKey: ['careCoordinationAlerts'] });
-      toast.success('✅ Care coordination alert created');
-    } catch (error) {
-      console.error('Error creating alert:', error);
-      toast.error('Failed to create coordination alert');
-    }
-    setIsCreatingAlert(false);
-  };
 
   return (
     <Card className="border-2 border-indigo-300">
@@ -293,16 +260,12 @@ Return recommendation with:
                 {/* Actions */}
                 <div className="flex gap-2">
                   <Button
-                    onClick={handleCreateCoordinationAlert}
-                    disabled={isCreatingAlert}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+                    disabled
+                    className="flex-1"
+                    title="Coordination alert creation is paused until an authorized patient-access broker is available."
                   >
-                    {isCreatingAlert ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Calendar className="w-4 h-4 mr-2" />
-                    )}
-                    Create Coordination Alert
+                    <Calendar className="w-4 h-4 mr-2" />
+                    Coordination Alert Paused
                   </Button>
                   <Button
                     variant="outline"

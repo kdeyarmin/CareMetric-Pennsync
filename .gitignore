@@ -38,6 +38,8 @@ base44/.app.jsonc
 test-results/
 playwright-report/
 blob-report/
+/tmp/
+/tsconfig.typecheck-signal.json
 
 # Native distribution credentials and private signing material
 *.p12
