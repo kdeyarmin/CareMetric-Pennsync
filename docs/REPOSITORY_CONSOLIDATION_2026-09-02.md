@@ -1,6 +1,6 @@
 # PennSync repository consolidation
 
-Status: **Production frontend containment verified; staging hardening continues; merge/production release remains blocked**.
+Status: **PR #143 reviewed staging synchronization verified; production containment unchanged; merge/production release remains blocked**.
 
 ## Canonical destination
 
@@ -99,7 +99,7 @@ outcome/KPI publication remain held until their separate release gates pass.
 Service-worker retirement is intentional; the SPA fallback at
 `/service-worker.js` is not a deployment defect.
 
-## Nonproduction hosted-validation evidence (updated 2026-09-03)
+## Nonproduction hosted-validation evidence (updated 2026-09-04)
 
 The first release gate has now been synchronized and validated in a separate
 Base44 application. The table below is the authoritative current state. The
@@ -112,21 +112,21 @@ targeted the CareMetric production app.
 | --- | --- |
 | Base44 app | `caremetric-pennsync-staging-2026-09-02`, `6a9881683dc68a0bd54f1ef7` |
 | Staging URL | `https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/` |
-| Runtime candidate | Hosted functional baseline `655624f749c1c94542e6eb616a31b1c9c1135eef`; the latest staged frontend checkpoint predates later source-only changes in draft PR `#143`. The current draft source also controls the deliberately unhosted `computeOutcomeMeasures` pause |
-| Frontend | Hosted staging contains the last synchronized frontend baseline with staging-specific app configuration. Later PR `#143` roster, PDGM-retirement, reactivation, and User-deletion UI hardening remains source-only; the current source staging-ID build passes |
+| Runtime candidate | Deployed staging runtime commit `f4e41dc2d5481c7e23dd84e6e70464691bfdabd8`, tree `94888934ebf417071b286e3a74904c872bd70777`, from draft PR `#143`; the evidence-only documentation commit after this deployment does not change runtime resources |
+| Frontend | Clean-path, frozen-lockfile staging build serves `assets/index-D2D5VcVB.js` (450,726 bytes), SHA-256 `a27bd29cc0f1797e4769ec6b873248ae3c12d952f7547ce4a6f402a9a1955c13`. All 505 local build files matched their hosted counterparts byte-for-byte with zero errors; `/`, `/privacy`, `/privacypolicy`, the manifest, and all four icons return HTTP 200. The complete build contains the staging app id once, the production app id zero times, and `America/New_York` nine times |
 | PWA/native identity | Relative manifest `id`, `start_url`, and `scope`; four manifest icons retained; Apple bundle `com.caremetric.ai`; Google package `com.caremetic.ai`; iOS WebView origin `https://caremetricai.base44.app/` |
-| Entities | Hosted staging contains the same 241 entity names. `PatientCareTeamAssignment`, `DocumentTenantBinding`, and the required `OutcomeComputationRun.transition_version` / `result_summary_hash` fields are hosted. Current source-to-host semantic equality has not been re-established after later source-only schema hardening, including the required `OutcomeComputationRun.lease_expires_at` field |
-| Functions | Hosted inventory remains 258. The current candidate source contains 265 functions. Seven are deliberately unhosted: `computeOutcomeMeasures`, `managePatientCareTeamAssignment`, `getAuthorizedVisit`, `listAuthorizedVisits`, `readAuthorizedOASISAssessments`, `getAuthorizedDocument`, and `listAuthorizedDocuments`; hardening to several already-hosted functions is also source-only pending a later reviewed staging deployment |
-| Data | Rechecks confirm zero staging rows in Agency, AgencyMembership, Patient, PatientCareTeamAssignment, DocumentTenantBinding, OutcomeComputationRun, PatientOutcomeMetric, and AgencyKPI; no migration or production data write occurred |
-| Secrets/schedules | `INTERNAL_FN_SECRET` remains absent and no outcome schedule was added |
-| Feature gates | No AgencySettings row exists; OASIS v2 remains default-off and the hosted `saveOasisResponses` remains hard-paused. Hosted PDGM reimbursement remains disabled; current source adds an independent retirement lock that has not been deployed. All seven deliberately unhosted functions remain unwired |
+| Entities | Hosted staging and source have the same 241 entity names. Canonical source-to-host comparison is exact for `Document`, `OutcomeComputationRun`, `PDGMRateConfig`, and `PatientPathwayAssignment`, including required `OutcomeComputationRun.lease_expires_at` and the reviewed operation-specific access rules |
+| Functions | Hosted staging has 263 functions: the exact 265-function PR set minus deliberately withheld `computeOutcomeMeasures` and `managePatientCareTeamAssignment`. Both are absent, and the function inventory contains zero automation entries |
+| Data | Post-deployment privileged rechecks found zero rows in OutcomeComputationRun, AgencyMembership, Agency, Patient, Visit, Document, PatientCareTeamAssignment, OASISAssessment, OASISUpload, PatientOutcomeMetric, AgencyKPI, PDGMRateConfig, and PatientPathwayAssignment; User remained at its pre-existing count of one. No probe residue, migration, or production data write occurred |
+| Secrets/schedules | No secret was changed and no schedule or automation was added; `computeOutcomeMeasures` remains deliberately unhosted |
+| Feature gates | Clinical AI, OASIS, and legacy PDGM financial paths remain fail-closed: six anonymous safe-pause probes returned the expected HTTP 409 reasons. `computeOutcomeMeasures` and `managePatientCareTeamAssignment` remain absent and unwired. The legacy `getPatientContext` endpoint is hosted only as an HTTP 410 tombstone |
 | Time zone | `America/New_York` is the default business/agency clock, giving Eastern Standard or Daylight Time as seasonally appropriate |
 | Validation | Current source verification passes 2,122 utility/core, 36 schema/contract, 490 security, 47 deduplication, and 1,069 component tests (3,764 package checks); all 265 function transpiles, all 243 shared-helper consumers, full and workflow-target ESLint, type checks, actionlint, the OASIS worksheet, the 19-check component accessibility gate, and the staging-ID build also pass |
 | Production auto-sync | PR `#142` auto-fast-forwarded the CareMetric Base44 source workspace to merged `main` `67d9d5ee66aad222a712e6ba49d00461d0a68337` at 2026-09-02 19:58:30 UTC, and the workspace remains clean there. Read-only hosted metadata also exposes fields/RLS introduced by that merge; the git diff changed 14 entity schemas. This was a production source and hosted-schema change, not a source-only event |
 | Production function status | Inventory remains 240. Pulled `deduplicatePatients`, `saveOasisResponses`, and `calculatePDGM` match the hardened baseline. `computeOutcomeMeasures` entry SHA-256 remained `2c2a37bf...` while its existing schedule was intentionally set to `is_active:false`; no post-change logs were returned |
 | Live production surfaces | Rechecked on 2026-09-04: `caremetricai.base44.app` and `app.caremetricai.com` return HTTP 200 and the verified `index-egZIJufH.js` asset with unchanged SHA-256 `145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`; `pennsync.com` still returns separate `index--wkWNhXC.js`, so no domain cutover occurred |
 | Manifest/PWA | The production-facing manifest says `PennSync by CareMetric`; its relative `id`, `start_url`, and `scope`, four icons, and historical branding remain intact. The contained frontend and manifest are now on the same verified source baseline |
-| Current safety boundary | The frontend containment changed only the production site bundle. A later, separately authorized change redeployed only the byte-identical `computeOutcomeMeasures` function to disable its existing scheduler. Subsequent membership, outcome/recovery, Patient/Visit/OASIS/Document read-broker, schema-hardening, and PDGM-retirement work is source-only in draft PR `#143`. No production data/schema API mutation, other function/secret change, domain move, native upload, or Apple/Google record change occurred |
+| Current safety boundary | The reviewed PR `#143` candidate is synchronized only to the isolated staging app. Production remains on the contained site bundle; its only later backend revision was the separately authorized byte-identical `computeOutcomeMeasures` scheduler disablement. No production data/schema API mutation, additional function or secret change, domain move, native upload, or Apple/Google record change occurred |
 
 The initial entity deployment exposed unsupported `$contains` array-membership
 RLS in Message and SharedDocument. Draft PR `#143` replaces it with Base44's
@@ -568,6 +568,50 @@ These now require direct immutable ownership/assignment or the protected Base44
 admin role plus the configured platform-owner email, and they re-check exact
 identifiers and relationships after privileged reads.
 
+### PR #143 reviewed staging synchronization (2026-09-04)
+
+The approved staging-only deployment was preceded by Base44 checkpoint
+`Pre-PR143 reviewed staging deployment — 2026-09-04` and targeted only
+`caremetric-pennsync-staging-2026-09-02`
+(`6a9881683dc68a0bd54f1ef7`). The deployed runtime source is commit
+`f4e41dc2d5481c7e23dd84e6e70464691bfdabd8`, tree
+`94888934ebf417071b286e3a74904c872bd70777`.
+
+- The hosted schema inventory has 241 names with no source/host name diff.
+  Canonical definitions match for `Document`, `OutcomeComputationRun`,
+  `PDGMRateConfig`, and `PatientPathwayAssignment`.
+- The hosted function inventory has 263 entries and exactly equals the PR
+  function set minus `computeOutcomeMeasures` and
+  `managePatientCareTeamAssignment`. Both withheld functions are absent and the
+  inventory contains zero automation entries.
+- Anonymous function checks returned eleven expected HTTP 401 denials, six
+  expected HTTP 409 safe-pauses, and the expected HTTP 410 legacy-context
+  tombstone; no probe returned 2xx or 5xx. Anonymous creates against
+  `OutcomeComputationRun`, `PDGMRateConfig`, and `PatientPathwayAssignment`
+  returned HTTP 403.
+- The corrected clean-path frontend build serves `assets/index-D2D5VcVB.js`,
+  SHA-256
+  `a27bd29cc0f1797e4769ec6b873248ae3c12d952f7547ce4a6f402a9a1955c13`.
+  Every one of 505 build files matched the hosted byte stream, all reviewed
+  public routes and PWA assets returned HTTP 200, and the manifest retained
+  relative `id`, `start_url`, and `scope` plus all four icons.
+- Privileged post-probe counts remained zero for the reviewed clinical,
+  tenant, document, outcome, PDGM, and assignment entities; the staging User
+  count remained one. No probe residue was found.
+- Production stayed at 236 schemas and 240 functions. Both CareMetric origins
+  continued to serve unchanged `index-egZIJufH.js` bytes with SHA-256
+  `145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`,
+  while `pennsync.com` continued to serve its separate bundle. No production,
+  secret, data, domain, native, or store mutation was part of this deployment.
+
+This synchronization proves the 241-name schema inventory, canonical parity for
+the four reviewed schemas, the 263-function name inventory, byte-for-byte
+frontend parity, the recorded anonymous denials and safe-pauses, and zero
+checked-row residue for the isolated staging candidate. It does not supply the
+authenticated two-agency workflow evidence or the datastore atomicity,
+migration, clinical, device, store, and production-cutover approvals listed
+below.
+
 ## Deliberate merge decisions
 
 - Kept the newest Smart Note, visit preparation, medication reconciliation,
@@ -586,13 +630,15 @@ identifiers and relationships after privileged reads.
 
 ## Release blockers
 
-Do not deploy this branch, move domains, enable OASIS v2, register new scheduled
-functions, or upload a native binary until all of these are complete:
+Do not merge or deploy this branch to production, move domains, enable OASIS
+v2, register new scheduled functions, or upload a native binary until all of
+these are complete:
 
-1. Continue validation in the separate nonproduction Base44 app. Hosted staging
-   has 241 entity names and 258 functions. Current source has 265 functions,
-   with the seven named functions deliberately unhosted, and later source-only
-   schema/function hardening still requires reviewed synchronization.
+1. Continue authenticated validation in the separate nonproduction Base44 app.
+   Hosted staging has exact 241-name schema parity and 263 functions: the
+   265-function candidate minus deliberately withheld `computeOutcomeMeasures`
+   and `managePatientCareTeamAssignment`. Reviewed schema/function/site
+   synchronization is complete for this staging checkpoint.
    Anonymous-write denial is proved for the five critical OASIS/outcome/PDGM
    entities. The ignored legacy
    mutation-key syntax is fully migrated, but `19` no-RLS schemas, `25`
@@ -606,29 +652,32 @@ functions, or upload a native binary until all of these are complete:
    as a membership-lifecycle target, but they are still sequential rather than transactional;
    add datastore CAS/uniqueness, operational partial-failure reconciliation,
    and a terminal rehire path. Current source removes the direct permanent User
-   deletion control; verify that removal in hosted staging before a later
-   production publication so offboarding cannot be bypassed.
+   deletion control, and that frontend is now hosted; complete authenticated UI
+   validation before a later production publication so offboarding cannot be
+   bypassed.
    Patient creation and bounded updates are now broker-only, and hard deletion
    is disabled; direct Patient create/update/delete all fail closed. The eight
-   legacy broad Patient writers are paused before access. Earlier chart and
-   roster brokers are hosted, while the assignment-aware roster revision and
-   its first opt-in UI consumer remain source-only. `PatientDetails` now
+   legacy broad Patient writers are paused before access. The roster,
+   exact-chart, Visit, OASIS, and Document read brokers are now hosted,
+   but still require authenticated two-agency positive and cross-tenant proof.
+   `PatientDetails` now
    consumes the hardened exact Patient and Visit schedule brokers behind a
    neutral whole-chart containment state, with immutable singleton route-scope
    normalization and explicit agency requirements for ambiguous users. The
-   broad legacy context endpoint is a source-only 410 tombstone pending hosted
-   replacement. Patient read RLS remains broad and most consumers still use
+   broad legacy context endpoint is hosted as a 410 tombstone pending final
+   consumer retirement. Patient read RLS remains broad and most consumers still use
    direct entity access plus client filtering. Migrate every remaining read
    consumer and prove authenticated multi-row hosted keyset traversal, cache
-   eviction, and concurrency behavior. Source-only Visit read brokers and OASIS
-   exact/summary reads require the same two-agency hosted proof before wiring.
+   eviction, and concurrency behavior. Hosted Visit read brokers and OASIS
+   exact/summary reads require the same two-agency proof before production wiring.
    Disable or migrate the existing direct Document list/download and direct
    upload/create paths, add private authenticated file delivery, and then prove
    binding and disclosure behavior on hosted staging. Prove the protected owner
    has no existing membership rows and quarantine/remove any such rows through
    a reviewed migration. Current source makes the new tenant-context and
    clinical authorization paths fail closed when owner membership state is
-   observed; verify that behavior after a reviewed staging synchronization. The immutable user-id care-team assignment schema is now hosted with direct
+   observed; verify that behavior with authenticated staging actors. The
+   immutable user-id care-team assignment schema is now hosted with direct
    CRUD denied, and the exact chart broker is hosted; the mutation broker remains
    deliberately withheld, unwired, and hard-paused. Prove the hosted assignment
    schema and chart broker with real staging users, then complete
@@ -650,9 +699,9 @@ functions, or upload a native binary until all of these are complete:
    disables both browser legacy/v2 save adapters. The quick-upload widget is
    static so a PHI PDF cannot be stored before entity creation fails; dormant
    analyzer-update and supervisor-approval writers fail closed under the RLS
-   rule and must not be restored directly. The source-only OASIS read broker now
+   rule and must not be restored directly. The hosted OASIS read broker now
    provides exact verified-response and bounded metadata-summary modes, but it
-   is unwired and unhosted; prove it with two real staging agencies before any
+   remains unwired; prove it with two real staging agencies before any
    read cutover. Build and stage a server-owned tenant + patient/chart write
    broker, including duplicate response rejection and upload/update/approval
    operations. Browser
@@ -726,8 +775,9 @@ functions, or upload a native binary until all of these are complete:
    - add datastore-enforced uniqueness or a proved compare-and-swap/lease
      strategy for the computation-run key and each metric/KPI attempt. Source
      now includes bounded expired-run reconciliation and recovery/concurrency
-     tests. Before deployment, add the required `lease_expires_at` schema after
-     a fresh zero-row check or reviewed backfill, prove hosted
+     tests. The required `lease_expires_at` schema is hosted after a zero-row
+     recheck; before deploying or enabling the withheld computation function,
+     prove hosted
      `updateMany`/`$inc` semantics under competing requests, and establish
      operational failure reconciliation plus a datastore-backed single-winner
      guarantee;
@@ -741,7 +791,7 @@ functions, or upload a native binary until all of these are complete:
      and
    - keep direct Visit create/update/delete disabled and use the authorized
      create/update brokers; deletion remains unavailable. The new exact/list
-     Visit read brokers are source-only and unwired. Backfill legacy Visit
+     Visit read brokers are hosted and unwired. Backfill legacy Visit
      provenance and prove both read disclosure and the full mutation lifecycle
      under the two-agency hosted matrix before any production publish.
 4. Keep all PennSync PDGM reimbursement amounts disabled. The candidate now

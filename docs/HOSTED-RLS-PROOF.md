@@ -685,6 +685,89 @@ roster discovery, an assignment-revocation cache strategy, hosted multi-row id
 collation, the conditional required-field migration above, outcome
 cross-record uniqueness, stable snapshots, and hosted CAS semantics.
 
+## 5n. PR #143 reviewed staging synchronization checkpoint (updated 2026-09-04)
+
+The approved deployment targeted only the isolated staging application
+`caremetric-pennsync-staging-2026-09-02`
+(`6a9881683dc68a0bd54f1ef7`) at
+`https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/`. A
+recoverable checkpoint named
+`Pre-PR143 reviewed staging deployment — 2026-09-04` was created first. The
+deployed runtime candidate is commit
+`f4e41dc2d5481c7e23dd84e6e70464691bfdabd8`, tree
+`94888934ebf417071b286e3a74904c872bd70777`.
+
+The source and hosted application each expose the same 241 entity names, with
+no name diff. Canonical source-to-host comparisons match for `Document`,
+`OutcomeComputationRun`, `PDGMRateConfig`, and `PatientPathwayAssignment`,
+including the required `OutcomeComputationRun.lease_expires_at` date-time field
+and reviewed per-operation access rules.
+
+The hosted inventory has 263 functions and equals the PR's 265-function set
+minus the two deliberately withheld functions, `computeOutcomeMeasures` and
+`managePatientCareTeamAssignment`. Both are absent and the inventory contains
+zero automation entries. The reviewed staging deployment/probe set is:
+
+- `getMyTenantContext`
+- `manageAgencyMembership`
+- `offboardUser`
+- `getAuthorizedPatient`
+- `listAuthorizedPatients`
+- `getAuthorizedVisit`
+- `listAuthorizedVisits`
+- `readAuthorizedOASISAssessments`
+- `getAuthorizedDocument`
+- `listAuthorizedDocuments`
+- `batchAIAnalysis`
+- `calculatePDGM`
+- `generateComprehensiveOASISReport`
+- `generatePDGMComparisonPDF`
+- `generatePDGMNavigatorPDF`
+- `rankDiagnosesByPDGM`
+- `getPublishedOutcomeMeasures`
+- `getPatientContext`
+
+Anonymous probes of those 18 endpoints returned eleven HTTP 401 authorization
+denials, six HTTP 409 safe-pauses with their expected reason codes, and one
+HTTP 410 `legacy_patient_context_retired` tombstone. None returned 2xx or 5xx.
+Anonymous lists of `OutcomeComputationRun`, `PDGMRateConfig`,
+`PatientPathwayAssignment`, and `Document` returned empty arrays; anonymous
+creates against the first three returned HTTP 403.
+
+Post-deployment privileged counts were zero for `OutcomeComputationRun`,
+`AgencyMembership`, `Agency`, `Patient`, `Visit`, `Document`,
+`PatientCareTeamAssignment`, `OASISAssessment`, `OASISUpload`,
+`PatientOutcomeMetric`, `AgencyKPI`, `PDGMRateConfig`, and
+`PatientPathwayAssignment`; the pre-existing staging `User` count remained one.
+No probe residue or data migration was found.
+
+The corrected clean-path, frozen-lockfile build serves
+`assets/index-D2D5VcVB.js` (450,726 bytes), SHA-256
+`a27bd29cc0f1797e4769ec6b873248ae3c12d952f7547ce4a6f402a9a1955c13`.
+All 505 local build files matched their hosted byte streams with zero errors.
+The root, both privacy routes, manifest, and four PWA icons returned HTTP 200;
+the manifest retained relative `id`, `start_url`, and `scope` values of `.` and
+all four icons. Complete-build scans found the staging app id once, the
+production app id zero times, and `America/New_York` nine times.
+
+Production was not targeted. Its inventory remained 236 schemas and 240
+functions; both CareMetric origins continued to serve unchanged
+`index-egZIJufH.js` bytes with SHA-256
+`145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`, and
+`pennsync.com` continued to serve its separate `index--wkWNhXC.js` bundle. No
+production data/schema, additional function, secret, domain, native, or store
+mutation was performed.
+
+This proves the 241-name schema inventory, canonical parity for the four
+reviewed schemas, the 263-function name inventory, byte-for-byte frontend
+parity, the recorded anonymous denials and safe-pauses, and zero checked-row
+residue for the isolated staging candidate only. It does not complete
+LR-01/LR-02: the canonical two-agency actor/fixture matrix does not exist, no
+authenticated positive/cross-tenant workflow proof was run, and datastore
+uniqueness/CAS/transactions, legacy backfill, private Document delivery,
+official PDGM/OASIS approvals, device/store, migration/restore, and production
+cutover gates remain open.
+
 ---
 
 ## 6. Sign-off
