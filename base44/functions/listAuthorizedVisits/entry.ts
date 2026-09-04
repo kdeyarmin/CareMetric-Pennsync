@@ -1118,6 +1118,34 @@ function responseScope(
   };
 }
 
+async function recordVisitListDisclosure(
+  entities: Record<string, any>,
+  authority: Record<string, any>,
+  input: Record<string, any>,
+  returnedCount: number,
+  hasMore: boolean,
+) {
+  await entities.SecurityLog.create({
+    timestamp: new Date().toISOString(),
+    user_email: authority.normalizedEmail,
+    user_role: authority.tenantRole,
+    action: 'VISIT_LIST_READ_AUTHORIZED',
+    details: {
+      broker: 'listAuthorizedVisits',
+      agency_id: authority.agencyId,
+      patient_id: input.patientId,
+      purpose: input.purpose,
+      subject_user_id: authority.userId,
+      membership_id: authority.membership?.id ?? null,
+      membership_version: authority.membership?.version ?? null,
+      returned_count: returnedCount,
+      has_more: hasMore,
+    },
+    ip_address: 'server-side',
+    user_agent: 'server-side',
+  });
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -1199,6 +1227,15 @@ Deno.serve(async (req) => {
     if (hasMore && !exactIdentifier(nextAfterId)) {
       throw new PublicError(409, 'Visit page is ambiguous');
     }
+    // Never disclose a Visit projection when its privileged audit record could
+    // not be durably created. Browser SecurityLog writes are clinician-denied.
+    await recordVisitListDisclosure(
+      entities,
+      disclosureAuthority,
+      input,
+      visibleVisits.length,
+      hasMore,
+    );
     return Response.json({
       success: true,
       purpose: input.purpose,

@@ -83,7 +83,7 @@ function validProjectedField(field, value) {
   return false;
 }
 
-function validVisits(visits, purpose, maximumCount, afterId) {
+function validVisits(visits, purpose, maximumCount, afterId, patientId) {
   if (!Array.isArray(visits) || visits.length > maximumCount) return false;
   const fields = PURPOSE_FIELDS[purpose];
   const required = ['id', 'patient_id', 'visit_date', 'visit_type', 'status', 'updated_date'];
@@ -94,6 +94,7 @@ function validVisits(visits, purpose, maximumCount, afterId) {
     if (
       !required.every((field) => Object.hasOwn(visit, field))
       || keys.some((field) => !fields.has(field) || !validProjectedField(field, visit[field]))
+      || (patientId !== null && visit.patient_id !== patientId)
       || (previousId !== null && visit.id <= previousId)
     ) {
       return false;
@@ -290,7 +291,7 @@ export async function listAuthorizedVisits(options = {}) {
     || result.purpose !== purpose
     || !validScope(result.scope, context)
     || (cursor !== null && !validCursor(cursor, context, result.scope))
-    || !validVisits(result.visits, purpose, pageSize, cursor?.after_id ?? null)
+    || !validVisits(result.visits, purpose, pageSize, cursor?.after_id ?? null, patientId)
     || !validPage(result.page, payload, result.visits, result.scope)
   ) {
     throw new Error(result?.error || 'Visit list failed');

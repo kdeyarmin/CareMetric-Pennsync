@@ -121,7 +121,7 @@ targeted the CareMetric production app.
 | Secrets/schedules | `INTERNAL_FN_SECRET` remains absent and no outcome schedule was added |
 | Feature gates | No AgencySettings row exists; OASIS v2 remains default-off and the hosted `saveOasisResponses` remains hard-paused. Hosted PDGM reimbursement remains disabled; current source adds an independent retirement lock that has not been deployed. All seven deliberately unhosted functions remain unwired |
 | Time zone | `America/New_York` is the default business/agency clock, giving Eastern Standard or Daylight Time as seasonally appropriate |
-| Validation | Current source verification passes 2,101 utility/core, 36 schema/contract, 485 security, 47 deduplication, and 1,047 component tests (3,716 package checks); all 265 function transpiles, all 244 shared-helper comparisons, full and workflow-target ESLint, type checks, actionlint, the OASIS worksheet, and the staging-ID build also pass |
+| Validation | Current source verification passes 2,122 utility/core, 36 schema/contract, 490 security, 47 deduplication, and 1,069 component tests (3,764 package checks); all 265 function transpiles, all 243 shared-helper consumers, full and workflow-target ESLint, type checks, actionlint, the OASIS worksheet, the 19-check component accessibility gate, and the staging-ID build also pass |
 | Production auto-sync | PR `#142` auto-fast-forwarded the CareMetric Base44 source workspace to merged `main` `67d9d5ee66aad222a712e6ba49d00461d0a68337` at 2026-09-02 19:58:30 UTC, and the workspace remains clean there. Read-only hosted metadata also exposes fields/RLS introduced by that merge; the git diff changed 14 entity schemas. This was a production source and hosted-schema change, not a source-only event |
 | Production function status | Inventory remains 240. Pulled `deduplicatePatients`, `saveOasisResponses`, and `calculatePDGM` match the hardened baseline. `computeOutcomeMeasures` entry SHA-256 remained `2c2a37bf...` while its existing schedule was intentionally set to `is_active:false`; no post-change logs were returned |
 | Live production surfaces | Rechecked on 2026-09-04: `caremetricai.base44.app` and `app.caremetricai.com` return HTTP 200 and the verified `index-egZIJufH.js` asset with unchanged SHA-256 `145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`; `pennsync.com` still returns separate `index--wkWNhXC.js`, so no domain cutover occurred |
@@ -506,6 +506,32 @@ clinical surfaces without deploying or wiring them:
   in source. Offboarding is the only retained account-removal workflow, and a
   registered contract prevents direct browser User deletion from returning.
   This source-only removal is not yet present in the live production bundle.
+- `getPatientContext` is now a static HTTP 410 tombstone with no request, SDK,
+  auth, entity, or service-role access. `PatientDetails` uses only the exact
+  Patient `display` and bounded Visit `schedule` brokers, stores no returned
+  Visit rows, and renders a neutral containment state with no patient name or
+  downstream chart panel. Both brokers append an awaited, server-derived
+  privileged disclosure record before returning PHI and fail closed if that
+  audit write fails. Patient and Visit proof must freshly settle after mount;
+  cache identity includes immutable user/membership authority; foreign-patient
+  rows, scope drift, offline-paused proof, stale refetches, duplicate pages, and
+  a 5,000-Visit overrun are rejected.
+- Primary desktop/mobile patient links receive agency scope only from a freshly
+  revalidated, server-owned singleton membership. Legacy id-only entry points
+  first normalize that same immutable agency into the encoded URL and perform
+  no Patient or Visit read until the subsequent explicit-route render. An
+  ambiguous multi-membership user or unscoped platform owner remains disabled
+  until an explicit agency selector is implemented; mutable User and Patient
+  agency fields are never used as route authority.
+- The offline OASIS provenance annotator now treats a `native_v2` label as an
+  untrusted claim and revalidates exact canonical response definitions, value
+  shapes, instrument/timepoint, source, timestamps, clinician identity, AI
+  exclusion, and row uniqueness. It rejects lossy unsafe integers and ambiguous
+  identifiers, quarantines the entire assessment on any invalid v2 row, writes
+  report/data artifacts exclusively at mode `0600`, and requires a separate
+  round-trippable `--data-out`. Applied data is persisted before completion
+  evidence; the final report binds the exact data bytes by full SHA-256, and a
+  failed data write cannot leave a success-looking apply report.
 - Source pins the three CY 2026 CMS HHGS distribution and inner-artifact hashes
   and provides an offline Java 17 verifier. A recorded 2026-09-03 run against
   externally downloaded, manifest-matching v07.0.26, v07.1.26, and v07.2.26
@@ -520,12 +546,18 @@ No Base44 deployment, schema push, data access or mutation, secret/schedule
 change, production publication, domain move, native upload, or store-record
 change occurred during this latest source-only work.
 
-Current source verification passes 2,101 utility/core tests, 36
-schema/contracts, 485 security tests, 47 deduplication tests, and 1,047
-component tests (3,716 package checks). All 265 local backend functions
-transpile and all 244 shared-helper consumers match. Full and workflow-target
+Current source verification passes 2,122 utility/core tests, 36
+schema/contracts, 490 security tests, 47 deduplication tests, and 1,069
+component tests (3,764 package checks). All 265 local backend functions
+transpile and all 243 shared-helper consumers match. Full and workflow-target
 ESLint, the complete and focused type checks, actionlint, the 36-item OASIS
-worksheet, the staging-ID build, and `git diff --check` pass.
+worksheet, the 19-check component accessibility gate, the staging-ID build,
+and `git diff --check` pass. The nonvendored official CMS HHGS ZIPs were not
+present for a fresh external verifier run; the previously recorded 310/310
+manifest-matching run remains evidence for the verifier only, not PennSync
+grouper parity. The package-registry dependency-audit endpoint was unavailable
+under the current network policy, so no new dependency-audit claim is made for
+this checkpoint.
 
 The staging pass also removed mutable `account_type`/agency-profile privilege
 from the highest-risk service-role paths: dashboard and alert reads/mutations,
@@ -580,9 +612,13 @@ functions, or upload a native binary until all of these are complete:
    is disabled; direct Patient create/update/delete all fail closed. The eight
    legacy broad Patient writers are paused before access. Earlier chart and
    roster brokers are hosted, while the assignment-aware roster revision and
-   its first opt-in UI consumer remain source-only; the hardened exact-chart
-   hook remains unwired. Patient read RLS remains broad and most consumers still
-   use direct entity access plus client filtering. Migrate every remaining read
+   its first opt-in UI consumer remain source-only. `PatientDetails` now
+   consumes the hardened exact Patient and Visit schedule brokers behind a
+   neutral whole-chart containment state, with immutable singleton route-scope
+   normalization and explicit agency requirements for ambiguous users. The
+   broad legacy context endpoint is a source-only 410 tombstone pending hosted
+   replacement. Patient read RLS remains broad and most consumers still use
+   direct entity access plus client filtering. Migrate every remaining read
    consumer and prove authenticated multi-row hosted keyset traversal, cache
    eviction, and concurrency behavior. Source-only Visit read brokers and OASIS
    exact/summary reads require the same two-agency hosted proof before wiring.

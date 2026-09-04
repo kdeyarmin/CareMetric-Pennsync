@@ -651,6 +651,30 @@ function patientAuthoritySnapshot(row: Record<string, any>) {
   ]);
 }
 
+async function recordPatientDisclosure(
+  entities: Record<string, any>,
+  authority: Record<string, any>,
+  input: Record<string, any>,
+) {
+  await entities.SecurityLog.create({
+    timestamp: new Date().toISOString(),
+    user_email: authority.normalizedEmail,
+    user_role: authority.tenantRole,
+    action: 'PATIENT_READ_AUTHORIZED',
+    details: {
+      broker: 'getAuthorizedPatient',
+      agency_id: authority.agencyId,
+      patient_id: input.patientId,
+      purpose: input.purpose,
+      subject_user_id: authority.userId,
+      membership_id: authority.membership?.id ?? null,
+      membership_version: authority.membership?.version ?? null,
+    },
+    ip_address: 'server-side',
+    user_agent: 'server-side',
+  });
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -699,6 +723,10 @@ Deno.serve(async (req) => {
       finalAuthority,
       initialAccessSnapshot,
     );
+
+    // Disclosure is fail-closed on the privileged audit write. A browser-side
+    // SecurityLog create is not authoritative and is denied for clinicians.
+    await recordPatientDisclosure(entities, finalAuthority, input);
 
     return Response.json({
       success: true,

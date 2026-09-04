@@ -174,6 +174,7 @@ async function loadBroker(kind, {
   visitResponses = null,
   assignments = [assignment()],
   assignmentResponses = null,
+  auditError = null,
   ignoreFilters = false,
   superAdminEmail = null,
 } = {}) {
@@ -186,6 +187,7 @@ async function loadBroker(kind, {
     patients: [],
     visits: [],
     assignments: [],
+    securityLogs: [],
   };
   const indexes = { membership: 0, agency: 0, patient: 0, visit: 0, assignment: 0 };
   const selected = (responses, key, fallback) => {
@@ -229,6 +231,13 @@ async function loadBroker(kind, {
       Visit: { filter: entityFilter('visits', 'visit', visitResponses, visits) },
       PatientCareTeamAssignment: {
         filter: entityFilter('assignments', 'assignment', assignmentResponses, assignments),
+      },
+      SecurityLog: {
+        create: async (payload) => {
+          calls.securityLogs.push(clone(payload));
+          if (auditError) throw auditError;
+          return { id: 'security-log-a' };
+        },
       },
     },
   };
@@ -420,6 +429,38 @@ test('tenant administrators list agency Visits with bounded id-keyset paging', a
   assert.equal(calls.visits[0].sort, 'id');
   assert.equal(calls.visits[0].limit, 3);
   assert.deepEqual(calls.patients[0].query.id, { $in: ['patient-a', 'patient-b'] });
+  assert.equal(calls.securityLogs.length, 1);
+  assert.deepEqual(calls.securityLogs[0], {
+    timestamp: calls.securityLogs[0].timestamp,
+    user_email: 'clinician@agency.test',
+    user_role: 'agency_admin',
+    action: 'VISIT_LIST_READ_AUTHORIZED',
+    details: {
+      broker: 'listAuthorizedVisits',
+      agency_id: 'agency-a',
+      patient_id: null,
+      purpose: 'schedule',
+      subject_user_id: 'user-1',
+      membership_id: 'membership-a',
+      membership_version: 2,
+      returned_count: 2,
+      has_more: true,
+    },
+    ip_address: 'server-side',
+    user_agent: 'server-side',
+  });
+  assert.equal(Number.isFinite(Date.parse(calls.securityLogs[0].timestamp)), true);
+});
+
+test('Visit-list disclosure fails closed when the privileged audit write fails', async () => {
+  const { handler, calls } = await loadBroker('list', {
+    auditError: new Error('audit unavailable'),
+  });
+  const result = await invoke(handler, 'listAuthorizedVisits', listBody());
+  assert.equal(result.response.status, 500);
+  assert.equal(result.json.visits, undefined);
+  assert.equal(result.json.error, 'Internal server error');
+  assert.equal(calls.securityLogs.length, 1);
 });
 
 test('Visit list continuation is complete for a stable result set and binds current caller authority', async () => {

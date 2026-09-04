@@ -22,6 +22,10 @@ const userManagement = readFileSync(
   join(process.cwd(), 'src/pages/UserManagement.jsx'),
   'utf8',
 );
+const userSettings = readFileSync(
+  join(process.cwd(), 'src/pages/UserSettings.jsx'),
+  'utf8',
+);
 
 test('browser code cannot directly delete a User entity', () => {
   assert.doesNotMatch(
@@ -39,4 +43,15 @@ test('UserManagement does not expose permanent User deletion controls', () => {
 test('UserManagement retains the supported offboarding path', () => {
   assert.match(userManagement, /buildOffboardInvokeArgs/);
   assert.match(userManagement, /Disable \/ Offboard User/);
+});
+
+test('UserSettings account-deletion flow uses centralized logout cleanup', () => {
+  assert.match(userSettings, /import\s*\{\s*useAuth\s*\}\s*from\s*["']@\/lib\/AuthContext["']/);
+  assert.match(userSettings, /const\s*\{\s*logout\s*\}\s*=\s*useAuth\(\)/);
+  assert.match(userSettings, /await\s+logout\(\)/);
+  assert.doesNotMatch(
+    userSettings,
+    /base44\.auth\.logout\s*\(/,
+    'Direct SDK logout bypasses AuthContext cache and local-PHI cleanup.',
+  );
 });

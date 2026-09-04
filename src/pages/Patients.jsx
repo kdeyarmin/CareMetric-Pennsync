@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
+import { usePatientDetailsRouteScope } from '@/hooks/usePatientDetailsRouteScope';
 import { calculateAge, parseLocalDate, toLocalISODate } from "@/lib/dateLocal";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,11 @@ export default function Patients() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+
+  // Resolve chart navigation once for the whole roster. The hook accepts only
+  // a freshly revalidated server-owned singleton membership; it never derives
+  // route authority from mutable User or Patient fields.
+  const { agencyId: patientDetailsAgencyId } = usePatientDetailsRouteScope();
 
   // Log page visit
   useEffect(() => {
@@ -360,6 +366,7 @@ export default function Patients() {
             renderItem={(patient) => (
               <SwipeablePatientCard
                 patient={patient}
+                patientDetailsAgencyId={patientDetailsAgencyId}
                 isSelected={selectedPatients.some(p => p.id === patient.id)}
                 onToggleSelect={togglePatientSelection}
                 onEdit={(p) => {
@@ -398,6 +405,7 @@ export default function Patients() {
           <div className="md:col-span-2">
             <PaginatedPatientList
               patients={filteredPatients}
+              patientDetailsAgencyId={patientDetailsAgencyId}
               showCheckboxes={true}
               showSearch={false}
               // This page owns filtering and sorting (see the sort control above);

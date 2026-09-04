@@ -62,7 +62,6 @@ test("a global-flag-only edit cannot activate any legacy frontend financial surf
     "src/components/pdgm/PDGMCalculationPreview.jsx",
     "src/components/referral/clinicalManagerBrief.js",
     "src/components/referral/followUpRevenueImpact.js",
-    "src/pages/PatientDetails.jsx",
   ];
   for (const path of legacyConsumers) {
     const source = await read(path);
@@ -176,21 +175,21 @@ test("referral packet permanently excludes fabricated clinical, OASIS, risk, and
   assert.match(source, /if \(disabledSections\.has\(section\)\) return false/);
 });
 
-test("Patient Details context never reads or returns raw OASIS assessment rows", async () => {
+test("legacy Patient Details context is permanently retired before any data access", async () => {
   const source = await read("base44/functions/getPatientContext/entry.ts");
-  const handler = source.slice(source.indexOf("Deno.serve"));
-  assert.doesNotMatch(handler, /entities\.OASISAssessment|e\.OASISAssessment/);
-  assert.match(handler, /oasisAssessments:\s*\[\]/);
+  assert.match(source, /code:\s*'legacy_patient_context_retired'/);
+  assert.match(source, /status:\s*410/);
+  assert.doesNotMatch(source, /createClientFromRequest|OASISAssessment|Patient\.filter|Visit\.filter/);
 });
 
-test("OASIS analyzer and patient proactive scoring stop before child mounts", async () => {
+test("OASIS analyzer remains paused and Patient Details mounts no OASIS child", async () => {
   const [analyzer, patientDetails] = await Promise.all([
     read("src/components/hub-tabs/OASISAnalyzer.jsx"),
     read("src/pages/PatientDetails.jsx"),
   ]);
   assert.match(analyzer, /OASIS_ANALYZER_ENABLED\s*=\s*false/);
   assert.match(analyzer, /if \(!OASIS_ANALYZER_ENABLED\)[\s\S]*OASIS AI Analyzer Paused/);
-  assert.match(patientDetails, /PDGM_LEGACY_SURFACES_ENABLED\s*&&\s*\(\s*<AIProactiveOASISAssistant/);
+  assert.doesNotMatch(patientDetails, /<AIProactiveOASISAssistant|<AIGeneratedOASISAssessment/);
 });
 
 test("OASIS/PDGM AI, analytics, reporting, and workflow surfaces default to static pre-hook pauses", async () => {

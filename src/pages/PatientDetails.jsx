@@ -1,925 +1,276 @@
-import React, { useMemo, useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import EmptyState from "@/components/ui/empty-state";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useNavigate, useSearchParams } from "react-router";
-import { createPageUrl } from "@/utils";
-import { ArrowLeft, Calendar, Plus, User, FileText, AlertTriangle, Phone, MapPin, Heart, Stethoscope, Activity, ClipboardList, ExternalLink, Users, Sparkles, Send } from "lucide-react";
-import { format } from "date-fns";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import PageContainer from "@/components/ui/PageContainer";
-import PageHeader from "@/components/ui/PageHeader";
-import { formatLocalDate } from "@/lib/dateLocal";
+import React, { useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, ShieldAlert, Users } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router';
 
-import { logSecurityEvent, sanitizeInput } from "@/components/utils/security";
-import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import PageContainer from '@/components/ui/PageContainer';
+import PageHeader from '@/components/ui/PageHeader';
+import { logActivity, ActivityActions } from '@/components/utils/activityLogger';
+import { listAuthorizedVisits } from '@/functions/listAuthorizedVisits';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
+import { usePatientDetailsRouteScope } from '@/hooks/usePatientDetailsRouteScope';
+import {
+  createPatientDetailsRouteHref,
+  isExactPatientDetailsRouteIdentifier,
+} from '@/lib/patientDetailsRoute';
 
-import ProactiveClinicalTaskGenerator from "../components/tasks/ProactiveClinicalTaskGenerator";
-import AIPatientHistorySummary from "../components/patient/AIPatientHistorySummary";
-import PatientRiskStratification from "../components/patient/PatientRiskStratification";
-import DischargeSummaryGenerator from "../components/discharge/DischargeSummaryGenerator";
-import AIPatientDashboardSummary from "../components/patient/AIPatientDashboardSummary";
-import QuickActionsPanel from "../components/patient/QuickActionsPanel";
-import VisitPrepPanel from "../components/visit/VisitPrepPanel";
-import DocumentationReadinessPanel from "../components/compliance/DocumentationReadinessPanel";
-import CrossDocumentReviewPanel from "../components/compliance/CrossDocumentReviewPanel";
-import MedicationReconciliationPanel from "../components/medication/MedicationReconciliationPanel";
-import AIComplianceAuditor from "../components/compliance/AIComplianceAuditor";
-import PredictiveRiskAnalyzer from "../components/analytics/PredictiveRiskAnalyzer";
-import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
-import ReferralLetterGenerator from "../components/documents/ReferralLetterGenerator";
-import PatientDeteriorationPredictor from "../components/predictive/PatientDeteriorationPredictor";
-import InterdisciplinaryTeamCoordinator from "../components/coordination/InterdisciplinaryTeamCoordinator";
-import OptimalCommunicationAdvisor from "../components/coordination/OptimalCommunicationAdvisor";
-import ProgressReportGenerator from "../components/documents/ProgressReportGenerator";
-import PersonalizedEducationGenerator from "../components/patient/PersonalizedEducationGenerator";
-import AIPatientAnalyzer from "../components/patient/AIPatientAnalyzer";
-import PatientSummaryGenerator from "../components/patient/PatientSummaryGenerator";
-import AIProactiveOASISAssistant from "../components/oasis/AIProactiveOASISAssistant";
-import AIGeneratedOASISAssessment from "../components/oasis/AIGeneratedOASISAssessment";
-import OASISQuickUpdate from "../components/clinical/OASISQuickUpdate";
-import ReferralDocumentViewer from "../components/documents/ReferralDocumentViewer";
-import HealthHistorySection from "../components/patient/HealthHistorySection";
-import ClinicalEventsTimeline from "../components/patient/ClinicalEventsTimeline";
-import DocumentUploader from "../components/documents/DocumentUploader";
-import DocumentList from "../components/documents/DocumentList";
-import PatientDocumentRecordFax from "../components/fax/PatientDocumentRecordFax";
-import PatientFaxDocumentDialog from "../components/fax/PatientFaxDocumentDialog";
-import VitalSignsTrendDashboard from "../components/patient/VitalSignsTrendDashboard";
-import PatientTelehealthPanel from "../components/telehealth/PatientTelehealthPanel";
-import CareTeamMessaging from "../components/messaging/CareTeamMessaging";
-import PatientContactActions from "../components/voice/PatientContactActions";
-// A global-flag-only edit cannot mount legacy OASIS/PDGM scoring surfaces on an
-// otherwise active Patient Details page.
-import { PDGM_LEGACY_SURFACES_ENABLED } from "@/components/pdgm/pdgmAvailability";
-import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
+const VISIT_PAGE_SIZE = 50;
+const MAX_AUTHORIZED_VISITS = 5000;
+const AUTHORITY_FIELDS = Object.freeze([
+  'agency_id',
+  'membership_id',
+  'membership_version',
+  'tenant_role',
+  'patient_id',
+  'access_basis',
+  'assignment_id',
+  'assignment_version',
+]);
 
-// [Force recompile: 2026-06-29 12:15:00 UTC]
-export default function PatientDetails() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  // useSearchParams (not window.location.search read at render) so navigating
-  // between two patients on the same route (/PatientDetails?id=A -> ?id=B,
-  // e.g. via sidebar favorites) re-renders with the new id — App.jsx memoizes
-  // route elements, so only location-context subscribers re-render on a
-  // query-only navigation.
-  const [searchParams] = useSearchParams();
-  const patientId = searchParams.get('id') || searchParams.get('patientId');
+function authorityFingerprint(scope) {
+  return AUTHORITY_FIELDS.map((field) => JSON.stringify(scope?.[field] ?? null)).join(':');
+}
 
-  const [showVisitForm, setShowVisitForm] = useState(false);
-  const [showOASISPrompt, setShowOASISPrompt] = useState(false);
-  const [oasisTriggerVisit, setOasisTriggerVisit] = useState(null);
-  // Top-level tabs, and ?tab= deep-linking. Without this the tab param was
-  // ignored entirely, so every deep link silently landed on the overview.
-  const TOP_LEVEL_TABS = ["overview", "events", "oasis", "clinical", "ai-tools", "telehealth", "documents", "messaging"];
-  const requestedTab = searchParams.get("tab");
-  const [activeTab, setActiveTab] = useState(
-    () => (TOP_LEVEL_TABS.includes(requestedTab) ? requestedTab : "overview"),
-  );
-  const [aiToolsTab, setAiToolsTab] = useState("analysis");
-  const [isDocumentUploaderOpen, setIsDocumentUploaderOpen] = useState(false);
-  const [isFaxDialogOpen, setIsFaxDialogOpen] = useState(false);
-  const [newVisit, setNewVisit] = useState({
-    visit_date: format(new Date(), 'yyyy-MM-dd'),
-    visit_time: '',
-    visit_type: 'routine_visit',
-    status: 'scheduled'
-  });
+function sameAuthority(left, right) {
+  return AUTHORITY_FIELDS.every((field) => left?.[field] === right?.[field]);
+}
 
-  // Same-route patient switch (?id=A → ?id=B): clear sticky OASIS prompt/visit
-  // and visit form so Patient B never inherits Patient A's trigger state.
-  React.useEffect(() => {
-    setShowOASISPrompt(false);
-    setOasisTriggerVisit(null);
-    setShowVisitForm(false);
-    setNewVisit({
-      visit_date: format(new Date(), 'yyyy-MM-dd'),
-      visit_time: '',
-      visit_type: 'routine_visit',
-      status: 'scheduled'
+function sameTenantScope(scope, tenantScope, patientId) {
+  return !!scope
+    && !!tenantScope
+    && scope.agency_id === tenantScope.agency_id
+    && scope.membership_id === tenantScope.membership_id
+    && scope.membership_version === tenantScope.membership_version
+    && scope.tenant_role === tenantScope.tenant_role
+    && scope.patient_id === patientId;
+}
+
+/**
+ * Re-authorize every immutable-id Visit page and discard the row projections.
+ * PatientDetails cannot retain or render Visit PHI until the rest of the chart
+ * has purpose-bound read brokers. Only the verified authority summary reaches
+ * React Query's short-lived cache.
+ */
+export async function authorizeVisitSchedule({ agencyId, patientId, tenantScope }) {
+  let cursor = null;
+  let scope = null;
+  let authorizedCount = 0;
+  const seenVisitIds = new Set();
+
+  while (true) {
+    const result = await listAuthorizedVisits({
+      agencyId,
+      patientId,
+      purpose: 'schedule',
+      status: null,
+      sort: 'id_asc',
+      pageSize: VISIT_PAGE_SIZE,
+      cursor,
     });
-  }, [patientId]);
 
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-
-  // Log access when component mounts
-  React.useEffect(() => {
-    if (patientId && currentUser?.email) {
-      logSecurityEvent('PATIENT_DETAILS_ACCESSED', { patient_id: patientId });
-      logActivity(ActivityActions.VIEW, {
-        entity_type: 'Patient',
-        entity_id: patientId,
-        page: 'PatientDetails'
-      });
+    if (!sameTenantScope(result.scope, tenantScope, patientId)) {
+      throw new Error('Patient and Visit tenant authority do not match');
     }
-  }, [patientId, currentUser?.email]);
+    if (scope !== null && !sameAuthority(scope, result.scope)) {
+      throw new Error('Visit authority changed during chart authorization');
+    }
+    scope = result.scope;
 
-  // One server-side fetch (getPatientContext) replaces six per-load entity
-  // queries. Its queryFn SEEDS the per-entity caches that this page's child
-  // components read (['patient',id], ['patientVisits',id], …) so they get cache
-  // hits instead of each firing their own request. Re-seeding on every (re)fetch
-  // keeps those mirrors fresh after an invalidation. OASIS uploads are
-  // intentionally left to the children — that cache key is shape-inconsistent
-  // across components (financial-stripped function result vs. raw entity).
-  const { data: ctx = {}, isLoading } = useQuery({
-    queryKey: ['patientContext', patientId],
-    queryFn: async () => {
-      const data = (await base44.functions.invoke('getPatientContext', { patientId }))?.data || {};
-      queryClient.setQueryData(['patient', patientId], data.patient || null);
-      queryClient.setQueryData(['patientVisits', patientId], data.visits || []);
-      queryClient.setQueryData(['patientIncidents', patientId], data.incidents || []);
-      queryClient.setQueryData(['patientTasks', patientId], data.tasks || []);
-      queryClient.setQueryData(['patientActiveAlerts', patientId], data.activeAlerts || []);
-      return data;
-    },
-    enabled: !!patientId,
-  });
-
-  const patient = ctx.patient ?? null;
-  const visits = ctx.visits ?? [];
-  const incidents = ctx.incidents ?? [];
-  const tasks = ctx.tasks ?? [];
-  const activeAlerts = ctx.activeAlerts ?? [];
-
-  // Critical alerts drive the banner styling below the header.
-  const hasCriticalAlerts = activeAlerts.some(a => a.severity === 'critical');
-
-  // The most recently documented note, used by the deterministic cross-record
-  // and medication reviews below. Visits arrive newest-first from
-  // getPatientContext, so the first one carrying a note is the current one.
-  const latestNoteText = visits.find(v => v?.nurse_notes)?.nurse_notes || '';
-
-  // Sorted here as well as server-side: the cross-document review reads [0] as
-  // "the current assessment", and clinical chronology is assessment_date, not
-  // the order rows happened to be created in.
-  const oasisByAssessmentDate = useMemo(() => {
-    const rows = ctx.oasisAssessments ?? [];
-    return [...rows].sort((a, b) => (
-      Date.parse(String(b?.assessment_date || b?.created_date || '')) || 0)
-      - (Date.parse(String(a?.assessment_date || a?.created_date || '')) || 0));
-  }, [ctx.oasisAssessments]);
-
-  const createVisitMutation = useMutation({
-    mutationFn: async (visitData) => (
-      await createAuthorizedVisit({ ...visitData, patient_id: patientId })
-    ).visit,
-    onSuccess: (newVisit) => {
-      queryClient.invalidateQueries({ queryKey: ['patientContext', patientId] });
-      queryClient.invalidateQueries({ queryKey: ['patientVisits', patientId] });
-      setShowVisitForm(false);
-      setNewVisit({
-        visit_date: format(new Date(), 'yyyy-MM-dd'),
-        visit_time: '',
-        visit_type: 'routine_visit',
-        status: 'scheduled'
-      });
-      logActivity(ActivityActions.CREATE, {
-        entity_type: 'Visit',
-        entity_id: newVisit.id,
-        patient_id: patientId,
-        visit_type: newVisit.visit_type,
-        visit_date: newVisit.visit_date,
-        page: 'PatientDetails'
-      });
-      
-      // Trigger OASIS prompt for admission or recertification visits
-      const oasisTriggerTypes = ['admission', 'recertification', 'discharge'];
-      if (oasisTriggerTypes.includes(newVisit.visit_type)) {
-        setOasisTriggerVisit(newVisit);
-        setShowOASISPrompt(true);
+    for (const visit of result.visits) {
+      if (visit.patient_id !== patientId) {
+        throw new Error('Visit authorization returned a row for another patient');
       }
-    },
-    onError: () => toast.error('Failed to create visit. Please try again.'),
-  });
+      if (seenVisitIds.has(visit.id)) {
+        throw new Error('Visit authorization returned a duplicate keyset row');
+      }
+      seenVisitIds.add(visit.id);
+      authorizedCount += 1;
+      if (authorizedCount > MAX_AUTHORIZED_VISITS) {
+        throw new Error('Visit authorization exceeds the reviewed chart limit');
+      }
+    }
 
-  const handleCreateVisit = () => {
-    // Sanitize inputs
-    const sanitizedVisit = {
-      ...newVisit,
-      visit_time: sanitizeInput(newVisit.visit_time),
-    };
-    createVisitMutation.mutate(sanitizedVisit);
+    if (result.page.has_more && authorizedCount >= MAX_AUTHORIZED_VISITS) {
+      throw new Error('Visit authorization exceeds the reviewed chart limit');
+    }
+    if (!result.page.has_more) break;
+    cursor = result.page.next_cursor;
+  }
+
+  return {
+    authorizedCount,
+    authorityFingerprint: authorityFingerprint(scope),
   };
+}
 
-  if (isLoading && !patient) {
-    return (
-      <div className="p-8 max-w-6xl mx-auto">
-        <Card>
-          <CardContent className="p-12 text-center text-slate-500">
-            Loading patient information...
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!isLoading && !patient) {
-    return (
-      <div className="p-8 max-w-6xl mx-auto">
-        <Card>
-          <CardContent className="p-12 text-center">
-            <h2 className="text-xl font-semibold text-slate-900 mb-2">Patient not found</h2>
-            <p className="text-sm text-slate-600 mb-4">Patient ID: {patientId}</p>
-            <Button onClick={() => navigate(createPageUrl("Patients"))}>
-              Return to Patients
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
+function AccessMessage({ title, children }) {
+  const navigate = useNavigate();
   return (
     <PageContainer>
       <PageHeader
         icon={Users}
         eyebrow="Patient Care"
-        title={`${sanitizeInput(patient.first_name)} ${sanitizeInput(patient.last_name)}`}
-        description={`MRN: ${sanitizeInput(patient.medical_record_number) || 'N/A'} · DOB: ${formatLocalDate(patient.date_of_birth, { month: '2-digit', day: '2-digit', year: 'numeric' }) || 'N/A'}`}
+        title="Patient details"
+        description="Purpose-bound chart access"
         favoritePage="PatientDetails"
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => setIsFaxDialogOpen(true)}>
-              <Send className="w-4 h-4 mr-2" />
-              Fax Document
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => navigate(createPageUrl("Patients"))}
-              size="sm"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Back to Patients</span>
-              <span className="sm:hidden">Back</span>
-            </Button>
-          </div>
-        }
       />
-
-      {/* Critical Alerts Banner */}
-      {activeAlerts.length > 0 && (
-        <Alert className={`mb-6 ${hasCriticalAlerts ? 'bg-red-50 border-red-300' : 'bg-orange-50 border-orange-300'}`}>
-          <AlertTriangle className={`w-4 h-4 ${hasCriticalAlerts ? 'text-red-600' : 'text-orange-600'}`} />
-          <AlertDescription>
-            <p className="font-semibold mb-1">Active Patient Alerts ({activeAlerts.length})</p>
-            <div className="space-y-1">
-              {activeAlerts.slice(0, 3).map((alert, idx) => (
-                <p key={idx} className="text-sm">• {alert.title}</p>
-              ))}
-              {activeAlerts.length > 3 && (
-                <p className="text-sm text-slate-600">+ {activeAlerts.length - 3} more alerts</p>
-              )}
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Main Patient Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-        <div className="overflow-x-auto -mx-3 sm:-mx-4 md:-mx-6 px-3 sm:px-4 md:px-6 pb-1 scrollbar-hide">
-          <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
-            {[
-              { value: "overview",      label: "Overview"  },
-              { value: "vitals-trends", label: "Vitals"    },
-              { value: "health-history",label: "History"   },
-              { value: "clinical",      label: "Clinical"  },
-              { value: "oasis",         label: "OASIS"     },
-              { value: "events",        label: "Events"    },
-              { value: "ai-tools",      label: "AI Tools"  },
-              { value: "telehealth",    label: "Telehealth"},
-              { value: "documents",     label: "Docs"      },
-              { value: "messaging",     label: "Messaging" },
-            ].map(({ value, label }) => (
-              <TabsTrigger key={value} value={value} className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] min-w-[72px] text-xs sm:text-sm whitespace-nowrap">
-                {label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
-
-        {/* Vital Signs Trends Tab */}
-         <TabsContent value="vitals-trends" className="space-y-6 mt-4">
-           <VitalSignsTrendDashboard patientId={patientId} />
-         </TabsContent>
-
-        {/* Health History Tab */}
-         <TabsContent value="health-history" className="space-y-6 mt-4">
-           <Card>
-             <CardHeader>
-               <CardTitle className="text-slate-900">Health History</CardTitle>
-             </CardHeader>
-             <CardContent className="space-y-6">
-               <HealthHistorySection patient={patient} />
-             </CardContent>
-           </Card>
-         </TabsContent>
-
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          {/* Pre-visit briefing, first on the tab. It is assembled
-              deterministically from the context already fetched above (no extra
-              request, no LLM) and is what a nurse standing in a driveway needs
-              before they open anything else. */}
-          <VisitPrepPanel
-            patient={patient}
-            priorVisits={visits.filter((v) => v.status === 'completed')}
-            openTasks={tasks}
-            carePlans={ctx.carePlans ?? []}
-            oasisAssessments={oasisByAssessmentDate}
-            alerts={activeAlerts}
-          />
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <AIPatientDashboardSummary
-                key={patientId}
-                patient={patient}
-                visits={visits}
-                tasks={tasks}
-                incidents={incidents}
-              />
-            </div>
-            <div className="space-y-6">
-              <PatientContactActions patient={patient} currentUser={currentUser} />
-              <QuickActionsPanel
-                patient={patient}
-                recentVisits={visits.filter(v => v.status === 'completed').slice(0, 5)}
-                upcomingVisits={visits.filter(v => v.status === 'scheduled')}
-                pendingTasks={tasks.filter(t => t.status === 'pending')}
-              />
-            </div>
-          </div>
-
-          <RiskAlertWidget patientId={patientId} compact={false} />
-        </TabsContent>
-
-        {/* Clinical Events Tab */}
-        <TabsContent value="events" className="space-y-4 mt-4">
-          <ClinicalEventsTimeline patientId={patient.id} limit={30} />
-        </TabsContent>
-
-        {/* OASIS Tab — quick functional-status entry. Uses per-item OASIS-E
-            response scales (oasisScales) so each M-item offers only its valid
-            codes, and saves a draft OASISAssessment for review. */}
-        <TabsContent value="oasis" className="space-y-4 mt-4">
-          <OASISQuickUpdate patient={patient} />
-        </TabsContent>
-
-        {/* Clinical Info Tab */}
-        <TabsContent value="clinical" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="w-5 h-5 text-navy-600" />
-                  Contact Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-500 flex items-center gap-1">
-                    <MapPin className="w-3 h-3" />
-                    Address
-                  </p>
-                  <p className="text-slate-900">{sanitizeInput(patient.address) || 'Not specified'}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-500 flex items-center gap-1">
-                    <Phone className="w-3 h-3" />
-                    Phone
-                  </p>
-                  <p className="text-slate-900">{sanitizeInput(patient.phone) || 'Not specified'}</p>
-                </div>
-                {patient.email && (
-                  <div>
-                    <p className="text-sm font-medium text-slate-500">Email</p>
-                    <p className="text-slate-900">{sanitizeInput(patient.email)}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Heart className="w-5 h-5 text-red-600" />
-                  Emergency Contact
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {patient.emergency_contact_name ? (
-                  <>
-                    <div>
-                      <p className="text-sm font-medium text-slate-500">Name</p>
-                      <p className="text-slate-900">{sanitizeInput(patient.emergency_contact_name)}</p>
-                    </div>
-                    {patient.emergency_contact_relationship && (
-                      <div>
-                        <p className="text-sm font-medium text-slate-500">Relationship</p>
-                        <p className="text-slate-900">{sanitizeInput(patient.emergency_contact_relationship)}</p>
-                      </div>
-                    )}
-                    {patient.emergency_contact_phone && (
-                      <div>
-                        <p className="text-sm font-medium text-slate-500">Phone</p>
-                        <p className="text-slate-900">{sanitizeInput(patient.emergency_contact_phone)}</p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-slate-500">No emergency contact on file</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Stethoscope className="w-5 h-5 text-emerald-600" />
-                  Physician & Payor
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {patient.physician_name ? (
-                  <div>
-                    <p className="text-sm font-medium text-slate-500">Primary Physician</p>
-                    <p className="text-slate-900">{sanitizeInput(patient.physician_name)}</p>
-                    {patient.physician_phone && (
-                      <p className="text-sm text-slate-600">{sanitizeInput(patient.physician_phone)}</p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">No physician on file</p>
-                )}
-                {patient.payor && (
-                  <div>
-                    <p className="text-sm font-medium text-slate-500">Payor</p>
-                    <Badge className="bg-navy-100 text-navy-800">{sanitizeInput(patient.payor)}</Badge>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-navy-600" />
-                Medical Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="allergies">
-                <div className="overflow-x-auto scrollbar-hide">
-                  <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
-                    <TabsTrigger value="allergies" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Allergies</TabsTrigger>
-                    <TabsTrigger value="history" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">History</TabsTrigger>
-                    <TabsTrigger value="visits" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Recent Visits</TabsTrigger>
-                  </TabsList>
-                </div>
-
-                <TabsContent value="allergies" className="space-y-4">
-                  <Alert className={patient.allergies && patient.allergies !== 'NKDA' && patient.allergies.toLowerCase() !== 'none' ? 'bg-red-50 border-red-300' : 'bg-emerald-50 border-emerald-300'}>
-                    <AlertTriangle className={`w-4 h-4 ${patient.allergies && patient.allergies !== 'NKDA' && patient.allergies.toLowerCase() !== 'none' ? 'text-red-600' : 'text-emerald-600'}`} />
-                    <AlertDescription>
-                      <p className="font-semibold mb-2">Allergy Information</p>
-                      <p className="text-sm">{sanitizeInput(patient.allergies) || 'No Known Drug Allergies (NKDA)'}</p>
-                    </AlertDescription>
-                  </Alert>
-                </TabsContent>
-
-                <TabsContent value="history" className="space-y-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Diagnoses</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div>
-                        <p className="text-sm font-medium text-slate-500">Primary</p>
-                        <p className="text-slate-900 font-semibold">{sanitizeInput(patient.primary_diagnosis) || 'Not specified'}</p>
-                      </div>
-                      {patient.secondary_diagnoses && patient.secondary_diagnoses.length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium text-slate-500 mb-2">Secondary</p>
-                          <div className="flex flex-wrap gap-2">
-                            {patient.secondary_diagnoses.map((diagnosis, index) => (
-                              <Badge key={index} variant="outline">{sanitizeInput(diagnosis)}</Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {patient.past_medical_history && patient.past_medical_history.length > 0 && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Past Conditions</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-wrap gap-2">
-                          {patient.past_medical_history.map((condition, index) => (
-                            <Badge key={index} variant="outline">{sanitizeInput(condition)}</Badge>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="visits" className="space-y-4">
-                  {visits.length === 0 ? (
-                    <EmptyState icon={FileText} title="No visit notes" description="Visit notes will appear here once recorded." />
-                  ) : (
-                    <ScrollArea className="max-h-[500px]">
-                      <div className="space-y-3">
-                        {visits.filter(v => v.nurse_notes).slice(0, 5).map((visit) => (
-                          <Card key={visit.id} className="border-l-4 border-l-indigo-500">
-                            <CardContent className="p-4">
-                              <div className="flex justify-between items-start mb-2">
-                                <div>
-                                  <p className="font-semibold text-slate-900">
-                                    {formatLocalDate(visit.visit_date, { month: 'short', day: 'numeric', year: 'numeric' }) || 'Invalid date'}
-                                  </p>
-                                  <Badge variant="outline" className="text-xs mt-1">
-                                    {(visit.visit_type || '').replace(/_/g, ' ')}
-                                  </Badge>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => navigate(`${createPageUrl("ClinicalDocumentation")}?visitId=${visit.id}`)}
-                                >
-                                  <ExternalLink className="w-3 h-3 mr-1" />
-                                  View
-                                </Button>
-                              </div>
-                              {visit.nurse_notes && (
-                                <div className="bg-slate-50 p-3 rounded-lg">
-                                  <p className="text-sm text-slate-900 whitespace-pre-wrap line-clamp-3">
-                                    {sanitizeInput(visit.nurse_notes)}
-                                  </p>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  )}
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* AI Tools Tab */}
-        <TabsContent value="ai-tools" className="space-y-6" key={`ai-tools-${patientId}`}>
-          <Tabs value={aiToolsTab} onValueChange={setAiToolsTab} className="w-full">
-            <div className="overflow-x-auto scrollbar-hide">
-              <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
-                <TabsTrigger value="analysis" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Analysis</TabsTrigger>
-                <TabsTrigger value="risk" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Risk & Alerts</TabsTrigger>
-                <TabsTrigger value="coordination" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Coordination</TabsTrigger>
-                <TabsTrigger value="documentation" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Documentation</TabsTrigger>
-              </TabsList>
-            </div>
-
-            <TabsContent value="analysis" className="space-y-6">
-              <ProactiveClinicalTaskGenerator
-                patientId={patient.id}
-                patientName={`${patient.first_name} ${patient.last_name}`}
-                onTasksCreated={() => {
-                  queryClient.invalidateQueries({ queryKey: ['tasks'] });
-                }}
-                autoAnalyze={false}
-              />
-              <AIPatientHistorySummary
-                patient={patient}
-                visits={visits}
-                incidents={incidents}
-                autoGenerate={false}
-              />
-              <AIPatientAnalyzer
-                patient={patient}
-                visits={visits}
-                incidents={incidents}
-              />
-            </TabsContent>
-
-            <TabsContent value="risk" className="space-y-6">
-              <PatientRiskStratification
-                patient={patient}
-                visits={visits}
-                incidents={incidents}
-                autoCalculate={false}
-              />
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <PatientDeteriorationPredictor
-                  patientId={patientId}
-                  recentVisits={visits?.filter(v => v.status === 'completed').slice(0, 10)}
-                  autoAnalyze={false}
-                />
-                <PredictiveRiskAnalyzer 
-                  patientId={patientId} 
-                  patientName={`${patient.first_name} ${patient.last_name}`}
-                  onAlertsCreated={(_count) => {
-                    queryClient.invalidateQueries({ queryKey: ['patientContext', patientId] });
-                    queryClient.invalidateQueries({ queryKey: ['patientActiveAlerts', patientId] });
-                  }}
-                  autoAnalyze={false}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="coordination" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <InterdisciplinaryTeamCoordinator
-                  patientId={patientId}
-                  patientData={patient}
-                  recentVisits={visits?.filter(v => v.status === 'completed').slice(0, 5)}
-                  incidents={incidents}
-                  alerts={activeAlerts}
-                  autoAnalyze={false}
-                />
-                <OptimalCommunicationAdvisor
-                  patientId={patientId}
-                  patientData={patient}
-                  recentVisits={visits?.filter(v => v.status === 'completed').slice(0, 3)}
-                  upcomingVisits={visits?.filter(v => v.status === 'scheduled').sort((a, b) => `${a.visit_date || ''}${a.visit_time || ''}`.localeCompare(`${b.visit_date || ''}${b.visit_time || ''}`))}
-                  outreachPurpose="Care coordination and status update"
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="documentation" className="space-y-6">
-              {/* Deterministic readiness view for QA/office staff. NOT a billing
-                  gate — it reports only what PennSync knows and says so. */}
-              {/* Every dataset the engine can check is supplied explicitly.
-                  Omitting one no longer reads as "checked and clear" — the
-                  engine now distinguishes a dataset that was not supplied from
-                  one that was empty, and the panel reports what it could not
-                  check. PennSync holds no separate draft/OASIS-finding/ADR
-                  store on this page, so those are passed as the empty arrays
-                  they genuinely are for this patient view. */}
-              <DocumentationReadinessPanel
-                patient={patient}
-                visits={visits}
-                openTasks={tasks}
-                incidents={incidents}
-                drafts={[]}
-                complianceAudits={ctx.complianceAudits ?? []}
-                oasisFindings={[]}
-                adrCases={ctx.adrCases ?? []}
-                handoffTrackingSince={ctx.handoffTrackingSince ?? null}
-              />
-              {/* Deterministic cross-record review: where the most recent note,
-                  PennSync's OASIS copy and the care plan disagree. Nothing here
-                  edits a record — the reviewer decides. */}
-              <CrossDocumentReviewPanel
-                noteText={latestNoteText}
-                patient={patient}
-                oasis={oasisByAssessmentDate[0] ?? null}
-                carePlans={ctx.carePlans ?? []}
-                openTasks={tasks}
-                currentUserEmail={currentUser?.email}
-              />
-              <MedicationReconciliationPanel
-                patient={patient}
-                noteText={latestNoteText}
-              />
-              {PDGM_LEGACY_SURFACES_ENABLED && oasisTriggerVisit && (
-                <AIGeneratedOASISAssessment
-                  patientId={patientId}
-                  visitId={oasisTriggerVisit.id}
-                  visitType={oasisTriggerVisit.visit_type === 'admission' ? 'Start of Care' : oasisTriggerVisit.visit_type === 'recertification' ? 'Recertification' : oasisTriggerVisit.visit_type === 'discharge' ? 'Discharge' : 'Start of Care'}
-                  onSaved={() => {
-                    queryClient.invalidateQueries({ queryKey: ['oasisAssessments', patientId] });
-                    setOasisTriggerVisit(null);
-                  }}
-                />
-              )}
-              {PDGM_LEGACY_SURFACES_ENABLED && (
-                <AIProactiveOASISAssistant patientId={patientId} autoAnalyze={false} />
-              )}
-              <AIComplianceAuditor
-                patientId={patientId}
-                autoRun={false}
-                scope="comprehensive"
-              />
-              <PatientSummaryGenerator
-                patient={patient}
-                visits={visits}
-                incidents={incidents}
-              />
-            </TabsContent>
-          </Tabs>
-        </TabsContent>
-
-        <TabsContent value="telehealth" className="space-y-6">
-          <PatientTelehealthPanel key={patientId} patient={patient} currentUser={currentUser} />
-        </TabsContent>
-
-        {/* Documents Tab */}
-        <TabsContent value="documents" className="space-y-6">
-          <Tabs defaultValue="uploaded">
-            <div className="overflow-x-auto scrollbar-hide">
-              <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
-                <TabsTrigger value="uploaded" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Uploaded</TabsTrigger>
-                <TabsTrigger value="referral-docs" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Referral PDFs</TabsTrigger>
-                <TabsTrigger value="discharge" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Discharge</TabsTrigger>
-                <TabsTrigger value="referral" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Referral Letter</TabsTrigger>
-                <TabsTrigger value="education" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Education</TabsTrigger>
-                <TabsTrigger value="progress" className="px-3 py-2.5 min-h-[48px] sm:min-h-[40px] text-xs sm:text-sm whitespace-nowrap">Progress</TabsTrigger>
-              </TabsList>
-            </div>
-
-            <TabsContent value="uploaded" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle>Patient Documents</CardTitle>
-                    <Button onClick={() => setIsDocumentUploaderOpen(true)}>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Upload Document
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <DocumentList patientId={patientId} showPatientInfo={false} />
-                </CardContent>
-              </Card>
-              <PatientDocumentRecordFax patient={patient} />
-            </TabsContent>
-
-            <TabsContent value="referral-docs">
-              <ReferralDocumentViewer patientId={patientId} />
-            </TabsContent>
-
-            <TabsContent value="discharge">
-              <DischargeSummaryGenerator patientId={patientId} patient={patient} />
-            </TabsContent>
-
-            <TabsContent value="referral">
-              <ReferralLetterGenerator patientId={patientId} patient={patient} />
-            </TabsContent>
-
-            <TabsContent value="education">
-              <PersonalizedEducationGenerator patient={patient} visits={visits} />
-            </TabsContent>
-
-            <TabsContent value="progress">
-              <ProgressReportGenerator patientId={patientId} patient={patient} />
-            </TabsContent>
-          </Tabs>
-        </TabsContent>
-
-        {/* Messaging Tab */}
-        <TabsContent value="messaging" className="space-y-6">
-          <CareTeamMessaging patientId={patientId} />
-        </TabsContent>
-      </Tabs>
-
-      {/* OASIS Generation Prompt */}
-      {PDGM_LEGACY_SURFACES_ENABLED && showOASISPrompt && oasisTriggerVisit && (
-        <Alert className="mb-6 bg-navy-50 border-navy-300">
-          <Sparkles className="w-4 h-4 text-navy-600" />
-          <AlertDescription>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-navy-900 mb-1">OASIS Assessment Required</p>
-                <p className="text-sm text-navy-800">
-                  A {oasisTriggerVisit.visit_type} visit has been created. Generate OASIS assessment now?
-                </p>
-              </div>
-              <div className="flex gap-2 ml-4">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowOASISPrompt(false)}
-                >
-                  Later
-                </Button>
-                <Button
-                  size="sm"
-                  className="bg-navy-600 hover:bg-navy-700"
-                  onClick={() => {
-                    // Take the user to the AI Tools → Documentation tab, where
-                    // AIGeneratedOASISAssessment renders for this trigger visit.
-                    setShowOASISPrompt(false);
-                    setActiveTab("ai-tools");
-                    setAiToolsTab("documentation");
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                >
-                  <ClipboardList className="w-4 h-4 mr-1" />
-                  Generate Now
-                </Button>
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Schedule Visit Card */}
-      <Card>
+      <Card className="mx-auto max-w-2xl">
         <CardHeader>
-          <div className="flex flex-wrap gap-2 justify-between items-center">
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
-              Schedule New Visit
-            </CardTitle>
-            <Button
-              onClick={() => setShowVisitForm(!showVisitForm)}
-              className="bg-navy-600 hover:bg-navy-700"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              New Visit
-            </Button>
-          </div>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldAlert className="h-5 w-5 text-amber-600" aria-hidden="true" />
+            {title}
+          </CardTitle>
         </CardHeader>
-        {showVisitForm && (
-          <CardContent>
-            <Card className="bg-slate-50 border-slate-200">
-              <CardContent className="p-4 space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Visit Date</Label>
-                    <Input
-                      type="date"
-                      value={newVisit.visit_date}
-                      onChange={(e) => setNewVisit({...newVisit, visit_date: e.target.value})}
-                    />
-                  </div>
-                  <div>
-                    <Label>Visit Time</Label>
-                    <Input
-                      type="time"
-                      value={newVisit.visit_time}
-                      onChange={(e) => setNewVisit({...newVisit, visit_time: e.target.value})}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label>Visit Type</Label>
-                  <Select
-                    value={newVisit.visit_type}
-                    onValueChange={(value) => setNewVisit({...newVisit, visit_type: value})}
-                  >
-                    <SelectTrigger className="h-12 sm:h-10">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[50vh]">
-                      <SelectItem value="skilled_nursing" className="py-3 sm:py-2">Skilled Nursing</SelectItem>
-                      <SelectItem value="admission" className="py-3 sm:py-2">Admission</SelectItem>
-                      <SelectItem value="recertification" className="py-3 sm:py-2">Recertification</SelectItem>
-                      <SelectItem value="discharge" className="py-3 sm:py-2">Discharge</SelectItem>
-                      <SelectItem value="routine_visit" className="py-3 sm:py-2">Routine Visit</SelectItem>
-                      <SelectItem value="prn" className="py-3 sm:py-2">PRN Visit</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex flex-col sm:flex-row justify-end gap-2">
-                    <Button variant="outline" onClick={() => setShowVisitForm(false)} className="min-h-[48px] sm:min-h-[40px]">
-                      Cancel
-                    </Button>
-                    <Button onClick={handleCreateVisit} className="bg-navy-600 hover:bg-navy-700 min-h-[48px] sm:min-h-[40px]">
-                      Create Visit
-                    </Button>
-                  </div>
-              </CardContent>
-            </Card>
-          </CardContent>
-        )}
+        <CardContent className="space-y-4 text-sm text-slate-600">
+          <p>{children}</p>
+          <Button variant="outline" onClick={() => navigate(-1)}>
+            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+            Go back
+          </Button>
+        </CardContent>
       </Card>
-
-      <PatientFaxDocumentDialog
-        patient={patient}
-        open={isFaxDialogOpen}
-        onOpenChange={setIsFaxDialogOpen}
-      />
-
-      <DocumentUploader
-        patientId={patientId}
-        open={isDocumentUploaderOpen}
-        onOpenChange={setIsDocumentUploaderOpen}
-        onUploadComplete={() => {
-          setIsDocumentUploaderOpen(false);
-          queryClient.invalidateQueries({ queryKey: ['patient-documents', patientId] });
-        }}
-      />
     </PageContainer>
+  );
+}
+
+export default function PatientDetails() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const patientId = searchParams.get('id') || searchParams.get('patientId');
+  const agencyId = searchParams.get('agencyId') || searchParams.get('agency_id');
+  const agencyParamPresent = searchParams.has('agencyId') || searchParams.has('agency_id');
+  const patientIdIsExact = isExactPatientDetailsRouteIdentifier(patientId);
+  const routeScopeEnabled = patientIdIsExact && !agencyParamPresent;
+  const routeIsExact = Boolean(patientId && agencyId);
+  const auditedAuthorization = useRef(null);
+
+  const routeScope = usePatientDetailsRouteScope({ enabled: routeScopeEnabled });
+
+  const patientQuery = useAuthorizedPatient({
+    patientId,
+    agencyId,
+    purpose: 'display',
+    enabled: routeIsExact,
+  });
+
+  const visitAuthorizationQuery = useQuery({
+    queryKey: [
+      'patient-details',
+      'visit-authorization',
+      patientId,
+      patientQuery.tenantScope?.user_id ?? null,
+      patientQuery.tenantScope?.agency_id ?? null,
+      patientQuery.tenantScope?.membership_id ?? null,
+      patientQuery.tenantScope?.membership_version ?? null,
+      patientQuery.tenantScope?.tenant_role ?? null,
+    ],
+    queryFn: () => authorizeVisitSchedule({
+      agencyId,
+      patientId,
+      tenantScope: patientQuery.tenantScope,
+    }),
+    enabled: routeIsExact
+      && patientQuery.isSuccess
+      && !!patientQuery.tenantScope,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
+  });
+
+  const authorizationSettled = Boolean(
+    patientQuery.isSuccess
+    && patientQuery.isFetchedAfterMount
+    && patientQuery.fetchStatus === 'idle'
+    && !patientQuery.error
+    && visitAuthorizationQuery.isSuccess
+    && visitAuthorizationQuery.isFetchedAfterMount
+    && visitAuthorizationQuery.fetchStatus === 'idle'
+    && !visitAuthorizationQuery.error
+  );
+
+  // Normalize a safe server-resolved singleton membership into an explicit
+  // route before either PHI read can start. On the subsequent router render,
+  // routeIsExact becomes true and both purpose-bound brokers re-authorize the
+  // explicit patient + agency pair from scratch.
+  useEffect(() => {
+    if (!routeScopeEnabled || !routeScope.isSuccess || !routeScope.agencyId) return;
+    const destination = createPatientDetailsRouteHref(patientId, routeScope.agencyId);
+    if (!destination) return;
+    navigate(destination, { replace: true });
+  }, [
+    navigate,
+    patientId,
+    routeScope.agencyId,
+    routeScope.isSuccess,
+    routeScopeEnabled,
+  ]);
+
+  useEffect(() => {
+    if (!authorizationSettled) return;
+    const auditKey = [
+      patientQuery.tenantScope.user_id,
+      agencyId,
+      patientId,
+      visitAuthorizationQuery.data.authorityFingerprint,
+    ].join(':');
+    if (auditedAuthorization.current === auditKey) return;
+    auditedAuthorization.current = auditKey;
+
+    void logActivity(ActivityActions.VIEW, {
+      entity_type: 'Patient',
+      entity_id: patientId,
+      agency_id: agencyId,
+      page: 'PatientDetails',
+      access_boundary: 'patient_and_visit_read_brokers',
+    });
+  }, [
+    agencyId,
+    authorizationSettled,
+    patientId,
+    patientQuery.tenantScope,
+    visitAuthorizationQuery.data,
+  ]);
+
+  if (!routeIsExact) {
+    if (routeScopeEnabled && !routeScope.isError) {
+      return (
+        <AccessMessage title="Verifying chart access">
+          Current tenant authority is being checked before any patient data is requested.
+        </AccessMessage>
+      );
+    }
+    return (
+      <AccessMessage title="Chart context required">
+        Open this chart from an agency-scoped patient list. No patient data was requested.
+      </AccessMessage>
+    );
+  }
+
+  if (patientQuery.isError || visitAuthorizationQuery.isError) {
+    return (
+      <AccessMessage title="Patient details unavailable">
+        This chart cannot be opened with the current agency and care-team authority.
+      </AccessMessage>
+    );
+  }
+
+  if (!authorizationSettled) {
+    return (
+      <AccessMessage title="Verifying chart access">
+        Patient and visit authorization are being checked against current tenant authority.
+      </AccessMessage>
+    );
+  }
+
+  return (
+    <AccessMessage title="Patient details temporarily unavailable">
+      Current Patient and Visit authority was verified. The chart remains hidden until every
+      related clinical panel has its own purpose-bound tenant read service.
+    </AccessMessage>
   );
 }

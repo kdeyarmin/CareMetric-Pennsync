@@ -184,6 +184,7 @@ async function loadBroker(kind, {
   patientResponses = null,
   assignments = [],
   assignmentResponses = null,
+  auditError = null,
   ignoreFilters = false,
   superAdminEmail = null,
 } = {}) {
@@ -195,6 +196,7 @@ async function loadBroker(kind, {
     agencies: [],
     patients: [],
     assignments: [],
+    securityLogs: [],
   };
   let membershipIndex = 0;
   let agencyIndex = 0;
@@ -252,6 +254,13 @@ async function loadBroker(kind, {
           calls.assignments.push({ query: clone(query), sort, limit, offset, fields: clone(fields) });
           const rows = selected(assignmentResponses, assignmentIndex++, assignments);
           return filterRows(clone(rows), query, limit, offset, sort);
+        },
+      },
+      SecurityLog: {
+        create: async (payload) => {
+          calls.securityLogs.push(clone(payload));
+          if (auditError) throw auditError;
+          return { id: 'security-log-a' };
         },
       },
     },
@@ -580,6 +589,36 @@ test('exact display creator read rechecks authority and projects no protected fi
     ],
   });
   assert.deepEqual(calls.assignments, []);
+  assert.equal(calls.securityLogs.length, 1);
+  assert.deepEqual(calls.securityLogs[0], {
+    timestamp: calls.securityLogs[0].timestamp,
+    user_email: 'clinician@agency.test',
+    user_role: 'clinician',
+    action: 'PATIENT_READ_AUTHORIZED',
+    details: {
+      broker: 'getAuthorizedPatient',
+      agency_id: 'agency-a',
+      patient_id: 'patient-a',
+      purpose: 'display',
+      subject_user_id: 'user-1',
+      membership_id: 'membership-a',
+      membership_version: 2,
+    },
+    ip_address: 'server-side',
+    user_agent: 'server-side',
+  });
+  assert.equal(Number.isFinite(Date.parse(calls.securityLogs[0].timestamp)), true);
+});
+
+test('exact Patient disclosure fails closed when the privileged audit write fails', async () => {
+  const { handler, calls } = await loadBroker('get', {
+    auditError: new Error('audit unavailable'),
+  });
+  const { response, json } = await invoke(handler, 'getAuthorizedPatient', getBody());
+  assert.equal(response.status, 500);
+  assert.equal(json.patient, undefined);
+  assert.equal(json.error, 'Internal server error');
+  assert.equal(calls.securityLogs.length, 1);
 });
 
 test('an exact active care-team assignment authorizes a non-creator narrow read and is rechecked', async () => {

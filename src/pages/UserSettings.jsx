@@ -55,9 +55,11 @@ import CareScopeBadge from "../components/profile/CareScopeBadge";
 import DutyStatusCard from "../components/voice/DutyStatusCard";
 import { ALL_ROWS } from '@/lib/queryLimits';
 import { getStaffRole, staffRoleLabel } from "@/lib/roles";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function UserSettings() {
   const queryClient = useQueryClient();
+  const { logout } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -249,7 +251,7 @@ export default function UserSettings() {
       ));
 
       toast.success('Your account deletion request has been submitted. An administrator will process it. You will be signed out now.');
-      await base44.auth.logout();
+      await logout();
     } catch (error) {
       console.error('Error requesting account deletion:', error);
       toast.error('Failed to submit account deletion request. Please contact support.');

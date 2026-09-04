@@ -136,6 +136,15 @@ describe('listAuthorizedVisits wrapper', () => {
           page_size: 2, sort: 'id_asc', after_id: null, has_more: false, next_cursor: null,
         },
       },
+      {
+        success: true,
+        purpose: 'schedule',
+        visits: [scheduleVisit({ patient_id: 'patient-b' })],
+        scope: clinicianScope,
+        page: {
+          page_size: 1, sort: 'id_asc', after_id: null, has_more: false, next_cursor: null,
+        },
+      },
     ];
     for (const result of invalidResults) {
       invoke.mockResolvedValueOnce({ data: result });

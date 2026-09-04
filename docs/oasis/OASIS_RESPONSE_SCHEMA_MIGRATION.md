@@ -190,31 +190,89 @@ completion, CMS output, analytics, outcomes and PDGM.
 a v2 code with the same characters mean different clinical facts, and no rule
 maps one onto the other without inventing one.
 
-`tools-oasis-response-migration.mjs` is expand-only, dry-run by default, and
-proposes exactly one kind of write: **non-clinical provenance**
-(`response_schema_id: "pennsync-oasis-response-v1-legacy"`, `migration_status:
-"legacy_provenance_annotated"`) on rows that have no schema at all. It refuses
-to apply anything whose clinical checksum would move, `--apply` is rejected
-without `--i-have-read-the-plan`, and a second run is a no-op.
+`tools-oasis-response-migration.mjs` is expand-only and dry-run by default. Its
+only permitted row mutation is adding
+`response_schema_id: "pennsync-oasis-response-v1-legacy"`. On the containing
+assessment it may add the same `response_schema_id` and
+`migration_status: "legacy_provenance_annotated"`. `migration_status` is an
+assessment-level schema field; the tool never writes it inside `oasis_items`.
+
+An assessment is the atomic safety boundary. Mixed row states (including v2
+plus unversioned), assessment/row conflicts, unknown schemas, malformed schema
+metadata, empty item arrays, and missing or unsafe `agency_id` produce a named
+**whole-assessment quarantine** with zero mutations to that assessment. A
+`created_by` value is not accepted as tenant scope. The input itself must be a
+top-level JSON array whose assessments have exact, trimmed, bounded,
+non-operator unique ids and explicit `oasis_items` arrays; wrapper objects,
+ambiguous ids, and integers outside JavaScript's lossless safe-integer range are
+rejected before a plan is produced.
+
+A row is **not** trusted merely because its assessment and items claim v2 plus
+`native_v2`. Passthrough without derived-data quarantine requires the canonical
+v2 builder to accept every definition, structured value, instrument, and time
+point. The saved projection must also exactly match the protected writer's
+item/source/shape fields; distinguish CMS items from PennSync screening rows;
+carry canonical clinician identity and timestamps; have no AI origin; match the
+final source identifier; and contain no duplicate item or definition. Any
+failure quarantines the entire assessment and all derived records.
+
+Every assessment plan entry carries a full 64-character, canonical SHA-256 over
+all protected bytes. The protected projection excludes only the two permitted
+assessment fields and row-level `response_schema_id`; therefore any response,
+structured value, item identity, provenance, ordering, or unsupported nested
+field change invalidates the plan. Reports also expose canonical
+`input_sha256` and `plan_sha256` values.
+
+Apply is deliberately a separate, bound invocation. First produce and review a
+detached report:
+
+```sh
+node tools-oasis-response-migration.mjs \
+  --in oasis-export.json \
+  --out oasis-migration-plan.json
+```
+
+Then manually copy **both** displayed digests into the later apply command:
+
+```sh
+node tools-oasis-response-migration.mjs \
+  --in oasis-export.json \
+  --out oasis-migration-apply-report.json \
+  --data-out oasis-migration-annotated-data.json \
+  --apply \
+  --plan oasis-migration-plan.json \
+  --expect-input-sha256 <reviewed-input-sha256> \
+  --expect-plan-sha256 <reviewed-plan-sha256> \
+  --i-have-read-the-plan
+```
+
+This manual cross-invocation binding is intentional: the apply path verifies
+the detached artifact's own hash, both operator-carried digests, the current
+input, and a freshly recomputed byte-exact plan before changing anything in
+memory. `--out` equal to `--in` is refused, as is overwriting the detached plan.
+The source export is never modified in place. `--out` contains the report;
+`--data-out` is a separate top-level assessment array suitable for the next dry
+run or a separately approved import. Both are created exclusively (never
+overwritten) with owner-only mode `0600`. The data artifact is persisted first;
+the completion report is published only afterward and records a full SHA-256 of
+the exact `--data-out` bytes. After a successful apply, a fresh dry run using
+`--data-out` as its input is a no-op.
 
 A row with no schema otherwise resolves as **legacy in memory** — it is never
 persisted as v2.
 
-### Dry-run evidence
+### Executable migration evidence
 
-Against a four-assessment fixture (`agencyA` legacy/unversioned, `agencyB` mixed):
-
-```
-4 assessment(s), 6 row(s): 1 v2, 1 legacy, 4 unversioned, 0 unknown.
-5 row(s) require quarantine from CMS-labeled output and scoring.
-
-by_tenant : agencyA {unversioned 3, legacy 1, v2 0}, agencyB {unversioned 1, v2 1}
-by_writer : legacy_direct_write {unversioned 3, legacy 1}, protected_writer {v2 1}, ai_path {unversioned 1}
-plan      : safe (byte-preserving) = true, proposed = 4, unsafe = 0
-example   : M1830  before_checksum 0fc65f37f6cfa365 → after_checksum 0fc65f37f6cfa365
-idempotence: first apply = 4 rows, second apply = 0 rows; clinical checksums unchanged
-refusal   : `--apply` without `--i-have-read-the-plan` exits 2 without writing
-```
+`tools-oasis-response-migration.test.js` covers the dry-run/apply boundary,
+canonical hash stability and sensitivity, full protected-byte preservation,
+strict input validation, assessment-level versus row-level destinations,
+canonical native-v2 validation, whole-assessment quarantine for every refused
+state, safe-integer rejection, stale-input and rehashed plan tampering, manual
+digest binding, data-first completion evidence, exact output hashing, secured
+no-overwrite outputs, no-op data reruns, and same-path refusal. The
+inventory label `claimed_clinician_provenance` is intentionally modest: fields
+such as `selected_by` in an offline export are claims, not proof that the
+protected writer created them.
 
 ## 6. AI restrictions
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
@@ -204,4 +204,86 @@ test('all contained sources transpile successfully with their dormant redesign c
     assert.match(result.outputText, /legacy_patient_service_writer_paused/, functionName);
     assert.match(result.outputText, /createClientFromRequest\(req\)/, functionName);
   }
+});
+
+test('getPatientContext is a static 410 tombstone with zero request or data activity', async () => {
+  const source = await readFile(sourceUrl('getPatientContext'), 'utf8');
+  let handler;
+  globalThis.Deno = { serve: (candidate) => { handler = candidate; } };
+  const temporaryModule = join(
+    tmpdir(),
+    `retired_patient_context_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`,
+  );
+  await writeFile(temporaryModule, transpileTs(source).outputText);
+  try {
+    await import(pathToFileURL(temporaryModule).href);
+  } finally {
+    await unlink(temporaryModule).catch(() => {});
+  }
+  assert.equal(typeof handler, 'function');
+  const request = new Proxy({}, {
+    get() { throw new Error('retired endpoint read the request'); },
+  });
+  const response = await handler(request);
+  assert.equal(response.status, 410);
+  assert.deepEqual(await response.json(), {
+    error: 'Legacy patient context endpoint retired',
+    code: 'legacy_patient_context_retired',
+    reason: 'purpose_bound_immutable_tenant_read_brokers_required',
+    endpoint: 'getPatientContext',
+  });
+  assert.doesNotMatch(source, /createClientFromRequest|\.auth\.|\.entities\.|asServiceRole|req\.|await\s+/);
+});
+
+test('the SPA cannot invoke the retired context service or seed generic chart caches', async () => {
+  const sourceRoot = new URL('../../src/', import.meta.url);
+  const offenders = [];
+
+  async function walk(directoryUrl) {
+    for (const entry of await readdir(directoryUrl, { withFileTypes: true })) {
+      const entryUrl = new URL(entry.name + (entry.isDirectory() ? '/' : ''), directoryUrl);
+      if (entry.isDirectory()) {
+        await walk(entryUrl);
+      } else if (['.js', '.jsx', '.ts', '.tsx'].includes(extname(entry.name))) {
+        const source = await readFile(entryUrl, 'utf8');
+        if (/(['"`])getPatientContext\1/.test(source)) offenders.push(entryUrl.pathname);
+      }
+    }
+  }
+
+  await walk(sourceRoot);
+  assert.deepEqual(offenders, [], `retired getPatientContext SPA references: ${offenders.join(', ')}`);
+
+  const patientDetails = await readFile(new URL('../../src/pages/PatientDetails.jsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(patientDetails, /setQueryData\s*\(/);
+  assert.doesNotMatch(patientDetails, /\[['"]patient(?:Visits|Incidents|Tasks|ActiveAlerts)?['"],/);
+  assert.doesNotMatch(patientDetails, /base44\.entities\.|base44\.functions\.invoke/);
+  assert.doesNotMatch(
+    patientDetails,
+    /logSecurityEvent|SecurityLog/,
+    'Patient disclosure auditing belongs inside the protected read brokers.',
+  );
+  assert.match(patientDetails, /const routeIsExact = Boolean\(patientId && agencyId\)/);
+  assert.match(
+    patientDetails,
+    /const agencyParamPresent = searchParams\.has\('agencyId'\) \|\| searchParams\.has\('agency_id'\)/,
+    'PatientDetails must not implicitly resolve scope when either agency parameter is explicit.',
+  );
+  assert.match(
+    patientDetails,
+    /const routeScopeEnabled = patientIdIsExact && !agencyParamPresent/,
+    'Only an exact patient id with no agency parameter may use singleton tenant resolution.',
+  );
+  assert.match(
+    patientDetails,
+    /usePatientDetailsRouteScope\(\{ enabled: routeScopeEnabled \}\)/,
+    'The central tenant resolver must remain disabled for explicit routes.',
+  );
+  assert.match(patientDetails, /createPatientDetailsRouteHref\(patientId, routeScope\.agencyId\)/);
+  assert.match(patientDetails, /navigate\(destination, \{ replace: true \}\)/);
+  assert.doesNotMatch(
+    patientDetails,
+    /currentUser|agency_name|created_by/,
+    'PatientDetails must never infer route tenancy from mutable user or record fields.',
+  );
 });

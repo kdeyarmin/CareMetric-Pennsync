@@ -296,7 +296,6 @@ test('Visit provenance fields exist, direct create is disabled, and the wrapper 
 
   for (const relative of [
     'components/dashboard/PatientQuickActions.jsx',
-    'pages/PatientDetails.jsx',
     'components/smartNote/persistVisitNote.js',
     'components/telehealth/PatientTelehealthPanel.jsx',
     'lib/retiredOfflineQueue.js',

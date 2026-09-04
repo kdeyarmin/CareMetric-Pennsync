@@ -867,7 +867,6 @@ for (const file of [
   'base44/functions/summarizeMessageThread/entry.ts',
   'base44/functions/generateFaxCoverPage/entry.ts',
   'base44/functions/messagingAssistant/entry.ts',
-  'base44/functions/getPatientContext/entry.ts',
   'base44/functions/processCompletedVisit/entry.ts',
 ]) {
   test(`${file} gates patient PHI with assertPatientAccess`, () => {
@@ -882,6 +881,14 @@ for (const file of [
     );
   });
 }
+
+test('getPatientContext is a static permanent-retirement boundary', () => {
+  const src = read('base44/functions/getPatientContext/entry.ts');
+  assert.match(src, /status:\s*410/);
+  assert.match(src, /code:\s*'legacy_patient_context_retired'/);
+  assert.match(src, /reason:\s*'purpose_bound_immutable_tenant_read_brokers_required'/);
+  assert.doesNotMatch(src, /createClientFromRequest|\.auth\.|\.entities\.|asServiceRole|req\.|await\s+/);
+});
 
 // getDashboardData must ship recent completed visits (and care plans) so
 // RealTimePatientAlerts can compute overdue / high-risk / goal alerts — today's
