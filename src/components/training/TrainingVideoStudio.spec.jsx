@@ -27,6 +27,10 @@ vi.mock("@/functions/manageTrainingVideos", () => ({
   manageTrainingVideos: vi.fn(),
 }));
 
+vi.mock("@/lib/authorityBoundWindows", () => ({
+  openAuthorityBoundWindow: vi.fn(),
+}));
+
 vi.mock("@/components/training/PresenterPicker", () => ({
   default: () => <div>Presenter picker</div>,
 }));

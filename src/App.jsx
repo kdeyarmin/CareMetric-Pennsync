@@ -3,20 +3,32 @@
 // to ROUTES there to make it reachable, or add a REDIRECT for a renamed page.
 
 import './App.css'
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense, useLayoutEffect, useMemo, useState } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "sonner"
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog"
-import { QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import VisualEditAgent from '@/lib/VisualEditAgent'
 import NavigationTracker from '@/lib/NavigationTracker'
-import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router';
+import {
+  BrowserRouter as Router,
+  Route,
+  Routes,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from 'react-router';
 import PageNotFound from './lib/PageNotFound';
 import PageLoader from '@/components/ui/PageLoader';
 import SignerPortal from '@/pages/SignerPortal';
 import ProviderFollowUpPortal from '@/pages/ProviderFollowUpPortal';
-import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import {
+  AuthProvider,
+  TenantAuthorityBoundary,
+  TENANT_AUTHORITY_STATES,
+  useAuth,
+} from '@/lib/AuthContext';
 import SignInScreen from '@/components/auth/SignInScreen';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AIContentResponsibilityAgreement from '@/components/compliance/AIContentResponsibilityAgreement';
@@ -25,8 +37,13 @@ import ErrorBoundary from '@/components/utils/ErrorBoundary';
 import { ROUTES, REDIRECTS, MAIN_PAGE, ROUTER_PATHS } from '@/routes';
 import { getRoleView, canAccessLevel } from '@/lib/roles';
 import { hasAcceptedAiContentAgreement } from '@/lib/aiContentAgreement';
+import { getAiContentAgreementStatus } from '@/functions/getAiContentAgreementStatus';
 import { getRouterBasename } from '@/lib/routerBasename';
-import { isPublicTokenPath } from '@/lib/publicRoutes';
+import {
+  getPublicCapabilitySnapshot,
+  isPublicTokenPath,
+} from '@/lib/publicRoutes';
+import { PublicCapabilityBoundary } from '@/lib/PublicCapabilityContext';
 
 // Public (no-login) patient telehealth join page. Stale-chunk auto-recovery
 // (dev-server restart) is handled centrally by the ErrorBoundary, which wraps
@@ -107,6 +124,34 @@ const AppUnavailableScreen = ({ type, message }) => {
   );
 };
 
+const AgreementVerificationUnavailable = ({ onRetry, onSignOut }) => (
+  <div className="fixed inset-0 flex items-center justify-center bg-slate-50 p-4">
+    <div className="max-w-lg rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
+      <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Verification unavailable</p>
+      <h1 className="mt-2 text-2xl font-bold text-slate-900">PennSync could not verify your acknowledgment</h1>
+      <p className="mt-3 text-sm text-slate-700">
+        No clinical workspace has been opened. Retry the protected verification, or sign out and try again later.
+      </p>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-lg bg-navy-700 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
+        >
+          Retry verification
+        </button>
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 const AdminOnlyFallback = ({ superAdmin = false }) => (
   <div className="flex min-h-[60vh] flex-col items-center justify-center p-8 text-center">
     <h1 className="text-2xl font-bold text-slate-900">
@@ -131,11 +176,12 @@ const RoleAccessFallback = ({ access }) => (
   </div>
 );
 
-// Redirect that PRESERVES the original query string and router state when
-// forwarding a retired/consolidated path to its new home. Consolidated pages
-// became hub tabs (e.g. /ReferralIntake?tab=admission); a plain <Navigate to>
-// would drop an incoming ?referral_id=/?id= or location.state, so merge the
-// incoming search params onto the target (target params win on conflict).
+// Redirect that preserves the original query string when forwarding a
+// retired/consolidated path to its new home. Router state is intentionally not
+// forwarded: unlike the visible URL it can contain an entire clinical result
+// object, and browsers retain it in session history after tenant teardown.
+// Consolidated pages became hub tabs (e.g. /ReferralIntake?tab=admission), so
+// merge incoming search params onto the target (target params win on conflict).
 const RedirectTo = ({ to }) => {
   const location = useLocation();
   const [path, targetQuery = ''] = to.split('?');
@@ -154,7 +200,6 @@ const RedirectTo = ({ to }) => {
   return (
     <Navigate
       to={{ pathname: path, search: query ? `?${query}` : '', hash: location.hash }}
-      state={location.state}
       replace
     />
   );
@@ -166,13 +211,82 @@ const RoutePageLoader = () => (
   </div>
 );
 
-const AuthenticatedApp = () => {
-  const location = useLocation();
-  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated } = useAuth();
+const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOut }) => {
+  const selectionRequired = memberships.length > 0;
+  const requiresReload = error?.type === 'browser_authority_change_requires_restart';
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-slate-50 p-4">
+      <div className="w-full max-w-lg rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
+        <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">
+          {selectionRequired ? 'Agency selection required' : 'Agency access unavailable'}
+        </p>
+        <h1 className="mt-2 text-2xl font-bold text-slate-900">
+          {selectionRequired ? 'Choose the agency workspace to open' : 'No clinical workspace was opened'}
+        </h1>
+        <p className="mt-3 text-sm text-slate-700">
+          {error?.message || (selectionRequired
+            ? 'Your account has access to more than one agency. Choose one before protected data is loaded.'
+            : 'PennSync could not verify a current active agency membership. Retry, or contact your administrator.')}
+        </p>
+
+        {selectionRequired && (
+          <div className="mt-5 grid gap-3" role="list" aria-label="Available agencies">
+            {memberships.map((membership) => (
+              <button
+                key={membership.membership_id}
+                type="button"
+                onClick={() => onSelect(membership.agency_id)}
+                className="rounded-lg border border-slate-300 px-4 py-3 text-left hover:border-navy-400 hover:bg-navy-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
+              >
+                <span className="block font-semibold text-slate-900">{membership.agency.name}</span>
+                <span className="mt-1 block text-xs text-slate-500">
+                  {membership.tenant_role.replaceAll('_', ' ')}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          {!selectionRequired && (
+            <button
+              type="button"
+              onClick={requiresReload ? () => window.location.reload() : onRetry}
+              className="rounded-lg bg-navy-700 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
+            >
+              {requiresReload ? 'Reload app' : 'Retry verification'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TenantReadyApp = () => {
+  const { user, tenantAuthorityKey, logout } = useAuth();
+  const agreementStatus = useQuery({
+    queryKey: [
+      'aiContentAgreementStatus',
+      user?.id || 'authenticated-user',
+      tenantAuthorityKey,
+    ],
+    queryFn: getAiContentAgreementStatus,
+    enabled: Boolean(user && tenantAuthorityKey),
+    retry: false,
+    staleTime: 0,
+  });
   // Three-tier role model (see lib/roles.js): super_admin > facility_admin > nurse.
-  // Both admin tiers require Base44's protected built-in admin role. The owner
-  // tier additionally requires the configured email; self-mutable custom User
-  // fields such as account_type never elevate this route gate.
+  // Facility-admin access may come from AuthContext's validated, service-owned
+  // AgencyMembership binding. The owner tier still requires the protected
+  // Base44 role + configured email; mutable custom User fields never elevate.
   const roleView = getRoleView(user);
   const isSuperAdminUser = roleView === 'super_admin';
   const isAdmin = roleView === 'super_admin' || roleView === 'facility_admin';
@@ -216,39 +330,11 @@ const AuthenticatedApp = () => {
     <Route key={from} path={from} element={<RedirectTo to={to} />} />
   )), []);
 
-  // Public patient join/signer routes render WITHOUT authentication — they are
-  // gated by capability tokens in the link, not by an app login. This is
-  // checked before the auth gate below so external users are never bounced to login.
-  // Segment match, not a string prefix — see lib/publicRoutes.js.
-  if (isPublicTokenPath(location.pathname)) {
-    return (
-      <Suspense fallback={
-        <div className="fixed inset-0 flex items-center justify-center">
-          <PageLoader />
-        </div>
-      }>
-        <Routes>
-          <Route path="/join/*" element={<JoinTelehealth />} />
-          <Route path="/signer/*" element={<SignerPortal />} />
-          {/* Provider follow-up response portal — token-gated, no app login */}
-          <Route path="/followup/*" element={<ProviderFollowUpPortal />} />
-          {/* MCP OAuth consent — ctx-token-gated, no app login */}
-          <Route path="/consent/*" element={<OAuthConsent />} />
-          {/* Public privacy policy — required in-app pre-auth (App Store 5.1.1(i)) */}
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          {/* MCP OAuth consent — manages its own auth redirect via ?ctx handle */}
-          <Route path="/consent" element={<OAuthConsent />} />
-          {/* Catch-all so a public-segment URL that matches no inner route (e.g.
-              /privacy/extra) renders the not-found page instead of a blank
-              screen — this <Routes> block has no fallback otherwise. */}
-          <Route path="*" element={<PageNotFound />} />
-        </Routes>
-      </Suspense>
-    );
-  }
-
-  // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth) {
+  // Never render a clinical route from cached agreement data while a fresh
+  // protected verification is in flight. This matters when returning from a
+  // public token route or re-enabling the query for the same authenticated
+  // user: React Query may retain old data while it performs the new request.
+  if (!user || agreementStatus.isPending || agreementStatus.isFetching) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <PageLoader />
@@ -256,31 +342,13 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Handle authentication errors
-  if (authError) {
-    if (authError.type === 'configuration_error') {
-      return <ConfigurationErrorScreen message={authError.message} />;
-    } else if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      // Branded in-app sign-in (replaces the redirect to the unbranded
-      // platform-hosted /login page). Rendering in place preserves the URL,
-      // so deep links survive sign-in.
-      return <SignInScreen />;
-    }
-    // Any other error type (e.g. 'unknown' from a failed public-settings fetch,
-    // or a server-supplied reason we don't special-case) is an app-load
-    // failure, NOT a missing session. Falling through to <SignInScreen /> would
-    // mislead the user into trying to sign in to fix a backend outage — surface
-    // the actual error instead, under a title that doesn't blame configuration.
-    return <AppUnavailableScreen type={authError.type} message={authError.message} />;
-  }
-
-  // Gate the whole app on authentication. The no-token path does NOT set an
-  // authError, so without this an unauthenticated user would render every
-  // route and fire PHI queries. Never rely on authError alone here.
-  if (!isAuthenticated) {
-    return <SignInScreen />;
+  if (agreementStatus.isError) {
+    return (
+      <AgreementVerificationUnavailable
+        onRetry={() => agreementStatus.refetch()}
+        onSignOut={() => logout()}
+      />
+    );
   }
 
   // Responsibility gate: before using the software, every user must sign off
@@ -288,10 +356,22 @@ const AuthenticatedApp = () => {
   // and for attesting to anything they submit. This sits AFTER the auth gate
   // (so we have a user to record acceptance against) but BEFORE any app route
   // renders. The public /join and /signer routes are handled above, so external
-  // patients are never asked to accept it. Version-bumping the agreement in
+  // patients are never asked to accept it. Only the protected status broker's
+  // service-owned AIContentAgreementAttestation is trusted here; self-mutable User
+  // fields cannot satisfy this gate. Version-bumping the agreement in
   // lib/aiContentAgreement.js re-prompts everyone.
-  if (!hasAcceptedAiContentAgreement(user)) {
-    return <AIContentResponsibilityAgreement />;
+  if (!hasAcceptedAiContentAgreement(agreementStatus.data)) {
+    return (
+      <AIContentResponsibilityAgreement
+        onAccepted={async () => {
+          const result = await agreementStatus.refetch({ cancelRefetch: true });
+          if (result.error) throw result.error;
+          if (!hasAcceptedAiContentAgreement(result.data)) {
+            throw new Error('Protected agreement verification did not confirm the current version.');
+          }
+        }}
+      />
+    );
   }
 
   // Render the main app. A single layout route keeps the sidebar, header, and
@@ -312,6 +392,192 @@ const AuthenticatedApp = () => {
   );
 };
 
+const AuthenticatedApp = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const {
+    user,
+    isLoadingAuth,
+    isLoadingPublicSettings,
+    authError,
+    isAuthenticated,
+    tenantAuthorityState,
+    tenantAuthorityKey,
+    tenantMemberships,
+    tenantContext,
+    tenantContextError,
+    selectTenant,
+    retryTenantAuthority,
+    setPublicRouteActive,
+    logout,
+  } = useAuth();
+  const publicTokenPath = isPublicTokenPath(location.pathname);
+  const publicCapabilitySnapshot = getPublicCapabilitySnapshot(location);
+  const [preparedPublicSnapshot, setPreparedPublicSnapshot] = useState(null);
+  const [publicPreparationFailed, setPublicPreparationFailed] = useState(false);
+
+  // A public capability/privacy route must not leave an existing staff tenant
+  // authority reusable in memory. The provider invalidates READY immediately
+  // on entry; on return it completes a fresh auth -> membership -> context
+  // verification before TenantAuthorityBoundary can mount protected children.
+  useLayoutEffect(() => {
+    let current = true;
+    setPreparedPublicSnapshot(null);
+    setPublicPreparationFailed(false);
+
+    if (!publicTokenPath) {
+      void setPublicRouteActive(false);
+      return () => { current = false; };
+    }
+
+    // Do not mount a token-bearing page until the staff realm and every local
+    // tenant cache/window have finished closing. Exact URL changes while
+    // already public are then separated by PublicCapabilityBoundary below.
+    void Promise.resolve(setPublicRouteActive(true)).then(
+      (prepared) => {
+        if (!current) return;
+        if (prepared === true) {
+          setPreparedPublicSnapshot(publicCapabilitySnapshot);
+        } else {
+          setPublicPreparationFailed(true);
+        }
+      },
+      () => {
+        if (current) setPublicPreparationFailed(true);
+      },
+    );
+    return () => { current = false; };
+  }, [publicCapabilitySnapshot, publicTokenPath, setPublicRouteActive]);
+
+  // Capability-token public routes stay outside both authentication and tenant
+  // authority gates. No protected component or agreement query is created.
+  if (publicTokenPath) {
+    if (publicPreparationFailed) {
+      return (
+        <AppUnavailableScreen
+          type="public_capability_unavailable"
+          message="This secure link cannot open until local workspace data is safely cleared. Reload the page to try again."
+        />
+      );
+    }
+    const publicFallback = (
+      <div className="fixed inset-0 flex items-center justify-center">
+        <PageLoader />
+      </div>
+    );
+    if (!publicCapabilitySnapshot || preparedPublicSnapshot !== publicCapabilitySnapshot) {
+      return publicFallback;
+    }
+    return (
+      <PublicCapabilityBoundary
+        key={publicCapabilitySnapshot}
+        capabilitySnapshot={publicCapabilitySnapshot}
+        fallback={publicFallback}
+      >
+        <Suspense fallback={publicFallback}>
+          <Routes>
+            <Route path="/join/*" element={<JoinTelehealth />} />
+            <Route path="/signer/*" element={<SignerPortal />} />
+            <Route path="/followup/*" element={<ProviderFollowUpPortal />} />
+            <Route path="/consent/*" element={<OAuthConsent />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/privacypolicy" element={<PrivacyPolicy />} />
+            <Route path="/consent" element={<OAuthConsent />} />
+            <Route path="*" element={<PageNotFound />} />
+          </Routes>
+        </Suspense>
+      </PublicCapabilityBoundary>
+    );
+  }
+
+  if (isLoadingPublicSettings || isLoadingAuth) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center">
+        <PageLoader />
+      </div>
+    );
+  }
+
+  if (authError) {
+    if (authError.type === 'configuration_error') {
+      return <ConfigurationErrorScreen message={authError.message} />;
+    }
+    if (authError.type === 'user_not_registered') return <UserNotRegisteredError />;
+    if (authError.type === 'auth_required') return <SignInScreen />;
+    return <AppUnavailableScreen type={authError.type} message={authError.message} />;
+  }
+
+  if (!isAuthenticated) return <SignInScreen />;
+
+  const selectFromNeutralRoute = (agencyId) => {
+    navigate(`/${MAIN_PAGE}`, { replace: true });
+    void selectTenant(agencyId);
+  };
+
+  let authorityFallback = (
+    <div className="fixed inset-0 flex items-center justify-center">
+      <PageLoader />
+    </div>
+  );
+  if (tenantAuthorityState === TENANT_AUTHORITY_STATES.SELECTION_REQUIRED) {
+    authorityFallback = (
+      <TenantAuthorityScreen
+        memberships={tenantMemberships}
+        error={tenantContextError}
+        onSelect={selectFromNeutralRoute}
+        onRetry={() => { void retryTenantAuthority(); }}
+        onSignOut={() => { void logout(); }}
+      />
+    );
+  } else if (
+    tenantAuthorityState === TENANT_AUTHORITY_STATES.BLOCKED
+    || (tenantAuthorityState === TENANT_AUTHORITY_STATES.READY
+      && (!user || !tenantContext || !tenantAuthorityKey))
+  ) {
+    authorityFallback = (
+      <TenantAuthorityScreen
+        memberships={[]}
+        error={tenantContextError}
+        onSelect={selectFromNeutralRoute}
+        onRetry={() => { void retryTenantAuthority(); }}
+        onSignOut={() => { void logout(); }}
+      />
+    );
+  }
+
+  return (
+    <TenantAuthorityBoundary
+      authorityState={tenantAuthorityState}
+      authorityKey={tenantAuthorityKey}
+      fallback={authorityFallback}
+    >
+      <ConfirmDialogProvider>
+        {/* Both agents can observe protected navigation/DOM. Keep them in the
+            exact keyed realm so a tenant switch, logout, or public-route entry
+            unmounts their effects and releases every captured reference. */}
+        <NavigationTracker />
+        <VisualEditAgent />
+        <TenantReadyApp />
+        <Toaster />
+        <SonnerToaster
+          position="top-right"
+          richColors
+          closeButton
+          theme="light"
+          toastOptions={{
+            classNames: {
+              toast: "rounded-xl border shadow-lg",
+              title: "font-semibold",
+              description: "text-slate-600",
+            },
+          }}
+        />
+      </ConfirmDialogProvider>
+    </TenantAuthorityBoundary>
+  );
+};
+
 
 function App() {
   const routerBasename = getRouterBasename({ routerPaths: ROUTER_PATHS });
@@ -320,32 +586,9 @@ function App() {
     <ErrorBoundary>
       <AuthProvider>
         <QueryClientProvider client={queryClientInstance}>
-          <ConfirmDialogProvider>
-            <Router basename={routerBasename}>
-              <NavigationTracker />
-              <AuthenticatedApp />
-            </Router>
-            <Toaster />
-            {/* The whole app toasts through sonner (query-client,
-                useMutationWithToast, alert-shim). Mounted HERE —
-                not inside Layout — so toasts fired while Layout isn't rendered
-                (sign-in screen, AI-agreement gate, pending-approval screen)
-                still appear instead of being silently dropped. */}
-            <SonnerToaster
-              position="top-right"
-              richColors
-              closeButton
-              theme="light"
-              toastOptions={{
-                classNames: {
-                  toast: "rounded-xl border shadow-lg",
-                  title: "font-semibold",
-                  description: "text-slate-600",
-                },
-              }}
-            />
-            <VisualEditAgent />
-          </ConfirmDialogProvider>
+          <Router basename={routerBasename}>
+            <AuthenticatedApp />
+          </Router>
         </QueryClientProvider>
       </AuthProvider>
     </ErrorBoundary>

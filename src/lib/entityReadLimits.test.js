@@ -32,8 +32,6 @@ const ALLOWED_UNLIMITED_READS = new Map([
   ['src/components/admin/AIConfigurationManager.jsx', 'AIConfiguration is a singleton config row'],
   ['src/pages/UserSettings.jsx', 'AIConfiguration is a singleton config row'],
   ['src/components/notifications/NotificationPreferences.jsx', 'one NotificationPreference row per user'],
-  ['src/components/training/GamificationDashboard.jsx', 'one Leaderboard row per user'],
-  ['src/pages/LearningCenter.jsx', 'one Leaderboard row per user'],
   ['src/pages/Timesheets.jsx', 'one EmployeePayrollProfile row per user'],
   ['src/lib/retiredOfflineQueue.js', 'idempotency probes keyed on a unique request id / visit id'],
 ]);

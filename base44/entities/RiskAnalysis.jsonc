@@ -113,5 +113,11 @@
     "patient_id",
     "analysis_date",
     "overall_risk_score"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

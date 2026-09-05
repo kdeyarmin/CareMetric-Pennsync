@@ -2,6 +2,10 @@ import base44 from "@base44/vite-plugin"
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { existsSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+const tenantSonnerModule = fileURLToPath(new URL('./src/lib/tenantSonner.js', import.meta.url))
+const rawSonnerModule = fileURLToPath(new URL('./node_modules/sonner/dist/index.mjs', import.meta.url))
 
 // The Base44 runtime delivers app secrets (VITE_BASE44_APP_ID,
 // VITE_BASE44_BACKEND_URL, ...) to /run/base44/app.env — an out-of-repo file the
@@ -29,6 +33,12 @@ export default defineConfig(({ command }) => ({
   // URLs need to be relative instead of rooted at `/`. Dev stays root-based so
   // Vite's local server and HMR keep their normal behavior.
   base: command === 'build' ? './' : '/',
+  resolve: {
+    alias: [
+      { find: 'tenant-sonner-raw', replacement: rawSonnerModule },
+      { find: /^sonner$/, replacement: tenantSonnerModule },
+    ],
+  },
   // HIPAA: strip all console.* and debugger statements from PRODUCTION builds.
   // The app logs entities/responses/transcripts in many places, and anything left
   // in the shipped bundle executes in the clinician/patient browser (devtools,

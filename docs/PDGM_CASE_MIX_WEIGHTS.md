@@ -1,98 +1,53 @@
-# PDGM case-mix weights — loading the official CMS table
+# CY 2026 PDGM case-mix table: reference-only status
 
-The deterministic PDGM grouper (`src/components/pdgm/pdgmGrouper.js`) needs the
-official CMS **case-mix weight table** to turn a 30-day period's variables into a
-HIPPS code + case-mix weight. That table is **official CMS data that changes every
-year**, so this repo deliberately ships **no weights**. Instead,
-`src/components/pdgm/caseMixWeightsLoader.js` loads the agency's official file.
+PennSync includes the official CMS CY 2026 432-row case-mix-weight, HIPPS, and
+LUPA-threshold table in `src/components/pdgm/hhCaseMixWeightsCy2026.js`. It is
+strict-parsed and useful for provenance and reconciliation tests.
 
-## What this is for (and isn't)
+It is **not a payment engine**. A row can be selected safely only after the full,
+date-effective CMS HHGS applies diagnosis validity and grouping, code-first and
+manifestation rules, secondary-diagnosis handling, comorbidity exclusions,
+functional scoring, timing, and admission-source rules. PennSync does not yet
+implement or host that complete behavior.
 
-This is **not a billing engine**. Its purpose is an **admin-only
-documentation-impact / value comparison**: showing how documentation changes move
-the case-mix weight — e.g. *"the reimbursement implied by the original
-documentation was X; after the app's documentation enhancements it's now Y."* It
-lets administrators see the app's value.
+Consequently:
 
-Two hard requirements follow from that:
+- no case-mix table, admin upload, stored `is_official` value, or rate override
+  can enable payment output;
+- the legacy factorized reimbursement approximation is retired and returns no
+  money;
+- PDGM rate editing, reporting, documentation-impact dollars, and backend
+  calculation remain default-off; and
+- users must use the official EMR/CMS-approved grouper for billing.
 
-- **Financials are admin-only — never shown to nurses.** Any view built on this
-  must gate the dollar/weight figures to financial/admin roles, the same way OASIS
-  uploads already route through `listOASISUploads` (which strips financial fields
-  for non-financial users) and the Revenue/Analytics tabs are admin-gated. Nurses
-  see the *documentation* guidance; they never see the reimbursement numbers.
-- **Accuracy still matters** — a wrong or stale weight makes the comparison
-  misleading, so the loader only ingests an authoritative file you supply and
-  **never guesses**: unmappable rows and an incomplete table are reported, not
-  filled in.
+## Source and parsing contract
 
-## 1. Get the official file
+The bundled table was extracted from the primary CMS distribution:
 
-Download the case-mix weights for the payment year you're billing from CMS:
+- [CY 2026 HH PDGM case-mix weights and LUPA thresholds ZIP](https://www.cms.gov/files/zip/cy2026-hh-pdgm-case-mix-weights-lupa-thresholds.zip)
+- [CMS case-mix weights page](https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health-pps/home-health-pps-case-mix-weights)
 
-- **CMS → Home Health PPS Case-Mix Weights**
-  <https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health-pps/home-health-pps-case-mix-weights>
-- Each year (2014–present) is a ZIP containing the final case-mix weight data.
-  For **CY2026** the weights were recalibrated using CY2024 data, with updated
-  functional levels, comorbidity subgroups, and LUPA thresholds. There are exactly
-  **432 payment groups** (2 timing × 2 admission source × 12 clinical groups ×
-  3 functional levels × 3 comorbidity adjustments).
+`parseCaseMixWeightsCsv` requires explicit clinical group, admission source,
+timing, functional level, comorbidity adjustment, and case-mix weight columns.
+It rejects unknown values, duplicate groups, partial strict-mode files, invalid
+weights, and fabricated mappings. HIPPS codes are carried through verbatim; the
+loader never decodes a missing combination from memory.
 
-The weights are U.S. Government work (public domain); the constraint here is
-**accuracy and year-correctness**, not licensing.
+The expected structure is exactly 432 rows:
 
-## 2. Export it to CSV with these columns
+`12 clinical groups × 2 admission sources × 2 timing values × 3 functional levels × 3 comorbidity levels`.
 
-Open the CMS workbook and export (or save-as) a CSV. The loader matches column
-headers case- and punctuation-insensitively, and accepts common synonyms.
-**Required** columns (explicit variable columns — HIPPS codes are NOT decoded
-automatically, to avoid a from-memory mapping):
+## HHGS release selection and golden evidence
 
-| Logical field | Accepted headers | Accepted values |
-| --- | --- | --- |
-| Clinical Group | `Clinical Group`, `Group` | the 12 official names (e.g. `MMTA - Cardiac and Circulatory`) or common abbreviations |
-| Admission Source | `Admission Source`, `Source` | `Community` / `Institutional` |
-| Timing | `Timing` | `Early` / `Late` |
-| Functional Level | `Functional Level`, `Functional Impairment Level` | `Low` / `Medium` / `High` |
-| Comorbidity Adjustment | `Comorbidity Adjustment`, `Comorbidity` | `None` / `Low` / `High` (also accepts `No/Low/High Comorbidity Adjustment`) |
-| Case-Mix Weight | `Case-Mix Weight`, `Weight` | a decimal in `[0.2, 5.0]` |
+The case-mix table is only one input. CY 2026 claims must also use the official
+date-effective HHGS release:
 
-**Optional** columns: `HIPPS` (carried through verbatim), `LUPA Threshold`.
+- v07.0.26: 2026-01-01 through 2026-03-31;
+- v07.1.26: 2026-04-01 through 2026-09-30; and
+- v07.2.26: 2026-10-01 through 2026-12-31.
 
-Quote any field containing a comma (two clinical-group names do). A normal CSV
-export already does this.
-
-## 3. Load it
-
-```js
-import { parseCaseMixWeightsCsv } from "@/components/pdgm/caseMixWeightsLoader";
-import { groupPeriod } from "@/components/pdgm/pdgmGrouper";
-
-const result = parseCaseMixWeightsCsv(csvText, { year: 2026, source: "CMS CY2026 Final Rule" });
-if (!result.ok) {
-  // result.errors lists every unmappable row / missing-column / incompleteness.
-  // Do NOT proceed with a partial table.
-  console.error(result.errors);
-} else {
-  // result.caseMixTable is the { [caseMixKey]: { hipps?, weight, lupaThreshold? } }
-  // map pdgmGrouper.groupPeriod() consumes (with itemPoints, functionalThresholds,
-  // dxToGroup, comorbidity — also supplied from the corresponding CMS tables).
-  const period = groupPeriod(input, { ...otherCmsTables, caseMixTable: result.caseMixTable });
-}
-```
-
-Validation performed (in `strict` mode, the default): all six required columns
-present; every value maps to the engine's vocabulary or the row is rejected;
-weights numeric and in range; no duplicate payment groups; exactly 432 groups and
-all 12 clinical groups present. Anything off → `ok: false` with specific
-`errors`/`warnings`.
-
-## Keep it consistent with the canonical calculation
-
-The app's canonical PDGM dollar calculation is the backend `calculatePDGM`
-function (`base44/functions/calculatePDGM`). For the before/after comparison to be
-credible, the *weight → dollars* step should use the **same** rates/method as
-`calculatePDGM` (this loader supplies the case-mix weight; `calculatePDGM` /
-`pdgmRates` supply the base rate and multipliers). Don't show two different dollar
-figures for the same period — drive the comparison from one calculation so the
-"before vs after" delta is the only thing that moves.
+See `docs/pdgm-cy2026.md` for authoritative CMS URLs and the offline 310-case
+verification procedure. Passing the official JAR's own fixtures validates the
+download and runner; the production gate remains closed until a PennSync
+implementation independently matches those fixtures and receives required
+operational sign-off.

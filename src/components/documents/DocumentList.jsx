@@ -1,49 +1,33 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { getAuthorizedDocument } from '@/functions/getAuthorizedDocument';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Search, FileText, Download, Trash2, Eye, Calendar, User, Tag, Filter, Grid, List, Brain, AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
+import { Search, FileText, Download, Eye, Calendar, User, Filter, Grid, List } from "lucide-react";
 import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateLocal";
 import { openExternalUrl } from "@/components/utils/security";
-import DocumentAIAnalysis from "./DocumentAIAnalysis";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { toast } from 'sonner';
 
 const CATEGORIES = [
   { value: "all", label: "All Categories" },
-  { value: "lab_results", label: "Lab Results" },
-  { value: "imaging", label: "Imaging/X-Ray" },
-  { value: "consent_forms", label: "Consent Forms" },
-  { value: "insurance", label: "Insurance Documents" },
   { value: "referral", label: "Referral" },
-  { value: "progress_notes", label: "Progress Notes" },
-  { value: "discharge_summary", label: "Discharge Summary" },
-  { value: "medication_list", label: "Medication List" },
-  { value: "orders", label: "Orders" },
   { value: "other", label: "Other" }
 ];
 
-const DocumentCard = ({ doc, onDocumentClick, getPatientName, getCategoryLabel, getCategoryColor, deleteMutation, showPatientInfo }) => {
-  const [showAnalysis, setShowAnalysis] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const hasCriticalFlags = doc.ai_analysis?.critical_flags?.some(f => f.severity === 'critical' || f.severity === 'high');
-
+const DocumentCard = ({
+  doc,
+  onView,
+  onDownload,
+  isOpening,
+  getPatientName,
+  getCategoryLabel,
+  getCategoryColor,
+  showPatientInfo,
+}) => {
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="p-4">
@@ -51,16 +35,8 @@ const DocumentCard = ({ doc, onDocumentClick, getPatientName, getCategoryLabel, 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="font-semibold text-slate-900 truncate">{doc.title}</h3>
-              {doc.ai_analysis?.analyzed && (
-                <Brain className="w-4 h-4 text-navy-600 flex-shrink-0" />
-              )}
-              {hasCriticalFlags && (
-                <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 animate-pulse" />
-              )}
             </div>
-            {doc.description && (
-              <p className="text-sm text-slate-600 line-clamp-2 mt-1">{doc.description}</p>
-            )}
+            <p className="text-sm text-slate-600 truncate">{doc.file_name}</p>
           </div>
           {doc.is_sensitive && (
             <Badge variant="destructive" className="ml-2 flex-shrink-0">Sensitive</Badge>
@@ -83,37 +59,15 @@ const DocumentCard = ({ doc, onDocumentClick, getPatientName, getCategoryLabel, 
               {format(parseLocalDate(doc.document_date), 'MMM d, yyyy')}
             </div>
           )}
-          {doc.tags?.length > 0 && (
-            <div className="flex items-center gap-1 flex-wrap">
-              <Tag className="w-3 h-3 text-slate-400" />
-              {doc.tags.map((tag, i) => (
-                <Badge key={i} variant="outline" className="text-xs">{tag}</Badge>
-              ))}
-            </div>
-          )}
         </div>
 
-        {doc.ai_analysis?.analyzed && showAnalysis && (
-          <div className="mb-3">
-            <DocumentAIAnalysis document={doc} compact={true} />
-          </div>
-        )}
-
         <div className="flex gap-2">
-          {doc.ai_analysis?.analyzed && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAnalysis(!showAnalysis)}
-            >
-              <Brain className="w-4 h-4" />
-            </Button>
-          )}
           <Button
             variant="outline"
             size="sm"
             className="flex-1"
-            onClick={() => onDocumentClick ? onDocumentClick(doc) : openExternalUrl(doc.file_url)}
+            disabled={isOpening}
+            onClick={() => onView(doc)}
           >
             <Eye className="w-4 h-4 mr-1" />
             View
@@ -121,99 +75,52 @@ const DocumentCard = ({ doc, onDocumentClick, getPatientName, getCategoryLabel, 
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              const link = document.createElement('a');
-              link.href = doc.file_url;
-              link.download = doc.file_name;
-              link.click();
-            }}
+            aria-label={`Download ${doc.title}`}
+            disabled={isOpening}
+            onClick={() => onDownload(doc)}
           >
             <Download className="w-4 h-4" />
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label="Delete document"
-            onClick={() => setShowDeleteConfirm(true)}
-          >
-            <Trash2 className="w-4 h-4 text-red-600" />
-          </Button>
-          <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Document</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete "{doc.title}"? This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-red-600 hover:bg-red-700"
-                  onClick={() => deleteMutation.mutate(doc.id)}
-                >
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </div>
 
         <div className="mt-3 pt-3 border-t text-xs text-slate-500">
-          Uploaded {format(new Date(doc.created_date), 'MMM d, yyyy')} by {doc.uploaded_by || doc.created_by}
+          Updated {format(new Date(doc.updated_date), 'MMM d, yyyy')}
         </div>
       </CardContent>
     </Card>
   );
 };
 
-export default function DocumentList({ patientId, showPatientInfo = true, onDocumentClick, assignment }) {
+export default function DocumentList({
+  documents = [],
+  agencyId,
+  isLoading = false,
+  showPatientInfo = true,
+  onDocumentClick,
+  assignment,
+}) {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [viewMode, setViewMode] = useState("grid");
-
-  const queryClient = useQueryClient();
-
-  const { data: documents = [], isLoading } = useAgencyScopedQuery({
-    // Row limit is part of the identity — DocumentFaxSender reads 100 rows
-    // under the same roots (see its comment).
-    queryKey: patientId ? ['patient-documents', patientId, 500] : ['documents', 500],
-    fetch: () => patientId
-      ? base44.entities.Document.filter({ patient_id: patientId }, '-created_date', 500)
-      : base44.entities.Document.list('-created_date', 500),
-    // Only the unpinned branch reads across charts. The patient_id branch is
-    // already narrower than agency, and scoping it would hide a document on
-    // THIS chart uploaded by a co-treating clinician from another agency.
-    scoped: !patientId,
-    authorOf: (d) => d.uploaded_by || d.created_by,
-    initialData: []
-  });
+  const [openingDocumentId, setOpeningDocumentId] = useState(null);
 
   const { data: allPatients = [] } = useScopedPatients({
     sort: '-updated_date',
     limit: 2000,
-    enabled: showPatientInfo && !patientId,
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Document.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
-      queryClient.invalidateQueries({ queryKey: ['patient-documents'] });
-      toast.success("Document deleted");
-    }
+    enabled: showPatientInfo && !!agencyId,
+    readMode: 'authorized-roster',
+    agencyId: agencyId || undefined,
   });
 
   const getPatientName = (patientId) => {
     if (!patientId) return null;
     const patient = allPatients.find(p => p.id === patientId);
-    return patient ? `${patient.first_name} ${patient.last_name}` : "Unknown Patient";
+    return patient ? `${patient.first_name} ${patient.last_name}` : "Patient record";
   };
 
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+      doc.file_name?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesCategory = categoryFilter === "all" || doc.category === categoryFilter;
 
@@ -231,18 +138,39 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
 
   const getCategoryColor = (category) => {
     const colors = {
-      lab_results: "bg-blue-100 text-blue-800",
-      imaging: "bg-navy-100 text-navy-800",
-      consent_forms: "bg-green-100 text-green-800",
-      insurance: "bg-yellow-100 text-yellow-800",
       referral: "bg-gold-100 text-gold-800",
-      progress_notes: "bg-indigo-100 text-indigo-800",
-      discharge_summary: "bg-orange-100 text-orange-800",
-      medication_list: "bg-navy-100 text-navy-800",
-      orders: "bg-red-100 text-red-800",
       other: "bg-slate-100 text-slate-800"
     };
     return colors[category] || colors.other;
+  };
+
+  const authorizeDownload = async (doc, action) => {
+    if (!agencyId) {
+      toast.error('Document tenant authorization is unavailable');
+      return;
+    }
+    setOpeningDocumentId(doc.id);
+    try {
+      const result = await getAuthorizedDocument({
+        agencyId,
+        documentId: doc.id,
+        purpose: 'download',
+      });
+      const downloadUrl = result.delivery.download_url;
+      if (action === 'view') {
+        if (onDocumentClick) onDocumentClick({ ...doc, file_url: downloadUrl });
+        else openExternalUrl(downloadUrl);
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = doc.file_name;
+      link.click();
+    } catch {
+      toast.error('Document access could not be authorized');
+    } finally {
+      setOpeningDocumentId(null);
+    }
   };
 
   if (isLoading) {
@@ -301,11 +229,12 @@ export default function DocumentList({ patientId, showPatientInfo = true, onDocu
             <DocumentCard
               key={doc.id}
               doc={doc}
-              onDocumentClick={onDocumentClick}
+              onView={(selected) => authorizeDownload(selected, 'view')}
+              onDownload={(selected) => authorizeDownload(selected, 'download')}
+              isOpening={openingDocumentId === doc.id}
               getPatientName={getPatientName}
               getCategoryLabel={getCategoryLabel}
               getCategoryColor={getCategoryColor}
-              deleteMutation={deleteMutation}
               showPatientInfo={showPatientInfo}
             />
           ))}

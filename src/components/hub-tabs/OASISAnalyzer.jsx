@@ -98,7 +98,7 @@ import { toast } from 'sonner';
 import {
   PDGM_REIMBURSEMENT_ACTION,
   PDGM_REIMBURSEMENT_BLOCKER,
-  PDGM_REIMBURSEMENT_ENABLED,
+  PDGM_LEGACY_SURFACES_ENABLED,
 } from "@/components/pdgm/pdgmAvailability";
 
 // Whole-surface containment gate. This is intentionally separate from role
@@ -125,7 +125,7 @@ function PdgmUnavailableNotice() {
   );
 }
 
-function EnabledOASISAnalyzer() {
+function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
   const [activeTab, setActiveTab] = useState("single");
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -1469,7 +1469,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             or queries can run. */}
         <TabsContent value="analytics" className="mt-4">
           <div className="space-y-6">
-            {PDGM_REIMBURSEMENT_ENABLED ? (
+            {PDGM_LEGACY_SURFACES_ENABLED ? (
               <FinancialGate fallback={<p className="text-sm text-slate-500">PDGM analytics are available to administrators.</p>}>
                 <PDGMTrendDashboard />
               </FinancialGate>
@@ -1635,7 +1635,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
           </Card>
 
       {/* Clinical Note to OASIS Mapper */}
-      {PDGM_REIMBURSEMENT_ENABLED && pdgmData && (
+      {PDGM_LEGACY_SURFACES_ENABLED && pdgmData && (
         <ClinicalNoteToOASISMapper
           onMappingComplete={() => {
           }}
@@ -1645,7 +1645,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
       )}
 
       {/* OASIS Draft Generator */}
-      {PDGM_REIMBURSEMENT_ENABLED && selectedPatient && (
+      {PDGM_LEGACY_SURFACES_ENABLED && selectedPatient && (
         <OASISDraftGenerator
           patientData={selectedPatient}
           clinicalContext={analysisResults?.summary}
@@ -1658,7 +1658,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
       {/* Never mount the AI rescoring engine while the canonical PDGM/OASIS
           scoring path is disabled. This prevents its autoAnalyze request from
           sending clinical data or suggesting higher response codes. */}
-      {PDGM_REIMBURSEMENT_ENABLED && analysisResults && pdgmData && (
+      {PDGM_LEGACY_SURFACES_ENABLED && analysisResults && pdgmData && (
         <ProactiveRescoringEngine
           oasisData={pdgmData}
           patientData={selectedPatient}
@@ -1670,7 +1670,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
       )}
 
       {/* Comprehensive OASIS Review - Full Document Analysis */}
-      {PDGM_REIMBURSEMENT_ENABLED && analysisResults && pdgmData && (
+      {PDGM_LEGACY_SURFACES_ENABLED && analysisResults && pdgmData && (
         <ComprehensiveOASISReviewer
           oasisData={pdgmData}
           analysisResults={analysisResults}
@@ -1699,7 +1699,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
       )}
 
       {/* Proactive Documentation Assistant - AI Gap Detection */}
-      {PDGM_REIMBURSEMENT_ENABLED && analysisResults && pdgmData && (
+      {PDGM_LEGACY_SURFACES_ENABLED && analysisResults && pdgmData && (
         <ProactiveDocumentationAssistant
           oasisData={pdgmData}
           clinicalNotes={analysisResults?.summary}
@@ -1712,7 +1712,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
       )}
 
       {/* Automated Quality Assurance */}
-      {PDGM_REIMBURSEMENT_ENABLED && analysisResults && pdgmData && (
+      {PDGM_LEGACY_SURFACES_ENABLED && analysisResults && pdgmData && (
         <AutomatedQualityAssurance
           oasisData={pdgmData}
           patientData={selectedPatient}
@@ -1729,7 +1729,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
           `pdgmData.functional_scores`, so a model-chosen OASIS code fed the
           payment calculation. The callback is gone, and the panel no longer
           produces a value to write. */}
-      {PDGM_REIMBURSEMENT_ENABLED && analysisResults && pdgmData && (
+      {PDGM_LEGACY_SURFACES_ENABLED && analysisResults && pdgmData && (
         <AIDataValidationEngine
           oasisData={{ extracted_data: pdgmData, pdgm_data: pdgmData }}
           patientData={selectedPatient}
@@ -1751,7 +1751,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
         />
       )}
 
-      {PDGM_REIMBURSEMENT_ENABLED && (
+      {PDGM_LEGACY_SURFACES_ENABLED && (
         <PredictiveOutcomesAnalyzer
           analysisResults={analysisResults}
           pdgmData={pdgmData}
@@ -1772,7 +1772,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
       )}
 
       {/* Workflow Execution Engine */}
-      {PDGM_REIMBURSEMENT_ENABLED && (
+      {PDGM_LEGACY_SURFACES_ENABLED && (
         <WorkflowExecutionEngine
           analysisResults={analysisResults}
           pdgmData={pdgmData}
@@ -1885,9 +1885,19 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {PDGM_REIMBURSEMENT_ENABLED ? (
+                {PDGM_LEGACY_SURFACES_ENABLED ? (
                   <FinancialGate>
-                    <Link to="/OASISCenter?tab=revenue" state={{ analysisResults, pdgmData, patientName, uploadId: analysisId }}>
+                    <Link
+                      to="/OASISCenter?tab=revenue"
+                      onClick={() => onAnalysisHandoff?.({
+                        analysisResults,
+                        pdgmData,
+                        patientName,
+                        uploadId: analysisId,
+                        patientId: selectedPatientId,
+                        navigationData,
+                      })}
+                    >
                       <Button className="w-full h-auto py-4 flex flex-col items-center gap-2">
                         <DollarSign className="w-8 h-8" />
                         <div className="text-center">
@@ -1904,7 +1914,15 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                     <p className="text-xs">Use the official EMR/CMS-approved grouper.</p>
                   </div>
                 )}
-                <Link to="/OASISCenter?tab=quality" state={{ analysisResults, pdgmData, patientName, patientId: selectedPatientId }}>
+                <Link
+                  to="/OASISCenter?tab=quality"
+                  onClick={() => onAnalysisHandoff?.({
+                    analysisResults,
+                    pdgmData,
+                    patientName,
+                    patientId: selectedPatientId,
+                  })}
+                >
                   <Button className="w-full h-auto py-4 flex flex-col items-center gap-2">
                     <Shield className="w-8 h-8" />
                     <div className="text-center">
@@ -1913,7 +1931,16 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                     </div>
                   </Button>
                 </Link>
-                <Link to="/OASISCenter?tab=quality" state={{ analysisResults, pdgmData, patientName, navigationData, patientId: selectedPatientId }}>
+                <Link
+                  to="/OASISCenter?tab=quality"
+                  onClick={() => onAnalysisHandoff?.({
+                    analysisResults,
+                    pdgmData,
+                    patientName,
+                    navigationData,
+                    patientId: selectedPatientId,
+                  })}
+                >
                   <Button className="w-full bg-navy-600 hover:bg-navy-700 h-auto py-4 flex flex-col items-center gap-2">
                     <FileText className="w-8 h-8" />
                     <div className="text-center">
@@ -1947,8 +1974,8 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
           <OASISExportManager
             analysisResults={analysisResults}
             pdgmData={pdgmData}
-            revenueData={PDGM_REIMBURSEMENT_ENABLED ? revenueData : null}
-            navigationData={PDGM_REIMBURSEMENT_ENABLED ? navigationData : null}
+            revenueData={PDGM_LEGACY_SURFACES_ENABLED ? revenueData : null}
+            navigationData={PDGM_LEGACY_SURFACES_ENABLED ? navigationData : null}
             qualityScore={qualityScore}
             patientName={patientName}
           />
@@ -2176,7 +2203,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                     <p className="text-sm text-slate-700 mb-2">{analysisResults.validation_summary.recommendation}</p>
                   )}
                   {/* PDGM Readiness Summary */}
-                  {PDGM_REIMBURSEMENT_ENABLED && analysisResults.validation_summary.pdgm_readiness && (
+                  {PDGM_LEGACY_SURFACES_ENABLED && analysisResults.validation_summary.pdgm_readiness && (
                     <div className={`mt-3 p-2 rounded border ${
                       analysisResults.validation_summary.pdgm_readiness.ready_for_grouping 
                         ? 'bg-green-50 border-green-200' 
@@ -2216,7 +2243,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                             {issue.item && <span className="font-mono text-xs bg-slate-100 px-1 rounded">{issue.item}</span>}
                           </div>
                           <p className="text-slate-700">{issue.description}</p>
-                          {PDGM_REIMBURSEMENT_ENABLED && issue.pdgm_impact && (
+                          {PDGM_LEGACY_SURFACES_ENABLED && issue.pdgm_impact && (
                             <p className="text-navy-700 text-xs mt-1">
                               <span className="font-medium">PDGM Impact:</span> {issue.pdgm_impact}
                             </p>
@@ -2275,7 +2302,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
 
           {/* The global gate is checked before any navigator, calculator,
               scenario, or payment-action component can mount or invoke an API. */}
-          {PDGM_REIMBURSEMENT_ENABLED ? (
+          {PDGM_LEGACY_SURFACES_ENABLED ? (
             <FinancialGate>
               <div className="space-y-6">
                 <AutomatedPDGMNavigator
@@ -2345,7 +2372,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             }}
           />
 
-          {PDGM_REIMBURSEMENT_ENABLED && (
+          {PDGM_LEGACY_SURFACES_ENABLED && (
             <FinancialGate>
               <EnhancedMultiReportComparison
                 savedReports={savedBatchResults}
@@ -2355,7 +2382,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             </FinancialGate>
           )}
 
-          {PDGM_REIMBURSEMENT_ENABLED && (
+          {PDGM_LEGACY_SURFACES_ENABLED && (
             <>
               <AIDocumentationGenerator
                 analysisResults={analysisResults}
@@ -2371,7 +2398,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             </>
           )}
 
-          {PDGM_REIMBURSEMENT_ENABLED && (
+          {PDGM_LEGACY_SURFACES_ENABLED && (
             <OASISDocumentationQualityScorer
               analysisResults={analysisResults}
               pdgmData={pdgmData}
@@ -2379,13 +2406,13 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             />
           )}
 
-          {PDGM_REIMBURSEMENT_ENABLED && (
+          {PDGM_LEGACY_SURFACES_ENABLED && (
             <AIDocumentationQualityAnalyzer analysisResults={analysisResults} pdgmData={pdgmData} />
           )}
 
           {/* AI Documentation Assistant & Audit Risk Predictor */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {PDGM_REIMBURSEMENT_ENABLED && (
+            {PDGM_LEGACY_SURFACES_ENABLED && (
               <AIDocumentationAssistant
                 analysisResults={analysisResults}
                 pdgmData={pdgmData}
@@ -2399,7 +2426,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                 }}
               />
             )}
-            {PDGM_REIMBURSEMENT_ENABLED && (
+            {PDGM_LEGACY_SURFACES_ENABLED && (
               <AIAuditRiskPredictor
                 analysisResults={analysisResults}
                 patientId={selectedPatientId}
@@ -2418,7 +2445,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             }}
           />
 
-          {PDGM_REIMBURSEMENT_ENABLED && (
+          {PDGM_LEGACY_SURFACES_ENABLED && (
             <ClinicalPathwayTrigger
               pdgmData={pdgmData}
               analysisResults={analysisResults}
@@ -2428,7 +2455,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             />
           )}
 
-          {PDGM_REIMBURSEMENT_ENABLED && (
+          {PDGM_LEGACY_SURFACES_ENABLED && (
             <FinancialGate>
               <PDGMPredictiveForecaster
                 pdgmData={pdgmData}
@@ -2439,7 +2466,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
             </FinancialGate>
           )}
 
-          {PDGM_REIMBURSEMENT_ENABLED && (
+          {PDGM_LEGACY_SURFACES_ENABLED && (
             <OASISValidationPanel
               pdgmData={pdgmData}
               analysisResults={analysisResults}
@@ -2612,7 +2639,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                 OASIS scores with a revenue badge. */}
 
             {/* Missing High-Value Documentation */}
-            {PDGM_REIMBURSEMENT_ENABLED && analysisResults.missing_high_value_documentation?.length > 0 && (
+            {PDGM_LEGACY_SURFACES_ENABLED && analysisResults.missing_high_value_documentation?.length > 0 && (
               <AccordionItem value="missing-docs" className="border rounded-lg border-amber-300">
                 <AccordionTrigger className="px-4 hover:no-underline bg-amber-50 rounded-t-lg">
                   <div className="flex items-center gap-2">
@@ -2720,7 +2747,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
   );
 }
 
-export default function OASISAnalyzer() {
+export default function OASISAnalyzer({ onAnalysisHandoff }) {
   if (!OASIS_ANALYZER_ENABLED) {
     return (
       <Card className="border-2 border-amber-300">
@@ -2748,5 +2775,5 @@ export default function OASISAnalyzer() {
     );
   }
 
-  return <EnabledOASISAnalyzer />;
+  return <EnabledOASISAnalyzer onAnalysisHandoff={onAnalysisHandoff} />;
 }

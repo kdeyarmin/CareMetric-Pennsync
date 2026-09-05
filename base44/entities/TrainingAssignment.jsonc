@@ -246,7 +246,7 @@
     "read": {
       "$or": [
         {
-          "assigned_to_user_id": "{{user.email}}"
+          "data.assigned_to_user_id": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -255,10 +255,34 @@
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
-          "assigned_to_user_id": "{{user.email}}"
+          "data.assigned_to_user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.assigned_to_user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.assigned_to_user_id": "{{user.email}}"
         },
         {
           "user_condition": {

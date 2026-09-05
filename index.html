@@ -2,6 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Browser-enforced backstop for retired embedded/auxiliary surfaces. The
+         application does not render descendant frames or plugin content, does
+         not use <base>, and submits forms only to this origin. -->
+    <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'self'" />
+    <meta name="referrer" content="no-referrer" />
     <link rel="icon" type="image/png" href="%BASE_URL%icons/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="manifest" href="%BASE_URL%manifest.json" />

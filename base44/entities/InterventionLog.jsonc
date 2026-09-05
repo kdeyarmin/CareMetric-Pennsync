@@ -157,7 +157,7 @@
     "read": {
       "$or": [
         {
-          "performed_by": "{{user.email}}"
+          "data.performed_by": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -166,10 +166,34 @@
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
-          "performed_by": "{{user.email}}"
+          "data.performed_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.performed_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.performed_by": "{{user.email}}"
         },
         {
           "user_condition": {

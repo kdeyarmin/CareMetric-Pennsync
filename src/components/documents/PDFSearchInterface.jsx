@@ -33,13 +33,19 @@ export default function PDFSearchInterface() {
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const { data: indexedCount = 0 } = useQuery({
+  const { data: indexSummary = { count: 0, capped: false } } = useQuery({
     queryKey: ['pdf-index-count'],
     queryFn: async () => {
-      // Second arg is the SDK `limit`; use a realistic cap so the badge reflects
-      // the true indexed count instead of being capped at 1.
-      const docs = await base44.entities.PDFIndex.list('-created_date', 1000);
-      return docs.length;
+      // Count through the same authorization broker used for search. The backend
+      // projects only IDs/scope fields and never sends PDFIndex rows or extracted
+      // text to the browser for this badge.
+      const response = await base44.functions.invoke('searchPDFs', {
+        count_only: true,
+      });
+      return {
+        count: Number(response.data?.accessible_index_count) || 0,
+        capped: response.data?.count_is_capped === true,
+      };
     }
   });
 
@@ -112,7 +118,7 @@ export default function PDFSearchInterface() {
             </div>
             <Badge variant="outline" className="flex items-center gap-1">
               <Database className="w-3 h-3" />
-              {indexedCount} Documents Indexed
+              {indexSummary.count}{indexSummary.capped ? '+' : ''} Accessible Documents Indexed
             </Badge>
           </CardTitle>
         </CardHeader>

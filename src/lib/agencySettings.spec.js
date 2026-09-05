@@ -80,13 +80,18 @@ describe('fetchCallerPdgmRateConfig / FollowUpRuleConfig', () => {
     expect(base44.entities.PDGMRateConfig.list).not.toHaveBeenCalled();
   });
 
-  it('fails closed on multi-tenant newest-row for follow-up rules', async () => {
-    base44.entities.FollowUpRuleConfig.list.mockResolvedValueOnce([
-      { id: '1' },
-      { id: '2' },
-    ]);
-    const row = await fetchCallerFollowUpRuleConfig(null);
+  it('keeps browser follow-up-rule reads paused without invoking any entity path', async () => {
+    const row = await fetchCallerFollowUpRuleConfig('Acme');
     expect(row).toBeNull();
+    expect(base44.entities.FollowUpRuleConfig.filter).not.toHaveBeenCalled();
+    expect(base44.entities.FollowUpRuleConfig.list).not.toHaveBeenCalled();
+  });
+
+  it('ignores caller-controlled agency hints for follow-up rules while the broker is unavailable', async () => {
+    const row = await fetchCallerFollowUpRuleConfig('other-tenant');
+    expect(row).toBeNull();
+    expect(base44.entities.FollowUpRuleConfig.filter).not.toHaveBeenCalled();
+    expect(base44.entities.FollowUpRuleConfig.list).not.toHaveBeenCalled();
   });
 
   it('ignores caller-controlled agency hints while the broker is unavailable', async () => {

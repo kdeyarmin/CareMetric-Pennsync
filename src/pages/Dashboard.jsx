@@ -23,7 +23,6 @@ import TodayPriorities from "@/components/dashboard/TodayPriorities";
 import CoreWorkQueuesStrip from "@/components/dashboard/CoreWorkQueuesStrip";
 import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
-import { calculateNurseStats } from "@/components/utils/statsCalculator";
 import ProfileCompletenessAlert from "@/components/profile/ProfileCompletenessAlert";
 import { isClinicalUser, canViewPatients, getStaffRole, staffRoleLabel } from "@/lib/roles";
 
@@ -61,7 +60,6 @@ export default function Dashboard() {
     try {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['dashboardData'] }),
-        queryClient.refetchQueries({ queryKey: ['myNoteConversions'] }),
       ]);
       toast.success('Dashboard refreshed');
     } catch {
@@ -118,47 +116,12 @@ export default function Dashboard() {
   const visitsError = dashboardError;
   const patientsError = dashboardError;
 
-  const { data: noteConversions = [] } = useQuery({
-    queryKey: ['myNoteConversions', currentUser?.email],
-    queryFn: () => base44.entities.NoteConversion.filter({ nurse_email: currentUser.email }, '-created_date', 5000),
-    initialData: [],
-    staleTime: 600000,
-    gcTime: 900000,
-    enabled: !!currentUser?.email,
-  });
-
-  // NOT agency-scoped: messages addressed TO this user. Filtering by the
-  // SENDER's agency would hide a message someone outside it sent them.
-  const { data: messages = [] } = useQuery({
-    queryKey: ['unreadMessages', currentUser?.email],
-    queryFn: () => base44.entities.Message.filter({ recipients: currentUser.email }, '-created_date', 50),
-    initialData: [],
-    staleTime: 60000,
-    gcTime: 300000,
-    enabled: !!currentUser?.email,
-  });
-
-
-
   // Handle errors gracefully with user feedback
   if (visitsError || patientsError) {
     console.error('Dashboard data loading error:', visitsError || patientsError);
   }
 
   const hasDataError = visitsError || patientsError;
-
-  const stats = useMemo(() => {
-    if (!currentUser?.email) {
-      return { noteConversions: 0, timeSavedDisplay: '0 hrs', timeSavedDisplayInRange: '0 hrs', noteEnhancements: { total: 0 } };
-    }
-
-    // Filter for current user's enhancements
-    return calculateNurseStats(currentUser.email, {
-      visits,
-      noteConversions,
-      dateRange: 30
-    });
-  }, [visits, noteConversions, currentUser]);
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -190,14 +153,6 @@ export default function Dashboard() {
     }
     return 'nurse';
   }, [currentUser?.role, currentUser?.account_type]);
-
-  // NoteConversion statuses used by buildCoreWorkQueues pending-review filter.
-  const notesForQueues = useMemo(
-    () => noteConversions.map((n) => ({
-      status: n.status || (n.submitted_at ? 'submitted' : 'draft'),
-    })),
-    [noteConversions]
-  );
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -264,15 +219,13 @@ export default function Dashboard() {
             visits={visits}
             patients={patients}
             incidents={incidents}
-            noteConversions={noteConversions}
-            messages={messages}
+            noteConversionsAvailable={false}
             dashboardError={dashboardError}
           />
 
           <CoreWorkQueuesStrip
             role={workQueueRole}
             incidents={incidents}
-            notes={notesForQueues}
           />
         </>
       )}
@@ -338,16 +291,16 @@ export default function Dashboard() {
         <Link to="/SmartNoteAssistant" className="block">
           <StatCard
             label="Notes"
-            value={noteConversions.length}
-            sub="AI-assisted"
+            value="Unavailable"
+            sub="Tenant metrics paused"
             icon={FileText}
             tone="slate"
           />
         </Link>
         <StatCard
           label="Time Saved"
-          value={stats.timeSavedDisplayInRange}
-          sub="30 days"
+          value="Unavailable"
+          sub="Tenant metrics paused"
           icon={Clock}
           tone="gold"
         />

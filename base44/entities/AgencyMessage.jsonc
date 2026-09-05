@@ -95,22 +95,12 @@
     "subject",
     "message_body"
   ],
+  // No live client workflow uses this legacy cross-agency channel. Keep it
+  // service-role-only until a broker stamps immutable agency identifiers.
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "from_agency_code": "{{user.agency_code}}"
-        },
-        {
-          "to_agency_code": "{{user.agency_code}}"
-        }
-      ]
-    },
-    "write": {}
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

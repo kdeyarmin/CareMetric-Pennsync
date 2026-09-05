@@ -29,6 +29,7 @@ import CertificateDownloadButton from "@/components/training/CertificateDownload
 import CourseStepIndicator from "@/components/training/CourseStepIndicator";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import { formatLocalDate } from "@/lib/dateLocal";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 // Fisher-Yates shuffle for unbiased randomization
 const shuffle = (items) => {
@@ -484,10 +485,14 @@ export default function TrainingCoursePlayer() {
                 <div className="flex flex-wrap gap-2">
                   {course.attachment_urls.map((url, i) => (
                     url && isSafeExternalUrl(url) ? (
-                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                        className="text-sm text-blue-600 underline hover:text-blue-700">
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => openAuthorityBoundWindow(url)}
+                        className="text-sm text-blue-600 underline hover:text-blue-700"
+                      >
                         {course.attachment_names?.[i] || `Resource ${i + 1}`}
-                      </a>
+                      </button>
                     ) : null
                   ))}
                 </div>
@@ -594,10 +599,14 @@ export default function TrainingCoursePlayer() {
                   <div className="flex flex-wrap gap-2">
                     {modules[activeModuleIndex].attachment_urls.map((url, i) => (
                       url && isSafeExternalUrl(url) ? (
-                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                          className="text-sm text-blue-600 underline hover:text-blue-700">
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => openAuthorityBoundWindow(url)}
+                          className="text-sm text-blue-600 underline hover:text-blue-700"
+                        >
                           {modules[activeModuleIndex].attachment_names?.[i] || `File ${i + 1}`}
-                        </a>
+                        </button>
                       ) : null
                     ))}
                   </div>

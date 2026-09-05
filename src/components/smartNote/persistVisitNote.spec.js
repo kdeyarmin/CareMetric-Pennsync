@@ -8,7 +8,19 @@ const noteConvCreate = vi.fn(async () => ({}));
 const auditCreate = vi.fn(async () => ({ id: "audit-1" }));
 const auditUpdate = vi.fn(async () => ({}));
 const auditFilter = vi.fn(async () => []);
-const functionsInvoke = vi.fn(async () => ({ data: { success: true } }));
+const functionsInvoke = vi.fn(async (name, payload) => (
+  name === "createAuthorizedVisit"
+    ? { data: { created: true, visit: { id: "visit-1", ...payload } } }
+    : name === "updateAuthorizedVisit"
+      ? {
+          data: {
+            updated: true,
+            action: payload.action,
+            visit: { id: payload.visit_id, patient_id: "p1", agency_id: "agency-1" },
+          },
+        }
+      : { data: { success: true } }
+));
 
 vi.mock("@/api/base44Client", () => ({
   base44: {
@@ -70,12 +82,12 @@ describe("persistVisitNote", () => {
   it("creates a visit (with vitals) and the compliance records on a fresh save", async () => {
     const out = await persistVisitNote({ ...baseArgs, vitals: { heart_rate: 80 } });
     expect(out).toMatchObject({ mode: "create", visitId: "visit-1", auditId: "audit-1" });
-    expect(visitCreate).toHaveBeenCalledTimes(1);
-    expect(visitCreate.mock.calls[0][0]).toMatchObject({
+    expect(visitCreate).not.toHaveBeenCalled();
+    expect(functionsInvoke).toHaveBeenCalledWith("createAuthorizedVisit", expect.objectContaining({
       patient_id: "p1", visit_type: "routine_visit", nurse_notes: "Final note text",
       vital_signs: { heart_rate: 80 },
       grounding_pending: false,
-    });
+    }));
     expect(noteConvCreate).toHaveBeenCalledTimes(1);
     expect(auditCreate).toHaveBeenCalledTimes(1);
     expect(visitUpdate).not.toHaveBeenCalled();
@@ -88,7 +100,17 @@ describe("persistVisitNote", () => {
   it("completes an existing (deep-linked) visit instead of creating a duplicate", async () => {
     const out = await persistVisitNote({ ...baseArgs, existingVisitId: "visit-sched", vitals: { heart_rate: 70 } });
     expect(out).toMatchObject({ mode: "create", visitId: "visit-sched", auditId: "audit-1" });
-    expect(visitUpdate).toHaveBeenCalledWith("visit-sched", expect.objectContaining({ status: "completed", vital_signs: { heart_rate: 70 } }));
+    expect(functionsInvoke).toHaveBeenCalledWith("updateAuthorizedVisit", expect.objectContaining({
+      action: "save_documentation",
+      visit_id: "visit-sched",
+      patient_id: "p1",
+      status: "completed",
+      vital_signs: { heart_rate: 70 },
+    }));
+    const updatePayload = functionsInvoke.mock.calls.find(([name]) => name === "updateAuthorizedVisit")[1];
+    expect(updatePayload).not.toHaveProperty("visit_date");
+    expect(updatePayload).not.toHaveProperty("visit_type");
+    expect(visitUpdate).not.toHaveBeenCalled();
     expect(visitCreate).not.toHaveBeenCalled();
     expect(noteConvCreate).toHaveBeenCalledTimes(1);
     expect(auditCreate.mock.calls[0][0]).toMatchObject({ visit_id: "visit-sched" });
@@ -97,13 +119,47 @@ describe("persistVisitNote", () => {
   it("updates the same visit (with vitals) on a re-save, never duplicating", async () => {
     const out = await persistVisitNote({ ...baseArgs, savedVisitId: "visit-9", savedAuditId: "audit-9", vitals: { temperature: 99 } });
     expect(out).toMatchObject({ mode: "update", visitId: "visit-9" });
-    expect(visitUpdate).toHaveBeenCalledWith("visit-9", expect.objectContaining({ vital_signs: { temperature: 99 } }));
+    expect(functionsInvoke).toHaveBeenCalledWith("updateAuthorizedVisit", expect.objectContaining({
+      action: "save_documentation",
+      visit_id: "visit-9",
+      patient_id: "p1",
+      vital_signs: { temperature: 99 },
+    }));
+    expect(visitUpdate).not.toHaveBeenCalled();
     expect(auditUpdate).toHaveBeenCalledWith("audit-9", expect.anything());
     expect(visitCreate).not.toHaveBeenCalled();
     expect(functionsInvoke).toHaveBeenCalledWith("appendPatientNoteHistory", expect.objectContaining({
       patient_id: "p1", mode: "update",
       entry: expect.objectContaining({ visit_id: "visit-9", note: "Final note text" }),
     }));
+  });
+
+  it("commits the Visit revision before appending its immutable history event", async () => {
+    let releaseVisitUpdate;
+    functionsInvoke.mockImplementationOnce((name, payload) => new Promise((resolve) => {
+      expect(name).toBe("updateAuthorizedVisit");
+      releaseVisitUpdate = () => resolve({
+        data: {
+          updated: true,
+          action: payload.action,
+          visit: { id: payload.visit_id, patient_id: "p1", agency_id: "agency-1" },
+        },
+      });
+    }));
+
+    const pending = persistVisitNote({
+      ...baseArgs,
+      savedVisitId: "visit-9",
+      savedAuditId: "audit-9",
+    });
+    await vi.waitFor(() => expect(releaseVisitUpdate).toBeTypeOf("function"));
+    expect(functionsInvoke.mock.calls.map(([name]) => name))
+      .toEqual(["updateAuthorizedVisit"]);
+
+    releaseVisitUpdate();
+    await pending;
+    expect(functionsInvoke.mock.calls.map(([name]) => name))
+      .toEqual(["updateAuthorizedVisit", "appendPatientNoteHistory"]);
   });
 
   it("refuses to save with no connection, writing nothing", async () => {

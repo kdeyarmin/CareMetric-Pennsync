@@ -15,6 +15,7 @@ import LoadingState from "@/components/ui/LoadingState";
 import LearningPathProgress from "./LearningPathProgress";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
 import { formatLocalDate, isPastLocalDueDate } from "@/lib/dateLocal";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 function isAssignmentOverdue(a) {
   if (!a || a.status === 'completed' || a.pass_fail_result === 'passed') return false;
@@ -80,7 +81,7 @@ export default function MyAnnualEducationDashboard() {
 
   const printCertificate = async (certificate) => {
     const url = await createCertificateBlobUrl(certificate);
-    const printWindow = window.open(url, '_blank');
+    const printWindow = openAuthorityBoundWindow(url);
     // Popup blockers and installed-app webviews (iOS standalone/WKWebView)
     // return null — surface a hint instead of failing silently.
     if (!printWindow) {

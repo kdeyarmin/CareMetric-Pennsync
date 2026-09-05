@@ -68,4 +68,11 @@
     "title",
     "scenario_flow_json"
   ]
+  ,
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

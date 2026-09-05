@@ -162,18 +162,9 @@
     "visit_types_available"
   ],
   "rls": {
-    "read": {
-      "$or": [
-        {},
-        {
-          "is_sample": true
-        }
-      ]
-    },
-    "write": {
-      "user_condition": {
-        "role": "admin"
-      }
-    }
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
   }
 }

@@ -504,10 +504,7 @@ export function buildProviderForm(header = {}, items = []) {
       `Re: ${header.patientName || "(patient)"}${header.patientDob ? `, DOB ${header.patientDob}` : ""}. ` +
       `Thank you for your referral${header.referralDate ? ` dated ${header.referralDate}` : ""}. ` +
       `To admit this patient promptly and meet Medicare's documentation requirements, ${header.agencyName || "our agency"} needs the items below. ` +
-      `Each item lists exactly what is needed and why. Please complete the response lines or attach the noted documents and return by fax${header.contactBackFax ? ` to ${header.contactBackFax}` : ""}${header.contactBackPhone ? ` (questions: ${header.contactBackPhone})` : ""}.` +
-      (header.portalLink
-        ? ` PREFER TO RESPOND ONLINE? Complete this request securely in a few minutes at: ${header.portalLink}`
-        : ""),
+      `Each item lists exactly what is needed and why. Please complete the response lines or attach the noted documents and return by fax${header.contactBackFax ? ` to ${header.contactBackFax}` : ""}${header.contactBackPhone ? ` (questions: ${header.contactBackPhone})` : ""}.`,
     sections,
     signatureBlock: [
       "Provider/designee completing this form: ______________________________",
@@ -545,7 +542,7 @@ export function providerFormToText(form) {
  */
 export function toPersistedFollowUp(
   plan,
-  { generatedAt, status = "open", sentVia = null, faxLogId = null, portalLink = null } = {}
+  { generatedAt, status = "open", sentVia = null, faxLogId = null } = {}
 ) {
   if (!plan) return null;
   return {
@@ -553,13 +550,9 @@ export function toPersistedFollowUp(
     generated_at: generatedAt || null,
     sent_via: sentVia, // "fax" | "manual" | null
     fax_log_id: faxLogId,
-    // NEVER the plaintext link: generateFollowUpPortalToken stores only the
-    // token's SHA-256 precisely so that Referral/token reads can't yield live
-    // capability links — persisting the plaintext here defeated that one
-    // entity over. Only the fact that a link is active is recorded; the
-    // plaintext lives in UI state for the session that minted it, and staff
-    // can always rotate to get a fresh copyable link.
-    portal_link_active: Boolean(portalLink),
+    // Preserve the legacy shape as an explicit revocation marker while online
+    // follow-up capability links are hard-paused.
+    portal_link_active: false,
     counts: plan.counts,
     items: sortFollowUpItems(plan.items).map((it) => ({
       id: it.id,
@@ -572,9 +565,9 @@ export function toPersistedFollowUp(
       citation: it.citation,
       impact: it.impact,
       provider_request: it.provider_request,
-      // Per-item lifecycle: open → answered (provider responded via portal) →
-      // resolved (staff verified). Responses are written by the
-      // submitFollowUpResponse backend function.
+      // Preserve the legacy lifecycle-shaped fields without implying that the
+      // paused public portal can advance them. Staff verification remains the
+      // only approved workflow in this source checkpoint.
       item_status: "open",
       response: null,
       answered_at: null,

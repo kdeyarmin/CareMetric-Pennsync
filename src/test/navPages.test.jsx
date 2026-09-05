@@ -89,10 +89,10 @@ vi.mock("@/lib/AuthContext", () => ({
 const pageModules = import.meta.glob("../pages/*.jsx");
 const importerFor = (name) => pageModules[`../pages/${name}.jsx`];
 
-const publicPages = ["JoinTelehealth", "SignerPortal"];
+const publicPages = ["JoinTelehealth", "SignerPortal", "ProviderFollowUpPortal"];
 const routePages = [...new Set([...ROUTES.map((route) => route.name), ...publicPages])];
 const routePathNames = new Set(ROUTES.map((route) => `/${route.name}`.toLowerCase()));
-const publicPathNames = new Set(["/join", "/signer"]);
+const publicPathNames = new Set(["/join", "/signer", "/followup"]);
 const redirectTargetPath = (to) => `/${to.replace(/^\//, "").split("?")[0]}`.toLowerCase();
 
 function Providers({ children }) {

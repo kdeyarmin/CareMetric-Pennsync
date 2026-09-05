@@ -51,16 +51,9 @@ const SURVIVOR_FIELDS = [
   "advance_directives", "functional_status", "assigned_nurses",
   "enhanced_notes_history", "clinical_notes", "goals_of_care",
 ];
-// System / merge-bookkeeping fields never copied when back-filling the survivor.
-const SYSTEM_FIELDS = new Set([
-  "id", "created_date", "updated_date", "created_by", "is_archived",
-  "merged_into_id", "merged_at", "merged_by", "status",
-]);
-
-const nonEmpty = (v) => v != null && v !== "" && !(Array.isArray(v) && v.length === 0);
 // Scoring-only predicate mirroring the backend's isPopulated: an untouched
 // object slot ({} insurance_primary) and a whitespace-only string are not
-// completeness. nonEmpty stays as-is for back-filling.
+// completeness.
 const isPopulated = (v) => {
   if (v == null) return false;
   if (Array.isArray(v)) return v.length > 0;
@@ -187,7 +180,6 @@ function EnabledDuplicateScanner() {
     matchByEmail: true,
     matchByAddress: false,
     fuzzyNameMatching: true,
-    autoMergeData: true,
     closeInactiveOnly: false
   });
   const queryClient = useQueryClient();
@@ -281,28 +273,6 @@ function EnabledDuplicateScanner() {
 
         for (const { survivor, dupInfos } of plans) {
           if (dupInfos.length === 0) continue;
-
-          // Optionally back-fill the survivor's EMPTY demographic slots from the
-          // duplicates (never overwrite a populated field, never touch system
-          // fields). mergePatientInto moves the clinical records regardless.
-          if (advancedOptions.autoMergeData) {
-            const backfill = {};
-            for (const { patient } of dupInfos) {
-              for (const key of Object.keys(patient)) {
-                if (SYSTEM_FIELDS.has(key)) continue;
-                if (!nonEmpty(survivor[key]) && !nonEmpty(backfill[key]) && nonEmpty(patient[key])) {
-                  backfill[key] = patient[key];
-                }
-              }
-            }
-            if (Object.keys(backfill).length > 0) {
-              try {
-                await base44.entities.Patient.update(survivor.id, backfill);
-              } catch (err) {
-                console.error(`Survivor back-fill failed for ${survivor.id}:`, err?.message);
-              }
-            }
-          }
 
           // Report only what actually merged. A thrown mergePatientInto (RLS
           // denial, archived survivor, failed archive write) leaves the duplicate
@@ -554,19 +524,6 @@ function EnabledDuplicateScanner() {
                 </div>
                 
                 <div className="border-t pt-3 space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="autoMerge"
-                      checked={advancedOptions.autoMergeData}
-                      onCheckedChange={(checked) => 
-                        setAdvancedOptions(prev => ({ ...prev, autoMergeData: checked }))
-                      }
-                    />
-                    <Label htmlFor="autoMerge" className="text-xs cursor-pointer font-semibold">
-                      Auto-merge data from duplicates
-                    </Label>
-                  </div>
-                  
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="closeInactive"

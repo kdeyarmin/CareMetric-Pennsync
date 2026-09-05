@@ -28,6 +28,26 @@ import { transpileTs } from "../../tools-transpile-ts.mjs";
 // ---- run a function's Deno.serve handler with injected globals ----
 async function loadHandler(entryPath, { env = {}, makeClient, fetchImpl }) {
   let src = await readFile(new URL(entryPath, import.meta.url), "utf8");
+  // The shipped source keeps inbound routing and telehealth provider access
+  // literally paused. Dedicated containment contracts assert those gates and
+  // their ordering; this harness rewrites only its isolated temporary copy so
+  // the dormant Telnyx request shapes and fallback logic remain regression
+  // tested without enabling either feature in source.
+  if (entryPath.endsWith('/createTelehealthToken/entry.ts')) {
+    src = src.replace(
+      'const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = true;',
+      'const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = false;',
+    );
+  }
+  if (entryPath.endsWith('/handleTelnyxStatusWebhook/entry.ts')) {
+    for (const flag of [
+      'INBOUND_PATIENT_SMS_ROUTING_PAUSED',
+      'INBOUND_PATIENT_FAX_ROUTING_PAUSED',
+      'INBOUND_PATIENT_CALL_ROUTING_PAUSED',
+    ]) {
+      src = src.replace(`const ${flag} = true;`, `const ${flag} = false;`);
+    }
+  }
   src = src.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/, "const createClientFromRequest = globalThis.__telnyxMakeClient;");
   const js = transpileTs(src).outputText;
   const tmp = join(tmpdir(), `telnyxctr_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
@@ -75,6 +95,75 @@ function makeBase44({ user = { email: "n@x.com", full_name: "Nora", work_phone_n
   return { auth: { me: async () => user }, entities, asServiceRole: { entities } };
 }
 
+const activeTelnyxSecret = (overrides = {}) => ({
+  id: "integration_1",
+  provider: "telnyx",
+  is_active: true,
+  api_key: "KEYtest",
+  ...overrides,
+});
+
+const smsBinding = (overrides = {}) => ({
+  id: "binding_1",
+  binding_key: "telnyx:integration_1:+12155550100",
+  provider: "telnyx",
+  integration_secret_id: "integration_1",
+  destination_e164: "+12155550100",
+  provider_number_id: "telnyx_number_1",
+  phone_number_id: "phone_number_1",
+  agency_id: "agency_a",
+  messaging_profile_id: "MP1",
+  sms_inbound_enabled: true,
+  sms_outbound_enabled: true,
+  voice_inbound_enabled: false,
+  fax_inbound_enabled: false,
+  status: "active",
+  source: "manual",
+  created_by_user_id: "user_owner",
+  created_by_user_email_normalized: "owner@example.com",
+  created_at: "2026-01-01T00:00:01.000Z",
+  activated_at: "2026-01-01T00:00:01.000Z",
+  last_transition_by_user_id: "user_owner",
+  last_transition_by_email_normalized: "owner@example.com",
+  last_transition_at: "2026-01-01T00:00:01.000Z",
+  last_transition_reason: "Reviewed initial binding",
+  last_transition_action: "bind",
+  last_transition_request_id: "request_1",
+  last_transition_request_key: "telnyx:integration_1:+12155550100:request_1",
+  version: 1,
+  ...overrides,
+});
+
+const scopedSmsConsent = (overrides = {}) => {
+  const consentStatus = overrides.consent_status || "opted_in";
+  const consentSource = overrides.consent_source || "manual_opt_in";
+  const capturedAt = overrides.captured_at || "2026-01-01T00:00:00Z";
+  const isKeyword = consentSource === "keyword_stop" || consentSource === "keyword_start";
+  return {
+    consent_key: "telnyx:integration_1:MP1:agency_a:+12155550133",
+    agency_id: "agency_a",
+    provider: "telnyx",
+    integration_secret_id: "integration_1",
+    messaging_profile_id: "MP1",
+    destination_binding_id: "binding_1",
+    destination_binding_key: "telnyx:integration_1:+12155550100",
+    destination_e164: "+12155550100",
+    phone_e164: "+12155550133",
+    consent_status: consentStatus,
+    consent_source: consentSource,
+    captured_at: capturedAt,
+    ...(isKeyword ? {
+      captured_by: null,
+      provider_event_id: `event_${consentSource}_${capturedAt}`,
+      provider_message_id: `message_${consentSource}_${capturedAt}`,
+      provider_event_occurred_at: capturedAt,
+    } : {
+      captured_by: "owner@example.com",
+    }),
+    ...overrides,
+  };
+};
+
 const BEARER = (h) => (h && (h.Authorization || h.authorization)) || "";
 
 // ============================ MESSAGES ============================
@@ -83,13 +172,17 @@ test("sendSms posts the Telnyx Messages contract", async () => {
     { match: (u) => u.includes("/v2/messages"), respond: () => ({ status: 200, json: { data: { id: "msg_1", to: [{ status: "queued" }] } } }) },
   ]);
   const handler = await loadHandler("../functions/sendSms/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest", TELNYX_MESSAGING_PROFILE_ID: "MP1" },
-    makeClient: () => makeBase44({ data: {
-      IntegrationSecret: [{ api_key: "KEYtest", messaging_profile_id: "MP1" }],
+    env: { TELNYX_API_KEY: "KEYtest", TELNYX_MESSAGING_PROFILE_ID: "MP1", SUPER_ADMIN_EMAIL: "n@x.com" },
+    makeClient: () => makeBase44({ user: {
+      email: "n@x.com", role: "admin", full_name: "Nora",
+      work_phone_number: "+12155550100", personal_cell_e164: "+12155550111",
+    }, data: {
+      IntegrationSecret: [activeTelnyxSecret({ messaging_profile_id: "MP1" })],
+      TelecomDestinationBinding: [smsBinding()],
       // Contract tests are wall-clock independent: disable TCPA quiet hours so a
       // night-time CI run does not 403 a Messages-API shape assertion.
       AgencySettings: [{ tcpa_quiet_hours_enabled: false, sms_enabled: true }],
-      SmsConsent: [{ phone_e164: "+12155550133", consent_status: "opted_in", captured_at: "2026-01-01T00:00:00Z" }],
+      SmsConsent: [scopedSmsConsent()],
     } }),
     fetchImpl: impl,
   });
@@ -107,14 +200,153 @@ test("sendSms posts the Telnyx Messages contract", async () => {
   assert.equal(call.body.messaging_profile_id, "MP1");
 });
 
+test("sendSms never authorizes from legacy, foreign, ambiguous, or inbound-only consent authority", async () => {
+  const user = {
+    email: "n@x.com", role: "admin", full_name: "Nora",
+    work_phone_number: "+12155550100", personal_cell_e164: "+12155550111",
+  };
+  const scenarios = [
+    {
+      name: "legacy phone-only consent",
+      data: {
+        TelecomDestinationBinding: [smsBinding()],
+        SmsConsent: [{
+          phone_e164: "+12155550133",
+          consent_status: "opted_in",
+          captured_at: "2026-01-01T00:00:00Z",
+        }],
+      },
+    },
+    {
+      name: "foreign tenant/profile consent",
+      data: {
+        TelecomDestinationBinding: [smsBinding()],
+        SmsConsent: [scopedSmsConsent({
+          consent_key: "telnyx:integration_1:MP_OTHER:agency_b:+12155550133",
+          agency_id: "agency_b",
+          messaging_profile_id: "MP_OTHER",
+        })],
+      },
+    },
+    {
+      name: "equal latest timestamps",
+      data: {
+        TelecomDestinationBinding: [smsBinding()],
+        SmsConsent: [
+          scopedSmsConsent({ consent_status: "opted_in", consent_source: "keyword_start" }),
+          scopedSmsConsent({ consent_status: "opted_out", consent_source: "keyword_stop" }),
+        ],
+      },
+      expectedStatus: 503,
+    },
+    {
+      name: "delayed older START cannot supersede newer STOP",
+      data: {
+        TelecomDestinationBinding: [smsBinding()],
+        SmsConsent: [
+          scopedSmsConsent({
+            consent_status: "opted_out",
+            consent_source: "keyword_stop",
+            captured_at: "2026-01-01T00:00:02Z",
+          }),
+          scopedSmsConsent({
+            consent_status: "opted_in",
+            consent_source: "keyword_start",
+            captured_at: "2026-01-01T00:00:01Z",
+          }),
+        ],
+      },
+      expectedStatus: 403,
+    },
+    {
+      name: "intervening manual rows cannot hide an unlifted keyword STOP",
+      data: {
+        TelecomDestinationBinding: [smsBinding()],
+        SmsConsent: [
+          scopedSmsConsent({
+            consent_status: "opted_in",
+            consent_source: "manual_opt_in",
+            captured_at: "2026-01-01T00:00:04Z",
+          }),
+          scopedSmsConsent({
+            consent_status: "opted_out",
+            consent_source: "manual_opt_out",
+            captured_at: "2026-01-01T00:00:03Z",
+          }),
+          scopedSmsConsent({
+            consent_status: "opted_out",
+            consent_source: "keyword_stop",
+            captured_at: "2026-01-01T00:00:02Z",
+          }),
+        ],
+      },
+      expectedStatus: 403,
+    },
+    {
+      name: "keyword START without immutable provider provenance",
+      data: {
+        TelecomDestinationBinding: [smsBinding()],
+        SmsConsent: [scopedSmsConsent({
+          consent_source: "keyword_start",
+          provider_event_id: undefined,
+        })],
+      },
+      expectedStatus: 503,
+    },
+    {
+      name: "consent missing binding provenance",
+      data: {
+        TelecomDestinationBinding: [smsBinding()],
+        SmsConsent: [scopedSmsConsent({ destination_binding_id: undefined })],
+      },
+      expectedStatus: 503,
+    },
+    {
+      name: "inbound-only binding",
+      data: {
+        TelecomDestinationBinding: [smsBinding({ sms_outbound_enabled: false })],
+        SmsConsent: [scopedSmsConsent()],
+      },
+      expectedStatus: 503,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const { impl, calls } = makeFetch([
+      { match: (url) => url.includes("/v2/messages"), respond: () => ({ status: 200, json: { data: { id: "unexpected" } } }) },
+    ]);
+    const handler = await loadHandler("../functions/sendSms/entry.ts", {
+      env: { SUPER_ADMIN_EMAIL: "n@x.com" },
+      makeClient: () => makeBase44({
+        user,
+        data: {
+          IntegrationSecret: [activeTelnyxSecret({ messaging_profile_id: "MP1" })],
+          AgencySettings: [{ tcpa_quiet_hours_enabled: false, sms_enabled: true }],
+          ...scenario.data,
+        },
+      }),
+      fetchImpl: impl,
+    });
+    const response = await handler(new Request("https://app/functions/sendSms", {
+      method: "POST",
+      body: JSON.stringify({ to_number: "+12155550133", body: "must not send" }),
+    }));
+    assert.equal(response.status, scenario.expectedStatus || 503, scenario.name);
+    assert.equal(calls.filter((call) => call.url.includes("/v2/messages")).length, 0, scenario.name);
+  }
+});
+
 // ============================ FAX ============================
 test("sendFax posts the Telnyx Programmable Fax contract", async () => {
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fax_1", status: "queued" } } }) },
   ]);
   const handler = await loadHandler("../functions/sendFax/entry.ts", {
-    env: {},
-    makeClient: () => makeBase44({ data: {
+    env: { SUPER_ADMIN_EMAIL: "n@x.com" },
+    makeClient: () => makeBase44({ user: {
+      email: "n@x.com", role: "admin", full_name: "Nora",
+      work_phone_number: "+12155550100", personal_cell_e164: "+12155550111",
+    }, data: {
       IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
       AgencySettings: [{ office_fax_number_e164: "+12155550190" }],
     } }),
@@ -140,8 +372,11 @@ test("startMaskedCall posts the Telnyx Call Control create-call contract", async
     { match: (u) => u.endsWith("/v2/calls"), respond: () => ({ status: 200, json: { data: { call_control_id: "cc_1" } } }) },
   ]);
   const handler = await loadHandler("../functions/startMaskedCall/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest", TELNYX_VOICE_CONNECTION_ID: "VC1" },
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1" }] } }),
+    env: { TELNYX_API_KEY: "KEYtest", TELNYX_VOICE_CONNECTION_ID: "VC1", SUPER_ADMIN_EMAIL: "n@x.com" },
+    makeClient: () => makeBase44({ user: {
+      email: "n@x.com", role: "admin", full_name: "Nora",
+      work_phone_number: "+12155550100", personal_cell_e164: "+12155550111",
+    }, data: { IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1" }] } }),
     fetchImpl: impl,
   });
   await handler(new Request("https://app/functions/startMaskedCall", {
@@ -162,8 +397,8 @@ test("searchPurchaseTelnyxNumbers posts the Telnyx number-order contract", async
     { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_1", phone_numbers: [{ id: "np_1", phone_number: "+12155550177" }] } } }) },
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest" },
-    makeClient: () => makeBase44({ user: { email: "a@x.com", role: "admin", account_type: "super_admin" }, data: { IntegrationSecret: [{ api_key: "KEYtest" }] } }),
+    env: { TELNYX_API_KEY: "KEYtest", SUPER_ADMIN_EMAIL: "a@x.com" },
+    makeClient: () => makeBase44({ user: { email: "a@x.com", role: "admin" }, data: { IntegrationSecret: [{ api_key: "KEYtest" }] } }),
     fetchImpl: impl,
   });
   await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
@@ -180,9 +415,9 @@ test("a self-asserted super_admin account_type cannot purchase a Telnyx number",
     { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_denied" } } }) },
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest" },
+    env: { TELNYX_API_KEY: "KEYtest", SUPER_ADMIN_EMAIL: "owner@x.com" },
     makeClient: () => makeBase44({
-      user: { email: "attacker@x.com", role: "user", account_type: "super_admin" },
+      user: { email: "attacker@x.com", role: "admin", account_type: "super_admin", agency_name: "Victim Agency" },
       data: { IntegrationSecret: [{ api_key: "KEYtest" }] },
     }),
     fetchImpl: impl,
@@ -200,9 +435,9 @@ test("a nurse-line purchase auto-enrolls the number in the saved A2P campaign", 
     { match: (u) => u.includes("/v2/10dlc/phone_number_campaigns"), respond: () => ({ status: 200, json: { phoneNumber: "+12155550188", campaignId: "CAMP1" } }) },
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
-    env: {},
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" },
     makeClient: () => makeBase44({
-      user: { email: "a@x.com", role: "admin", account_type: "super_admin" },
+      user: { email: "a@x.com", role: "admin" },
       data: {
         IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }],
         AgencySettings: [{ id: "as_1", a2p_campaign_id: "CAMP1" }],
@@ -228,9 +463,9 @@ test("a nurse-line purchase with NO saved campaign warns instead of enrolling", 
     { match: (u) => u.includes("/v2/number_orders"), respond: () => ({ status: 200, json: { data: { id: "ord_4", phone_numbers: [{ id: "np_3", phone_number: "+12155550190" }] } } }) },
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
-    env: {},
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" },
     makeClient: () => makeBase44({
-      user: { email: "a@x.com", role: "admin", account_type: "super_admin" },
+      user: { email: "a@x.com", role: "admin" },
       data: { IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }] },
     }),
     fetchImpl: impl,
@@ -246,7 +481,7 @@ test("a nurse-line purchase with NO saved campaign warns instead of enrolling", 
 
 // A minimal spy-able client: like makeBase44 but with stable per-entity objects
 // so update/create calls can be recorded, and per-entity overrides.
-function makeSpyBase44({ user = { email: "a@x.com", role: "admin", account_type: "super_admin", full_name: "Ada" }, data = {}, writes = [] } = {}) {
+function makeSpyBase44({ user = { email: "a@x.com", role: "admin", full_name: "Ada" }, data = {}, writes = [] } = {}) {
   const cache = {};
   const entity = (name) => {
     if (!cache[name]) {
@@ -285,7 +520,7 @@ test("a fax-purpose search filters fax-capable numbers (not sms/voice)", async (
     { match: (u) => u.includes("/v2/available_phone_numbers"), respond: () => ({ status: 200, json: { data: [{ phone_number: "+12155550166" }] } }) },
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
-    env: {},
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" },
     makeClient: () => makeSpyBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }] } }),
     fetchImpl: impl,
   });
@@ -306,7 +541,7 @@ test("a fax-purpose purchase attaches the FAX connection and sets the blind outb
   ]);
   const writes = [];
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
-    env: {},
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" },
     makeClient: () => makeSpyBase44({
       writes,
       data: {
@@ -337,7 +572,7 @@ test("provision_fax re-points an owned number at the fax connection", async () =
   ]);
   const writes = [];
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
-    env: {},
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" },
     makeClient: () => makeSpyBase44({
       writes,
       data: {
@@ -363,8 +598,11 @@ test("sendFax transmits from the blind outbound line masked as the office fax", 
     { match: (u) => u.includes("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fax_3", status: "queued" } } }) },
   ]);
   const handler = await loadHandler("../functions/sendFax/entry.ts", {
-    env: {},
-    makeClient: () => makeBase44({ data: {
+    env: { SUPER_ADMIN_EMAIL: "n@x.com" },
+    makeClient: () => makeBase44({ user: {
+      email: "n@x.com", role: "admin", full_name: "Nora",
+      work_phone_number: "+12155550100", personal_cell_e164: "+12155550111",
+    }, data: {
       IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
       AgencySettings: [{ office_fax_number_e164: "+17244650444", outbound_fax_number_e164: "+12155550190" }],
     } }),
@@ -392,7 +630,7 @@ test("a stray inbound fax on the blind line is passed straight through to the of
     makeClient: () => makeSpyBase44({
       writes,
       data: {
-        IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64, fax_connection_id: "FC1" }],
+        IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64, fax_connection_id: "FC1" })],
         // fax_receiving_enabled is NOT set — the default posture forwards to the office.
         AgencySettings: [{ office_fax_number_e164: "+17244650444" }],
         IncomingFax: [],
@@ -422,8 +660,11 @@ test("sendFax normalizes a formatted office fax number to E.164 on `from`", asyn
     { match: (u) => u.includes("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fax_2", status: "queued" } } }) },
   ]);
   const handler = await loadHandler("../functions/sendFax/entry.ts", {
-    env: {},
-    makeClient: () => makeBase44({ data: {
+    env: { SUPER_ADMIN_EMAIL: "n@x.com" },
+    makeClient: () => makeBase44({ user: {
+      email: "n@x.com", role: "admin", full_name: "Nora",
+      work_phone_number: "+12155550100", personal_cell_e164: "+12155550111",
+    }, data: {
       IntegrationSecret: [{ api_key: "KEYtest", fax_connection_id: "FC1" }],
       // The admin typed a formatted number — Telnyx requires E.164 on `from`.
       AgencySettings: [{ office_fax_number_e164: "(215) 555-0190" }],
@@ -442,7 +683,7 @@ test("sendFax normalizes a formatted office fax number to E.164 on `from`", asyn
 test("provisionNurseWorkNumber refuses to hand out the shared office fax number", async () => {
   const { impl } = makeFetch([]);
   const handler = await loadHandler("../functions/provisionNurseWorkNumber/entry.ts", {
-    env: {},
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" },
     makeClient: () => makeSpyBase44({
       user: { email: "a@x.com", role: "admin", full_name: "Ada" },
       data: {
@@ -462,7 +703,7 @@ test("provisionNurseWorkNumber syncs the pool row for a manually-typed assignmen
   const { impl } = makeFetch([]);
   const writes = [];
   const handler = await loadHandler("../functions/provisionNurseWorkNumber/entry.ts", {
-    env: {},
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" },
     makeClient: () => makeSpyBase44({
       user: { email: "a@x.com", role: "admin", full_name: "Ada" },
       writes,
@@ -490,7 +731,7 @@ test("autoAssignWorkNumbers skips the shared office fax / main office numbers", 
   const { impl } = makeFetch([]);
   const writes = [];
   const handler = await loadHandler("../functions/autoAssignWorkNumbers/entry.ts", {
-    env: {},
+    env: { SUPER_ADMIN_EMAIL: "a@x.com" },
     makeClient: () => makeSpyBase44({
       user: { email: "a@x.com", role: "admin", full_name: "Ada" },
       writes,
@@ -695,7 +936,7 @@ test("handleTelnyxStatusWebhook verifies Ed25519 and bridges an answered masked 
   ]);
   const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 },
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }], CallLog: [{ id: "CallLog_1", status: "ringing" }] } }),
+    makeClient: () => makeBase44({ data: { IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })], CallLog: [{ id: "CallLog_1", status: "ringing" }] } }),
     fetchImpl: impl,
   });
 
@@ -717,7 +958,7 @@ test("inbound call answers first, then bridges an on-duty nurse on call.answered
   const pubB64 = rawEd25519PublicKeyB64(publicKey);
   const base = () => makeBase44({
     data: {
-      IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }],
+      IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
       User: [{ email: "n@x.com", work_phone_number: "+12155550100", personal_cell_e164: "+12155550111", duty_status: "on_duty" }],
       // Disable the 5pm auto-off so this bridge assertion is time-independent.
       AgencySettings: [{ auto_off_duty_enabled: false }], CallLog: [],
@@ -765,7 +1006,7 @@ test("an after-hours/weekend inbound call greets and transfers to the NORMALIZED
     env: {},
     makeClient: () => makeBase44({
       data: {
-        IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }],
+        IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
         User: [{ email: "n@x.com", work_phone_number: "+12155550100", personal_cell_e164: "+12155550111", duty_status: "on_duty" }],
         // Business hours ON with no open days = closed all week (nights/weekends).
         // The transfer number is stored FORMATTED — routing must normalize it.
@@ -801,7 +1042,7 @@ test("a rejected ringdown transfer advances to the next target instead of strand
   ]);
   const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: {},
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }] } }),
+    makeClient: () => makeBase44({ data: { IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })] } }),
     fetchImpl: impl,
   });
   await handler(signedWebhook(privateKey, { data: { event_type: "call.answered", payload: {
@@ -823,7 +1064,7 @@ test("find-me-follow-me rolls to the next target when a leg goes unanswered", as
   ]);
   const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 },
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }] } }),
+    makeClient: () => makeBase44({ data: { IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })] } }),
     fetchImpl: impl,
   });
   // The dialed leg (target 0 = nurse cell) hangs up unanswered; a_leg is the caller.
@@ -854,7 +1095,7 @@ test("a failed masked-bridge transfer falls back to speak+hangup and marks the c
     // makeBase44 Proxy returns a fresh entity per access).
     const callLog = { create: async (r) => ({ id: "x", ...r }), filter: async () => [], list: async () => [], update: async (id, patch) => { updated = { id, patch }; return { id, ...patch }; } };
     const generic = { create: async (r) => ({ id: "x", ...r }), filter: async () => [], list: async () => [], update: async () => ({}) };
-    const entities = new Proxy({}, { get: (_t, n) => (n === "CallLog" ? callLog : (n === "IntegrationSecret" ? { ...generic, filter: async () => [{ api_key: "KEYtest", public_key: pubB64 }] } : generic)) });
+    const entities = new Proxy({}, { get: (_t, n) => (n === "CallLog" ? callLog : (n === "IntegrationSecret" ? { ...generic, filter: async () => [activeTelnyxSecret({ public_key: pubB64 })] } : generic)) });
     return { auth: { me: async () => ({}) }, entities, asServiceRole: { entities } };
   };
   const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
@@ -868,17 +1109,21 @@ test("a failed masked-bridge transfer falls back to speak+hangup and marks the c
 });
 
 test("sendSms forwards MMS media_urls and rejects non-https/oversized media", async () => {
-  const mk = () => makeBase44({ data: {
-    IntegrationSecret: [{ api_key: "KEYtest" }],
+  const mk = () => makeBase44({ user: {
+    email: "n@x.com", role: "admin", full_name: "Nora",
+    work_phone_number: "+12155550100", personal_cell_e164: "+12155550111",
+  }, data: {
+    IntegrationSecret: [activeTelnyxSecret({ messaging_profile_id: "MP1" })],
+    TelecomDestinationBinding: [smsBinding()],
     AgencySettings: [{ tcpa_quiet_hours_enabled: false, sms_enabled: true }],
-    SmsConsent: [{ phone_e164: "+12155550133", consent_status: "opted_in", captured_at: "2026-01-01T00:00:00Z" }],
+    SmsConsent: [scopedSmsConsent()],
   } });
   // Happy path: media_urls forwarded to Telnyx.
   const { impl, calls } = makeFetch([
     { match: (u) => u.includes("/v2/messages"), respond: () => ({ status: 200, json: { data: { id: "m", to: [{ status: "queued" }] } } }) },
   ]);
   const handler = await loadHandler("../functions/sendSms/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest" }, makeClient: mk, fetchImpl: impl,
+    env: { TELNYX_API_KEY: "KEYtest", SUPER_ADMIN_EMAIL: "n@x.com" }, makeClient: mk, fetchImpl: impl,
   });
   await handler(new Request("https://app/functions/sendSms", { method: "POST", body: JSON.stringify({ to_number: "2155550133", body: "see attached", media_urls: ["https://files/x.jpg"] }) }));
   const call = calls.find((c) => c.url === "https://api.telnyx.com/v2/messages");
@@ -889,7 +1134,7 @@ test("sendSms forwards MMS media_urls and rejects non-https/oversized media", as
     { match: (u) => u.includes("/v2/messages"), respond: () => ({ status: 200, json: { data: { id: "m" } } }) },
   ]);
   const handler2 = await loadHandler("../functions/sendSms/entry.ts", {
-    env: { TELNYX_API_KEY: "KEYtest" }, makeClient: mk, fetchImpl: impl2,
+    env: { TELNYX_API_KEY: "KEYtest", SUPER_ADMIN_EMAIL: "n@x.com" }, makeClient: mk, fetchImpl: impl2,
   });
   const res = await handler2(new Request("https://app/functions/sendSms", { method: "POST", body: JSON.stringify({ to_number: "2155550133", body: "x", media_urls: ["http://insecure/x.jpg"] }) }));
   assert.equal(res.status, 400);
@@ -906,7 +1151,7 @@ test("an inbound text to an off-duty nurse gets the off-duty auto-reply", async 
     env: { TELNYX_API_KEY: "KEYtest", TELNYX_PUBLIC_KEY: pubB64 },
     makeClient: () => makeBase44({
       data: {
-        IntegrationSecret: [{ api_key: "KEYtest", public_key: pubB64 }],
+        IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
         // Nurse with no duty_status → default OFF until they toggle on.
         User: [{ email: "n@x.com", work_phone_number: "+12155550100" }],
         AgencySettings: [{ main_office_number_e164: "724-465-0440" }],
@@ -933,7 +1178,7 @@ test("handleTelnyxStatusWebhook rejects a tampered signature (fail-closed)", asy
   const { impl } = makeFetch([]);
   const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: { TELNYX_PUBLIC_KEY: pubB64 },
-    makeClient: () => makeBase44({ data: { IntegrationSecret: [{ public_key: pubB64 }] } }),
+    makeClient: () => makeBase44({ data: { IntegrationSecret: [activeTelnyxSecret({ api_key: undefined, public_key: pubB64 })] } }),
     fetchImpl: impl,
   });
   const res = await handler(new Request("https://app/functions/handleTelnyxStatusWebhook", {

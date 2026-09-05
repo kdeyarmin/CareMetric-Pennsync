@@ -141,40 +141,14 @@
       "description": "Email addresses of users who have read the message"
     }
   },
-  // Message backs two disjoint shapes: outbound delivery (patient_id/body/
-  // delivery_method/status) and in-app care-team messages (message_text/
-  // recipients/sender_email, e.g. Messages.jsx + referral assignment). They
-  // share no universal field, so nothing is required to avoid rejecting either.
+  // Message contains legacy rows without immutable selected-tenant provenance.
+  // Keep every direct operation closed until those rows are backfilled or
+  // quarantined and a tenant-authorized message broker is proven in hosted tests.
   "required": [],
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "recipients": {
-            "$contains": "{{user.email}}"
-          }
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    },
-    "write": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

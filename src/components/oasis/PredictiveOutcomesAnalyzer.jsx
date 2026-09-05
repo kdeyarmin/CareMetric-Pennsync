@@ -9,8 +9,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Loader2, Activity, AlertTriangle, Target, Brain, Calendar, Clock, Shield } from "lucide-react";
 import { formatAge } from "@/lib/age";
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, patientId, onPredictionsComplete }) {
+  const { tenantContext } = useAuth();
   // Auto-fired analyses are background work in the app-wide AI budget, so
   // several such cards on one page queue instead of hitting the provider at
   // once. A run the user CLICKED passes interactive priority per call and
@@ -38,10 +41,11 @@ export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, 
   });
 
   // Fetch patient details
-  const { data: patient } = useQuery({
-    queryKey: ['patient', patientId],
-    queryFn: () => patientId ? base44.entities.Patient.filter({ id: patientId }).then(p => p[0]) : null,
-    enabled: !!patientId
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'oasis_analysis_context',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   // Fetch population-level benchmarks

@@ -60,15 +60,12 @@
     }
   },
   "required": ["referral_id", "token", "expires_at"],
-  // Tokens are bearer secrets: no end-user needs to read them through RLS (the
-  // portal functions use service role), so reads are admin-only and writes are
-  // service-role only.
+  // Tokens are bearer secrets and the public follow-up capability is
+  // quarantined. Historical rows remain service-role maintenance data only.
   "rls": {
-    "read": {
-      "user_condition": { "role": "admin" }
-    },
-    "write": {
-      "user_condition": { "role": "__service_role_only__" }
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

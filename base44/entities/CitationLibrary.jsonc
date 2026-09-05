@@ -59,4 +59,11 @@
     "source_name",
     "source_type"
   ]
+  ,
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

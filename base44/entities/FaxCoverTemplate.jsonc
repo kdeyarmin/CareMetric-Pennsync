@@ -52,5 +52,11 @@
   "required": [
     "name",
     "user_email"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

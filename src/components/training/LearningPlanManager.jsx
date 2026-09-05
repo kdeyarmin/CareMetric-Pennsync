@@ -23,6 +23,7 @@ import AssignmentWizard from "./AssignmentWizard";
 import { seedYearlyRequiredInServices } from "@/functions/seedYearlyRequiredInServices";
 import { assignAnnualLearningPlan } from "@/functions/assignAnnualLearningPlan";
 import { remindPlanOverdueStaff } from "@/functions/remindPlanOverdueStaff";
+import { listTenantTrainingIntegrityRecords } from "@/functions/listTenantTrainingIntegrityRecords";
 import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 
 const formatDate = (value) => formatLocalDate(value) || "—";
@@ -74,10 +75,15 @@ export default function LearningPlanManager() {
 
   const { data: planEnrollments = [] } = useQuery({
     queryKey: ["plan-enrollments-rollup", selectedPlan?.id],
-    queryFn: () =>
-      selectedPlan
-        ? base44.entities.PlanEnrollment.filter({ plan_id: selectedPlan.id }, "-enrolled_at", 500)
-        : Promise.resolve([]),
+    queryFn: async () => {
+      if (!selectedPlan) return [];
+      const response = await listTenantTrainingIntegrityRecords({
+        resource: 'plan_enrollments',
+        plan_id: selectedPlan.id,
+        limit: 500,
+      });
+      return (response?.data || response)?.records || [];
+    },
     initialData: [],
     enabled: !!selectedPlan,
   });

@@ -1,30 +1,11 @@
 import React, { useState } from "react";
 import { toLocalISODate } from "@/lib/dateLocal";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import StatCard from "@/components/ui/stat-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Shield,
   Lock,
@@ -38,51 +19,24 @@ import {
   Key,
   UserCheck,
   Clock,
-  Server,
-  Search,
-  Filter,
-  Calendar,
-  User
+  Server
 } from "lucide-react";
 import EncryptionStatusIndicator from "@/components/security/EncryptionStatusIndicator";
 import AIAuditAnalyzer from "@/components/security/AIAuditAnalyzer";
 import SecurityAuditScheduler from "@/components/security/SecurityAuditScheduler";
+import SecurityLogUnavailable from "@/components/security/SecurityLogUnavailable";
+import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
 import VulnerabilityAssessment from "@/components/security/VulnerabilityAssessment";
 import { logActivity } from "@/components/utils/activityLogger";
-import { formatEastern } from "@/components/utils/timezone";
-import { toCsvRows } from "@/components/admin/csvExport";
-import { getSeverityBadge } from "@/components/security/auditSeverityBadge";
+import { useAuth } from "@/lib/AuthContext";
 import { isAdminView } from "@/lib/roles";
+import { buildSecurityComplianceReport } from "@/lib/securityComplianceReport";
 
 export default function SecurityCompliance() {
   const [selectedTab, setSelectedTab] = useState("overview");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [actionFilter, setActionFilter] = useState("all");
-  const [entityFilter, setEntityFilter] = useState("all");
-  const [userFilter, setUserFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("7");
-  const [severityFilter, setSeverityFilter] = useState("all");
-
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
+  const { user: currentUser } = useAuth();
 
   const isAdmin = isAdminView(currentUser);
-
-  const { data: securityLogs = [] } = useQuery({
-    queryKey: ['securityLogs', '-created_date', 100],
-    queryFn: () => base44.entities.SecurityLog.list('-created_date', 100),
-    initialData: [],
-    enabled: isAdmin,
-  });
-
-  const { data: userActivity = [] } = useQuery({
-    queryKey: ['userActivity'],
-    queryFn: () => base44.entities.UserActivity.list('-created_date', 500),
-    initialData: [],
-    enabled: isAdmin,
-  });
 
   React.useEffect(() => {
     if (currentUser) {
@@ -92,76 +46,6 @@ export default function SecurityCompliance() {
       });
     }
   }, [currentUser, selectedTab]);
-
-  // Get unique users, actions, and entities for filters
-  const uniqueUsers = [...new Set(userActivity.map(log => log.user_email))];
-  const uniqueActions = [...new Set(userActivity.map(log => log.action))];
-  const uniqueEntities = [...new Set(userActivity.map(log => log.entity_type).filter(Boolean))];
-
-  // Apply filters
-  const filteredLogs = userActivity.filter(log => {
-    const matchesSearch = !searchTerm || 
-      log.user_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.user_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.action?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.entity_type?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesAction = actionFilter === 'all' || log.action === actionFilter;
-    const matchesEntity = entityFilter === 'all' || log.entity_type === entityFilter;
-    const matchesUser = userFilter === 'all' || log.user_email === userFilter;
-    const matchesSeverity = severityFilter === 'all' || log.severity === severityFilter;
-    
-    const logDate = new Date(log.created_date);
-    const daysAgo = parseInt(dateFilter);
-    const matchesDate = daysAgo === 0 || 
-      (Date.now() - logDate.getTime()) <= (daysAgo * 24 * 60 * 60 * 1000);
-    
-    return matchesSearch && matchesAction && matchesEntity && matchesUser && matchesSeverity && matchesDate;
-  });
-
-  const exportAuditLog = () => {
-    const csv = toCsvRows([
-      ['Timestamp', 'User', 'Email', 'Action', 'Entity Type', 'Entity ID', 'Severity', 'Details'],
-      ...filteredLogs.map(log => [
-        log.created_date,
-        log.user_name,
-        log.user_email,
-        log.action,
-        log.entity_type || '',
-        log.entity_id || '',
-        log.severity || 'info',
-        JSON.stringify(log.details || {})
-      ])
-    ]);
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `audit_log_${new Date().toISOString()}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-    a.remove();
-  };
-
-  const getActionColor = (action) => {
-    if (action?.includes('delete') || action?.includes('reject')) return 'text-red-600';
-    if (action?.includes('approved') || action?.includes('completed')) return 'text-green-600';
-    if (action?.includes('updated') || action?.includes('edited')) return 'text-blue-600';
-    return 'text-slate-600';
-  };
-
-  // Security metrics
-  const criticalEvents = securityLogs.filter(log => 
-    log.action?.includes('FAILED') || 
-    log.action?.includes('DENIED') ||
-    log.action?.includes('DELETE')
-  ).length;
-  const phiAccess = securityLogs.filter(log => 
-    log.action?.includes('PATIENT') || 
-    log.action?.includes('VISIT') ||
-    log.action?.includes('PHI')
-  ).length;
 
   const complianceChecks = [
     {
@@ -180,10 +64,10 @@ export default function SecurityCompliance() {
     },
     {
       name: "Audit Trails",
-      status: "compliant",
-      description: `${securityLogs.length + userActivity.length} events logged`,
+      status: "attention",
+      description: "Security event verification unavailable",
       icon: FileText,
-      details: "All PHI access and modifications tracked"
+      details: "Immutable agency provenance and a tenant-authorized read broker are not yet verified"
     },
     {
       name: "Session Management",
@@ -223,18 +107,17 @@ export default function SecurityCompliance() {
   ];
 
   // The list above is a documented control INVENTORY, not a set of measurements.
-  // Seven entries assert platform behaviour this frontend cannot probe
-  // (encryption at rest, TLS, automated backups); only the audit trail is
-  // derivable from data the app actually holds. Every entry was hardcoded
+  // Every entry asserts behaviour this frontend cannot fully probe. The audit
+  // trail is explicitly unavailable until its tenant provenance is verified.
+  // Every entry was previously hardcoded
   // `status: "compliant"`, so the HIPAA "% Compliant" figure was mathematically
   // pinned at 100% no matter the state of the system — and the checklist below
   // rendered a green "✓ Active" badge without consulting `status` at all.
   // Separate what is verified from what is merely attested, and report both.
-  const auditEventCount = securityLogs.length + userActivity.length;
   const assessedChecks = complianceChecks.map((check) => (
     check.name === 'Audit Trails'
-      ? { ...check, attested: false, status: auditEventCount > 0 ? 'compliant' : 'attention' }
-      : { ...check, attested: true }
+      ? { ...check, attested: false, evidenceType: 'application_assessment', status: 'attention' }
+      : { ...check, attested: true, evidenceType: 'platform_attestation', status: 'attested' }
   ));
   const verifiableChecks = assessedChecks.filter((c) => !c.attested);
   const verifiedCompliant = verifiableChecks.filter((c) => c.status === 'compliant').length;
@@ -285,20 +168,20 @@ export default function SecurityCompliance() {
             {/* Labelled for what it measures: the controls this app can actually
                 check, not the platform attestations it cannot. */}
             <StatCard label="Verified Controls" value={`${verifiedCompliant}/${verifiableChecks.length}`} icon={CheckCircle2} tone={complianceScore === 100 ? 'emerald' : 'amber'} />
-            <StatCard label="Total Events" value={securityLogs.length + userActivity.length} icon={Activity} tone="navy" />
-            <StatCard label="PHI Access" value={phiAccess} icon={Eye} tone="slate" />
-            <StatCard label="Critical Events" value={criticalEvents} icon={AlertTriangle} tone="red" />
+            <StatCard label="User Activities" value="Unavailable" icon={Activity} tone="amber" />
+            <StatCard label="PHI Access" value="Unavailable" icon={Eye} tone="slate" />
+            <StatCard label="Critical Events" value="Unavailable" icon={AlertTriangle} tone="amber" />
           </div>
 
-          {criticalEvents > 0 && (
-            <Alert className="bg-amber-50 border-amber-300">
-              <AlertTriangle className="w-5 h-5 text-amber-600" />
-              <AlertDescription className="text-amber-900">
-                <p className="font-semibold">{criticalEvents} Critical Security Events Detected</p>
-                <p className="text-sm">Review audit logs for failed access attempts or deletions.</p>
-              </AlertDescription>
-            </Alert>
-          )}
+          <Alert className="bg-amber-50 border-amber-300">
+            <AlertTriangle className="w-5 h-5 text-amber-700" />
+            <AlertDescription className="text-amber-950">
+              <p className="font-semibold">Security event metrics unavailable</p>
+              <p className="text-sm">
+                SecurityLog rows cannot be read here until immutable agency provenance and a tenant-authorized broker are hosted and verified. Missing values do not mean zero events.
+              </p>
+            </AlertDescription>
+          </Alert>
 
           {/* HIPAA Requirements */}
           <Card>
@@ -359,7 +242,7 @@ export default function SecurityCompliance() {
                     <li>§ 164.312(a)(1) - Access Control: Role-based authentication implemented</li>
                     <li>§ 164.312(a)(2)(i) - Unique User Identification: Email-based user identification</li>
                     <li>§ 164.312(a)(2)(iii) - Automatic Logoff: 15-minute session timeout</li>
-                    <li>§ 164.312(b) - Audit Controls: Comprehensive security logging</li>
+                    <li>§ 164.312(b) - Audit Controls: Evidence unavailable pending immutable tenant provenance and an authorized read broker</li>
                     <li>§ 164.312(c)(1) - Integrity: Database integrity with timestamps</li>
                     <li>§ 164.312(d) - Authentication: Secure token-based authentication</li>
                     <li>§ 164.312(e)(1) - Transmission Security: TLS 1.2+ encryption</li>
@@ -373,14 +256,11 @@ export default function SecurityCompliance() {
                   variant="outline" 
                   className="flex-1"
                   onClick={() => {
-                    const report = {
+                    const report = buildSecurityComplianceReport({
                       generatedDate: new Date().toISOString(),
-                      complianceScore: complianceScore,
-                      totalEvents: securityLogs.length + userActivity.length,
-                      criticalEvents: criticalEvents,
-                      phiAccessEvents: phiAccess,
-                      checks: complianceChecks
-                    };
+                      complianceScore,
+                      assessedChecks,
+                    });
                     const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -468,7 +348,7 @@ export default function SecurityCompliance() {
                   </p>
                   <ul className="text-xs text-slate-500 space-y-1">
                     <li>• RBAC: Admin and User roles</li>
-                    <li>• Audit: All access logged</li>
+                    <li>• Audit: Coverage unverified pending a tenant-authorized broker</li>
                     <li>• Session: Automatic timeout on inactivity</li>
                   </ul>
                 </div>
@@ -478,314 +358,11 @@ export default function SecurityCompliance() {
         </TabsContent>
 
         <TabsContent value="audit" className="space-y-6">
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-slate-600">Security Events</p>
-                <p className="text-2xl font-bold">{securityLogs.length}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-slate-600">User Actions</p>
-                <p className="text-2xl font-bold">{userActivity.length}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-slate-600">Critical</p>
-                <p className="text-2xl font-bold text-red-600">
-                  {userActivity.filter(l => l.severity === 'critical').length}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-slate-600">Active Users</p>
-                <p className="text-2xl font-bold">{uniqueUsers.length}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Recent Security Logs */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Recent Security Events</span>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => {
-                    const logs = securityLogs.slice(0, 50);
-                    const csv = toCsvRows([
-                      ['Timestamp', 'User', 'Action', 'Details'],
-                      ...logs.map(log => [
-                        log.timestamp || log.created_date,
-                        log.user_email,
-                        log.action,
-                        JSON.stringify(log.details || {})
-                      ])
-                    ]);
-                    const blob = new Blob([csv], { type: 'text/csv' });
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `security_log_${new Date().toISOString()}.csv`;
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    a.remove();
-                  }}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {securityLogs.length === 0 ? (
-                  <p className="text-slate-500 text-center py-8">No security events logged yet</p>
-                ) : (
-                  securityLogs.slice(0, 20).map((log, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-3 rounded-lg border ${
-                        log.action?.includes('FAILED') || log.action?.includes('DELETE')
-                          ? 'bg-red-50 border-red-200'
-                          : log.action?.includes('PHI') || log.action?.includes('PATIENT')
-                          ? 'bg-yellow-50 border-yellow-200'
-                          : 'bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm text-slate-900">{log.action}</p>
-                          <p className="text-xs text-slate-600">
-                            {log.user_email} • {log.user_role}
-                          </p>
-                          {log.details && (
-                            <p className="text-xs text-slate-500 mt-1">
-                              {JSON.stringify(log.details).substring(0, 100)}...
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-slate-500">
-                            {new Date(log.timestamp || log.created_date).toLocaleDateString()}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {new Date(log.timestamp || log.created_date).toLocaleTimeString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <SecurityLogUnavailable />
         </TabsContent>
 
         <TabsContent value="activity" className="space-y-6">
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-slate-600">Total Events</p>
-                <p className="text-2xl font-bold">{userActivity.length}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-slate-600">Filtered</p>
-                <p className="text-2xl font-bold">{filteredLogs.length}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-slate-600">Critical Events</p>
-                <p className="text-2xl font-bold text-red-600">
-                  {userActivity.filter(l => l.severity === 'critical').length}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-slate-600">Active Users</p>
-                <p className="text-2xl font-bold">{uniqueUsers.length}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Filters */}
-          <Card>
-            <CardHeader className="p-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Filter className="w-4 h-4" />
-                  Filters
-                </CardTitle>
-                <Button onClick={exportAuditLog} variant="outline" size="sm">
-                  <Download className="w-4 h-4 mr-2" />
-                  Export CSV
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input
-                    placeholder="Search users, actions..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 h-11 touch-target"
-                  />
-                </div>
-                <Select value={actionFilter} onValueChange={setActionFilter}>
-                  <SelectTrigger className="h-11 touch-target">
-                    <SelectValue placeholder="Action Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Actions</SelectItem>
-                    {uniqueActions.map(action => (
-                      <SelectItem key={action} value={action}>{action}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={entityFilter} onValueChange={setEntityFilter}>
-                  <SelectTrigger className="h-11 touch-target">
-                    <SelectValue placeholder="Entity Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Entities</SelectItem>
-                    {uniqueEntities.map(entity => (
-                      <SelectItem key={entity} value={entity}>{entity}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={userFilter} onValueChange={setUserFilter}>
-                  <SelectTrigger className="h-11 touch-target">
-                    <SelectValue placeholder="User" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Users</SelectItem>
-                    {uniqueUsers.map(user => (
-                      <SelectItem key={user} value={user}>{user}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={severityFilter} onValueChange={setSeverityFilter}>
-                  <SelectTrigger className="h-11 touch-target">
-                    <SelectValue placeholder="Severity" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Severities</SelectItem>
-                    <SelectItem value="critical">Critical</SelectItem>
-                    <SelectItem value="warning">Warning</SelectItem>
-                    <SelectItem value="info">Info</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={dateFilter} onValueChange={setDateFilter}>
-                  <SelectTrigger className="h-11 touch-target">
-                    <SelectValue placeholder="Time Range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">All Time</SelectItem>
-                    <SelectItem value="1">Last 24 Hours</SelectItem>
-                    <SelectItem value="7">Last 7 Days</SelectItem>
-                    <SelectItem value="30">Last 30 Days</SelectItem>
-                    <SelectItem value="90">Last 90 Days</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Audit Log Table */}
-          <Card>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <ScrollArea className="h-[600px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-sm">Timestamp</TableHead>
-                        <TableHead className="text-sm">User</TableHead>
-                        <TableHead className="text-sm">Action</TableHead>
-                        <TableHead className="text-sm hidden md:table-cell">Entity</TableHead>
-                        <TableHead className="text-sm hidden lg:table-cell">Severity</TableHead>
-                        <TableHead className="text-sm hidden lg:table-cell">Details</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredLogs.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-slate-500">
-                            No audit logs found matching filters
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredLogs.map((log, idx) => (
-                          <TableRow key={idx} className="hover:bg-slate-50">
-                            <TableCell className="text-xs whitespace-nowrap">
-                              <div className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3 text-slate-400 hidden sm:inline" />
-                                <span className="hidden sm:inline">{formatEastern(new Date(log.created_date), 'MMM d, yyyy HH:mm:ss')}</span>
-                                <span className="sm:hidden">{formatEastern(new Date(log.created_date), 'MMM d, HH:mm')}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              <div className="flex items-center gap-1">
-                                <User className="w-3 h-3 text-slate-400 hidden sm:inline flex-shrink-0" />
-                                <div className="min-w-0">
-                                  <p className="text-xs font-medium truncate">{log.user_name}</p>
-                                  <p className="text-xs text-slate-500 truncate hidden sm:block">{log.user_email}</p>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              <span className={`font-medium ${getActionColor(log.action)} truncate block`}>
-                                {log.action?.replace(/_/g, ' ')}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-xs hidden md:table-cell">
-                              {log.entity_type && (
-                                <div>
-                                  <Badge variant="outline" className="text-xs">
-                                    {log.entity_type}
-                                  </Badge>
-                                  {log.entity_id && (
-                                    <p className="text-slate-500 mt-1 truncate">ID: {log.entity_id.substring(0, 8)}...</p>
-                                  )}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="hidden lg:table-cell">
-                              {getSeverityBadge(log.severity)}
-                            </TableCell>
-                            <TableCell className="text-xs max-w-xs hidden lg:table-cell">
-                              {log.details && (
-                                <details className="cursor-pointer">
-                                  <summary className="text-blue-600 hover:text-blue-700">
-                                    View details
-                                  </summary>
-                                  <pre className="mt-2 p-2 bg-slate-100 rounded text-xs overflow-auto max-h-32">
-                                    {JSON.stringify(log.details, null, 2)}
-                                  </pre>
-                                </details>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </div>
-            </CardContent>
-          </Card>
+          <UserActivityUnavailable />
         </TabsContent>
 
         <TabsContent value="ai-analysis">

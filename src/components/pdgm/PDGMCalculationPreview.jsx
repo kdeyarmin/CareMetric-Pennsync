@@ -11,16 +11,15 @@ import {
   formatPdgmNumber,
   getAlternativeScenarioState,
   getPdgmPaymentState,
+  PDGM_LEGACY_SURFACES_ENABLED,
 } from "./pdgmAvailability";
 
 /**
- * Runs the saved PDGM rate set through the calculatePDGM engine using a
- * representative national-standardized scenario (community / early, CHF, medium
- * functional impairment, no comorbidities) so the admin can verify the computed
- * 30-day payment changes when they update and save rate factors.
+ * Historical saved-rate preview retained behind the default-off rate-editor and
+ * reimbursement gates. It must not invoke the retired factorized calculation.
  *
- * The calculation reflects SAVED rates (the engine loads PDGMRateConfig
- * server-side), so the button is disabled while the editor has unsaved edits.
+ * The historical request code is preserved for later replacement, but the
+ * button is disabled by an independent retirement lock as well as dirty state.
  */
 const REFERENCE_PATIENT = {
   primary_diagnosis_code: "I50.9",
@@ -45,6 +44,7 @@ const REFERENCE_PATIENT = {
 
 export default function PDGMCalculationPreview({ isDirty, baseRate }) {
   const [result, setResult] = useState(null);
+  const previewEnabled = PDGM_LEGACY_SURFACES_ENABLED;
 
   const calcMutation = useMutation({
     mutationFn: async () => calculatePDGM({ pdgmData: REFERENCE_PATIENT, wageIndex: 1.0 }),
@@ -56,7 +56,7 @@ export default function PDGMCalculationPreview({ isDirty, baseRate }) {
   });
 
   const handleCalculate = () => {
-    if (isDirty) return;
+    if (isDirty || !previewEnabled) return;
     calcMutation.mutate();
   };
 
@@ -71,12 +71,11 @@ export default function PDGMCalculationPreview({ isDirty, baseRate }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Calculator className="w-5 h-5" />
-          National standardized Medicare payment preview
+          Medicare payment preview unavailable
         </CardTitle>
         <p className="text-xs text-slate-500">
-          Runs the saved rate set through the PDGM engine for a representative community / early
-          episode (CHF, medium functional impairment, no comorbidities, wage index 1.0). Verify the
-          computed 30-day payment changes after you update and save rate factors.
+          The saved factorized rate set is not CMS HHGS. This preview remains disabled until a
+          date-effective implementation matches the official CMS fixtures and passes release review.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -91,17 +90,17 @@ export default function PDGMCalculationPreview({ isDirty, baseRate }) {
         )}
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={handleCalculate} disabled={isDirty || calcMutation.isPending}>
+          <Button onClick={handleCalculate} disabled={!previewEnabled || isDirty || calcMutation.isPending}>
             {calcMutation.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <Calculator className="w-4 h-4 mr-2" />
             )}
-            {calcMutation.isPending ? "Calculating…" : "Calculate national standardized payment"}
+            {calcMutation.isPending ? "Calculating…" : "Payment calculation unavailable"}
           </Button>
           {rateBasis && (
             <Badge variant={rateBasis.isOfficial ? "default" : "secondary"}>
-              {rateBasis.isOfficial ? "Official CMS rates" : "Estimate (unofficial rates)"}
+              {rateBasis.isOfficial ? "Legacy official marker ignored" : "Reference values only"}
             </Badge>
           )}
           {baseRate && (

@@ -49,6 +49,7 @@ import AdrSubmissionPanel from "../components/adr/AdrSubmissionPanel";
 import { AUDIT_TYPES } from "../components/adr/adrRequirements";
 import { resolveResponseDueDate } from "../components/adr/adrDeadlines";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 const AUDIT_TYPE_LABELS = Object.fromEntries(AUDIT_TYPES.map((t) => [t.id, t.label]));
 
@@ -343,11 +344,13 @@ export default function ADRCenter() {
             </Button>
             <div className="flex flex-col sm:flex-row gap-2">
               {selectedCase.letter_file_url && isSafeExternalUrl(selectedCase.letter_file_url) && (
-                <Button asChild variant="outline" className="min-h-[44px]">
-                  <a href={selectedCase.letter_file_url} target="_blank" rel="noopener noreferrer">
-                    <FileText className="w-4 h-4 mr-2" />
-                    View letter
-                  </a>
+                <Button
+                  variant="outline"
+                  className="min-h-[44px]"
+                  onClick={() => openAuthorityBoundWindow(selectedCase.letter_file_url)}
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  View letter
                 </Button>
               )}
               {selectedCase.status === "packet_generated" && (

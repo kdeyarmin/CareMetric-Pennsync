@@ -6,6 +6,23 @@
       "type": "string",
       "description": "Explicit tenant key for service-role clinical processing. Existing ownership and assigned-nurse relationships remain authoritative for user access; legacy patients without a proven agency id stay unscoped and are excluded from agency outcome enrichment until an audited backfill."
     },
+    "created_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in User id stamped by createAuthorizedPatient. Legacy rows stay unstamped until an audited tenant backfill proves their creator."
+    },
+    "created_by_user_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Normalized built-in User email corroborating created_by_user_id; stamped server-side and never accepted from a Patient-create caller."
+    },
+    "client_request_id": {
+      "type": "string",
+      "description": "Caller retry key accepted only by createAuthorizedPatient and scoped server-side before Patient creation."
+    },
+    "patient_creation_key": {
+      "type": "string",
+      "description": "Server-built agency:user:request idempotency key. Best-effort until Base44 exposes a datastore uniqueness constraint."
+    },
     "first_name": {
       "type": "string"
     },
@@ -715,7 +732,7 @@
           }
         }
       },
-      "description": "History of AI-enhanced notes for context building and documentation improvement. Written ONLY via the appendPatientNoteHistory backend function (atomic append) — do not read-modify-write this array from the client."
+      "description": "Legacy embedded note history retained read-only until audited migration. New writes append immutable PatientNoteHistoryEntry events through appendPatientNoteHistory; never update this whole array."
     },
     "risk_assessment": {
       "type": "object",
@@ -823,7 +840,11 @@
           "created_by": "{{user.email}}"
         },
         {
-          "assigned_nurses": "{{user.email}}"
+          "data.assigned_nurses": {
+            "$in": [
+              "{{user.email}}"
+            ]
+          }
         },
         {
           "user_condition": {
@@ -831,41 +852,12 @@
           }
         },
         {
-          "user_condition": {
-            "account_type": "agency_admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "super_admin"
-          }
-        },
-        {
-          "is_sample": true
+          "data.is_sample": true
         }
       ]
     },
-    "write": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "agency_admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "super_admin"
-          }
-        }
-      ]
-    }
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

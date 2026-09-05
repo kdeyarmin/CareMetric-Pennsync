@@ -85,21 +85,9 @@
     "content"
   ],
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "generated_by": "{{user.email}}"
-        },
-        {
-          "reviewer_email": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    },
-    "write": {}
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

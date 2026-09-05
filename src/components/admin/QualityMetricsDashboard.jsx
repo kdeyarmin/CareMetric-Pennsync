@@ -98,19 +98,6 @@ export default function QualityMetricsDashboard() {
     initialData: [],
   });
 
-  const { data: securityLogs } = useQuery({
-    queryKey: ['securityLogsMetrics', timeRange],
-    queryFn: async () => {
-      const logs = await base44.entities.SecurityLog.list('-timestamp', 1000);
-      return logs.filter(log => {
-        if (!log.timestamp) return false;
-        const logDate = format(new Date(log.timestamp), 'yyyy-MM-dd');
-        return logDate >= dateRange.start && logDate <= dateRange.end;
-      });
-    },
-    initialData: [],
-  });
-
   const { data: noteConversions = [] } = useQuery({
     queryKey: ['noteConversionsMetrics', timeRange],
     queryFn: async () => {
@@ -187,12 +174,6 @@ export default function QualityMetricsDashboard() {
       ? Math.round(Object.values(patientVisitCounts).reduce((a, b) => a + b, 0) / Object.keys(patientVisitCounts).length * 10) / 10
       : 0;
 
-    // Quality scores from security logs
-    const qaLogs = securityLogs.filter(log => log.action === 'NOTE_SCRUBBER_COMPLETED');
-    const avgQualityScore = qaLogs.length > 0
-      ? Math.round(qaLogs.reduce((sum, log) => sum + (log.details?.score || 0), 0) / qaLogs.length)
-      : 0;
-
     // Nurse productivity
     const nurseStats = {};
     allUsers.filter(u => u.role === 'user').forEach(nurse => {
@@ -242,12 +223,14 @@ export default function QualityMetricsDashboard() {
       hospitalizationRate,
       fallRate,
       avgVisitsPerPatient,
-      avgQualityScore,
+      // SecurityLog has no immutable tenant provenance, so a missing quality
+      // score is represented as unavailable rather than a misleading zero.
+      avgQualityScore: null,
       nurseStats,
       activePatients,
       totalTimeSavedHours
     };
-  }, [filteredVisits, allVisits, allIncidents, allPatients, allUsers, securityLogs, noteConversions]);
+  }, [filteredVisits, allVisits, allIncidents, allPatients, allUsers, noteConversions]);
 
   const getMetricStatus = (value, thresholds) => {
     if (value >= thresholds.excellent) return { color: 'text-green-600', bg: 'bg-green-50', label: 'Excellent' };
@@ -266,7 +249,7 @@ Total Visits,${metrics.totalVisits}
 Completed Visits,${metrics.completedVisits}
 Completion Rate,${metrics.completionRate}%
 Average Documentation Time,${metrics.avgDocTime} minutes
-Average Quality Score,${metrics.avgQualityScore}/100
+Average Quality Score,Unavailable pending tenant-authorized audit provenance
 
 === PATIENT OUTCOMES ===
 Active Patients,${metrics.activePatients}
@@ -309,15 +292,15 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
     insightsText += `Based on the data for the last ${timeRange} days (${dateRange.start} to ${dateRange.end}):\n\n`;
 
     insightsText += `### Overall Performance Summary:\n`;
-    if (metrics.completionRate >= 90 && metrics.avgQualityScore >= 85 && metrics.avgDocTime <= 45 && metrics.fallRate < 10 && metrics.hospitalizationRate < 15) {
-        insightsText += `- Your agency is demonstrating **Excellent** overall performance! All key metrics are meeting or exceeding targets. Keep up the outstanding work.\n`;
-    } else if (metrics.completionRate >= 80 && metrics.avgQualityScore >= 75 && metrics.fallRate < 15 && metrics.hospitalizationRate < 20) {
-        insightsText += `- Performance is **Good**, with some areas for potential optimization to achieve top-tier quality.\n`;
+    if (metrics.completionRate >= 90 && metrics.avgDocTime <= 45 && metrics.fallRate < 10 && metrics.hospitalizationRate < 15) {
+        insightsText += `- The currently available operational and patient-outcome metrics are meeting their targets. Documentation quality is excluded because its tenant-authorized source is unavailable.\n`;
+    } else if (metrics.completionRate >= 80 && metrics.fallRate < 15 && metrics.hospitalizationRate < 20) {
+        insightsText += `- The currently available metrics show generally good performance, with some areas for potential optimization. Documentation quality is excluded.\n`;
     } else {
         insightsText += `- Performance indicates **Areas for Improvement**, particularly in key quality and patient outcome metrics. Targeted interventions are recommended.\n`;
     }
     insightsText += `* Current Visit Completion Rate: ${metrics.completionRate}% (Target: 90%+)\n`;
-    insightsText += `* Average Quality Score: ${metrics.avgQualityScore}/100 (Target: 85+/100)\n`;
+    insightsText += `* Average Quality Score: unavailable pending tenant-authorized audit provenance\n`;
     insightsText += `* Average Documentation Time: ${metrics.avgDocTime} minutes (Target: <45 min)\n\n`;
 
     insightsText += `### Key Recommendations:\n`;
@@ -325,10 +308,6 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
 
     if (metrics.completionRate < 85) {
         insightsText += `- **Boost Completion Rate:** Your completion rate of ${metrics.completionRate}% is below the desired target. Consider reviewing visit scheduling, staff availability, and common reasons for cancellations to improve adherence. Targeted training on visit protocols could also help.\n`;
-        hasRecommendations = true;
-    }
-    if (metrics.avgQualityScore < 80) {
-        insightsText += `- **Enhance Quality Scores:** With an average score of ${metrics.avgQualityScore}/100, there's room to improve documentation quality. Leverage PennSync AI assistance features more extensively to ensure comprehensive and compliant records, focusing on areas identified by the scrubber.\n`;
         hasRecommendations = true;
     }
     if (metrics.avgDocTime > 50) {
@@ -362,7 +341,7 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
 
     insightsText += `\n### PennSync AI Impact & Value:\n`;
     insightsText += `- PennSync AI has saved an estimated **${metrics.totalTimeSavedHours} hours** of documentation time during this period. This translates to nurses dedicating more time directly to patient care rather than administrative tasks.\n`;
-    insightsText += `- The average quality score of **${metrics.avgQualityScore}/100** suggests effective use of AI-driven quality checks and compliance support, reducing errors and improving record accuracy.\n`;
+    insightsText += `- Documentation quality scoring is excluded until an immutable, tenant-authorized audit source is available.\n`;
 
     setAiInsights(insightsText);
     setIsGenerating(false);
@@ -379,8 +358,6 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
   }
 
   const _completionStatus = getMetricStatus(metrics.completionRate, { excellent: 95, good: 85, fair: 75 });
-  const _qualityStatus = getMetricStatus(metrics.avgQualityScore, { excellent: 90, good: 80, fair: 70 });
-
   return (
     <div className="space-y-6">
       {/* PennSync by CareMetric Branded Header */}
@@ -397,6 +374,16 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
           </div>
         </CardContent>
       </Card>
+
+      <Alert className="border-amber-300 bg-amber-50">
+        <AlertTriangle className="w-4 h-4 text-amber-700" />
+        <AlertDescription className="text-amber-950">
+          <p className="font-semibold">Documentation quality score unavailable</p>
+          <p className="text-sm">
+            Security audit rows do not yet carry immutable agency provenance, so this dashboard does not read them or interpret the missing score as zero.
+          </p>
+        </AlertDescription>
+      </Alert>
 
       {/* Filters and Export Button */}
       <Card>
@@ -675,12 +662,12 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
             </Alert>
           )}
 
-          {metrics.completionRate >= 90 && metrics.avgQualityScore >= 85 && metrics.avgDocTime <= 45 && metrics.fallRate < 10 && metrics.hospitalizationRate < 15 && (
+          {metrics.completionRate >= 90 && metrics.avgDocTime <= 45 && metrics.fallRate < 10 && metrics.hospitalizationRate < 15 && (
             <Alert className="bg-green-50 border-green-200">
               <CheckCircle2 className="w-4 h-4 text-green-600" />
               <AlertDescription className="text-green-900">
-                <p className="font-semibold">🎉 Excellent Agency Performance!</p>
-                <p className="text-sm">All key metrics are meeting or exceeding targets. Keep up the great work!</p>
+                <p className="font-semibold">Available metrics are meeting targets</p>
+                <p className="text-sm">Documentation quality scoring is excluded until its tenant-authorized source is available.</p>
               </AlertDescription>
             </Alert>
           )}

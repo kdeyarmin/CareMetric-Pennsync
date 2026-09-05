@@ -17,6 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 const fmtDuration = (s) =>
   s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}` : null;
@@ -273,9 +274,13 @@ export default function TrainingVideoStudio({ course = null }) {
 
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {m.video_url && isSafeExternalUrl(m.video_url) && (
-                        <a href={m.video_url} target="_blank" rel="noopener noreferrer">
-                          <Button size="sm" variant="outline"><Play className="w-3.5 h-3.5 mr-1.5" />Preview</Button>
-                        </a>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openAuthorityBoundWindow(m.video_url)}
+                        >
+                          <Play className="w-3.5 h-3.5 mr-1.5" />Preview
+                        </Button>
                       )}
                       <Button
                         size="sm"

@@ -3,6 +3,8 @@ import { logActivity, ActivityActions } from "@/components/utils/activityLogger"
 import { toNoteConversionFields, deriveStructuredVisitFields } from "@/components/smartNote/compliance/coverageScore";
 import { buildVisitReportingFields, buildAuditFields } from "@/components/smartNote/compliance/reportingFields";
 import { toast } from "sonner";
+import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
+import { saveVisitDocumentation } from '@/functions/updateAuthorizedVisit';
 
 /**
  * Thrown when a save is attempted with no network. Its own type (rather than a
@@ -120,17 +122,27 @@ export async function persistVisitNote({
     throw new OfflineSaveError();
   }
 
-  // Re-save after an edit → update the same visit, never duplicate. Also keep the
-  // appended enhanced_notes_history entry in sync, since getPriorNote() prefers it
-  // for the next note's carry-forward pre-fill. History writes go through the
-  // appendPatientNoteHistory backend function: a browser-side read-modify-write
-  // of the array lost entries when two saves for the same patient raced, and it
-  // targeted "the last entry" — which may meanwhile be a COLLEAGUE's newer note.
-  // The function serializes the write server-side (verify-and-retry) and targets
-  // this visit's entry by visit_id.
+  // Re-save after an edit → update the same visit, never duplicate. Keep the
+  // projected note history in sync for next-note carry-forward.
+  // appendPatientNoteHistory never updates Patient.enhanced_notes_history: each
+  // re-save creates an immutable PatientNoteHistoryEntry revision, and the
+  // authorized reader projects the newest revision for this visit.
   if (savedVisitId) {
+    // The immutable history broker binds its payload to the stored Visit, so
+    // finish the authorized Visit mutation before appending the revision.
+    await saveVisitDocumentation({
+      visitId: savedVisitId,
+      patientId,
+      fields: {
+        nurse_notes: finalText,
+        compliance_score: coverageScore,
+        vital_signs: vitals,
+        grounding_pending: false,
+        ...structured,
+        ...reportingFields,
+      },
+    });
     await Promise.all([
-      base44.entities.Visit.update(savedVisitId, { nurse_notes: finalText, compliance_score: coverageScore, vital_signs: vitals, grounding_pending: false, ...structured, ...reportingFields }),
       base44.functions.invoke('appendPatientNoteHistory', {
         patient_id: patientId, mode: 'update', clinical_notes: finalText,
         entry: { visit_id: savedVisitId, note: finalText, compliance_score: coverageScore },
@@ -157,11 +169,30 @@ export async function persistVisitNote({
     ...structured, ...reportingFields,
   };
   const visit = existingVisitId
-    ? (await base44.entities.Visit.update(existingVisitId, visitFields), { id: existingVisitId })
-    : await base44.entities.Visit.create(visitFields);
+    ? (
+        await saveVisitDocumentation({
+          visitId: existingVisitId,
+          // Assertion only: updateAuthorizedVisit verifies the stored Visit is
+          // still bound to this Patient and never mutates patient_id.
+          patientId,
+          fields: {
+            status: visitFields.status,
+            nurse_notes: visitFields.nurse_notes,
+            raw_transcription: visitFields.raw_transcription,
+            compliance_score: visitFields.compliance_score,
+            vital_signs: visitFields.vital_signs,
+            documentation_source: visitFields.documentation_source,
+            grounding_pending: visitFields.grounding_pending,
+            ...structured,
+            ...reportingFields,
+          },
+        }),
+        { id: existingVisitId }
+      )
+    : (await createAuthorizedVisit(visitFields)).visit;
 
-  // Atomic-append the history entry server-side (see the re-save comment above);
-  // created_by/created_at are stamped by the function from the caller's session.
+  // Append an immutable history event server-side (see the re-save comment
+  // above); tenant, actor, membership, and recorded_at are server-stamped.
   const [, , audit] = await Promise.all([
     base44.functions.invoke('appendPatientNoteHistory', {
       patient_id: patientId, mode: 'append', clinical_notes: finalText,

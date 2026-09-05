@@ -1,4 +1,3 @@
-import { useLocation } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle } from "lucide-react";
@@ -10,9 +9,8 @@ import AdvancedComplianceAnalyzer from "@/components/oasis/AdvancedComplianceAna
 
 const OASIS_COMPLIANCE_REVIEW_ENABLED = false;
 
-function EnabledOASISComplianceReview() {
-  const location = useLocation();
-  const { analysisResults, pdgmData, patientId } = location.state || {};
+function EnabledOASISComplianceReview({ analysisHandoff }) {
+  const { analysisResults, pdgmData, patientId } = analysisHandoff || {};
 
   if (!analysisResults) {
     return <OASISNoAnalysisCard />;
@@ -129,7 +127,7 @@ function EnabledOASISComplianceReview() {
   );
 }
 
-export default function OASISComplianceReview() {
+export default function OASISComplianceReview({ analysisHandoff }) {
   if (!OASIS_COMPLIANCE_REVIEW_ENABLED) {
     return (
       <Card className="border-amber-200 bg-amber-50">
@@ -143,5 +141,5 @@ export default function OASISComplianceReview() {
       </Card>
     );
   }
-  return <EnabledOASISComplianceReview />;
+  return <EnabledOASISComplianceReview analysisHandoff={analysisHandoff} />;
 }

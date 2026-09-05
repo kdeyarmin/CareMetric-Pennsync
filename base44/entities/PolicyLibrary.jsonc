@@ -74,5 +74,11 @@
     "title",
     "category",
     "effective_date"
-  ]
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
 }

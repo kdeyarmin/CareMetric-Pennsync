@@ -20,6 +20,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: isSafeFetchUrl — generated, edit base44/_shared/backendHelpers.mjs>>>
 // SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
 // internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
@@ -216,6 +227,16 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    // The current payload carries only an allowlisted URL, not an immutable
+    // DocumentTenantBinding identity. Withhold provider transmission until the
+    // fax broker can authorize a service-owned document binding.
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({
+        error: 'Fax sending is restricted to the protected platform owner pending document-binding migration',
+        code: 'fax_document_authority_migration_pending',
+      }, { status: 503 });
+    }
 
     const { file_url, to_number, document_name, to_name, patient_id } = await req.json();
     if (!file_url || !to_number) {
@@ -231,33 +252,10 @@ Deno.serve(async (req) => {
       if (!claimed) {
         return Response.json({ error: 'Patient not found' }, { status: 404 });
       }
-      const isSuperAdmin = user.account_type === 'super_admin';
-      const isAgencyScopedAdmin =
-        user.account_type === 'agency_admin'
-        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-      const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
       const isAssigned = Array.isArray(claimed.assigned_nurses)
         && claimed.assigned_nurses.includes(user.email);
-      if (!isPlatformAdmin && !isAgencyScopedAdmin && claimed.created_by !== user.email && !isAssigned) {
+      if (!isProtectedSuperAdmin(user) && claimed.created_by !== user.email && !isAssigned) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      if (isAgencyScopedAdmin) {
-        if (!user.agency_name) {
-          return Response.json({ error: 'Forbidden' }, { status: 403 });
-        }
-        const agencyUsers = await base44.asServiceRole.entities.User
-          .list('-created_date', 5000).catch(() => []);
-        const agencyEmails = new Set(
-          (agencyUsers || [])
-            .filter((u) => u.agency_name === user.agency_name && u.email)
-            .map((u) => u.email),
-        );
-        const inAgency = (claimed.created_by && agencyEmails.has(claimed.created_by))
-          || (Array.isArray(claimed.assigned_nurses)
-            && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
-        if (!inAgency) {
-          return Response.json({ error: 'Forbidden' }, { status: 403 });
-        }
       }
     }
 
@@ -320,7 +318,10 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, deduped: true, fax_id: dupe.id, status: dupe.status });
     }
 
-    const faxLog = await base44.entities.FaxLog.create({
+    // All caller-controlled inputs and tenant-sensitive patient/destination
+    // checks have passed above. Use the service role only for the authorized
+    // FaxLog write so entity RLS cannot strand a valid outbound transmission.
+    const faxLog = await base44.asServiceRole.entities.FaxLog.create({
       from_number: fromNumber,
       // Store and send the NORMALIZED E.164 destination (what was validated),
       // not the raw user input — Telnyx rejects/misroutes non-E164 numbers and a
@@ -364,7 +365,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify(payload),
       });
     } catch (netErr) {
-      await base44.entities.FaxLog.update(faxLog.id, {
+      await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
         status: 'failed',
         failure_reason: `Network error reaching Telnyx: ${netErr.message}`,
       }).catch(() => {});
@@ -377,7 +378,7 @@ Deno.serve(async (req) => {
       const firstErr = Array.isArray(telnyxData?.errors) ? telnyxData.errors[0] : null;
       // Log provider detail server-side; never echo it (recipient number / URL is PHI).
       console.error('Telnyx fax send error', { status: telnyxResponse.status, code: firstErr?.code });
-      await base44.entities.FaxLog.update(faxLog.id, {
+      await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
         status: 'failed',
         failure_reason: firstErr?.detail || firstErr?.title || 'Fax send failed',
       });
@@ -400,19 +401,18 @@ Deno.serve(async (req) => {
       console.error('sendFax: fax accepted by Telnyx but FaxLog bookkeeping failed:', bookkeepErr?.message);
     }
 
-    await base44.entities.UserActivity.create({
+    await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'fax_sent',
       details: {
         provider: 'telnyx',
-        to_number,
-        from_number: fromNumber,
-        fax_sid: faxId,
-        log_id: faxLog.id,
-        timestamp: new Date().toISOString(),
+        direction: 'outbound',
       },
       page: 'fax',
+      entity_type: 'FaxLog',
+      entity_id: faxLog.id,
+      status: 'accepted',
       user_agent: req.headers.get('user-agent') || 'unknown',
     }).catch(() => {});
 

@@ -16,16 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import {
   LineChart,
   Line,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -41,6 +33,7 @@ import {
 } from "lucide-react";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
 import { format, subDays } from "date-fns";
 
 import PerformanceMetricsCard from "../components/analytics/PerformanceMetricsCard";
@@ -52,7 +45,7 @@ import UserPerformanceTable from "../components/analytics/UserPerformanceTable";
  * The bounds are computed ONCE per selector rather than inside the per-row
  * predicate, where `new Date(startDate + 'T00:00:00')` and its endDate twin were
  * rebuilt for every row — 20,000 throwaway Dates per 10,000-row pass, on each of
- * three queries. Local-midnight parsing is preserved, so a date-only bound is
+   * both queries. Local-midnight parsing is preserved, so a date-only bound is
  * still compared on the local calendar day rather than in UTC.
  */
 function rangeSelector(startDate, endDate, selectedUser, dateOf, emailOf) {
@@ -100,11 +93,6 @@ export default function AnalyticsDashboard() {
     () => rangeSelector(startDate, endDate, selectedUser, (ca) => ca.audit_date || ca.created_date, (ca) => ca.nurse_email),
     [startDate, endDate, selectedUser],
   );
-  const selectUserActivities = useMemo(
-    () => rangeSelector(startDate, endDate, selectedUser, (ua) => ua.created_date, (ua) => ua.user_email),
-    [startDate, endDate, selectedUser],
-  );
-
   // Fetch note conversions
   const { data: noteConversions = [] } = useQuery({
     queryKey: ['noteConversions', selectedUser, startDate, endDate],
@@ -121,13 +109,6 @@ export default function AnalyticsDashboard() {
     select: selectComplianceAudits,
   });
 
-  // Fetch user activities
-  const { data: userActivities = [] } = useQuery({
-    queryKey: ['userActivities', selectedUser, startDate, endDate],
-    queryFn: () => base44.entities.UserActivity.list('-created_date', 10000),
-    select: selectUserActivities,
-  });
-
   // Average only rows that actually carry the metric — treating a missing
   // value as 0 halved the averages whenever legacy rows lacked the field.
   const avgOf = (rows, pick) => {
@@ -142,17 +123,6 @@ export default function AnalyticsDashboard() {
 
     // Compliance score metrics
     const avgComplianceScore = avgOf(complianceAudits, (ca) => ca.compliance_score);
-
-    // AI utilization
-    const aiActions = userActivities.filter(ua => 
-      ['note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)
-    );
-    const totalActions = userActivities.filter(ua =>
-      ['visit_document', 'note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)
-    );
-    const aiUtilizationRate = totalActions.length > 0 
-      ? (aiActions.length / totalActions.length) * 100 
-      : 0;
 
     // Quality metrics
     const avgQualityScore = avgOf(noteConversions, (nc) => nc.quality_score);
@@ -193,19 +163,16 @@ export default function AnalyticsDashboard() {
     return {
       avgDocTime: avgDocTime.toFixed(1),
       avgComplianceScore: avgComplianceScore.toFixed(1),
-      aiUtilizationRate: aiUtilizationRate.toFixed(1),
       avgQualityScore: avgQualityScore.toFixed(1),
       totalNotes: noteConversions.length,
       totalAudits: complianceAudits.length,
       timeChange: timeChange.toFixed(1),
-      aiActionsCount: aiActions.length,
-      totalVisits: userActivities.filter(ua => ua.action === 'visit_document').length,
       avgComplianceImprovement: avgComplianceImprovement.toFixed(1),
       avgRoughCompliance: avgRoughCompliance.toFixed(1),
       avgEnhancedCompliance: avgEnhancedCompliance.toFixed(1),
       notesWithComplianceTracking: conversionsWithCompliance.length
     };
-  }, [noteConversions, complianceAudits, userActivities, startDate, endDate]);
+  }, [noteConversions, complianceAudits, startDate, endDate]);
 
   // Prepare trend data
   const trendData = useMemo(() => {
@@ -218,9 +185,7 @@ export default function AnalyticsDashboard() {
       days[dateKey] = {
         date: format(d, 'MMM dd'),
         compliance: [],
-        docTime: [],
-        aiUsage: 0,
-        totalActions: 0
+        docTime: []
       };
     }
 
@@ -238,18 +203,6 @@ export default function AnalyticsDashboard() {
       }
     });
 
-    userActivities.forEach(ua => {
-      const dateKey = format(new Date(ua.created_date), 'yyyy-MM-dd');
-      if (days[dateKey]) {
-        if (['note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)) {
-          days[dateKey].aiUsage++;
-        }
-        if (['visit_document', 'note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)) {
-          days[dateKey].totalActions++;
-        }
-      }
-    });
-
     return Object.values(days).map(day => ({
       date: day.date,
       avgCompliance: day.compliance.length > 0 
@@ -258,12 +211,9 @@ export default function AnalyticsDashboard() {
       avgDocTime: day.docTime.length > 0
         ? day.docTime.reduce((a, b) => a + b, 0) / day.docTime.length
         : null,
-      aiUtilization: day.totalActions > 0
-        ? (day.aiUsage / day.totalActions) * 100
-        : null,
       notes: day.docTime.length
     }));
-  }, [complianceAudits, noteConversions, userActivities, startDate, endDate]);
+  }, [complianceAudits, noteConversions, startDate, endDate]);
 
   // User performance summary
   const userPerformance = useMemo(() => {
@@ -279,9 +229,7 @@ export default function AnalyticsDashboard() {
         avgDocTime: 0,
         avgCompliance: 0,
         auditCount: 0,
-        avgQuality: 0,
-        aiUsageCount: 0,
-        totalActions: 0
+        avgQuality: 0
       };
     });
 
@@ -300,25 +248,13 @@ export default function AnalyticsDashboard() {
       }
     });
 
-    userActivities.forEach(ua => {
-      if (userStats[ua.user_email]) {
-        if (['note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)) {
-          userStats[ua.user_email].aiUsageCount++;
-        }
-        if (['visit_document', 'note_enhanced', 'note_ai_generated', 'template_generated'].includes(ua.action)) {
-          userStats[ua.user_email].totalActions++;
-        }
-      }
-    });
-
     return Object.values(userStats).map(user => ({
       ...user,
       avgDocTime: user.notesCount > 0 ? (user.avgDocTime / user.notesCount).toFixed(1) : 0,
       avgCompliance: user.auditCount > 0 ? (user.avgCompliance / user.auditCount).toFixed(1) : 0,
-      avgQuality: user.notesCount > 0 ? (user.avgQuality / user.notesCount).toFixed(1) : 0,
-      aiUtilization: user.totalActions > 0 ? ((user.aiUsageCount / user.totalActions) * 100).toFixed(1) : 0
+      avgQuality: user.notesCount > 0 ? (user.avgQuality / user.notesCount).toFixed(1) : 0
     })).filter(user => user.notesCount > 0);
-  }, [noteConversions, complianceAudits, userActivities, allUsers, isAdmin]);
+  }, [noteConversions, complianceAudits, allUsers, isAdmin]);
 
   // Handle date range change
   const handleDateRangeChange = (value) => {
@@ -352,12 +288,9 @@ export default function AnalyticsDashboard() {
           rows: [
             ['Average Documentation Time', `${metrics.avgDocTime} minutes`],
             ['Average Compliance Score', `${metrics.avgComplianceScore}%`],
-            ['AI Utilization Rate', `${metrics.aiUtilizationRate}%`],
             ['Average Quality Score', `${metrics.avgQualityScore}%`],
             ['Total Notes Generated', metrics.totalNotes],
-            ['Total Audits Performed', metrics.totalAudits],
-            ['Total Visits Documented', metrics.totalVisits],
-            ['AI Actions Count', metrics.aiActionsCount]
+            ['Total Audits Performed', metrics.totalAudits]
           ]
         },
 
@@ -369,14 +302,13 @@ export default function AnalyticsDashboard() {
       if (isAdmin && userPerformance.length > 0) {
         content.push({
           type: 'table',
-          headers: ['Nurse', 'Notes', 'Avg Time', 'Compliance', 'Quality', 'AI Usage'],
+          headers: ['Nurse', 'Notes', 'Avg Time', 'Compliance', 'Quality'],
           rows: userPerformance.slice(0, 10).map(user => [
             user.name,
             user.notesCount,
             `${user.avgDocTime} min`,
             `${user.avgCompliance}%`,
-            `${user.avgQuality}%`,
-            `${user.aiUtilization}%`
+            `${user.avgQuality}%`
           ])
         });
       }
@@ -473,6 +405,10 @@ export default function AnalyticsDashboard() {
         }
       />
 
+      <div className="mb-4 sm:mb-6">
+        <UserActivityUnavailable title="AI utilization analytics unavailable" />
+      </div>
+
       {/* Filters */}
       <Card className="mb-4 sm:mb-6">
         <CardContent className="p-3 sm:p-4">
@@ -543,64 +479,31 @@ export default function AnalyticsDashboard() {
 
 
 
-      {/* Charts */}
-      <Tabs defaultValue="time" className="mb-4 sm:mb-6">
-        <TabsList className="grid w-full grid-cols-2 h-auto">
-          <TabsTrigger value="time" className="py-2 sm:py-3 text-xs sm:text-sm">Documentation Time</TabsTrigger>
-          <TabsTrigger value="ai" className="py-2 sm:py-3 text-xs sm:text-sm">AI Utilization</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="time">
-          <Card>
-            <CardHeader className="p-3 sm:p-4 md:p-6">
-              <CardTitle className="text-base sm:text-lg">Average Documentation Time</CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 sm:p-4 md:p-6">
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" style={{ fontSize: '12px' }} />
-                  <YAxis style={{ fontSize: '12px' }} />
-                  <Tooltip />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="avgDocTime" 
-                    stroke="#3557b0" 
-                    strokeWidth={2}
-                    name="Doc Time (min)"
-                    dot={{ r: 3 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="ai">
-          <Card>
-            <CardHeader className="p-3 sm:p-4 md:p-6">
-              <CardTitle className="text-base sm:text-lg">AI Feature Usage Rate</CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 sm:p-4 md:p-6">
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" style={{ fontSize: '12px' }} />
-                  <YAxis domain={[0, 100]} style={{ fontSize: '12px' }} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar 
-                    dataKey="aiUtilization" 
-                    fill="#8b5cf6" 
-                    name="AI Utilization (%)"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      {/* Documentation trend remains available from NoteConversion rows. */}
+      <Card className="mb-4 sm:mb-6">
+        <CardHeader className="p-3 sm:p-4 md:p-6">
+          <CardTitle className="text-base sm:text-lg">Average Documentation Time</CardTitle>
+        </CardHeader>
+        <CardContent className="p-3 sm:p-4 md:p-6">
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={trendData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" style={{ fontSize: '12px' }} />
+              <YAxis style={{ fontSize: '12px' }} />
+              <Tooltip />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="avgDocTime"
+                stroke="#3557b0"
+                strokeWidth={2}
+                name="Doc Time (min)"
+                dot={{ r: 3 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       {/* User Performance Table (Admin Only) */}
       {isAdmin && userPerformance.length > 0 && (

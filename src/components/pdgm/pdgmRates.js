@@ -4,23 +4,20 @@
  * plus the deterministic merge used to apply an agency's saved overrides on top
  * of the built-in defaults.
  *
- * WHY this exists: the legacy `calculatePDGM` backend hardcoded these numbers
- * "from memory", which the table-driven `pdgmGrouper` explicitly warns is
- * fabrication. CMS publishes the official case-mix weights and base rate and
- * they change every rate year. This module lets an admin enter their OWN
- * current numbers (via the PDGMRateSettings page → the PDGMRateConfig entity),
- * and `calculatePDGM` merges those over the defaults — so the estimate becomes
- * accurate (and can be marked non-estimate) once the agency loads official rates.
+ * RETIREMENT STATUS: the legacy `calculatePDGM` backend hardcoded these numbers
+ * "from memory" and used a factorized approximation that is not CMS HHGS. The
+ * tables remain only for source archaeology and compatibility with dormant UI
+ * code. No saved override can make them accurate, official, or payment-eligible.
  *
  * DEFAULT_PDGM_RATES MIRRORS the constants in
  * base44/functions/calculatePDGM/entry.ts. Keep the two in sync (the backend is
- * the engine; this copy drives the admin editor + preview). The shape is also
+ * the retired implementation; this copy preserves dormant editor compatibility). The shape is also
  * the contract for the saved `PDGMRateConfig.rates` object.
  */
 
 // The 13 clinical-group buckets the legacy engine scores, each with a weight per
-// admission-source + episode-timing combination. (These default numbers are
-// APPROXIMATE — replace them with your official CMS case-mix weights.)
+// admission-source + episode-timing combination. These values belong to the
+// retired approximation and must never be replaced or presented as CMS HHGS.
 export const DEFAULT_PDGM_RATES = {
   // CY2026 national standardized 30-day period payment amount, quality submitters
   // (CMS-1828-F, eff. 2026-01-01). Verify against your agency's official rate sheet.
@@ -124,8 +121,8 @@ export const DEFAULT_ICD10_CLINICAL_GROUPS = {
 };
 
 /**
- * Live revenue-estimator functional level from points + a { low, high } threshold
- * set (the calculatePDGM / DEFAULT_PDGM_RATES shape).
+ * Retired factorized-model functional level from points + a { low, high }
+ * threshold set (the calculatePDGM / DEFAULT_PDGM_RATES shape).
  *
  * Boundary contract (pinned by tests; mirrors entry.ts calculateFunctionalLevel):
  *   - points >= high  → "high"
@@ -134,8 +131,8 @@ export const DEFAULT_ICD10_CLINICAL_GROUPS = {
  *
  * This is intentionally NOT the same operator as pdgmGrouper.computeFunctionalLevel,
  * which uses a { low, medium } shape and treats points <= low as "low". The grouper
- * is the table-driven CMS reference (currently unwired); this helper is the live
- * estimate path. Do not "reconcile" the operators without loading official CMS
+ * is the table-driven CMS reference (currently unwired); this helper survives
+ * only for archaeology/parity tests. Do not "reconcile" the operators without loading official CMS
  * Table 9 cut-points — the threshold *values* and shapes differ by design.
  *
  * @param {number} points

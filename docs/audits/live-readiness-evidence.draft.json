@@ -1,49 +1,84 @@
 {
   "release": {
-    "id": "rc-2026-07-30",
-    "name": "PennSync live-readiness candidate",
+    "release_id": "FILL_ME: rc-YYYY-MM-DD",
     "environment": "staging",
-    "notes": "PLACEHOLDER packet for LR-01 and LR-02. Replace every FILL_ME value with real hosted evidence. Do not commit secrets, tokens, passwords, or PHI. Copy to tmp/live-readiness-evidence.json (gitignored) before running: pnpm run readiness:report -- tmp/live-readiness-evidence.json"
+    "fixture_set_id": "lr01-lr02-two-agency-v1",
+    "staging_app_id": "6a9881683dc68a0bd54f1ef7",
+    "staging_origin": "https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/",
+    "staging_backend_origin": "FILL_ME: exact VITE_BASE44_BACKEND_URL origin used for raw probes",
+    "candidate_source_commit_sha": "FILL_ME: exact 40-character candidate Git commit SHA",
+    "candidate_source_tree_sha": "FILL_ME: exact 40-character candidate Git tree SHA",
+    "source_authority_contract_sha256": "FILL_ME: source_authority_contract_sha256 emitted by readiness:fixture:validate for this exact checkout",
+    "hosted_runtime_commit_sha": "FILL_ME: exact hosted Base44 runtime commit SHA",
+    "hosted_runtime_tree_sha": "FILL_ME: exact hosted Base44 runtime tree SHA",
+    "hosted_deployment_id": "FILL_ME: identifier from a complete immutable deployment receipt covering the deployed site and resources; a functions version alone or human checkpoint label is insufficient",
+    "candidate_deployable_manifest_sha256": "FILL_ME: SHA-256 of the externally reviewed candidate resource-inventory attestation with explicit scope and exclusions",
+    "hosted_resource_manifest_sha256": "FILL_ME: SHA-256 of the externally reviewed hosted resource-inventory attestation using the same scope and exclusions",
+    "requested_rollout_date": "FILL_ME: YYYY-MM-DD",
+    "release_owner": "FILL_ME: engineering release owner",
+    "rollback_owner": "FILL_ME: rollback owner",
+    "monitoring_owner": "FILL_ME: monitoring owner"
   },
+  "matrix": [
+    {
+      "id": "LR-01",
+      "capability": "Hosted tenant/RLS verification",
+      "priority": 1,
+      "phaseSource": "Phase 0",
+      "risk": "critical"
+    },
+    {
+      "id": "LR-02",
+      "capability": "Seeded authenticated staging E2E",
+      "priority": 2,
+      "phaseSource": "Phase 0",
+      "risk": "critical"
+    }
+  ],
   "evidence": {
     "LR-01": {
       "owner": {
         "summary": "FILL_ME: Engineering + security owners for hosted RLS (name/email)",
-        "references": ["docs/SECURITY-RLS-CHECKLIST.md", "docs/RLS-LAUNCH-RUNBOOK.md", "docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md"]
+        "references": []
       },
       "product_approval": {
-        "summary": "FILL_ME: Product confirmed agency access model matches RLS matrix (nurse sees assigned patients only; admin agency-wide)",
+        "summary": "FILL_ME: Product confirmed server-owned membership and care-team authority; platform owner excluded from tenant assertions",
         "references": []
       },
       "security_approval": {
-        "summary": "FILL_ME: Security reviewed RLS matrix and multi-role tests V1-V6",
+        "summary": "FILL_ME: Security reviewed secure-broker, two-agency, immutable-membership, and cross-tenant tests",
         "references": []
       },
       "hosted_environment": {
-        "summary": "FILL_ME: Base44 staging app id / URL (e.g. https://staging-pennsync.base44.app) — no secrets",
+        "summary": "FILL_ME: Corroborate staging app/frontend/backend, fixture set, candidate commit/tree, locally recomputed source-authority-contract digest, hosted runtime commit/tree, complete immutable deployment receipt, and equal candidate/hosted inventory-attestation hashes; references identify the protected receipt and both reviewed inventory artifacts — no secrets",
         "references": []
       },
       "credentials_or_sandbox": {
-        "summary": "FILL_ME: Admin test user + Nurse test user provisioned; nurse assigned to Patient A only; Patient B exists and is NOT assigned to nurse. Confirm INTERNAL_FN_SECRET and SIGNATURE_HMAC_SECRET set (never VITE_*).",
+        "summary": "FILL_ME: Admin-A/Admin-B and Clinician-A/Clinician-A-empty use built-in user plus active agency_admin/clinician memberships; A1 assigned, A2 unassigned, B1 foreign; platform owner reserved and excluded. Confirm INTERNAL_FN_SECRET and SIGNATURE_HMAC_SECRET set (never VITE_*).",
         "references": []
       },
       "test_evidence": {
-        "summary": "FILL_ME: V1-V6 multi-role RLS checks against raw network responses (not UI alone). Attach ticket IDs or external screenshot links (no PHI in repo).",
-        "references": [
-          "V1: Nurse with no assigned patients — dashboard/alerts/SMS/call history empty; no other patients PHI in response bodies",
-          "V2: Nurse assigned to A only — sees A; does not see B in UI or network payloads",
-          "V3: Admin — agency-wide reads still work",
-          "V4: IDOR probe — getScopedPatientAlerts/chart/risk/PDF with B id returns 403/404/empty",
-          "V5: Training forge — non-admin issueCertificate/completion write without passing attempt rejected",
-          "V6: Audit hygiene — UserActivity/SecurityLog samples contain no message bodies or full phone numbers"
-        ]
+        "summary": "FILL_ME: V1-V6 and T1-T4 have complete authenticated-hosted attestations and passed against raw secure-broker responses; the run-index reference and every required probe entry bind retained artifacts by SHA-256; no direct entity reads or mutable claims. Attach ticket IDs or external screenshot links (no PHI in repo).",
+        "references": [],
+        "probes": {
+          "V1": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "V2": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "V3": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "V4": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "V5": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "V6": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "T1": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "T2": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "T3": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "T4": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] }
+        }
       },
       "rollback_plan": {
-        "summary": "Documented RLS revert path and owner SLA in docs/RLS-LAUNCH-RUNBOOK.md. Staging tenant can be wiped and re-seeded without affecting production.",
+        "summary": "FILL_ME: documented RLS revert path and owner SLA in docs/RLS-LAUNCH-RUNBOOK.md. Confirm staging can be wiped and re-seeded without affecting production.",
         "references": ["docs/RLS-LAUNCH-RUNBOOK.md"]
       },
       "monitoring_plan": {
-        "summary": "FILL_ME: Unauthorized access visible in SecurityLog / Base44 platform logs; alert owner named",
+        "summary": "FILL_ME: Unauthorized access visible in Base44 platform logs and alert owner named; use SecurityLog only after its hosted append/read boundary and tenant exposure are independently proved",
         "references": []
       },
       "reviewers": {
@@ -56,7 +91,7 @@
     "LR-02": {
       "owner": {
         "summary": "FILL_ME: QA + engineering owners for staging E2E",
-        "references": ["docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md"]
+        "references": []
       },
       "product_approval": {
         "summary": "FILL_ME: Product confirmed minimum smoke flows for pilot (S1-S4 required)",
@@ -67,32 +102,29 @@
         "references": []
       },
       "hosted_environment": {
-        "summary": "FILL_ME: Staging URL and seed dataset description (no PHI). Seed: >=1 active patient, >=1 referral, >=1 visit (or ability to create them).",
+        "summary": "FILL_ME: Corroborate staging app/frontend/backend, fixture set, candidate commit/tree, locally recomputed source-authority-contract digest, hosted runtime commit/tree, complete immutable deployment receipt, and equal candidate/hosted inventory-attestation hashes; references identify the protected receipt and both reviewed inventory artifacts — no PHI or secrets",
         "references": []
       },
       "credentials_or_sandbox": {
-        "summary": "FILL_ME: Authenticated test accounts (admin + nurse); CI secrets staging-only if used",
+        "summary": "FILL_ME: Authenticated test accounts and shared actors/patients exist; fixture validation does not supply the Referral/Visit results, so S3/S4 create them; CI secrets staging-only if used",
         "references": []
       },
       "test_evidence": {
-        "summary": "FILL_ME: S1-S8 authenticated smoke results. Attach external evidence links (no PHI).",
-        "references": [
-          "S1: Login — admin and nurse can sign in; wrong password fails cleanly",
-          "S2: Patient list / chart — nurse sees only assigned patients; chart opens",
-          "S3: Referral intake (or triage) — create/accept path completes; record visible",
-          "S4: Smart Note or Visit Scribe — save online creates Visit + compliance artifacts",
-          "S5: OASIS path (if in scope) — assessment open/save does not crash",
-          "S6: Training (if in scope) — complete attempt via intended path; certificate only after grade",
-          "S7: Signature / document (if in scope) — package request or portal open does not 500",
-          "S8: Communications mock/sandbox — SMS/fax sandbox send does not expose real PHI to production carriers"
-        ]
+        "summary": "FILL_ME: S1-S4 have complete authenticated-hosted passing attestations with every retained probe bundle bound by SHA-256; identify optional/in-scope S5-S9 flows exercised. Attach external evidence links (no PHI).",
+        "references": [],
+        "probes": {
+          "S1": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "S2": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "S3": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] },
+          "S4": { "execution_context": "authenticated_hosted", "result": "FILL_ME: pass, fail, or blocked", "captured_at": "FILL_ME: YYYY-MM-DDTHH:mm:ss.sssZ", "artifact_sha256": "FILL_ME: lowercase SHA-256 of the retained probe bundle", "references": [] }
+        }
       },
       "rollback_plan": {
-        "summary": "Re-seed or wipe staging tenant without affecting production",
+        "summary": "FILL_ME: re-seed or wipe staging tenant without affecting production",
         "references": []
       },
       "monitoring_plan": {
-        "summary": "FILL_ME: Failed smoke runs tracked in QA ticket; release owner notified",
+        "summary": "FILL_ME: Failed smoke runs tracked in QA ticket and release owner notified; use Base44 platform logs until SecurityLog's hosted append/read and tenant boundary are proved",
         "references": []
       },
       "reviewers": {

@@ -4,6 +4,17 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // stubs, so searchPDFs can finally match real document content.
 import { extractText, getDocumentProxy } from 'npm:unpdf@1.6.2';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -67,61 +78,110 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    const callerEmail = normalizeProtectedEmail(user.email);
+    if (!callerEmail) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
-    const { 
+    const body = await req.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    const {
       pdf_url, 
       document_name,
       document_type = 'other',
       patient_id
-    } = await req.json();
+    } = body;
 
-    if (!pdf_url || !document_name) {
-      return Response.json({
-        error: 'Missing required fields: pdf_url, document_name'
-      }, { status: 400 });
+    if (typeof pdf_url !== 'string' || !pdf_url.trim() || pdf_url.trim().length > 4096) {
+      return Response.json({ error: 'Invalid pdf_url' }, { status: 400 });
     }
-
-    // Authorization: a PDFIndex row is access-controlled by its patient_id
-    // (searchPDFs scopes results on it). Without a check here a non-admin could
-    // index a PDF holding another patient's PHI under a patient THEY can read —
-    // surfacing it in their scope — and the pdf_url-keyed update branch below
-    // could clobber an index belonging to a scope they can't access. Mirror
-    // searchPDFs' patient-scope check for both the target and the existing row.
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    const assertPatientAccess = async (pid) => {
-      if (!pid) return true;
-      const [p] = await base44.asServiceRole.entities.Patient.filter({ id: pid }, undefined, 5000).catch(() => []);
-      if (!p) return false;
-      if (isPlatformAdmin) return true;
-      if (p.created_by === user.email
-        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email))) {
-        return true;
-      }
-      if (isAgencyScopedAdmin && user.agency_name) {
-        const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
-        const agencyEmails = new Set(
-          (agencyUsers || [])
-            .filter((u) => u.agency_name === user.agency_name && u.email)
-            .map((u) => u.email),
-        );
-        return !!(p.created_by && agencyEmails.has(p.created_by))
-          || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)));
-      }
-      return false;
-    };
-    if (!(await assertPatientAccess(patient_id))) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    if (typeof document_name !== 'string'
+      || !document_name.trim()
+      || document_name.trim().length > 500) {
+      return Response.json({ error: 'Invalid document_name' }, { status: 400 });
     }
+    const allowedDocumentTypes = new Set([
+      'consent',
+      'assessment',
+      'visit',
+      'care_plan',
+      'signature',
+      'template',
+      'other',
+    ]);
+    if (typeof document_type !== 'string' || !allowedDocumentTypes.has(document_type)) {
+      return Response.json({ error: 'Invalid document_type' }, { status: 400 });
+    }
+    const hasPatientScope = patient_id != null && patient_id !== '';
+    if (hasPatientScope
+      && (typeof patient_id !== 'string' || !patient_id.trim() || patient_id.trim().length > 200)) {
+      return Response.json({ error: 'Invalid patient_id' }, { status: 400 });
+    }
+    const scopedPdfUrl = pdf_url.trim();
+    const scopedDocumentName = document_name.trim();
+    const scopedPatientId = hasPatientScope ? patient_id.trim() : null;
+    const callerIsSuperAdmin = isProtectedSuperAdmin(user);
 
-    if (!isSafeFetchUrl(pdf_url)) {
+    if (!isSafeFetchUrl(scopedPdfUrl)) {
       return Response.json({ error: 'Invalid or disallowed pdf_url' }, { status: 400 });
     }
+
+    // A patient-bound index may be created or refreshed only by that Patient's
+    // direct creator, an explicitly assigned nurse, or the configured protected
+    // platform owner. Custom account and agency fields are self-mutable and are
+    // never authorization. Re-check the exact row in memory in case the backend
+    // ignores or regresses its service-role filter.
+    if (scopedPatientId) {
+      const patientRows = await base44.asServiceRole.entities.Patient
+        .filter({ id: scopedPatientId }, '', 1).catch(() => []);
+      const patient = (Array.isArray(patientRows) ? patientRows : [])
+        .find((row) => String(row?.id || '').trim() === scopedPatientId);
+      if (!patient) {
+        return Response.json({ error: 'Patient not found' }, { status: 404 });
+      }
+      const isOwner = normalizeProtectedEmail(patient.created_by) === callerEmail;
+      const isAssigned = Array.isArray(patient.assigned_nurses)
+        && patient.assigned_nurses.some(
+          (email) => normalizeProtectedEmail(email) === callerEmail,
+        );
+      if (!isOwner && !isAssigned && !callerIsSuperAdmin) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+
+    // Scope lookup by the target relationship instead of selecting the first
+    // global pdf_url match. This prevents one patient/user from overwriting a row
+    // belonging to another scope when the same storage URL is reused. Treat a
+    // duplicate within the exact target scope as ambiguous and fail closed.
+    const existingFilter = { pdf_url: scopedPdfUrl };
+    if (scopedPatientId) existingFilter.patient_id = scopedPatientId;
+    else if (!callerIsSuperAdmin) existingFilter.created_by = callerEmail;
+    const returnedIndexes = await base44.asServiceRole.entities.PDFIndex.filter(
+      existingFilter,
+      '-created_date',
+      2,
+    );
+    const matchingIndexes = (Array.isArray(returnedIndexes) ? returnedIndexes : [])
+      .filter((row) => {
+        if (!row || typeof row !== 'object' || String(row.pdf_url || '').trim() !== scopedPdfUrl) {
+          return false;
+        }
+        if (scopedPatientId) {
+          return String(row.patient_id || '').trim() === scopedPatientId;
+        }
+        if (String(row.patient_id || '').trim()) return false;
+        return callerIsSuperAdmin
+          || normalizeProtectedEmail(row.created_by) === callerEmail;
+      });
+    if (matchingIndexes.length > 1) {
+      return Response.json({ error: 'Ambiguous existing PDF index' }, { status: 409 });
+    }
+    const existingIndex = matchingIndexes[0] || null;
+
     // Fetch PDF (re-validating any redirect hop)
-    const response = await safeFetchFollow(pdf_url);
+    const response = await safeFetchFollow(scopedPdfUrl);
     if (!response) {
       return Response.json({ error: 'Redirect to a disallowed host blocked' }, { status: 400 });
     }
@@ -162,16 +222,11 @@ Deno.serve(async (req) => {
       .slice(0, 20)
       .map(([word]) => word);
 
-    // Create or update index
-    const existingIndex = await base44.asServiceRole.entities.PDFIndex.filter({
-      pdf_url
-    }, undefined, 5000);
-
     const indexData = {
-      pdf_url,
-      document_name,
+      pdf_url: scopedPdfUrl,
+      document_name: scopedDocumentName,
       document_type,
-      patient_id,
+      ...(scopedPatientId ? { patient_id: scopedPatientId } : {}),
       extracted_text: fullText,
       page_contents: pageContents,
       metadata: {
@@ -183,27 +238,35 @@ Deno.serve(async (req) => {
     };
 
     let indexId;
-    if (existingIndex.length > 0) {
-      // Don't let a caller overwrite an index scoped to a patient they can't access.
-      if (!(await assertPatientAccess(existingIndex[0].patient_id))) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
+    if (existingIndex) {
+      const existingId = typeof existingIndex.id === 'string' ? existingIndex.id.trim() : '';
+      if (!existingId) {
+        return Response.json({ error: 'Invalid existing PDF index' }, { status: 409 });
       }
-      await base44.asServiceRole.entities.PDFIndex.update(existingIndex[0].id, indexData);
-      indexId = existingIndex[0].id;
+      // Deliberately omit created_by on update: the immutable original owner must
+      // never be reassigned by a refresh, including a protected-superadmin refresh.
+      await base44.asServiceRole.entities.PDFIndex.update(existingId, indexData);
+      indexId = existingId;
     } else {
-      const created = await base44.asServiceRole.entities.PDFIndex.create(indexData);
-      indexId = created.id;
+      // Service-role creates otherwise receive a service identity. Explicitly
+      // stamp Base44's immutable system ownership field with the authenticated
+      // caller so owner-only RLS and unscoped search remain meaningful.
+      const created = await base44.asServiceRole.entities.PDFIndex.create({
+        ...indexData,
+        created_by: callerEmail,
+      });
+      indexId = typeof created?.id === 'string' ? created.id.trim() : '';
+      if (!indexId) throw new Error('PDFIndex create returned no id');
     }
 
     await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'pdf_indexed',
+      entity_type: 'PDFIndex',
+      entity_id: indexId,
       details: {
-        pdf_url,
-        document_name,
         page_count: pageCount,
-        index_id: indexId
       },
       page: 'pdf_indexer'
     });

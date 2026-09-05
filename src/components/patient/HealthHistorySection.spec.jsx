@@ -1,11 +1,24 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const update = vi.fn(async () => ({}));
+const invoke = vi.fn(async () => ({}));
 const filter = vi.fn(async () => []);
 vi.mock('@/api/base44Client', () => ({
-  base44: { entities: { Patient: { update: (...a) => update(...a), filter: (...a) => filter(...a) } } },
+  base44: {
+    entities: { Patient: { filter: (...a) => filter(...a) } },
+    functions: { invoke: (...a) => invoke(...a) },
+  },
+}));
+
+vi.mock('@/lib/AuthContext', () => ({
+  useAuth: () => ({ tenantContext: { agency_id: 'agency-1' } }),
+}));
+
+vi.mock('@/hooks/useAuthorizedPatient', () => ({
+  useAuthorizedPatient: () => ({
+    refetch: vi.fn(async () => ({ data: null })),
+  }),
 }));
 
 const HealthHistorySection = (await import('./HealthHistorySection')).default;
@@ -17,7 +30,13 @@ const renderSection = (patient) =>
     </QueryClientProvider>,
   );
 
-const BASE = { id: 'p1', first_name: 'Ada', last_name: 'Lovelace' };
+const BASE = {
+  id: 'p1',
+  agency_id: 'agency-1',
+  updated_date: '2026-09-04T12:00:00.000Z',
+  first_name: 'Ada',
+  last_name: 'Lovelace',
+};
 
 describe('HealthHistorySection family medical history', () => {
   it('renders the structured object the entity schema declares', () => {
@@ -51,29 +70,15 @@ describe('HealthHistorySection family medical history', () => {
     expect(screen.getByText('No family medical history recorded')).toBeInTheDocument();
   });
 
-  it('saves the schema OBJECT shape, preserving fields the dialog does not edit', async () => {
-    update.mockClear();
+  it('keeps structured family history read-only until its dedicated workflow exists', async () => {
+    invoke.mockClear();
     renderSection({
       ...BASE,
       family_medical_history: { diabetes: true, other_conditions: [{ condition: 'Melanoma', relation: 'Mother' }] },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit family medical history' }));
-    await waitFor(() => expect(screen.getByText('Conditions in the family')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByLabelText('Heart disease'));
-    fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Two siblings with CAD.' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
-
-    await waitFor(() => expect(update).toHaveBeenCalled());
-    const [, payload] = update.mock.calls.at(-1);
-    expect(payload.family_medical_history).toMatchObject({
-      diabetes: true,
-      heart_disease: true,
-      notes: 'Two siblings with CAD.',
-      // Untouched by this dialog — must survive the write, not be dropped.
-      other_conditions: [{ condition: 'Melanoma', relation: 'Mother' }],
-    });
-    expect(typeof payload.family_medical_history).toBe('object');
+    expect(screen.getByRole('button', { name: 'Edit family medical history' })).toBeDisabled();
+    expect(screen.getByText(/Family-history editing is temporarily read-only/i)).toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalled();
   });
 });

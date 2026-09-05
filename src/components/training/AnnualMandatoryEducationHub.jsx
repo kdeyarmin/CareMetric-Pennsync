@@ -10,6 +10,7 @@ import { assignAnnualLearningPlan } from "@/functions/assignAnnualLearningPlan";
 import { duplicateInService } from "@/functions/duplicateInService";
 import { seedYearlyRequiredInServices } from "@/functions/seedYearlyRequiredInServices";
 import { autoEnrollAnnualPlans } from "@/functions/autoEnrollAnnualPlans";
+import { recordTrainingAuditEvent } from "@/functions/recordTrainingAuditEvent";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ import TrainingAttachmentManager from "@/components/training/TrainingAttachmentM
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
 import { parseLocalDate, startOfLocalDay, formatLocalDate, isPastLocalDueDate } from "@/lib/dateLocal";
+import { isAdminLike } from "@/lib/superAdmin";
 
 const formatDate = (value) => formatLocalDate(value) || "—";
 
@@ -75,21 +77,24 @@ export default function AnnualMandatoryEducationHub() {
   });
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const isAdminUser = currentUser?.role === 'admin' || currentUser?.account_type === 'agency_admin' || currentUser?.account_type === 'super_admin';
+  // This builder reads protected rosters/drafts and mutates TrainingCourse and
+  // related admin-only records. Mutable account_type labels cannot grant it.
+  const isAdminUser = isAdminLike(currentUser);
   const { data: users = [] } = useQuery({ queryKey: ["annual-users", agencyQueryKey(currentUser)], queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
-    enabled: !!currentUser,
+    enabled: isAdminUser,
     initialData: [],
   });
-  const { data: courses = [] } = useQuery({ queryKey: ["annual-courses"], queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500), initialData: [] });
-  const { data: assignments = [] } = useQuery({ queryKey: ["annual-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), initialData: [] });
-  const { data: certificates = [] } = useQuery({ queryKey: ["annual-certificates"], queryFn: () => base44.entities.TrainingCertificate.list('-issued_at', 500), initialData: [] });
+  const { data: courses = [] } = useQuery({ queryKey: ["annual-courses"], queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500), enabled: isAdminUser, initialData: [] });
+  const { data: assignments = [] } = useQuery({ queryKey: ["annual-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), enabled: isAdminUser, initialData: [] });
+  const { data: certificates = [] } = useQuery({ queryKey: ["annual-certificates"], queryFn: () => base44.entities.TrainingCertificate.list('-issued_at', 500), enabled: isAdminUser, initialData: [] });
   const { data: plans = [] } = useQuery({
     queryKey: ["annual-plans", "-created_date", 200],
     queryFn: () => base44.entities.LearningPlan.list('-created_date', 200),
+    enabled: isAdminUser,
     initialData: [],
   });
 
@@ -141,22 +146,14 @@ export default function AnnualMandatoryEducationHub() {
       employee_audience: 'annual mandatory education audience',
       learning_objectives: [],
       ai_generated: false,
+      created_by: currentUser?.email,
       requires_attestation: true,
       enable_certificate: true,
       recurrence_rule: 'annual',
       short_description: manualDraft.description,
       test_settings_json: { show_correct_answers_after_completion: false }
     });
-    await base44.entities.TrainingAuditLog.create({
-      actor_id: currentUser?.email,
-      actor_name: currentUser?.full_name,
-      action: 'course_created',
-      entity_type: 'TrainingCourse',
-      entity_id: created.id,
-      after_json: { title: created.title, training_type: 'annual_mandatory', annual_cycle_year: year, status: 'draft' },
-      reason: 'created',
-      severity: 'info'
-    });
+    await recordTrainingAuditEvent({ action: 'course_created', courseId: created.id });
     queryClient.invalidateQueries({ queryKey: ["annual-courses"] });
     setManualDraft({ title: "", description: "", category: "compliance", business_line_scope: "all", passing_score: 80 });
   };
@@ -234,15 +231,9 @@ export default function AnnualMandatoryEducationHub() {
 
   const updateCourseStatus = async (course, status) => {
     await base44.entities.TrainingCourse.update(course.id, { status, archived_status: status === 'archived', published_by: status === 'published' ? currentUser?.email : course.published_by, published_date: status === 'published' ? new Date().toISOString() : course.published_date });
-    await base44.entities.TrainingAuditLog.create({
-      actor_id: currentUser?.email,
-      actor_name: currentUser?.full_name,
+    await recordTrainingAuditEvent({
       action: status === 'published' ? 'course_published' : 'course_archived',
-      entity_type: 'TrainingCourse',
-      entity_id: course.id,
-      after_json: { status, annual_cycle_year: course.annual_cycle_year || year },
-      reason: status === 'published' ? 'published' : 'archived',
-      severity: 'info'
+      courseId: course.id,
     });
     queryClient.invalidateQueries({ queryKey: ["annual-courses"] });
   };
@@ -254,7 +245,7 @@ export default function AnnualMandatoryEducationHub() {
 
   if (currentUser && !isAdminUser) {
     return (
-      <AccessDeniedState description="This Penn annual education builder is available to Agency Admin and Super Admin users only." />
+      <AccessDeniedState description="The annual education builder requires protected administrator access. Facility-admin access remains unavailable until its roster, course, and assignment operations use immutable tenant-membership authorization." />
     );
   }
 

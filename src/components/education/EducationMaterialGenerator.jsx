@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from 'sonner';
 import { escapeHtml } from "@/lib/escapeHtml";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 export default function EducationMaterialGenerator({ patient, teachBackHistory = [], onMaterialGenerated }) {
   const [searchTopic, setSearchTopic] = useState("");
@@ -239,7 +240,7 @@ Return JSON:
 
   const handlePrint = () => {
     if (generatedContent) {
-      const printWindow = window.open('', '_blank');
+      const printWindow = openAuthorityBoundWindow();
       // Popup blockers and installed-app webviews (iOS standalone/WKWebView)
       // return null here — bail with a hint instead of throwing on .document.
       if (!printWindow) {

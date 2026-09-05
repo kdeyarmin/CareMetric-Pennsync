@@ -1,4 +1,4 @@
-// Documentation-impact reimbursement math.
+// RETIRED documentation-impact reimbursement approximation.
 //
 // Computes the PDGM 30-day period payment for a set of case-mix variables using
 // the SAME formula as the canonical backend `calculatePDGM`
@@ -10,10 +10,12 @@
 //   adjustedBase  = basePaymentRate × (laborShare × wageIndex + (1 − laborShare))
 //   payment       = adjustedBase × caseMixWeight
 //
-// This is for the ADMIN-ONLY documentation-impact / ROI view, NOT billing. It never
-// fabricates: an unknown clinical group / level returns an incomplete result.
+// This is not the CMS 432-group HHGS and must not emit money. The historical
+// formula remains below only to make the old methodology reviewable while the
+// module is hard-locked to null results.
 
 import { DEFAULT_PDGM_RATES } from "./pdgmRates.js";
+import { LEGACY_FACTORIZED_PDGM_MODEL_RETIRED } from "./pdgmAvailability.js";
 
 const round = (n, dp = 2) => {
   const f = 10 ** dp;
@@ -27,6 +29,8 @@ export function computePeriodReimbursement(
   rates = DEFAULT_PDGM_RATES,
   wageIndex = 1.0,
 ) {
+  if (LEGACY_FACTORIZED_PDGM_MODEL_RETIRED) return null;
+
   const sourceTimingKey = `${admissionSource}_${timing}`; // e.g. "community_early"
   const groupWeights = rates?.clinicalGroupWeights?.[clinicalGroup];
   const clinicalWeight = groupWeights?.[sourceTimingKey];

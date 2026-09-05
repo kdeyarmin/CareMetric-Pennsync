@@ -48,7 +48,8 @@ import { format, subMonths } from "date-fns";
 import { parseLocalDate, formatLocalDate } from "@/lib/dateLocal";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
-import { isSafeExternalUrl, openExternalUrl } from "@/components/utils/security";
+import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 const STATUS_OPTIONS = [
   { value: "reported", label: "Reported" },
@@ -683,14 +684,13 @@ export default function IncidentReportingModule() {
                           )}
                         </div>
                         {incident.state_reportable_pdf_url && isSafeExternalUrl(incident.state_reportable_pdf_url) && (
-                          <a
-                            href={incident.state_reportable_pdf_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => openAuthorityBoundWindow(incident.state_reportable_pdf_url)}
                             className="inline-flex items-center gap-1 mt-2 text-sm text-blue-600 underline hover:text-blue-700"
                           >
                             <FileText className="w-4 h-4" /> View PDF report
-                          </a>
+                          </button>
                         )}
                       </div>
                       {incident.status !== 'resolved' && (
@@ -751,13 +751,14 @@ export default function IncidentReportingModule() {
                     {incident.photo_urls?.length > 0 && (
                       <div className="mt-3 flex gap-2">
                         {incident.photo_urls.filter((url) => isSafeExternalUrl(url)).map((url, idx) => (
-                          <img
+                          <button
                             key={idx}
-                            src={url}
-                            alt={`Incident photo ${idx + 1}`}
-                            className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-80"
-                            onClick={() => openExternalUrl(url)}
-                          />
+                            type="button"
+                            className="inline-flex min-h-10 items-center gap-2 rounded-md border bg-white px-3 text-sm text-slate-700"
+                            onClick={() => openAuthorityBoundWindow(url)}
+                          >
+                            <Camera className="h-4 w-4" /> Open incident photo {idx + 1}
+                          </button>
                         ))}
                       </div>
                     )}

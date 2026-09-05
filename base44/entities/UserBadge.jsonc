@@ -45,5 +45,11 @@
     "user_id",
     "badge_id",
     "earned_at"
-  ]
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
 }

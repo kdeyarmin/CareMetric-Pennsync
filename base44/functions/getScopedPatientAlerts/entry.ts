@@ -1,21 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
- * getScopedPatientAlerts — returns PatientAlert rows the caller is authorized to
- * see, filtered SERVER-SIDE so a browser never receives other patients' PHI
- * alerts. Authorization model (matches the rest of the app):
- *   - admins: all alerts
- *   - everyone else: only alerts for patients they are assigned to
- *     (Patient.assigned_nurses includes their email)
+ * getScopedPatientAlerts — returns only PatientAlert rows tied to a patient the
+ * caller created or is assigned to. The configured protected superadmin is the
+ * sole cross-patient/platform exception.
  *
- * This is defense-in-depth; entity-level row security in the Base44 dashboard
- * remains the primary control. The client may still apply a favorites filter
- * on top for UX, but it is no longer an access boundary.
- *
- * Optional `status` (string) and `severity` (string[]) params narrow the
- * result server-side, BEFORE `limit`/500 cap is applied, so narrowing a large
- * result set to (e.g.) active+high/critical can't have those rows pushed out
- * of the capped page by rows the caller was going to discard anyway.
+ * Optional status (string) and severity (string[]) parameters narrow results.
+ * Service-role queries are only bounded fetch optimizations; every patient and
+ * alert row is re-authorized in memory before it can be returned.
  */
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
@@ -25,6 +17,127 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
+const DEFAULT_ALERT_LIMIT = 100;
+const MAX_ALERT_LIMIT = 500;
+const ALERT_SCAN_LIMIT = 1000;
+const PATIENT_SCAN_LIMIT = 1000;
+const MAX_PATIENT_ID_LENGTH = 200;
+const MAX_FILTER_VALUE_LENGTH = 100;
+const MAX_SEVERITY_FILTERS = 20;
+
+const asRows = (value) => Array.isArray(value) ? value : [];
+const requireRows = (value, label) => {
+  if (!Array.isArray(value)) throw new Error(`${label} returned a non-array result`);
+  return value;
+};
+
+function patientBelongsToCaller(patient, callerEmail) {
+  if (!patient || !callerEmail) return false;
+  if (normalizeProtectedEmail(patient.created_by) === callerEmail) return true;
+  return Array.isArray(patient.assigned_nurses)
+    && patient.assigned_nurses.some(
+      (email) => normalizeProtectedEmail(email) === callerEmail,
+    );
+}
+
+function parseLimit(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return DEFAULT_ALERT_LIMIT;
+  return Math.min(Math.floor(numeric), MAX_ALERT_LIMIT);
+}
+
+function parseRequestBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { error: 'Request body must be an object' };
+  }
+
+  let patientId = null;
+  if (body.patient_id !== undefined && body.patient_id !== null) {
+    if (typeof body.patient_id !== 'string') {
+      return { error: 'patient_id must be a string' };
+    }
+    patientId = body.patient_id.trim();
+    if (!patientId || patientId.length > MAX_PATIENT_ID_LENGTH) {
+      return { error: 'patient_id is invalid' };
+    }
+  }
+
+  let status = null;
+  if (body.status !== undefined && body.status !== null) {
+    if (typeof body.status !== 'string') return { error: 'status must be a string' };
+    status = body.status.trim();
+    if (!status || status.length > MAX_FILTER_VALUE_LENGTH) {
+      return { error: 'status is invalid' };
+    }
+  }
+
+  let severities = [];
+  if (body.severity !== undefined && body.severity !== null) {
+    if (!Array.isArray(body.severity) || body.severity.length > MAX_SEVERITY_FILTERS) {
+      return { error: 'severity must be a bounded string array' };
+    }
+    severities = [...new Set(body.severity.map((value) => {
+      if (typeof value !== 'string') return null;
+      const trimmed = value.trim();
+      return trimmed && trimmed.length <= MAX_FILTER_VALUE_LENGTH ? trimmed : null;
+    }))];
+    if (severities.some((value) => value === null)) {
+      return { error: 'severity must contain valid strings' };
+    }
+  }
+
+  return {
+    patientId,
+    limit: parseLimit(body.limit),
+    status,
+    severities,
+  };
+}
+
+function alertMatches(alert, { allowedIds, patientId, status, severitySet }) {
+  if (!alert || typeof alert !== 'object') return false;
+  if (patientId && alert.patient_id !== patientId) return false;
+  if (allowedIds && !allowedIds.has(alert.patient_id)) return false;
+  if (status && alert.status !== status) return false;
+  if (severitySet.size > 0 && !severitySet.has(alert.severity)) return false;
+  return true;
+}
+
+async function fetchCallerPatientIds(entities, callerEmail) {
+  const [assignedPatients, createdPatients] = await Promise.all([
+    entities.Patient.filter(
+      { assigned_nurses: callerEmail },
+      '-created_date',
+      PATIENT_SCAN_LIMIT,
+    ),
+    entities.Patient.filter(
+      { created_by: callerEmail },
+      '-created_date',
+      PATIENT_SCAN_LIMIT,
+    ),
+  ]);
+
+  return new Set(
+    [
+      ...requireRows(assignedPatients, 'Patient.filter assigned'),
+      ...requireRows(createdPatients, 'Patient.filter created'),
+    ]
+      .filter((patient) => patient?.id && patientBelongsToCaller(patient, callerEmail))
+      .map((patient) => patient.id),
+  );
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -32,99 +145,88 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
-    const { patient_id, limit, status, severity } = await req.json().catch(() => ({}));
-    const cap = Math.min(Number(limit) || 100, 500);
-    // Optional narrowing applied server-side, BEFORE the row cap above — so a
-    // caller filtering to (e.g.) active+high/critical can't have those rows
-    // pushed out of the capped page by older/lower-severity alerts that would
-    // just be discarded client-side anyway.
+    const callerEmail = normalizeProtectedEmail(user.email);
+    if (!callerEmail) return Response.json({ error: 'Forbidden' }, { status: 403 });
+
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    const parsed = parseRequestBody(body);
+    if (parsed.error) return Response.json({ error: parsed.error }, { status: 400 });
+
+    const { patientId, limit, status, severities } = parsed;
+    const entities = base44.asServiceRole.entities;
+    const protectedSuperadmin = isProtectedSuperAdmin(user);
+    const severitySet = new Set(severities);
     const extraFilter = {};
     if (status) extraFilter.status = status;
-    if (Array.isArray(severity) && severity.length > 0) extraFilter.severity = { $in: severity };
-    const hasExtraFilter = Object.keys(extraFilter).length > 0;
-    // Platform-wide only for super_admin (or legacy facility admin with no
-    // agency). role:'admin' + agency_name must be agency-scoped — otherwise a
-    // facility admin sees every tenant's PatientAlert PHI.
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    const isAdmin = isPlatformAdmin || isAgencyScopedAdmin;
+    if (severities.length > 0) extraFilter.severity = { $in: severities };
 
-    // Agency-scoped admins: patients tied to staff sharing their agency_name.
-    let agencyEmails = null;
-    if (isAgencyScopedAdmin) {
-      if (!user.agency_name) return Response.json({ alerts: [] });
-      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
-      agencyEmails = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-    }
-    const patientInAgency = (patient) => {
-      if (!agencyEmails) return true;
-      if (patient?.created_by && agencyEmails.has(patient.created_by)) return true;
-      return Array.isArray(patient?.assigned_nurses) && patient.assigned_nurses.some((e) => agencyEmails.has(e));
-    };
-
-    // Single-patient view: authorize against assignment (or admin).
-    if (patient_id) {
-      if (!isAdmin) {
-        const [patient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000);
-        // Mirror the Patient RLS: assigned nurse OR creator OR admin.
-        const allowed = patient?.created_by === user.email
-          || (Array.isArray(patient?.assigned_nurses) && patient.assigned_nurses.includes(user.email));
-        if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
-      } else if (isAgencyScopedAdmin) {
-        const [patient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000);
-        if (!patientInAgency(patient)) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    if (patientId) {
+      if (!protectedSuperadmin) {
+        const rawPatients = await entities.Patient
+          .filter({ id: patientId }, undefined, PATIENT_SCAN_LIMIT);
+        const patient = requireRows(rawPatients, 'Patient.filter')
+          .find((row) => row?.id === patientId);
+        if (!patient || !patientBelongsToCaller(patient, callerEmail)) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
       }
-      const alerts = await base44.asServiceRole.entities.PatientAlert.filter({ patient_id, ...extraFilter }, '-created_date', cap);
+
+      const rawAlerts = await entities.PatientAlert
+        .filter({ patient_id: patientId, ...extraFilter }, '-created_date', ALERT_SCAN_LIMIT);
+      const alerts = requireRows(rawAlerts, 'PatientAlert.filter')
+        .slice(0, ALERT_SCAN_LIMIT)
+        .filter((alert) => alertMatches(alert, {
+          allowedIds: null,
+          patientId,
+          status,
+          severitySet,
+        }))
+        .slice(0, limit);
       return Response.json({ alerts });
     }
 
-    // All-alerts view — platform admins see everything; agency-scoped admins are
-    // filtered to their agency's patient set (same as getDashboardData).
-    if (isPlatformAdmin) {
-      const alerts = hasExtraFilter
-        ? await base44.asServiceRole.entities.PatientAlert.filter(extraFilter, '-created_date', cap)
-        : await base44.asServiceRole.entities.PatientAlert.list('-created_date', cap);
-      return Response.json({ alerts });
-    }
-    if (isAgencyScopedAdmin) {
-      const agencyPatients = await base44.asServiceRole.entities.Patient
-        .list('-created_date', 2000)
-        .catch(() => []);
-      const allowedIds = [...new Set(
-        (agencyPatients || [])
-          .filter(patientInAgency)
-          .map((p) => p.id)
-          .filter(Boolean),
-      )];
-      if (allowedIds.length === 0) return Response.json({ alerts: [] });
-      const alerts = await base44.asServiceRole.entities.PatientAlert
-        .filter({ patient_id: { $in: allowedIds }, ...extraFilter }, '-created_date', cap)
-        .catch(() => []);
+    if (protectedSuperadmin) {
+      const rawAlerts = Object.keys(extraFilter).length > 0
+        ? await entities.PatientAlert.filter(extraFilter, '-created_date', ALERT_SCAN_LIMIT)
+        : await entities.PatientAlert.list('-created_date', ALERT_SCAN_LIMIT);
+      const alerts = requireRows(
+        rawAlerts,
+        Object.keys(extraFilter).length > 0 ? 'PatientAlert.filter' : 'PatientAlert.list',
+      )
+        .slice(0, ALERT_SCAN_LIMIT)
+        .filter((alert) => alertMatches(alert, {
+          allowedIds: null,
+          patientId: null,
+          status,
+          severitySet,
+        }))
+        .slice(0, limit);
       return Response.json({ alerts });
     }
 
-    // Non-admin: restrict to the caller's accessible patients — those assigned to
-    // them OR created by them (the Patient RLS grants both). Query the alerts BY
-    // those patient ids (not a global window then filter) so a busy tenant's
-    // other-patient alerts can't truncate an authorized patient's older alert.
-    const [assignedPatients, createdPatients] = await Promise.all([
-      base44.asServiceRole.entities.Patient.filter({ assigned_nurses: user.email }, '-created_date', 1000).catch(() => []),
-      base44.asServiceRole.entities.Patient.filter({ created_by: user.email }, '-created_date', 1000).catch(() => []),
-    ]);
-    const allowedIds = [...new Set(
-      [...(assignedPatients || []), ...(createdPatients || [])].map((p) => p.id).filter(Boolean)
-    )];
-    if (allowedIds.length === 0) return Response.json({ alerts: [] });
+    const allowedIds = await fetchCallerPatientIds(entities, callerEmail);
+    if (allowedIds.size === 0) return Response.json({ alerts: [] });
 
-    const alerts = await base44.asServiceRole.entities.PatientAlert
-      .filter({ patient_id: { $in: allowedIds }, ...extraFilter }, '-created_date', cap).catch(() => []);
+    const rawAlerts = await entities.PatientAlert
+      .filter(
+        { patient_id: { $in: [...allowedIds] }, ...extraFilter },
+        '-created_date',
+        ALERT_SCAN_LIMIT,
+      );
+    const alerts = requireRows(rawAlerts, 'PatientAlert.filter')
+      .slice(0, ALERT_SCAN_LIMIT)
+      .filter((alert) => alertMatches(alert, {
+        allowedIds,
+        patientId: null,
+        status,
+        severitySet,
+      }))
+      .slice(0, limit);
     return Response.json({ alerts });
   } catch (error) {
     console.error('getScopedPatientAlerts error:', error?.message);

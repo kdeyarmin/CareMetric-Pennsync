@@ -85,32 +85,26 @@
   },
   "rls": {
     // Contracted rates, authorized-visit counts, and the agency's own visit
-    // costs are financial data: reads are ADMIN-LIKE ONLY (the same $or the
-    // app's isAdminLike helper checks, mirroring DocumentPackageToken), so
+    // costs are financial data: reads require Base44's protected admin role, so
     // the client-side FinancialGate is backed server-side and non-admin
     // users cannot fetch this entity directly through the API — while
-    // agency_admin/super_admin account types keep the access the admin UI
-    // already grants them.
+    // mutable account_type claims cannot grant access.
     "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "agency_admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "super_admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
-    "write": {
+    "create": {
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "__service_role_only__"
+      }
+    },
+    "delete": {
       "user_condition": {
         "role": "__service_role_only__"
       }

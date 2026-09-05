@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { severityBadgeClass } from "@/lib/severityStyles";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 export default function AutomatedQualityAssurance({
   oasisData,
@@ -388,16 +389,15 @@ For each failure, provide:
                                   CMS Guideline
                                 </p>
                                 <p className="text-xs text-indigo-800 mb-1">{error.cms_guideline}</p>
-                                {error.cms_reference_link && (
-                                  <a
-                                    href={isSafeExternalUrl(error.cms_reference_link) ? error.cms_reference_link : undefined}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                {error.cms_reference_link && isSafeExternalUrl(error.cms_reference_link) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openAuthorityBoundWindow(error.cms_reference_link)}
                                     className="text-xs text-indigo-600 underline hover:text-indigo-700 flex items-center gap-1"
                                   >
                                     <ExternalLink className="w-3 h-3" />
                                     View Official CMS Documentation
-                                  </a>
+                                  </button>
                                 )}
                               </div>
                             )}
@@ -496,16 +496,15 @@ For each failure, provide:
                                 CMS Guideline
                               </p>
                               <p className="text-xs text-indigo-800 mb-1">{gap.cms_guideline}</p>
-                              {gap.cms_reference_link && (
-                                <a
-                                  href={isSafeExternalUrl(gap.cms_reference_link) ? gap.cms_reference_link : undefined}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                              {gap.cms_reference_link && isSafeExternalUrl(gap.cms_reference_link) && (
+                                <button
+                                  type="button"
+                                  onClick={() => openAuthorityBoundWindow(gap.cms_reference_link)}
                                   className="text-xs text-indigo-600 underline hover:text-indigo-700 flex items-center gap-1"
                                 >
                                   <ExternalLink className="w-3 h-3" />
                                   View Official CMS Guideline
-                                </a>
+                                </button>
                               )}
                             </div>
                           )}
@@ -591,16 +590,15 @@ For each failure, provide:
                                   CMS Regulation
                                 </p>
                                 <p className="text-xs text-indigo-800 mb-1">{issue.cms_regulation}</p>
-                                {issue.cms_reference_link && (
-                                  <a
-                                    href={isSafeExternalUrl(issue.cms_reference_link) ? issue.cms_reference_link : undefined}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                {issue.cms_reference_link && isSafeExternalUrl(issue.cms_reference_link) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openAuthorityBoundWindow(issue.cms_reference_link)}
                                     className="text-xs text-indigo-600 underline hover:text-indigo-700 flex items-center gap-1"
                                   >
                                     <ExternalLink className="w-3 h-3" />
                                     View Official CMS Regulation
-                                  </a>
+                                  </button>
                                 )}
                               </div>
                             )}

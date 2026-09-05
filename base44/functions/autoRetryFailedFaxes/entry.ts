@@ -427,7 +427,18 @@ function isFaxRetryDue(fax, now, config) {
   return Number.isFinite(t) && now >= t;
 }
 
+// Automatic retries can re-transmit PHI without an interactive user. Keep the
+// job fail-closed until routing authority is backed by service-owned records.
+const FAX_TRANSMISSION_MIGRATION_PAUSED = true;
+
 Deno.serve(async (req) => {
+  if (FAX_TRANSMISSION_MIGRATION_PAUSED) {
+    return Response.json({
+      error: 'Automatic fax retry is temporarily unavailable pending service-owned sender, tenant, and document bindings',
+      code: 'fax_authority_migration_pending',
+    }, { status: 503 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
 

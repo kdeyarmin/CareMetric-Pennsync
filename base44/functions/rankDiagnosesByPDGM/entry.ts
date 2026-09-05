@@ -10,11 +10,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 // <<<BEGIN SHARED HELPER: pdgmReimbursementGate — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PDGM_REIMBURSEMENT_ENABLED = false;
+// Independent retirement lock for every legacy PDGM financial surface. A future
+// source edit to the global feature flag must not revive the factorized model.
+const LEGACY_FACTORIZED_PDGM_MODEL_RETIRED = true;
+const PDGM_LEGACY_SURFACES_ENABLED = PDGM_REIMBURSEMENT_ENABLED
+  && !LEGACY_FACTORIZED_PDGM_MODEL_RETIRED;
 const PDGM_REIMBURSEMENT_BLOCKER = 'The app does not yet use a verified CMS HHGS 432-group grouper with golden-case tests.';
 const PDGM_REIMBURSEMENT_ACTION = 'Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.';
 function pdgmUnavailablePayload(extra = {}) {
   return {
-    featureEnabled: PDGM_REIMBURSEMENT_ENABLED,
+    featureEnabled: PDGM_LEGACY_SURFACES_ENABLED,
     calculationStatus: 'blocked',
     paymentAvailable: false,
     payment: null,

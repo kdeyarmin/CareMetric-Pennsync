@@ -122,6 +122,17 @@ function renderBrandedEmail(opts) {
 }
 // <<<END SHARED HELPER: brandedEmail>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: resolveTelnyxCreds — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveTelnyxCreds(base44) {
   const pick = (v) => (v && String(v).trim() ? String(v).trim() : null);
@@ -176,6 +187,322 @@ function telnyxCredsMessage(creds, what) {
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
 
+// <<<BEGIN SHARED HELPER: telnyxSmsAuthority — generated, edit base44/_shared/backendHelpers.mjs>>>
+const TELNYX_SMS_BINDING_SCAN_LIMIT = 500;
+const TELNYX_SMS_CONSENT_SCAN_LIMIT = 500;
+
+function normalizeTelnyxSmsE164(raw) {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  const digits = trimmed.replace(/[^\d]/g, '');
+  if (trimmed.startsWith('+')) {
+    return digits.length >= 8 && digits.length <= 15 && digits[0] !== '0' ? `+${digits}` : null;
+  }
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return null;
+}
+
+const boundedTelnyxAuthorityId = (value) => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized
+    && normalized === value
+    && normalized.length <= 200
+    && !normalized.startsWith('$')
+    && !/[\u0000-\u001f\u007f]/.test(normalized)
+    ? normalized
+    : null;
+};
+
+const isCanonicalTelnyxAuthorityEmail = (value) => {
+  if (typeof value !== 'string' || value.length > 254) return false;
+  const normalized = value.trim().toLowerCase();
+  return value === normalized && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized);
+};
+
+function telnyxSmsConsentKey(authority, recipientE164) {
+  return [
+    'telnyx',
+    authority.integrationSecretId,
+    authority.messagingProfileId,
+    authority.agencyId,
+    recipientE164,
+  ].join(':');
+}
+
+async function resolveActiveTelnyxSmsBinding(base44, input) {
+  const integrationSecretId = boundedTelnyxAuthorityId(input?.integrationSecretId);
+  const messagingProfileId = boundedTelnyxAuthorityId(input?.messagingProfileId);
+  const hasClaimedMessagingProfile = Object.prototype.hasOwnProperty.call(input || {}, 'claimedMessagingProfileId');
+  const claimedMessagingProfileId = hasClaimedMessagingProfile
+    ? boundedTelnyxAuthorityId(input.claimedMessagingProfileId)
+    : messagingProfileId;
+  const destinationE164 = normalizeTelnyxSmsE164(input?.destinationE164);
+  if (input?.integrationProvider !== 'telnyx'
+    || input?.integrationIsActive !== true
+    || (input?.requireClaimedProfile === true && !hasClaimedMessagingProfile)
+    || !integrationSecretId || input?.integrationSecretId !== integrationSecretId
+    || !messagingProfileId || input?.messagingProfileId !== messagingProfileId
+    || !claimedMessagingProfileId
+    || (hasClaimedMessagingProfile && input?.claimedMessagingProfileId !== claimedMessagingProfileId)
+    || claimedMessagingProfileId !== messagingProfileId || !destinationE164) {
+    return { ok: false, reason: 'invalid_sms_binding_input' };
+  }
+
+  // Re-read the service-owned credential at the authority boundary. Exactly one
+  // active Telnyx integration may own SMS routing; a stale selection or two
+  // concurrently-active credential rows cannot be resolved safely.
+  let integrationRows;
+  try {
+    integrationRows = await base44.asServiceRole.entities.IntegrationSecret.filter({
+      provider: 'telnyx',
+      is_active: true,
+    }, undefined, 2);
+  } catch {
+    return { ok: false, reason: 'sms_integration_read_failed' };
+  }
+  if (!Array.isArray(integrationRows) || integrationRows.length !== 1) {
+    return { ok: false, reason: 'sms_integration_ambiguous' };
+  }
+  const activeIntegration = integrationRows[0];
+  if (activeIntegration?.id !== integrationSecretId
+    || activeIntegration?.provider !== 'telnyx'
+    || activeIntegration?.is_active !== true
+    || activeIntegration?.messaging_profile_id !== messagingProfileId) {
+    return { ok: false, reason: 'sms_integration_integrity_failed' };
+  }
+
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.TelecomDestinationBinding.filter({
+      provider: 'telnyx',
+      integration_secret_id: integrationSecretId,
+      messaging_profile_id: messagingProfileId,
+      status: 'active',
+    }, undefined, TELNYX_SMS_BINDING_SCAN_LIMIT + 1);
+  } catch {
+    return { ok: false, reason: 'sms_binding_read_failed' };
+  }
+  if (!Array.isArray(rows) || rows.length === 0 || rows.length > TELNYX_SMS_BINDING_SCAN_LIMIT) {
+    return { ok: false, reason: rows?.length ? 'sms_binding_scan_ambiguous' : 'sms_binding_not_found' };
+  }
+
+  const agencies = new Set();
+  const bindingIds = new Set();
+  const bindingKeys = new Set();
+  const bindingDestinations = new Set();
+  const profileBindingProvenance = [];
+  const exactDestinations = [];
+  for (const row of rows) {
+    const rowId = boundedTelnyxAuthorityId(row?.id);
+    const agencyId = boundedTelnyxAuthorityId(row?.agency_id);
+    const providerNumberId = boundedTelnyxAuthorityId(row?.provider_number_id);
+    const phoneNumberId = boundedTelnyxAuthorityId(row?.phone_number_id);
+    const creatorId = boundedTelnyxAuthorityId(row?.created_by_user_id);
+    const transitionActorId = boundedTelnyxAuthorityId(row?.last_transition_by_user_id);
+    const transitionRequestId = boundedTelnyxAuthorityId(row?.last_transition_request_id);
+    const transitionRequestKey = boundedTelnyxAuthorityId(row?.last_transition_request_key);
+    const transitionAction = typeof row?.last_transition_action === 'string'
+      ? row.last_transition_action
+      : '';
+    const transitionReason = typeof row?.last_transition_reason === 'string'
+      ? row.last_transition_reason.trim()
+      : '';
+    const rowDestination = normalizeTelnyxSmsE164(row?.destination_e164);
+    const createdAtMs = Date.parse(row?.created_at || '');
+    const activatedAtMs = Date.parse(row?.activated_at || '');
+    const transitionedAtMs = Date.parse(row?.last_transition_at || '');
+    const hasSuspendedAt = row?.suspended_at != null;
+    const suspendedAtMs = hasSuspendedAt ? Date.parse(row.suspended_at) : null;
+    const hasRevokedAt = row?.revoked_at != null;
+    const hasRevocationReason = row?.revocation_reason != null;
+    const expectedKey = rowDestination
+      ? `telnyx:${integrationSecretId}:${rowDestination}`
+      : null;
+    const expectedTransitionRequestKey = expectedKey && transitionRequestId
+      ? `${expectedKey}:${transitionRequestId}`
+      : null;
+    const isInitialActiveBinding = transitionAction === 'bind'
+      && row?.version === 1
+      && !hasSuspendedAt
+      && createdAtMs === activatedAtMs
+      && activatedAtMs === transitionedAtMs
+      && creatorId === transitionActorId
+      && row?.created_by_user_email_normalized === row?.last_transition_by_email_normalized;
+    const isReactivatedBinding = transitionAction === 'activate'
+      && Number.isSafeInteger(row?.version) && row.version >= 2
+      && hasSuspendedAt && Number.isFinite(suspendedAtMs)
+      && createdAtMs <= suspendedAtMs && suspendedAtMs < activatedAtMs
+      && activatedAtMs === transitionedAtMs;
+    if (!rowId || row?.id !== rowId
+      || !agencyId || row?.agency_id !== agencyId
+      || !providerNumberId || row?.provider_number_id !== providerNumberId
+      || !phoneNumberId || row?.phone_number_id !== phoneNumberId
+      || !creatorId || row?.created_by_user_id !== creatorId
+      || !transitionActorId || row?.last_transition_by_user_id !== transitionActorId
+      || !transitionRequestId || row?.last_transition_request_id !== transitionRequestId
+      || !transitionRequestKey || row?.last_transition_request_key !== transitionRequestKey
+      || !isCanonicalTelnyxAuthorityEmail(row?.created_by_user_email_normalized)
+      || !isCanonicalTelnyxAuthorityEmail(row?.last_transition_by_email_normalized)
+      || row?.provider !== 'telnyx'
+      || row?.integration_secret_id !== integrationSecretId
+      || row?.messaging_profile_id !== messagingProfileId
+      || typeof row?.sms_inbound_enabled !== 'boolean'
+      || typeof row?.sms_outbound_enabled !== 'boolean'
+      || typeof row?.voice_inbound_enabled !== 'boolean'
+      || typeof row?.fax_inbound_enabled !== 'boolean'
+      || (row.voice_inbound_enabled === true
+        && (!boundedTelnyxAuthorityId(row?.voice_connection_id)
+          || row.voice_connection_id !== boundedTelnyxAuthorityId(row.voice_connection_id)))
+      || (row.fax_inbound_enabled === true
+        && (!boundedTelnyxAuthorityId(row?.fax_connection_id)
+          || row.fax_connection_id !== boundedTelnyxAuthorityId(row.fax_connection_id)))
+      || row?.status !== 'active'
+      || !['manual', 'telnyx_purchase', 'legacy_backfill'].includes(row?.source)
+      || (!isInitialActiveBinding && !isReactivatedBinding)
+      || !transitionReason || row?.last_transition_reason !== transitionReason
+      || transitionReason.length > 500
+      || transitionRequestKey !== expectedTransitionRequestKey
+      || !Number.isFinite(createdAtMs) || !Number.isFinite(activatedAtMs)
+      || !Number.isFinite(transitionedAtMs)
+      || createdAtMs > activatedAtMs || activatedAtMs > transitionedAtMs
+      || hasRevokedAt || hasRevocationReason
+      || row?.destination_e164 !== rowDestination
+      || row?.binding_key !== expectedKey
+      || !Number.isSafeInteger(row?.version) || row.version < 1) {
+      return { ok: false, reason: 'sms_binding_integrity_failed' };
+    }
+    if (bindingIds.has(rowId)
+      || bindingKeys.has(row.binding_key)
+      || bindingDestinations.has(rowDestination)) {
+      return { ok: false, reason: 'sms_binding_identity_ambiguous' };
+    }
+    bindingIds.add(rowId);
+    bindingKeys.add(row.binding_key);
+    bindingDestinations.add(rowDestination);
+    agencies.add(agencyId);
+    profileBindingProvenance.push({
+      bindingId: rowId,
+      bindingKey: row.binding_key,
+      destinationE164: rowDestination,
+    });
+    if (rowDestination === destinationE164) exactDestinations.push(row);
+  }
+  if (agencies.size !== 1) return { ok: false, reason: 'sms_profile_cross_tenant' };
+  if (exactDestinations.length !== 1) {
+    return { ok: false, reason: exactDestinations.length ? 'sms_destination_ambiguous' : 'sms_destination_not_found' };
+  }
+
+  const binding = exactDestinations[0];
+  if (input?.requireInbound === true && binding.sms_inbound_enabled !== true) {
+    return { ok: false, reason: 'sms_inbound_not_enabled' };
+  }
+  if (input?.requireOutbound === true && binding.sms_outbound_enabled !== true) {
+    return { ok: false, reason: 'sms_outbound_not_enabled' };
+  }
+  return {
+    ok: true,
+    binding,
+    bindingId: binding.id,
+    bindingKey: binding.binding_key,
+    agencyId: binding.agency_id,
+    integrationSecretId,
+    messagingProfileId,
+    destinationE164,
+    profileBindingProvenance,
+  };
+}
+
+async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
+  if (!authority?.ok) return { ok: false, reason: 'sms_binding_required' };
+  const phoneE164 = normalizeTelnyxSmsE164(rawRecipient);
+  if (!phoneE164) return { ok: false, reason: 'invalid_sms_consent_recipient' };
+  const consentKey = telnyxSmsConsentKey(authority, phoneE164);
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.SmsConsent.filter({
+      consent_key: consentKey,
+      provider: 'telnyx',
+      integration_secret_id: authority.integrationSecretId,
+      messaging_profile_id: authority.messagingProfileId,
+      agency_id: authority.agencyId,
+      phone_e164: phoneE164,
+    }, '-captured_at', TELNYX_SMS_CONSENT_SCAN_LIMIT + 1);
+  } catch {
+    return { ok: false, reason: 'sms_consent_read_failed' };
+  }
+  if (!Array.isArray(rows) || rows.length > TELNYX_SMS_CONSENT_SCAN_LIMIT) {
+    return { ok: false, reason: 'sms_consent_read_invalid' };
+  }
+  for (const row of rows) {
+    const provenanceMatches = Array.isArray(authority.profileBindingProvenance)
+      && authority.profileBindingProvenance.some((candidate) =>
+        row?.destination_binding_id === candidate.bindingId
+        && row?.destination_binding_key === candidate.bindingKey
+        && row?.destination_e164 === candidate.destinationE164);
+    const source = typeof row?.consent_source === 'string' ? row.consent_source : '';
+    const status = typeof row?.consent_status === 'string' ? row.consent_status : '';
+    const isKeywordStop = source === 'keyword_stop';
+    const isKeywordStart = source === 'keyword_start';
+    const isKeyword = isKeywordStop || isKeywordStart;
+    const providerEventId = boundedTelnyxAuthorityId(row?.provider_event_id);
+    const providerMessageId = boundedTelnyxAuthorityId(row?.provider_message_id);
+    const capturedAtMs = Date.parse(row?.captured_at || '');
+    const occurredAtMs = Date.parse(row?.provider_event_occurred_at || '');
+    const capturedBy = isCanonicalTelnyxAuthorityEmail(row?.captured_by)
+      ? row.captured_by
+      : null;
+    const manualSourceMatches = (source === 'manual_opt_in' && status === 'opted_in')
+      || (source === 'manual_opt_out' && status === 'opted_out')
+      || (source === 'admin_manual' && ['opted_in', 'opted_out', 'unknown'].includes(status));
+    const keywordSourceMatches = isKeyword
+      && status === (isKeywordStop ? 'opted_out' : 'opted_in')
+      && (row?.captured_by ?? null) === null
+      && !!providerEventId && row?.provider_event_id === providerEventId
+      && !!providerMessageId && row?.provider_message_id === providerMessageId
+      && Number.isFinite(occurredAtMs)
+      && row?.provider_event_occurred_at === row?.captured_at;
+    const manualProvenanceMatches = manualSourceMatches
+      && !!capturedBy
+      && row?.captured_by === capturedBy
+      && row?.provider_event_id == null
+      && row?.provider_message_id == null
+      && row?.provider_event_occurred_at == null;
+    if (row?.consent_key !== consentKey
+      || row?.provider !== 'telnyx'
+      || row?.integration_secret_id !== authority.integrationSecretId
+      || row?.messaging_profile_id !== authority.messagingProfileId
+      || row?.agency_id !== authority.agencyId
+      || row?.phone_e164 !== phoneE164
+      || !provenanceMatches
+      || !Number.isFinite(capturedAtMs)
+      || (!keywordSourceMatches && !manualProvenanceMatches)) {
+      return { ok: false, reason: 'sms_consent_integrity_failed' };
+    }
+  }
+  for (let index = 1; index < rows.length; index += 1) {
+    const newest = Date.parse(rows[index - 1].captured_at);
+    const runnerUp = Date.parse(rows[index].captured_at);
+    if (newest <= runnerUp) {
+      return { ok: false, reason: newest === runnerUp
+        ? 'sms_consent_latest_ambiguous'
+        : 'sms_consent_order_invalid' };
+    }
+  }
+  const newestKeyword = rows.find((row) =>
+    row.consent_source === 'keyword_stop' || row.consent_source === 'keyword_start');
+  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop';
+  return {
+    ok: true,
+    row: rows[0] || null,
+    effectiveStatus: keywordStopActive ? 'opted_out' : (rows[0]?.consent_status || 'unknown'),
+    keywordStopActive,
+    phoneE164,
+    consentKey,
+  };
+}
+// <<<END SHARED HELPER: telnyxSmsAuthority>>>
+
 
 // <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveAgencySettings(base44, agencyName) {
@@ -206,6 +533,9 @@ async function resolveAgencySettings(base44, agencyName) {
 }
 // <<<END SHARED HELPER: resolveAgencySettings>>>
 
+// Interim containment: notification claims can suppress subsequent notices and
+// expose fax metadata, so only the configured protected owner may invoke this
+// handler until fax-sender routing is backed by immutable server-owned bindings.
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -216,6 +546,10 @@ Deno.serve(async (req) => {
     }
     if (user.is_active === false) {
       return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+    }
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Only the protected platform owner can send fax status notifications' }, { status: 403 });
     }
 
     const { data } = await req.json();
@@ -228,32 +562,6 @@ Deno.serve(async (req) => {
     const fax = await base44.asServiceRole.entities.FaxLog.get(data.id).catch(() => null);
     if (!fax) {
       return Response.json({ error: 'Fax not found' }, { status: 404 });
-    }
-
-    // Only the sender or an admin may drive the sender's delivery/failure notice
-    // (and consume its one-shot idempotency markers). Agency-scoped admins are
-    // limited to their own agency's faxes — a bare isAdminLike() check let an
-    // agency_admin of another tenant read this fax's recipient/document/failure
-    // detail and suppress the real sender's notification.
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    const isOwner = fax.sent_by === user.email;
-    if (!isOwner && !isPlatformAdmin && !isAgencyScopedAdmin) {
-      return Response.json({ error: 'Forbidden: not the fax sender' }, { status: 403 });
-    }
-    if (isAgencyScopedAdmin && !isOwner) {
-      if (!user.agency_name || !fax.sent_by) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      const senders = await base44.asServiceRole.entities.User
-        .filter({ email: fax.sent_by }, undefined, 5)
-        .catch(() => []);
-      if (!senders?.[0] || senders[0].agency_name !== user.agency_name) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
     }
 
     const status = String(fax.status || '').toLowerCase();
@@ -361,38 +669,51 @@ Deno.serve(async (req) => {
     // SMS only with explicit SmsConsent opted_in (TCPA parity with sendSms).
     if (notifyPhone) {
       try {
-        const phone = String(notifyPhone).trim();
-        const consents = await base44.asServiceRole.entities.SmsConsent
-          .filter({ phone_e164: phone }, '-captured_at', 1)
-          .catch(() => []);
-        if (consents[0]?.consent_status === 'opted_in') {
-          const telnyxCreds = await resolveTelnyxCreds(base44);
-          const { apiKey, messagingProfileId } = telnyxCreds;
-          const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
-          const fromNumber = (agencySettings?.main_office_number_e164 || '').toString().trim() || null;
-
-          if (apiKey && fromNumber) {
-            const payload = { from: fromNumber, to: phone, text: smsMessage };
-            if (messagingProfileId) payload.messaging_profile_id = messagingProfileId;
-            const response = await fetch('https://api.telnyx.com/v2/messages', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(payload),
-            });
-
-            if (response.ok) {
-              notifications.push({ type: 'sms', status: 'sent' });
-              anySent = true;
-            } else {
-              const error = await response.text();
-              notifications.push({ type: 'sms', status: 'failed', error });
-            }
-          }
+        const phone = normalizeTelnyxSmsE164(notifyPhone);
+        const telnyxCreds = await resolveTelnyxCreds(base44);
+        const { apiKey, messagingProfileId } = telnyxCreds;
+        const agencySettings = await resolveAgencySettings(base44, user?.agency_name);
+        const candidateFromNumber = (agencySettings?.main_office_number_e164 || '').toString().trim() || null;
+        const smsAuthority = await resolveActiveTelnyxSmsBinding(base44, {
+          integrationSecretId: telnyxCreds?.record?.id,
+          integrationProvider: telnyxCreds?.record?.provider,
+          integrationIsActive: telnyxCreds?.record?.is_active === true,
+          messagingProfileId,
+          destinationE164: candidateFromNumber,
+          requireOutbound: true,
+        });
+        if (!phone || !smsAuthority.ok) {
+          notifications.push({ type: 'sms', status: 'skipped', reason: 'bound SMS authority unavailable' });
         } else {
-          notifications.push({ type: 'sms', status: 'skipped', reason: 'consent not opted_in' });
+          const scopedConsent = await loadLatestScopedSmsConsent(base44, smsAuthority, phone);
+          if (!scopedConsent.ok) {
+            notifications.push({ type: 'sms', status: 'skipped', reason: 'scoped consent unavailable' });
+          } else if (scopedConsent.effectiveStatus === 'opted_in') {
+            if (apiKey) {
+              const payload = { from: smsAuthority.destinationE164, to: phone, text: smsMessage };
+              if (messagingProfileId) payload.messaging_profile_id = messagingProfileId;
+              const response = await fetch('https://api.telnyx.com/v2/messages', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${apiKey}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+              });
+
+              if (response.ok) {
+                notifications.push({ type: 'sms', status: 'sent' });
+                anySent = true;
+              } else {
+                const error = await response.text();
+                notifications.push({ type: 'sms', status: 'failed', error });
+              }
+            } else {
+              notifications.push({ type: 'sms', status: 'skipped', reason: 'SMS credentials unavailable' });
+            }
+          } else {
+            notifications.push({ type: 'sms', status: 'skipped', reason: 'consent not opted_in' });
+          }
         }
       } catch (smsError) {
         console.error('SMS notification failed:', smsError);

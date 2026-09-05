@@ -166,11 +166,22 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Retrying a fax is another provider transmission, so it stays behind the same
+// service-owned sender, tenant, and document-authority migration as new sends.
+const FAX_TRANSMISSION_MIGRATION_PAUSED = true;
+
 
 /**
  * Retry a failed fax transmission
  */
 Deno.serve(async (req) => {
+  if (FAX_TRANSMISSION_MIGRATION_PAUSED) {
+    return Response.json({
+      error: 'Fax retry is temporarily unavailable pending service-owned sender, tenant, and document bindings',
+      code: 'fax_authority_migration_pending',
+    }, { status: 503 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -315,7 +326,10 @@ Deno.serve(async (req) => {
     // has no client idempotency key, so this claim is the double-send guard.)
     const runId = crypto.randomUUID();
     try {
-      await base44.entities.FaxLog.update(fax_log_id, {
+      // Authentication, ownership/agency scope, failed-state, retry-budget,
+      // stored-URL, and provider-config checks have all passed above. Use the
+      // service role only for this authorized claim write.
+      await base44.asServiceRole.entities.FaxLog.update(fax_log_id, {
         status: 'retrying',
         retry_claimed_by: runId,
         retry_claimed_at: new Date().toISOString(),
@@ -330,7 +344,7 @@ Deno.serve(async (req) => {
 
     // Release the claim back to a retriable 'failed' state if the send doesn't go
     // through, so a transient error doesn't strand the fax in 'retrying'.
-    const releaseClaim = () => base44.entities.FaxLog.update(fax_log_id, {
+    const releaseClaim = () => base44.asServiceRole.entities.FaxLog.update(fax_log_id, {
       status: 'failed',
       retry_claimed_by: null,
     }).catch(() => {});
@@ -405,7 +419,7 @@ Deno.serve(async (req) => {
       faxData = await telnyxResponse.json();
 
       // Create new FaxLog record for retry
-      newFaxLog = await base44.entities.FaxLog.create({
+      newFaxLog = await base44.asServiceRole.entities.FaxLog.create({
         from_number: originalFax.from_number,
         to_number: originalFax.to_number,
         to_name: originalFax.to_name,
@@ -423,7 +437,7 @@ Deno.serve(async (req) => {
       });
 
       // Update original fax to mark it as retried (clears the transient claim).
-      await base44.entities.FaxLog.update(fax_log_id, {
+      await base44.asServiceRole.entities.FaxLog.update(fax_log_id, {
         status: 'retried',
         retry_claimed_by: null,
         failure_reason: `Retry attempt #${(originalFax.retry_count || 0) + 1} initiated`
@@ -431,7 +445,7 @@ Deno.serve(async (req) => {
     } catch (postErr) {
       console.error('retryFailedFax post-send bookkeeping failed:', postErr);
       // Settle the claim so the already-sent fax isn't orphaned in 'retrying'.
-      await base44.entities.FaxLog.update(fax_log_id, {
+      await base44.asServiceRole.entities.FaxLog.update(fax_log_id, {
         status: 'retried',
         retry_claimed_by: null,
         failure_reason: 'Retry was sent to Telnyx, but follow-up logging failed.'

@@ -69,23 +69,12 @@
     "signer_email",
     "sent_at"
   ],
+  // Reminder logs expose signer identity and package delivery state. They are
+  // direct-access denied while every signing reminder path is quarantined.
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    },
-    "write": {
-      "user_condition": {
-        "role": "admin"
-      }
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

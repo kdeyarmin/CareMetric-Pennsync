@@ -60,8 +60,9 @@ import GamificationDashboard from '@/components/training/GamificationDashboard';
 import { selfEnrollCourse } from '@/functions/selfEnrollCourse';
 import { submitCourseFeedback } from '@/functions/submitCourseFeedback';
 import { getCourseFeedbackSummary } from '@/functions/getCourseFeedbackSummary';
+import { getMyTrainingGamification } from '@/functions/getMyTrainingGamification';
+import { listCompetencies } from '@/functions/listCompetencies';
 import LoadingState from "@/components/ui/LoadingState";
-import { ALL_ROWS } from '@/lib/queryLimits';
 
 // Lazy spokes — the former My Learning hub's tabs (My Courses, In-Services,
 // Annual Education, Transcripts) now render inside this canonical Learning Center.
@@ -223,23 +224,24 @@ export default function LearningCenter() {
 
   const { data: competencies = [] } = useQuery({
     queryKey: ['my-competencies', user?.role],
-    queryFn: () => base44.entities.Competency.filter({
-      role_target: user.role,
-      active: true
-    }, undefined, ALL_ROWS),
+    queryFn: async () => {
+      const response = await listCompetencies({ role_target: user.role });
+      return (response?.data || response)?.competencies || [];
+    },
     enabled: !!user?.role,
     initialData: []
   });
 
-  const { data: leaderboardEntry = null } = useQuery({
-    queryKey: ['lc-leaderboard', user?.email],
+  const { data: gamificationData = { leaderboard: null, badges: [], team_rank_available: false } } = useQuery({
+    queryKey: ['my-training-gamification', user?.email],
     queryFn: async () => {
-      const entries = await base44.entities.Leaderboard.filter({ user_id: user.email });
-      return entries[0] || null;
+      const response = await getMyTrainingGamification({});
+      return response?.data || response;
     },
     enabled: !!user?.email,
-    initialData: null
+    initialData: { leaderboard: null, badges: [], team_rank_available: false }
   });
+  const leaderboardEntry = gamificationData?.leaderboard || null;
 
   const { data: feedbackData = { summaries: {}, mine: {} } } = useQuery({
     queryKey: ['lc-course-feedback', user?.email],

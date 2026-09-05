@@ -42,7 +42,22 @@ async function assertPatientAccess(base44, user, patient) {
   return null;
 }
 
+// Source-level containment until Visit updates are owned by the immutable
+// AgencyMembership authorization broker. This endpoint currently performs two
+// user-mode Visit.update calls (claim + AI narrative publication), so even its
+// read path must remain unreachable while direct Visit mutation is being
+// disabled. Keep this check before client creation, authentication, or any
+// entity/integration access.
+const PROCESS_COMPLETED_VISIT_PAUSED = true;
+
 Deno.serve(async (req) => {
+  if (PROCESS_COMPLETED_VISIT_PAUSED) {
+    return Response.json({
+      error: 'Completed-visit AI processing is temporarily unavailable pending tenant-safe Visit update migration',
+      code: 'visit_update_security_validation_pending',
+    }, { status: 503 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
     

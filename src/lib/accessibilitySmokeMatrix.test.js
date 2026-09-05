@@ -11,7 +11,14 @@ import {
 
 test('public accessibility smoke matrix covers known no-token routes', () => {
   const routes = PUBLIC_ACCESSIBILITY_SMOKE_ROUTES.map((r) => r.route).sort();
-  assert.deepEqual(routes, ['/followup', '/join', '/privacy', '/signer']);
+  assert.deepEqual(routes, [
+    '/followup',
+    '/join',
+    '/privacy',
+    '/privacy-policy',
+    '/privacypolicy',
+    '/signer',
+  ]);
 });
 
 test('each accessibility smoke route has enough metadata for axe/browser runners', () => {
@@ -23,7 +30,7 @@ test('each accessibility smoke route has enough metadata for axe/browser runners
 });
 
 test('public vs authenticated helpers partition the matrix', () => {
-  assert.equal(publicAccessibilityRoutes().length, 4);
+  assert.equal(publicAccessibilityRoutes().length, 6);
   assert.ok(authenticatedAccessibilityRoutes().length >= 4);
   assert.ok(authenticatedAccessibilityRoutes().every((r) => r.requiresAuth === true));
   assert.ok(publicAccessibilityRoutes().every((r) => r.requiresAuth === false));

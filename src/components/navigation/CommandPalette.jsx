@@ -12,7 +12,7 @@ import {
   CommandItem,
   CommandSeparator,
 } from "@/components/ui/command";
-import { Brain, Send, CalendarDays, Mail, FileText, User } from "lucide-react";
+import { Brain, Send, CalendarDays, FileText, User } from "lucide-react";
 import { buildPaletteEntries, paletteGroupFor, NAV_MANIFEST } from "@/lib/nav.manifest";
 import { ACCESS, canAccessLevel, canViewPatients } from "@/lib/roles";
 
@@ -27,7 +27,6 @@ const MAX_RECENTS = 5;
 const QUICK_ACTIONS = [
   { id: "start-smart-note", label: "Start a Smart Note", icon: Brain, to: "/SmartNoteAssistant", keywords: "new note chart document visit dictation scribe ai", access: ACCESS.NURSING },
   { id: "send-fax", label: "Send a fax", icon: Send, to: "/SendFax", keywords: "new outbound physician" },
-  { id: "new-message", label: "New message", icon: Mail, to: "/Messages", keywords: "send inbox chat compose" },
   { id: "request-time-off", label: "Request time off", icon: CalendarDays, to: "/TimeOff", keywords: "pto leave vacation new request" },
   { id: "new-referral", label: "New referral / intake", icon: FileText, to: "/ReferralIntake", keywords: "admission patient new office", adminOnly: true },
 ];

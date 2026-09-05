@@ -78,5 +78,13 @@
       "description": "Where the encounter data came from (e.g. referral_document)"
     }
   },
-  "required": []
+  "required": [],
+  // The only direct browser consumer is the admin-only referral-intake route.
+  // Patient merge/reassignment runs as service role, so it is unaffected.
+  "rls": {
+    "read": { "user_condition": { "role": "admin" } },
+    "create": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": false
+  }
 }

@@ -46,4 +46,11 @@
     "default_price",
     "billing_category"
   ]
+  ,
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

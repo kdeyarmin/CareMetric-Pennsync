@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "fixture_set_id": "lr01-lr02-two-agency-v1",
+  "mode": "plan_only_no_writes",
+  "data_policy": "synthetic_non_phi",
+  "target": {
+    "environment": "staging",
+    "app_id": "6a9881683dc68a0bd54f1ef7",
+    "origin": "https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/"
+  },
+  "capabilities": [
+    "LR-01",
+    "LR-02"
+  ],
+  "actors": {
+    "platform_owner": {
+      "email_env": "SUPER_ADMIN_EMAIL",
+      "built_in_role": "admin",
+      "agency": null,
+      "tenant_role": null
+    },
+    "admin_a": {
+      "email_env": "LR_ADMIN_A_EMAIL",
+      "built_in_role": "user",
+      "agency": "agency_a",
+      "tenant_role": "agency_admin"
+    },
+    "clinician_a": {
+      "email_env": "LR_CLINICIAN_A_EMAIL",
+      "built_in_role": "user",
+      "agency": "agency_a",
+      "tenant_role": "clinician"
+    },
+    "clinician_a_empty": {
+      "email_env": "LR_CLINICIAN_A_EMPTY_EMAIL",
+      "built_in_role": "user",
+      "agency": "agency_a",
+      "tenant_role": "clinician"
+    },
+    "admin_b": {
+      "email_env": "LR_ADMIN_B_EMAIL",
+      "built_in_role": "user",
+      "agency": "agency_b",
+      "tenant_role": "agency_admin"
+    }
+  },
+  "agencies": {
+    "agency_a": {
+      "status": "active"
+    },
+    "agency_b": {
+      "status": "active"
+    }
+  },
+  "patients": {
+    "a1": {
+      "agency": "agency_a",
+      "creator": "admin_a",
+      "status": "active",
+      "is_sample": false,
+      "is_archived": false
+    },
+    "a2": {
+      "agency": "agency_a",
+      "creator": "admin_a",
+      "status": "active",
+      "is_sample": false,
+      "is_archived": false
+    },
+    "b1": {
+      "agency": "agency_b",
+      "creator": "admin_b",
+      "status": "active",
+      "is_sample": false,
+      "is_archived": false
+    }
+  },
+  "assignments": [
+    {
+      "patient": "a1",
+      "actor": "clinician_a",
+      "status": "active",
+      "source": "manual"
+    }
+  ]
+}

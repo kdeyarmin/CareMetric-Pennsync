@@ -1,6 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -223,8 +234,15 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const callerEmail = normalizeProtectedEmail(user.email);
+    if (!callerEmail) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const payload = await req.json();
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
 
     if (
       !payload.patient_id ||
@@ -234,46 +252,58 @@ Deno.serve(async (req) => {
     ) {
       return Response.json({ error: 'Missing required state-reportable event fields' }, { status: 400 });
     }
+    if (
+      typeof payload.patient_id !== 'string'
+      || !payload.patient_id.trim()
+      || payload.patient_id.trim().length > 200
+    ) {
+      return Response.json({ error: 'Invalid patient_id' }, { status: 400 });
+    }
+    if (
+      payload.event_type_id != null
+      && payload.event_type_id !== ''
+      && (
+        typeof payload.event_type_id !== 'string'
+        || !payload.event_type_id.trim()
+        || payload.event_type_id.trim().length > 100
+      )
+    ) {
+      return Response.json({ error: 'Invalid event_type_id' }, { status: 400 });
+    }
+    const scopedPatientId = payload.patient_id.trim();
 
-    // Authorize: service-role Incident.create bypasses RLS, so a crafted
-    // patient_id would otherwise attribute a high-severity state event (+ admin
-    // emails with full report text) to an arbitrary chart. Mirror
-    // submitIncidentReport — assigned nurse, creator, or admin only.
-    const [incidentPatient] = await base44.asServiceRole.entities.Patient
-      .filter({ id: payload.patient_id }, '', 1).catch(() => []);
+    // Service-role writes bypass RLS, so prove access to the exact requested
+    // Patient before building/uploading a file or creating/emailing anything.
+    // account_type and agency fields are self-mutable User data and must never
+    // grant cross-chart access.
+    const patientRows = await base44.asServiceRole.entities.Patient
+      .filter({ id: scopedPatientId }, '', 1).catch(() => []);
+    const incidentPatient = (Array.isArray(patientRows) ? patientRows : [])
+      .find((patient) => typeof patient?.id === 'string'
+        && patient.id.trim() === scopedPatientId);
     if (!incidentPatient) {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+    const isOwner = normalizeProtectedEmail(incidentPatient.created_by) === callerEmail;
     const isAssigned = Array.isArray(incidentPatient.assigned_nurses)
-      && incidentPatient.assigned_nurses.includes(user.email);
-    if (!isPlatformAdmin && !isAgencyScopedAdmin && incidentPatient.created_by !== user.email && !isAssigned) {
+      && incidentPatient.assigned_nurses.some(
+        (email) => normalizeProtectedEmail(email) === callerEmail,
+      );
+    if (!isOwner && !isAssigned && !isProtectedSuperAdmin(user)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    if (isAgencyScopedAdmin) {
-      if (!user.agency_name) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .list('-created_date', 5000).catch(() => []);
-      const agencyEmails = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-      const inAgency = (incidentPatient.created_by && agencyEmails.has(incidentPatient.created_by))
-        || (Array.isArray(incidentPatient.assigned_nurses)
-          && incidentPatient.assigned_nurses.some((e) => agencyEmails.has(e)));
-      if (!inAgency) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    }
 
-    const reportText = payload.report_text || buildReportText(payload);
+    const patientName = [incidentPatient.first_name, incidentPatient.last_name]
+      .filter((part) => typeof part === 'string' && part.trim())
+      .map((part) => part.trim())
+      .join(' ')
+      || (typeof incidentPatient.full_name === 'string' && incidentPatient.full_name.trim())
+      || scopedPatientId;
+    const reportText = payload.report_text || buildReportText({
+      ...payload,
+      patient_id: scopedPatientId,
+      patient_name: patientName,
+    });
 
     // 1) Persist the incident FIRST so the record is retained even if a later
     //    step (PDF, email) fails. If this throws, the outer catch returns 500
@@ -282,9 +312,9 @@ Deno.serve(async (req) => {
     // (see functions/updateIncident), and read RLS keys off created_by, so the
     // reporter must still be recorded as the author.
     const incident = await base44.asServiceRole.entities.Incident.create({
-      created_by: user.email,
-      patient_id: payload.patient_id,
-      patient_name: payload.patient_name || payload.patient_id,
+      created_by: callerEmail,
+      patient_id: scopedPatientId,
+      patient_name: patientName,
       // Map the state event code onto a real incident_type so these — the most
       // severe events — appear in falls/hospitalization/med-error aggregates
       // instead of vanishing into 'other'.
@@ -312,14 +342,21 @@ Deno.serve(async (req) => {
         followup_action: payload.followup_action,
         submitted_by_name: payload.submitted_by_name || user.full_name,
         submitted_by_title: payload.submitted_by_title,
-        submitted_by_email: user.email,
+        submitted_by_email: callerEmail,
         submitted_at: new Date().toISOString(),
         source: payload.source || 'state_reportable_form',
       },
     });
+    const incidentId = typeof incident?.id === 'string' && incident.id.trim().length <= 200
+      ? incident.id.trim()
+      : '';
+    if (!incidentId) {
+      throw new Error('Incident create returned an invalid identifier');
+    }
 
-    // 2) Generate + store a PDF copy as a retained Document (best-effort).
-    let pdfUrl = null;
+    // 2) Generate + privately retain a PDF through the binding-aware broker
+    // (best-effort). No storage URI or short-lived signed URL is copied into
+    // Incident, Notification, email, or the response.
     let documentId = null;
     try {
       const pdfBytes = renderReportPdf(reportText);
@@ -327,47 +364,48 @@ Deno.serve(async (req) => {
       const fileName = `State_Reportable_${safeType}_${payload.event_date || ''}.pdf`;
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const file = new File([blob], fileName, { type: 'application/pdf' });
-      const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file });
-      pdfUrl = uploadResult.file_url;
-
-      const document = await base44.asServiceRole.entities.Document.create({
-        title: `State Reportable Event – ${payload.event_type}`,
-        description: `State-reportable incident report for ${payload.patient_name || payload.patient_id}`,
-        file_url: pdfUrl,
-        file_name: fileName,
-        file_type: 'application/pdf',
-        category: 'state_reportable_incident',
-        patient_id: payload.patient_id,
-        tags: ['state_reportable', 'incident'],
-        document_date: payload.event_date,
-        uploaded_by: user.email,
-        is_sensitive: true,
+      const retained = await base44.functions.invoke('createAuthorizedDocument', {
+        file,
+        agency_id: incidentPatient.agency_id,
+        patient_id: scopedPatientId,
+        purpose: 'patient_document',
+        client_request_id: incidentId,
       });
-      documentId = document.id;
-    } catch (pdfErr) {
-      // Retention failures must be visible in server logs (message-only, no PHI).
-      console.warn('State-reportable PDF/Document retention failed:', pdfErr?.message);
+      const retainedResult = retained?.data ?? retained;
+      const retainedId = retainedResult?.document?.id;
+      documentId = typeof retainedId === 'string' && retainedId.trim().length <= 200
+        ? retainedId.trim()
+        : null;
+      if (!documentId || retainedResult?.success !== true) {
+        throw new Error('Authorized Document retention returned an invalid result');
+      }
+    } catch {
+      // Static only: provider messages can contain filenames, identifiers, and
+      // storage details.
+      console.warn('State-reportable private Document retention failed');
     }
 
-    // 3) Notify every admin: in-app notification + immediate email (server-side,
-    //    so it does not depend on the submitter's browser staying open).
-    // Admin-tier recipients use the same predicate as isAdminLike — filtering
-    // on role==='admin' alone missed agency_admin/super_admin accounts, so an
-    // agency whose admins are account_type-based got ZERO notifications while
-    // the function still returned success.
+    // 3) Notify directly related protected admins plus the configured platform
+    // owner. The broad User read is only a lookup optimization; every returned
+    // row is re-filtered against the exact patient's stored owner/assignment
+    // relationship. Self-asserted account/agency fields cannot join this fan-out.
     const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
-    // Scope recipients to the submitter's agency (plus platform super_admins).
-    // Unscoped fan-out emailed full report text / patient identifiers to every
-    // tenant's agency_admins.
-    let adminList = (Array.isArray(allUsers) ? allUsers : []).filter((u) =>
-      u && (u.role === 'admin' || u.role === 'agency_admin' ||
-        u.account_type === 'agency_admin' || u.account_type === 'super_admin'));
-    if (user.agency_name) {
-      adminList = adminList.filter((u) =>
-        u.account_type === 'super_admin' || u.agency_name === user.agency_name);
-    } else {
-      adminList = adminList.filter((u) => u.account_type === 'super_admin');
+    const directlyRelatedEmails = new Set([
+      normalizeProtectedEmail(incidentPatient.created_by),
+      ...(Array.isArray(incidentPatient.assigned_nurses)
+        ? incidentPatient.assigned_nurses.map(normalizeProtectedEmail)
+        : []),
+    ].filter(Boolean));
+    const adminsByEmail = new Map();
+    for (const candidate of (Array.isArray(allUsers) ? allUsers : [])) {
+      const candidateEmail = normalizeProtectedEmail(candidate?.email);
+      if (!candidateEmail || adminsByEmail.has(candidateEmail)) continue;
+      const isDirectProtectedAdmin = candidate?.role === 'admin'
+        && directlyRelatedEmails.has(candidateEmail);
+      if (!isDirectProtectedAdmin && !isProtectedSuperAdmin(candidate)) continue;
+      adminsByEmail.set(candidateEmail, { ...candidate, email: candidateEmail });
     }
+    const adminList = [...adminsByEmail.values()];
 
     let notifiedCount = 0;
     const recipients = [];
@@ -379,17 +417,17 @@ Deno.serve(async (req) => {
           base44.asServiceRole.entities.Notification.create({
             user_email: admin.email,
             title: `⚠️ State Reportable Event – ${payload.event_type}`,
-            message: `${user.full_name || user.email} submitted a state reportable event for ${payload.patient_name || 'a patient'} on ${payload.event_date}. Immediate follow-up required.`,
+            message: `${user.full_name || callerEmail} submitted a state reportable event for ${patientName} on ${payload.event_date}. Immediate follow-up required.`,
             type: 'critical_alert',
             priority: 'critical',
             is_read: false,
             action_url: '/IncidentReportingModule',
             action_label: 'Review incident',
             metadata: {
-              incident_id: incident.id,
-              patient_id: payload.patient_id,
+              incident_id: incidentId,
+              patient_id: scopedPatientId,
               state_reportable: true,
-              document_url: pdfUrl,
+              document_id: documentId,
             },
           })
             .then(() => { notifiedCount += 1; })
@@ -397,18 +435,18 @@ Deno.serve(async (req) => {
         )
       );
 
-      const subject = `Urgent: state reportable event – ${payload.event_type} – ${payload.patient_name || payload.patient_id}`;
+      const subject = `Urgent: state reportable event – ${payload.event_type} – ${patientName}`;
       const body = renderBrandedEmail({
-        preheader: `A state reportable event was submitted for ${payload.patient_name || payload.patient_id} and requires immediate follow-up.`,
+        preheader: `A state reportable event was submitted for ${patientName} and requires immediate follow-up.`,
         eyebrow: 'State reportable event',
         tone: 'urgent',
         title: `State reportable event — ${payload.event_type}`,
-        intro: `A state reportable event has been submitted for ${payload.patient_name || payload.patient_id} and requires immediate follow-up.`,
+        intro: `A state reportable event has been submitted for ${patientName} and requires immediate follow-up.`,
         sections: [
           { pre: reportText },
-          ...(pdfUrl
-            ? [{ button: { href: pdfUrl, label: 'Download the report (PDF)' } }]
-            : [{ note: 'A PDF copy could not be generated automatically; the full report text is above.' }]),
+          ...(documentId
+            ? [{ note: 'A private PDF copy was retained in PennSync and requires current document authorization.' }]
+            : [{ note: 'A PDF copy could not be retained automatically; the full report text is above.' }]),
           { note: 'Please review and follow up in the Incident Reporting module.' },
         ],
       });
@@ -430,10 +468,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4) Record the alert audit + PDF link on the retained incident.
+    // 4) Record the alert audit and opaque Document id on the retained incident.
     try {
-      await base44.asServiceRole.entities.Incident.update(incident.id, {
-        ...(pdfUrl ? { state_reportable_pdf_url: pdfUrl } : {}),
+      await base44.asServiceRole.entities.Incident.update(incidentId, {
         ...(recipients.length > 0
           ? { state_reportable_alert_sent_at: new Date().toISOString() }
           : {}),
@@ -454,8 +491,8 @@ Deno.serve(async (req) => {
 
     return Response.json({
       success: true,
-      incident_id: incident.id,
-      document_url: pdfUrl,
+      incident_id: incidentId,
+      document_url: null,
       pdf_retained: !!documentId,
       admin_count: adminList.length,
       admins_notified: notifiedCount,

@@ -129,7 +129,7 @@
     "read": {
       "$or": [
         {
-          "nurse_email": "{{user.email}}"
+          "data.nurse_email": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -138,10 +138,34 @@
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
-          "nurse_email": "{{user.email}}"
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
         },
         {
           "user_condition": {

@@ -261,7 +261,7 @@ export default function PDGMRateSettings() {
         ? ` on ${format(new Date(config.updated_date), "MMM d, yyyy 'at' h:mm a")}`
         : "";
       const ok = await confirm({
-        title: "Overwrite official CMS rates?",
+        title: "Overwrite legacy reference row?",
         description: `This legacy row was marked official — last edited by ${editor}${when}. Saving replaces it as a reference-only estimate; PDGM payment remains unavailable.`,
         confirmText: "Save as reference only",
         destructive: true,
@@ -319,7 +319,7 @@ export default function PDGMRateSettings() {
     onSuccess: (_res, tableOrNull) => {
       queryClient.invalidateQueries({ queryKey: ["pdgm-rate-config"] });
       toast.success(tableOrNull
-        ? "CMS case-mix weight table stored — reference for analysis only; payment estimates remain from the PDGM engine."
+        ? "CMS case-mix weight table stored for reference only; PennSync payment remains unavailable."
         : "Stored CMS case-mix weight table removed.");
     },
     onError: (err) => {

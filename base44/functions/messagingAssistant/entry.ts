@@ -8,6 +8,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// Static release checkpoint. Message has no immutable selected-tenant
+// provenance yet; the dormant implementation is retained for contract tests.
+const SECURE_MESSAGE_DOMAIN_PAUSED = true;
+const secureMessageUnavailable = () => Response.json(
+  {
+    error: 'Secure messaging is temporarily unavailable',
+    code: 'secure_message_tenant_broker_required',
+  },
+  { status: 503, headers: { 'Cache-Control': 'no-store' } },
+);
+
 /** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
 async function assertPatientAccess(base44, user, patient) {
   if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
@@ -49,6 +60,8 @@ async function assertPatientAccess(base44, user, patient) {
  */
 
 Deno.serve(async (req) => {
+  if (SECURE_MESSAGE_DOMAIN_PAUSED) return secureMessageUnavailable();
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

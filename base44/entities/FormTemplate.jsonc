@@ -70,4 +70,11 @@
     "form_type",
     "fields"
   ]
+  ,
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

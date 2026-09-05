@@ -144,6 +144,12 @@ test("a datetime SOC on calendar day 2 is timely (no ms rounding)", () => {
   assert.equal(t.status, "timely");
 });
 
+test("an ISO offset cannot move the recorded SOC calendar date", () => {
+  const t = computeTurnaround({ referral_date: "2026-07-20", soc_date: "2026-07-22T23:30:00-10:00", status: "soc_completed" });
+  assert.equal(t.turnaround_days, 2);
+  assert.equal(t.timely, true);
+});
+
 test("a completed referral with no dates reports status 'unknown', not 'timely'", () => {
   const t = computeTurnaround({ soc_date: "2026-07-22", status: "soc_completed" });
   assert.equal(t.timely, null);

@@ -10,6 +10,46 @@ export function getPriorNote(p) {
   return p.clinical_notes || "";
 }
 
+/**
+ * Overlay the new append-only projection on a Patient's legacy embedded
+ * history. A new immutable event wins for the same Visit, while un-migrated
+ * legacy rows remain visible. This keeps Smart Note behavior stable during the
+ * audited migration without ever writing the Patient array again.
+ */
+export function mergePatientNoteHistory(patient, appendOnlyEntries = []) {
+  if (!patient) return patient;
+  const legacy = Array.isArray(patient.enhanced_notes_history)
+    ? patient.enhanced_notes_history
+    : [];
+  const projected = Array.isArray(appendOnlyEntries) ? appendOnlyEntries : [];
+  const byVisit = new Map();
+  const withoutVisit = [];
+
+  for (const entry of legacy) {
+    if (!entry || typeof entry !== 'object') continue;
+    if (entry.visit_id) byVisit.set(entry.visit_id, entry);
+    else withoutVisit.push(entry);
+  }
+  for (const entry of projected) {
+    if (!entry || typeof entry !== 'object' || !entry.note) continue;
+    if (entry.visit_id) byVisit.set(entry.visit_id, entry);
+    else withoutVisit.push(entry);
+  }
+  const timeOf = (entry) => {
+    const value = entry?.revision_at || entry?.created_at || entry?.date || entry?.timestamp || '';
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const enhancedNotesHistory = [...withoutVisit, ...byVisit.values()]
+    .sort((left, right) => timeOf(left) - timeOf(right));
+  const latest = enhancedNotesHistory.at(-1)?.note;
+  return {
+    ...patient,
+    enhanced_notes_history: enhancedNotesHistory,
+    clinical_notes: latest || patient.clinical_notes || '',
+  };
+}
+
 /** Heuristically split a final note into labeled sections for display, or null. */
 export function parseNoteSections(text) {
   if (!text) return null;

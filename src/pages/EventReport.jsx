@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { submitStateReportableIncident } from "@/functions/submitStateReportableIncident";
 import { submitIncidentReport } from "@/functions/submitIncidentReport";
@@ -19,14 +17,13 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export default function EventReport() {
   const confirm = useConfirm();
-  const { data: _currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-
   // Load the roster so the reporter picks a patient by name/MRN instead of
   // typing an opaque UUID (which failed silently at submit if mistyped).
-  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 2000 });
+  const { data: patients = [] } = useScopedPatients({
+    sort: '-updated_date',
+    limit: 2000,
+    readMode: 'authorized-roster',
+  });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -111,13 +108,7 @@ export default function EventReport() {
       // Resolve the real patient name from the entered id. The id is required, so
       // a non-matching id is a hard validation failure (we must not store the raw
       // id string as the patient's name).
-      let patient = null;
-      try {
-        const matches = await base44.entities.Patient.filter({ id: formData.patient_id });
-        patient = matches?.[0] || null;
-      } catch (lookupErr) {
-        console.error('Patient lookup failed:', lookupErr);
-      }
+      const patient = patients.find((candidate) => candidate.id === formData.patient_id) || null;
 
       if (!patient) {
         toast.error("Could not find a patient with that Patient ID. Please verify the ID.");

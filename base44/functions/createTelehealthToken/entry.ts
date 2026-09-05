@@ -1,13 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
-function agencyAdminMissingAgencyResponse(user) {
-  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
-    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-  }
-  return null;
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
 }
-// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+// <<<END SHARED HELPER: protectedUserAuthz>>>
 
 
 /**
@@ -48,6 +50,11 @@ function extractJoinToken(inviteLink) {
     const match = inviteLink.match(/[?&]t=([^&]+)/);
     return match ? decodeURIComponent(match[1]) : '';
   }
+}
+
+function isOpenSession(session) {
+  return (session?.status === 'scheduled' || session?.status === 'active')
+    && !String(session?.ended_at || '').trim();
 }
 
 async function sha256Hex(value) {
@@ -127,6 +134,13 @@ function telnyxCredsMessage(creds, what) {
 
 const TELNYX_API_BASE = 'https://api.telnyx.com/v2';
 
+// TelehealthSession records are still caller-shaped: a browser can currently
+// choose the host and room identifiers that this broker would otherwise treat
+// as authorization and provider-routing authority. Keep the complete Telnyx
+// implementation dormant until session creation and provider room binding are
+// moved behind a server-owned broker with an immutable binding record.
+const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = true;
+
 /** Find a Telnyx room by unique_name, creating it if it doesn't exist yet. */
 async function findOrCreateRoom(apiKey, uniqueName) {
   const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
@@ -159,13 +173,50 @@ async function findOrCreateRoom(apiKey, uniqueName) {
 
 Deno.serve(async (req) => {
   try {
+    if (TELEHEALTH_PROVIDER_MIGRATION_PAUSED) {
+      return Response.json({
+        error: 'Telehealth provider access is temporarily unavailable while session authority is migrated.',
+        code: 'telehealth_provider_migration_pending',
+      }, { status: 503 });
+    }
+
     const base44 = createClientFromRequest(req);
 
-    const { room_name, join_token } = await req.json();
-    if (!room_name) return Response.json({ error: 'room_name is required' }, { status: 400 });
+    const body = await req.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    const { room_name, join_token } = body;
+    if (typeof room_name !== 'string' || !room_name.trim() || room_name.trim().length > 200) {
+      return Response.json({ error: 'Invalid room_name' }, { status: 400 });
+    }
+    if (join_token !== undefined && (typeof join_token !== 'string' || !join_token)) {
+      return Response.json({ error: 'Invalid join_token' }, { status: 400 });
+    }
+    const scopedRoomName = room_name.trim();
 
-    const sessions = await base44.asServiceRole.entities.TelehealthSession.filter({ room_name }, '-created_date', 1);
-    const session = sessions[0];
+    // The guest path is authorized by its per-session capability. Every request
+    // without that capability must establish an active, stable caller identity
+    // before a service-role session read can reveal whether a room exists.
+    let authenticatedUser = null;
+    let callerEmail = '';
+    if (!join_token) {
+      authenticatedUser = await base44.auth.me();
+      if (!authenticatedUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      if (authenticatedUser.is_active === false) {
+        return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
+      }
+      callerEmail = normalizeProtectedEmail(authenticatedUser.email);
+      if (!callerEmail) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const sessionRows = await base44.asServiceRole.entities.TelehealthSession
+      .filter({ room_name: scopedRoomName }, '-created_date', 1);
+    // Service-role reads do not get to define the authorization target. Re-check
+    // the exact room name in memory in case the backend ignores or regresses the
+    // query filter, and never use a mismatched row to provision a room.
+    const session = (Array.isArray(sessionRows) ? sessionRows : [])
+      .find((row) => row?.room_name === scopedRoomName);
     if (!session) return Response.json({ error: 'Telehealth session not found' }, { status: 404 });
 
     let participantIdentity;
@@ -174,7 +225,7 @@ Deno.serve(async (req) => {
       if (!(await isValidGuestToken(session, join_token))) {
         return Response.json({ error: 'Invalid or expired join link' }, { status: 403 });
       }
-      if (session.status !== 'scheduled' && session.status !== 'active') {
+      if (!isOpenSession(session)) {
         return Response.json({ error: 'This telehealth visit is no longer open' }, { status: 403 });
       }
       // Time-bound the capability token so a leaked/forgotten invite link can't
@@ -193,40 +244,21 @@ Deno.serve(async (req) => {
       }
       participantIdentity = session.patient_name || 'Patient';
     } else {
-      const user = await base44.auth.me();
-    {
-      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
-      if (_agencyAdminGate) return _agencyAdminGate;
-    }
-      if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-      if (user.is_active === false) {
-        return Response.json({ error: 'Unauthorized - account is deactivated' }, { status: 403 });
-      }
+      const user = authenticatedUser;
       // Authorize on stable identity only (email / role), never on the mutable,
       // non-unique full_name: participant_list contains the patient's display name,
       // so a full_name match would let any authenticated user rename themselves to a
-      // patient's name and join that patient's session. The host is covered by
-      // host_email; supervisors by admin-like roles (agency-scoped below).
+      // patient's name and join that patient's session. The only cross-session
+      // bypass is the protected built-in admin role plus the backend-configured
+      // platform-owner email; custom account and agency fields are not authority.
       const participants = Array.isArray(session.participant_list) ? session.participant_list : [];
-      const isHostOrParticipant = session.host_email === user.email
-        || participants.includes(user.email);
-      const isAdminLike = user.role === 'admin'
-        || user.account_type === 'agency_admin'
-        || user.account_type === 'super_admin';
-      if (!isHostOrParticipant && !isAdminLike) {
+      const isHostOrParticipant = normalizeProtectedEmail(session.host_email) === callerEmail
+        || participants.some((identity) => normalizeProtectedEmail(identity) === callerEmail);
+      if (!isHostOrParticipant && !isProtectedSuperAdmin(user)) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
-      // Agency-scoped admins may supervise only sessions hosted by their agency.
-      const isAgencyScopedAdmin = !isHostOrParticipant
-        && user.account_type !== 'super_admin'
-        && user.agency_name
-        && (user.account_type === 'agency_admin' || user.role === 'admin');
-      if (isAgencyScopedAdmin) {
-        const [host] = await base44.asServiceRole.entities.User
-          .filter({ email: session.host_email }, '-created_date', 1).catch(() => []);
-        if (!host?.agency_name || host.agency_name !== user.agency_name) {
-          return Response.json({ error: 'Forbidden' }, { status: 403 });
-        }
+      if (!isOpenSession(session)) {
+        return Response.json({ error: 'This telehealth visit is no longer open' }, { status: 403 });
       }
       participantIdentity = user.full_name || user.email;
     }
@@ -236,7 +268,7 @@ Deno.serve(async (req) => {
     const { apiKey } = telnyxCreds;
     if (!apiKey) return Response.json({ error: telnyxCredsMessage(telnyxCreds, "credentials") }, { status: 500 });
 
-    const roomId = await findOrCreateRoom(apiKey, String(room_name));
+    const roomId = await findOrCreateRoom(apiKey, scopedRoomName);
 
     // Mint a per-session client token for this room. The token authorizes the
     // bearer to join this room only, and expires after an hour — long enough for
@@ -257,7 +289,7 @@ Deno.serve(async (req) => {
       token: tokenData.data.token,
       refresh_token: tokenData.data.refresh_token || null,
       room_id: roomId,
-      room_name,
+      room_name: scopedRoomName,
       identity: participantIdentity,
       host_name: session.host_name || null,
     });

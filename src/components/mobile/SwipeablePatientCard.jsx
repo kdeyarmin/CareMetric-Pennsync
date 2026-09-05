@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router";
-import { createPageUrl } from "@/utils";
+import { createPatientDetailsRouteHref } from '@/lib/patientDetailsRoute';
 import { User, Phone, MapPin, ChevronRight } from "lucide-react";
 import { getPatientDisplayName } from "@/components/patient/patientDisplay";
 import { calculateAge } from "@/lib/dateLocal";
@@ -13,7 +13,8 @@ export default function SwipeablePatientCard({
   onEdit, 
   onDelete, 
   isSelected, 
-  onToggleSelect 
+  onToggleSelect,
+  patientDetailsAgencyId = null,
 }) {
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
@@ -37,7 +38,7 @@ export default function SwipeablePatientCard({
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
     
-    if (isLeftSwipe) {
+    if (isLeftSwipe && typeof onDelete === 'function') {
       setSwiped(true);
     } else if (isRightSwipe) {
       setSwiped(false);
@@ -47,11 +48,15 @@ export default function SwipeablePatientCard({
   // Local-calendar age (shared helper) so a date-only DOB isn't parsed as UTC
   // midnight and shown a year off at the Medicare-band boundary in US timezones.
   const age = calculateAge(patient.date_of_birth);
+  const patientDetailsHref = createPatientDetailsRouteHref(
+    patient.id,
+    patientDetailsAgencyId,
+  );
 
   return (
     <div className="relative overflow-hidden">
       {/* Swipe Actions Background */}
-      {swiped && (
+      {swiped && typeof onDelete === 'function' && (
         <div className="absolute inset-0 bg-red-500 flex items-center justify-end pr-4 rounded-xl">
           <Button
             variant="ghost"
@@ -136,12 +141,27 @@ export default function SwipeablePatientCard({
             >
               Edit
             </Button>
-            <Link to={`${createPageUrl("PatientDetails")}?id=${patient.id}`} className="flex-1">
-              <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 min-h-[44px]">
+            {patientDetailsHref ? (
+              <Button
+                asChild
+                size="sm"
+                className="flex-1 w-full bg-blue-600 hover:bg-blue-700 min-h-[44px]"
+              >
+                <Link to={patientDetailsHref}>
+                  <span className="mr-1">View</span>
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                disabled
+                size="sm"
+                className="flex-1 w-full bg-blue-600 hover:bg-blue-700 min-h-[44px]"
+              >
                 <span className="mr-1">View</span>
                 <ChevronRight className="w-4 h-4" />
               </Button>
-            </Link>
+            )}
           </div>
         </CardContent>
       </Card>

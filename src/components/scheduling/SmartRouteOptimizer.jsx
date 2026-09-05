@@ -4,7 +4,6 @@ import { useState } from "react";
 // guard. Prefer it over a raw invokeLLM at component call sites (see the hook's
 // docs); use invokeLLM only in loops/utilities where a hook can't run.
 import { useAICall } from "@/hooks/useAICall";
-import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +21,7 @@ import {
   ChevronUp
 } from "lucide-react";
 import { toast } from 'sonner';
+import { rescheduleVisit } from '@/functions/updateAuthorizedVisit';
 
 export default function SmartRouteOptimizer({ 
   visits = [], 
@@ -153,7 +153,7 @@ Return JSON:
       // half-reordered with no indication of which visits had moved.
       const outcomes = await Promise.allSettled(
         updates.map(v =>
-          base44.entities.Visit.update(v.visit_id, { visit_time: v.suggested_time })
+          rescheduleVisit({ visitId: v.visit_id, visitTime: v.suggested_time })
         )
       );
       const failed = outcomes.filter(o => o.status === 'rejected').length;

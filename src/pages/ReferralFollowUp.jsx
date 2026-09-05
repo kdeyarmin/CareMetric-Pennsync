@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { isAdminView } from "@/lib/roles";
+import { isAdminLike } from "@/lib/superAdmin";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
@@ -18,7 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ClipboardCheck, ShieldCheck, TrendingUp, Brain, Sparkles, CheckCircle2,
-  AlertTriangle, LinkIcon, Printer, Settings2, FileDown, DollarSign, Inbox,
+  AlertTriangle, Printer, Settings2, FileDown, DollarSign, Inbox,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -36,6 +37,7 @@ import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import { estimateFollowUpRevenueImpact, fmtUsd } from "../components/referral/followUpRevenueImpact";
 import { exportToPDF } from "@/components/utils/pdfExporter";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 const severityBadge = (severity) =>
   severity === "critical" ? "bg-red-600 text-white" : severity === "high" ? "bg-orange-500 text-white" : "bg-yellow-500 text-white";
@@ -46,8 +48,9 @@ const normName = (s) => String(s || "").toLowerCase().replace(/\bdr\.?\b/g, "").
  * Referral Follow-Up — the intake QA worklist.
  *
  * Deterministic coder/QA review of every fully processed referral, provider
- * request generation (PDF, copy, one-click FAX with a secure online response
- * link), response tracking with per-item resolution, and agency-tunable rules.
+ * request generation (PDF, copy, and one-click FAX), staff-recorded response
+ * tracking with per-item resolution, and agency-tunable rules. Public online
+ * response links are deliberately unavailable.
  *
  * VISIBILITY POLICY: revenue/dollar figures (followUpRevenueImpact) render
  * ONLY for admin-level users (isAdminView) and are never persisted or put on
@@ -67,7 +70,6 @@ export default function ReferralFollowUp() {
   const [contactBackFax, setContactBackFax] = useState("");
   const [contactBackPhone, setContactBackPhone] = useState("");
   const [providerFax, setProviderFax] = useState("");
-  const [portalLink, setPortalLink] = useState("");
   const [saving, setSaving] = useState(false);
   const [faxing, setFaxing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -78,6 +80,10 @@ export default function ReferralFollowUp() {
     queryFn: () => base44.auth.me(),
   });
   const adminView = isAdminView(currentUser);
+  // Referral review/analytics are legitimate facility-admin surfaces, but the
+  // saveFollowUpRuleConfig backend deliberately requires Base44's protected
+  // built-in admin role. Keep that narrower mutation capability separate.
+  const canManageRuleSettings = isAdminLike(currentUser);
 
   const { data: referrals, isLoading } = useQuery({
     queryKey: ["referrals", 200],
@@ -164,11 +170,7 @@ export default function ReferralFollowUp() {
     setExcludedItemIds(new Set());
     setAiItems([]);
     setAiAssessment("");
-    // The plaintext link is deliberately NOT persisted (capability-token
-    // hygiene) — legacy rows may still carry one; prefer it if present so old
-    // links stay copyable, otherwise staff rotate to mint a fresh link.
-    setPortalLink(selected?.follow_up_requests?.portal_link || "");
-  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps -- selected derives from selectedId
+  }, [selectedId]);
 
   // Prefill return contact from AgencySettings once loaded (editable after).
   useEffect(() => {
@@ -303,37 +305,13 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
         agencyName: agencySettings?.office_name || "our agency",
         contactBackFax,
         contactBackPhone,
-        portalLink: portalLink || null,
       }
     : null;
 
-  // Mint a fresh portal token. The backend deactivates any prior active token
-  // for the referral, so every mint ROTATES the link — a re-send always
-  // invalidates a previously mailed/leaked link.
-  const mintPortalLink = async () => {
-    if (!selected) return null;
-    try {
-      const { data } = await base44.functions.invoke("generateFollowUpPortalToken", {
-        referral_id: selected.id,
-        provider_name: formHeader?.providerName || null,
-      });
-      if (data?.portalLink) {
-        setPortalLink(data.portalLink);
-        return data.portalLink;
-      }
-      toast.error("Couldn't generate the online response link.");
-      return null;
-    } catch (error) {
-      console.error("Portal link generation failed:", error);
-      toast.error("Couldn't generate the online response link.");
-      return null;
-    }
-  };
-
-  const persistRequest = async ({ status, sentVia, faxLogId, link }) => {
+  const persistRequest = async ({ status, sentVia, faxLogId }) => {
     const persisted = toPersistedFollowUp(
       { items: includedItems, counts: countFollowUpItems(includedItems) },
-      { generatedAt: new Date().toISOString(), status, sentVia, faxLogId, portalLink: link || portalLink || null }
+      { generatedAt: new Date().toISOString(), status, sentVia, faxLogId }
     );
     // A re-send must not silently discard responses the provider already gave:
     // carry answered/resolved state forward for items that survive the re-send.
@@ -351,30 +329,11 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
     return persisted;
   };
 
-  // "Generate online response link" must leave a WORKING link behind:
-  // validateFollowUpToken rejects tokens whose referral carries no
-  // follow_up_requests items, so persist the request (status stays open —
-  // nothing has been sent yet) in the same action as the mint.
-  const generateAndPersistPortalLink = async () => {
-    const link = await mintPortalLink();
-    if (!link) return null;
-    try {
-      await persistRequest({ status: tracking?.status || "open", sentVia: tracking?.sent_via || null, faxLogId: tracking?.fax_log_id || null, link });
-    } catch (error) {
-      console.error("Persisting the portal link failed:", error);
-      toast.error("Link generated but not saved — re-generate before sending.");
-      return null;
-    }
-    return link;
-  };
-
   const saveAndMarkSent = async () => {
     if (!selected) return;
     setSaving(true);
     try {
-      // Always rotate the link on send (old links deactivate server-side).
-      const link = await mintPortalLink();
-      await persistRequest({ status: "sent", sentVia: "manual", faxLogId: null, link });
+      await persistRequest({ status: "sent", sentVia: "manual", faxLogId: null });
       toast.success("Follow-up request saved and marked sent.");
     } catch (error) {
       console.error("Error saving follow-up request:", error);
@@ -393,12 +352,10 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
     }
     setFaxing(true);
     try {
-      // Rotate the portal link on every send, and persist the request BEFORE
-      // faxing so the link on the outgoing form is live the moment the fax
-      // lands (a fax failure leaves a valid open request, which is harmless).
-      const link = await mintPortalLink();
-      await persistRequest({ status: "open", sentVia: null, faxLogId: null, link });
-      const form = buildProviderForm({ ...formHeader, portalLink: link }, includedItems);
+      // Persist before faxing, but never mint or embed a public response link
+      // while the follow-up capability is paused.
+      await persistRequest({ status: "open", sentVia: null, faxLogId: null });
+      const form = buildProviderForm(formHeader, includedItems);
       const blob = await exportToPDF({
         output: "blob",
         title: form.title,
@@ -417,7 +374,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
       if (!data?.success) {
         throw new Error(data?.error || "Fax send failed");
       }
-      await persistRequest({ status: "sent", sentVia: "fax", faxLogId: data.log_id || null, link });
+      await persistRequest({ status: "sent", sentVia: "fax", faxLogId: data.log_id || null });
       toast.success("Faxed to the provider — delivery is tracked in the fax log.");
     } catch (error) {
       console.error("Fax to provider failed:", error);
@@ -494,15 +451,29 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
               <FileDown className="w-4 h-4 mr-1" /> Batch: critical forms
             </Button>
             {adminView && (
-              <Button type="button" variant="outline" size="sm" onClick={() => setShowSettings((s) => !s)}>
-                <Settings2 className="w-4 h-4 mr-1" /> Review settings
-              </Button>
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSettings((s) => !s)}
+                  disabled={!canManageRuleSettings}
+                  aria-describedby={!canManageRuleSettings ? "follow-up-settings-access-note" : undefined}
+                >
+                  <Settings2 className="w-4 h-4 mr-1" /> Review settings
+                </Button>
+                {!canManageRuleSettings && (
+                  <span id="follow-up-settings-access-note" className="max-w-64 text-right text-xs text-slate-500">
+                    Agency-wide rule changes require protected administrator access.
+                  </span>
+                )}
+              </div>
             )}
           </div>
         }
       />
 
-      {adminView && showSettings && (
+      {canManageRuleSettings && showSettings && (
         <RuleSettingsCard
           // Remount when the async config (or a save) lands so the local edit
           // state re-seeds from the saved values — otherwise a card opened
@@ -599,26 +570,9 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                           <span className="text-xs font-normal text-slate-500">{new Date(tracking.generated_at).toLocaleString()}</span>
                         )}
                       </CardTitle>
-                      {(portalLink || tracking.portal_link) ? (
-                        <button
-                          type="button"
-                          className="text-xs text-blue-700 underline flex items-center gap-1 w-fit"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(portalLink || tracking.portal_link);
-                              toast.success("Portal link copied.");
-                            } catch {
-                              toast.error("Couldn't copy the link.");
-                            }
-                          }}
-                        >
-                          <LinkIcon className="w-3 h-3" /> Copy provider response link
-                        </button>
-                      ) : tracking.portal_link_active ? (
-                        <span className="text-xs text-slate-500 flex items-center gap-1 w-fit">
-                          <LinkIcon className="w-3 h-3" /> Online response link active — rotate below to copy a fresh one
-                        </span>
-                      ) : null}
+                      <span className="text-xs text-slate-600">
+                        Online response links are unavailable; use the approved fax or telephone workflow.
+                      </span>
                     </CardHeader>
                     <CardContent className="space-y-2">
                       {tracking.fax_back && (
@@ -633,14 +587,13 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                             Review the faxed document and mark the answered items resolved below.
                           </p>
                           {tracking.fax_back.document_url && isSafeExternalUrl(tracking.fax_back.document_url) && (
-                            <a
-                              href={tracking.fax_back.document_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              type="button"
+                              onClick={() => openAuthorityBoundWindow(tracking.fax_back.document_url)}
                               className="text-xs text-blue-700 underline"
                             >
                               Open faxed response document
-                            </a>
+                            </button>
                           )}
                         </div>
                       )}
@@ -655,14 +608,13 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                             )}
                           </p>
                           {tracking.response_scan.document_url && isSafeExternalUrl(tracking.response_scan.document_url) && (
-                            <a
-                              href={tracking.response_scan.document_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              type="button"
+                              onClick={() => openAuthorityBoundWindow(tracking.response_scan.document_url)}
                               className="text-xs text-teal-700 underline"
                             >
                               Open scanned response document
-                            </a>
+                            </button>
                           )}
                         </div>
                       )}
@@ -867,7 +819,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                             {!agencySettings?.fax_receiving_enabled && (
                               <p className="text-[11px] text-slate-500 mt-0.5">
                                 Faxed replies arrive at the office machine on paper — mark items resolved here when
-                                they do. (The online response link updates this page automatically.)
+                                they do.
                               </p>
                             )}
                           </div>
@@ -876,15 +828,12 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                             <Input id="fu-phone" value={contactBackPhone} onChange={(e) => setContactBackPhone(e.target.value)} placeholder="(555) 555-0101" />
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Button type="button" variant="outline" size="sm" onClick={generateAndPersistPortalLink}>
-                            <LinkIcon className="w-4 h-4 mr-1" />
-                            {portalLink ? "Rotate online response link" : "Generate online response link"}
-                          </Button>
-                          {portalLink && (
-                            <span className="text-xs text-slate-500 truncate max-w-[360px]">{portalLink}</span>
-                          )}
-                        </div>
+                        <Alert className="border-amber-300 bg-amber-50">
+                          <AlertTriangle className="h-4 w-4 text-amber-700" />
+                          <AlertDescription className="text-sm text-amber-950">
+                            Online response link generation is unavailable. Provider requests can still use the approved fax or telephone workflow.
+                          </AlertDescription>
+                        </Alert>
                       </CardContent>
                     </Card>
 

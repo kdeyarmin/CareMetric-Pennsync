@@ -80,7 +80,9 @@
     "sections"
   ],
   "rls": {
-    "read": {},
-    "write": {}
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
   }
 }

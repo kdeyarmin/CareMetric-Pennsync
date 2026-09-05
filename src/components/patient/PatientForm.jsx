@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { base44 } from "@/api/base44Client";
 import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,22 +15,29 @@ import ValidationOverrideDialog from "./ValidationOverrideDialog";
 import PotentialDuplicateDialog from "./PotentialDuplicateDialog";
 import OCRDocumentExtractor from "./OCRDocumentExtractor";
 import { toast } from 'sonner';
+import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
+import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
+
+const EMPTY_FORM = Object.freeze({
+  first_name: '',
+  last_name: '',
+  date_of_birth: '',
+  medical_record_number: '',
+  address: '',
+  phone: '',
+  email: '',
+  primary_diagnosis: '',
+  secondary_diagnoses: [],
+  allergies: '',
+  care_type: 'home_health',
+  status: 'active',
+});
+
+const sameFormValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
 export default function PatientForm({ patient, onSuccess, onCancel }) {
-  const [formData, setFormData] = useState({
-    first_name: '',
-    last_name: '',
-    date_of_birth: '',
-    medical_record_number: '',
-    address: '',
-    phone: '',
-    email: '',
-    primary_diagnosis: '',
-    secondary_diagnoses: [],
-    allergies: '',
-    care_type: 'home_health',
-    status: 'active'
-  });
+  const patientCreateRequestId = useRef(null);
+  const [formData, setFormData] = useState({ ...EMPTY_FORM });
 
   // Keep a live ref to the latest formData so real-time validation always sees
   // every field's current value. The old handleChange validated
@@ -79,11 +85,15 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
 
   useEffect(() => {
     if (patient) {
-      setFormData(prev => ({
-        ...prev,
-        ...patient,
-        secondary_diagnoses: patient.secondary_diagnoses || []
-      }));
+      // Hydrate only fields this finite edit form can actually save. Spreading
+      // the entire Patient row put tenant/provenance/history fields into the
+      // outgoing update and made a generic patch possible.
+      setFormData(Object.fromEntries(
+        Object.keys(EMPTY_FORM).map((field) => [
+          field,
+          patient[field] ?? EMPTY_FORM[field],
+        ]),
+      ));
     }
   }, [patient]);
 
@@ -144,29 +154,45 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
     setIsSubmitting(true);
     try {
       // Include override justifications in form data
-      const dataWithOverrides = {
-        ...formData,
-        validation_overrides: overriddenWarnings
-      };
+      const dataWithOverrides = patient
+        ? formData
+        : { ...formData, validation_overrides: overriddenWarnings };
 
       // Sanitize all input data before submission using the new sanitizeObject
       const sanitizedData = sanitizeObject(dataWithOverrides);
 
       if (patient) {
-        // Update existing patient
-        await base44.entities.Patient.update(patient.id, sanitizedData);
+        if (Object.keys(overriddenWarnings).length > 0) {
+          throw new Error(
+            'Validation override history requires a dedicated review workflow and was not saved.',
+          );
+        }
+        const changedFields = Object.fromEntries(
+          Object.entries(sanitizedData).filter(([field, value]) => (
+            !sameFormValue(value, patient[field] ?? EMPTY_FORM[field])
+          )),
+        );
+        await updatePatientFields({
+          patientId: patient.id,
+          agencyId: patient.agency_id,
+          expectedUpdatedDate: patient.updated_date,
+          changes: changedFields,
+        });
         await logSecurityEvent('PATIENT_UPDATED', {
           patient_id: patient.id,
-          fields_changed: Object.keys(formData)
+          fields_changed: Object.keys(changedFields)
         });
       } else {
         // Create new patient
-        await base44.entities.Patient.create(sanitizedData);
+        await createAuthorizedPatient(sanitizedData, {
+          clientRequestId: patientCreateRequestId.current ||= createPatientRequestId(),
+        });
         await logSecurityEvent('PATIENT_CREATED', {
           // Don't log PHI as per outline
         });
       }
 
+      patientCreateRequestId.current = null;
       if (onSuccess) onSuccess();
     } catch (error) {
       // Use the new handleSecureError for robust error handling and user feedback
@@ -235,7 +261,7 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
         <CardHeader className="bg-slate-50 border-b border-slate-100 rounded-t-xl">
           <CardTitle>{patient ? 'Edit Patient' : 'Add New Patient'}</CardTitle>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="off">
           <CardContent className="p-6 space-y-4">
             {/* OCR Document Extractor - Only show for new patients */}
             {!patient && (
@@ -427,10 +453,17 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
                 </SelectTrigger>
                 <SelectContent style={{ zIndex: 9999 }}>
                   <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="discharged">Discharged</SelectItem>
+                  {patient?.status === 'discharged' && (
+                    <SelectItem value="discharged" disabled>Discharged</SelectItem>
+                  )}
                   <SelectItem value="hospitalized">Hospitalized</SelectItem>
                 </SelectContent>
               </Select>
+              {patient && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Discharge requires its dedicated date-and-disposition workflow.
+                </p>
+              )}
             </div>
           </div>
 
@@ -440,6 +473,8 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
               id="primary_diagnosis"
               value={formData.primary_diagnosis}
               onChange={(e) => handleChange('primary_diagnosis', e.target.value)}
+              spellCheck={false}
+              autoCorrect="off"
             />
           </div>
 
@@ -452,6 +487,8 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
                 onChange={(e) => setSecondaryDiagnosisInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSecondaryDiagnosis())}
                 placeholder="Type and press Enter"
+                spellCheck={false}
+                autoCorrect="off"
               />
               <Button type="button" onClick={addSecondaryDiagnosis} variant="outline">
                 Add
@@ -481,6 +518,8 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
               onChange={(e) => handleChange('allergies', e.target.value)}
               placeholder="NKDA or list allergies"
               rows={3}
+              spellCheck={false}
+              autoCorrect="off"
             />
           </div>
         </CardContent>

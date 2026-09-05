@@ -296,15 +296,13 @@ test("custom items sort after built-in rules but before AI additions", () => {
   assert.ok(idxCustom > lastRule && idxCustom < idxAi);
 });
 
-// ── portal link on the provider form ──
+// ── portal links remain revoked ──
 
-test("provider form advertises the online response portal when a link is supplied", () => {
+test("provider form never advertises a supplied online response capability", () => {
   const plan = buildFollowUpPlan({});
   const form = buildProviderForm({ patientName: "M T", portalLink: "https://x.example/followup?token=abc" }, plan.items);
-  assert.match(form.intro, /RESPOND ONLINE/);
-  assert.match(form.intro, /token=abc/);
-  const withoutLink = buildProviderForm({ patientName: "M T" }, plan.items);
-  assert.ok(!/RESPOND ONLINE/.test(withoutLink.intro));
+  assert.doesNotMatch(form.intro, /RESPOND ONLINE/);
+  assert.doesNotMatch(form.intro, /token=abc/);
 });
 
 // ── persistence ──
@@ -322,10 +320,10 @@ test("toPersistedFollowUp produces the lean sorted Referral shape", () => {
   assert.equal(persisted.generated_at, "2026-07-02T12:00:00Z");
   assert.equal(persisted.sent_via, "fax");
   assert.equal(persisted.fax_log_id, "fx1");
-  // Capability-token hygiene: the PLAINTEXT link must never be persisted on
-  // the Referral — only the fact that a link is active.
+  // Capability-token hygiene: neither the plaintext link nor an active-link
+  // marker may survive while the public capability is paused.
   assert.equal(persisted.portal_link, undefined);
-  assert.equal(persisted.portal_link_active, true);
+  assert.equal(persisted.portal_link_active, false);
   // Per-item lifecycle starts open with no response.
   assert.equal(persisted.items[0].item_status, "open");
   assert.equal(persisted.items[0].response, null);

@@ -1,24 +1,8 @@
-import { base44 } from "@/api/base44Client";
-
-export const logActivity = async (action, details = {}) => {
-  try {
-    const user = await base44.auth.me();
-    if (!user) return;
-
-    await base44.entities.UserActivity.create({
-      user_email: user.email,
-      user_name: user.full_name,
-      action,
-      details,
-      page: details.page || window.location.pathname,
-      entity_type: details.entity_type || null,
-      entity_id: details.entity_id || null,
-      user_agent: navigator.userAgent
-    });
-  } catch (error) {
-    console.error("Failed to log activity:", error);
-  }
-};
+// Browser-reported telemetry cannot be treated as an attested audit ledger:
+// callers can alter actions, identities, entity links, and free-form details.
+// Keep this compatibility helper as an intentional no-op so product actions do
+// not fail while purpose-specific server brokers replace meaningful events.
+export const logActivity = async (_action, _details = {}) => undefined;
 
 export const ActivityActions = {
   VIEW: 'view',
@@ -81,32 +65,6 @@ export const ActivityActions = {
   WORK_NUMBER_PROVISIONED: 'work_number_provisioned'
 };
 
-export const logError = async (errorMessage, errorDetails = {}) => {
-  try {
-    let user = null;
-    try {
-      user = await base44.auth.me();
-    } catch {
-      // User might not be logged in
-    }
-
-    await base44.entities.UserActivity.create({
-      user_email: user?.email || 'unknown',
-      user_name: user?.full_name || 'Unknown User',
-      action: ActivityActions.ERROR,
-      details: {
-        error_message: errorMessage,
-        error_stack: errorDetails.stack || null,
-        component: errorDetails.component || null,
-        context: errorDetails.context || null,
-        ...errorDetails
-      },
-      page: errorDetails.page || window.location.pathname,
-      entity_type: errorDetails.entity_type || null,
-      entity_id: errorDetails.entity_id || null,
-      user_agent: navigator.userAgent
-    });
-  } catch (error) {
-    console.error("Failed to log error:", error);
-  }
-};
+// Error objects routinely include clinical context and stack-local values. Do
+// not ship them to the broad UserActivity surface from an untrusted browser.
+export const logError = async (_errorMessage, _errorDetails = {}) => undefined;

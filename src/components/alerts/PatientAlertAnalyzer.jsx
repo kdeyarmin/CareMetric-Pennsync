@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { invokeLLM } from "@/lib/invokeLLM";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +14,9 @@ import {
   Brain
 } from "lucide-react";
 import { getAlertIcon, getSeverityColor } from "@/components/alerts/alertPresentation";
-import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+
+const ALERT_MUTATION_BLOCKER =
+  "AI alert and escalation writes are paused pending an atomic, idempotent, patient-authorized broker. Results below are review-only.";
 
 export default function PatientAlertAnalyzer({ 
   patientId, 
@@ -22,27 +26,32 @@ export default function PatientAlertAnalyzer({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [generatedAlerts, setGeneratedAlerts] = useState([]);
-  const queryClient = useQueryClient();
+  const analysisRequestRef = useRef(0);
+  const onAlertsGeneratedRef = useRef(onAlertsGenerated);
+  const { tenantContext } = useAuth();
+
+  useEffect(() => {
+    onAlertsGeneratedRef.current = onAlertsGenerated;
+  }, [onAlertsGenerated]);
 
   // Drop prior-patient analysis output when the selector changes.
   useEffect(() => {
+    // Invalidate any response still in flight for the previous patient.
+    analysisRequestRef.current += 1;
     setGeneratedAlerts([]);
     setAnalysisProgress(0);
     setIsAnalyzing(false);
+    return () => {
+      analysisRequestRef.current += 1;
+    };
   }, [patientId]);
 
-  // Current user — needed to assign generated tasks (Task.assigned_to is required;
-  // without it the critical-alert escalation task create silently fails).
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-
   // Fetch patient data
-  const { data: patient } = useQuery({
-    queryKey: ['patient', patientId],
-    queryFn: () => base44.entities.Patient.filter({ id: patientId }).then(r => r[0]),
-    enabled: !!patientId
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'alert_analysis',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   // Fetch recent visits
@@ -56,17 +65,6 @@ export default function PatientAlertAnalyzer({
   const { data: incidents = [] } = useQuery({
     queryKey: ['patientIncidents', patientId, 5],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 5),
-    enabled: !!patientId
-  });
-
-  // Fetch existing alerts
-  const { data: existingAlerts = [] } = useQuery({
-    // Distinct from PatientAlertsDashboard's server-scoped, all-status feed,
-    // which reads ['patientAlerts', patientId] via getScopedPatientAlerts —
-    // sharing one entry mixed the two result sets. Still a ['patientAlerts']
-    // prefix so the app-wide invalidations refresh it.
-    queryKey: ['patientAlerts', patientId, 'active-entity'],
-    queryFn: () => base44.entities.PatientAlert.filter({ patient_id: patientId, status: 'active' }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!patientId
   });
 
@@ -105,30 +103,10 @@ export default function PatientAlertAnalyzer({
     return trends;
   }, []);
 
-  const sendAlertNotifications = useCallback(async (criticalAlerts) => {
-    for (const alert of criticalAlerts) {
-      try {
-        // Create a high-priority task for critical alerts
-        await base44.entities.Task.create({
-          patient_id: patientId,
-          assigned_to: currentUser?.email,
-          title: `🚨 CRITICAL ALERT: ${alert.title}`,
-          description: `${alert.message}\n\nContributing Factors:\n${alert.contributing_factors?.join('\n')}\n\nRecommended Actions:\n${alert.recommended_actions?.join('\n')}`,
-          priority: 'high',
-          type: 'safety',
-          status: 'pending',
-          source: 'ai_generated',
-          ai_reason: 'Critical patient alert requiring immediate attention'
-        });
-      } catch (error) {
-        console.error("Error creating alert task:", error);
-      }
-    }
-  }, [patientId, currentUser]);
-
   const runAnalysis = useCallback(async () => {
     if (!patient) return;
 
+    const requestId = ++analysisRequestRef.current;
     setIsAnalyzing(true);
     setAnalysisProgress(10);
     setGeneratedAlerts([]);
@@ -237,56 +215,26 @@ Return JSON:
         }
       });
 
+      if (analysisRequestRef.current !== requestId) return;
       setAnalysisProgress(80);
 
-      // Create alerts in database
-      const createdAlerts = [];
-      for (const alert of result.alerts || []) {
-        // Check if similar alert already exists
-        const existingSimilar = existingAlerts.find(
-          ea => ea.alert_type === alert.alert_type && ea.status === 'active'
-        );
-
-        if (!existingSimilar) {
-          const newAlert = await base44.entities.PatientAlert.create({
-            patient_id: patientId,
-            alert_type: alert.alert_type,
-            severity: alert.severity,
-            title: alert.title,
-            message: alert.message,
-            contributing_factors: alert.contributing_factors,
-            recommended_actions: alert.recommended_actions,
-            risk_score: alert.risk_score,
-            data_sources: alert.data_sources,
-            status: 'active',
-            flagged_urgent: alert.severity === 'critical',
-            expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-          });
-          createdAlerts.push({ ...alert, id: newAlert.id });
-        }
-      }
+      // Review-only containment: never persist model output or create a Task
+      // from the browser. A future broker must authorize the exact patient and
+      // atomically deduplicate the alert plus any escalation task.
+      const generated = Array.isArray(result.alerts) ? result.alerts : [];
 
       setAnalysisProgress(100);
-      setGeneratedAlerts(createdAlerts);
-
-      // Refresh alerts query
-      queryClient.invalidateQueries({ queryKey: ['patientAlerts', patientId] });
-      queryClient.invalidateQueries({ queryKey: ['patientRiskAlerts', patientId] });
-      queryClient.invalidateQueries({ queryKey: ['patientActiveAlerts', patientId] });
-      queryClient.invalidateQueries({ queryKey: ['patientContext', patientId] });
-
-      if (onAlertsGenerated) {
-        onAlertsGenerated(createdAlerts, result);
-      }
-
-      // Send notifications for critical alerts
-      await sendAlertNotifications(createdAlerts.filter(a => a.severity === 'critical'));
+      setGeneratedAlerts(generated);
+      onAlertsGeneratedRef.current?.(generated, result);
 
     } catch (error) {
+      if (analysisRequestRef.current !== requestId) return;
       console.error("Error analyzing patient:", error);
     }
-    setIsAnalyzing(false);
-  }, [patient, recentVisits, incidents, patientId, existingAlerts, queryClient, onAlertsGenerated, extractVitalTrends, sendAlertNotifications]);
+    if (analysisRequestRef.current === requestId) {
+      setIsAnalyzing(false);
+    }
+  }, [patient, recentVisits, incidents, extractVitalTrends]);
 
   // Auto-analyze on mount if enabled
   useEffect(() => {
@@ -330,6 +278,9 @@ Return JSON:
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4">
+        <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          {ALERT_MUTATION_BLOCKER}
+        </p>
         {isAnalyzing ? (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
@@ -341,13 +292,13 @@ Return JSON:
               {analysisProgress < 30 && "Gathering patient history..."}
               {analysisProgress >= 30 && analysisProgress < 50 && "Analyzing vital trends..."}
               {analysisProgress >= 50 && analysisProgress < 80 && "Identifying risk patterns..."}
-              {analysisProgress >= 80 && "Creating alerts..."}
+              {analysisProgress >= 80 && "Preparing review-only recommendations..."}
             </p>
           </div>
         ) : generatedAlerts.length > 0 ? (
           <div className="space-y-3">
             <p className="text-sm text-slate-600">
-              {generatedAlerts.length} new alert(s) identified
+              {generatedAlerts.length} review-only alert recommendation(s) identified
             </p>
             {generatedAlerts.slice(0, 3).map((alert, idx) => (
               <div key={idx} className="p-2 bg-slate-50 rounded-lg border">

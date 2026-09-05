@@ -12,7 +12,7 @@
     },
     "file_url": {
       "type": "string",
-      "description": "URL to the uploaded file"
+      "description": "Legacy public URL retained only for migration. New binding-backed uploads omit this field and keep their private file URI solely in DocumentTenantBinding."
     },
     "file_name": {
       "type": "string",
@@ -172,28 +172,17 @@
   },
   "required": [
     "title",
-    "file_url",
     "category"
   ],
-  // PHI read-scoping: with no read rule, ANY authenticated user could bulk-
-  // .list() every row (patient documents). uploaded_by is in the $or because
-  // some rows are created via service role (e.g. state-reportable incidents)
-  // where created_by is NOT the submitting user — uploaded_by keeps those
-  // visible to their submitter.
-  // Reads are scoped to the owning user (+ admin), matching the app's
-  // Patient/Visit/ComplianceAudit role model: non-admin staff see only their
-  // own rows on agency-wide report surfaces; admins see everything. "write": {}
-  // deliberately preserves the existing open write behavior — this change is
-  // read-scoping only (several write flows are legitimately cross-user), the
-  // same shape as the ClinicalLibraryTemplate read-scoping fix.
+  // Document rows and their private storage bindings are broker-only. Browser
+  // creation, reads, updates, and deletes are denied; finite service functions
+  // prove immutable tenant/patient authority and return purpose projections or
+  // short-lived signed delivery. Legacy rows require a reviewed binding/private
+  // storage backfill before this source policy may be deployed.
   "rls": {
-    "read": {
-      "$or": [
-        { "uploaded_by": "{{user.email}}" },
-        { "created_by": "{{user.email}}" },
-        { "user_condition": { "role": "admin" } }
-      ]
-    },
-    "write": {}
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

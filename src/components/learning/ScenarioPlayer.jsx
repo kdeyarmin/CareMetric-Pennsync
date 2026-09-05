@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { AlertCircle, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
+import { submitScenarioAttempt } from '@/functions/submitScenarioAttempt';
 import { toast } from 'sonner';
 
 export default function ScenarioPlayer({ scenario, attemptId, onComplete }) {
@@ -16,7 +16,6 @@ export default function ScenarioPlayer({ scenario, attemptId, onComplete }) {
   const [score, setScore] = useState(null);
   const [passed, setPassed] = useState(null);
   const [resultCounts, setResultCounts] = useState({ correct: 0, total: 0 });
-  const [startTime] = useState(new Date());
 
   // Resolve the node map. New scenarios store { startNodeId, nodes }; legacy ones
   // stored the start node object directly (before branches were persisted). Either
@@ -65,41 +64,31 @@ export default function ScenarioPlayer({ scenario, attemptId, onComplete }) {
   };
 
   const handleFinishScenario = async () => {
-    // Score by distinct decision POINT, keeping each node's FINAL answer — a wrong
-    // attempt doesn't advance the node, so dividing correct-by-total-clicks (the
-    // old formula) failed a user who picked wrong then right on the same step.
-    const finalByNode = new Map();
-    for (const d of decisions) finalByNode.set(d.nodeId, d);
-    const distinct = [...finalByNode.values()];
-    const correctDecisions = distinct.filter(d => d.isCorrect).length;
-    const scorePercentage = distinct.length > 0 ? Math.round((correctDecisions / distinct.length) * 100) : 0;
-    const hasPassed = scorePercentage >= scenario.passingScore;
-
-    // Save attempt
+    // The browser may preview feedback, but the stored score/pass evidence is
+    // calculated by a backend broker from the canonical ClinicalScenario row.
     try {
-      const endTime = new Date();
-      const timeSpentMinutes = Math.round((endTime - startTime) / 60000);
-
-      await base44.entities.ScenarioAttempt.create({
+      const response = await submitScenarioAttempt({
         scenario_id: scenario.id,
-        user_id: (await base44.auth.me()).email,
         assignment_id: attemptId || null,
-        started_at: startTime.toISOString(),
-        completed_at: endTime.toISOString(),
-        decisions_made_json: decisions,
-        correct_decisions: correctDecisions,
-        total_decisions: distinct.length,
-        score_percentage: scorePercentage,
-        passed: hasPassed,
-        time_spent_minutes: timeSpentMinutes
+        decisions: decisions.map((decision) => ({
+          node_id: decision.nodeId,
+          choice_index: decision.choiceIndex,
+        })),
       });
+      const result = response?.data || response;
+      if (!Number.isFinite(result?.score_percentage) || typeof result?.passed !== 'boolean') {
+        throw new Error('Scenario grading returned an invalid result');
+      }
 
-      setScore(scorePercentage);
-      setPassed(hasPassed);
-      setResultCounts({ correct: correctDecisions, total: distinct.length });
+      setScore(result.score_percentage);
+      setPassed(result.passed);
+      setResultCounts({
+        correct: Number(result.correct_decisions) || 0,
+        total: Number(result.total_decisions) || 0,
+      });
       setScenarioComplete(true);
 
-      if (onComplete) onComplete({ score: scorePercentage, passed: hasPassed });
+      if (onComplete) onComplete({ score: result.score_percentage, passed: result.passed });
     } catch (error) {
       console.error('Failed to save scenario attempt:', error);
       toast.error('Failed to save your scenario results. Please try finishing the scenario again.');

@@ -1,12 +1,9 @@
-import { Printer, ShieldAlert, CalendarClock, Info } from "lucide-react";
-import { toast } from "sonner";
+import { ShieldAlert, CalendarClock, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import AICaveat from "@/components/ui/AICaveat";
 import { groupChecklistByCategory } from "./adrRequirements";
-import { buildChecklistPrintHtml } from "./adrChecklistPrint";
 
 const severityBadge = (severity) => {
   switch (severity) {
@@ -31,25 +28,14 @@ const sourceLabel = (source) => {
 };
 
 /**
- * Read-only view of the case's requirement checklist with a print action.
- * The printed sheet is what office staff work from while pulling records.
+ * Read-only view of the case's requirement checklist. A detached print window
+ * is intentionally unavailable: a child browsing context can survive tenant
+ * teardown and retain beneficiary/claim PHI after authority changes.
  */
 export default function AdrChecklistPanel({ adrCase }) {
   const checklist = adrCase?.checklist || [];
   const groups = groupChecklistByCategory(checklist);
   const analysis = adrCase?.letter_analysis || {};
-
-  const handlePrint = () => {
-    const html = buildChecklistPrintHtml({ caseMeta: adrCase, groups });
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) {
-      toast.error("Unable to open the print view. Please allow pop-ups for this site.");
-      return;
-    }
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.print();
-  };
 
   if (checklist.length === 0) {
     return (
@@ -69,10 +55,9 @@ export default function AdrChecklistPanel({ adrCase }) {
           <h3 className="font-semibold text-slate-900">Required documentation ({checklist.length} items)</h3>
           <AICaveat label="Checklist derived from the letter by AI + CMS baseline — verify against the actual letter" />
         </div>
-        <Button onClick={handlePrint} variant="outline" className="min-h-[44px] w-full sm:w-auto">
-          <Printer className="w-4 h-4 mr-2" />
-          Print checklist
-        </Button>
+        <span className="text-xs text-slate-500">
+          Separate print views are unavailable while secure export is being completed.
+        </span>
       </div>
 
       {adrCase?.response_due_date && (

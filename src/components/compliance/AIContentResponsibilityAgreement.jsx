@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
+import { acceptAiContentAgreement } from "@/functions/acceptAiContentAgreement";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sparkles, ShieldCheck, LogOut, Loader2 } from "lucide-react";
@@ -12,7 +12,6 @@ import {
   AI_CONTENT_AGREEMENT_INTRO,
   AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS,
   AI_CONTENT_AGREEMENT_VERSION,
-  buildAiContentAgreementAcceptance,
 } from "@/lib/aiContentAgreement";
 
 /**
@@ -24,12 +23,12 @@ import {
  * that they are responsible for proofreading/editing AI-generated material and
  * for attesting to anything they submit — before they can use the software.
  *
- * On acceptance we persist the sign-off to the User record (so the gate stays
- * satisfied on future sessions), write an audit-trail entry (a durable
- * attestation record), then refresh the auth context so the app renders.
+ * On acceptance the purpose broker appends a service-owned attestation. App.jsx
+ * then re-queries the protected status broker before rendering any app route.
+ * Compatibility fields on User are not gate authority.
  */
-export default function AIContentResponsibilityAgreement() {
-  const { user, refreshUser, logout } = useAuth();
+export default function AIContentResponsibilityAgreement({ onAccepted }) {
+  const { logout } = useAuth();
   const queryClient = useQueryClient();
 
   // One checkbox per acknowledgment; all must be checked to continue.
@@ -47,42 +46,27 @@ export default function AIContentResponsibilityAgreement() {
     if (!allChecked || saving) return;
     setSaving(true);
     try {
-      const acceptedAt = new Date().toISOString();
-
-      // Durable, timestamped attestation record for compliance/audit — written
-      // BEFORE the User flag. `logAudit` never throws, so if it were written
-      // after a successful updateMe a failed audit write would leave the gate
-      // permanently satisfied with no attestation on record. UserActivity
-      // creation throwing here aborts acceptance so the user can retry.
-      await base44.entities.UserActivity.create({
-        user_email: user?.email || "system",
-        user_name: user?.full_name || "System",
-        action: "ai_content_agreement_accepted",
-        entity_type: "User",
-        entity_id: user?.id || null,
-        details: {
-          agreement_version: AI_CONTENT_AGREEMENT_VERSION,
-          accepted_at: acceptedAt,
-          acknowledgments: AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS,
-          severity: "info",
-          timestamp: acceptedAt,
-        },
+      // The purpose-specific broker derives the actor, appends the canonical
+      // audit event, and creates the immutable authority attestation. Mutable
+      // compatibility fields on User are not acceptance authority.
+      await acceptAiContentAgreement({
+        accepted: true,
+        agreement_version: AI_CONTENT_AGREEMENT_VERSION,
       });
 
-      await base44.auth.updateMe(buildAiContentAgreementAcceptance(acceptedAt));
-
-      // Other surfaces read the user via a ["currentUser"] query; keep them in
-      // step, then refresh the auth context so App.jsx re-evaluates the gate.
-      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-      await refreshUser();
+      // Compatibility fields may still be displayed elsewhere, but the gate
+      // opens only after App.jsx re-reads the protected attestation status.
+      void queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+      if (onAccepted) await onAccepted();
       toast.success("Thank you — your acknowledgment has been recorded.");
+      setSaving(false);
     } catch (err) {
       console.error("Failed to record AI content agreement:", err);
       toast.error("We couldn't record your acknowledgment. Please try again.");
       setSaving(false);
     }
-    // On success we intentionally leave `saving` true: refreshUser() unmounts
-    // this gate as the app renders, so there's no state to reset.
+    // In the app, a successful protected recheck unmounts this gate. A failed
+    // or not-yet-visible recheck throws above and restores the retry control.
   };
 
   return (

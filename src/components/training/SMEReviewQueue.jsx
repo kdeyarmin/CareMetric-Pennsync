@@ -10,6 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Eye, CheckCircle2, RotateCcw, Sparkles, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { getCourseReadiness } from "./courseReadiness";
+import { recordTrainingAuditEvent } from "@/functions/recordTrainingAuditEvent";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
+import { isAdminLike } from "@/lib/superAdmin";
 
 // SME (subject-matter-expert) review queue. AI-generated courses stay as drafts
 // while their author edits them, then enter this queue as pending_review so a
@@ -20,7 +23,9 @@ export default function SMEReviewQueue() {
   const [notes, setNotes] = useState({});
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const isAdminUser = currentUser?.role === "admin" || currentUser?.account_type === "agency_admin" || currentUser?.account_type === "super_admin";
+  // Reading pending drafts and publishing/rejecting TrainingCourse records both
+  // require Base44's protected built-in admin role.
+  const canReviewCourses = isAdminLike(currentUser);
 
   const { data: pendingCourses = [], isLoading } = useQuery({
     queryKey: ["sme-review-queue"],
@@ -30,7 +35,7 @@ export default function SMEReviewQueue() {
       200
     ),
     initialData: [],
-    enabled: isAdminUser,
+    enabled: canReviewCourses,
   });
 
   const refresh = () => {
@@ -39,17 +44,12 @@ export default function SMEReviewQueue() {
     queryClient.invalidateQueries({ queryKey: ["annual-courses"] });
   };
 
-  const writeAudit = async (course, action, after, reason) => {
+  const writeAudit = async (course, action, after) => {
     try {
-      await base44.entities.TrainingAuditLog.create({
-        actor_id: currentUser?.email,
-        actor_name: currentUser?.full_name,
+      await recordTrainingAuditEvent({
         action,
-        entity_type: "TrainingCourse",
-        entity_id: course.id,
-        after_json: after,
-        reason,
-        severity: "info",
+        courseId: course.id,
+        note: action === "content_rejected" ? after?.review_note || "" : undefined,
       });
     } catch (err) {
       console.error("Audit log failed:", err);
@@ -95,7 +95,7 @@ export default function SMEReviewQueue() {
         published_by: currentUser?.email,
         published_date: new Date().toISOString(),
       });
-      await writeAudit(course, "course_published", { status: "published", approved_by: currentUser?.email }, "sme_approved");
+      await writeAudit(course, "course_published", { status: "published", approved_by: currentUser?.email });
       await notifyAuthor(course, "Course approved & published", `"${course.title}" passed SME review and is now published.`);
       toast.success(`Published "${course.title}"`);
       refresh();
@@ -115,7 +115,7 @@ export default function SMEReviewQueue() {
         status: "draft",
         needs_sme_review: true,
       });
-      await writeAudit(course, "content_rejected", { status: "draft", review_note: note }, "sme_changes_requested");
+      await writeAudit(course, "content_rejected", { status: "draft", review_note: note });
       await notifyAuthor(course, "Course changes requested", `"${course.title}" needs revisions before publishing.${note ? ` Reviewer note: ${note}` : ""}`);
       toast.success("Sent back to the author as a draft");
       setNotes((prev) => ({ ...prev, [course.id]: "" }));
@@ -127,6 +127,12 @@ export default function SMEReviewQueue() {
       setBusyId(null);
     }
   };
+
+  if (currentUser && !canReviewCourses) {
+    return (
+      <AccessDeniedState description="SME course review requires protected administrator access. Facility-admin review remains unavailable until training records use immutable tenant-membership authorization." />
+    );
+  }
 
   return (
     <div className="space-y-6">

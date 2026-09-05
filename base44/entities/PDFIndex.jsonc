@@ -73,5 +73,11 @@
     "pdf_url",
     "document_name",
     "extracted_text"
-  ]
+  ],
+  "rls": {
+    "read": { "created_by": "{{user.email}}" },
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

@@ -66,5 +66,11 @@
     "supply_id",
     "predicted_monthly_usage",
     "confidence_score"
-  ]
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
 }

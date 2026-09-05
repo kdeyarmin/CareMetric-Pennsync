@@ -24,7 +24,7 @@ import { DEFAULT_PDGM_RATES, mergePdgmRates } from "../pdgm/pdgmRates.js";
 import {
   PDGM_REIMBURSEMENT_ACTION,
   PDGM_REIMBURSEMENT_BLOCKER,
-  PDGM_REIMBURSEMENT_ENABLED,
+  PDGM_LEGACY_SURFACES_ENABLED,
 } from "../pdgm/pdgmAvailability.js";
 
 const round = (n) => Math.round(n);
@@ -41,7 +41,7 @@ const round = (n) => Math.round(n);
  * }} perItem is keyed by item.id; items with no defensible estimate are omitted.
  */
 export function estimateFollowUpRevenueImpact(plan, opts = {}) {
-  if (!PDGM_REIMBURSEMENT_ENABLED) {
+  if (!PDGM_LEGACY_SURFACES_ENABLED) {
     return {
       available: false,
       isEstimate: false,

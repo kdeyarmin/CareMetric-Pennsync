@@ -23,7 +23,20 @@ vi.mock('@/api/base44Client', () => {
       return { create: vi.fn(async () => ({})), filter: vi.fn(async () => []), list: vi.fn(async () => []) };
     },
   });
-  return { base44: { entities, auth: { me: async () => ({ email: 'nurse@x.com', role: 'nurse' }) } } };
+  return {
+    base44: {
+      entities,
+      functions: {
+        invoke: async (name, payload) => {
+          if (name === 'createAuthorizedPatient') {
+            return { data: { patient: await patientCreate(payload) } };
+          }
+          return { data: {} };
+        },
+      },
+      auth: { me: async () => ({ email: 'nurse@x.com', role: 'nurse' }) },
+    },
+  };
 });
 
 vi.mock('@/components/referral/ReferralTriageAnalyzer', () => ({

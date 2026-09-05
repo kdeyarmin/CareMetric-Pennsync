@@ -85,5 +85,11 @@
     "patient_id",
     "pathway_id",
     "start_date"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

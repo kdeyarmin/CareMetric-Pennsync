@@ -4,9 +4,18 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/testUtils';
 
 // Hoisted so the vi.mock factory (hoisted above imports) can reference them.
-const { listMock, createMock } = vi.hoisted(() => ({
+const { listMock, createMock, scopedPatientsMock } = vi.hoisted(() => ({
   listMock: vi.fn(),
   createMock: vi.fn(),
+  scopedPatientsMock: vi.fn(),
+}));
+
+// Duplicate-guard tests own their exact authorized roster fixture. Mocking the
+// shared hook avoids letting unrelated child entity reads satisfy a generic
+// `listMock` wait, and avoids inventing mutable User-based tenant authority.
+vi.mock('@/hooks/useScopedPatients', () => ({
+  useScopedPatients: (...args) => scopedPatientsMock(...args),
+  excludeArchived: (rows) => rows.filter((row) => !row.is_archived),
 }));
 
 vi.mock('@/api/base44Client', () => {
@@ -25,7 +34,14 @@ vi.mock('@/api/base44Client', () => {
   return {
     base44: {
       entities: new Proxy({}, { get: () => entityStub }),
-      functions: new Proxy({}, { get: () => async () => ({ data: {} }) }),
+      functions: {
+        invoke: async (name, payload) => {
+          if (name === 'createAuthorizedPatient') {
+            return { data: { patient: await createMock(payload) } };
+          }
+          return { data: {} };
+        },
+      },
       auth: { me: async () => ({ role: 'nurse' }) },
     },
   };
@@ -61,6 +77,7 @@ describe('PatientForm add-time duplicate guard', () => {
     createMock.mockReset();
     listMock.mockResolvedValue([EXISTING]);
     createMock.mockResolvedValue({ id: 'new-1' });
+    scopedPatientsMock.mockReset().mockReturnValue({ data: [EXISTING] });
   });
 
   it('warns and does NOT create when the entered patient matches an existing one', async () => {
@@ -69,7 +86,7 @@ describe('PatientForm add-time duplicate guard', () => {
     renderWithProviders(<PatientForm onSuccess={onSuccess} onCancel={() => {}} />);
 
     // Wait for the existing roster to load into the query cache.
-    await waitFor(() => expect(listMock).toHaveBeenCalled());
+    await waitFor(() => expect(scopedPatientsMock).toHaveBeenCalled());
 
     await fillRequired(user);
     // Match on MRN + name so the candidate is unmistakably a duplicate.
@@ -87,7 +104,7 @@ describe('PatientForm add-time duplicate guard', () => {
     const user = userEvent.setup();
     const onSuccess = vi.fn();
     renderWithProviders(<PatientForm onSuccess={onSuccess} onCancel={() => {}} />);
-    await waitFor(() => expect(listMock).toHaveBeenCalled());
+    await waitFor(() => expect(scopedPatientsMock).toHaveBeenCalled());
 
     await fillRequired(user);
     await user.type(screen.getByLabelText(/Medical Record Number/i), 'MRN-100');
@@ -104,7 +121,7 @@ describe('PatientForm add-time duplicate guard', () => {
     const user = userEvent.setup();
     const onSuccess = vi.fn();
     renderWithProviders(<PatientForm onSuccess={onSuccess} onCancel={() => {}} />);
-    await waitFor(() => expect(listMock).toHaveBeenCalled());
+    await waitFor(() => expect(scopedPatientsMock).toHaveBeenCalled());
 
     await user.type(screen.getByLabelText(/First Name/i), 'Zelda');
     await user.type(screen.getByLabelText(/Last Name/i), 'Nightingale');

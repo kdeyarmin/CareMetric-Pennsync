@@ -22,19 +22,7 @@ import {
 import { downloadPayrollPDF } from "./payrollPdf";
 import { payPeriodLabel, submissionCoverage, serviceTypeLabel } from "./timesheetUtils";
 import { periodIndexForDate, payPeriodByIndex, paydayLabel, dueLabel } from "./payPeriodSchedule";
-
-/** Trigger a browser download of an in-memory text blob. */
-function downloadText(text, filename, type = "text/csv;charset=utf-8;") {
-  const blob = new Blob([text], { type });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
+import { downloadCsv } from '@/lib/downloadCsv';
 
 function CoverageStrip({ coverage }) {
   if (!coverage || coverage.expected.length === 0) return null;
@@ -75,8 +63,11 @@ function PayrollTableCard({ serviceType, approvedTimesheets, allTimesheets, empl
     toast.success(`${table.title} PDF downloaded.`);
   };
   const onCsv = () => {
-    downloadText(buildPayrollCSV(table), payrollFilename(serviceType, period.end, "csv"));
-    toast.success(`${table.title} spreadsheet downloaded.`);
+    const downloaded = downloadCsv(
+      payrollFilename(serviceType, period.end, "csv"),
+      buildPayrollCSV(table),
+    );
+    if (downloaded) toast.success(`${table.title} spreadsheet downloaded.`);
   };
 
   return (

@@ -56,6 +56,8 @@ const FILES = {
   "../functions/pollFaxStatuses/entry.ts": ALL,
   "../functions/sendFaxStatusNotification/entry.ts": ALL,
   "../functions/sendTestSms/entry.ts": ALL,
+  "../functions/recordSmsConsent/entry.ts": ALL,
+  "../functions/manageSmsConsent/entry.ts": ALL,
   "../functions/dispatchScheduledSms/entry.ts": ALL,
   "../functions/redriveFailedSms/entry.ts": ALL,
   "../functions/discoverTelnyxResources/entry.ts": ALL,

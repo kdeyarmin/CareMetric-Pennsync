@@ -177,5 +177,15 @@
   "required": [
     "pathway_name",
     "condition"
-  ]
+  ],
+  // Pathway records currently carry global clinical/PDGM assertions without an
+  // immutable tenant key. Every browser surface that consumes them is held
+  // behind a literal source pause, so fail closed until a tenant-authorized
+  // broker and clinically validated pathway model replace direct entity access.
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

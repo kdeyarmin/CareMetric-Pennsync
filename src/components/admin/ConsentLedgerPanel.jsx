@@ -146,7 +146,7 @@ export default function ConsentLedgerPanel() {
                   const target = optedOut ? "opted_in" : "opted_out";
                   const busy = pendingPhone === r.phone_e164;
                   return (
-                    <TableRow key={`${r.phone_e164}-${r.captured_at}-${i}`}>
+                    <TableRow key={`${r.agency_id}-${r.phone_e164}-${r.captured_at}-${i}`}>
                       <TableCell className="font-mono text-xs">{r.phone_e164}</TableCell>
                       <TableCell><StatusBadge status={r.consent_status} /></TableCell>
                       <TableCell className="text-xs text-slate-600">{r.consent_source || "—"}</TableCell>
@@ -158,8 +158,15 @@ export default function ConsentLedgerPanel() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          disabled={busy || !r.phone_e164}
-                          onClick={() => setConsent.mutate({ phone_e164: r.phone_e164, consent_status: target })}
+                          disabled={busy || !r.phone_e164 || !r.destination_e164 || !r.destination_binding_id}
+                          onClick={() => setConsent.mutate({
+                            phone_e164: r.phone_e164,
+                            consent_status: target,
+                            patient_id: r.patient_id,
+                            destination_e164: r.destination_e164,
+                            destination_binding_id: r.destination_binding_id,
+                            destination_binding_key: r.destination_binding_key,
+                          })}
                         >
                           {busy ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />

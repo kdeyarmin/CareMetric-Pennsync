@@ -1,148 +1,123 @@
-import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { useScopedPatients } from '@/hooks/useScopedPatients';
-import { toLocalISODate } from "@/lib/dateLocal";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, Loader2, FileText, AlertCircle, Brain } from "lucide-react";
-import { toast } from "sonner";
-import { validateFileUpload } from "@/components/utils/security";
-import { analyzeDocument } from "@/functions/analyzeDocument";
+import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { AlertCircle, FileText, Loader2, Upload } from 'lucide-react';
+import { toast } from 'sonner';
 
-const CATEGORIES = [
-  { value: "lab_results", label: "Lab Results" },
-  { value: "imaging", label: "Imaging/X-Ray" },
-  { value: "consent_forms", label: "Consent Forms" },
-  { value: "insurance", label: "Insurance Documents" },
-  { value: "referral", label: "Referral" },
-  { value: "progress_notes", label: "Progress Notes" },
-  { value: "discharge_summary", label: "Discharge Summary" },
-  { value: "medication_list", label: "Medication List" },
-  { value: "orders", label: "Orders" },
-  { value: "other", label: "Other" }
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { validateFileUpload } from '@/components/utils/security';
+import {
+  createAuthorizedDocument,
+  createDocumentRequestId,
+} from '@/functions/createAuthorizedDocument';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+
+const PURPOSES = [
+  {
+    value: 'patient_document',
+    label: 'Patient document',
+    description: 'Private clinical file linked to an authorized patient.',
+  },
+  {
+    value: 'referral',
+    label: 'Referral',
+    description: 'Private referral file; a patient link is optional.',
+  },
 ];
 
-export default function DocumentUploader({ patientId, onUploadComplete, open, onOpenChange }) {
+export default function DocumentUploader({
+  agencyId,
+  patientId,
+  onUploadComplete,
+  open,
+  onOpenChange,
+}) {
   const [file, setFile] = useState(null);
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    category: "",
-    document_date: toLocalISODate(),
-    tags: "",
-    notes: "",
-    is_sensitive: false,
-    auto_analyze: true
-  });
-
+  const [purpose, setPurpose] = useState('patient_document');
+  const [selectedPatientId, setSelectedPatientId] = useState(patientId || '');
+  const requestIdRef = useRef(null);
   const queryClient = useQueryClient();
 
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me()
+  const { data: allPatients = [] } = useScopedPatients({
+    agencyId: agencyId || undefined,
+    sort: '-updated_date',
+    limit: 2000,
+    enabled: open && !patientId && !!agencyId,
+    readMode: 'authorized-roster',
   });
 
-  const { data: allPatients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000, enabled: !patientId });
-
-  const [selectedPatientId, setSelectedPatientId] = useState(patientId || "");
-
   useEffect(() => {
-    if (patientId) setSelectedPatientId(patientId);
-  }, [patientId]);
+    setSelectedPatientId(patientId || '');
+    requestIdRef.current = null;
+  }, [agencyId, patientId]);
+
+  const resetRequestIdentity = () => {
+    requestIdRef.current = null;
+  };
+
+  const resetForm = () => {
+    setFile(null);
+    setPurpose('patient_document');
+    if (!patientId) setSelectedPatientId('');
+    resetRequestIdentity();
+  };
 
   const uploadMutation = useMutation({
-    mutationFn: async (data) => {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: data.file });
-      
-      const documentData = {
-        title: data.title,
-        description: data.description,
-        file_url,
-        file_name: data.file.name,
-        file_size: data.file.size,
-        file_type: data.file.type,
-        category: data.category,
-        patient_id: data.patient_id || null,
-        tags: data.tags ? data.tags.split(',').map(t => t.trim()) : [],
-        document_date: data.document_date,
-        uploaded_by: currentUser?.email,
-        notes: data.notes,
-        is_sensitive: data.is_sensitive
-      };
-
-      const newDoc = await base44.entities.Document.create(documentData);
-      
-      // Trigger AI analysis if enabled
-      if (data.auto_analyze) {
-        setTimeout(() => {
-          analyzeDocument({ document_id: newDoc.id }).catch(err => {
-            console.error('Auto-analysis failed:', err);
-          });
-        }, 500);
-      }
-      
-      return newDoc;
-    },
+    mutationFn: ({ uploadFile, uploadPurpose, uploadPatientId, clientRequestId }) => (
+      createAuthorizedDocument({
+        file: uploadFile,
+        agencyId,
+        patientId: uploadPatientId || null,
+        purpose: uploadPurpose,
+        clientRequestId,
+      })
+    ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
-      queryClient.invalidateQueries({ queryKey: ['patient-documents'] });
-      toast.success("Document uploaded successfully");
+      toast.success('Document uploaded successfully');
       resetForm();
       onUploadComplete?.();
       onOpenChange?.(false);
     },
-    onError: (error) => {
-      toast.error("Upload failed: " + error.message);
-    }
+    onError: () => {
+      // Keep the request id for an exact manual retry. The broker binds that id
+      // to tenant, patient, purpose, file metadata, and content hash.
+      toast.error('The private document upload could not be authorized');
+    },
   });
 
-  const resetForm = () => {
-    setFile(null);
-    setFormData({
-      title: "",
-      description: "",
-      category: "",
-      document_date: toLocalISODate(),
-      tags: "",
-      notes: "",
-      is_sensitive: false,
-      auto_analyze: true
-    });
-    if (!patientId) setSelectedPatientId("");
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    if (!agencyId) {
+      toast.error('Select an authorized agency before uploading');
+      return;
+    }
     if (!file) {
-      toast.error("Please select a file");
+      toast.error('Please select a file');
       return;
     }
-    if (!formData.category) {
-      toast.error("Please select a category");
+    if (purpose === 'patient_document' && !selectedPatientId) {
+      toast.error('Select a patient for a patient document');
       return;
     }
-    // The file input has no `accept`, so guard type + size before uploading.
     const check = validateFileUpload(file, {
-      maxSize: 50 * 1024 * 1024,
-      allowedTypes: [
-        'application/pdf', 'image/png', 'image/jpeg',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'text/plain',
-      ],
-      allowedExtensions: ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.txt'],
+      maxSize: 25 * 1024 * 1024,
+      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg'],
+      allowedExtensions: ['.pdf', '.png', '.jpg', '.jpeg'],
     });
-    if (!check.valid) { toast.error(check.error); return; }
+    if (!check.valid) {
+      toast.error(check.error);
+      return;
+    }
 
+    requestIdRef.current ||= createDocumentRequestId();
     uploadMutation.mutate({
-      file,
-      ...formData,
-      patient_id: selectedPatientId || null
+      uploadFile: file,
+      uploadPurpose: purpose,
+      uploadPatientId: selectedPatientId,
+      clientRequestId: requestIdRef.current,
     });
   };
 
@@ -150,7 +125,7 @@ export default function DocumentUploader({ patientId, onUploadComplete, open, on
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Upload Document</DialogTitle>
+          <DialogTitle>Upload Private Document</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -159,13 +134,11 @@ export default function DocumentUploader({ patientId, onUploadComplete, open, on
               <input
                 type="file"
                 id="file-upload"
+                accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
                 className="hidden"
-                onChange={(e) => {
-                  const selectedFile = e.target.files?.[0];
-                  setFile(selectedFile);
-                  if (selectedFile && !formData.title) {
-                    setFormData({ ...formData, title: selectedFile.name });
-                  }
+                onChange={(event) => {
+                  setFile(event.target.files?.[0] || null);
+                  resetRequestIdentity();
                 }}
               />
               <label htmlFor="file-upload" className="cursor-pointer">
@@ -174,53 +147,62 @@ export default function DocumentUploader({ patientId, onUploadComplete, open, on
                     <FileText className="w-8 h-8 text-indigo-600" />
                     <div>
                       <p className="font-medium">{file.name}</p>
-                      <p className="text-sm text-slate-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                      <p className="text-sm text-slate-500">
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
                     </div>
                   </div>
                 ) : (
                   <div>
                     <Upload className="w-12 h-12 mx-auto text-slate-400 mb-2" />
-                    <p className="text-sm text-slate-600">Click to select file or drag and drop</p>
+                    <p className="text-sm text-slate-600">Choose a PDF, PNG, or JPEG up to 25 MB</p>
                   </div>
                 )}
               </label>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Title *</Label>
-              <Input
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Category *</Label>
-              <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map(cat => (
-                    <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <Label>Document purpose *</Label>
+            <Select
+              value={purpose}
+              onValueChange={(value) => {
+                setPurpose(value);
+                resetRequestIdentity();
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PURPOSES.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500">
+              {PURPOSES.find((item) => item.value === purpose)?.description}
+            </p>
           </div>
 
           {!patientId && (
             <div className="space-y-2">
-              <Label>Patient (Optional)</Label>
-              <Select value={selectedPatientId || "none"} onValueChange={(v) => setSelectedPatientId(v === "none" ? "" : v)}>
+              <Label>Patient {purpose === 'patient_document' ? '*' : '(Optional)'}</Label>
+              <Select
+                value={selectedPatientId || 'none'}
+                onValueChange={(value) => {
+                  setSelectedPatientId(value === 'none' ? '' : value);
+                  resetRequestIdentity();
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select patient" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No patient</SelectItem>
-                  {allPatients.map(patient => (
+                  <SelectItem value="none" disabled={purpose === 'patient_document'}>
+                    {purpose === 'patient_document' ? 'Select a patient' : 'No patient'}
+                  </SelectItem>
+                  {allPatients.map((patient) => (
                     <SelectItem key={patient.id} value={patient.id}>
                       {patient.first_name} {patient.last_name} - MRN: {patient.medical_record_number}
                     </SelectItem>
@@ -230,74 +212,20 @@ export default function DocumentUploader({ patientId, onUploadComplete, open, on
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={2}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Document Date</Label>
-              <Input
-                type="date"
-                value={formData.document_date}
-                onChange={(e) => setFormData({ ...formData, document_date: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Tags (comma-separated)</Label>
-              <Input
-                placeholder="urgent, review, follow-up"
-                value={formData.tags}
-                onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Notes</Label>
-            <Textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              rows={2}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
-              <input
-                type="checkbox"
-                id="sensitive"
-                checked={formData.is_sensitive}
-                onChange={(e) => setFormData({ ...formData, is_sensitive: e.target.checked })}
-                className="rounded"
-              />
-              <label htmlFor="sensitive" className="text-sm flex items-center gap-2 cursor-pointer">
-                <AlertCircle className="w-4 h-4 text-amber-600" />
-                Mark as sensitive document
-              </label>
-            </div>
-            <div className="flex items-center gap-2 p-3 bg-navy-50 rounded-lg border border-navy-200">
-              <input
-                type="checkbox"
-                id="auto-analyze"
-                checked={formData.auto_analyze}
-                onChange={(e) => setFormData({ ...formData, auto_analyze: e.target.checked })}
-                className="rounded"
-              />
-              <label htmlFor="auto-analyze" className="text-sm flex items-center gap-2 cursor-pointer">
-                <Brain className="w-4 h-4 text-navy-600" />
-                Auto-analyze with AI after upload
-              </label>
-            </div>
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" />
+            <p className="text-sm text-amber-900">
+              Files are stored privately. The original filename becomes the document title;
+              viewing and downloading require a fresh authorization check.
+            </p>
           </div>
 
           <div className="flex gap-2 pt-4">
-            <Button type="submit" disabled={uploadMutation.isPending} className="flex-1">
+            <Button
+              type="submit"
+              disabled={uploadMutation.isPending || !agencyId}
+              className="flex-1"
+            >
               {uploadMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />

@@ -8,6 +8,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 
 /**
  * searchPurchaseTelnyxNumbers — admin-only. Search Telnyx for available local
@@ -175,16 +186,12 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    // Purchases can incur charges. Only Base44's protected built-in role may
-    // authorize them; account_type is a self-mutable custom User field.
-    const isAdmin = user.role === 'admin';
-    if (!isAdmin) return Response.json({ error: 'Only administrators can manage numbers.' }, { status: 403 });
-    // Fail closed: an agency_admin without an agency_name would resolve to no
-    // agency, so a fax provision would overwrite a lone tenant's outbound fax
-    // line or create an unscoped AgencySettings row that no sender ever resolves
-    // (reporting success while every send stays "not configured").
-    if (user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
-      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    // Searches expose account inventory and purchases incur charges. The
+    // protected built-in admin role plus configured owner email is the only
+    // current authority; self-editable profile fields grant nothing.
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Only the protected platform owner can manage numbers.' }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -200,11 +207,11 @@ Deno.serve(async (req) => {
 
     const authHeaders = { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' };
 
-    const audit = (auditAction, details) =>
+    const audit = (auditAction, entityId) =>
       base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email, user_name: user.full_name,
-        action: auditAction, entity_type: 'PhoneNumber',
-        details: { ...details, timestamp: new Date().toISOString() }, status: 'success',
+        action: auditAction, entity_type: 'PhoneNumber', entity_id: entityId,
+        status: 'success',
       }).catch(() => {});
 
     // Point an already-owned Telnyx number at the Programmable Fax connection
@@ -245,7 +252,7 @@ Deno.serve(async (req) => {
       if (poolRows[0]?.id && poolRows[0].twilio_phone_number_sid !== numberId) {
         await base44.asServiceRole.entities.PhoneNumber.update(poolRows[0].id, { twilio_phone_number_sid: numberId }).catch(() => {});
       }
-      await audit('fax_capacity_provisioned', { e164, telnyx_number_id: numberId, set_as_outbound_fax: setAsOutboundFax });
+      await audit('fax_capacity_provisioned', poolRows[0]?.id || null);
       return Response.json({ success: true, e164, telnyx_number_id: numberId, fax_connection_id: faxConnectionId, outbound_fax_set: setAsOutboundFax });
     }
 
@@ -371,7 +378,7 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email, user_name: user.full_name,
         action: 'phone_number_purchased', entity_type: 'PhoneNumber', entity_id: row.id,
-        details: { e164, telnyx_number_id: telnyxNumberId, purpose, set_as_outbound_fax: setAsOutboundFax, campaign_assigned: campaignAssigned, warnings, timestamp: new Date().toISOString() }, status: 'success',
+        details: { purpose, set_as_outbound_fax: setAsOutboundFax, campaign_assigned: campaignAssigned }, status: 'success',
       }).catch(() => {});
       return Response.json({ success: true, e164, id: row.id, telnyx_number_id: telnyxNumberId, purpose, outbound_fax_set: setAsOutboundFax, campaign_assigned: campaignAssigned, warnings });
     }

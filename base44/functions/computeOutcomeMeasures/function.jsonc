@@ -1,0 +1,23 @@
+{
+  "name": "computeOutcomeMeasures",
+  "entry": "entry.ts",
+  "automations": [
+    {
+      "name": "Nightly Outcome Measure Computation",
+      "description": "Computes CMS home-health outcome measures and rolls up agency KPIs nightly",
+      "function_args": null,
+      "is_active": false,
+      "type": "scheduled",
+      "schedule_mode": "recurring",
+      "schedule_type": "simple",
+      "repeat_unit": "days",
+      "repeat_interval": 1,
+      "start_time": "06:00",
+      "repeat_on_days": null,
+      "repeat_on_day_of_month": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  ]
+}

@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
+import { usePatientDetailsRouteScope } from '@/hooks/usePatientDetailsRouteScope';
 import { calculateAge, parseLocalDate, toLocalISODate } from "@/lib/dateLocal";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Plus, User, ArrowUpDown, Users, UserCheck, CalendarPlus } from "lucide-react";
-import { secureDelete, handleSecureError } from "../components/utils/security";
 
 import PatientForm from "../components/patient/PatientForm";
 import { getPatientDisplayParts } from "../components/patient/patientDisplay";
@@ -23,17 +23,6 @@ import VirtualList from "@/components/ui/VirtualList";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import PatientCardSkeleton from "../components/loading/PatientCardSkeleton";
 import SwipeablePatientCard from "../components/mobile/SwipeablePatientCard";
-import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -54,13 +43,9 @@ const patientSortKey = (patient) => {
 };
 
 export default function Patients() {
-  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [filters, setFilters] = useState({});
   const [editingPatient, setEditingPatient] = useState(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [patientToDelete, setPatientToDelete] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [selectedPatients, setSelectedPatients] = useState([]);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [patientsToMerge, setPatientsToMerge] = useState({ patient1: null, patient2: null });
@@ -81,6 +66,11 @@ export default function Patients() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+
+  // Resolve chart navigation once for the whole roster. The hook accepts only
+  // a freshly revalidated server-owned singleton membership; it never derives
+  // route authority from mutable User or Patient fields.
+  const { agencyId: patientDetailsAgencyId } = usePatientDetailsRouteScope();
 
   // Log page visit
   useEffect(() => {
@@ -109,35 +99,6 @@ export default function Patients() {
   if (patientsError) {
     console.error('Error loading patients:', patientsError);
   }
-
-  const deletePatientMutation = useMutation({
-    mutationFn: async (patientId) => {
-      await secureDelete(base44.entities.Patient, patientId, 'Patient');
-    },
-    onSuccess: (_, deletedId) => {
-      queryClient.invalidateQueries({ queryKey: ['patients'] });
-      setDeleteDialogOpen(false);
-      setPatientToDelete(null);
-      setIsDeleting(false);
-      
-      // Log patient deletion
-      logActivity(ActivityActions.DELETE, {
-        entity_type: 'Patient',
-        entity_id: deletedId,
-        page: 'Patients'
-      });
-    },
-    onError: async (error) => {
-      setIsDeleting(false);
-      await handleSecureError(error, 'patient_delete', (msg) => toast.error(msg));
-    }
-  });
-
-  const handleDeletePatient = () => {
-    if (!patientToDelete) return;
-    setIsDeleting(true);
-    deletePatientMutation.mutate(patientToDelete.id);
-  };
 
   const lastVisitDateByPatientId = useMemo(() => {
     const map = {};
@@ -405,15 +366,12 @@ export default function Patients() {
             renderItem={(patient) => (
               <SwipeablePatientCard
                 patient={patient}
+                patientDetailsAgencyId={patientDetailsAgencyId}
                 isSelected={selectedPatients.some(p => p.id === patient.id)}
                 onToggleSelect={togglePatientSelection}
                 onEdit={(p) => {
                   setEditingPatient(p);
                   setShowForm(true);
-                }}
-                onDelete={(p) => {
-                  setPatientToDelete(p);
-                  setDeleteDialogOpen(true);
                 }}
               />
             )}
@@ -447,6 +405,7 @@ export default function Patients() {
           <div className="md:col-span-2">
             <PaginatedPatientList
               patients={filteredPatients}
+              patientDetailsAgencyId={patientDetailsAgencyId}
               showCheckboxes={true}
               showSearch={false}
               // This page owns filtering and sorting (see the sort control above);
@@ -483,31 +442,6 @@ export default function Patients() {
         patient1={patientsToMerge.patient1}
         patient2={patientsToMerge.patient2}
       />
-
-
-
-                  {/* Delete Confirmation Dialog */}
-                  <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Patient</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to delete {patientToDelete?.first_name} {patientToDelete?.last_name}? 
-                          This action cannot be undone and will remove all associated data.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={handleDeletePatient}
-                          disabled={isDeleting}
-                          className="bg-red-600 hover:bg-red-700"
-                        >
-                          {isDeleting ? "Deleting..." : "Delete"}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
                 </PageContainer>
               );
             }

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 // Course syllabus shown before a learner commits, the way a healthcare course
 // catalog presents it: credit and duration up front, then audience, objectives,
@@ -234,14 +235,13 @@ export default function CourseCatalogDetail({
                 {references.map((reference, index) => (
                   <li key={index} className="text-xs text-slate-500">
                     {reference.url && isSafeExternalUrl(reference.url) ? (
-                      <a
-                        href={reference.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => openAuthorityBoundWindow(reference.url)}
                         className="text-blue-600 hover:underline"
                       >
                         {reference.title || reference.url}
-                      </a>
+                      </button>
                     ) : (
                       <span>{reference.title || reference.url}</span>
                     )}

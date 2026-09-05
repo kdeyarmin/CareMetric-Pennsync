@@ -57,5 +57,19 @@
     "material_id",
     "patient_id",
     "personalized_content"
-  ]
+  ],
+  // Clinicians may create evidence only as themselves. Existing records are
+  // append-only to browsers; service-role discharge/merge jobs retain access.
+  // Shared patient-history reads remain open pending a by-patient broker.
+  "rls": {
+    "read": true,
+    "create": {
+      "$or": [
+        { "data.sent_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": false,
+    "delete": false
+  }
 }

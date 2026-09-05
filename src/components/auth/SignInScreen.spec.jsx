@@ -97,7 +97,7 @@ describe('SignInScreen', () => {
     expect(mocks.post).toHaveBeenCalledWith('/apps/app-1/auth/login', {
       email: 'nurse@agency.com',
       password: 'hunter22',
-    });
+    }, { signal: expect.any(AbortSignal) });
     expect(mocks.setToken).toHaveBeenCalledWith('tok-123');
   });
 
@@ -114,6 +114,30 @@ describe('SignInScreen', () => {
     expect(onAuthenticated).not.toHaveBeenCalled();
     expect(mocks.setToken).not.toHaveBeenCalled();
     expect(mocks.navigateToLogin).not.toHaveBeenCalled();
+  });
+
+  it('aborts a pending password login and ignores its token after unmount', async () => {
+    let resolveLogin;
+    let capturedSignal;
+    mocks.post.mockImplementationOnce((_url, _body, options) => {
+      capturedSignal = options.signal;
+      return new Promise((resolve) => { resolveLogin = resolve; });
+    });
+    const onAuthenticated = vi.fn();
+    const user = userEvent.setup();
+    const view = render(<SignInScreen onAuthenticated={onAuthenticated} />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    view.unmount();
+
+    expect(capturedSignal.aborted).toBe(true);
+    resolveLogin({ access_token: 'late-token' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mocks.setToken).not.toHaveBeenCalled();
+    expect(onAuthenticated).not.toHaveBeenCalled();
   });
 
   it('sends a password-reset email from the forgot-password flow', async () => {

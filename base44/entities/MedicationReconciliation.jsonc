@@ -235,5 +235,11 @@
   "required": [
     "patient_id",
     "trigger_source"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

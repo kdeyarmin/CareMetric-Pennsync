@@ -1,12 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Loader2,
@@ -20,6 +19,9 @@ import {
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
+const TASK_ACTIVATION_BLOCKER =
+  "Task-bearing pathway activation is unavailable pending an atomic, idempotent task-creation broker. No tasks have been created.";
+
 export default function AIPathwayRecommender({ 
   pdgmData, 
   analysisResults, 
@@ -30,14 +32,19 @@ export default function AIPathwayRecommender({
   const [recommendations, setRecommendations] = useState(null);
   const [selectedPathways, setSelectedPathways] = useState([]);
   const [expandedPathway, setExpandedPathway] = useState(null);
-  const queryClient = useQueryClient();
+  const analysisRequestRef = useRef(0);
 
-  // Current user — assigned_to is required on Task; without it the bulkCreate of
-  // generated pathway tasks is rejected and nothing is created.
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
+  useEffect(() => {
+    // Recommendations and selections are patient-bound. Invalidate an
+    // in-flight response before clearing the previous patient's state.
+    analysisRequestRef.current += 1;
+    setRecommendations(null);
+    setSelectedPathways([]);
+    setExpandedPathway(null);
+    return () => {
+      analysisRequestRef.current += 1;
+    };
+  }, [patientId]);
 
   const { data: availablePathways = [], isPending: pathwaysPending } = useQuery({
     // Active-only: ClinicalPathwayManager lists every pathway (including
@@ -47,15 +54,9 @@ export default function AIPathwayRecommender({
     queryFn: () => base44.entities.ClinicalPathway.filter({ is_active: true }, undefined, ALL_ROWS),
   });
 
-  const createTasksMutation = useMutation({
-    mutationFn: (tasks) => base44.entities.Task.bulkCreate(tasks),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    }
-  });
-
   const analyzePathways = useCallback(async () => {
 
+    const requestId = ++analysisRequestRef.current;
     try {
       const result = await ai.run({
         model: "automatic",
@@ -164,6 +165,7 @@ Return JSON:
         }
       });
 
+      if (analysisRequestRef.current !== requestId) return;
       setRecommendations(result);
       
       // Auto-select high priority pathways (indices into the full
@@ -181,6 +183,7 @@ Return JSON:
         page: 'OASISAnalyzer'
       });
     } catch (error) {
+      if (analysisRequestRef.current !== requestId) return;
       console.error("Pathway analysis error:", error);
       setRecommendations({ error: "Failed to generate pathway recommendations." });
     }
@@ -199,49 +202,21 @@ Return JSON:
     }
   }, [pdgmData, analysisResults, analyzePathways, ai.loading, recommendations, pathwaysPending]);
 
-  const handleActivatePathways = async () => {
+  const selectedTaskCount = selectedPathways.reduce((sum, idx) => {
+    const tasks = recommendations?.recommended_pathways?.[idx]?.tasks_to_generate;
+    return sum + (Array.isArray(tasks) ? tasks.length : 0);
+  }, 0);
+
+  const handleActivatePathways = () => {
     if (!recommendations || selectedPathways.length === 0) return;
-    // assigned_to is required on Task; abort if the current user isn't resolved yet.
-    if (!currentUser?.email) {
-      toast.error('Could not determine the current user. Please refresh and try again.');
+
+    // Base44 currently exposes neither a uniqueness constraint nor an atomic
+    // create-if-absent/CAS operation for Task. A read-before-write key would
+    // still race, and a retry after an ambiguous bulkCreate response could
+    // duplicate already-committed tasks. Keep every task-bearing activation
+    // fail-closed until it can go through an atomic, idempotent broker.
+    if (selectedTaskCount > 0) {
       return;
-    }
-
-    const tasksToCreate = [];
-    
-    selectedPathways.forEach(idx => {
-      const pathway = recommendations.recommended_pathways[idx];
-      if (pathway?.tasks_to_generate) {
-        pathway.tasks_to_generate.forEach(task => {
-          tasksToCreate.push({
-            ...task,
-            patient_id: patientId,
-            assigned_to: currentUser?.email,
-            source: 'ai_generated',
-            ai_reason: `Generated from ${pathway.pathway_name} pathway`
-          });
-        });
-      }
-    });
-
-    if (tasksToCreate.length > 0) {
-      // A rejected bulkCreate used to escape as an unhandled rejection: the
-      // clinician saw nothing, no tasks existed, and the activation was reported
-      // as done by the callback below.
-      try {
-        await createTasksMutation.mutateAsync(tasksToCreate);
-      } catch (error) {
-        console.error('Failed to create pathway tasks:', error);
-        toast.error('Could not create the pathway tasks. Please try again.');
-        return;
-      }
-
-      logActivity(ActivityActions.TASK_CREATE, {
-        task_count: tasksToCreate.length,
-        source: 'ai_pathway_recommendations',
-        patient_id: patientId,
-        page: 'OASISAnalyzer'
-      });
     }
 
     if (onPathwaysActivated) {
@@ -471,7 +446,7 @@ Return JSON:
                         {pathway.tasks_to_generate?.length > 0 && (
                           <div className="bg-slate-50 p-2 rounded border">
                             <p className="text-xs font-medium text-slate-700 mb-1">
-                              {pathway.tasks_to_generate.length} tasks will be created
+                              {pathway.tasks_to_generate.length} task recommendations (review only)
                             </p>
                             <div className="space-y-1">
                               {pathway.tasks_to_generate.slice(0, 3).map((task, tIdx) => (
@@ -502,22 +477,27 @@ Return JSON:
                       Activate {selectedPathways.length} selected pathway{selectedPathways.length > 1 ? 's' : ''}
                     </p>
                     <p className="text-xs text-navy-700">
-                      This will generate {selectedPathways.reduce((sum, idx) => 
-                        sum + (recommendations.recommended_pathways[idx]?.tasks_to_generate?.length || 0), 0
-                      )} tasks
+                      {selectedTaskCount > 0
+                        ? `${selectedTaskCount} task-bearing recommendation${selectedTaskCount === 1 ? '' : 's'} cannot be activated`
+                        : 'No task-bearing recommendations selected'}
                     </p>
                   </div>
-                  {/* Disabled while in flight: without it a double-click ran the
-                      handler twice and bulk-created every task a second time. */}
                   <Button
                     onClick={handleActivatePathways}
-                    disabled={createTasksMutation.isPending}
+                    disabled={selectedTaskCount > 0}
                     className="bg-navy-600 hover:bg-navy-700"
                   >
                     <CheckCircle2 className="w-4 h-4 mr-2" />
-                    {createTasksMutation.isPending ? 'Activating…' : 'Activate Pathways'}
+                    {selectedTaskCount > 0 ? 'Task Creation Unavailable' : 'Activate Pathways'}
                   </Button>
                 </div>
+                {selectedTaskCount > 0 && (
+                  <Alert className="mt-3 border-amber-300 bg-amber-50">
+                    <AlertDescription className="text-amber-900">
+                      {TASK_ACTIVATION_BLOCKER}
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
             )}
 

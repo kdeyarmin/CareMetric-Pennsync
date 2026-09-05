@@ -31,9 +31,27 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import JSON5 from 'json5';
 
 const ENTITIES_DIR = join(dirname(fileURLToPath(import.meta.url)), 'entities');
+const BASE44_DIR = dirname(ENTITIES_DIR);
+const REPO_DIR = dirname(BASE44_DIR);
+
+const DORMANT_REFERENCE_ENTITY_NAMES = [
+  'AIKnowledgeBase',
+  'AIModelConfiguration',
+  'AgencyComplianceRule',
+  'CareSetting',
+  'DocumentationTemplate',
+  'FeaturePackage',
+  'InvitationSettings',
+  'NewFeature',
+  'NoteTemplate',
+  'ProviderSettings',
+  'SharedPhraseLibrary',
+  'SubscriptionSettings',
+];
 
 const entityFiles = readdirSync(ENTITIES_DIR).filter((f) => f.endsWith('.jsonc'));
 
@@ -143,6 +161,411 @@ test('every required field exists in its properties', () => {
     }
   }
   assert.equal(bad.length, 0, `Required field(s) missing from properties:\n${bad.join('\n')}`);
+});
+
+test('RLS uses only Base44-supported field operators', () => {
+  const supported = new Set([
+    '$all', '$in', '$ne', '$nin', '$and', '$or', '$nor',
+  ]);
+  const bad = [];
+
+  const visit = (value, path, file) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`, file));
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key.startsWith('$') && !supported.has(key)) bad.push(`${file}: ${path}.${key}`);
+      visit(child, `${path}.${key}`, file);
+    }
+  };
+
+  for (const [file, schema] of parsed) visit(schema.rls, 'rls', file);
+  assert.equal(bad.length, 0, `Unsupported RLS operator(s):\n${bad.join('\n')}`);
+});
+
+test('array-valued RLS fields use an explicit membership operator', () => {
+  const bad = [];
+  const visit = (value, schema, path, file, inUserCondition = false) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, schema, `${path}[${index}]`, file, inUserCondition));
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (inUserCondition) continue;
+      if (key === 'user_condition') {
+        visit(child, schema, `${path}.${key}`, file, true);
+      } else if (key.startsWith('$')) {
+        visit(child, schema, `${path}.${key}`, file, false);
+      } else {
+        const fieldName = key.startsWith('data.') ? key.slice(5) : key;
+        if (schema.properties?.[fieldName]?.type === 'array' && (child === null || typeof child !== 'object')) {
+          bad.push(`${file}: ${path}.${key}`);
+        }
+        visit(child, schema, `${path}.${key}`, file, false);
+      }
+    }
+  };
+  for (const [file, schema] of parsed) {
+    for (const operation of ['create', 'read', 'update', 'delete']) {
+      visit(schema.rls?.[operation], schema, `rls.${operation}`, file);
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `Array RLS field(s) compared with scalar equality:\n${bad.join('\n')}`,
+  );
+});
+
+test('entity-level RLS uses operation-specific mutation keys', () => {
+  const bad = [];
+  for (const [file, schema] of parsed) {
+    if (schema?.rls && Object.hasOwn(schema.rls, 'write')) {
+      bad.push(`${file}: rls.write is ignored for hosted entity mutations; use create/update/delete`);
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `Legacy entity-level RLS mutation key(s):\n${bad.join('\n')}`,
+  );
+});
+
+test('reviewed dormant and service-only entities remain fail-closed', () => {
+  const names = [
+    ...DORMANT_REFERENCE_ENTITY_NAMES,
+    'AgencyMessage', 'AIInsightFeedback', 'AILearningPattern', 'AlertTriggerRule',
+    'AppointmentForm', 'Billing', 'CitationLibrary', 'ClinicalScenario',
+    'CareCoordinationAlert',
+    'FaxCoverTemplate', 'FaxDocument', 'FaxHistory', 'FaxNotification',
+    'FaxPriorityRule', 'FormTemplate', 'IncomingFax', 'InsuranceProvider',
+    'MaterialInteraction', 'Medication', 'MedicationReconciliation', 'Message', 'MessageTemplate',
+    'NursePerformanceMetric', 'OASISActionItem', 'OASISAudit', 'OASISFeedback',
+    'OASISScenario', 'OASISWorkflowExecution', 'PatientBillingInfo',
+    'PatientEducationDraft', 'PatientEducationEngagement',
+    'PatientEducationMaterial', 'PatientMessage', 'PatientOutcome',
+    'PatientPathwayAssignment', 'PatientRecommendation', 'PatientRiskAssessment',
+    'OASISAutomationRule', 'RiskAlert', 'RiskAnalysis', 'ScheduleFeedback',
+    'ServiceCode', 'SharedDocument', 'SuggestedIntervention', 'TeamMessage',
+    'TeamNote', 'TelecomDestinationBinding',
+  ];
+  const bad = [];
+  for (const name of names) {
+    const schema = byName.get(name);
+    if (!schema) {
+      bad.push(`${name}: missing schema`);
+      continue;
+    }
+    for (const operation of ['create', 'read', 'update', 'delete']) {
+      if (schema.rls?.[operation] !== false) bad.push(`${name}: ${operation} must be false`);
+    }
+  }
+  assert.equal(bad.length, 0, `Fail-closed entity drift:\n${bad.join('\n')}`);
+});
+
+test('retired patient-linked entities have no direct browser entity access', () => {
+  const names = ['CareCoordinationAlert', 'TeamNote'];
+  const codeFiles = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (/\.(?:js|jsx|ts|tsx|mjs)$/.test(entry.name) && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)) {
+        codeFiles.push(path);
+      }
+    }
+  };
+  visit(join(REPO_DIR, 'src'));
+
+  const bad = [];
+  for (const path of codeFiles) {
+    const source = readFileSync(path, 'utf8');
+    for (const name of names) {
+      if (new RegExp(`\\bentities\\.${name}\\s*\\.`).test(source)) {
+        bad.push(`${path.slice(REPO_DIR.length + 1)}: ${name}`);
+      }
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `A fail-closed patient-linked entity gained direct browser access; add an authorized broker first:\n${bad.join('\n')}`,
+  );
+});
+
+test('OCR feedback is directly readable only by its owner/admin and directly immutable', () => {
+  const schema = byName.get('OCRFeedback');
+  assert.deepEqual(schema.rls.read, {
+    $or: [
+      { 'data.user_email': '{{user.email}}' },
+      { user_condition: { role: 'admin' } },
+    ],
+  });
+  for (const operation of ['create', 'update', 'delete']) {
+    assert.equal(schema.rls[operation], false, `OCRFeedback ${operation} must remain service-role-only`);
+  }
+
+  const retrain = readFileSync(join(BASE44_DIR, 'functions', 'retrainOCRModel', 'entry.ts'), 'utf8');
+  assert.match(retrain, /asServiceRole\.entities\.OCRFeedback\.filter/);
+  assert.match(retrain, /asServiceRole\.entities\.OCRFeedback\.update/);
+});
+
+test('paused OASIS recommendation and automation entities stay behind containment gates', () => {
+  const analyzer = readFileSync(join(REPO_DIR, 'src', 'components', 'hub-tabs', 'OASISAnalyzer.jsx'), 'utf8');
+  const clinicalReview = readFileSync(join(REPO_DIR, 'src', 'components', 'hub-tabs', 'OASISClinicalReview.jsx'), 'utf8');
+  assert.match(analyzer, /const OASIS_ANALYZER_ENABLED = false;/);
+  assert.match(clinicalReview, /const OASIS_CLINICAL_AI_ENABLED = false;/);
+
+  const codeFiles = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (/\.(?:js|jsx|ts|tsx|mjs)$/.test(entry.name) && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)) {
+        codeFiles.push(path);
+      }
+    }
+  };
+  visit(join(REPO_DIR, 'src'));
+  visit(join(BASE44_DIR, 'functions'));
+
+  const expectedEntityConsumers = {
+    OASISAutomationRule: [
+      'src/components/oasis/OASISAutomationSettings.jsx',
+      'src/components/oasis/WorkflowExecutionEngine.jsx',
+      'src/components/oasis/WorkflowMonitoringDashboard.jsx',
+    ],
+    PatientRecommendation: [
+      'src/components/oasis/OASISToPatientChartPusher.jsx',
+      'src/components/oasis/PredictiveOutcomesAnalyzer.jsx',
+    ],
+  };
+  const actualEntityConsumers = Object.fromEntries(
+    Object.keys(expectedEntityConsumers).map((name) => [name, []]),
+  );
+  for (const path of codeFiles) {
+    const source = readFileSync(path, 'utf8');
+    for (const name of Object.keys(expectedEntityConsumers)) {
+      if (new RegExp(`\\bentities\\.${name}\\s*\\.`).test(source)) {
+        actualEntityConsumers[name].push(path.slice(REPO_DIR.length + 1));
+      }
+    }
+  }
+  for (const name of Object.keys(actualEntityConsumers)) actualEntityConsumers[name].sort();
+  assert.deepEqual(actualEntityConsumers, expectedEntityConsumers);
+
+  const expectedImportHosts = {
+    OASISToPatientChartPusher: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
+    PredictiveOutcomesAnalyzer: [
+      'src/components/hub-tabs/OASISAnalyzer.jsx',
+      'src/components/hub-tabs/OASISClinicalReview.jsx',
+    ],
+    OASISAutomationSettings: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
+    WorkflowExecutionEngine: [
+      'src/components/hub-tabs/OASISAnalyzer.jsx',
+      'src/components/hub-tabs/OASISClinicalReview.jsx',
+    ],
+    WorkflowMonitoringDashboard: ['src/components/hub-tabs/OASISAnalyzer.jsx'],
+  };
+  const actualImportHosts = Object.fromEntries(
+    Object.keys(expectedImportHosts).map((component) => [component, []]),
+  );
+  for (const path of codeFiles.filter((file) => file.startsWith(join(REPO_DIR, 'src')))) {
+    const source = readFileSync(path, 'utf8');
+    for (const component of Object.keys(expectedImportHosts)) {
+      const importPattern = new RegExp(
+        `(?:from\\s+["'][^"']*/${component}["']|import\\(\\s*["'][^"']*/${component}["']\\s*\\))`,
+      );
+      if (importPattern.test(source)) actualImportHosts[component].push(path.slice(REPO_DIR.length + 1));
+    }
+  }
+  for (const component of Object.keys(actualImportHosts)) actualImportHosts[component].sort();
+  assert.deepEqual(actualImportHosts, expectedImportHosts);
+});
+
+test('zero-caller destructive deletes remain fail-closed', () => {
+  const names = [
+    'ComplianceRule',
+    'DischargeSummary',
+    'FaceToFaceEncounter',
+    'FaxRetryConfig',
+    'MedicareComplianceRule',
+    'NoteConversion',
+    'PatientEducationAssignment',
+    'PatientEducationDelivery',
+    'SentEducationMaterial',
+  ];
+  for (const name of names) {
+    assert.equal(byName.get(name)?.rls?.delete, false, `${name} delete must remain denied`);
+  }
+
+  const codeFiles = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (/\.(?:js|jsx|ts|tsx|mjs)$/.test(entry.name) && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)) {
+        codeFiles.push(path);
+      }
+    }
+  };
+  visit(join(REPO_DIR, 'src'));
+  visit(join(BASE44_DIR, 'functions'));
+
+  const bad = [];
+  for (const path of codeFiles) {
+    const source = readFileSync(path, 'utf8');
+    for (const name of names) {
+      if (new RegExp(`\\bentities\\.${name}\\s*\\.\\s*delete\\s*\\(`).test(source)) {
+        bad.push(`${path.slice(REPO_DIR.length + 1)}: ${name}.delete`);
+      }
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `A denied destructive operation gained a production caller; use a reviewed service broker or revise the contract:\n${bad.join('\n')}`,
+  );
+});
+
+test('locked dormant reference entities have no production-code consumer', () => {
+  const codeFiles = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(path);
+      } else if (
+        /\.(?:js|jsx|ts|tsx|mjs)$/.test(entry.name)
+        && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)
+      ) {
+        codeFiles.push(path);
+      }
+    }
+  };
+  visit(join(REPO_DIR, 'src'));
+  visit(join(BASE44_DIR, 'functions'));
+
+  const bad = [];
+  for (const path of codeFiles) {
+    const source = readFileSync(path, 'utf8');
+    for (const name of DORMANT_REFERENCE_ENTITY_NAMES) {
+      if (new RegExp(`\\b${name}\\b`).test(source)) {
+        bad.push(`${path.slice(REPO_DIR.length + 1)}: ${name}`);
+      }
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `A locked dormant entity gained a production consumer; add an authorized broker before use:\n${bad.join('\n')}`,
+  );
+});
+
+test('entity-level RLS prefixes custom record fields with data.', () => {
+  const builtInFields = new Set([
+    'id', 'email', 'created_by', 'created_by_id', 'created_date', 'updated_date',
+  ]);
+  const bad = [];
+
+  const visit = (value, path, file, inUserCondition = false) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`, file, inUserCondition));
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (inUserCondition) continue;
+      if (key === 'user_condition') {
+        visit(child, `${path}.${key}`, file, true);
+      } else if (key.startsWith('$')) {
+        visit(child, `${path}.${key}`, file, false);
+      } else {
+        if (!key.startsWith('data.') && !builtInFields.has(key)) {
+          bad.push(`${file}: ${path}.${key}`);
+        }
+        visit(child, `${path}.${key}`, file, false);
+      }
+    }
+  };
+
+  for (const [file, schema] of parsed) {
+    for (const operation of ['create', 'read', 'update', 'delete']) {
+      visit(schema.rls?.[operation], `rls.${operation}`, file);
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `Unprefixed custom field(s) in entity-level RLS:\n${bad.join('\n')}`,
+  );
+});
+
+test('entity-level RLS never authorizes with mutable account_type', () => {
+  const bad = [];
+  const visit = (value, path, file) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`, file));
+      return;
+    }
+    if (value.user_condition && Object.hasOwn(value.user_condition, 'account_type')) {
+      bad.push(`${file}: ${path}.user_condition.account_type`);
+    }
+    for (const [key, child] of Object.entries(value)) visit(child, `${path}.${key}`, file);
+  };
+  for (const [file, schema] of parsed) visit(schema.rls, 'rls', file);
+  assert.equal(
+    bad.length,
+    0,
+    `Mutable account_type used as an RLS authority:\n${bad.join('\n')}`,
+  );
+});
+
+test('known RLS debt cannot grow or change without explicit review', () => {
+  const isOpen = (rule) => {
+    if (rule === undefined || rule === null || rule === true) return true;
+    if (rule === false || typeof rule !== 'object' || Array.isArray(rule)) return false;
+    if (Object.keys(rule).length === 0) return true;
+    if (Array.isArray(rule.$or)) return rule.$or.some(isOpen);
+    if (Array.isArray(rule.$and)) return rule.$and.every(isOpen);
+    return false;
+  };
+  const fingerprint = (names) => createHash('sha256').update(names.join('\n')).digest('hex');
+  const inventories = {
+    noRls: [],
+    openMutation: [],
+    openRead: [],
+  };
+  for (const [file, schema] of parsed) {
+    const name = schema.name || file.replace(/\.jsonc$/, '');
+    if (!schema.rls) inventories.noRls.push(name);
+    if (['create', 'update', 'delete'].some((operation) => isOpen(schema.rls?.[operation]))) {
+      inventories.openMutation.push(name);
+    }
+    if (isOpen(schema.rls?.read)) inventories.openRead.push(name);
+  }
+  const expected = {
+    noRls: [8, '752d715c7ed58c0d0ed2250350e440adb8ff1a60f07ec88f9ddd9f4e112f8bd0'],
+    openMutation: [11, 'af229553e580c1d19d54197a574ca267a7f32dd28aa80afd9b541b1280a05522'],
+    openRead: [21, 'e24cda0c4ee3915f16d5eaed48b83ff8afda0491c41a26613138ac3c0e7f08a3'],
+  };
+  const bad = [];
+  for (const [kind, names] of Object.entries(inventories)) {
+    names.sort();
+    const actual = [names.length, fingerprint(names)];
+    if (actual[0] !== expected[kind][0] || actual[1] !== expected[kind][1]) {
+      bad.push(`${kind}: count=${actual[0]} sha256=${actual[1]}\n  ${names.join(', ')}`);
+    }
+  }
+  assert.equal(
+    bad.length,
+    0,
+    `RLS debt inventory changed. Shrink it deliberately and update the reviewed fingerprint; never expand it:\n${bad.join('\n')}`,
+  );
 });
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,19 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// Static release checkpoint. Message has no immutable selected-tenant
+// provenance yet; the dormant trigger implementation is retained for review.
+const SECURE_MESSAGE_DOMAIN_PAUSED = true;
+const secureMessageUnavailable = () => Response.json(
+    {
+        error: 'Secure messaging is temporarily unavailable',
+        code: 'secure_message_tenant_broker_required',
+    },
+    { status: 503, headers: { 'Cache-Control': 'no-store' } },
+);
+
 Deno.serve(async (req) => {
+    if (SECURE_MESSAGE_DOMAIN_PAUSED) return secureMessageUnavailable();
+
     try {
         const base44 = createClientFromRequest(req);
         const payload = await req.json();

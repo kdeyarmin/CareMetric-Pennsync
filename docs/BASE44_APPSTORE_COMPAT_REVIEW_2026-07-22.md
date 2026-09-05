@@ -1,5 +1,15 @@
 # Base44 + Apple App Store Compatibility Review — 2026-07-22
 
+> **Partial supersession notice (2026-09-03):** This remains a point-in-time
+> July audit. Only its service-worker/offline-shell passages and any native/store
+> readiness conclusion that conflicts with the current checklist are superseded.
+> Current source intentionally registers no service worker and has retired
+> `public/sw.js` and `public/offline.html`; `src/lib/hostedPaths.spec.js` guards
+> that state. Use `docs/APP_STORE_SUBMISSION_CHECKLIST.md` and
+> `docs/REPOSITORY_CONSOLIDATION_2026-09-02.md` for current release gates. Other
+> findings below remain point-in-time July evidence unless a later record
+> expressly changes them.
+
 Full-codebase review verifying that PennSync works correctly as a Base44-hosted app and as an
 Apple App Store (iOS WKWebView wrapper) app. The review combined:
 
@@ -224,8 +234,13 @@ Findings to address:
 - **Sign in with Apple (4.8): not currently triggered** (first-party email/password only), but
   verify the production hosted `/login` fallback page shows no Google button; if it does, 4.8
   applies and the OAuth redirect would also break in the shell.
-- **IAP (3.1.1): clean** — no payment SDKs; all billing code is Medicare PDGM analytics, nothing
-  sold to app users.
+- **IAP (3.1.1): BLOCKED — corrected 2026-09-03.** The live Apple listing has four
+  in-app purchases (Monthly, Quarterly, Semi Annual, and Annual), while this repository
+  contains no StoreKit/RevenueCat client, product identifiers, receipt validation, or
+  restore-purchase flow. The earlier "clean" conclusion described only the repository and
+  missed the existing listing. Recover the original entitlement implementation and App Store
+  Connect product mapping before any native upload; do not infer that a hosted web-only update
+  can recreate native purchase handling.
 - **Review access (2.1):** supply a seeded non-PHI demo account; note the 15-minute idle timeout.
 - Privacy nutrition labels must declare Health & Fitness data, identifiers, and audit data,
   linked to identity. `ITSAppUsesNonExemptEncryption=false` is correct.

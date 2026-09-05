@@ -133,29 +133,9 @@
     "host_email"
   ],
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "host_email": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    },
-    "write": {
-      "$or": [
-        {
-          "host_email": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

@@ -54,6 +54,11 @@ function getSchedulerAuthError(req, user) {
 
 const SEND_TIMEOUT_MS = 15000;
 const BATCH_LIMIT = 100;
+// SmsMessage rows do not yet carry an immutable, service-owned transmission
+// authority binding. Keep provider redrive unavailable until legacy rows are
+// migrated and the scheduler can prove their provenance without trusting
+// caller-editable message or User fields.
+const SMS_REDRIVE_MIGRATION_PAUSED = true;
 
 // ---- redrive eligibility (mirrors src/components/messaging/smsRedrive.js) ----
 const TRANSIENT_FAILURE_PATTERNS = [
@@ -507,6 +512,13 @@ function quietHoursCheck(toNumber, now, settings) {
 
 Deno.serve(async (req) => {
   try {
+    if (SMS_REDRIVE_MIGRATION_PAUSED) {
+      return Response.json(
+        { error: 'SMS redrive is paused pending service-owned message provenance migration' },
+        { status: 503 },
+      );
+    }
+
     const base44 = createClientFromRequest(req);
 
     // Authorization: privileged cron job (service-role reads/writes + billable
@@ -651,7 +663,7 @@ Deno.serve(async (req) => {
         action: 'sms_redriven',
         entity_type: 'SmsMessage',
         entity_id: row.id,
-        details: { to_number: row.to_number, attempt: attempts, provider_message_id: resp.data?.data?.id || null },
+        details: { attempt: attempts, provider: 'telnyx', direction: 'outbound' },
         status: 'success',
       }).catch(() => {});
     }

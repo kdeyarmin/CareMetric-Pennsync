@@ -2,13 +2,25 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   LIVE_READINESS_EVIDENCE,
+  LIVE_CAPABILITY_MATRIX,
+  LIVE_READINESS_PROBES,
+  LIVE_READINESS_REVIEWERS,
+  createLiveReadinessEvidencePacket,
   evaluateLiveCapabilityReadiness,
   evaluateLiveReadinessMatrix,
   recommendedLiveImplementationOrder,
+  summarizeLiveReadinessEvidencePackets,
 } from "./liveReadinessGate.js";
 
 const capability = { id: "LR-X", capability: "Example", priority: 1, phaseSource: "Phase X", risk: "high" };
 const fullEvidence = Object.fromEntries(LIVE_READINESS_EVIDENCE.map((key) => [key, `${key}-value`]));
+const completeProbe = (probeId) => ({
+  execution_context: "authenticated_hosted",
+  result: "pass",
+  captured_at: "2026-09-05T00:00:00.000Z",
+  artifact_sha256: "a".repeat(64),
+  references: [`evidence/LR-01/${probeId}.json`],
+});
 
 test("live capability readiness is blocked until every required evidence field exists", () => {
   const result = evaluateLiveCapabilityReadiness(capability, { "LR-X": { owner: "qa" } });
@@ -40,4 +52,78 @@ test("recommended order puts ready capabilities first then priority order", () =
   ];
   const ordered = recommendedLiveImplementationOrder({ "LR-3": fullEvidence }, matrix);
   assert.deepEqual(ordered.map((item) => item.id), ["LR-3", "LR-1", "LR-2"]);
+});
+
+test("matrix helpers reject an empty scope instead of passing vacuously", () => {
+  assert.throws(() => evaluateLiveReadinessMatrix({}, []), /non-empty array/);
+  assert.throws(() => recommendedLiveImplementationOrder({}, []), /non-empty array/);
+  assert.throws(() => summarizeLiveReadinessEvidencePackets({}, []), /non-empty array/);
+});
+
+test("planning readiness rejects empty and reference-only evidence objects", () => {
+  const emptyObjects = Object.fromEntries(LIVE_READINESS_EVIDENCE.map((key) => [key, {}]));
+  const referenceOnly = Object.fromEntries(
+    LIVE_READINESS_EVIDENCE.map((key) => [key, { references: [`evidence/${key}.md`] }]),
+  );
+  assert.equal(evaluateLiveCapabilityReadiness(capability, { "LR-X": emptyObjects }).ready, false);
+  assert.equal(evaluateLiveCapabilityReadiness(capability, { "LR-X": referenceOnly }).ready, false);
+});
+
+test("release evidence cannot complete LR-01 without every required probe artifact", () => {
+  const capabilityEvidence = {
+    ...Object.fromEntries(LIVE_READINESS_EVIDENCE.map((key) => [key, {
+      summary: `${key} complete`,
+      references: [`evidence/${key}.md`],
+    }])),
+    reviewers: Object.fromEntries(
+      LIVE_READINESS_REVIEWERS.map((reviewer) => [reviewer, "approved"]),
+    ),
+  };
+  let packet = createLiveReadinessEvidencePacket(
+    LIVE_CAPABILITY_MATRIX[0],
+    { "LR-01": capabilityEvidence },
+  );
+  assert.equal(packet.reviewComplete, false);
+  assert.deepEqual(packet.missingRequiredProbeIds, LIVE_READINESS_PROBES["LR-01"].required);
+
+  capabilityEvidence.test_evidence.probes = Object.fromEntries(
+    LIVE_READINESS_PROBES["LR-01"].required.map((probeId) => [probeId, completeProbe(probeId)]),
+  );
+  packet = createLiveReadinessEvidencePacket(
+    LIVE_CAPABILITY_MATRIX[0],
+    { "LR-01": capabilityEvidence },
+  );
+  assert.equal(packet.reviewComplete, true);
+  assert.deepEqual(packet.completedProbeIds, LIVE_READINESS_PROBES["LR-01"].required);
+});
+
+test("release evidence treats links without hosted attestations and failed probes as blockers", () => {
+  const capabilityEvidence = {
+    ...Object.fromEntries(LIVE_READINESS_EVIDENCE.map((key) => [key, {
+      summary: `${key} complete`,
+      references: [`evidence/${key}.md`],
+    }])),
+    reviewers: Object.fromEntries(
+      LIVE_READINESS_REVIEWERS.map((reviewer) => [reviewer, "approved"]),
+    ),
+  };
+  capabilityEvidence.test_evidence.probes = Object.fromEntries(
+    LIVE_READINESS_PROBES["LR-01"].required.map((probeId) => [probeId, completeProbe(probeId)]),
+  );
+  capabilityEvidence.test_evidence.probes.V1 = {
+    references: ["evidence/LR-01/V1.json"],
+  };
+  capabilityEvidence.test_evidence.probes.V2 = {
+    ...completeProbe("V2"),
+    result: "fail",
+  };
+
+  const packet = createLiveReadinessEvidencePacket(
+    LIVE_CAPABILITY_MATRIX[0],
+    { "LR-01": capabilityEvidence },
+  );
+  assert.equal(packet.reviewComplete, false);
+  assert.deepEqual(packet.missingRequiredProbeIds, ["V1", "V2"]);
+  assert.deepEqual(packet.incompleteSuppliedProbeIds, ["V1", "V2"]);
+  assert.deepEqual(packet.nonPassingProbeIds, ["V2"]);
 });

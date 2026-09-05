@@ -1,6 +1,159 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster';
+import { getMyTenantContext } from '@/functions/getMyTenantContext';
+import { listAuthorizedPatients } from '@/functions/listAuthorizedPatients';
+import {
+  tenantContextMatchesRequest,
+  trustedTenantRequest,
+} from '@/lib/trustedTenantRequest';
+
+const AUTHORIZED_PAGE_SIZE = 50;
+const AUTHORIZED_ROSTER_LIMIT = 10000;
+const MAX_IDENTIFIER_LENGTH = 200;
+const AUTHORIZED_SORT_FIELDS = new Set([
+  'id',
+  'first_name',
+  'middle_name',
+  'last_name',
+  'medical_record_number',
+  'status',
+  'care_type',
+  'admission_date',
+  'primary_diagnosis',
+  'updated_date',
+]);
+const AUTHORIZED_STATUSES = new Set(['active', 'hospitalized', 'discharged']);
+const AUTH_REFRESH_OPTIONS = Object.freeze({
+  retry: false,
+  staleTime: 0,
+  gcTime: 0,
+  refetchOnMount: 'always',
+  refetchOnWindowFocus: 'always',
+  refetchOnReconnect: 'always',
+});
+
+function exactIdentifier(value) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= MAX_IDENTIFIER_LENGTH
+    && value.trim() === value
+    && !value.startsWith('$');
+}
+
+function settledSuccessfullyAfterMount(query) {
+  return query.isSuccess
+    && query.isFetchedAfterMount
+    && query.fetchStatus === 'idle'
+    && !query.error;
+}
+
+function isAuthorizedRosterQuery(query) {
+  const key = query?.queryKey;
+  return Array.isArray(key)
+    && key[0] === 'patients'
+    && key[1] === 'authorized-roster';
+}
+
+function tenantScopeKey(context) {
+  if (!context) return null;
+  return [
+    context.user_id,
+    context.agency_id,
+    context.membership_id,
+    context.membership_version,
+    context.tenant_role,
+  ];
+}
+
+function sameTenantScope(scope, context) {
+  return !!scope
+    && !!context
+    && scope.agency_id === context.agency_id
+    && scope.membership_id === context.membership_id
+    && scope.membership_version === context.membership_version
+    && scope.tenant_role === context.tenant_role;
+}
+
+function comparePatients(sort) {
+  if (!sort) return null;
+  const descending = sort.startsWith('-');
+  const field = descending ? sort.slice(1) : sort;
+  return (left, right) => {
+    const leftValue = left?.[field];
+    const rightValue = right?.[field];
+    if (leftValue == null && rightValue == null) {
+      return String(left?.id || '').localeCompare(String(right?.id || ''));
+    }
+    if (leftValue == null) return 1;
+    if (rightValue == null) return -1;
+    const compared = String(leftValue).localeCompare(String(rightValue), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (compared !== 0) return descending ? -compared : compared;
+    return String(left?.id || '').localeCompare(String(right?.id || ''));
+  };
+}
+
+function validateAuthorizedOptions({ agencyId, status, sort, limit, options }) {
+  if (agencyId !== undefined && !exactIdentifier(agencyId)) {
+    throw new Error('Authorized patient agencyId is invalid');
+  }
+  if (status != null && !AUTHORIZED_STATUSES.has(status)) {
+    throw new Error('Authorized patient status is invalid');
+  }
+  const sortField = sort ? sort.replace(/^-/, '') : null;
+  if (sortField && !AUTHORIZED_SORT_FIELDS.has(sortField)) {
+    throw new Error('Authorized patient sort is invalid');
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > AUTHORIZED_ROSTER_LIMIT) {
+    throw new Error('Authorized patient limit is invalid');
+  }
+  const incompatible = Object.keys(options).filter((key) => key !== 'select');
+  if (incompatible.length > 0) {
+    throw new Error(`Authorized patient query option is incompatible: ${incompatible[0]}`);
+  }
+}
+
+async function fetchAuthorizedRoster({ tenantContext, status, sort, limit }) {
+  const rows = [];
+  const seenIds = new Set();
+  let cursor = null;
+
+  while (true) {
+    const result = await listAuthorizedPatients({
+      agencyId: tenantContext.agency_id,
+      mode: 'page',
+      purpose: 'roster',
+      ...(status ? { status } : {}),
+      sort: 'id_asc',
+      pageSize: AUTHORIZED_PAGE_SIZE,
+      cursor,
+    });
+    if (!sameTenantScope(result.scope, tenantContext)) {
+      throw new Error('Patient roster authority changed during request');
+    }
+    for (const patient of result.patients) {
+      if (seenIds.has(patient.id)) {
+        throw new Error('Patient roster returned a duplicate keyset row');
+      }
+      seenIds.add(patient.id);
+      rows.push(patient);
+    }
+
+    if (!result.page.has_more) break;
+    if (rows.length >= AUTHORIZED_ROSTER_LIMIT) {
+      throw new Error('Patient roster exceeds the reviewed UI read limit');
+    }
+    cursor = result.page.next_cursor;
+  }
+
+  const comparator = comparePatients(sort);
+  const ordered = comparator ? [...rows].sort(comparator) : rows;
+  return ordered.slice(0, limit);
+}
 
 /**
  * The one way to read a patient roster across charts.
@@ -25,22 +178,109 @@ import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster'
  * the second population of unscoped views read the roster this way rather than
  * via `.list`, which is why the shape lives here instead of at the call site.
  *
- * `options` is passed through to useQuery, so a caller can still narrow with
- * `select`, defer with `enabled`, or override `staleTime`.
+ * `readMode: 'authorized-roster'` opts a compatible selector into the server
+ * broker. That mode deliberately returns only listAuthorizedPatients' reviewed
+ * `roster` projection. It walks the broker's keyset pages before applying the
+ * requested UI sort/limit, so a limit never selects the wrong subset merely
+ * because the authorization boundary pages by id. The default remains
+ * `legacy` until full-chart consumers have purpose-specific projections; this
+ * is an explicit migration seam, not a silent shape change across every page.
+ * `agencyId` may narrow only to AuthContext's current trusted tenant. The hook
+ * always revalidates that exact agency plus membership id/version; it never
+ * asks the server to infer authority from mutable User fields or ambiguity.
+ *
+ * Legacy `options` are passed through to useQuery. Authorized mode accepts only
+ * `select`; cache and refetch policy are part of its security boundary.
  */
 export function useScopedPatients({
+  agencyId,
   status,
   sort = '-updated_date',
   limit = 2000,
   enabled = true,
+  readMode = 'legacy',
   ...options
 } = {}) {
-  const { data: currentUser } = useQuery({
+  const queryClient = useQueryClient();
+  if (readMode !== 'legacy' && readMode !== 'authorized-roster') {
+    throw new Error('Patient readMode is invalid');
+  }
+  if (readMode === 'authorized-roster') {
+    validateAuthorizedOptions({ agencyId, status, sort, limit, options });
+  }
+
+  const currentUserQuery = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
+    enabled,
+    ...(readMode === 'authorized-roster' ? AUTH_REFRESH_OPTIONS : {}),
   });
+  const currentUser = currentUserQuery.data;
 
-  return useQuery({
+  const useAuthorizedRoster = readMode === 'authorized-roster';
+  const currentUserSettled = !useAuthorizedRoster
+    || settledSuccessfullyAfterMount(currentUserQuery);
+  const currentUserId = exactIdentifier(currentUser?.id) ? currentUser.id : null;
+  const requestedAgencyId = agencyId === undefined ? null : agencyId;
+  const tenantRequest = useMemo(
+    () => trustedTenantRequest(currentUser, requestedAgencyId),
+    [currentUser, requestedAgencyId],
+  );
+  const identityError = useMemo(
+    () => (useAuthorizedRoster && currentUserSettled && !currentUserId
+      ? new Error('Authenticated user identity failed integrity validation')
+      : null),
+    [currentUserId, currentUserSettled, useAuthorizedRoster],
+  );
+  const authorityError = useMemo(
+    () => (useAuthorizedRoster && currentUserSettled && currentUserId && !tenantRequest
+      ? new Error('Requested agency does not match the trusted tenant selection')
+      : null),
+    [currentUserId, currentUserSettled, tenantRequest, useAuthorizedRoster],
+  );
+  const tenantContextQuery = useQuery({
+    queryKey: [
+      'tenant-context',
+      'patient-roster',
+      currentUser?.id || currentUser?.email || null,
+      tenantRequest?.authorityKey || null,
+      tenantRequest?.agencyId || requestedAgencyId,
+    ],
+    queryFn: async () => {
+      if (!tenantRequest) {
+        throw new Error('Trusted tenant selection is unavailable');
+      }
+      const result = await getMyTenantContext(tenantRequest.options);
+      if (!tenantContextMatchesRequest(result.tenant_context, tenantRequest)) {
+        throw new Error('Patient roster tenant authority changed during verification');
+      }
+      if (!result.tenant_context.agency_id) {
+        throw new Error('Select an agency before loading an authorized patient roster');
+      }
+      return result.tenant_context;
+    },
+    enabled: useAuthorizedRoster
+      && enabled
+      && currentUserSettled
+      && !!currentUserId
+      && !!tenantRequest,
+    ...AUTH_REFRESH_OPTIONS,
+  });
+  const tenantContextSettled = useAuthorizedRoster
+    && currentUserSettled
+    && settledSuccessfullyAfterMount(tenantContextQuery);
+  const tenantContext = tenantContextSettled
+    && tenantContextMatchesRequest(tenantContextQuery.data, tenantRequest)
+    ? tenantContextQuery.data
+    : null;
+  const tenantScopeError = useMemo(
+    () => (tenantContextSettled && !tenantContext
+      ? new Error('Patient roster tenant authority failed integrity validation')
+      : null),
+    [tenantContext, tenantContextSettled],
+  );
+
+  const legacyQuery = useQuery({
     // `status` and `sort` are part of the identity: an active-only read and a
     // full read of the same limit are different result sets. `sort: null` means
     // "whatever the API orders by", which is its own ordering, not '-updated_date'.
@@ -49,12 +289,19 @@ export function useScopedPatients({
       agencyQueryKey(currentUser),
     ],
     queryFn: async () => {
+      // A membership-free owner has no selected agency and therefore cannot
+      // safely issue this legacy platform-wide entity read. Keep the owner on
+      // non-clinical platform surfaces until a reviewed owner-agency selector
+      // exists; manual `refetch()` must fail before touching Patient too.
+      if (!tenantRequest) {
+        throw new Error('Select an exact trusted agency before loading patients');
+      }
       const rows = status
         ? await base44.entities.Patient.filter({ status }, sort || undefined, limit)
         : await base44.entities.Patient.list(sort, limit);
       return scopePatientsToCallerAgency(rows, currentUser);
     },
-    enabled: enabled && !!currentUser,
+    enabled: !useAuthorizedRoster && enabled && !!currentUser && !!tenantRequest,
     initialData: [],
     // `initialData` alone is seeded as FRESH, so any non-zero staleTime (the
     // app default, or one a caller passes) suppresses the fetch-on-mount and
@@ -64,6 +311,101 @@ export function useScopedPatients({
     initialDataUpdatedAt: 0,
     ...options,
   });
+
+  const authorizedQuery = useQuery({
+    queryKey: [
+      'patients', 'authorized-roster', status || 'all', sort || 'unsorted', limit,
+      tenantScopeKey(tenantContext),
+    ],
+    queryFn: () => {
+      if (!tenantContext) {
+        throw new Error('Fresh patient roster tenant authority is unavailable');
+      }
+      return fetchAuthorizedRoster({
+        tenantContext,
+        status,
+        sort,
+        limit,
+      });
+    },
+    enabled: useAuthorizedRoster && enabled && !!tenantContext,
+    initialData: [],
+    initialDataUpdatedAt: 0,
+    // A server-authorized roster must not inherit the app-wide 60-second fresh
+    // window: remount/focus/reconnect should re-check membership and assignment
+    // authority. Exact revocation-driven eviction remains a hosted cutover gate
+    // until assignment state has a server-owned version in the cache identity.
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
+    select: options.select,
+  });
+
+  const upstreamError = currentUserQuery.error
+    || tenantContextQuery.error
+    || identityError
+    || authorityError
+    || tenantScopeError
+    || null;
+  const authorizationError = upstreamError || authorizedQuery.error || null;
+  const isFetching = currentUserQuery.isFetching
+    || tenantContextQuery.isFetching
+    || authorizedQuery.isFetching;
+  const isPaused = currentUserQuery.isPaused
+    || tenantContextQuery.isPaused
+    || authorizedQuery.isPaused;
+  const authorizedSettled = Boolean(
+    useAuthorizedRoster
+    && enabled
+    && currentUserSettled
+    && currentUserId
+    && tenantContextSettled
+    && tenantContext
+    && settledSuccessfullyAfterMount(authorizedQuery)
+    && !authorizationError
+    && !isFetching
+    && !isPaused
+  );
+
+  // Cached broker rows are never evidence of current assignment. Withhold them
+  // throughout identity/context/roster rechecks and remove them after either a
+  // denial or a transient verification failure so another consumer cannot
+  // observe stale charts through the shared cache.
+  useEffect(() => {
+    if (!useAuthorizedRoster || !upstreamError || isFetching) return;
+    queryClient.removeQueries({ predicate: isAuthorizedRosterQuery });
+  }, [isFetching, queryClient, upstreamError, useAuthorizedRoster]);
+
+  useEffect(() => {
+    if (
+      !useAuthorizedRoster
+      || !authorizedQuery.isError
+      || authorizedQuery.isFetching
+    ) return;
+    queryClient.removeQueries({ predicate: isAuthorizedRosterQuery });
+  }, [
+    authorizedQuery.isError,
+    authorizedQuery.isFetching,
+    queryClient,
+    useAuthorizedRoster,
+  ]);
+
+  if (!useAuthorizedRoster) return legacyQuery;
+  return {
+    ...authorizedQuery,
+    data: authorizedSettled ? authorizedQuery.data : [],
+    error: authorizationError,
+    status: authorizationError ? 'error' : authorizedSettled ? 'success' : 'pending',
+    isError: Boolean(authorizationError),
+    isPending: !authorizationError && !authorizedSettled,
+    isSuccess: authorizedSettled,
+    isFetching,
+    isPaused,
+    isLoading: enabled && !authorizationError && !authorizedSettled,
+    tenantScope: authorizedSettled ? tenantContext : null,
+  };
 }
 
 /**

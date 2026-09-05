@@ -14,13 +14,15 @@ test('buildOffboardInvokeArgs builds offboard body', () => {
   assert.equal(args.action, undefined);
 });
 
-test('buildOffboardInvokeArgs builds reactivate body', () => {
-  const args = buildOffboardInvokeArgs({
-    targetUser: { id: 'u1', email: 'nurse@example.com' },
-    currentUser: { email: 'admin@example.com', role: 'admin' },
-    enabling: true,
-  });
-  assert.deepEqual(args, { action: 'reactivate', user_id: 'u1' });
+test('buildOffboardInvokeArgs hard-pauses reactivation before an invoke payload exists', () => {
+  assert.throws(
+    () => buildOffboardInvokeArgs({
+      targetUser: { id: 'u1', email: 'nurse@example.com' },
+      currentUser: { email: 'admin@example.com', role: 'admin' },
+      enabling: true,
+    }),
+    /reactivation is temporarily unavailable/i,
+  );
 });
 
 test('buildOffboardInvokeArgs blocks self-offboard', () => {

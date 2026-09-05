@@ -5,7 +5,10 @@ import { base44 } from '@/api/base44Client';
 import { PAGE_NAMES, MAIN_PAGE } from '@/routes';
 
 export default function NavigationTracker() {
-    const location = useLocation();
+    // Keep only the scalar pathname. The Router location object also contains
+    // `state`, which may be a large protected payload in an old history entry;
+    // no tracker effect or async continuation should close over that object.
+    const pathname = useLocation().pathname;
     const { isAuthenticated } = useAuth();
     const mainPageKey = MAIN_PAGE ?? PAGE_NAMES[0];
 
@@ -22,14 +25,13 @@ export default function NavigationTracker() {
         if (typeof window === 'undefined' || window.parent === window) return;
         window.parent.postMessage({
             type: "app_changed_url",
-            url: `${window.location.origin}${window.location.pathname}`
+            url: `${window.location.origin}${pathname}`
         }, '*');
-    }, [location]);
+    }, [pathname]);
 
     // Log user activity when navigating to a page
     useEffect(() => {
         // Extract page name from pathname
-        const pathname = location.pathname;
         let pageName;
         
         if (pathname === '/' || pathname === '') {
@@ -51,7 +53,7 @@ export default function NavigationTracker() {
                 // Silently fail - logging shouldn't break the app
             });
         }
-    }, [location, isAuthenticated, mainPageKey]);
+    }, [pathname, isAuthenticated, mainPageKey]);
 
     return null;
 }

@@ -15,6 +15,7 @@
 
 /** Day-of-week index (0=Sun … 6=Sat) → the key used in a schedule object. */
 export const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+export const DEFAULT_BUSINESS_TIMEZONE = "America/New_York";
 
 const WEEKDAY_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
@@ -84,7 +85,7 @@ export function agencyHoursConfig(settings) {
   const s = settings || {};
   return {
     enabled: s.business_hours_enabled === true,
-    timeZone: s.business_hours_timezone || undefined,
+    timeZone: s.business_hours_timezone || DEFAULT_BUSINESS_TIMEZONE,
     days: s.business_hours && typeof s.business_hours === "object" ? s.business_hours : {},
     holidays: Array.isArray(s.business_hours_holidays) ? s.business_hours_holidays : [],
   };

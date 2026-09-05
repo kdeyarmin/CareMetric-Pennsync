@@ -1,35 +1,20 @@
-import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, FileText, ExternalLink, Send } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertTriangle, FileText, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateLocal";
 import { openExternalUrl } from "@/components/utils/security";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { toast } from 'sonner';
 import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
-export default function ReferralDocumentViewer({ patientId }) {
-  const [sendDialogOpen, setSendDialogOpen] = useState(false);
-  const [selectedReferral, setSelectedReferral] = useState(null);
-  const [messageText, setMessageText] = useState("");
-  const [recipientEmail, setRecipientEmail] = useState("");
-  const [isSending, setIsSending] = useState(false);
+export const REFERRAL_DOCUMENT_SEND_UNAVAILABLE_MESSAGE =
+  'Sending referral documents through secure messages is unavailable until a tenant-authorized broker binds the selected Agency, patient, referral, thread, and recipient.';
 
+export default function ReferralDocumentViewer({ patientId }) {
   const { data: referrals = [] } = useQuery({
     queryKey: ['patientReferrals', patientId],
     queryFn: () => base44.entities.Referral.filter({ patient_id: patientId }, '-created_date', PATIENT_HISTORY_ROWS),
@@ -55,38 +40,6 @@ export default function ReferralDocumentViewer({ patientId }) {
     initialData: [],
     enabled: !!currentUser,
   });
-
-  const handleSendDocument = async () => {
-    if (!recipientEmail || !selectedReferral) return;
-
-    setIsSending(true);
-    try {
-      await base44.entities.Message.create({
-        patient_id: patientId,
-        thread_id: `referral-doc-${selectedReferral.id}`,
-        subject: `Referral Document: ${selectedReferral.patient_name || 'Patient'}`,
-        message_text: messageText || `${selectedReferral.documentUrl === selectedReferral.processed_document_url ? 'AI-processed admission packet' : 'Referral document'} for ${selectedReferral.patient_name}.\n\nReferral Date: ${selectedReferral.referral_date ? format(parseLocalDate(selectedReferral.referral_date), 'MM/dd/yyyy') : 'N/A'}\nSource: ${selectedReferral.referral_source || 'N/A'}`,
-        sender_name: currentUser?.full_name || 'System',
-        sender_email: currentUser?.email,
-        recipients: [recipientEmail],
-        priority: selectedReferral.priority === 'urgent' ? 'urgent' : 'normal',
-        attachments: [selectedReferral.documentUrl],
-        related_event_id: selectedReferral.id,
-        related_event_type: 'referral'
-      });
-
-      setSendDialogOpen(false);
-      setMessageText("");
-      setRecipientEmail("");
-      toast.success('Referral document sent successfully!');
-    } catch (error) {
-      console.error('Error sending document:', error);
-      toast.error('Failed to send document. Please try again.');
-    } finally {
-      setIsSending(false);
-    }
-  };
-
   if (processedReferrals.length === 0) {
     return (
       <Card>
@@ -158,17 +111,6 @@ export default function ReferralDocumentViewer({ patientId }) {
                         Original
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      className="bg-navy-600 hover:bg-navy-700"
-                      onClick={() => {
-                        setSelectedReferral({ ...referral, documentUrl });
-                        setSendDialogOpen(true);
-                      }}
-                    >
-                      <Send className="w-4 h-4 mr-1" />
-                      Send
-                    </Button>
                   </>
                 )}
               </div>
@@ -183,70 +125,11 @@ export default function ReferralDocumentViewer({ patientId }) {
         </Card>
         );
       })}
-
-      {/* Send Document Dialog */}
-      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Send Referral Document</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Alert className="bg-blue-50 border-blue-200">
-              <AlertDescription className="text-blue-900 text-sm">
-                Sending: {selectedReferral?.patient_name || 'Unknown Patient'} {selectedReferral?.documentUrl === selectedReferral?.processed_document_url ? 'processed admission packet' : 'referral document'}
-              </AlertDescription>
-            </Alert>
-
-            <div>
-              <Label>Send To</Label>
-              <Select value={recipientEmail} onValueChange={setRecipientEmail}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select nurse or user" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.filter(u => u.email !== currentUser?.email).map(u => (
-                    <SelectItem key={u.email} value={u.email}>
-                      {u.full_name || u.email} {u.role === 'admin' && '(Admin)'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Message (Optional)</Label>
-              <Textarea
-                placeholder="Add a message about this referral..."
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                className="min-h-[100px]"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSendDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSendDocument}
-              disabled={!recipientEmail || isSending}
-              className="bg-navy-600 hover:bg-navy-700"
-            >
-              {isSending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Send Document
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <Alert className="border-amber-300 bg-amber-50 text-amber-950">
+        <AlertTriangle className="h-5 w-5 text-amber-700" aria-hidden="true" />
+        <AlertTitle>Secure document messaging unavailable</AlertTitle>
+        <AlertDescription>{REFERRAL_DOCUMENT_SEND_UNAVAILABLE_MESSAGE}</AlertDescription>
+      </Alert>
     </div>
   );
 }

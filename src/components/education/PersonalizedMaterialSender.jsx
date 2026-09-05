@@ -11,25 +11,33 @@ import { Send, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 export default function PersonalizedMaterialSender({ material, onClose, onSent }) {
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState('printed');
   const [notes, setNotes] = useState('');
   const [showPreview, setShowPreview] = useState(true);
+  const { tenantContext } = useAuth();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
   });
 
-  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: 'last_name', limit: ALL_ROWS });
+  const { data: patients = [] } = useScopedPatients({
+    status: 'active',
+    sort: 'last_name',
+    limit: ALL_ROWS,
+    readMode: 'authorized-roster',
+  });
 
-  const { data: selectedPatient } = useQuery({
-    queryKey: ['patient-detail', selectedPatientId],
-    queryFn: () => base44.entities.Patient.filter({ id: selectedPatientId }),
-    enabled: !!selectedPatientId,
-    select: (data) => data[0]
+  const { data: selectedPatient } = useAuthorizedPatient({
+    patientId: selectedPatientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'education_context',
+    enabled: !!selectedPatientId && !!tenantContext?.agency_id,
   });
 
   // Personalize content
@@ -59,6 +67,9 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
 
   const sendMutation = useMutation({
     mutationFn: async () => {
+      if (!currentUser?.email) {
+        throw new Error('Your session identity is unavailable. Please reload and try again.');
+      }
       // Create the sent record FIRST, then bump usage_count — otherwise a failed
       // create left the counter incremented for a send that never happened.
       const sent = await base44.entities.SentEducationMaterial.create({
@@ -67,7 +78,7 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
         patient_id: selectedPatientId,
         patient_name: `${selectedPatient.first_name} ${selectedPatient.last_name}`,
         personalized_content: personalizedContent,
-        sent_by: currentUser?.email,
+        sent_by: currentUser.email,
         sent_date: new Date().toISOString(),
         delivery_method: deliveryMethod,
         notes: notes
@@ -185,7 +196,7 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
               // Also require selectedPatient (a separate async query): sending
               // while it's still loading throws on selectedPatient.first_name AFTER
               // the usage_count was already bumped — a partial write + generic error.
-              disabled={!selectedPatientId || !selectedPatient || sendMutation.isPending}
+              disabled={!selectedPatientId || !selectedPatient || !currentUser?.email || sendMutation.isPending}
             >
               {sendMutation.isPending ? (
                 <>

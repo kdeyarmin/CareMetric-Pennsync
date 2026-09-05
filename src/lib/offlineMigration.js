@@ -34,10 +34,19 @@ import { LOCAL_PHI_KEYS } from '@/lib/localPhiKeys';
  * those keys. Safe to run on every startup.
  */
 
-// Stable idempotency key from a legacy item id (falls back to a random one only
-// when the legacy item had no id, which can't be deduped anyway).
-const reqId = (prefix, id) =>
-  id ? `${prefix}:${id}` : `${prefix}:${Date.now()}-${Math.random().toString(36).slice(2)}`;
+// Stable idempotency key from a legacy item id. Missing/invalid source identity
+// must preserve the whole store; inventing a random key makes a crash retry
+// indistinguishable from a new write and can duplicate clinical records.
+const reqId = (prefix, id) => {
+  const normalized = typeof id === 'number' && Number.isSafeInteger(id) && id >= 0
+    ? String(id)
+    : id;
+  return typeof normalized === 'string'
+    && normalized.length > 0
+    && normalized.trim() === normalized
+    ? `${prefix}:${normalized}`
+    : null;
+};
 
 // Drop local-only bookkeeping + placeholder ids so only real entity fields are sent.
 const stripLocal = (data = {}) => {
@@ -80,14 +89,18 @@ function mapSyncQueue(items, idMap) {
       if (rawId && !String(rawId).startsWith('offline_')) {
         actions.push(['UPDATE_VISIT', { visit_id: rawId, ...stripLocal(data) }]);
       } else {
-        const payload = { client_request_id: reqId('legacy-sq', it.id), status: 'completed', ...stripLocal(data) };
+        const requestId = reqId('legacy-sq', it.id || rawId);
+        if (!requestId) return PRESERVE;
+        const payload = { ...stripLocal(data), client_request_id: requestId, status: 'completed' };
         actions.push(['CREATE_VISIT', payload]);
         if (rawId) createByOfflineId.set(rawId, payload);
       }
     } else if (it?.type === 'task') {
       // Stable idempotency key from the legacy item id so a crash between enqueue
       // and clear (or a re-run) can't create a duplicate task on the drain.
-      actions.push(['CREATE_TASK', { client_request_id: reqId('legacy-task', it.id), ...stripLocal(data) }]);
+      const requestId = reqId('legacy-task', it.id);
+      if (!requestId) return PRESERVE;
+      actions.push(['CREATE_TASK', { ...stripLocal(data), client_request_id: requestId }]);
     } else if (it?.type === 'note' || it?.type === 'vitals') {
       deferred.push(it);
     } else {
@@ -118,11 +131,15 @@ function mapPending(items, idMap) {
     if (c?.status === 'synced') continue;
     const data = stripLocal(c?.data || {});
     if (c?.type === 'visit_create') {
-      actions.push(['CREATE_VISIT', { client_request_id: reqId('legacy-pending', c.id), status: 'completed', ...data }]);
+      const requestId = reqId('legacy-pending', c.id);
+      if (!requestId) return PRESERVE;
+      actions.push(['CREATE_VISIT', { ...data, client_request_id: requestId, status: 'completed' }]);
     } else if (c?.type === 'incident_create') {
       // Stable idempotency key from the legacy change id so a crash between enqueue
       // and clear (or a re-run) can't create a duplicate safety incident.
-      actions.push(['CREATE_INCIDENT', { client_request_id: reqId('legacy-incident', c.id), ...data }]);
+      const requestId = reqId('legacy-incident', c.id);
+      if (!requestId) return PRESERVE;
+      actions.push(['CREATE_INCIDENT', { ...data, client_request_id: requestId }]);
     } else if (c?.type === 'visit_update') {
       const rid = resolveVisitId(c?.entityId, idMap);
       if (!rid) return PRESERVE;
@@ -139,7 +156,13 @@ function mapPennVisits(items) {
   const actions = [];
   for (const v of items) {
     if (v?.synced) continue;
-    actions.push(['CREATE_VISIT', { client_request_id: reqId('legacy-penn', v.id), status: 'completed', ...stripLocal(v?.data || {}) }]);
+    const requestId = reqId('legacy-penn', v?.id);
+    if (!requestId) return PRESERVE;
+    actions.push(['CREATE_VISIT', {
+      ...stripLocal(v?.data || {}),
+      client_request_id: requestId,
+      status: 'completed',
+    }]);
   }
   return { ok: true, actions };
 }
@@ -162,7 +185,9 @@ function mapDrafts(items) {
   for (const d of items) {
     const data = stripLocal(d || {});
     if (!data.patient_id) continue; // an empty/blank draft isn't a real visit
-    actions.push(['CREATE_VISIT', { client_request_id: reqId('legacy-draft', d?.id), status: 'completed', ...data }]);
+    const requestId = reqId('legacy-draft', d?.id);
+    if (!requestId) return PRESERVE;
+    actions.push(['CREATE_VISIT', { ...data, client_request_id: requestId, status: 'completed' }]);
   }
   return { ok: true, actions };
 }
@@ -185,10 +210,11 @@ function readIdMap(storage) {
  * Returns the number of items enqueued.
  */
 async function migrateStore(storage, key, mapper, enqueue, idMap) {
-  const preserved = { count: 0, clearKey: null };
+  const absent = { count: 0, clearKey: null, preserved: false };
+  const preserved = { count: 0, clearKey: null, preserved: true };
   let raw;
   try { raw = storage.getItem(key); } catch { return preserved; }
-  if (!raw) return preserved;
+  if (!raw) return absent;
 
   let items;
   try { items = JSON.parse(raw); } catch { return preserved; /* malformed — leave for the purge */ }
@@ -207,7 +233,7 @@ async function migrateStore(storage, key, mapper, enqueue, idMap) {
   // write, it does not send it. Deleting the store here would destroy stranded
   // field documentation any time the send later failed, so the key is only
   // reported; the caller commits it once the work has reached the server.
-  return { count: actions.length, clearKey: key };
+  return { count: actions.length, clearKey: key, preserved: false };
 }
 
 /**
@@ -215,7 +241,12 @@ async function migrateStore(storage, key, mapper, enqueue, idMap) {
  * queue. Deps are injectable for tests. Returns `{ migrated }`.
  */
 export async function migrateLegacyOfflineQueues({ enqueue, storage } = {}) {
-  const nothingToDo = { migrated: 0, clearMigratedStores: () => {} };
+  const nothingToDo = {
+    migrated: 0,
+    complete: true,
+    preservedStores: [],
+    clearMigratedStores: () => {},
+  };
   if (typeof enqueue !== 'function') return nothingToDo;
   const store = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
   if (!store) return nothingToDo;
@@ -231,18 +262,37 @@ export async function migrateLegacyOfflineQueues({ enqueue, storage } = {}) {
 
   let migrated = 0;
   const clearKeys = [];
+  const preservedStores = [];
   for (const [key, mapper] of jobs) {
-    const { count, clearKey } = await migrateStore(store, key, mapper, enqueue, idMap);
+    const {
+      count,
+      clearKey,
+      preserved,
+    } = await migrateStore(store, key, mapper, enqueue, idMap);
     migrated += count;
     if (clearKey) clearKeys.push(clearKey);
+    if (preserved) preservedStores.push(key);
   }
 
   return {
     migrated,
+    complete: preservedStores.length === 0,
+    preservedStores: Object.freeze([...preservedStores]),
     // Call ONLY after the migrated actions have actually reached the server.
     clearMigratedStores: () => {
+      const errors = [];
       for (const key of clearKeys) {
-        try { store.removeItem(key); } catch { /* ignore */ }
+        try {
+          store.removeItem(key);
+          if (store.getItem(key) !== null) {
+            errors.push(new Error(`Legacy store was not removed: ${key}`));
+          }
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      if (errors.length > 0) {
+        throw new AggregateError(errors, 'Legacy migrated stores were not cleared');
       }
     },
   };

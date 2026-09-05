@@ -1,19 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Outlet, useLocation } from "react-router";
 
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
-import { queryClientInstance } from "@/lib/query-client";
-import { clearCachedPHI } from "@/lib/phiStorage";
-import { flushAndRetireOfflineQueue } from "@/lib/retiredOfflineQueue";
-import { Bell, LogOut, Clock } from "lucide-react";
+import { LogOut, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } from "@/lib/nav.manifest";
 import { PAGE_NAMES } from "@/routes";
 import { getRoleView } from "@/lib/roles";
 import { BRAND_LOGO_URL } from "@/lib/brand";
+import { useAuth } from "@/lib/AuthContext";
 
 import PageLoader from "@/components/ui/PageLoader";
 import DesktopSidebar from "@/components/layout/DesktopSidebar";
@@ -21,7 +16,6 @@ import MobileHeader from "@/components/layout/MobileHeader";
 import MobileMenu from "@/components/layout/MobileMenu";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import PageTransition from "@/components/layout/PageTransition";
-import NotificationCenter from "@/components/notifications/NotificationCenter";
 import SessionTimeoutManager from "@/components/security/SessionTimeoutManager";
 import Breadcrumbs from "@/components/navigation/Breadcrumbs";
 import CommandPalette from "@/components/navigation/CommandPalette";
@@ -49,7 +43,6 @@ export default function Layout() {
     catch { return false; }
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
 
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed)); }
@@ -68,20 +61,16 @@ export default function Layout() {
     document.documentElement.classList.remove('dark');
   }, []);
 
-  const { data: currentUser, isPending: isUserPending } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: async () => {
-      try {
-        return await base44.auth.me();
-      } catch (error) {
-        if (error.status === 403) {
-          return null;
-        }
-        throw error;
-      }
-    },
-    retry: false,
-  });
+  // AuthContext binds the exact service-owned tenant context to this user
+  // before the shell renders. Re-fetching base44.auth.me() here would discard
+  // that trusted binding and incorrectly demote AgencyMembership admins.
+  const {
+    user: currentUser,
+    isLoadingAuth: isUserPending,
+    tenantContext,
+    tenantMemberships = [],
+    logout,
+  } = useAuth();
 
   // Reset scroll to the top on every navigation so each page opens at its top —
   // keyed on the full pathname (not just the page name) so it also fires between
@@ -93,9 +82,10 @@ export default function Layout() {
     document.getElementById('main-content')?.scrollTo?.(0, 0);
   }, [location.pathname]);
 
-  // Match App.jsx's route guard. Both admin tiers require Base44's protected
-  // role; the platform-owner tier additionally requires the configured email.
-  // Custom User fields such as account_type never elevate navigation access.
+  // Match App.jsx's route guard. Platform-owner access still requires the
+  // protected Base44 role + configured email. Facility-admin navigation may
+  // additionally come from AuthContext's validated, in-memory service-owned
+  // AgencyMembership context. Mutable User fields never elevate access.
   // Three-tier role model (see lib/roles.js): super_admin sees everything
   // (incl. platform/system config), facility_admin sees the full facility surface
   // (clinical + analytics + reporting + compliance), nurse sees clinical only.
@@ -119,210 +109,26 @@ export default function Layout() {
   // deactivated account is locked out regardless of role/approval; the test
   // agent is exempt (its account is never approved and must stay usable).
   const isDeactivated = currentUser?.is_active === false && !isTestAgent;
-  // UI state only: is_manager is also custom/self-mutable. Approval functions
-  // must independently validate the assigned approver relationship.
-  const isTimeOffApprover = isAdmin || currentUser?.is_manager === true;
-
-  // One-time cleanup for the REMOVED offline feature: recover anything a device
-  // still holds from the old queues, then delete that storage and unregister the
-  // retired service worker. Runs after sign-in because the recovery writes to the
-  // server. Delete this (and lib/retiredOfflineQueue.js) after one release.
-  useEffect(() => {
-    if (!currentUser?.email) return;
-    flushAndRetireOfflineQueue().catch(() => { /* best-effort; retried next load */ });
-  }, [currentUser?.email]);
-
-  useEffect(() => {
-    if (!currentUser?.email) return;
-    const key = `login_tracked_${currentUser.email}`;
-    if (sessionStorage.getItem(key)) return;
-    base44.entities.UserActivity.create({
-      user_email: currentUser.email,
-      user_name: currentUser.full_name,
-      action: 'login',
-      device_type: /mobile|android|iphone/i.test(navigator.userAgent) ? 'mobile' : /tablet|ipad/i.test(navigator.userAgent) ? 'tablet' : 'desktop',
-      details: { timestamp: new Date().toISOString(), user_role: currentUser.role, session_start: true },
-      user_agent: navigator.userAgent,
-    }).catch((e) => console.warn("Failed to log login activity:", e?.message));
-    sessionStorage.setItem(key, 'true');
-  }, [currentUser?.email, currentUser?.full_name, currentUser?.role]);
-
-  // NOT agency-scoped: these are messages addressed TO this user. Filtering by
-  // the SENDER's agency would hide a message someone outside the agency sent
-  // them, which is the opposite of what the badge is for. Recipient-pinned is
-  // already narrower than agency.
-  const { data: messages = [] } = useQuery({
-    queryKey: ['unreadMessages', currentUser?.email],
-    queryFn: () => base44.entities.Message.filter({ recipients: currentUser.email }, '-created_date', 50),
-    initialData: [], refetchInterval: 60000, enabled: !!currentUser?.email,
-  });
-
-  // Time-off requests awaiting this user's review (admins see all pending;
-  // managers see their direct reports'). Drives the "Time Off" nav badge.
-  const { data: pendingTimeOff = [] } = useQuery({
-    queryKey: ['pending-timeoff', currentUser?.email, isAdmin],
-    queryFn: () => isAdmin
-      ? base44.entities.TimeOffRequest.filter({ status: 'pending' }, '-created_date', 100)
-      : base44.entities.TimeOffRequest.filter({ manager_email: currentUser.email, status: 'pending' }, '-created_date', 100),
-    initialData: [], refetchInterval: 120000, enabled: !!currentUser?.email && isTimeOffApprover,
-  });
-  // Exclude the reviewer's own requests — they can't approve those. Drives the
-  // "Time Off" nav badge (only approvers run the query above, so non-approvers
-  // naturally see 0).
-  const pendingTimeOffCount = pendingTimeOff.filter((r) => r.employee_email !== currentUser?.email).length;
-
-  // Timesheets awaiting this user's review (admins see all submitted; managers
-  // see their direct reports'). Drives the "Timesheets" nav badge.
-  const { data: pendingTimesheets = [] } = useQuery({
-    queryKey: ['pending-timesheets', currentUser?.email, isAdmin],
-    queryFn: () => isAdmin
-      ? base44.entities.Timesheet.filter({ status: 'submitted' }, '-created_date', 100)
-      : base44.entities.Timesheet.filter({ manager_email: currentUser.email, status: 'submitted' }, '-created_date', 100),
-    initialData: [], refetchInterval: 120000, enabled: !!currentUser?.email && isTimeOffApprover,
-  });
-  // Reviewers can't approve their own timesheet, so exclude it from the count.
-  const pendingTimesheetCount = pendingTimesheets.filter((t) => t.employee_email !== currentUser?.email).length;
-
-  // Fetch charted visits to filter alerts
-  const { data: chartedVisits = [] } = useQuery({
-    queryKey: ['my-charted-visits', currentUser?.email],
-    queryFn: () => base44.entities.Visit.filter(
-      { created_by: currentUser?.email },
-      '-visit_date',
-      500
-    ),
-    initialData: [],
-    enabled: !!currentUser?.email && currentUser?.role !== 'admin',
-  });
-
-  // Key the alerts query on the SET of charted patient ids, not the raw visit
-  // array: the filter below only depends on which patients were charted, and
-  // keying on 500 full visit objects made react-query JSON-stringify the whole
-  // clinical payload on every render of this always-mounted component.
-  const chartedPatientIdKey = useMemo(
-    () => [...new Set(chartedVisits.map((v) => v.patient_id))].sort(),
-    [chartedVisits]
+  // Automatic message/notification/approval badges are intentionally absent.
+  // The available entity readers are not bound to the exact selected tenant,
+  // so even fetching full rows merely to count them would cross the authority
+  // boundary. Restore these only behind purpose-built count brokers.
+  const navCategories = useMemo(
+    () => buildNavCategories(NAV_MANIFEST, currentUser),
+    [currentUser],
   );
-  // Server-scoped alerts (assignment/agency), then UX-narrow to charted patients.
-  // A bare PatientAlert.filter(..., 50) + agency post-filter truncated the nav
-  // badge whenever foreign-agency or uncharted rows filled the page.
-  const { data: allActiveAlerts = [] } = useQuery({
-    queryKey: ['active-alerts', currentUser?.email, chartedPatientIdKey],
-    queryFn: async () => {
-      const res = await base44.functions.invoke('getScopedPatientAlerts', {
-        limit: 500,
-        status: 'active',
-      });
-      const alerts = res?.data?.alerts || [];
-      const chartedPatientIds = new Set(chartedPatientIdKey);
-      return alerts.filter((a) => chartedPatientIds.has(a.patient_id));
-    },
-    initialData: [],
-    refetchInterval: 60000,
-    enabled: !!currentUser?.email && currentUser?.role !== 'admin' && chartedVisits.length > 0,
-  });
-
-  const activeAlerts = useMemo(() => isAdmin ? [] : allActiveAlerts, [allActiveAlerts, isAdmin]);
-
-  const { data: inAppNotifications = [] } = useQuery({
-    // Same 100-row window as NotificationCenter: both read this cache entry, so
-    // a 50-row fetch here made the header badge disagree with the panel it
-    // opens (and truncated the panel when the layout populated the cache first).
-    queryKey: ['notifications', currentUser?.email],
-    queryFn: () => base44.entities.Notification.filter({ user_email: currentUser?.email }, '-created_date', 100),
-    initialData: [], refetchInterval: 30000, enabled: !!currentUser?.email,
-  });
-
-  const { data: unreadSmsMessages = [] } = useQuery({
-    queryKey: ['unread-sms', currentUser?.email],
-    queryFn: () => base44.entities.SmsMessage.filter({ nurse_email: currentUser?.email, is_read: false }, '-created_date', 50),
-    initialData: [], refetchInterval: 30000, enabled: !!currentUser?.email,
-  });
-
-  const unreadMessageCount = messages.filter(m => !m.read_by?.includes(currentUser?.email)).length;
-  const unreadSmsCount = unreadSmsMessages.length;
-  const unreadNotificationCount = inAppNotifications.filter(n => !n.is_read).length;
-  const totalNotificationCount = unreadMessageCount + activeAlerts.length + unreadNotificationCount;
-
-// Badge value map — keys match the `badge` field in nav.manifest entries
-  const badgeValues = useMemo(() => ({
-    messages: unreadMessageCount,
-    sms: unreadSmsCount,
-    notifications: unreadNotificationCount,
-    timeOffApprovals: pendingTimeOffCount,
-    timesheetApprovals: pendingTimesheetCount,
-  }), [unreadMessageCount, unreadSmsCount, unreadNotificationCount, pendingTimeOffCount, pendingTimesheetCount]);
-
-  // Action map — keys match the `action` field in nav.manifest entries
-  const actionHandlers = useMemo(() => ({
-    openNotifications: () => setNotificationCenterOpen(true),
-  }), []);
-
-  // Build nav arrays from manifest, then inject runtime badges/actions
-  const navCategories = useMemo(() => {
-    const cats = buildNavCategories(NAV_MANIFEST, currentUser);
-    return cats.map(cat => ({
-      ...cat,
-      items: cat.items.map(({ _badgeKey, ...item }) => ({
-        ...item,
-        badge: _badgeKey ? (badgeValues[_badgeKey] ?? 0) : 0,
-      })),
-    }));
-  }, [badgeValues, currentUser]);
-
-  const adminItems = useMemo(() => {
-    const cats = buildAdminItems(NAV_MANIFEST, isSuperAdminUser);
-    // Append the special Alerts action item to the (single) Administration section
-    const withAlerts = cats.map(cat => {
-      if (cat.category !== "Administration") {
-        return {
-          ...cat,
-          items: cat.items.map(({ _badgeKey, _actionKey, ...item }) => ({
-            ...item,
-            badge: _badgeKey ? (badgeValues[_badgeKey] ?? 0) : 0,
-          })),
-        };
-      }
-      return {
-        ...cat,
-        items: [
-          ...cat.items.map(({ _badgeKey, _actionKey, ...item }) => ({
-            ...item,
-            badge: _badgeKey ? (badgeValues[_badgeKey] ?? 0) : 0,
-          })),
-          {
-            name: "Alerts",
-            icon: Bell,
-            page: null,
-            badge: unreadNotificationCount,
-            action: actionHandlers.openNotifications,
-          },
-        ],
-      };
-    });
-    return withAlerts;
-  }, [badgeValues, actionHandlers, unreadNotificationCount, isSuperAdminUser]);
+  const adminItems = useMemo(
+    () => buildAdminItems(NAV_MANIFEST, isSuperAdminUser),
+    [isSuperAdminUser],
+  );
 
   const handleLogout = useCallback(async () => {
-    try {
-      await base44.entities.UserActivity.create({
-        user_email: currentUser?.email, user_name: currentUser?.full_name, action: 'logout',
-        device_type: /mobile|android|iphone/i.test(navigator.userAgent) ? 'mobile' : /tablet|ipad/i.test(navigator.userAgent) ? 'tablet' : 'desktop',
-        details: { logout_time: new Date().toISOString(), user_role: currentUser?.role },
-        user_agent: navigator.userAgent,
-      });
-    } catch { /* no-op */ }
-    // HIPAA: purge cached PHI before logging out (shared-device safety). Await
-    // the storage purge so the IndexedDB clear isn't abandoned by the redirect.
-    try { queryClientInstance.clear(); } catch { /* no-op */ }
-    // sessionStorage can hold PHI (note drafts, referral extracts, patient deep
-    // links); clear it on logout for shared-device safety, like clearCachedPHI
-    // does for localStorage/IndexedDB.
-    try { sessionStorage.clear(); } catch { /* no-op */ }
-    try { await clearCachedPHI(); } catch { /* no-op */ }
-    base44.auth.logout();
-
-  }, [currentUser?.email, currentUser?.full_name, currentUser?.role]);
+    // Logout is a browser-reported event, not an attested server transition.
+    // Do not append an audit row that a caller can forge.
+    // AuthContext owns generation invalidation, trusted-context teardown, and
+    // the full memory/session/persistent-PHI purge before provider logout.
+    await logout();
+  }, [logout]);
 
   // Highlight the active sidebar/bottom-nav item, including when the user is on a
   // sub-page (e.g. PatientDetails highlights "Patients") so the nav never loses
@@ -405,10 +211,9 @@ export default function Layout() {
 
         <MobileHeader
           currentPageName={currentPageName}
-          totalNotificationCount={totalNotificationCount}
           mobileMenuOpen={mobileMenuOpen}
           onToggleMobileMenu={() => setMobileMenuOpen(v => !v)}
-          onOpenNotificationCenter={() => setNotificationCenterOpen(true)}
+          notificationsAvailable={false}
         />
 
         <MobileMenu
@@ -428,6 +233,20 @@ export default function Layout() {
           style={{ background: "var(--app-shell-background)" }}
         >
           <div className="mx-auto w-full min-w-0 max-w-[1600px] p-4 sm:p-6 md:p-8 lg:p-10">
+            {tenantMemberships.length > 1 && (
+              <div className="mb-4 flex justify-end">
+                <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-slate-700">
+                  <span>Agency</span>
+                  <span
+                    aria-label="Current agency workspace"
+                    className="max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium text-slate-900"
+                  >
+                    {tenantContext?.agency?.name || 'Verified workspace'}
+                  </span>
+                  <span className="text-xs text-slate-500">Sign out to switch agencies safely.</span>
+                </div>
+              </div>
+            )}
             <Breadcrumbs currentPageName={currentPageName} />
             <PageTransition>
               <Outlet key={location.pathname} />
@@ -435,16 +254,9 @@ export default function Layout() {
           </div>
         </main>
 
-        <MobileBottomNav isActive={isActive} unreadMessageCount={unreadMessageCount} isAdmin={isAdmin} currentUser={currentUser} />
+        <MobileBottomNav isActive={isActive} unreadMessageCount={0} isAdmin={isAdmin} currentUser={currentUser} />
 
         <SessionTimeoutManager timeoutMinutes={15} warningMinutes={2} />
-
-        <Dialog open={notificationCenterOpen} onOpenChange={setNotificationCenterOpen}>
-          <DialogContent className="max-w-2xl p-0 border-0 bg-white">
-            <div className="sr-only"><DialogTitle>Notifications</DialogTitle></div>
-            <NotificationCenter currentUser={currentUser} onClose={() => setNotificationCenterOpen(false)} />
-          </DialogContent>
-        </Dialog>
       </div>
     </>
   );

@@ -99,7 +99,7 @@
           "created_by": "{{user.email}}"
         },
         {
-          "provider_email": "{{user.email}}"
+          "data.provider_email": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -108,10 +108,40 @@
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
-          "provider_email": "{{user.email}}"
+          "data.provider_email": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.provider_email": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.provider_email": "{{user.email}}"
         },
         {
           "created_by": "{{user.email}}"

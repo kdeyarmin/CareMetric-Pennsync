@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from '@/lib/agencyRoster';
-import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -22,6 +21,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { toast } from "sonner";
 import { STAFF_ROLE_OPTIONS, getStaffRole, staffRoleLabel } from "@/lib/roles";
+import { isAdminLike } from "@/lib/superAdmin";
 
 export default function AdminUserSetup() {
   const queryClient = useQueryClient();
@@ -34,6 +34,10 @@ export default function AdminUserSetup() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+  // User/UserInvitation reads and createUserWithTempPassword all require
+  // Base44's protected built-in admin role. A membership-backed facility-admin
+  // view cannot safely populate even a read-only roster from these APIs yet.
+  const canManageUsers = isAdminLike(currentUser);
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers', 5000, agencyQueryKey(currentUser)],
@@ -43,7 +47,7 @@ export default function AdminUserSetup() {
       return filterUsersByCallerAgency(_rows, currentUser);
     },
     initialData: [],
-    enabled: isAdminView(currentUser),
+    enabled: canManageUsers,
   });
 
   const inviteUserMutation = useMutation({
@@ -68,6 +72,10 @@ export default function AdminUserSetup() {
   });
 
   const handleInviteUser = async () => {
+    if (!canManageUsers) {
+      toast.error("Protected administrator access is required to invite users.");
+      return;
+    }
     if (!inviteEmail) {
       toast.error("Please enter an email address");
       return;
@@ -88,13 +96,11 @@ export default function AdminUserSetup() {
     });
   };
 
-  const isAdmin = isAdminView(currentUser);
-
-  if (!isAdmin) {
+  if (!canManageUsers) {
     return (
       <AccessDeniedState
-        title="Access Denied"
-        description="Only administrators can access this page."
+        title="Protected administrator access required"
+        description="User setup is temporarily unavailable to facility administrators until the roster and invitation APIs use immutable tenant-membership authorization."
       />
     );
   }

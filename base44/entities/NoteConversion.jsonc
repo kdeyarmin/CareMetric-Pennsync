@@ -6,6 +6,10 @@
       "type": "string",
       "description": "Email of the nurse who created the note"
     },
+    "recovery_request_id": {
+      "type": "string",
+      "description": "Stable one-release offline recovery key bound to the authenticated creator, queue source record, and authorized Visit request"
+    },
     "patient_id": {
       "type": "string",
       "description": "Patient ID if available"
@@ -70,18 +74,28 @@
   // .list() every row (rows carry patient_id + diagnosis per documented note).
   // Reads are scoped to the owning user (+ admin), matching the app's
   // Patient/Visit/ComplianceAudit role model: non-admin staff see only their
-  // own rows on agency-wide report surfaces; admins see everything. "write": {}
-  // deliberately preserves the existing open write behavior — this change is
-  // read-scoping only (several write flows are legitimately cross-user), the
-  // same shape as the ClinicalLibraryTemplate read-scoping fix.
+  // own rows on agency-wide report surfaces; admins see everything. The
+  // Creation is limited to an exact nurse_email match (+ admin); both the live
+  // Smart Note path and the one-release offline recovery stamp the authenticated
+  // caller. The optional recovery_request_id gives that retired recovery path a
+  // stable exact-dedupe key without affecting live note creation. Browser updates
+  // are unnecessary, and service-role patient merges do not depend on browser
+  // RLS. No workflow deletes conversion evidence.
   "rls": {
     "read": {
       "$or": [
-        { "nurse_email": "{{user.email}}" },
+        { "data.nurse_email": "{{user.email}}" },
         { "created_by": "{{user.email}}" },
         { "user_condition": { "role": "admin" } }
       ]
     },
-    "write": {}
+    "create": {
+      "$or": [
+        { "data.nurse_email": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": false,
+    "delete": false
   }
 }

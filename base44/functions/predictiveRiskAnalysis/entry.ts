@@ -1,5 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -58,59 +69,65 @@ function parseLLMJson(raw) {
 }
 
 
-/** Explicit patient access — Patient RLS treats role:admin as platform-wide. */
-async function assertPatientAccess(base44, user, patient) {
+/** Direct patient access plus one protected, configured cross-owner path. */
+function assertPatientAccess(user, patient) {
   if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-  const isSuperAdmin = user.account_type === 'super_admin';
-  const isAgencyScopedAdmin =
-    user.account_type === 'agency_admin'
-    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
+  const callerEmail = normalizeProtectedEmail(user.email);
+  const isOwner = normalizeProtectedEmail(patient.created_by) === callerEmail;
   const isAssigned = Array.isArray(patient.assigned_nurses)
-    && patient.assigned_nurses.includes(user.email);
-  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  if (isAgencyScopedAdmin) {
-    if (!user.agency_name) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    const agencyUsers = await base44.asServiceRole.entities.User
-      .list('-created_date', 5000).catch(() => []);
-    const agencyEmails = new Set(
-      (agencyUsers || [])
-        .filter((u) => u.agency_name === user.agency_name && u.email)
-        .map((u) => u.email),
+    && patient.assigned_nurses.some(
+      (email) => normalizeProtectedEmail(email) === callerEmail,
     );
-    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
-      || (Array.isArray(patient.assigned_nurses)
-        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
-    if (!inAgency) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  if (!isOwner && !isAssigned && !isProtectedSuperAdmin(user)) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
   return null;
 }
 
 Deno.serve(async (req) => {
+  // SECURITY CONTAINMENT: the current Patient claim is a normal last-write-wins
+  // update and PatientAlert has no datastore-enforced unique idempotency key.
+  // Two requests can therefore each observe their own claim and create the same
+  // clinical alert. Keep this endpoint unreachable before request, client,
+  // auth, entity, service-role, PHI, or AI activity until Base44 supplies a
+  // hosted-verified conditional claim and unique/atomic alert write boundary.
+  return Response.json({
+    error: 'Legacy Patient service-role writer is temporarily unavailable',
+    code: 'legacy_patient_service_writer_paused',
+    reason: 'immutable_tenant_authorization_and_atomic_write_broker_required',
+    endpoint: 'predictiveRiskAnalysis',
+  }, { status: 503 });
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const { patient_id, risk_types } = await req.json();
-
-    if (!patient_id) {
-      return Response.json({ error: 'patient_id is required' }, { status: 400 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    const callerEmail = normalizeProtectedEmail(user.email);
+    if (!callerEmail) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const [patientData] = await base44.asServiceRole.entities.Patient
-      .filter({ id: patient_id }, '', 1).catch(() => []);
-    const denied = await assertPatientAccess(base44, user, patientData);
+    const body = await req.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    const { patient_id } = body;
+
+    if (typeof patient_id !== 'string' || !patient_id.trim() || patient_id.trim().length > 200) {
+      return Response.json({ error: 'Invalid patient_id' }, { status: 400 });
+    }
+    const scopedPatientId = patient_id.trim();
+
+    const patientRows = await base44.asServiceRole.entities.Patient
+      .filter({ id: scopedPatientId }, '', 1).catch(() => []);
+    // Service-role filters are not authorization boundaries. Require the exact row
+    // requested before any claim, related-PHI read, LLM call, or alert write.
+    const patientData = (Array.isArray(patientRows) ? patientRows : [])
+      .find((patient) => String(patient?.id || '').trim() === scopedPatientId);
+    const denied = assertPatientAccess(user, patientData);
     if (denied) return denied;
 
     // Claim before LLM + PatientAlert.create (shared field with predictPatientRisks).
@@ -118,15 +135,17 @@ Deno.serve(async (req) => {
       ? crypto.randomUUID()
       : `risk-predict-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     try {
-      await base44.asServiceRole.entities.Patient.update(patient_id, {
+      await base44.asServiceRole.entities.Patient.update(scopedPatientId, {
         risk_predict_claimed_by: claimToken,
       });
     } catch {
       return Response.json({ error: 'Could not claim patient for risk analysis' }, { status: 409 });
     }
-    const claimCheck = await base44.asServiceRole.entities.Patient
-      .filter({ id: patient_id }, '', 1).catch(() => []);
-    if (!claimCheck[0] || claimCheck[0].risk_predict_claimed_by !== claimToken) {
+    const claimRows = await base44.asServiceRole.entities.Patient
+      .filter({ id: scopedPatientId }, '', 1).catch(() => []);
+    const claimedPatient = (Array.isArray(claimRows) ? claimRows : [])
+      .find((patient) => String(patient?.id || '').trim() === scopedPatientId);
+    if (!claimedPatient || claimedPatient.risk_predict_claimed_by !== claimToken) {
       return Response.json({
         success: true,
         already_processed: true,
@@ -134,13 +153,28 @@ Deno.serve(async (req) => {
         skipped: 'claimed by concurrent run',
       });
     }
+    const claimDenied = assertPatientAccess(user, claimedPatient);
+    if (claimDenied) return claimDenied;
 
     // Fetch related data
-    const [visits, incidents, existingAlerts] = await Promise.all([
-      base44.asServiceRole.entities.Visit.filter({ patient_id }, '-visit_date', 10),
-      base44.asServiceRole.entities.Incident.filter({ patient_id }, '-incident_date', 5),
-      base44.asServiceRole.entities.PatientAlert.filter({ patient_id, status: 'active' }, undefined, 5000)
+    const [visitRows, incidentRows, existingAlertRows] = await Promise.all([
+      base44.asServiceRole.entities.Visit.filter({ patient_id: scopedPatientId }, '-visit_date', 10),
+      base44.asServiceRole.entities.Incident.filter({ patient_id: scopedPatientId }, '-incident_date', 5),
+      base44.asServiceRole.entities.PatientAlert.filter(
+        { patient_id: scopedPatientId, status: 'active' },
+        undefined,
+        5000,
+      ),
     ]);
+    // Re-filter every privileged response before it enters a clinical prompt or
+    // duplicate-alert decision. This contains an ignored/regressed backend filter.
+    const visits = (Array.isArray(visitRows) ? visitRows : [])
+      .filter((visit) => String(visit?.patient_id || '').trim() === scopedPatientId);
+    const incidents = (Array.isArray(incidentRows) ? incidentRows : [])
+      .filter((incident) => String(incident?.patient_id || '').trim() === scopedPatientId);
+    const existingAlerts = (Array.isArray(existingAlertRows) ? existingAlertRows : [])
+      .filter((alert) => String(alert?.patient_id || '').trim() === scopedPatientId
+        && alert.status === 'active');
 
     // Calculate age
     const age = calculateAge(patientData.date_of_birth);
@@ -364,7 +398,7 @@ Return comprehensive risk assessment:`,
 
       if (!existingSimilar) {
         const newAlert = await base44.asServiceRole.entities.PatientAlert.create({
-          patient_id,
+          patient_id: scopedPatientId,
           alert_type: alertType,
           severity: severity,
           title: alert.title,
@@ -388,7 +422,7 @@ Return comprehensive risk assessment:`,
 
     return Response.json({
       success: true,
-      patient_id,
+      patient_id: scopedPatientId,
       risk_scores: riskAnalysis.risk_scores,
       overall_risk_level: riskAnalysis.overall_risk_level,
       summary: riskAnalysis.summary,

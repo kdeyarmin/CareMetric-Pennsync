@@ -1,4 +1,11 @@
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,7 +29,7 @@ import { cn } from "@/lib/utils";
  *     // proceed
  *   }
  *
- * Mount <ConfirmDialogProvider> once near the app root.
+ * Mount <ConfirmDialogProvider> inside the keyed tenant-authority boundary.
  */
 const ConfirmContext = createContext(null);
 
@@ -43,6 +50,16 @@ export function ConfirmDialogProvider({ children }) {
       resolverRef.current(result);
       resolverRef.current = null;
     }
+  }, []);
+
+  // This provider lives inside the keyed tenant-authority boundary. Resolve a
+  // pending protected confirmation as denied during that boundary's commit so
+  // an old async handler cannot resume with approval after revocation, logout,
+  // public-route entry, or a tenant-key change.
+  useLayoutEffect(() => () => {
+    const resolve = resolverRef.current;
+    resolverRef.current = null;
+    resolve?.(false);
   }, []);
 
   const {

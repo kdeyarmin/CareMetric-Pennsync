@@ -65,5 +65,11 @@
     "name",
     "category",
     "low_stock_threshold"
-  ]
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
 }

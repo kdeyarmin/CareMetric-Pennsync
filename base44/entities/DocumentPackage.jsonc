@@ -100,50 +100,12 @@
     "patient_id",
     "document_signatures"
   ],
+  // Package creation and signing are quarantined. Service-role maintenance can
+  // still preserve or retire historical rows, but direct access is denied.
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "agency_admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "super_admin"
-          }
-        }
-      ]
-    },
-    "write": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "agency_admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "super_admin"
-          }
-        }
-      ]
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

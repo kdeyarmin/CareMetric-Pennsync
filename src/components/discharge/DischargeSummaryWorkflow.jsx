@@ -27,9 +27,10 @@ import {
   FileText, Loader2, CheckCircle, Sparkles, PenTool, Download, Eye
 } from 'lucide-react';
 
-import DigitalSignaturePad from './DigitalSignaturePad';
 import { toast } from 'sonner';
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 const formatPdfDate = (value) => value ? formatLocalDate(value) : '—';
 
@@ -41,20 +42,18 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
   const [dischargeDate, setDischargeDate] = useState(toLocalISODate());
   const [reviewNotes, setReviewNotes] = useState('');
   const [editedSummary, setEditedSummary] = useState(null);
-  const [showSignaturePad, setShowSignaturePad] = useState(false);
+  const { tenantContext } = useAuth();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
   });
 
-  const { data: patient } = useQuery({
-    queryKey: ['patient-discharge', patientId],
-    queryFn: async () => {
-      const [p] = await base44.entities.Patient.filter({ id: patientId });
-      return p;
-    },
-    enabled: !!patientId
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'selector',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   const { data: existingSummary, refetch: refetchSummary } = useQuery({
@@ -147,31 +146,6 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
       setCurrentStep('sign');
     } catch {
       // Failure already surfaced by updateMutation.onError; do not advance the step.
-    }
-  };
-
-  // Handle signature
-  const handleSignature = async (signatureData) => {
-    try {
-      await updateMutation.mutateAsync({
-        status: 'signed',
-        signature: {
-          signature_data: signatureData,
-          signed_by: currentUser?.email,
-          signed_by_name: currentUser?.full_name,
-          // Record the signer's ACTUAL credential (PT/OT/SW/LPN/etc. all sign
-          // discharge summaries) rather than assuming 'RN' — this is a locked
-          // legal document. Fall back to a neutral value when unknown.
-          signed_by_credentials: currentUser?.credential_type || 'Unknown',
-          signed_date: new Date().toISOString(),
-          ip_address: 'System'
-        }
-      });
-      toast.success('Discharge summary signed');
-      setCurrentStep('complete');
-      setShowSignaturePad(false);
-    } catch {
-      // Failure already surfaced by updateMutation.onError; keep the signature pad open.
     }
   };
 
@@ -519,10 +493,12 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
         {/* Step 3: Sign */}
         {currentStep === 'sign' && summary && (
           <div className="space-y-6">
-            <Alert>
+            <Alert className="border-amber-300 bg-amber-50">
               <PenTool className="w-4 h-4" />
-              <AlertDescription>
-                Sign the discharge summary to finalize it. This will lock the document and generate a PDF.
+              <AlertDescription className="text-amber-950">
+                Clinician signature capture is unavailable in this source checkpoint. The reviewed
+                summary remains saved, but it cannot be signed or finalized here. Use the agency-approved
+                EMR signing workflow.
               </AlertDescription>
             </Alert>
 
@@ -539,21 +515,6 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
               </CardContent>
             </Card>
 
-            <Button
-              onClick={() => setShowSignaturePad(true)}
-              className="w-full"
-            >
-              <PenTool className="w-4 h-4 mr-2" />
-              Sign Discharge Summary
-            </Button>
-
-            {showSignaturePad && (
-              <DigitalSignaturePad
-                onSave={handleSignature}
-                onCancel={() => setShowSignaturePad(false)}
-                signerName={currentUser?.full_name}
-              />
-            )}
           </div>
         )}
 

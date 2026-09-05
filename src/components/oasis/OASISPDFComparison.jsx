@@ -282,11 +282,10 @@ export default function OASISPDFComparison({
               </div>
               <div className="border-2 border-slate-300 rounded-lg overflow-hidden bg-slate-100">
                 {safeUploadedFileUrl ? (
-                  <iframe
-                    src={safeUploadedFileUrl}
-                    className="w-full h-[800px]"
-                    title="OASIS PDF"
-                  />
+                  <div className="w-full h-[800px] flex items-center justify-center p-6 text-center text-slate-500 text-sm">
+                    Inline OASIS PDF preview is unavailable because native viewer
+                    controls cannot be revoked during a workspace transition.
+                  </div>
                 ) : (
                   <div className="w-full h-[800px] flex items-center justify-center text-slate-500 text-sm">
                     PDF preview unavailable

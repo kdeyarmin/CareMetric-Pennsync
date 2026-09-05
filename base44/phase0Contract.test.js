@@ -17,16 +17,29 @@ const source = (rel) => readFileSync(join(REPO, rel), 'utf8');
 
 const HIGH_RISK_ACCESS = [
   { entity: 'Patient', owners: ['created_by'], adminReadable: true },
-  { entity: 'Visit', owners: ['created_by'], adminReadable: true },
-  { entity: 'Document', owners: ['uploaded_by', 'created_by'], adminReadable: true },
-  { entity: 'Message', owners: ['created_by'], adminReadable: true, containsOwners: ['recipients'] },
+  // Visit creation is service-owned. Its caller provenance is an explicit
+  // server-stamped custom field; platform-managed created_by is incidental.
+  { entity: 'Visit', owners: ['created_by_user_email_normalized'], adminReadable: true },
+  // Document is stricter than owner-scoped RLS: every direct operation is
+  // disabled and tenant/patient access is mediated by finite brokers.
+  { entity: 'Document', brokerOnly: true },
+  // Message lacks immutable selected-tenant provenance. Every direct operation
+  // stays closed while the message-domain functions are statically paused.
+  { entity: 'Message', brokerOnly: true },
   { entity: 'TrainingAssignment', owners: ['assigned_to_user_id'], adminReadable: true },
   { entity: 'Timesheet', owners: ['employee_email'], adminReadable: true },
 ];
 
 const REQUIRED_RELATIONSHIP_FIELDS = {
   Patient: ['first_name', 'last_name', 'date_of_birth', 'status'],
-  Visit: ['patient_id', 'visit_date', 'client_request_id'],
+  Visit: [
+    'patient_id',
+    'agency_id',
+    'created_by_user_id',
+    'created_by_user_email_normalized',
+    'visit_date',
+    'client_request_id',
+  ],
   Referral: ['patient_name', 'assigned_to', 'status'],
   Document: ['patient_id', 'uploaded_by', 'file_url'],
   DocumentSignature: ['document_id', 'signer_email', 'status'],
@@ -70,22 +83,40 @@ function assertField(schema, field) {
   assert.ok(schema.properties?.[field], `${schema.name} must define ${field}`);
 }
 
-test('P0-01 high-risk entities define scoped read RLS for patient/document/message/training/payroll records', () => {
+test('P0-01 high-risk entities define scoped or broker-only read boundaries', () => {
   for (const item of HIGH_RISK_ACCESS) {
     const raw = source(`base44/entities/${item.entity}.jsonc`);
+    const rls = entity(item.entity).rls;
     assert.match(raw, /"rls"\s*:/, `${item.entity} must define RLS`);
     assert.match(raw, /"read"\s*:/, `${item.entity} must define read RLS`);
-    for (const owner of item.owners) {
-      assert.match(raw, new RegExp(`"${owner}"\\s*:\\s*"\\{\\{user\\.email\\}\\}"`), `${item.entity} read RLS must include ${owner}`);
+    if (item.brokerOnly) {
+      assert.deepEqual(
+        rls,
+        { read: false, create: false, update: false, delete: false },
+        `${item.entity} must deny all direct SDK operations`,
+      );
+      continue;
     }
-    for (const owner of item.containsOwners || []) {
-      assert.match(raw, new RegExp(`"${owner}"\\s*:\\s*\\{\\s*"\\$contains"\\s*:\\s*"\\{\\{user\\.email\\}\\}"`), `${item.entity} read RLS must include ${owner}.$contains`);
+    const readRule = JSON.stringify(rls?.read);
+    for (const owner of item.owners) {
+      const ruleField = owner === 'created_by' ? owner : `data.${owner}`;
+      assert.ok(
+        readRule.includes(`"${ruleField}":"{{user.email}}"`),
+        `${item.entity} read RLS must include ${ruleField}`,
+      );
+    }
+    for (const owner of item.arrayOwners || []) {
+      assert.match(
+        raw,
+        new RegExp(`"data\\.${owner}"\\s*:\\s*\\{\\s*"\\$in"\\s*:\\s*\\[\\s*"\\{\\{user\\.email\\}\\}"`),
+        `${item.entity} read RLS must include data.${owner}.$in`,
+      );
     }
     if (item.adminReadable) {
       assert.match(
         raw,
-        /"role"\s*:\s*"admin"|"account_type"\s*:\s*"agency_admin"|"account_type"\s*:\s*"super_admin"/,
-        `${item.entity} read RLS must include an admin/super-admin path`,
+        /"role"\s*:\s*"admin"/,
+        `${item.entity} read RLS must include a protected admin-role path`,
       );
     }
   }
@@ -129,12 +160,17 @@ test('P0-05 outbound delivery entities expose status fields and shared delivery-
   assert.match(deliverySrc, /createDeliveryAttemptEvent/);
 });
 
-test('P1-04 provider follow-up public token functions persist expired/submitted token statuses', () => {
-  const validate = source('base44/functions/validateFollowUpToken/entry.ts');
-  const submit = source('base44/functions/submitFollowUpResponse/entry.ts');
-  assert.match(validate, /status:\s*'expired'/, 'validateFollowUpToken must persist status=expired when expiring a token');
-  assert.match(submit, /status:\s*'expired'/, 'submitFollowUpResponse must persist status=expired when an expired token is presented');
-  assert.match(submit, /status:\s*'delivered'/, 'submitFollowUpResponse must persist status=delivered after successful single-use submission');
+test('P1-04 provider follow-up public token functions remain hard-paused before access', () => {
+  for (const functionName of ['validateFollowUpToken', 'submitFollowUpResponse']) {
+    const entry = source(`base44/functions/${functionName}/entry.ts`);
+    assert.match(entry, /Deno\.serve\(\(\)\s*=>\s*Response\.json/);
+    assert.match(entry, /status:\s*503/);
+    assert.match(entry, /['"]Cache-Control['"]:\s*['"]no-store['"]/);
+    assert.doesNotMatch(
+      entry,
+      /createClient(?:FromRequest)?|\breq\.(?:json|text|arrayBuffer|formData)\(|asServiceRole|entities\.|integrations\./,
+    );
+  }
 });
 
 test('hosted RLS proof worksheet exists and refuses to fake local proof', () => {
@@ -146,6 +182,44 @@ test('hosted RLS proof worksheet exists and refuses to fake local proof', () => 
   assert.match(proof, /Repo CI cannot greenlight/i);
   const checklist = source('docs/SECURITY-RLS-CHECKLIST.md');
   assert.match(checklist, /HOSTED-RLS-PROOF\.md/);
+});
+
+test('tenant-isolation documentation keeps the immutable authority model', () => {
+  const proof = source('docs/HOSTED-RLS-PROOF.md');
+  assert.match(proof, /Authority invariant/i);
+  assert.match(proof, /Platform-Owner/);
+  assert.match(proof, /Admin-A \| Agency A \| `user` \| active `agency_admin`/);
+  assert.match(proof, /Clinician-A \| Agency A \| `user` \| active `clinician`/);
+  assert.match(proof, /PatientCareTeamAssignment/);
+  assert.match(proof, /direct entity list\/get response as positive tenant\s+evidence/i);
+  assert.doesNotMatch(proof, /Admin-A \| Agency A \| admin \/ agency_admin/);
+  assert.doesNotMatch(proof, /Patient B1 \| Agency A/);
+
+  const template = JSON.parse(source('docs/audits/live-readiness-evidence.template.json'));
+  const lr01 = template.evidence['LR-01'];
+  assert.match(lr01.credentials_or_sandbox.summary, /built-in user plus active agency_admin\/clinician memberships/i);
+  assert.match(lr01.test_evidence.summary, /no direct entity reads or mutable claims/i);
+});
+
+test('native-store release documentation remains fail closed', () => {
+  const checklist = source('docs/APP_STORE_SUBMISSION_CHECKLIST.md');
+
+  assert.match(checklist, /No-native-upload gate/i);
+  assert.match(checklist, /No new IPA or AAB may be uploaded/i);
+  assert.match(checklist, /Apple and Google privacy disclosures/i);
+  assert.match(checklist, /Signing\/distribution continuity/i);
+  assert.match(checklist, /IAP\/billing continuity/i);
+  assert.match(checklist, /Physical iOS and Android devices/i);
+  assert.match(checklist, /\/privacy-policy/);
+  assert.match(checklist, /no approved in-app EULA route/i);
+  assert.match(checklist, /https:\/\/caremetricai\.com\/eula/);
+  assert.match(checklist, /remains unverified as\s+approved governing terms/i);
+
+  const historical = source('docs/BASE44_APPSTORE_COMPAT_REVIEW_2026-07-22.md');
+  assert.match(historical, /Partial supersession notice/i);
+  assert.match(historical, /Only its service-worker\/offline-shell passages/i);
+  assert.match(historical, /intentionally registers no service worker/i);
+  assert.match(historical, /findings below remain point-in-time July evidence/i);
 });
 
 test('true CAS remains a platform ask; in-repo uses claim+re-read not decorative row_version', () => {
@@ -172,4 +246,3 @@ test('login CSRF pending confirm path is wired for logged-out magic links', () =
   assert.match(signIn, /confirmPendingAccessToken/);
   assert.match(signIn, /Continue with this sign-in link/);
 });
-
