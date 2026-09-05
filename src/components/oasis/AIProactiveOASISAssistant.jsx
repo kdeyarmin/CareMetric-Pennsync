@@ -20,8 +20,11 @@ import {
 } from "lucide-react";
 import { toast } from 'sonner';
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = false }) {
+  const { tenantContext } = useAuth();
   const ai = useAICall();
   const [analysis, setAnalysis] = useState(null);
   const queryClient = useQueryClient();
@@ -31,13 +34,11 @@ export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = fal
     setAnalysis(null);
   }, [patientId]);
 
-  const { data: patient } = useQuery({
-    queryKey: ['patient', patientId],
-    queryFn: async () => {
-      const patients = await base44.entities.Patient.filter({ id: patientId });
-      return patients[0];
-    },
-    enabled: !!patientId
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'oasis_analysis_context',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   const { data: visits = [] } = useQuery({

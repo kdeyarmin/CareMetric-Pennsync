@@ -11,25 +11,33 @@ import { Send, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 export default function PersonalizedMaterialSender({ material, onClose, onSent }) {
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState('printed');
   const [notes, setNotes] = useState('');
   const [showPreview, setShowPreview] = useState(true);
+  const { tenantContext } = useAuth();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
   });
 
-  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: 'last_name', limit: ALL_ROWS });
+  const { data: patients = [] } = useScopedPatients({
+    status: 'active',
+    sort: 'last_name',
+    limit: ALL_ROWS,
+    readMode: 'authorized-roster',
+  });
 
-  const { data: selectedPatient } = useQuery({
-    queryKey: ['patient-detail', selectedPatientId],
-    queryFn: () => base44.entities.Patient.filter({ id: selectedPatientId }),
-    enabled: !!selectedPatientId,
-    select: (data) => data[0]
+  const { data: selectedPatient } = useAuthorizedPatient({
+    patientId: selectedPatientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'education_context',
+    enabled: !!selectedPatientId && !!tenantContext?.agency_id,
   });
 
   // Personalize content

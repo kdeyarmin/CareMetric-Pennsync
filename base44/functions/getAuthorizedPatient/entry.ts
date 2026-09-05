@@ -88,6 +88,32 @@ const PURPOSE_FIELDS: Record<string, readonly string[]> = {
     'past_hospitalizations',
     'updated_date',
   ],
+  smart_note_context: [
+    'id',
+    'first_name',
+    'middle_name',
+    'last_name',
+    'date_of_birth',
+    'medical_record_number',
+    'status',
+    'care_type',
+    'primary_diagnosis',
+    'secondary_diagnoses',
+    'chronic_conditions',
+    'past_medical_history',
+    'current_medications',
+    'allergies',
+    'functional_status',
+    'wounds',
+    'updated_date',
+  ],
+  oasis_analysis_context: [
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'admission_date', 'admission_source', 'primary_diagnosis',
+    'secondary_diagnoses', 'allergies', 'current_medications',
+    'functional_status', 'baseline_vitals', 'social_history',
+    'advance_directives', 'past_hospitalizations', 'updated_date',
+  ],
 };
 
 const PURPOSE_ROLES: Record<string, ReadonlySet<string>> = {
@@ -97,6 +123,8 @@ const PURPOSE_ROLES: Record<string, ReadonlySet<string>> = {
   education_context: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']),
   visit_summary: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']),
   health_history_write_base: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  smart_note_context: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  oasis_analysis_context: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
 };
 // <<<END AUTHORIZED PATIENT EXACT PURPOSE POLICY>>>
 

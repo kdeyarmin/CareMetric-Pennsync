@@ -18,6 +18,10 @@ vi.mock("@/api/base44Client", async () => {
   return { base44: makeBase44Stub() };
 });
 
+vi.mock('@/lib/AuthContext', () => ({
+  useAuth: () => ({ tenantContext: { agency_id: 'agency-test' } }),
+}));
+
 // The durable-draft store is IndexedDB-backed, which jsdom does not provide; its
 // real failure mode in the browser is a caught, non-fatal rejection. Stub it so
 // those rejections don't surface as unhandled errors and fail the run — draft

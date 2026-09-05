@@ -11,6 +11,16 @@ vi.mock('@/api/base44Client', () => ({
   },
 }));
 
+vi.mock('@/lib/AuthContext', () => ({
+  useAuth: () => ({ tenantContext: { agency_id: 'agency-1' } }),
+}));
+
+vi.mock('@/hooks/useAuthorizedPatient', () => ({
+  useAuthorizedPatient: () => ({
+    refetch: vi.fn(async () => ({ data: null })),
+  }),
+}));
+
 const HealthHistorySection = (await import('./HealthHistorySection')).default;
 
 const renderSection = (patient) =>

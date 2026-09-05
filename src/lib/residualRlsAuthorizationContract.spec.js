@@ -129,15 +129,11 @@ describe('residual RLS source containment', () => {
     expect(directConsumers('SentEducationMaterial', 'update')).toEqual([]);
   });
 
-  it('stamps every browser-created education assignment with the actor email', () => {
-    const carePlans = read('src/pages/CarePlanManagement.jsx');
+  it('stamps every remaining browser-created education record with the actor email', () => {
     const recommender = read('src/components/carePlan/AIEducationRecommender.jsx');
     const sender = read('src/components/education/PersonalizedMaterialSender.jsx');
     const portal = read('src/components/hub-tabs/PatientEducationPortal.jsx');
 
-    expect(carePlans).not.toMatch(/assigned_by:\s*["']AI(?: System| Care Plan System)["']/);
-    expect(carePlans.match(/assigned_by:\s*currentUser\.email/g)).toHaveLength(2);
-    expect(carePlans.match(/if \(!currentUser\?\.email\)/g)).toHaveLength(2);
     expect(recommender).toMatch(/const assignedBy = \(await base44\.auth\.me\(\)\)\?\.email/);
     expect(recommender).toMatch(/if \(!assignedBy\)/);
     expect(recommender).toMatch(/assigned_by:\s*assignedBy/);
@@ -170,20 +166,16 @@ describe('residual RLS source containment', () => {
       .toMatch(/const OASIS_CLINICAL_AI_ENABLED\s*=\s*false\s*;/);
   });
 
-  it('limits AutomaticCarePlanTrigger inventory and mutations to protected admins', () => {
+  it('keeps AutomaticCarePlanTrigger private while care plans are quarantined', () => {
     const rls = entity('AutomaticCarePlanTrigger').rls;
     for (const operation of ['read', 'create', 'update', 'delete']) {
-      expect(rls[operation], `AutomaticCarePlanTrigger.${operation}`).toEqual(ADMIN);
+      expect(rls[operation], `AutomaticCarePlanTrigger.${operation}`).toBe(false);
     }
-    expect(directConsumers('AutomaticCarePlanTrigger')).toEqual([
-      'src/pages/AutomaticCarePlans.jsx',
-    ]);
+    expect(directConsumers('AutomaticCarePlanTrigger')).toEqual([]);
 
     const page = read('src/pages/AutomaticCarePlans.jsx');
-    expect(page).toMatch(/import \{ isAdminLike \} from ["']@\/lib\/superAdmin["']/);
-    expect(page).toMatch(/const isAdmin\s*=\s*isAdminLike\(currentUser\)/);
-    expect(page).toMatch(/enabled:\s*isAdmin/);
-    expect(page).toMatch(/if \(!isAdmin\)/);
+    expect(page).toMatch(/<CarePlanUnavailable/);
+    expect(page).not.toMatch(/\bbase44\b|useQuery|useMutation|entities\./);
   });
 
   it('scopes every MicroLearningProgress operation to the learner or protected admins', () => {

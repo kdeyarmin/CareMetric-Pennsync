@@ -29,6 +29,8 @@ import {
 
 import { toast } from 'sonner';
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 const formatPdfDate = (value) => value ? formatLocalDate(value) : '—';
 
@@ -40,19 +42,18 @@ export default function DischargeSummaryWorkflow({ patientId, summaryId = null, 
   const [dischargeDate, setDischargeDate] = useState(toLocalISODate());
   const [reviewNotes, setReviewNotes] = useState('');
   const [editedSummary, setEditedSummary] = useState(null);
+  const { tenantContext } = useAuth();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
   });
 
-  const { data: patient } = useQuery({
-    queryKey: ['patient-discharge', patientId],
-    queryFn: async () => {
-      const [p] = await base44.entities.Patient.filter({ id: patientId });
-      return p;
-    },
-    enabled: !!patientId
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'selector',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   const { data: existingSummary, refetch: refetchSummary } = useQuery({

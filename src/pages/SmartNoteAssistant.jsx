@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
-import { agencyQueryKey, scopePatientsForCurrentCaller } from "@/lib/agencyRoster";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +46,9 @@ import {
 } from '@/functions/updateAuthorizedVisit';
 import { getAuthorizedPatientNoteHistory } from '@/functions/getAuthorizedPatientNoteHistory';
 import { createAuthorityBoundSpeechRecognition } from '@/lib/tenantMediaDevices';
+import { useAuth } from '@/lib/AuthContext';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 const getVisitTypes = (careScope) => {
   if (careScope === "hospice") return HOSPICE_VISIT_TYPES;
@@ -211,15 +213,13 @@ export default function SmartNoteAssistant({ visitId = null }) {
   }, [authorityDraftLease]);
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
+  const { tenantContext } = useAuth();
   const careScope = currentUser?.care_scope || "home_health";
-  const { data: patients = [] } = useQuery({
-    queryKey: ["patients", "active-all", agencyQueryKey(currentUser)],
-    networkMode: 'always',
-    // ALL_ROWS before the agency post-filter so foreign-tenant charts cannot
-    // crowd the picker.
-    queryFn: async () => scopePatientsForCurrentCaller(
-      await base44.entities.Patient.filter({ status: "active" }, "first_name", ALL_ROWS),
-    )
+  const { data: patients = [] } = useScopedPatients({
+    status: 'active',
+    sort: 'first_name',
+    limit: 10000,
+    readMode: 'authorized-roster',
   });
   const patient = patients.find(p => p.id === patientId);
   const { data: complianceRules = [] } = useQuery({
@@ -228,10 +228,11 @@ export default function SmartNoteAssistant({ visitId = null }) {
     initialData: [],
     staleTime: 5 * 60 * 1000,
   });
-  const { data: patientDetail } = useQuery({
-    queryKey: ["patientDetail", patientId],
-    queryFn: () => base44.entities.Patient.get(patientId),
-    enabled: !!patientId,
+  const { data: patientDetail } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'smart_note_context',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
   const { data: noteHistoryResult } = useQuery({
     queryKey: ["authorizedPatientNoteHistory", patientId],

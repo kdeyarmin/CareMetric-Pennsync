@@ -54,6 +54,7 @@ export default function PatientAlerts() {
     status: 'active',
     sort: null,
     limit: ALL_ROWS,
+    readMode: 'authorized-roster',
   });
 
   const { data: _currentUser } = useQuery({

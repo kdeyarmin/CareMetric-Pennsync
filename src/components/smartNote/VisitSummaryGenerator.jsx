@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sparkles, Loader2, Copy, CheckCircle2, ChevronDown, ChevronUp, FileText, User } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 const SECTIONS = [
   { key: "chief_concern", label: "Chief Concern" },
@@ -61,6 +63,7 @@ export default function VisitSummaryGenerator({ patientId }) {
   const [copiedAll, setCopiedAll] = useState(false);
   const [selectedSections, setSelectedSections] = useState(new Set(SECTIONS.map(s => s.key)));
   const [showSectionPicker, setShowSectionPicker] = useState(false);
+  const { tenantContext } = useAuth();
 
   // Clear sticky summary / visit selection when the parent chart switches patients.
   useEffect(() => {
@@ -80,10 +83,11 @@ export default function VisitSummaryGenerator({ patientId }) {
     enabled: !!patientId,
   });
 
-  const { data: patient } = useQuery({
-    queryKey: ["patient-for-summary", patientId],
-    queryFn: () => base44.entities.Patient.filter({ id: patientId }, "-created_date", 1).then(r => r[0]),
-    enabled: !!patientId,
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'visit_summary',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   const selectedVisit = visits.find(v => v.id === selectedVisitId);

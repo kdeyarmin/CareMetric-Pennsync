@@ -25,6 +25,20 @@ const PURPOSE_FIELDS = Object.freeze({
   health_history_write_base: new Set([
     'id', 'past_medical_history', 'past_hospitalizations', 'updated_date',
   ]),
+  smart_note_context: new Set([
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'medical_record_number', 'status', 'care_type', 'primary_diagnosis',
+    'secondary_diagnoses', 'chronic_conditions', 'past_medical_history',
+    'current_medications', 'allergies', 'functional_status', 'wounds',
+    'updated_date',
+  ]),
+  oasis_analysis_context: new Set([
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'admission_date', 'admission_source', 'primary_diagnosis',
+    'secondary_diagnoses', 'allergies', 'current_medications',
+    'functional_status', 'baseline_vitals', 'social_history',
+    'advance_directives', 'past_hospitalizations', 'updated_date',
+  ]),
 });
 export const AUTHORIZED_PATIENT_PURPOSES = Object.freeze(Object.keys(PURPOSE_FIELDS));
 
@@ -38,6 +52,8 @@ const PURPOSE_ROLES = Object.freeze({
   education_context: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']),
   visit_summary: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']),
   health_history_write_base: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  smart_note_context: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  oasis_analysis_context: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
 });
 const PURPOSE_REQUIRED_FIELDS = Object.freeze({
   display: ['id', 'first_name', 'last_name'],
@@ -46,6 +62,8 @@ const PURPOSE_REQUIRED_FIELDS = Object.freeze({
   education_context: ['id', 'first_name', 'last_name'],
   visit_summary: ['id', 'first_name', 'last_name'],
   health_history_write_base: ['id', 'updated_date'],
+  smart_note_context: ['id', 'first_name', 'last_name', 'status', 'updated_date'],
+  oasis_analysis_context: ['id', 'first_name', 'last_name', 'updated_date'],
 });
 const STRING_FIELDS = new Set([
   'middle_name',
@@ -53,6 +71,7 @@ const STRING_FIELDS = new Set([
   'primary_diagnosis',
   'allergies',
   'physician_name',
+  'admission_source',
 ]);
 const VISIBLE_STATUSES = new Set(['active', 'hospitalized', 'discharged']);
 const CARE_TYPES = new Set(['home_health', 'hospice']);
@@ -120,7 +139,7 @@ function validProjectedField(field, value, patientId) {
   if (field === 'id') return value === patientId && exactIdentifier(value);
   if (field === 'first_name' || field === 'last_name') return validRequiredName(value);
   if (field === 'care_type') return CARE_TYPES.has(value);
-  if (field === 'date_of_birth') return validCalendarDate(value);
+  if (field === 'date_of_birth' || field === 'admission_date') return validCalendarDate(value);
   if (STRING_FIELDS.has(field)) return typeof value === 'string';
   if (field === 'status') return VISIBLE_STATUSES.has(value);
   if (field === 'updated_date') {
@@ -130,6 +149,15 @@ function validProjectedField(field, value, patientId) {
     return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
   }
   if (field === 'past_hospitalizations') return validHospitalizations(value);
+  if (field === 'chronic_conditions' || field === 'current_medications' || field === 'wounds') {
+    return Array.isArray(value)
+      && value.length <= 500
+      && value.every((entry) => entry && typeof entry === 'object' && !Array.isArray(entry));
+  }
+  if (field === 'functional_status' || field === 'baseline_vitals'
+    || field === 'social_history' || field === 'advance_directives') {
+    return value && typeof value === 'object' && !Array.isArray(value);
+  }
   return false;
 }
 

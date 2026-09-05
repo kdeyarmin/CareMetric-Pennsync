@@ -5,16 +5,14 @@ import PageHeader from "@/components/ui/PageHeader";
 import { MessageSquare, PhoneCall, UserCheck, Phone, CalendarClock, PhoneForwarded } from "lucide-react";
 import SmsConversationList from "@/components/messaging/SmsConversationList";
 import ScheduledSmsList from "@/components/messaging/ScheduledSmsList";
-import CallHistoryList from "@/components/voice/CallHistoryList";
-import CallbackQueue from "@/components/voice/CallbackQueue";
 import DutyStatusCard from "@/components/voice/DutyStatusCard";
 import PhoneFrame from "@/components/phone/PhoneFrame";
 import PhoneTopBar from "@/components/phone/PhoneTopBar";
-import { callbackCount } from "@/components/voice/callbackQueue";
 import { isOffDutyNow } from "@/components/voice/dutyUtils";
 import { formatPhoneDisplay } from "@/components/voice/phoneUtils";
 import { cn } from "@/lib/utils";
 import PageContainer from "@/components/ui/PageContainer";
+import TelecomUnavailable from '@/components/telecom/TelecomUnavailable';
 
 /**
  * PhoneCenter — a nurse's hub for masked call history, callbacks, duty controls,
@@ -25,15 +23,6 @@ export default function PhoneCenter() {
   const [activeTab, setActiveTab] = useState("texts");
 
   const { data: user } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const { data: calls = [] } = useQuery({
-    queryKey: ["call-logs", user?.email],
-    queryFn: () => base44.entities.CallLog.filter({ nurse_email: user.email }, "-created_date", 200),
-    enabled: !!user?.email,
-    refetchInterval: 30000,
-    initialData: [],
-  });
-  const callbacks = callbackCount(calls);
-
   // Agency settings drive the auto-off cutoff (default 5pm). Without them the
   // header/duty chips would still read "On duty" after the cutoff while inbound
   // calls/texts already route to the office — mirror DutyStatusCard so the two
@@ -83,7 +72,7 @@ export default function PhoneCenter() {
   const tabs = [
     { key: "texts", label: "Texts", icon: MessageSquare },
     { key: "calls", label: "Recents", icon: PhoneCall },
-    { key: "callbacks", label: "Callbacks", icon: PhoneForwarded, badge: callbacks },
+    { key: "callbacks", label: "Callbacks", icon: PhoneForwarded },
     { key: "scheduled", label: "Scheduled", icon: CalendarClock },
     { key: "duty", label: "Duty", icon: UserCheck },
   ];
@@ -101,8 +90,24 @@ export default function PhoneCenter() {
 
       <PhoneFrame tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab}>
         {activeTab === "texts" && <SmsConversationList />}
-        {activeTab === "calls" && <CallHistoryList />}
-        {activeTab === "callbacks" && <CallbackQueue />}
+        {activeTab === "calls" && (
+          <div className="p-4">
+            <TelecomUnavailable
+              compact
+              title="Call history unavailable"
+              message="Call history remains unavailable until tenant-authorized call-log and patient-contact brokers are hosted and verified."
+            />
+          </div>
+        )}
+        {activeTab === "callbacks" && (
+          <div className="p-4">
+            <TelecomUnavailable
+              compact
+              title="Callback queue unavailable"
+              message="Callback worklists remain unavailable until tenant-authorized call-log and patient-contact brokers are hosted and verified."
+            />
+          </div>
+        )}
         {activeTab === "scheduled" && <ScheduledSmsList />}
         {activeTab === "duty" && (
           <div className="flex min-h-0 flex-1 flex-col">

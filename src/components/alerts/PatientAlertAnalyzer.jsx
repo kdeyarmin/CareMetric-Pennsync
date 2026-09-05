@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +28,7 @@ export default function PatientAlertAnalyzer({
   const [generatedAlerts, setGeneratedAlerts] = useState([]);
   const analysisRequestRef = useRef(0);
   const onAlertsGeneratedRef = useRef(onAlertsGenerated);
+  const { tenantContext } = useAuth();
 
   useEffect(() => {
     onAlertsGeneratedRef.current = onAlertsGenerated;
@@ -44,10 +47,11 @@ export default function PatientAlertAnalyzer({
   }, [patientId]);
 
   // Fetch patient data
-  const { data: patient } = useQuery({
-    queryKey: ['patient', patientId],
-    queryFn: () => base44.entities.Patient.filter({ id: patientId }).then(r => r[0]),
-    enabled: !!patientId
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'alert_analysis',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   // Fetch recent visits

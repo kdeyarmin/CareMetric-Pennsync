@@ -19,6 +19,8 @@ import { toast } from "sonner";
 import { validateFileUpload } from "@/components/utils/security";
 import { HOME_HEALTH_VISIT_TYPES, HOSPICE_VISIT_TYPES } from "@/components/visit/visitTypes";
 import { getAuthorizedPatientNoteHistory } from '@/functions/getAuthorizedPatientNoteHistory';
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 /**
  * AudioVisitCapture — the "Visit Scribe" choice in the Clinical Notes hub.
@@ -31,6 +33,7 @@ import { getAuthorizedPatientNoteHistory } from '@/functions/getAuthorizedPatien
  * records — and the same vital_signs — as a typed Smart Note.
  */
 export default function AudioVisitCapture({ currentUser, visitId = null }) {
+  const { tenantContext } = useAuth();
   const [recordedAudio, setRecordedAudio] = useState(null);
   const [uploadedAudio, setUploadedAudio] = useState(null);
   const [_transcription, setTranscription] = useState(null);
@@ -57,10 +60,11 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     limit: 200,
   });
   const patient = patients.find(p => p.id === patientId);
-  const { data: patientDetail } = useQuery({
-    queryKey: ["patientDetail", patientId],
-    queryFn: () => base44.entities.Patient.get(patientId),
-    enabled: !!patientId,
+  const { data: patientDetail } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'selector',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
   const { data: noteHistoryResult } = useQuery({
     queryKey: ["authorizedPatientNoteHistory", patientId],

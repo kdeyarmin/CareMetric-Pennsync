@@ -913,23 +913,37 @@ this revision.
   stores, and the Sonner facade stores only fixed generic severity text—never a
   caller message, description, JSX/action, identifier, Promise, result, or
   error—until every async operation carries an authority generation.
-- This lifecycle gate does **not** make legacy clinical reads tenant-isolated.
+- Purpose-bound Patient projections now cover routed alert analysis, education
+  personalization, visit summaries, incident patient identity, discharge
+  display, audio visit capture, health-history merge revalidation, Smart Note
+  chart-safety context, and OASIS analysis context. Their authorized roster or
+  exact-read hooks withhold cached PHI while identity, membership, Agency, and
+  assignment authority revalidate. This remains a partial migration:
   `useScopedPatients` still defaults to a direct `Patient` entity read followed
-  by browser filtering, and `agencyScope` deliberately retains rows whose
-  tenant and author are unattributable. Built-in-admin Patient RLS can therefore
+  by browser filtering, and Referral Intake and retained dormant modules still
+  contain direct Patient reads. Built-in-admin Patient RLS can therefore
   deliver platform-wide Patient rows before that filter. Release remains
-  blocked until every full-chart consumer uses a purpose-bound server
-  projection, legacy clinical rows are tenant-stamped and backfilled or
+  blocked until every reachable full-chart consumer uses a purpose-bound
+  server projection, legacy clinical rows are tenant-stamped and backfilled or
   quarantined, and the authenticated two-agency matrix passes. The legacy
   browser scope also loads a platform User roster and treats its hard cap as
   complete, while `getDashboardData` is actor-email-scoped rather than
   selected-membership/Agency-scoped; neither is tenant-isolation proof.
   Unknown, case-mismatched, or cap-truncated authors can remain unattributable.
   These paths stay inside the same full-chart projection migration blocker.
-  Manifest-routed Care Plan editors also retain raw multi-stage SDK writes: an
-  old-authority continuation can resume after a tenant remount and reach broad
-  creator/admin CarePlan RLS. Those writes must move behind generation-aware,
-  purpose-bound tenant brokers before release can be considered isolated.
+- The three manifest-routed Care Plan pages now render a static unavailable
+  state, the retained unrouted Clinical Chart redirects without reading data,
+  and `CarePlan` plus `AutomaticCarePlanTrigger` deny all four direct SDK
+  operations. The four adjacent generation/monitoring functions remain paused.
+  Legacy rows lack an immutable tenant key, so this is quarantine rather than a
+  completed authorization design. Restore Care Plan reads or writes only after
+  tenant provenance/backfill or explicit quarantine, purpose-bound brokers,
+  authority-generation-aware mutations, and authenticated cross-tenant proof.
+- Phone Center call-history and callback tabs now render the same explicit
+  telecom-unavailable boundary as SMS history. The routed page no longer
+  imports the legacy browser Patient/contact readers. Restore these tabs only
+  after tenant-authorized CallLog and patient-contact brokers, destination
+  bindings, migration, and hosted provider proof exist.
 - The routed secure-messaging page is explicitly unavailable in this source
   checkpoint. Direct `Message` read/create/update/delete are all denied, all six
   message-domain functions are statically paused before request or SDK access,
@@ -987,12 +1001,14 @@ this revision.
   repository still does not fetch or authenticate cited artifacts or reviewer
   identities, provision hosted fixtures, or run LR-01/LR-02; the untouched
   evidence template must remain blocked.
+  This frozen tree's 32-artifact source-authority digest is
+  `2991cd1a4bad8190a26f1c5b9a8a21daf600014f969b55dcf22c7fe3012792e0`.
 
 Local component accessibility checks pass, but the six Playwright public-route
 accessibility cases could not start in this environment because its Chromium
 executable is absent; no browser assertions ran. Frozen-tree validation passes
 2,160 utility/core, 57 schema/contract, 623 security, 47 deduplication, and
-1,390 component tests (4,277 package tests total), plus 19 component
+1,405 component tests (4,292 package tests total), plus 19 component
 accessibility tests. Lint, baseline/high-signal/utility typechecks, production
 build, 268-function transpilation/invocation validation, 220-consumer shared
 helper parity, workflow lint, the 36-item OASIS worksheet, and the canonical
@@ -1003,7 +1019,7 @@ mutation, schedule, secret, domain, production asset, native binary, or store
 record was changed for this checkpoint. Release remains blocked on isolated-
 staging synchronization and authenticated two-agency proof, datastore
 uniqueness/CAS and migration evidence, private Document backfill, telecom-
-binding provisioning, full-chart purpose-bound broker/projection migration,
+binding provisioning, the remaining full-chart purpose-bound broker/projection migration,
 clinical-row tenant backfill or quarantine, supervised retired-work recovery,
 tenant-provenance message brokers and migration, OASIS/PDGM clinical approval,
 device/store/privacy/signing work, backup/restore, and production cutover
